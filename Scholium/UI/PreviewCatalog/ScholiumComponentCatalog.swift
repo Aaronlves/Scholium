@@ -94,22 +94,44 @@ private struct LifecycleDestinationCatalog: View {
     let scenario: Scenario
 
     var body: some View {
-        SidebarLifecycleDestinationView(
-            scope: scenario == .chinese ? .setAside : .trash,
-            items: items,
-            isLoading: scenario == .loading,
-            errorMessage: scenario == .error ? "The lifecycle listing is temporarily unavailable." : nil,
-            requestedPutBackFocusPath: nil,
-            onFocusRequestHandled: {},
-            onRequestPutBackFocus: { _ in },
-            onReload: {},
-            onOpen: { _ in },
-            onPutBack: { _ in },
-            onReveal: { _ in },
-            onMoveToTrash: { _ in },
-            onDeletePermanently: { _ in }
-        )
-        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(scenario == .chinese ? "Set Aside" : "Trash")
+                .font(ScholiumInterfaceTypography.editorialLabel)
+                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
+            if scenario == .loading {
+                ProgressView("Loading…")
+                    .padding(ScholiumMetrics.Library.contentInset)
+            } else if scenario == .error {
+                Label("The lifecycle listing is temporarily unavailable.", systemImage: "exclamationmark.triangle")
+                    .font(ScholiumInterfaceTypography.metadata)
+                    .padding(ScholiumMetrics.Library.contentInset)
+            } else if items.isEmpty {
+                Text("No notes")
+                    .font(ScholiumInterfaceTypography.metadata)
+                    .padding(ScholiumMetrics.Library.contentInset)
+            } else {
+                ForEach(items) { item in
+                    HStack(spacing: 0) {
+                        NoteCardRow(
+                            note: item.note,
+                            isActive: false,
+                            vaultRole: .topicKnowledge
+                        )
+                        Button { } label: {
+                            Image(systemName: "arrow.uturn.backward")
+                                .frame(
+                                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Put Back…")
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
         .frame(width: 300, height: 380, alignment: .topLeading)
         .scholiumSurface(.navigation)
     }
@@ -149,6 +171,363 @@ private struct LifecycleDestinationCatalog: View {
             revision: document.fingerprint,
             noteID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         )
+    }
+}
+
+/// D-120 Sidebar acceptance board. This is the production `SidebarView` with
+/// disposable in-memory projections, so pinned Sections, disclosure, filters,
+/// Location behavior, selection, typography, and accessibility are not
+/// represented by a separate mock layout.
+@MainActor
+private struct SidebarCutoverCatalog: View {
+    enum Scenario: Equatable {
+        case standard
+        case filteredLongCJK
+        case empty
+        case loading
+        case error
+        case rightToLeftLargeText
+    }
+
+    let scenario: Scenario
+    private let vaultID = UUID(uuidString: "00000000-0000-0000-0000-000000000120")!
+    @StateObject private var controller: DiscoveryController
+    @StateObject private var bibliography: RecommendedBibliographyController
+
+    init(scenario: Scenario) {
+        self.scenario = scenario
+        var library = DiscoveryLibraryState()
+        if scenario == .filteredLongCJK { library.filters.needsAttention = true }
+        if scenario == .loading { library.locationIsLoading = true }
+        if scenario == .error { library.locationError = "The source projection is temporarily unavailable." }
+
+        let peripheral = WindowPeripheralPresentationState()
+        let vaultID = UUID(uuidString: "00000000-0000-0000-0000-000000000120")!
+        peripheral.setExpandedFolders(
+            ["Conceptual architecture", "Conceptual architecture/Current chapter"],
+            in: LibraryDisclosureScope(vaultID: vaultID, locationScope: .workspace)
+        )
+        _controller = StateObject(wrappedValue: DiscoveryController(
+            initialLibraryState: library,
+            peripheralPresentation: peripheral
+        ))
+        _bibliography = StateObject(wrappedValue: RecommendedBibliographyController())
+    }
+
+    var body: some View {
+        SidebarView(controller: controller, context: context)
+            .frame(width: 300, height: 680, alignment: .topLeading)
+            .environment(
+                \.layoutDirection,
+                scenario == .rightToLeftLargeText ? .rightToLeft : .leftToRight
+            )
+            .environment(
+                \.dynamicTypeSize,
+                scenario == .rightToLeftLargeText ? .accessibility3 : .large
+            )
+    }
+
+    private var context: SidebarContext {
+        SidebarContext(
+            triptychName: scenario == .filteredLongCJK
+                ? "Dissertation · 规范理由与注意"
+                : "Dissertation",
+            attentionItems: attentionItems,
+            filteredNotes: notes,
+            allNotes: notes,
+            folders: folders,
+            currentVaultID: vaultID,
+            disclosureScope: LibraryDisclosureScope(
+                vaultID: vaultID,
+                locationScope: controller.library.locationScope
+            ),
+            selectedDocumentPath: notes.first?.relativePath,
+            libraryFocusRequestGeneration: 0,
+            currentVaultRole: .sourceCorpus,
+            currentWorkspaceSlot: controller.library.workspaceSlot,
+            noteLifecycleRequest: nil,
+            canCreateNote: true,
+            lifecycleMutationGeneration: 0,
+            catalogIsAvailable: true,
+            graphIsAvailable: true,
+            tags: ["attention", "agency"],
+            authors: ["Example Author"],
+            years: [2024, 2026],
+            propertyKeys: [],
+            propertyValues: [:],
+            resolvedIdentityPaths: Set(notes.map(\.relativePath)),
+            bibliographyController: bibliography,
+            notesAreOrdered: { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending },
+            openAttention: {},
+            selectLocationScope: { location in
+                controller.synchronizeLibrarySelection(
+                    workspaceSlot: controller.library.workspaceSlot,
+                    location: location
+                )
+            },
+            openNote: { _, _ in },
+            selectWorkspaceVault: { slot in
+                controller.synchronizeLibrarySelection(
+                    workspaceSlot: slot,
+                    location: controller.library.locationScope
+                )
+            },
+            prepareLifecycle: { _ in },
+            clearPreparedLifecycle: { _ in },
+            createUntitledNote: { _ in },
+            createUntitledFolder: { _ in },
+            requestFolderLifecycle: { _ in },
+            moveFolderToTrash: { _ in },
+            copyRelativePath: { _ in },
+            revealNote: { _ in },
+            setAside: { _ in },
+            moveToTrash: { _ in },
+            deletePermanently: { _ in },
+            classify: { _, _, _ in },
+            openRecommendedAnalysis: { _ in },
+            openRecommendedZoteroItem: { _ in },
+            copyRecommendedBibliographyText: { _ in },
+            repairRecommendedBibliographyMethod: {},
+            revealCurrentVault: {},
+            openSettings: {},
+            selectSortOrder: { controller.selectSortOrder($0) },
+            showError: { _ in }
+        )
+    }
+
+    private var notes: [WindowDocumentLocation] {
+        guard scenario != .empty, scenario != .loading, scenario != .error else { return [] }
+        return [
+            note(
+                "papers/Conceptual architecture/Current chapter/Objections and replies/The value-first objection under delayed confirmation — a deliberately long mixed-language title 关于规范理由与可修正判断.md",
+                title: "The value-first objection under delayed confirmation — 关于规范理由与可修正判断"
+            ),
+            note(
+                "papers/Conceptual architecture/Current chapter/QA Autosave B.md",
+                title: "QA Autosave B"
+            ),
+            note(
+                "papers/Methods and source boundaries/Evidence is not connection.md",
+                title: "Evidence is not connection"
+            ),
+            note("papers/Loose note.md", title: "Loose note"),
+        ]
+    }
+
+    private var folders: [String] {
+        guard !notes.isEmpty else { return [] }
+        return [
+            "papers/Conceptual architecture",
+            "papers/Conceptual architecture/Current chapter",
+            "papers/Conceptual architecture/Current chapter/Objections and replies",
+            "papers/Methods and source boundaries",
+            "papers/Earlier formulations",
+        ]
+    }
+
+    private var attentionItems: [AttentionQueueItem] {
+        (0..<7).map { index in
+            AttentionQueueItem(
+                kind: index.isMultiple(of: 2) ? .possibleOrphan : .malformedMetadata,
+                severity: .warning,
+                note: VaultNoteReference(
+                    vaultID: vaultID,
+                    vaultName: "Analyses",
+                    vaultRole: .sourceCorpus,
+                    relativePath: "papers/Conceptual architecture/Current chapter/QA \(index).md"
+                ),
+                message: "Disposable Preview Catalog issue \(index + 1)."
+            )
+        }
+    }
+
+    private func note(_ path: String, title: String) -> WindowDocumentLocation {
+        let escapedTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
+        return .unclassified(NoteDocument(
+            relativePath: path,
+            rawContent: "---\ntitle: \"\(escapedTitle)\"\n---\n"
+        ))
+    }
+}
+
+/// Native Attention acceptance board using the exact production task row and
+/// the same standard-window geometry. It keeps deterministic state variants
+/// available without opening a research Workspace or reconstructing source.
+private struct AttentionWindowCatalog: View {
+    enum Scenario: Equatable {
+        case ready
+        case loading
+        case empty
+        case stale
+        case error
+    }
+
+    let scenario: Scenario
+    @State private var query = ""
+    @State private var kind: AttentionQueueKind?
+    @State private var selectedItemID: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Analyses").font(ScholiumInterfaceTypography.rowTitle)
+                        Text("All Notes")
+                            .font(ScholiumInterfaceTypography.metadata)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Picker("Issue Type", selection: $kind) {
+                        Text("All Issues").tag(AttentionQueueKind?.none)
+                        ForEach(AttentionIssueGroup.allCases) { group in
+                            Section(group.title) {
+                                ForEach(group.kinds, id: \.self) { issueKind in
+                                    Text(issueKind.displayName).tag(Optional(issueKind))
+                                }
+                            }
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 190)
+                    Button {} label: {
+                        Label("Refresh", systemImage: "arrow.clockwise").labelStyle(.iconOnly)
+                    }
+                }
+                TextField("Search Attention", text: $query)
+                    .textFieldStyle(.roundedBorder)
+                if scenario == .stale {
+                    Label(
+                        "Results may be out of date. Showing the last available tasks.",
+                        systemImage: "clock.badge.exclamationmark"
+                    )
+                    .font(ScholiumInterfaceTypography.metadata)
+                    .foregroundStyle(ScholiumColorRole.attention.color)
+                }
+            }
+            .padding(ScholiumGrid.Spacing.sectionSeparation)
+            Divider()
+            content
+        }
+        .frame(width: 420, height: 560)
+        .scholiumSurface(.denseEvidence)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch scenario {
+        case .loading:
+            ProgressView("Loading Attention…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .empty:
+            ContentUnavailableView(
+                "No Attention Needed",
+                systemImage: "checkmark.circle",
+                description: Text("Scholium found no visible derived issues in this Scope.")
+            )
+        case .error:
+            ContentUnavailableView {
+                Label("Could Not Load Attention", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text("The last trustworthy result is unavailable.")
+            } actions: {
+                Button("Retry") {}
+            }
+        case .ready, .stale:
+            List(selection: $selectedItemID) {
+                ForEach(AttentionIssueGroup.allCases) { group in
+                    let groupedItems = items.filter(group.contains)
+                    if !groupedItems.isEmpty {
+                        Section(group.title) {
+                            ForEach(groupedItems) { item in
+                                AttentionQueueRow(
+                                    item: item,
+                                    noteTitle: noteTitle(for: item),
+                                    locator: item.locator.map {
+                                        "\($0.file):\($0.line)"
+                                    } ?? item.note.relativePath,
+                                    dismissalDays: 7,
+                                    inspect: {},
+                                    dismiss: { _ in },
+                                    resynthesize: {},
+                                    leaveUnchanged: {}
+                                )
+                                .tag(item.id)
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    private var items: [AttentionQueueItem] {
+        [
+            ordinaryItem(
+                .malformedMetadata,
+                path: "Metadata/Long unresolved identity note.md",
+                message: "Required identity fields could not be projected from exact YAML.",
+                line: 3
+            ),
+            ordinaryItem(
+                .brokenConnection,
+                path: "Connections/Argument map.md",
+                message: "One explicit Connection no longer resolves inside this Triptych.",
+                line: 18
+            ),
+            materialChangedItem,
+        ]
+    }
+
+    private func ordinaryItem(
+        _ kind: AttentionQueueKind,
+        path: String,
+        message: String,
+        line: Int
+    ) -> AttentionQueueItem {
+        AttentionQueueItem(
+            kind: kind,
+            severity: .warning,
+            note: reference(path),
+            message: message,
+            locator: SourceLocator(file: path, line: line, column: 1)
+        )
+    }
+
+    private var materialChangedItem: AttentionQueueItem {
+        let material = reference("Materials/Source fidelity checklist.md")
+        let context = MaterialChangedSinceUseAttentionContext(
+            triptychID: UUID(uuidString: "00000000-0000-0000-0000-000000000120")!,
+            recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000121")!,
+            topicNoteID: UUID(uuidString: "00000000-0000-0000-0000-000000000122")!,
+            materialNoteID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
+            material: material,
+            recordedRevision: DocumentFingerprint(content: "before"),
+            currentRevision: DocumentFingerprint(content: "after")
+        )
+        return AttentionQueueItem(
+            kind: .materialChangedSinceUse,
+            severity: .warning,
+            note: reference("Topics/Research agency.md"),
+            message: "A Material actually used by the completed Synthesize record changed.",
+            materialChangedSinceUse: context
+        )
+    }
+
+    private func reference(_ path: String) -> VaultNoteReference {
+        VaultNoteReference(
+            vaultID: UUID(uuidString: "00000000-0000-0000-0000-000000000120")!,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            relativePath: path
+        )
+    }
+
+    private func noteTitle(for item: AttentionQueueItem) -> String {
+        URL(fileURLWithPath: item.note.relativePath)
+            .deletingPathExtension().lastPathComponent
     }
 }
 
@@ -926,6 +1305,51 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
 #Preview("Lifecycle Destination — 简体中文") {
     LifecycleDestinationCatalog(scenario: .chinese)
         .environment(\.locale, Locale(identifier: "zh-Hans"))
+}
+
+#Preview("Sidebar D-120 — 300 pt") {
+    SidebarCutoverCatalog(scenario: .standard)
+}
+
+#Preview("Sidebar D-120 — Filter + Long CJK") {
+    SidebarCutoverCatalog(scenario: .filteredLongCJK)
+        .environment(\.locale, Locale(identifier: "zh-Hans"))
+}
+
+#Preview("Sidebar D-120 — Empty") {
+    SidebarCutoverCatalog(scenario: .empty)
+}
+
+#Preview("Sidebar D-120 — Loading") {
+    SidebarCutoverCatalog(scenario: .loading)
+}
+
+#Preview("Sidebar D-120 — Error") {
+    SidebarCutoverCatalog(scenario: .error)
+}
+
+#Preview("Sidebar D-120 — RTL + Large Text") {
+    SidebarCutoverCatalog(scenario: .rightToLeftLargeText)
+}
+
+#Preview("Attention D-120 — Ready") {
+    AttentionWindowCatalog(scenario: .ready)
+}
+
+#Preview("Attention D-120 — Loading") {
+    AttentionWindowCatalog(scenario: .loading)
+}
+
+#Preview("Attention D-120 — Empty") {
+    AttentionWindowCatalog(scenario: .empty)
+}
+
+#Preview("Attention D-120 — Stale") {
+    AttentionWindowCatalog(scenario: .stale)
+}
+
+#Preview("Attention D-120 — Error") {
+    AttentionWindowCatalog(scenario: .error)
 }
 
 #Preview("Inspector D-114 — 320 pt") {

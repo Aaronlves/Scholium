@@ -124,7 +124,10 @@ struct AppCompositionRootTests {
         second.discoveryController.failSearch("current completion", for: secondSearch)
         #expect(second.discoveryController.search.errorMessage == "current completion")
 
-        first.discoveryController.selectLocationScope(.trash)
+        first.discoveryController.synchronizeLibrarySelection(
+            workspaceSlot: .paperAnalysis,
+            location: .trash
+        )
         #expect(first.discoveryController.library.locationScope == .trash)
         #expect(second.discoveryController.library.locationScope == .workspace)
 

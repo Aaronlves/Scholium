@@ -297,13 +297,15 @@ struct SidebarRecommendedBibliographySection: View {
 
                 Spacer(minLength: 4)
 
-                Text(controller.visibleCandidates.count.formatted())
-                    .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-                    .accessibilityLabel(
-                        "\(controller.visibleCandidates.count) bibliography recommendations"
-                    )
+                if !controller.visibleCandidates.isEmpty {
+                    Text(controller.visibleCandidates.count.formatted())
+                        .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                        .accessibilityLabel(
+                            "\(controller.visibleCandidates.count) bibliography recommendations"
+                        )
+                }
 
                 Button {
                     showsDetails = true
@@ -328,8 +330,8 @@ struct SidebarRecommendedBibliographySection: View {
             }
 
             if controller.visibleCandidates.isEmpty {
-                Text("None")
-                    .font(.body)
+                Text("No recommendations")
+                    .font(ScholiumInterfaceTypography.libraryHierarchy)
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal) {

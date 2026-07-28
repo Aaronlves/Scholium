@@ -22,18 +22,8 @@ struct DiscoveryLibraryState: Equatable {
     var locationScope: NoteLocationScope = .workspace
     var filters = DiscoveryFilterState()
     var sortOrder: NoteSortOrder = .modifiedNewest
-    var capturedWorkspaceNotes: [WindowDocumentLocation] = []
-    var preparedLifecyclePath: String?
-    var showsUnclassified = false
-    var showsAttentionQueue = false
-    /// Nil presents the Triptych-wide queue. Inspector entry supplies the
-    /// current Note so the same Library-owned surface can present its bounded
-    /// subset without creating a second Attention destination.
-    var attentionNoteScope: VaultQualifiedNoteID?
-    var lifecycleScope: NoteLocationScope?
-    var lifecycleItems: [LifecycleLocationItem] = []
-    var lifecycleIsLoading = false
-    var lifecycleError: String?
+    var locationIsLoading = false
+    var locationError: String?
 }
 
 struct DiscoverySearchState: Equatable, Sendable {
@@ -84,9 +74,13 @@ enum DiscoverySearchExecutionError: LocalizedError, Equatable, Sendable {
     }
 }
 
-struct DiscoveryLifecycleRequest: Equatable, Sendable {
+/// Identity for one asynchronous Source List replacement. A result is valid
+/// only for the exact Scope and Location that requested it; changing either
+/// invalidates the request before any visible projection can be committed.
+struct DiscoveryLocationRequest: Equatable, Sendable {
     let id: UUID
-    let scope: NoteLocationScope
+    let workspaceSlot: WorkspaceVaultSlot
+    let location: NoteLocationScope
 }
 
 /// Per-window owner for Library and Search presentation state. Document tabs
@@ -101,7 +95,7 @@ final class DiscoveryController: ObservableObject {
     @Published private(set) var library: DiscoveryLibraryState
     @Published private(set) var search = DiscoverySearchState()
 
-    private var activeLifecycleRequestID: UUID?
+    private var activeLocationRequest: DiscoveryLocationRequest?
     private var activeSearchRequestID: UUID?
     private let intentHandler: IntentHandler
     private let peripheralPresentation: WindowPeripheralPresentationState
@@ -241,14 +235,55 @@ final class DiscoveryController: ObservableObject {
         }
     }
 
-    func selectLocationScope(_ scope: NoteLocationScope) {
-        library.locationScope = scope
+    /// Installs a coherent Scope/Location pair after an initial restore or a
+    /// fully staged synchronous projection. Asynchronous browsing must use the
+    /// request methods below so late results can be rejected.
+    func synchronizeLibrarySelection(
+        workspaceSlot: WorkspaceVaultSlot,
+        location: NoteLocationScope
+    ) {
+        activeLocationRequest = nil
+        library.workspaceSlot = workspaceSlot
+        library.locationScope = location
+        library.locationIsLoading = false
+        library.locationError = nil
     }
 
-    func selectWorkspaceSlot(_ slot: WorkspaceVaultSlot) {
-        library.workspaceSlot = slot
-        library.locationScope = .workspace
-        dismissLifecycleListing()
+    @discardableResult
+    func beginLocationRequest(
+        workspaceSlot: WorkspaceVaultSlot,
+        location: NoteLocationScope
+    ) -> DiscoveryLocationRequest {
+        let request = DiscoveryLocationRequest(
+            id: UUID(),
+            workspaceSlot: workspaceSlot,
+            location: location
+        )
+        activeLocationRequest = request
+        library.locationIsLoading = true
+        library.locationError = nil
+        return request
+    }
+
+    @discardableResult
+    func receiveLocationResult(for request: DiscoveryLocationRequest) -> Bool {
+        guard isCurrent(request) else { return false }
+        activeLocationRequest = nil
+        library.workspaceSlot = request.workspaceSlot
+        library.locationScope = request.location
+        library.locationIsLoading = false
+        library.locationError = nil
+        return true
+    }
+
+    func failLocationRequest(
+        _ message: String,
+        for request: DiscoveryLocationRequest
+    ) {
+        guard isCurrent(request) else { return }
+        activeLocationRequest = nil
+        library.locationIsLoading = false
+        library.locationError = message
     }
 
     func replaceFilters(_ filters: DiscoveryFilterState) {
@@ -268,75 +303,6 @@ final class DiscoveryController: ObservableObject {
         in scope: LibraryDisclosureScope?
     ) {
         peripheralPresentation.setExpandedFolders(folders, in: scope)
-    }
-
-    func captureWorkspaceNotes(_ notes: [WindowDocumentLocation]) {
-        library.capturedWorkspaceNotes = notes
-    }
-
-    func prepareLifecycle(path: String?) {
-        library.preparedLifecyclePath = path
-    }
-
-    func showUnclassified(_ isPresented: Bool) {
-        library.showsUnclassified = isPresented
-    }
-
-    func showAttentionQueue(
-        _ isPresented: Bool,
-        note: VaultQualifiedNoteID? = nil
-    ) {
-        library.showsAttentionQueue = isPresented
-        library.attentionNoteScope = isPresented ? note : nil
-        if isPresented { dismissLifecycleListing() }
-    }
-
-    func presentLifecycleListing(_ scope: NoteLocationScope) {
-        activeLifecycleRequestID = nil
-        library.showsAttentionQueue = false
-        library.attentionNoteScope = nil
-        library.lifecycleScope = scope
-        library.lifecycleItems = []
-        library.lifecycleError = nil
-        library.lifecycleIsLoading = true
-    }
-
-    @discardableResult
-    func beginLifecycleListing(_ scope: NoteLocationScope) -> DiscoveryLifecycleRequest {
-        let request = DiscoveryLifecycleRequest(id: UUID(), scope: scope)
-        activeLifecycleRequestID = request.id
-        library.showsAttentionQueue = false
-        library.attentionNoteScope = nil
-        library.lifecycleScope = scope
-        library.lifecycleItems = []
-        library.lifecycleError = nil
-        library.lifecycleIsLoading = true
-        return request
-    }
-
-    func receiveLifecycleItems(
-        _ items: [LifecycleLocationItem],
-        for request: DiscoveryLifecycleRequest
-    ) {
-        guard isCurrent(request) else { return }
-        library.lifecycleItems = items
-        library.lifecycleError = nil
-        library.lifecycleIsLoading = false
-    }
-
-    func failLifecycleListing(_ message: String, for request: DiscoveryLifecycleRequest) {
-        guard isCurrent(request) else { return }
-        library.lifecycleItems = []
-        library.lifecycleError = message
-        library.lifecycleIsLoading = false
-    }
-
-    func dismissLifecycleListing() {
-        activeLifecycleRequestID = nil
-        library.lifecycleScope = nil
-        library.lifecycleItems = []
-        library.lifecycleError = nil
-        library.lifecycleIsLoading = false
     }
 
     func replaceSearchCriteria(_ criteria: SearchWorkspaceState) {
@@ -548,10 +514,11 @@ final class DiscoveryController: ObservableObject {
     }
 
     func reset() {
-        activeLifecycleRequestID = nil
+        activeLocationRequest = nil
         activeSearchRequestID = nil
         library = DiscoveryLibraryState(
             workspaceSlot: library.workspaceSlot,
+            locationScope: library.locationScope,
             sortOrder: library.sortOrder
         )
         let ordinaryScope = search.ordinaryScope
@@ -599,9 +566,19 @@ final class DiscoveryController: ObservableObject {
             && search.hits.allSatisfy { $0.freshnessToken == search.freshnessToken }
     }
 
-    private func isCurrent(_ request: DiscoveryLifecycleRequest) -> Bool {
-        activeLifecycleRequestID == request.id
-            && library.lifecycleScope == request.scope
+    func isCurrentLocationRequest(_ request: DiscoveryLocationRequest) -> Bool {
+        isCurrent(request)
+    }
+
+    /// A second explicit Scope/Location choice must be able to supersede an
+    /// in-flight request even when it chooses the still-visible committed
+    /// value. The committed pair alone cannot reveal that pending intent.
+    var locationRequestIsActive: Bool {
+        activeLocationRequest != nil
+    }
+
+    private func isCurrent(_ request: DiscoveryLocationRequest) -> Bool {
+        activeLocationRequest == request
     }
 
     private func requireOperations() throws -> any DiscoveryUseCases {

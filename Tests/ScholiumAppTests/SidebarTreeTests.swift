@@ -73,4 +73,43 @@ struct SidebarTreeTests {
         #expect(empty.folderRelativePath == "papers/Ethics/Empty Archive")
         #expect(!tree.contains { $0.id == "papers" })
     }
+
+    @Test("Expanded hierarchy projects into stable top-level Sections and flat row order")
+    func expandedHierarchyUsesFlatSectionProjection() throws {
+        let tree = buildTree(
+            from: [
+                .unclassified(NoteDocument(
+                    relativePath: "papers/Arguments/Agency/Reply.md",
+                    rawContent: "# Reply\n"
+                )),
+                .unclassified(NoteDocument(
+                    relativePath: "papers/Arguments/Overview.md",
+                    rawContent: "# Overview\n"
+                )),
+                .unclassified(NoteDocument(
+                    relativePath: "Loose.md",
+                    rawContent: "# Loose\n"
+                )),
+            ],
+            notesAreOrdered: { $0.relativePath < $1.relativePath }
+        )
+
+        let collapsed = sidebarSourceSections(from: tree, expandedFolders: [])
+        let arguments = try #require(collapsed.first { $0.header?.id == "Arguments" })
+        #expect(arguments.rows.isEmpty)
+
+        let expanded = sidebarSourceSections(
+            from: tree,
+            expandedFolders: ["Arguments", "Arguments/Agency"]
+        )
+        let expandedArguments = try #require(
+            expanded.first { $0.header?.id == "Arguments" }
+        )
+        #expect(expandedArguments.rows.map(\.id) == [
+            "Arguments/Agency",
+            "papers/Arguments/Agency/Reply.md",
+            "papers/Arguments/Overview.md",
+        ])
+        #expect(expanded.first { $0.header?.id == nil }?.rows.map(\.id) == ["Loose.md"])
+    }
 }

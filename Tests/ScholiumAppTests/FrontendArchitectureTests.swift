@@ -261,7 +261,7 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("dividerIndex: 1"))
         #expect(toolbarSource.contains(".flexibleSpace"))
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
-        #expect(sidebarSource.contains("private var triptychIdentity"))
+        #expect(sidebarSource.contains("private var brandHeader"))
         #expect(toolbarSource.contains("ScholiumInkIconControl("))
         #expect(toolbarSource.contains("item.isBordered = false"))
         #expect(toolbarSource.contains("item.style = .plain"))
@@ -326,7 +326,8 @@ struct FrontendArchitectureTests {
             ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"
         ))
         #expect(!appSource.contains("Collapse Note"))
-        #expect(sidebarSource.contains(".font(ScholiumInterfaceTypography.libraryHierarchy)"))
+        #expect(sidebarSource.contains(".font(.system(size: 12, weight: .semibold))"))
+        #expect(sidebarSource.contains(".font(.system(size: 12, weight: .regular))"))
         #expect(sidebarSource.contains("ScholiumInterfaceTypography.metadata"))
         #expect(
             ScholiumMetrics.Library.hierarchyRowHeight
@@ -480,54 +481,49 @@ struct FrontendArchitectureTests {
         #expect(typographySource.contains("static let noteTitle = Font.body"))
         #expect(typographySource.contains("static let literatureCitation"))
         #expect(sidebarSource.contains("Text(\"ATTENTION\")"))
-        #expect(sidebarSource.contains("Image(systemName: \"tray.full\")"))
-        #expect(sidebarSource.contains(".focusEffectDisabled()"))
-        #expect(sidebarSource.contains("? ScholiumColorRole.surfaceBackground.color"))
+        #expect(sidebarSource.contains("Image(systemName: \"exclamationmark.triangle\")"))
+        #expect(!sidebarSource.contains(".focusEffectDisabled()"))
+        #expect(sidebarSource.contains("ScholiumColorRole.navigationSurfaceBackground.color"))
         #expect(!sidebarSource.contains(".pickerStyle(.segmented)"))
-        #expect(ScholiumMetrics.Library.navigationIconWidth == 16)
+        #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
+        #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
         #expect(sidebarSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Library.contentInset)"
         ))
         #expect(!sidebarSource.contains("attentionHorizontalInset"))
         let brandLabel = try #require(sidebarSource.range(of: "Text(\"Scholium\")"))
-        let brandTriangle = try #require(sidebarSource.range(
-            of: "Text(\"⌄\")",
+        let triptychMenu = try #require(sidebarSource.range(
+            of: "Menu {",
             range: brandLabel.upperBound ..< sidebarSource.endIndex
         ))
-        #expect(brandLabel.lowerBound < brandTriangle.lowerBound)
+        #expect(brandLabel.lowerBound < triptychMenu.lowerBound)
         let sidebarBody = try #require(sidebarSource.range(of: "var body: some View"))
         let sidebarSectionsEnd = try #require(sidebarSource.range(
-            of: "// MARK: - Search",
+            of: "// MARK: Fixed identity and navigation",
             range: sidebarBody.upperBound ..< sidebarSource.endIndex
         ))
         let sidebarSections = sidebarSource[
             sidebarBody.lowerBound ..< sidebarSectionsEnd.lowerBound
         ]
-        let scope = try #require(sidebarSections.range(of: "workspaceVaultPicker"))
-        let attention = try #require(sidebarSections.range(of: "attentionNavigation"))
-        let library = try #require(sidebarSections.range(of: "libraryHeader"))
+        let scope = try #require(sidebarSections.range(of: "scopeIndex"))
+        let attention = try #require(sidebarSections.range(of: "attentionButton"))
+        let library = try #require(sidebarSections.range(of: "locationHeader"))
         #expect(scope.lowerBound < attention.lowerBound)
         #expect(attention.lowerBound < library.lowerBound)
-        #expect(
-            sidebarSections.components(
-                separatedBy: ".padding(.top, ScholiumMetrics.Library.sectionSpacing)"
-            ).count == 3
-        )
         #expect(sidebarSections.contains(
-            ".padding(.horizontal, ScholiumMetrics.Library.contentInset)"
+            "pinnedViews: [.sectionHeaders]"
         ))
+        #expect(sidebarSource.contains("struct SidebarSourceSection"))
+        #expect(sidebarSource.contains("sidebarSourceSections("))
+        #expect(sidebarSource.contains("flattenedVisibleDescendants("))
+        #expect(!sidebarSource.contains("struct SidebarTreeBranch"))
         #expect(!sidebarSource.contains("filteredNotes.count"))
         #expect(
             sidebarSource.components(
-                separatedBy: ".frame(height: ScholiumMetrics.Library.hierarchyRowHeight)"
+                separatedBy: "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
             ).count >= 3
         )
-        #expect(
-            sidebarSource.components(
-                separatedBy: "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
-            ).count >= 4
-        )
-        #expect(sidebarSource.contains("ScholiumInkIconControl("))
+        #expect(!sidebarSource.contains("ScholiumInkIconControl("))
 
         for section in ["Integrity", "Metadata", "Properties", "Order", "Actions"] {
             #expect(sidebarSource.contains("Section(\"\(section)\")"))
@@ -537,7 +533,7 @@ struct FrontendArchitectureTests {
         #expect(sidebarSource.contains("SidebarRecommendedBibliographySection("))
         #expect(!sidebarSource.contains("SidebarLiteratureSection("))
         #expect(!sidebarSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
-        #expect(sidebarSource.contains("            sidebarBottomRegion\n        }"))
+        #expect(!sidebarSource.contains("sidebarBottomRegion"))
     }
 
     @Test("Lifecycle destinations reuse the Library grid without overlay chrome")
@@ -554,25 +550,16 @@ struct FrontendArchitectureTests {
         )
 
         for required in [
-            "SidebarLifecycleDestinationView",
-            "ScholiumMetrics.Library.contentInset",
+            "Picker(\"Location\"",
+            "Text(\"Library\").tag(NoteLocationScope.workspace)",
+            "Text(\"Set Aside\").tag(NoteLocationScope.setAside)",
+            "Text(\"Trash\").tag(NoteLocationScope.trash)",
             "ScholiumMetrics.Library.hierarchyRowHeight",
             "ScholiumMetrics.Accessibility.preferredCustomTarget",
-            "ScholiumMetrics.Accessibility.minimumCustomTarget",
-            "ScholiumMetrics.Workspace.libraryFooterHeight",
             "ScholiumGrid.Spacing.inlineControlGap",
             "ScholiumGrid.Spacing.labelAccessoryGap",
             "ScholiumGrid.Spacing.sectionSeparation",
-            "ScholiumMotion.disclosure(reduceMotion: reduceMotion)",
-            "ScholiumInkIconControl(",
-            ".accessibilityHidden(lifecycleDestinationScope != nil)",
-            ".overlay(alignment: .topLeading)",
-            "@AccessibilityFocusState private var putBackHasAccessibilityFocus",
-            "scholium.lifecycleDestination.setAside",
-            "scholium.lifecycleDestination.trash",
-            "scholium.lifecycleHeading.setAside",
-            "scholium.lifecycleHeading.trash",
-            "scholium.lifecycleBack",
+            "pinnedViews: [.sectionHeaders]",
             "scholium.lifecyclePutBack.",
         ] {
             #expect(sidebarSource.contains(required), "Missing lifecycle destination contract: \(required)")
@@ -580,6 +567,12 @@ struct FrontendArchitectureTests {
 
         for removed in [
             "SidebarLifecycleCard",
+            "SidebarLifecycleDestinationView",
+            "lifecycleDestinationScope",
+            "scholium.lifecycleBack",
+            "sidebarBottomRegion",
+            "libraryFooterHeight",
+            "ScholiumInkIconControl(",
             ".boundedPanel",
             "0.48",
             ".move(edge: .bottom)",
@@ -594,7 +587,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("private enum LifecycleSpacing"))
     }
 
-    @Test("Attention search stays inside Library and does not mutate the native toolbar")
+    @Test("Attention search lives in the standard auxiliary window without custom chrome")
     func attentionSearchOwnershipContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -606,11 +599,39 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let previewSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/PreviewCatalog/ScholiumComponentCatalog.swift"
+            ),
+            encoding: .utf8
+        )
 
         #expect(attentionSource.contains("TextField(\"Search Attention\""))
         #expect(attentionSource.contains("scholium.attentionSearch"))
+        #expect(attentionSource.contains(".preferredColorScheme(session.preferredColorScheme)"))
         #expect(!attentionSource.contains(".searchable("))
         #expect(!attentionSource.contains("placement: .toolbar"))
+        #expect(appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
+        #expect(!appSource.contains("UtilityWindow(\"Attention\""))
+        #expect(!attentionSource.contains("Button(\"Close\""))
+        for requiredPreview in [
+            "Sidebar D-120 — 300 pt",
+            "Sidebar D-120 — Filter + Long CJK",
+            "Sidebar D-120 — RTL + Large Text",
+            "Attention D-120 — Ready",
+            "Attention D-120 — Loading",
+            "Attention D-120 — Empty",
+            "Attention D-120 — Stale",
+            "Attention D-120 — Error",
+        ] {
+            #expect(previewSource.contains(requiredPreview))
+        }
+        #expect(previewSource.contains("SidebarView(controller: controller, context: context)"))
+        #expect(previewSource.contains("AttentionQueueRow("))
     }
 
     @Test("Overview, Connect, and Actions share one variable-driven Apparatus geometry")
@@ -880,7 +901,7 @@ struct FrontendArchitectureTests {
         )
         #expect(ScholiumMetrics.Apparatus.headerHeight == ScholiumGrid.Apparatus.modeStripHeight)
         #expect(ScholiumMetrics.Apparatus.headerHeight == 40)
-        #expect(ScholiumMetrics.Workspace.libraryFooterHeight == 52)
+        #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
 
         let preview = try String(
             contentsOf: repository.appendingPathComponent(
@@ -1432,15 +1453,15 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Spacing.documentShellInsetCSSPixels == 32)
         #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
         #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
+        #expect(ScholiumGrid.Dimension.libraryHierarchyRowHeight == 28)
         #expect(ScholiumGrid.Dimension.documentTabStripHeight == 40)
         #expect(ScholiumGrid.Dimension.researchFunctionTargetHeight == 44)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
-        #expect(ScholiumGrid.Dimension.libraryFooterHeight == 52)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 
         #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Spacing.regionContentInset)
         #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
-        #expect(ScholiumMetrics.Library.hierarchyRowHeight == ScholiumGrid.Dimension.compactHierarchyRowHeight)
+        #expect(ScholiumMetrics.Library.hierarchyRowHeight == ScholiumGrid.Dimension.libraryHierarchyRowHeight)
         #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
 
         let repository = URL(fileURLWithPath: #filePath)
@@ -1548,8 +1569,8 @@ struct FrontendArchitectureTests {
                 "scholiumForeground(.attention)",
             ],
             "Scholium/Views/Sidebar/SidebarView.swift": [
-                ".background(ScholiumColorRole.surfaceBackground.color)",
-                "SidebarLifecycleDestinationView(",
+                ".background(ScholiumColorRole.navigationSurfaceBackground.color)",
+                "SidebarRecommendedBibliographySection(",
             ],
             "Scholium/Views/Note/NoteContentView.swift": [
                 ".scholiumSurface(.document)",
@@ -1653,6 +1674,8 @@ struct FrontendArchitectureTests {
         let expectedLight: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0xFFF9F0,
             .surfaceBackground: 0xF2EADC,
+            .navigationSurfaceBackground: 0xEBE5DC,
+            .apparatusSurfaceBackground: 0xF5EDE0,
             .raisedSurfaceBackground: 0xE3DBCE,
             .primaryText: 0x15110B,
             .secondaryText: 0x423C31,
@@ -1673,6 +1696,8 @@ struct FrontendArchitectureTests {
         let expectedDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2F2920,
             .surfaceBackground: 0x3F3A30,
+            .navigationSurfaceBackground: 0x383530,
+            .apparatusSurfaceBackground: 0x433E35,
             .raisedSurfaceBackground: 0x4E483E,
             .primaryText: 0xF0EAE1,
             .secondaryText: 0xD1CABC,
@@ -1693,6 +1718,8 @@ struct FrontendArchitectureTests {
         let expectedIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0xFFF9F0,
             .surfaceBackground: 0xF2EADC,
+            .navigationSurfaceBackground: 0xEBE5DC,
+            .apparatusSurfaceBackground: 0xF5EDE0,
             .raisedSurfaceBackground: 0xE3DBCE,
             .primaryText: 0x15110B,
             .secondaryText: 0x423C31,
@@ -1713,6 +1740,8 @@ struct FrontendArchitectureTests {
         let expectedIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2F2920,
             .surfaceBackground: 0x3F3A30,
+            .navigationSurfaceBackground: 0x383530,
+            .apparatusSurfaceBackground: 0x433E35,
             .raisedSurfaceBackground: 0x4E483E,
             .primaryText: 0xF0EAE1,
             .secondaryText: 0xEBE4D6,
@@ -1773,7 +1802,8 @@ struct FrontendArchitectureTests {
             .connectionNeutral, .connectionSupport, .connectionIncompatible,
         ]
         let backgroundRoles: [ScholiumColorRole] = [
-            .documentBackground, .surfaceBackground, .raisedSurfaceBackground,
+            .documentBackground, .surfaceBackground, .navigationSurfaceBackground,
+            .apparatusSurfaceBackground, .raisedSurfaceBackground,
         ]
         for (palette, target) in [
             (expectedLight, 4.5),
@@ -1810,9 +1840,9 @@ struct FrontendArchitectureTests {
             .document, .navigation, .apparatus, .floatingControl,
             .boundedPanel, .searchOverlay, .denseEvidence,
         ]))
-        #expect(ScholiumSurfaceRole.navigation.colorRole == .surfaceBackground)
+        #expect(ScholiumSurfaceRole.navigation.colorRole == .navigationSurfaceBackground)
         #expect(ScholiumSurfaceRole.document.colorRole == .documentBackground)
-        #expect(ScholiumSurfaceRole.apparatus.colorRole == .surfaceBackground)
+        #expect(ScholiumSurfaceRole.apparatus.colorRole == .apparatusSurfaceBackground)
         #expect(ScholiumSurfaceRole.floatingControl.defaultBoundaryRole == .floatingBoundary)
         #expect(ScholiumSurfaceRole.searchOverlay.defaultBoundaryRole == .floatingBoundary)
         #expect(ScholiumSurfaceRole.boundedPanel.defaultBoundaryRole == .subtleBoundary)

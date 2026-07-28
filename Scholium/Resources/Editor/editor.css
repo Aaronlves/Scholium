@@ -3,6 +3,8 @@
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   --scholium-color-document-background: #fff9f0;
   --scholium-color-surface-background: #f2eadc;
+  --scholium-color-navigation-surface-background: #ebe5dc;
+  --scholium-color-apparatus-surface-background: #f5ede0;
   --scholium-color-raised-surface-background: #e3dbce;
   --scholium-color-primary-text: #15110b;
   --scholium-color-secondary-text: #423c31;
@@ -279,6 +281,8 @@ body,
   :root {
     --scholium-color-document-background: #2f2920;
     --scholium-color-surface-background: #3f3a30;
+    --scholium-color-navigation-surface-background: #383530;
+    --scholium-color-apparatus-surface-background: #433e35;
     --scholium-color-raised-surface-background: #4e483e;
     --scholium-color-primary-text: #f0eae1;
     --scholium-color-secondary-text: #d1cabc;
@@ -302,6 +306,8 @@ body,
   :root {
     --scholium-color-document-background: #fff9f0;
     --scholium-color-surface-background: #f2eadc;
+    --scholium-color-navigation-surface-background: #ebe5dc;
+    --scholium-color-apparatus-surface-background: #f5ede0;
     --scholium-color-raised-surface-background: #e3dbce;
     --scholium-color-primary-text: #15110b;
     --scholium-color-secondary-text: #423c31;
@@ -330,6 +336,8 @@ body,
   :root {
     --scholium-color-document-background: #2f2920;
     --scholium-color-surface-background: #3f3a30;
+    --scholium-color-navigation-surface-background: #383530;
+    --scholium-color-apparatus-surface-background: #433e35;
     --scholium-color-raised-surface-background: #4e483e;
     --scholium-color-primary-text: #f0eae1;
     --scholium-color-secondary-text: #ebe4d6;

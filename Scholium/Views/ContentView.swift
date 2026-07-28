@@ -231,23 +231,6 @@ struct ContentView: View {
         )
     }
 
-    private var attentionQueueContext: AttentionQueueContext {
-        AttentionQueueContext(
-            items: scopedAttentionQueueItems,
-            errorMessage: appState.workspaceCatalogError,
-            isRefreshing: appState.isRefreshingWorkspaceCatalog,
-            dismissalDays: appState.triptychSettings.attentionDismissalDays,
-            refresh: { await appState.refreshWorkspaceCatalog() },
-            inspectMaterial: { item in
-                guard let context = item.materialChangedSinceUse else { return }
-                appState.discoveryController.showAttentionQueue(false)
-                appState.requestOpenNote(context.material)
-            },
-            resynthesize: { appState.requestResynthesis($0) },
-            close: { appState.discoveryController.showAttentionQueue(false) }
-        )
-    }
-
     private var researchInspectorContentContext: ResearchInspectorContentContext {
         ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
@@ -268,9 +251,8 @@ struct ContentView: View {
             openAttention: {
                 guard let note = appState.currentNote,
                       let vaultID = appState.currentDocumentVaultID else { return }
-                appState.discoveryController.showAttentionQueue(
-                    true,
-                    note: VaultQualifiedNoteID(
+                windowCoordinator.actions.showAttention(
+                    VaultQualifiedNoteID(
                         vaultID: vaultID,
                         relativePath: note.relativePath
                     )
@@ -280,17 +262,6 @@ struct ContentView: View {
                 Task { await appState.retryDerivedRefresh() }
             }
         )
-    }
-
-    private var scopedAttentionQueueItems: [AttentionQueueItem] {
-        let items = appState.workspaceCatalog?.attention ?? []
-        guard let scope = appState.discoveryController.library.attentionNoteScope else {
-            return items
-        }
-        return items.filter {
-            $0.note.vaultID == scope.vaultID
-                && $0.note.relativePath == scope.relativePath
-        }
     }
 
     private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
@@ -507,7 +478,7 @@ struct ContentView: View {
             : nil
         return SidebarContext(
             triptychName: appState.workspaceAssignment?.triptych.name ?? "Not Selected",
-            attentionItems: appState.workspaceCatalog?.attention,
+            attentionItems: scopedSidebarAttentionItems,
             filteredNotes: appState.filteredNotes,
             allNotes: appState.notes,
             folders: appState.currentLibraryFolders,
@@ -537,13 +508,11 @@ struct ContentView: View {
             propertyValues: propertyFilterOptions.valuesByKey,
             resolvedIdentityPaths: Set(appState.noteIdentityByPath.keys),
             bibliographyController: appState.researchController.bibliography,
-            attentionQueueContext: attentionQueueContext,
             notesAreOrdered: { appState.notesAreOrdered($0, $1) },
+            openAttention: { windowCoordinator.actions.showAttention(nil) },
             selectLocationScope: { appState.requestNoteLocationScope($0) },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
-            openLifecycleNote: { appState.requestLifecycleNote($0, in: $1) },
             selectWorkspaceVault: { appState.requestWorkspaceVault($0) },
-            lifecycleItems: { try await appState.lifecycleLocationItems(for: $0) },
             prepareLifecycle: { appState.prepareLifecycleOperation($0) },
             clearPreparedLifecycle: { appState.clearPreparedLifecycleOperation(at: $0) },
             createUntitledNote: { appState.requestUntitledNoteCreation(in: $0) },
@@ -608,11 +577,19 @@ struct ContentView: View {
                 openSettings()
             },
             revealCurrentVault: { appState.revealVaultInFinder() },
-            setSidebarVisible: { windowCoordinator.actions.setLibraryVisible($0) },
             openSettings: { openSettings() },
             selectSortOrder: { appState.noteSortOrder = $0 },
             showError: { appState.showToast($0, kind: .error) }
         )
+    }
+
+    private var scopedSidebarAttentionItems: [AttentionQueueItem]? {
+        guard let catalog = appState.workspaceCatalog else { return nil }
+        guard let vaultID = appState.workspaceAssignment?
+            .vault(for: appState.discoveryController.library.workspaceSlot)?.id else {
+            return []
+        }
+        return catalog.attention.filter { $0.note.vaultID == vaultID }
     }
 
     private var currentWorkspaceSlot: WorkspaceVaultSlot? {

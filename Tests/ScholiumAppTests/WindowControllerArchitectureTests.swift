@@ -537,91 +537,93 @@ struct WindowControllerArchitectureTests {
         #expect(!controller.search.isRunning)
     }
 
-    @Test("Discovery rejects a stale lifecycle completion for the same scope")
-    func staleLifecycleCompletion() {
+    @Test("Discovery rejects a stale Location completion for the same Scope and Location")
+    func staleLocationCompletion() {
         let controller = DiscoveryController()
-        let first = controller.beginLifecycleListing(.trash)
-        let second = controller.beginLifecycleListing(.trash)
+        let first = controller.beginLocationRequest(
+            workspaceSlot: .paperAnalysis,
+            location: .trash
+        )
+        let second = controller.beginLocationRequest(
+            workspaceSlot: .paperAnalysis,
+            location: .trash
+        )
 
-        controller.failLifecycleListing("stale", for: first)
-        #expect(controller.library.lifecycleError == nil)
-        #expect(controller.library.lifecycleIsLoading)
+        controller.failLocationRequest("stale", for: first)
+        #expect(controller.library.locationError == nil)
+        #expect(controller.library.locationIsLoading)
 
-        controller.failLifecycleListing("current", for: second)
-        #expect(controller.library.lifecycleError == "current")
-        #expect(!controller.library.lifecycleIsLoading)
+        controller.failLocationRequest("current", for: second)
+        #expect(controller.library.locationError == "current")
+        #expect(!controller.library.locationIsLoading)
     }
 
-    @Test("Lifecycle destinations own immediate loading, retry, and dismissal state")
-    func lifecycleDestinationStateMachine() {
+    @Test("Location commits one coherent Scope and Location pair")
+    func locationRequestStateMachine() {
         let controller = DiscoveryController()
+        let request = controller.beginLocationRequest(
+            workspaceSlot: .topicKnowledge,
+            location: .setAside
+        )
+        #expect(controller.library.locationIsLoading)
+        #expect(controller.library.workspaceSlot == .paperAnalysis)
+        #expect(controller.library.locationScope == .workspace)
 
-        controller.presentLifecycleListing(.setAside)
-        #expect(controller.library.lifecycleScope == .setAside)
-        #expect(controller.library.lifecycleItems.isEmpty)
-        #expect(controller.library.lifecycleIsLoading)
-        #expect(controller.library.lifecycleError == nil)
-
-        let first = controller.beginLifecycleListing(.setAside)
-        controller.receiveLifecycleItems([], for: first)
-        #expect(!controller.library.lifecycleIsLoading)
-        #expect(controller.library.lifecycleError == nil)
-
-        let retry = controller.beginLifecycleListing(.setAside)
-        #expect(controller.library.lifecycleIsLoading)
-        controller.failLifecycleListing("unavailable", for: retry)
-        #expect(controller.library.lifecycleError == "unavailable")
-        #expect(!controller.library.lifecycleIsLoading)
-
-        controller.dismissLifecycleListing()
-        #expect(controller.library.lifecycleScope == nil)
-        #expect(controller.library.lifecycleItems.isEmpty)
-        #expect(controller.library.lifecycleError == nil)
-        #expect(!controller.library.lifecycleIsLoading)
+        #expect(controller.receiveLocationResult(for: request))
+        #expect(controller.library.workspaceSlot == .topicKnowledge)
+        #expect(controller.library.locationScope == .setAside)
+        #expect(!controller.library.locationIsLoading)
+        #expect(controller.library.locationError == nil)
     }
 
-    @Test("Lifecycle destination switching rejects the previous scope response")
-    func lifecycleDestinationSwitchRejectsStaleResponse() {
+    @Test("Changing Scope or Location rejects the previous request")
+    func locationSwitchRejectsStaleResponse() {
         let controller = DiscoveryController()
-        controller.presentLifecycleListing(.setAside)
-        let setAside = controller.beginLifecycleListing(.setAside)
+        let setAside = controller.beginLocationRequest(
+            workspaceSlot: .paperAnalysis,
+            location: .setAside
+        )
+        let trash = controller.beginLocationRequest(
+            workspaceSlot: .output,
+            location: .trash
+        )
 
-        controller.presentLifecycleListing(.trash)
-        let trash = controller.beginLifecycleListing(.trash)
-        controller.failLifecycleListing("stale set aside", for: setAside)
+        #expect(!controller.receiveLocationResult(for: setAside))
+        #expect(controller.library.workspaceSlot == .paperAnalysis)
+        #expect(controller.library.locationScope == .workspace)
+        #expect(controller.library.locationIsLoading)
 
-        #expect(controller.library.lifecycleScope == .trash)
-        #expect(controller.library.lifecycleError == nil)
-        #expect(controller.library.lifecycleIsLoading)
-
-        controller.receiveLifecycleItems([], for: trash)
-        #expect(controller.library.lifecycleScope == .trash)
-        #expect(!controller.library.lifecycleIsLoading)
+        #expect(controller.receiveLocationResult(for: trash))
+        #expect(controller.library.workspaceSlot == .output)
+        #expect(controller.library.locationScope == .trash)
     }
 
-    @Test("Attention and lifecycle destinations are mutually exclusive")
-    func attentionAndLifecycleDestinationMutualExclusion() {
+    @Test("Attention presentation is independent of Library Location")
+    func attentionPresentationIsIndependent() {
         let controller = DiscoveryController()
+        let attention = AttentionPresentationState()
         let noteScope = VaultQualifiedNoteID(
             vaultID: UUID(),
             relativePath: "analysis.md"
         )
 
-        controller.showAttentionQueue(true, note: noteScope)
-        #expect(controller.library.attentionNoteScope == noteScope)
-        controller.presentLifecycleListing(.trash)
-        #expect(!controller.library.showsAttentionQueue)
-        #expect(controller.library.attentionNoteScope == nil)
-        #expect(controller.library.lifecycleScope == .trash)
+        attention.present(workspaceSlot: .paperAnalysis, noteScope: noteScope)
+        #expect(attention.noteScope == noteScope)
+        let request = controller.beginLocationRequest(
+            workspaceSlot: .paperAnalysis,
+            location: .trash
+        )
+        #expect(controller.receiveLocationResult(for: request))
+        #expect(attention.noteScope == noteScope)
+        #expect(controller.library.locationScope == .trash)
 
-        controller.showAttentionQueue(true)
-        #expect(controller.library.showsAttentionQueue)
-        #expect(controller.library.attentionNoteScope == nil)
-        #expect(controller.library.lifecycleScope == nil)
+        attention.selectWorkspaceSlot(.output)
+        #expect(attention.workspaceSlot == .output)
+        #expect(attention.noteScope == nil)
     }
 
-    @Test("Lifecycle destinations preserve Library filters, sort, and disclosure")
-    func lifecycleDestinationPreservesWorkspacePresentation() {
+    @Test("Location requests preserve Library filters, sort, and disclosure")
+    func locationRequestPreservesWorkspacePresentation() {
         let controller = DiscoveryController()
         var filters = DiscoveryFilterState()
         filters.tag = "ethics"
@@ -634,14 +636,16 @@ struct WindowControllerArchitectureTests {
         )
         controller.setExpandedFolders(["Arguments", "Sources"], in: disclosureScope)
 
-        controller.presentLifecycleListing(.setAside)
-        controller.presentLifecycleListing(.trash)
-        controller.dismissLifecycleListing()
+        let request = controller.beginLocationRequest(
+            workspaceSlot: .paperAnalysis,
+            location: .trash
+        )
+        #expect(controller.receiveLocationResult(for: request))
 
         #expect(controller.library.filters == filters)
         #expect(controller.library.sortOrder == .titleAscending)
         #expect(controller.expandedFolders(in: disclosureScope) == ["Arguments", "Sources"])
-        #expect(controller.library.locationScope == .workspace)
+        #expect(controller.library.locationScope == .trash)
     }
 
     @Test("Discovery views share one controller instead of parallel feature models")
@@ -681,7 +685,6 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
         let relativePaths = [
             "Scholium/Views/SearchWorkspaceView.swift",
-            "Scholium/Views/AttentionQueueView.swift",
             "Scholium/Views/WorkspaceSetupView.swift",
             "Scholium/Views/Sidebar/SidebarView.swift",
         ]
@@ -701,12 +704,25 @@ struct WindowControllerArchitectureTests {
             )
         }
 
+        let attentionSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/AttentionQueueView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(attentionSource.contains("@ObservedObject private var session: AttentionWindowSession"))
+        #expect(attentionSource.contains("session.inspect(item)"))
+        #expect(!attentionSource.contains("WindowModel"))
+        #expect(!attentionSource.contains("@EnvironmentObject"))
+        #expect(!attentionSource.contains("NSApp.windows"))
+        #expect(!attentionSource.contains("NotificationCenter"))
+
         let contentView = try String(
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
             encoding: .utf8
         )
         #expect(contentView.contains("context: spotlightSearchContext"))
-        #expect(contentView.contains("attentionQueueContext: attentionQueueContext"))
+        #expect(contentView.contains("windowCoordinator.actions.showAttention"))
         #expect(!contentView.contains("WorkspaceSetupView"))
         #expect(contentView.contains("context: sidebarContext"))
     }

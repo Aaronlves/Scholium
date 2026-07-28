@@ -1,11 +1,11 @@
 import ScholiumContracts
 import SwiftUI
 
-// MARK: - Sidebar View
+// MARK: - Sidebar composition
 
-/// Immutable Library projection and explicit window actions supplied by the
-/// `ContentView` composition root. Mutable filter, sort, folder, and lifecycle
-/// presentation state remains owned by `DiscoveryController`.
+/// Immutable Source List projection and exact window actions supplied by the
+/// composition root. Scope, Location, filters, sorting, and disclosure remain
+/// owned by `DiscoveryController`; no view retains a parallel Library tree.
 struct SidebarContext {
     let triptychName: String
     let attentionItems: [AttentionQueueItem]?
@@ -30,13 +30,11 @@ struct SidebarContext {
     let propertyValues: [String: [String]]
     let resolvedIdentityPaths: Set<String>
     let bibliographyController: RecommendedBibliographyController
-    let attentionQueueContext: AttentionQueueContext
     let notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
+    let openAttention: () -> Void
     let selectLocationScope: (NoteLocationScope) -> Void
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
-    let openLifecycleNote: (String, NoteLocationScope) -> Void
     let selectWorkspaceVault: (WorkspaceVaultSlot) -> Void
-    let lifecycleItems: (NoteLocationScope) async throws -> [LifecycleLocationItem]
     let prepareLifecycle: (LifecycleLocationItem) -> Void
     let clearPreparedLifecycle: (String) -> Void
     let createUntitledNote: (String?) -> Void
@@ -54,57 +52,36 @@ struct SidebarContext {
     let copyRecommendedBibliographyText: (String) -> Void
     let repairRecommendedBibliographyMethod: () -> Void
     let revealCurrentVault: () -> Void
-    let setSidebarVisible: (Bool) -> Void
     let openSettings: () -> Void
     let selectSortOrder: (NoteSortOrder) -> Void
     let showError: (String) -> Void
 }
 
-private struct LifecycleDestinationFocusPlan: Equatable {
+private struct SidebarRemovalFocusPlan: Equatable {
     let originPath: String
     let successorPath: String?
 }
 
 struct SidebarView: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.locale) private var locale
     let context: SidebarContext
+
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
-    @FocusState private var libraryFocused: Bool
-    @FocusState private var lifecycleBackFocused: Bool
-    @State private var requestedLifecyclePutBackFocusPath: String?
-    @State private var pendingLifecycleFocusPlan: LifecycleDestinationFocusPlan?
+    @FocusState private var locationPickerFocused: Bool
+    @FocusState private var sourceListFocused: Bool
+    @State private var showsUnclassified = false
+    @State private var preparedLifecyclePath: String?
+    @State private var pendingRemovalFocusPlan: SidebarRemovalFocusPlan?
+    @State private var requestedRowFocusPath: String?
+    @State private var pinnedRootFolderIDs: Set<String> = []
+    @State private var lastTrustedAttentionCounts: [WorkspaceVaultSlot: Int] = [:]
 
     init(controller: DiscoveryController, context: SidebarContext) {
         self.controller = controller
         self.context = context
-    }
-
-    private var lifecycleDestinationScope: NoteLocationScope? {
-        controller.library.lifecycleScope
-    }
-
-    private var lifecycleDestinationItems: [LifecycleLocationItem] {
-        controller.library.lifecycleItems
-    }
-
-    private var lifecycleDestinationIsLoading: Bool {
-        controller.library.lifecycleIsLoading
-    }
-
-    private var lifecycleDestinationError: String? {
-        controller.library.lifecycleError
-    }
-
-    private var preparedLifecyclePath: String? {
-        get { controller.library.preparedLifecyclePath }
-        nonmutating set { controller.prepareLifecycle(path: newValue) }
-    }
-
-    private var capturedWorkspaceNotes: [WindowDocumentLocation] {
-        controller.library.capturedWorkspaceNotes
     }
 
     private var expandedFolders: Binding<Set<String>> {
@@ -114,168 +91,126 @@ struct SidebarView: View {
         )
     }
 
-    private var showUnclassified: Binding<Bool> {
-        Binding(
-            get: { controller.library.showsUnclassified },
-            set: { controller.showUnclassified($0) }
-        )
-    }
-
-    private var visibleAttentionCount: Int? {
-        guard let items = context.attentionItems else { return nil }
-        return AttentionPreferences.decodeLedger(attentionDismissalLedgerData).visible(items).count
-    }
-
-    private var hasVisibleAttention: Bool {
-        (visibleAttentionCount ?? 0) > 0
-    }
-
-    /// Notes filtered within the selected Triptych vault and location scope.
-    private var filteredNotes: [WindowDocumentLocation] {
-        context.filteredNotes
-    }
-
-    /// Build folder tree from filtered notes
     private var folderTree: [TreeNode] {
-        buildTree(
-            from: filteredNotes,
+        if controller.library.locationScope != .workspace {
+            return context.filteredNotes.map {
+                TreeNode(
+                    id: $0.relativePath,
+                    name: $0.displayName,
+                    isFolder: false,
+                    note: $0,
+                    folderRelativePath: nil,
+                    children: [],
+                    depth: 0
+                )
+            }
+        }
+        return buildTree(
+            from: context.filteredNotes,
             folderRelativePaths: context.folders,
             notesAreOrdered: context.notesAreOrdered
         )
     }
 
+    private var currentVisibleAttentionCount: Int? {
+        guard let items = context.attentionItems else { return nil }
+        return AttentionPreferences.decodeLedger(attentionDismissalLedgerData)
+            .visible(items).count
+    }
+
+    private var displayedAttentionCount: Int? {
+        currentVisibleAttentionCount
+            ?? context.currentWorkspaceSlot.flatMap { lastTrustedAttentionCounts[$0] }
+    }
+
+    /// The Source List is projected once into top-level sections plus a flat
+    /// sequence of currently visible descendants. Sticky handoff, keyboard
+    /// order, lifecycle focus recovery, and accessibility therefore consume
+    /// the same ordering instead of recursively composing nested view trees.
+    private var sourceSections: [SidebarSourceSection] {
+        sidebarSourceSections(
+            from: folderTree,
+            expandedFolders: expandedFolders.wrappedValue
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            triptychIdentity
-
-            workspaceVaultPicker
+            brandHeader
+            scopeIndex
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
                 .padding(.top, ScholiumMetrics.Library.scopeTopSpacing)
-
-            attentionNavigation
+            attentionButton
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                .padding(.top, ScholiumMetrics.Library.sectionSpacing)
+                .padding(.vertical, ScholiumMetrics.Library.sectionSpacing)
 
-            libraryHeader
-                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                .padding(.top, ScholiumMetrics.Library.sectionSpacing)
-
-            ZStack(alignment: .topLeading) {
-                Group {
-                    if controller.library.showsAttentionQueue {
-                        AttentionQueueView(
-                            controller: controller,
-                            context: context.attentionQueueContext
-                        )
-                        .accessibilityIdentifier("scholium.libraryAttentionQueue")
-                    } else {
-                        ScrollView(.vertical) {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(displayedFolderTree) { node in
-                                    TreeNodeView(
-                                        node: node,
-                                        expandedFolders: expandedFolders,
-                                        selectedDocumentPath: context.selectedDocumentPath,
-                                        context: treeContext,
-                                        onSelect: { context.openNote($0, .replaceCurrent) }
-                                    )
-                                }
-                            }
-                            .padding(.vertical, 2)
-                            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                        }
-                        .scrollContentBackground(.hidden)
-                        .focusable()
-                        .focusEffectDisabled()
-                        .focused($libraryFocused)
-                        .accessibilityIdentifier("scholium.noteList")
-                    }
-                }
-                .opacity(lifecycleDestinationScope == nil ? 1 : 0)
-                .allowsHitTesting(lifecycleDestinationScope == nil)
-                .accessibilityHidden(lifecycleDestinationScope != nil)
-                .overlay(alignment: .topLeading) {
-                    if let scope = lifecycleDestinationScope {
-                        SidebarLifecycleDestinationView(
-                            scope: scope,
-                            items: lifecycleDestinationItems,
-                            isLoading: lifecycleDestinationIsLoading,
-                            errorMessage: lifecycleDestinationError,
-                            requestedPutBackFocusPath: requestedLifecyclePutBackFocusPath,
-                            onFocusRequestHandled: {
-                                requestedLifecyclePutBackFocusPath = nil
-                            },
-                            onRequestPutBackFocus: {
-                                requestedLifecyclePutBackFocusPath = $0
-                            },
-                            onReload: { await reloadLifecycleDestination(scope) },
-                            onOpen: { item in
-                                context.openLifecycleNote(item.note.relativePath, scope)
-                            },
-                            onPutBack: preparePutBack,
-                            onReveal: context.revealNote,
-                            onMoveToTrash: moveLifecycleItemToTrash,
-                            onDeletePermanently: deleteLifecycleItemPermanently
-                        )
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    locationHeader
                         .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                        .transition(.opacity)
-                    }
-                }
-            }
-            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
-            .frame(maxHeight: .infinity)
-            .background(ScholiumColorRole.surfaceBackground.color)
+                        .padding(.bottom, ScholiumGrid.Spacing.labelAccessoryGap)
 
-            sidebarBottomRegion
+                    if controller.library.locationScope == .workspace,
+                       activeLibraryMenuFilterCount > 0 {
+                        activeFilterStatus
+                            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                            .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
+                    }
+
+                    sourceContent
+
+                    SidebarRecommendedBibliographySection(
+                        controller: context.bibliographyController,
+                        openAnalysis: context.openRecommendedAnalysis,
+                        openZoteroItem: context.openRecommendedZoteroItem,
+                        copyText: context.copyRecommendedBibliographyText,
+                        repairMethod: context.repairRecommendedBibliographyMethod
+                    )
+                    .padding(.horizontal, ScholiumMetrics.Library.rowHorizontalInset)
+                    .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
+                    .padding(.bottom, ScholiumMetrics.Library.contentInset)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            }
+            .coordinateSpace(name: SidebarRootHeaderOffsetPreference.coordinateSpace)
+            .scrollContentBackground(.hidden)
+            .focused($sourceListFocused)
+            .onPreferenceChange(SidebarRootHeaderOffsetPreference.self) { offsets in
+                pinnedRootFolderIDs = Set(offsets.compactMap { id, minY in
+                    let rowHeight = ScholiumMetrics.Library.hierarchyRowHeight
+                    return minY <= 0.5 && minY > -rowHeight ? id : nil
+                })
+            }
+            .accessibilityIdentifier("scholium.noteList")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .clipped()
-        .animation(
-            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
-            value: lifecycleDestinationScope
-        )
+        .background(ScholiumColorRole.navigationSurfaceBackground.color)
+        .onAppear {
+            updateLastTrustedAttentionCount()
+        }
+        .onChange(of: currentVisibleAttentionCount) { _, _ in
+            updateLastTrustedAttentionCount()
+        }
+        .onChange(of: context.currentWorkspaceSlot) { _, _ in
+            updateLastTrustedAttentionCount()
+        }
         .onChange(of: context.libraryFocusRequestGeneration) { _, _ in
-            libraryFocused = true
-        }
-        .onChange(of: lifecycleDestinationScope) { _, scope in
-            guard scope != nil else { return }
-            lifecycleBackFocused = true
-        }
-        .background {
-            if context.catalogIsAvailable, !context.allNotes.isEmpty {
-                PerformanceReadyBoundary(
-                    generation: "\(context.currentVaultID?.uuidString ?? "none"):\(context.allNotes.count)"
-                ) {
-                    PerformanceProbe.shared.markLibraryReady(noteCount: context.allNotes.count)
-                }
-                .frame(width: 0, height: 0)
-            }
-        }
-        .onAppear { captureWorkspaceSnapshotIfNeeded() }
-        .onChange(of: context.allNotes.map(\.relativePath)) { _, _ in
-            captureWorkspaceSnapshotIfNeeded()
-        }
-        .task(id: lifecycleDestinationReloadID) {
-            guard let scope = lifecycleDestinationScope else { return }
-            await reloadLifecycleDestination(scope)
+            sourceListFocused = true
         }
         .onChange(of: context.noteLifecycleRequest) { _, request in
             guard request == nil, let path = preparedLifecyclePath else { return }
             context.clearPreparedLifecycle(path)
             preparedLifecyclePath = nil
-            if let scope = lifecycleDestinationScope {
-                Task {
-                    await reloadLifecycleDestination(scope)
-                    restoreLifecycleFocusAfterMutation()
-                }
-            }
         }
-        .onExitCommand {
-            guard lifecycleDestinationScope != nil else { return }
-            closeLifecycleDestination()
+        .onChange(of: context.lifecycleMutationGeneration) { _, _ in
+            restoreFocusAfterRemoval()
         }
-        .sheet(isPresented: showUnclassified, onDismiss: restoreWorkspaceAfterTransientScope) {
+        .onChange(of: context.allNotes.map(\.relativePath)) { _, _ in
+            restoreFocusAfterRemoval()
+        }
+        .sheet(isPresented: $showsUnclassified, onDismiss: {
+            context.selectLocationScope(.workspace)
+        }) {
             UnclassifiedClassificationSheet(
                 locationScope: controller.library.locationScope,
                 notes: context.allNotes,
@@ -285,187 +220,113 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Search
+    // MARK: Fixed identity and navigation
 
-    private var triptychIdentity: some View {
-        Menu {
-            Button(action: context.openSettings) {
-                Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
-            }
-            Button(action: context.revealCurrentVault) {
-                Label("Reveal Current Vault in Finder", systemImage: "folder")
-            }
-        } label: {
+    private var brandHeader: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Text("Scholium")
                 .font(ScholiumInterfaceTypography.identity)
-                .padding(.trailing, 13)
                 .foregroundStyle(ScholiumColorRole.primaryText.color)
-                .fixedSize()
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .overlay(alignment: .trailing) {
-            Text("⌄")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(ScholiumColorRole.primaryText.color)
-                .allowsHitTesting(false)
-        }
-        .fixedSize()
-        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: ScholiumMetrics.Workspace.regionHeaderHeight,
-            maxHeight: ScholiumMetrics.Workspace.regionHeaderHeight,
-            alignment: .leading
-        )
-        .help("Triptych management")
-        .accessibilityLabel("Triptych management — \(context.triptychName)")
-        .accessibilityIdentifier("scholium.triptychManagement")
-    }
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("scholium.wordmark")
 
-    @ViewBuilder
-    private var sidebarBottomRegion: some View {
-        VStack(spacing: 0) {
-            ScholiumStructuralRule()
-                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-
-            SidebarRecommendedBibliographySection(
-                controller: context.bibliographyController,
-                openAnalysis: context.openRecommendedAnalysis,
-                openZoteroItem: context.openRecommendedZoteroItem,
-                copyText: context.copyRecommendedBibliographyText,
-                repairMethod: context.repairRecommendedBibliographyMethod
-            )
-            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-            .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
-
-            ScholiumStructuralRule()
-                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-            lifecycleNavigation
-        }
-        .scholiumSurface(.navigation)
-    }
-
-    private var libraryHeader: some View {
-        ZStack(alignment: .leading) {
-            ordinaryLibraryHeader
-                .opacity(lifecycleDestinationScope == nil ? 1 : 0)
-                .allowsHitTesting(lifecycleDestinationScope == nil)
-                .accessibilityHidden(lifecycleDestinationScope != nil)
-
-            lifecycleDestinationHeader
-                .opacity(lifecycleDestinationScope == nil ? 0 : 1)
-                .allowsHitTesting(lifecycleDestinationScope != nil)
-                .accessibilityHidden(lifecycleDestinationScope == nil)
-        }
-        .frame(height: ScholiumMetrics.Accessibility.preferredCustomTarget)
-        .animation(
-            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
-            value: lifecycleDestinationScope
-        )
-    }
-
-    private var ordinaryLibraryHeader: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button {
-                context.selectLocationScope(.workspace)
-            } label: {
-                Text("LIBRARY")
-                    .font(ScholiumInterfaceTypography.editorialLabel)
-                    .tracking(0.7)
-            }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(
-                controller.library.locationScope == .workspace ? .isSelected : []
-            )
-            .accessibilityIdentifier("scholium.libraryHeading")
-
-            Spacer()
-
-            libraryFilterMenu
-
-            Button {
-                context.createUntitledNote(nil)
-            } label: {
-                Label("New Note", systemImage: "plus")
-                    .labelStyle(.iconOnly)
-                    .frame(
-                        width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                        height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .disabled(!context.canCreateNote)
-            .help("New Note")
-            .accessibilityIdentifier("scholium.newNote")
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var lifecycleDestinationHeader: some View {
-        let scope = lifecycleDestinationScope ?? .setAside
-        let heading = lifecycleDestinationHeading(scope)
-
-        return HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button(action: closeLifecycleDestination) {
-                Image(systemName: "chevron.backward")
-                    .frame(
-                        width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                        height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .focused($lifecycleBackFocused)
-            .help("Back to Library")
-            .accessibilityLabel("Back to Library")
-            .accessibilityIdentifier("scholium.lifecycleBack")
-
-            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text(lifecycleDestinationVisualTitle(scope))
-                    .font(ScholiumInterfaceTypography.editorialLabel)
-                    .tracking(0.7)
-
-                if lifecycleDestinationShowsCount {
-                    Text(localizedNoteCount(lifecycleDestinationItems.count))
-                        .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            Menu {
+                Button(action: context.openSettings) {
+                    Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
                 }
+                Button(action: context.revealCurrentVault) {
+                    Label("Reveal Current Vault in Finder", systemImage: "folder")
+                }
+            } label: {
+                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text(verbatim: context.triptychName)
+                        .font(ScholiumInterfaceTypography.editorialLabel)
+                        .tracking(0.7)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget)
+                .contentShape(Rectangle())
             }
-            .lineLimit(1)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(heading)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityIdentifier(lifecycleHeadingIdentifier(scope))
-
-            Spacer(minLength: 0)
+            .menuStyle(.borderlessButton)
+            .fixedSize(horizontal: false, vertical: true)
+            .help("Triptych management")
+            .accessibilityLabel("Triptych: \(context.triptychName)")
+            .accessibilityIdentifier("scholium.triptychManagement")
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+        .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var attentionNavigation: some View {
-        Button {
-            if lifecycleDestinationScope != nil {
-                controller.showAttentionQueue(true)
-            } else {
-                controller.showAttentionQueue(!controller.library.showsAttentionQueue)
+    private var scopeIndex: some View {
+        HStack(spacing: 0) {
+            ForEach(WorkspaceVaultSlot.allCases) { slot in
+                Button {
+                    guard !isCurrent(slot) else { return }
+                    context.selectWorkspaceVault(slot)
+                } label: {
+                    Text(ScholiumL10n.dynamicString(slot.displayName))
+                        .font(.system(size: 12, weight: isCurrent(slot) ? .semibold : .regular))
+                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
+                        .overlay(alignment: .bottom) {
+                            if isCurrent(slot) {
+                                Rectangle()
+                                    .fill(ScholiumColorRole.accent.color)
+                                    .frame(
+                                        width: ScholiumMetrics.Library.scopeIndicatorWidth,
+                                        height: ScholiumMetrics.Library.scopeIndicatorHeight
+                                    )
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isCurrent(slot) ? .isSelected : [])
+                .accessibilityIdentifier("scholium.vault.\(slot.rawValue)")
             }
-        } label: {
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Triptych Scope")
+        .onKeyPress(.leftArrow) {
+            moveScope(readingDirectionDelta: -1)
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            moveScope(readingDirectionDelta: 1)
+            return .handled
+        }
+    }
+
+    private var attentionButton: some View {
+        Button(action: context.openAttention) {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Image(systemName: "tray.full")
-                    .foregroundStyle(hasVisibleAttention ? Color.orange : Color.secondary)
-                    .frame(width: ScholiumMetrics.Library.navigationIconWidth)
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(
+                        (displayedAttentionCount ?? 0) > 0
+                            ? ScholiumColorRole.attention.color
+                            : ScholiumColorRole.secondaryText.color
+                    )
+                    .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
+                    .accessibilityHidden(true)
                 Text("ATTENTION")
                     .font(ScholiumInterfaceTypography.editorialLabel)
                     .tracking(0.7)
-                Spacer()
-                if let count = visibleAttentionCount {
+                Spacer(minLength: 0)
+                if let count = displayedAttentionCount {
                     Text(count.formatted())
                         .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
-                        .foregroundStyle(count > 0 ? Color.orange : Color.secondary)
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                } else {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .accessibilityHidden(true)
                 }
             }
             .frame(
@@ -476,488 +337,203 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(controller.library.showsAttentionQueue ? .isSelected : [])
-        .help("Review derived warnings and recoverable research issues")
-        .accessibilityValue(visibleAttentionCount.map { "\($0) items" } ?? "Loading")
+        .help("Open Attention")
+        .accessibilityValue(displayedAttentionCount.map { "\($0) items" } ?? "Loading")
         .accessibilityIdentifier("scholium.location.attention")
-    }
-
-    private var lifecycleNavigation: some View {
-        HStack(spacing: 0) {
-            locationButton(.setAside, symbol: "archivebox")
-                .frame(maxWidth: .infinity)
-            locationButton(.trash, symbol: "trash")
-                .frame(maxWidth: .infinity)
-            ScholiumInkIconControl(
-                title: "Settings",
-                systemImage: "gearshape",
-                identifier: "scholium.location.settings",
-                action: context.openSettings
-            )
-            .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-        .frame(height: ScholiumMetrics.Workspace.libraryFooterHeight)
-    }
-
-    private func locationButton(_ scope: NoteLocationScope, symbol: String) -> some View {
-        let isActive = lifecycleDestinationScope == scope
-        return ScholiumInkIconControl(
-            title: lifecycleDestinationName(scope),
-            systemImage: isActive ? "\(symbol).fill" : symbol,
-            identifier: scope == .setAside
-                ? "scholium.location.setAside"
-                : "scholium.location.trash",
-            isActive: isActive,
-            action: { openLifecycleDestination(scope) }
-        )
-        .accessibilityAddTraits(isActive ? .isSelected : [])
-    }
-
-    private var displayedFolderTree: [TreeNode] {
-        if lifecycleDestinationScope != nil, !capturedWorkspaceNotes.isEmpty {
-            return buildTree(
-                from: capturedWorkspaceNotes,
-                notesAreOrdered: context.notesAreOrdered
-            )
-        }
-        return folderTree
-    }
-
-    private var lifecycleDestinationReloadID: String {
-        "\(lifecycleDestinationScope?.rawValue ?? "closed"):\(context.lifecycleMutationGeneration)"
-    }
-
-    private func captureWorkspaceSnapshotIfNeeded() {
-        guard controller.library.locationScope == .workspace else { return }
-        controller.captureWorkspaceNotes(filteredNotes)
-    }
-
-    private func openLifecycleDestination(_ scope: NoteLocationScope) {
-        guard scope == .setAside || scope == .trash else { return }
-        if lifecycleDestinationScope == scope {
-            closeLifecycleDestination()
-            return
-        }
-        captureWorkspaceSnapshotIfNeeded()
-        controller.presentLifecycleListing(scope)
-    }
-
-    private func closeLifecycleDestination() {
-        pendingLifecycleFocusPlan = nil
-        requestedLifecyclePutBackFocusPath = nil
-        controller.dismissLifecycleListing()
-        if controller.library.locationScope != .workspace {
-            restoreWorkspaceAfterTransientScope()
-        }
-    }
-
-    private func reloadLifecycleDestination(_ scope: NoteLocationScope) async {
-        let request = controller.beginLifecycleListing(scope)
-        do {
-            let items = try await context.lifecycleItems(scope)
-            guard lifecycleDestinationScope == scope, !Task.isCancelled else { return }
-            controller.receiveLifecycleItems(items, for: request)
-        } catch {
-            guard lifecycleDestinationScope == scope, !Task.isCancelled else { return }
-            controller.failLifecycleListing(error.localizedDescription, for: request)
-        }
-    }
-
-    private func preparePutBack(_ item: LifecycleLocationItem) {
-        pendingLifecycleFocusPlan = lifecycleFocusPlan(removing: item)
-        context.prepareLifecycle(item)
-        preparedLifecyclePath = item.note.relativePath
-        controller.requestLifecycle(.putBack(item.note.relativePath))
-    }
-
-    private var lifecycleDestinationShowsCount: Bool {
-        !lifecycleDestinationIsLoading && lifecycleDestinationError == nil
-    }
-
-    private func lifecycleDestinationName(_ scope: NoteLocationScope) -> String {
-        switch scope {
-        case .setAside: ScholiumL10n.string("Set Aside", locale: locale)
-        case .trash: ScholiumL10n.string("Trash", locale: locale)
-        case .workspace: ScholiumL10n.string("Library", locale: locale)
-        case .unclassified: ScholiumL10n.string("Unclassified", locale: locale)
-        }
-    }
-
-    private func lifecycleDestinationVisualTitle(_ scope: NoteLocationScope) -> String {
-        switch scope {
-        case .setAside: ScholiumL10n.string("SET ASIDE", locale: locale)
-        case .trash: ScholiumL10n.string("TRASH", locale: locale)
-        case .workspace: ScholiumL10n.string("LIBRARY", locale: locale)
-        case .unclassified: ScholiumL10n.string("Unclassified", locale: locale)
-        }
-    }
-
-    private func lifecycleHeadingIdentifier(_ scope: NoteLocationScope) -> String {
-        scope == .trash
-            ? "scholium.lifecycleHeading.trash"
-            : "scholium.lifecycleHeading.setAside"
-    }
-
-    private func lifecycleDestinationHeading(_ scope: NoteLocationScope) -> String {
-        let name = lifecycleDestinationName(scope)
-        guard lifecycleDestinationShowsCount else { return name }
-        return "\(name), \(localizedNoteCount(lifecycleDestinationItems.count))"
-    }
-
-    private func localizedNoteCount(_ count: Int) -> String {
-        if count == 1 {
-            return ScholiumL10n.string("1 note", locale: locale)
-        }
-        return String(
-            format: ScholiumL10n.string("%lld notes", locale: locale),
-            locale: locale,
-            arguments: [Int64(count)]
-        )
-    }
-
-    private func lifecycleFocusPlan(
-        removing item: LifecycleLocationItem
-    ) -> LifecycleDestinationFocusPlan {
-        guard let index = lifecycleDestinationItems.firstIndex(where: { $0.id == item.id }) else {
-            return LifecycleDestinationFocusPlan(
-                originPath: item.note.relativePath,
-                successorPath: nil
-            )
-        }
-        let successor: LifecycleLocationItem? = if lifecycleDestinationItems.indices.contains(index + 1) {
-            lifecycleDestinationItems[index + 1]
-        } else if index > lifecycleDestinationItems.startIndex {
-            lifecycleDestinationItems[index - 1]
-        } else {
-            nil
-        }
-        return LifecycleDestinationFocusPlan(
-            originPath: item.note.relativePath,
-            successorPath: successor?.note.relativePath
-        )
-    }
-
-    private func restoreLifecycleFocusAfterMutation() {
-        guard let plan = pendingLifecycleFocusPlan else { return }
-        pendingLifecycleFocusPlan = nil
-
-        if lifecycleDestinationItems.contains(where: { $0.note.relativePath == plan.originPath }) {
-            requestedLifecyclePutBackFocusPath = plan.originPath
-        } else if let successorPath = plan.successorPath,
-                  lifecycleDestinationItems.contains(where: { $0.note.relativePath == successorPath }) {
-            requestedLifecyclePutBackFocusPath = successorPath
-        } else if let firstPath = lifecycleDestinationItems.first?.note.relativePath {
-            requestedLifecyclePutBackFocusPath = firstPath
-        } else {
-            lifecycleBackFocused = true
-        }
-    }
-
-    private func restoreWorkspaceAfterTransientScope() {
-        context.selectLocationScope(.workspace)
-    }
-
-    // MARK: - Knowledge Base Picker
-
-    private var workspaceVaultPicker: some View {
-        HStack(spacing: 2) {
-            ForEach(WorkspaceVaultSlot.allCases) { slot in
-                Button {
-                    guard !isCurrent(slot) else { return }
-                    context.selectWorkspaceVault(slot)
-                } label: {
-                    Text(ScholiumL10n.dynamicString(slot.displayName))
-                        .font(.callout)
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .background(
-                    isCurrent(slot)
-                        ? ScholiumColorRole.surfaceBackground.color
-                        : Color.clear,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
-                .accessibilityAddTraits(isCurrent(slot) ? .isSelected : [])
-                .accessibilityLabel(ScholiumL10n.dynamicString(slot.displayName))
-                .accessibilityIdentifier("scholium.vault.\(slot.rawValue)")
-            }
-        }
-        .padding(2)
-        .background(
-            ScholiumColorRole.raisedSurfaceBackground.color.opacity(0.35),
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                style: .continuous
-            )
-        )
     }
 
     private func isCurrent(_ slot: WorkspaceVaultSlot) -> Bool {
         context.currentWorkspaceSlot == slot
     }
 
-    private var currentWorkspaceSlot: WorkspaceVaultSlot? {
-        context.currentWorkspaceSlot
+    private func moveScope(readingDirectionDelta delta: Int) {
+        guard let current = context.currentWorkspaceSlot,
+              let index = WorkspaceVaultSlot.allCases.firstIndex(of: current) else { return }
+        let visualDelta = layoutDirection == .rightToLeft ? -delta : delta
+        let target = min(
+            max(index + visualDelta, WorkspaceVaultSlot.allCases.startIndex),
+            WorkspaceVaultSlot.allCases.index(before: WorkspaceVaultSlot.allCases.endIndex)
+        )
+        guard target != index else { return }
+        context.selectWorkspaceVault(WorkspaceVaultSlot.allCases[target])
     }
 
-    // MARK: - Filter Menu
+    private func updateLastTrustedAttentionCount() {
+        guard let slot = context.currentWorkspaceSlot,
+              let currentVisibleAttentionCount else { return }
+        lastTrustedAttentionCounts[slot] = currentVisibleAttentionCount
+    }
 
-    private var libraryFilterMenu: some View {
-        Menu {
-            Section("Integrity") {
-                Menu("Integrity Checks") {
-                    Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
-                        .disabled(!context.catalogIsAvailable)
-                        .accessibilityIdentifier("scholium.researchFilter.needsAttention")
-                    Toggle("Explicit Connections", isOn: filterBinding(\.hasExplicitConnections))
-                        .disabled(!context.graphIsAvailable)
-                        .accessibilityIdentifier("scholium.researchFilter.explicitConnections")
-                    Toggle("Malformed Metadata", isOn: filterBinding(\.hasMalformedMetadata))
-                        .disabled(!context.catalogIsAvailable)
-                        .accessibilityIdentifier("scholium.researchFilter.malformedMetadata")
-                }
+    // MARK: Location and source region
+
+    private var locationHeader: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Picker("Location", selection: locationSelection) {
+                Text("Library").tag(NoteLocationScope.workspace)
+                Text("Set Aside").tag(NoteLocationScope.setAside)
+                Text("Trash").tag(NoteLocationScope.trash)
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .focused($locationPickerFocused)
+            .accessibilityIdentifier("scholium.locationPicker")
 
-            Section("Metadata") {
-                Menu("Tag") {
-                    Button {
-                        updateFilters { $0.tag = nil }
-                    } label: {
-                        if controller.library.filters.tag == nil {
-                            Label("All Tags", systemImage: "checkmark")
-                        } else {
-                            Text("All Tags")
-                        }
-                    }
-                    Divider()
-                    ForEach(context.tags, id: \.self) { tag in
-                        Button {
-                            updateFilters { $0.tag = tag }
-                        } label: {
-                            if controller.library.filters.tag == tag {
-                                Label(tag, systemImage: "checkmark")
-                            } else {
-                                Text(tag)
-                            }
-                        }
-                    }
-                }
-                .disabled(context.tags.isEmpty)
+            Spacer(minLength: 0)
 
-                if !context.authors.isEmpty {
-                    Menu("Author") {
-                        Button("Any Author") { updateFilters { $0.author = nil } }
-                        Divider()
-                        ForEach(context.authors, id: \.self) { author in
-                            Button {
-                                updateFilters { $0.author = author }
-                            } label: {
-                                if controller.library.filters.author == author {
-                                    Label(author, systemImage: "checkmark")
-                                } else {
-                                    Text(author)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !context.years.isEmpty {
-                    Menu("Year") {
-                        Button("Any Year") { updateFilters { $0.year = nil } }
-                        Divider()
-                        ForEach(context.years, id: \.self) { year in
-                            Button {
-                                updateFilters { $0.year = year }
-                            } label: {
-                                if controller.library.filters.year == year {
-                                    Label(year.formatted(.number.grouping(.never)), systemImage: "checkmark")
-                                } else {
-                                    Text(year.formatted(.number.grouping(.never)))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !context.propertyKeys.isEmpty {
-                Section("Properties") {
-                    Button("Any Property") {
-                        updateFilters {
-                            $0.propertyKey = nil
-                            $0.propertyValue = nil
-                        }
-                        if controller.library.sortOrder == .debateImportanceDescending {
-                            context.selectSortOrder(.modifiedNewest)
-                        }
-                    }
-                    ForEach(context.propertyKeys, id: \.self) { key in
-                        Menu(propertyLabel(key)) {
-                            ForEach(context.propertyValues[key] ?? [], id: \.self) { value in
-                                Button {
-                                    updateFilters {
-                                        $0.propertyKey = key
-                                        $0.propertyValue = value
-                                    }
-                                    if key != "debate_importance_scope",
-                                       controller.library.sortOrder == .debateImportanceDescending {
-                                        context.selectSortOrder(.modifiedNewest)
-                                    }
-                                } label: {
-                                    if controller.library.filters.propertyKey == key,
-                                       controller.library.filters.propertyValue == value {
-                                        Label(value, systemImage: "checkmark")
-                                    } else {
-                                        Text(value)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Section("Order") {
-                Menu("Sort") {
-                    ForEach(NoteSortOrder.allCases) { order in
-                        Button {
-                            context.selectSortOrder(order)
-                        } label: {
-                            if controller.library.sortOrder == order {
-                                Label(order.title, systemImage: "checkmark")
-                            } else {
-                                Text(order.title)
-                            }
-                        }
-                        .disabled(
-                            order == .debateImportanceDescending
-                                && !hasScopedDebateImportanceFilter
+            if controller.library.locationScope == .workspace {
+                libraryFilterMenu
+                Button {
+                    context.createUntitledNote(nil)
+                } label: {
+                    Label("New Note", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                        .frame(
+                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
                         )
-                    }
-                    if !hasScopedDebateImportanceFilter {
-                        Divider()
-                        Text("Select one Debate Scope before comparing importance")
-                    }
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.borderless)
+                .disabled(!context.canCreateNote)
+                .help("New Note")
+                .accessibilityIdentifier("scholium.newNote")
             }
-
-            Section("Actions") {
-                if activeResearchFilterCount > 0 {
-                    Button("Clear Integrity Filters", action: clearResearchFilters)
-                }
-                if activeMetadataFilterCount > 0 {
-                    Button("Clear Metadata Filters", action: clearMetadataFilters)
-                }
-                if activeLibraryMenuFilterCount > 0 {
-                    Button("Clear All Filters") {
-                        clearResearchFilters()
-                        updateFilters { $0.tag = nil }
-                        clearMetadataFilters()
-                    }
-                }
-
-                Button("Classify Imported Notes…") {
-                    captureWorkspaceSnapshotIfNeeded()
-                    controller.showUnclassified(true)
-                    context.selectLocationScope(.unclassified)
-                }
-            }
-        } label: {
-            Label(
-                "Filter",
-                systemImage: activeLibraryMenuFilterCount == 0
-                    ? "line.3.horizontal.decrease"
-                    : "line.3.horizontal.decrease.circle.fill"
-            )
-            .labelStyle(.iconOnly)
-            .frame(
-                width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                height: ScholiumMetrics.Accessibility.preferredCustomTarget
-            )
-            .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help(libraryFilterHelp)
-        .accessibilityLabel("Library filters")
-        .accessibilityValue(libraryFilterAccessibilityValue)
-        .accessibilityIdentifier("scholium.libraryFilters")
-    }
-
-    private var activeLibraryMenuFilterCount: Int {
-        activeResearchFilterCount
-            + activeMetadataFilterCount
-            + (controller.library.filters.tag == nil ? 0 : 1)
-    }
-
-    private var activeResearchFilterCount: Int {
-        let filters = controller.library.filters
-        return [
-            filters.needsAttention,
-            filters.hasExplicitConnections,
-            filters.hasMalformedMetadata,
-        ].count(where: { $0 })
-    }
-
-    private var activeMetadataFilterCount: Int {
-        let filters = controller.library.filters
-        return [
-            filters.author != nil,
-            filters.year != nil,
-            filters.propertyKey != nil && filters.propertyValue != nil,
-        ].count(where: { $0 })
-    }
-
-    private var hasScopedDebateImportanceFilter: Bool {
-        controller.library.filters.propertyKey == "debate_importance_scope"
-            && controller.library.filters.propertyValue?
-                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    }
-
-    private func filterBinding<Value>(
-        _ keyPath: WritableKeyPath<DiscoveryFilterState, Value>
-    ) -> Binding<Value> {
-        Binding(
-            get: { controller.library.filters[keyPath: keyPath] },
-            set: { value in
-                updateFilters { $0[keyPath: keyPath] = value }
-            }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
         )
     }
 
-    private func updateFilters(_ update: (inout DiscoveryFilterState) -> Void) {
-        var filters = controller.library.filters
-        update(&filters)
-        controller.replaceFilters(filters)
+    private var locationSelection: Binding<NoteLocationScope> {
+        Binding(
+            get: { canonicalPickerLocation },
+            set: { context.selectLocationScope($0) }
+        )
     }
 
-    private func clearResearchFilters() {
-        updateFilters {
-            $0.needsAttention = false
-            $0.hasExplicitConnections = false
-            $0.hasMalformedMetadata = false
+    private var canonicalPickerLocation: NoteLocationScope {
+        switch controller.library.locationScope {
+        case .workspace, .setAside, .trash: controller.library.locationScope
+        case .unclassified: .workspace
         }
     }
 
-    private func clearMetadataFilters() {
-        updateFilters {
-            $0.author = nil
-            $0.year = nil
-            $0.propertyKey = nil
-            $0.propertyValue = nil
+    private var activeFilterStatus: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text(activeLibraryMenuFilterCount == 1
+                ? "1 filter applied"
+                : "\(activeLibraryMenuFilterCount) filters applied")
+                .font(ScholiumInterfaceTypography.metadata)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            Spacer(minLength: 0)
+            Button("Clear", action: clearAllFilters)
+                .buttonStyle(.link)
         }
-        if controller.library.sortOrder == .debateImportanceDescending {
-            context.selectSortOrder(.modifiedNewest)
+        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.libraryFilterStatus")
+    }
+
+    @ViewBuilder
+    private var sourceContent: some View {
+        if controller.library.locationIsLoading {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                ProgressView().controlSize(.small)
+                Text("Loading \(locationName(canonicalPickerLocation))…")
+                    .font(ScholiumInterfaceTypography.metadata)
+            }
+            .padding(.horizontal, ScholiumMetrics.Library.rowHorizontalInset)
+            .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
+            .accessibilityIdentifier("scholium.libraryLoading")
+        } else if let error = controller.library.locationError {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Label {
+                    Text(locationErrorTitle)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                }
+                    .font(ScholiumInterfaceTypography.rowTitle)
+                Text(error)
+                    .font(ScholiumInterfaceTypography.metadata)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Retry") { context.selectLocationScope(canonicalPickerLocation) }
+            }
+            .padding(.horizontal, ScholiumMetrics.Library.rowHorizontalInset)
+            .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
+            .accessibilityIdentifier("scholium.libraryError")
+        } else if folderTree.isEmpty {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text(emptyLocationTitle)
+                    .font(ScholiumInterfaceTypography.rowTitle)
+                Text(emptyLocationDetail)
+                    .font(ScholiumInterfaceTypography.metadata)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, ScholiumMetrics.Library.rowHorizontalInset)
+            .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
+            .accessibilityIdentifier("scholium.libraryEmpty")
+        } else {
+            ForEach(sourceSections) { section in
+                if let root = section.header {
+                    Section {
+                        ForEach(section.rows) { row in
+                            SidebarTreeNodeRow(
+                                node: row,
+                                expandedFolders: expandedFolders,
+                                selectedDocumentPath: context.selectedDocumentPath,
+                                context: treeContext,
+                                isPinnedRoot: false,
+                                requestedFocusPath: requestedRowFocusPath,
+                                onFocusRequestHandled: { requestedRowFocusPath = nil },
+                                onSelect: { context.openNote($0, .replaceCurrent) },
+                                onPutBack: preparePutBack,
+                                onWillRemove: prepareRemovalFocus,
+                                onMutationFailed: { requestedRowFocusPath = $0.relativePath }
+                            )
+                        }
+                    } header: {
+                        treeRow(root, isPinnedRoot: pinnedRootFolderIDs.contains(root.id))
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear.preference(
+                                        key: SidebarRootHeaderOffsetPreference.self,
+                                        value: [
+                                            root.id: proxy.frame(
+                                                in: .named(SidebarRootHeaderOffsetPreference.coordinateSpace)
+                                            ).minY,
+                                        ]
+                                    )
+                                }
+                            )
+                            .background(ScholiumColorRole.navigationSurfaceBackground.color)
+                    }
+                } else {
+                    ForEach(section.rows) { row in
+                        treeRow(row, isPinnedRoot: false)
+                    }
+                }
+            }
         }
+    }
+
+    private func treeRow(_ node: TreeNode, isPinnedRoot: Bool) -> some View {
+        SidebarTreeNodeRow(
+            node: node,
+            expandedFolders: expandedFolders,
+            selectedDocumentPath: context.selectedDocumentPath,
+            context: treeContext,
+            isPinnedRoot: isPinnedRoot,
+            requestedFocusPath: requestedRowFocusPath,
+            onFocusRequestHandled: { requestedRowFocusPath = nil },
+            onSelect: { context.openNote($0, .replaceCurrent) },
+            onPutBack: preparePutBack,
+            onWillRemove: prepareRemovalFocus,
+            onMutationFailed: { requestedRowFocusPath = $0.relativePath }
+        )
     }
 
     private var treeContext: SidebarTreeContext {
@@ -982,53 +558,271 @@ struct SidebarView: View {
         )
     }
 
-    private func moveLifecycleItemToTrash(_ item: LifecycleLocationItem) {
-        pendingLifecycleFocusPlan = lifecycleFocusPlan(removing: item)
-        Task {
-            do {
-                context.prepareLifecycle(item)
-                defer { context.clearPreparedLifecycle(item.note.relativePath) }
-                try await context.moveToTrash(item.note.relativePath)
-                await reloadLifecycleDestination(.setAside)
-                restoreLifecycleFocusAfterMutation()
-            } catch {
-                restoreLifecycleFocusAfterMutation()
-                context.showError(
-                    "Could not move this note to Trash. \(error.localizedDescription)"
-                )
-            }
+    private func locationName(_ location: NoteLocationScope) -> String {
+        switch location {
+        case .workspace: ScholiumL10n.string("Library", locale: locale)
+        case .setAside: ScholiumL10n.string("Set Aside", locale: locale)
+        case .trash: ScholiumL10n.string("Trash", locale: locale)
+        case .unclassified: ScholiumL10n.string("Unclassified", locale: locale)
         }
     }
 
-    private func deleteLifecycleItemPermanently(_ item: LifecycleLocationItem) {
-        pendingLifecycleFocusPlan = lifecycleFocusPlan(removing: item)
-        Task {
-            do {
-                context.prepareLifecycle(item)
-                defer { context.clearPreparedLifecycle(item.note.relativePath) }
-                try await context.deletePermanently(item.note.relativePath)
-                await reloadLifecycleDestination(.trash)
-                restoreLifecycleFocusAfterMutation()
-            } catch {
-                restoreLifecycleFocusAfterMutation()
-                context.showError(
-                    "Could not permanently delete this note. \(error.localizedDescription)"
-                )
-            }
+    private var locationErrorTitle: LocalizedStringResource {
+        switch canonicalPickerLocation {
+        case .workspace: "Could Not Open Library"
+        case .setAside: "Could Not Open Set Aside"
+        case .trash: "Could Not Open Trash"
+        case .unclassified: "Could Not Open Unclassified"
         }
     }
 
-    private var libraryFilterHelp: String {
-        activeLibraryMenuFilterCount == 0
+    private var emptyLocationTitle: String {
+        switch controller.library.locationScope {
+        case .workspace: "No Notes"
+        case .setAside: "No Set Aside Notes"
+        case .trash: "No Notes in Trash"
+        case .unclassified: "No Unclassified Notes"
+        }
+    }
+
+    private var emptyLocationDetail: String {
+        switch controller.library.locationScope {
+        case .workspace: "Create a Note or choose another Scope."
+        case .setAside: "Notes you set aside appear here until you put them back."
+        case .trash: "Notes moved to Trash appear here until you put them back or delete them permanently."
+        case .unclassified: "Imported Markdown appears here until it is classified."
+        }
+    }
+
+    // MARK: Lifecycle focus
+
+    private var visibleNotePaths: [String] {
+        sourceSections.flatMap(\.rows).compactMap { $0.note?.relativePath }
+    }
+
+    private func prepareRemovalFocus(_ note: WindowDocumentLocation) {
+        let paths = visibleNotePaths
+        guard let index = paths.firstIndex(of: note.relativePath) else {
+            pendingRemovalFocusPlan = SidebarRemovalFocusPlan(
+                originPath: note.relativePath,
+                successorPath: nil
+            )
+            return
+        }
+        let successor: String? = if paths.indices.contains(index + 1) {
+            paths[index + 1]
+        } else if index > paths.startIndex {
+            paths[index - 1]
+        } else {
+            nil
+        }
+        pendingRemovalFocusPlan = SidebarRemovalFocusPlan(
+            originPath: note.relativePath,
+            successorPath: successor
+        )
+    }
+
+    private func restoreFocusAfterRemoval() {
+        guard let plan = pendingRemovalFocusPlan else { return }
+        let remaining = Set(context.allNotes.map(\.relativePath))
+        guard !remaining.contains(plan.originPath) else { return }
+        pendingRemovalFocusPlan = nil
+        if let successor = plan.successorPath, remaining.contains(successor) {
+            requestedRowFocusPath = successor
+        } else if let first = visibleNotePaths.first {
+            requestedRowFocusPath = first
+        } else {
+            locationPickerFocused = true
+        }
+    }
+
+    private func preparePutBack(_ note: WindowDocumentLocation) {
+        prepareRemovalFocus(note)
+        guard let snapshot = note.workspaceSnapshot,
+              let noteID = snapshot.stableIdentity.resolvedID else {
+            context.showError("This note cannot be put back until its identity is resolved.")
+            requestedRowFocusPath = note.relativePath
+            return
+        }
+        let item = LifecycleLocationItem(
+            note: note,
+            revision: snapshot.fingerprint,
+            noteID: noteID
+        )
+        context.prepareLifecycle(item)
+        preparedLifecyclePath = note.relativePath
+        controller.requestLifecycle(.putBack(note.relativePath))
+    }
+
+    // MARK: Library filters
+
+    private var libraryFilterMenu: some View {
+        Menu {
+            Section("Integrity") {
+                Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
+                    .disabled(!context.catalogIsAvailable)
+                Toggle("Explicit Connections", isOn: filterBinding(\.hasExplicitConnections))
+                    .disabled(!context.graphIsAvailable)
+                Toggle("Malformed Metadata", isOn: filterBinding(\.hasMalformedMetadata))
+                    .disabled(!context.catalogIsAvailable)
+            }
+            Section("Metadata") {
+                Menu("Tag") {
+                    Button("All Tags") { updateFilters { $0.tag = nil } }
+                    Divider()
+                    ForEach(context.tags, id: \.self) { tag in
+                        filterChoice(tag, selected: controller.library.filters.tag == tag) {
+                            updateFilters { $0.tag = tag }
+                        }
+                    }
+                }
+                .disabled(context.tags.isEmpty)
+                if !context.authors.isEmpty {
+                    Menu("Author") {
+                        Button("Any Author") { updateFilters { $0.author = nil } }
+                        Divider()
+                        ForEach(context.authors, id: \.self) { author in
+                            filterChoice(author, selected: controller.library.filters.author == author) {
+                                updateFilters { $0.author = author }
+                            }
+                        }
+                    }
+                }
+                if !context.years.isEmpty {
+                    Menu("Year") {
+                        Button("Any Year") { updateFilters { $0.year = nil } }
+                        Divider()
+                        ForEach(context.years, id: \.self) { year in
+                            let title = year.formatted(.number.grouping(.never))
+                            filterChoice(title, selected: controller.library.filters.year == year) {
+                                updateFilters { $0.year = year }
+                            }
+                        }
+                    }
+                }
+            }
+            if !context.propertyKeys.isEmpty {
+                Section("Properties") {
+                    Button("Any Property") {
+                        updateFilters {
+                            $0.propertyKey = nil
+                            $0.propertyValue = nil
+                        }
+                    }
+                    ForEach(context.propertyKeys, id: \.self) { key in
+                        Menu(propertyLabel(key)) {
+                            ForEach(context.propertyValues[key] ?? [], id: \.self) { value in
+                                filterChoice(
+                                    value,
+                                    selected: controller.library.filters.propertyKey == key
+                                        && controller.library.filters.propertyValue == value
+                                ) {
+                                    updateFilters {
+                                        $0.propertyKey = key
+                                        $0.propertyValue = value
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Section("Order") {
+                Menu("Sort") {
+                    ForEach(NoteSortOrder.allCases) { order in
+                        filterChoice(order.title, selected: controller.library.sortOrder == order) {
+                            context.selectSortOrder(order)
+                        }
+                        .disabled(order == .debateImportanceDescending && !hasScopedDebateImportanceFilter)
+                    }
+                }
+            }
+            Section("Actions") {
+                if activeLibraryMenuFilterCount > 0 {
+                    Button("Clear All Filters", action: clearAllFilters)
+                }
+                Button("Classify Imported Notes…") {
+                    showsUnclassified = true
+                    context.selectLocationScope(.unclassified)
+                }
+            }
+        } label: {
+            Label(
+                "Filter",
+                systemImage: activeLibraryMenuFilterCount == 0
+                    ? "line.3.horizontal.decrease"
+                    : "line.3.horizontal.decrease.circle.fill"
+            )
+            .labelStyle(.iconOnly)
+            .frame(
+                width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                height: ScholiumMetrics.Accessibility.preferredCustomTarget
+            )
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(activeLibraryMenuFilterCount == 0
             ? "Filter and sort Library notes"
-            : "\(activeLibraryMenuFilterCount) Library filters active"
+            : "\(activeLibraryMenuFilterCount) Library filters active")
+        .accessibilityLabel("Library filters")
+        .accessibilityValue(activeLibraryMenuFilterCount == 0
+            ? "No filters active"
+            : "\(activeLibraryMenuFilterCount) filters active")
+        .accessibilityIdentifier("scholium.libraryFilters")
     }
 
-    private var libraryFilterAccessibilityValue: String {
-        let filters = activeLibraryMenuFilterCount == 0
-            ? "No filters active"
-            : "\(activeLibraryMenuFilterCount) filters active"
-        return "\(filters), sorted by \(controller.library.sortOrder.title)"
+    @ViewBuilder
+    private func filterChoice(
+        _ title: String,
+        selected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            if selected { Label(title, systemImage: "checkmark") }
+            else { Text(title) }
+        }
+    }
+
+    private var activeLibraryMenuFilterCount: Int {
+        let filters = controller.library.filters
+        return [
+            filters.needsAttention,
+            filters.hasExplicitConnections,
+            filters.hasMalformedMetadata,
+            filters.tag != nil,
+            filters.author != nil,
+            filters.year != nil,
+            filters.propertyKey != nil && filters.propertyValue != nil,
+        ].count(where: { $0 })
+    }
+
+    private var hasScopedDebateImportanceFilter: Bool {
+        controller.library.filters.propertyKey == "debate_importance_scope"
+            && controller.library.filters.propertyValue?
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func filterBinding<Value>(
+        _ keyPath: WritableKeyPath<DiscoveryFilterState, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { controller.library.filters[keyPath: keyPath] },
+            set: { value in updateFilters { $0[keyPath: keyPath] = value } }
+        )
+    }
+
+    private func updateFilters(_ update: (inout DiscoveryFilterState) -> Void) {
+        var filters = controller.library.filters
+        update(&filters)
+        controller.replaceFilters(filters)
+    }
+
+    private func clearAllFilters() {
+        controller.replaceFilters(DiscoveryFilterState())
+        if controller.library.sortOrder == .debateImportanceDescending {
+            context.selectSortOrder(.modifiedNewest)
+        }
     }
 
     private func propertyLabel(_ key: String) -> String {
@@ -1039,300 +833,21 @@ struct SidebarView: View {
     }
 }
 
-struct SidebarLifecycleDestinationView: View {
-    @Environment(\.locale) private var locale
-    let scope: NoteLocationScope
-    let items: [LifecycleLocationItem]
-    let isLoading: Bool
-    let errorMessage: String?
-    let requestedPutBackFocusPath: String?
-    let onFocusRequestHandled: () -> Void
-    let onRequestPutBackFocus: (String) -> Void
-    let onReload: () async -> Void
-    let onOpen: (LifecycleLocationItem) -> Void
-    let onPutBack: (LifecycleLocationItem) -> Void
-    let onReveal: (String) -> Void
-    let onMoveToTrash: (LifecycleLocationItem) -> Void
-    let onDeletePermanently: (LifecycleLocationItem) -> Void
+// MARK: - Sticky root measurement
 
-    @State private var pendingPermanentDeletion: LifecycleLocationItem?
+private struct SidebarRootHeaderOffsetPreference: PreferenceKey {
+    static let coordinateSpace = "scholium.librarySourceScroll"
+    static let defaultValue: [String: CGFloat] = [:]
 
-    var body: some View {
-        Group {
-            if isLoading {
-                loadingState
-            } else if let errorMessage {
-                errorState(errorMessage)
-            } else if items.isEmpty {
-                emptyState
-            } else {
-                lifecycleList
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(ScholiumColorRole.surfaceBackground.color)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(destinationIdentifier)
-        .confirmationDialog(
-            "Delete Permanently?",
-            isPresented: Binding(
-                get: { pendingPermanentDeletion != nil },
-                set: { isPresented in
-                    guard !isPresented, let item = pendingPermanentDeletion else { return }
-                    pendingPermanentDeletion = nil
-                    onRequestPutBackFocus(item.note.relativePath)
-                }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let item = pendingPermanentDeletion {
-                Button("Delete Permanently", role: .destructive) {
-                    deletePermanently(item)
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                guard let item = pendingPermanentDeletion else { return }
-                pendingPermanentDeletion = nil
-                onRequestPutBackFocus(item.note.relativePath)
-            }
-        } message: {
-            Text("This cannot be undone. Scholium removes the note, every active Discussion containing it, its Critique association, stable identity, and every Triptych checkpoint containing it. Finished Research Records retain a tombstone for the deleted note.")
-        }
-    }
-
-    private var lifecycleList: some View {
-        ScrollView(.vertical) {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(items) { item in
-                    SidebarLifecycleDestinationRow(
-                        scope: scope,
-                        item: item,
-                        requestedPutBackFocusPath: requestedPutBackFocusPath,
-                        onFocusRequestHandled: onFocusRequestHandled,
-                        onOpen: { onOpen(item) },
-                        onPutBack: { onPutBack(item) },
-                        onReveal: { onReveal(item.note.relativePath) },
-                        onMoveToTrash: { onMoveToTrash(item) },
-                        onRequestPermanentDeletion: {
-                            pendingPermanentDeletion = item
-                        }
-                    )
-                    if item.id != items.last?.id {
-                        ScholiumStructuralRule()
-                    }
-                }
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        }
-        .scrollContentBackground(.hidden)
-    }
-
-    private var loadingState: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel(openingLabel)
-            Spacer(minLength: 0)
-        }
-        .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-    }
-
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Image(systemName: scope == .trash ? "trash" : "archivebox")
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .accessibilityHidden(true)
-            Text(emptyTitle)
-                .font(ScholiumInterfaceTypography.rowTitle)
-            Text(emptyDetail)
-                .font(ScholiumInterfaceTypography.metadata)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-    }
-
-    private func errorState(_ message: String) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Label(errorTitle, systemImage: "exclamationmark.triangle")
-                .font(ScholiumInterfaceTypography.rowTitle)
-            Text(message)
-                .font(ScholiumInterfaceTypography.metadata)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Retry") { Task { await onReload() } }
-                .accessibilityIdentifier("scholium.lifecycleRetry")
-        }
-        .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-    }
-
-    private var destinationIdentifier: String {
-        scope == .trash
-            ? "scholium.lifecycleDestination.trash"
-            : "scholium.lifecycleDestination.setAside"
-    }
-
-    private var openingLabel: String {
-        scope == .trash
-            ? ScholiumL10n.string("Opening Trash…", locale: locale)
-            : ScholiumL10n.string("Opening Set Aside…", locale: locale)
-    }
-
-    private var emptyTitle: String {
-        scope == .trash
-            ? ScholiumL10n.string("No Notes in Trash", locale: locale)
-            : ScholiumL10n.string("No Set Aside Notes", locale: locale)
-    }
-
-    private var emptyDetail: String {
-        scope == .trash
-            ? ScholiumL10n.string(
-                "Notes moved to Trash appear here until you put them back or delete them permanently.",
-                locale: locale
-            )
-            : ScholiumL10n.string(
-                "Notes you set aside appear here until you put them back.",
-                locale: locale
-            )
-    }
-
-    private var errorTitle: String {
-        scope == .trash
-            ? ScholiumL10n.string("Could Not Open Trash", locale: locale)
-            : ScholiumL10n.string("Could Not Open Set Aside", locale: locale)
-    }
-
-    private func deletePermanently(_ item: LifecycleLocationItem) {
-        pendingPermanentDeletion = nil
-        onDeletePermanently(item)
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
-private struct SidebarLifecycleDestinationRow: View {
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @Environment(\.locale) private var locale
-    let scope: NoteLocationScope
-    let item: LifecycleLocationItem
-    let requestedPutBackFocusPath: String?
-    let onFocusRequestHandled: () -> Void
-    let onOpen: () -> Void
-    let onPutBack: () -> Void
-    let onReveal: () -> Void
-    let onMoveToTrash: () -> Void
-    let onRequestPermanentDeletion: () -> Void
-
-    @State private var isHovering = false
-    @FocusState private var putBackHasKeyboardFocus: Bool
-    @AccessibilityFocusState private var putBackHasAccessibilityFocus: Bool
-
-    var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button(action: onOpen) {
-                Text(verbatim: noteTitle)
-                    .font(ScholiumInterfaceTypography.libraryHierarchy)
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity,
-                        alignment: .leading
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(noteTitle)
-            .accessibilityHint(openHint)
-
-            Button(action: onPutBack) {
-                Image(systemName: "arrow.uturn.backward")
-                    .frame(
-                        width: ScholiumMetrics.Accessibility.minimumCustomTarget,
-                        height: ScholiumMetrics.Accessibility.minimumCustomTarget
-                    )
-                    .contentShape(Rectangle())
-                    .opacity(putBackGlyphIsVisible ? 1 : 0)
-                    .animation(
-                        ScholiumMotion.disclosure(reduceMotion: reduceMotion),
-                        value: putBackGlyphIsVisible
-                    )
-            }
-            .buttonStyle(.plain)
-            .focused($putBackHasKeyboardFocus)
-            .accessibilityFocused($putBackHasAccessibilityFocus)
-            .help("Put Back…")
-            .accessibilityLabel(putBackAccessibilityLabel)
-            .accessibilityIdentifier(putBackIdentifier)
-        }
-        .frame(height: ScholiumMetrics.Library.hierarchyRowHeight)
-        .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .contextMenu {
-            Button(action: onPutBack) {
-                Label("Put Back…", systemImage: "arrow.uturn.backward")
-            }
-            if scope == .setAside {
-                Button(action: onMoveToTrash) {
-                    Label("Move to Trash…", systemImage: "trash")
-                }
-            } else {
-                Button(role: .destructive, action: onRequestPermanentDeletion) {
-                    Label("Delete Permanently…", systemImage: "trash.slash")
-                }
-            }
-            Divider()
-            Button(action: onReveal) {
-                Label("Reveal in Finder", systemImage: "folder")
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .onChange(of: requestedPutBackFocusPath) { _, requestedPath in
-            guard requestedPath == item.note.relativePath else { return }
-            putBackHasKeyboardFocus = true
-            onFocusRequestHandled()
-        }
-    }
-
-    private var noteTitle: String {
-        item.note.title ?? item.note.displayName
-    }
-
-    private var putBackGlyphIsVisible: Bool {
-        isHovering || putBackHasKeyboardFocus || putBackHasAccessibilityFocus
-    }
-
-    private var openHint: String {
-        let destination = scope == .trash
-            ? ScholiumL10n.string("Trash", locale: locale)
-            : ScholiumL10n.string("Set Aside", locale: locale)
-        return String(
-            format: ScholiumL10n.string("Open note in %@", locale: locale),
-            locale: locale,
-            arguments: [destination]
-        )
-    }
-
-    private var putBackAccessibilityLabel: String {
-        String(
-            format: ScholiumL10n.string("Put Back %@", locale: locale),
-            locale: locale,
-            arguments: [noteTitle]
-        )
-    }
-
-    private var putBackIdentifier: String {
-        let encodedPath = item.note.relativePath.addingPercentEncoding(
-            withAllowedCharacters: .alphanumerics
-        ) ?? item.note.relativePath
-        return "scholium.lifecyclePutBack.\(encodedPath)"
-    }
-}
+// MARK: - Unclassified classification
 
 private struct UnclassifiedClassificationSheet: View {
     @Environment(\.dismiss) private var dismiss
-
     let locationScope: NoteLocationScope
     let notes: [WindowDocumentLocation]
     let classify: (String, WorkspaceVaultSlot, String) async throws -> Void
@@ -1342,20 +857,16 @@ private struct UnclassifiedClassificationSheet: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Unclassified")
-                        .font(.title2.weight(.semibold))
+                    Text("Unclassified").font(.title2.weight(.semibold))
                     Text("Choose a Triptych destination for each imported note.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             .padding(18)
-
             Divider()
-
             if locationScope != .unclassified {
                 ProgressView("Opening Unclassified…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1366,24 +877,16 @@ private struct UnclassifiedClassificationSheet: View {
                     description: Text("Imported Markdown appears here until you choose Analyses, Topics, or Works.")
                 )
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(notes) { note in
-                            UnclassifiedClassificationRow(
-                                note: note,
-                                classify: classify,
-                                showError: showError
-                            )
-                            if note.id != notes.last?.id {
-                                Divider().padding(.leading, 16)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
+                List(notes) { note in
+                    UnclassifiedClassificationRow(
+                        note: note,
+                        classify: classify,
+                        showError: showError
+                    )
                 }
             }
         }
-        .frame(minWidth: 0, idealWidth: 600, minHeight: 300, idealHeight: 460)
+        .frame(minWidth: 520, idealWidth: 600, minHeight: 300, idealHeight: 460)
         .scholiumSurface(.denseEvidence)
         .accessibilityIdentifier("scholium.unclassifiedPanel")
     }
@@ -1393,70 +896,40 @@ private struct UnclassifiedClassificationRow: View {
     let note: WindowDocumentLocation
     let classify: (String, WorkspaceVaultSlot, String) async throws -> Void
     let showError: (String) -> Void
-
     @State private var destinationSlot: WorkspaceVaultSlot = .paperAnalysis
     @State private var isClassifying = false
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                noteSummary
-                destinationPicker
-                classifyButton
+        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(note.title ?? note.displayName)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(note.relativePath)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                noteSummary
-                HStack(spacing: 10) {
-                    destinationPicker
-                    classifyButton
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("Destination", selection: $destinationSlot) {
+                ForEach(WorkspaceVaultSlot.allCases) { slot in
+                    Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
                 }
             }
+            .labelsHidden()
+            Button("Classify") { performClassification() }
+                .disabled(isClassifying)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var noteSummary: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(note.title ?? note.displayName)
-                .font(.callout.weight(.medium))
-                .lineLimit(1)
-            Text(note.relativePath)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var destinationPicker: some View {
-        Picker("Destination", selection: $destinationSlot) {
-            ForEach(WorkspaceVaultSlot.allCases) { slot in
-                Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
-            }
-        }
-        .labelsHidden()
-        .frame(width: 130)
-    }
-
-    private var classifyButton: some View {
-        Button("Classify") { performClassification() }
-            .buttonStyle(.borderedProminent)
-            .disabled(isClassifying)
+        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
     }
 
     private func performClassification() {
         isClassifying = true
         Task {
             do {
-                try await classify(
-                    note.relativePath,
-                    destinationSlot,
-                    note.relativePath
-                )
+                try await classify(note.relativePath, destinationSlot, note.relativePath)
             } catch {
                 isClassifying = false
                 showError("Could not classify this note. \(error.localizedDescription)")
@@ -1465,26 +938,72 @@ private struct UnclassifiedClassificationRow: View {
     }
 }
 
-// MARK: - Tree Node Model
+// MARK: - Tree model
 
 struct TreeNode: Identifiable {
-    let id: String       // full path
-    let name: String     // display name
+    let id: String
+    let name: String
     let isFolder: Bool
-    let note: WindowDocumentLocation?      // nil for folders
-    let folderRelativePath: String?         // nil for notes or ambiguous legacy roots
+    let note: WindowDocumentLocation?
+    let folderRelativePath: String?
     let children: [TreeNode]
     let depth: Int
 
     var folderIDs: Set<String> {
         guard isFolder else { return [] }
-        return children.reduce(into: Set([id])) { result, child in
-            result.formUnion(child.folderIDs)
-        }
+        return children.reduce(into: Set([id])) { $0.formUnion($1.folderIDs) }
     }
 }
 
-/// Build a folder tree from flat note list
+/// One top-level Source List block. Real root Folders become sticky Section
+/// headers; root Notes remain ordinary rows. Descendants are already flattened
+/// in visual, keyboard, and accessibility order.
+struct SidebarSourceSection: Identifiable {
+    let id: String
+    let header: TreeNode?
+    let rows: [TreeNode]
+}
+
+func sidebarSourceSections(
+    from roots: [TreeNode],
+    expandedFolders: Set<String>
+) -> [SidebarSourceSection] {
+    roots.map { root in
+        guard root.isFolder else {
+            return SidebarSourceSection(
+                id: "row:\(root.id)",
+                header: nil,
+                rows: [root]
+            )
+        }
+        return SidebarSourceSection(
+            id: "section:\(root.id)",
+            header: root,
+            rows: expandedFolders.contains(root.id)
+                ? flattenedVisibleDescendants(
+                    of: root,
+                    expandedFolders: expandedFolders
+                )
+                : []
+        )
+    }
+}
+
+private func flattenedVisibleDescendants(
+    of folder: TreeNode,
+    expandedFolders: Set<String>
+) -> [TreeNode] {
+    folder.children.flatMap { child in
+        guard child.isFolder, expandedFolders.contains(child.id) else {
+            return [child]
+        }
+        return [child] + flattenedVisibleDescendants(
+            of: child,
+            expandedFolders: expandedFolders
+        )
+    }
+}
+
 func buildTree(
     from notes: [WindowDocumentLocation],
     folderRelativePaths folders: [String] = [],
@@ -1492,7 +1011,7 @@ func buildTree(
 ) -> [TreeNode] {
     var roots: [TreeNode] = []
     var folderMap: [String: [WindowDocumentLocation]] = [:]
-    var folderRelativePaths: [String: String] = [:]
+    var actualFolderPaths: [String: String] = [:]
     var ambiguousFolderPaths: Set<String> = []
 
     func registerFolder(actualPath: String) {
@@ -1504,103 +1023,82 @@ func buildTree(
         let hiddenPrefixCount = actualParts.count - visibleParts.count
         for count in 1...visibleParts.count {
             let visibleAncestor = visibleParts.prefix(count).joined(separator: "/")
-            let actualAncestor = actualParts
-                .prefix(hiddenPrefixCount + count)
-                .joined(separator: "/")
-            if folderMap[visibleAncestor] == nil {
-                folderMap[visibleAncestor] = []
-            }
-            if let existing = folderRelativePaths[visibleAncestor],
-               existing != actualAncestor {
+            let actualAncestor = actualParts.prefix(hiddenPrefixCount + count).joined(separator: "/")
+            folderMap[visibleAncestor, default: []] = folderMap[visibleAncestor, default: []]
+            if let existing = actualFolderPaths[visibleAncestor], existing != actualAncestor {
                 ambiguousFolderPaths.insert(visibleAncestor)
             } else {
-                folderRelativePaths[visibleAncestor] = actualAncestor
+                actualFolderPaths[visibleAncestor] = actualAncestor
             }
         }
     }
 
-    for folder in folders {
-        registerFolder(actualPath: folder)
-    }
-
+    folders.forEach { registerFolder(actualPath: $0) }
     for note in notes {
-        // Strip KB root prefix (e.g., "papers/", "topics/", "output/")
-        let stripped = stripKBRoot(note.relativePath)
-        let parts = stripped.split(separator: "/").map(String.init)
-        if parts.count == 0 || (parts.count == 1 && parts[0].isEmpty) {
-            roots.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, folderRelativePath: nil, children: [], depth: 0))
-        } else if parts.count == 1 {
-            roots.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, folderRelativePath: nil, children: [], depth: 0))
+        let parts = stripKBRoot(note.relativePath).split(separator: "/").map(String.init)
+        if parts.count <= 1 {
+            roots.append(TreeNode(
+                id: note.relativePath,
+                name: note.displayName,
+                isFolder: false,
+                note: note,
+                folderRelativePath: nil,
+                children: [],
+                depth: 0
+            ))
         } else {
             let folderPath = parts.dropLast().joined(separator: "/")
             folderMap[folderPath, default: []].append(note)
-            registerFolder(
-                actualPath: note.relativePath
-                    .split(separator: "/")
-                    .dropLast()
-                    .joined(separator: "/")
-            )
+            registerFolder(actualPath: note.relativePath.split(separator: "/").dropLast().joined(separator: "/"))
         }
     }
 
-    // Build folder nodes
     func buildNode(path: String, depth: Int) -> TreeNode {
-        let name = path.split(separator: "/").last.map(String.init) ?? path
-        var children: [TreeNode] = []
-
-        // Add files directly in this folder
-        if let files = folderMap[path] {
-            for note in files {
-                children.append(TreeNode(id: note.relativePath, name: note.displayName, isFolder: false, note: note, folderRelativePath: nil, children: [], depth: depth + 1))
-            }
+        var children = (folderMap[path] ?? []).map {
+            TreeNode(
+                id: $0.relativePath,
+                name: $0.displayName,
+                isFolder: false,
+                note: $0,
+                folderRelativePath: nil,
+                children: [],
+                depth: depth + 1
+            )
         }
-
-        // Add subfolders
         let prefix = path + "/"
-        let subfolders = Set(folderMap.keys.filter { $0.hasPrefix(prefix) && $0 != path }.map { $0.split(separator: "/").prefix(depth + 2).joined(separator: "/") })
-        for sub in subfolders.sorted() {
-            children.append(buildNode(path: sub, depth: depth + 1))
+        let subfolders = Set(folderMap.keys.compactMap { candidate -> String? in
+            guard candidate.hasPrefix(prefix), candidate != path else { return nil }
+            return candidate.split(separator: "/").prefix(depth + 2).joined(separator: "/")
+        })
+        children.append(contentsOf: subfolders.sorted().map { buildNode(path: $0, depth: depth + 1) })
+        children.sort { lhs, rhs in
+            if lhs.isFolder != rhs.isFolder { return lhs.isFolder }
+            if let left = lhs.note, let right = rhs.note { return notesAreOrdered(left, right) }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
-
         return TreeNode(
             id: path,
-            name: name,
+            name: path.split(separator: "/").last.map(String.init) ?? path,
             isFolder: true,
             note: nil,
-            folderRelativePath: ambiguousFolderPaths.contains(path)
-                ? nil
-                : folderRelativePaths[path],
-            children: children.sorted { a, b in
-                if a.isFolder != b.isFolder { return a.isFolder }
-                if let left = a.note, let right = b.note { return notesAreOrdered(left, right) }
-                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-            },
+            folderRelativePath: ambiguousFolderPaths.contains(path) ? nil : actualFolderPaths[path],
+            children: children,
             depth: depth
         )
     }
 
-    // Collect top-level folders
-    let topFolders = Set(folderMap.keys.map { $0.split(separator: "/").first.map(String.init) ?? $0 })
-    for folder in topFolders.sorted() {
-        if !roots.contains(where: { $0.id == folder }) {
-            roots.append(buildNode(path: folder, depth: 0))
-        }
-    }
-
-    return roots.sorted { a, b in
-        if a.isFolder != b.isFolder { return a.isFolder }
-        if let left = a.note, let right = b.note { return notesAreOrdered(left, right) }
-        return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+    let topFolders = Set(folderMap.keys.compactMap { $0.split(separator: "/").first.map(String.init) })
+    roots.append(contentsOf: topFolders.sorted().map { buildNode(path: $0, depth: 0) })
+    return roots.sorted { lhs, rhs in
+        if lhs.isFolder != rhs.isFolder { return lhs.isFolder }
+        if let left = lhs.note, let right = rhs.note { return notesAreOrdered(left, right) }
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
     }
 }
 
-/// Strip the KB root prefix from a path (e.g., "papers/ethics/note.md" → "ethics/note.md")
 func stripKBRoot(_ path: String) -> String {
-    let kbPrefixes = ["papers/", "topics/", "output/"]
-    for prefix in kbPrefixes {
-        if path.hasPrefix(prefix) {
-            return String(path.dropFirst(prefix.count))
-        }
+    for prefix in ["papers/", "topics/", "output/"] where path.hasPrefix(prefix) {
+        return String(path.dropFirst(prefix.count))
     }
     return path
 }
@@ -1609,14 +1107,12 @@ func stripKBRootFolder(_ path: String) -> String {
     for root in ["papers", "topics", "output"] {
         if path == root { return "" }
         let prefix = root + "/"
-        if path.hasPrefix(prefix) {
-            return String(path.dropFirst(prefix.count))
-        }
+        if path.hasPrefix(prefix) { return String(path.dropFirst(prefix.count)) }
     }
     return path
 }
 
-// MARK: - Tree Node View
+// MARK: - Tree rows
 
 private struct SidebarTreeContext {
     let currentVaultID: UUID?
@@ -1638,14 +1134,21 @@ private struct SidebarTreeContext {
     let showError: (String) -> Void
 }
 
-private struct TreeNodeView: View {
+private struct SidebarTreeNodeRow: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     let node: TreeNode
     @Binding var expandedFolders: Set<String>
     let selectedDocumentPath: String?
     let context: SidebarTreeContext
+    let isPinnedRoot: Bool
+    let requestedFocusPath: String?
+    let onFocusRequestHandled: () -> Void
     let onSelect: (WindowDocumentLocation) -> Void
+    let onPutBack: (WindowDocumentLocation) -> Void
+    let onWillRemove: (WindowDocumentLocation) -> Void
+    let onMutationFailed: (WindowDocumentLocation) -> Void
 
+    @FocusState private var rowFocused: Bool
     @State private var pendingDestructiveAction: DestructiveAction?
     @State private var pendingFolderTrashPath: String?
 
@@ -1659,400 +1162,273 @@ private struct TreeNodeView: View {
     private var isExpanded: Bool { expandedFolders.contains(node.id) }
 
     var body: some View {
-        if node.isFolder {
-            // Folder row
-            VStack(spacing: 0) {
-                Button(action: toggleFolder) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                            .frame(width: 12)
-                        Image(systemName: isExpanded ? "folder.fill" : "folder")
-                            .font(.callout)
-                            .foregroundStyle(.tertiary)
-                        Text(node.name)
-                            .font(ScholiumInterfaceTypography.libraryHierarchy)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Spacer()
-                    }
-                    .padding(.leading, CGFloat(node.depth * 12 + 8))
-                    .padding(.trailing, 8)
-                    .frame(height: ScholiumMetrics.Library.hierarchyRowHeight)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                .accessibilityIdentifier("scholium.folderRow.\(node.id)")
-                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-                .contextMenu { folderContextMenu }
-                .accessibilityActions { folderAccessibilityActions }
-                .confirmationDialog(
-                    "Move Folder to Trash?",
-                    isPresented: Binding(
-                        get: { pendingFolderTrashPath != nil },
-                        set: { if !$0 { pendingFolderTrashPath = nil } }
-                    ),
-                    titleVisibility: .visible
-                ) {
-                    Button("Move Folder and Notes to Trash", role: .destructive) {
-                        guard let path = pendingFolderTrashPath else { return }
-                        pendingFolderTrashPath = nil
-                        performFolderTrash(path)
-                    }
-                    Button("Cancel", role: .cancel) {
-                        pendingFolderTrashPath = nil
-                    }
-                } message: {
-                    Text(
-                        "Move ‘\(node.name)’ and all of its contents to Scholium Trash? Notes keep their identities; other files move with the folder unchanged."
-                    )
-                }
+        Group {
+            if node.isFolder { folderRow }
+            else if let note = node.note { noteRow(note) }
+        }
+        .onChange(of: requestedFocusPath) { _, path in
+            guard path == node.note?.relativePath else { return }
+            rowFocused = true
+            onFocusRequestHandled()
+        }
+    }
 
-                // Children
-                if isExpanded {
-                    ForEach(node.children) { child in
-                        TreeNodeView(
-                            node: child,
-                            expandedFolders: $expandedFolders,
-                            selectedDocumentPath: selectedDocumentPath,
-                            context: context,
-                            onSelect: onSelect
-                        )
-                            .transition(
-                                reduceMotion
-                                    ? .identity
-                                    : .opacity.combined(with: .move(edge: .top))
-                            )
+    private var folderRow: some View {
+        Button(action: toggleFolder) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Group {
+                    if node.children.isEmpty {
+                        Image(systemName: "folder")
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     }
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
+                .accessibilityHidden(true)
+
+                Text(node.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, rowLeadingInset)
+            .padding(.trailing, ScholiumMetrics.Library.rowHorizontalInset)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: ScholiumMetrics.Library.hierarchyRowHeight,
+                alignment: .leading
+            )
+            .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                if isPinnedRoot {
+                    Rectangle()
+                        .fill(ScholiumColorRole.separator.color)
+                        .frame(height: 1)
+                        .accessibilityHidden(true)
                 }
             }
-        } else if let note = node.note {
-            // Note file row
-            Button {
-                onSelect(note)
-            } label: {
+        }
+        .buttonStyle(SidebarNavigationButtonStyle(isSelected: false))
+        .help(node.name)
+        .accessibilityLabel(node.name)
+        .accessibilityValue(node.children.isEmpty ? "Empty folder" : isExpanded ? "Expanded" : "Collapsed")
+        .accessibilityIdentifier("scholium.folderRow.\(node.id)")
+        .contextMenu { folderContextMenu }
+        .accessibilityActions { folderAccessibilityActions }
+        .confirmationDialog(
+            "Move Folder to Trash?",
+            isPresented: Binding(
+                get: { pendingFolderTrashPath != nil },
+                set: { if !$0 { pendingFolderTrashPath = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Move Folder and Notes to Trash", role: .destructive) {
+                guard let path = pendingFolderTrashPath else { return }
+                pendingFolderTrashPath = nil
+                performFolderTrash(path)
+            }
+            Button("Cancel", role: .cancel) { pendingFolderTrashPath = nil }
+        }
+    }
+
+    private func noteRow(_ note: WindowDocumentLocation) -> some View {
+        HStack(spacing: 0) {
+            Button { onSelect(note) } label: {
                 NoteCardRow(
                     note: note,
                     isActive: selectedDocumentPath == note.relativePath,
-                    vaultRole: context.currentVaultRole
+                    vaultRole: context.currentVaultRole,
+                    depth: node.depth
                 )
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+                .contentShape(Rectangle())
             }
+            .buttonStyle(SidebarNavigationButtonStyle(
+                isSelected: selectedDocumentPath == note.relativePath
+            ))
+            .focused($rowFocused)
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .accessibilityLabel(note.title ?? note.displayName)
+            .accessibilityIdentifier("scholium.noteRow.\(note.relativePath)")
+
+            if context.locationScope == .setAside || context.locationScope == .trash {
+                Button { onPutBack(note) } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .frame(
+                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                        )
+                        .contentShape(Rectangle())
+                }
                 .buttonStyle(.plain)
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel(note.title ?? note.displayName)
-                .accessibilityIdentifier("scholium.noteRow.\(note.relativePath)")
-                .accessibilityValue(
-                    CritiquePlacement.isManagedCritiquePath(note.relativePath)
-                        ? "Agent-authored Critique"
-                        : context.currentVaultRole.allowsCritique
-                        ? "Work"
-                        : "Note"
-                )
-                .contextMenu {
-                    Button {
-                        context.openNote(note, .newTab)
-                    } label: {
-                        Label("Open in New Tab", systemImage: "plus.square")
-                    }
-                    Divider()
-                    if context.locationScope == .workspace {
-                        let lifecycleTarget = NoteLifecycleTarget(note)
-                        if !CritiquePlacement.isManagedCritiquePath(note.relativePath) {
-                            Button {
-                                guard let lifecycleTarget else { return }
-                                context.requestLifecycle(.duplicate(lifecycleTarget))
-                            } label: {
-                                Label("Duplicate…", systemImage: "plus.square.on.square")
-                            }
-                            .disabled(!hasResolvedIdentity(note) || lifecycleTarget == nil)
-                        }
-                        Button {
-                            guard let lifecycleTarget else { return }
-                            context.requestLifecycle(.move(lifecycleTarget))
-                        } label: {
-                            Label("Move or Rename…", systemImage: "folder")
-                        }
-                        .disabled(!hasResolvedIdentity(note) || lifecycleTarget == nil)
-                        Divider()
-                        Button {
-                            pendingDestructiveAction = .setAside
-                        } label: {
-                            Label("Set Aside…", systemImage: "archivebox")
-                        }
-                        .disabled(!hasResolvedIdentity(note))
-                        Button {
-                            pendingDestructiveAction = .trash
-                        } label: {
-                            Label("Move to Trash…", systemImage: "trash")
-                        }
-                        .disabled(!hasResolvedIdentity(note))
-                    } else if context.locationScope == .unclassified {
-                        Button {
-                            context.requestLifecycle(.classify(note.relativePath))
-                        } label: {
-                            Label("Classify…", systemImage: "tray.and.arrow.down")
-                        }
-                    } else {
-                        Button {
-                            context.requestLifecycle(.putBack(note.relativePath))
-                        } label: {
-                            Label("Put Back…", systemImage: "arrow.uturn.backward")
-                        }
-                        .disabled(!hasResolvedIdentity(note))
-                        if context.locationScope == .setAside {
-                            Button {
-                                pendingDestructiveAction = .trash
-                            } label: {
-                                Label("Move to Trash…", systemImage: "trash")
-                            }
-                            .disabled(!hasResolvedIdentity(note))
-                        } else {
-                            Button(role: .destructive) {
-                                pendingDestructiveAction = .delete
-                            } label: {
-                                Label("Delete Permanently…", systemImage: "trash.slash")
-                            }
-                            .disabled(!hasResolvedIdentity(note))
-                        }
-                    }
-                    Divider()
-                    Button {
-                        context.copyRelativePath(note.relativePath)
-                    } label: {
-                        Label("Copy Relative Path", systemImage: "doc.on.doc")
-                    }
-                    Button {
-                        context.revealNote(note.relativePath)
-                    } label: {
-                        Label("Reveal in Finder", systemImage: "folder")
-                    }
-                }
-                .accessibilityActions {
-                    Button("Open in New Tab") {
-                        context.openNote(note, .newTab)
-                    }
-                    Button("Copy Relative Path") {
-                        context.copyRelativePath(note.relativePath)
-                    }
-                    Button("Reveal in Finder") {
-                        context.revealNote(note.relativePath)
-                    }
-                }
-                .padding(.leading, CGFloat(node.depth * 12))
-                .confirmationDialog(
-                    pendingDestructiveAction?.rawValue ?? "Confirm",
-                    isPresented: Binding(
-                        get: { pendingDestructiveAction != nil },
-                        set: { if !$0 { pendingDestructiveAction = nil } }
-                    ),
-                    titleVisibility: .visible
-                ) {
-                    if let action = pendingDestructiveAction {
-                        Button(action.rawValue, role: action == .setAside ? nil : .destructive) {
-                            perform(action, note: note)
-                        }
-                    }
-                    Button("Cancel", role: .cancel) { pendingDestructiveAction = nil }
-                } message: {
-                    Text(destructiveMessage(for: pendingDestructiveAction, note: note))
-                }
+                .help("Put Back…")
+                .accessibilityLabel("Put Back \(note.title ?? note.displayName)")
+                .accessibilityIdentifier("scholium.lifecyclePutBack.\(encodedPath(note.relativePath))")
+            }
         }
+        .frame(minHeight: ScholiumMetrics.Library.hierarchyRowHeight)
+        .contextMenu { noteContextMenu(note) }
+        .accessibilityActions { noteAccessibilityActions(note) }
+        .confirmationDialog(
+            pendingDestructiveAction?.rawValue ?? "Confirm",
+            isPresented: Binding(
+                get: { pendingDestructiveAction != nil },
+                set: { if !$0 { pendingDestructiveAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let action = pendingDestructiveAction {
+                Button(action.rawValue, role: action == .setAside ? nil : .destructive) {
+                    perform(action, note: note)
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDestructiveAction = nil }
+        } message: {
+            Text(destructiveMessage(for: pendingDestructiveAction, note: note))
+        }
+    }
+
+    private var rowLeadingInset: CGFloat {
+        ScholiumMetrics.Library.rowHorizontalInset
+            + CGFloat(node.depth) * ScholiumMetrics.Library.hierarchyIndent
     }
 
     private func toggleFolder() {
         let update = {
-            if isExpanded {
-                expandedFolders.remove(node.id)
-            } else {
-                expandedFolders.insert(node.id)
-            }
+            if isExpanded { expandedFolders.remove(node.id) }
+            else { expandedFolders.insert(node.id) }
         }
-        if reduceMotion {
-            update()
-        } else {
-            withAnimation(.easeInOut(duration: 0.16), update)
-        }
+        if reduceMotion { update() }
+        else { withAnimation(.easeInOut(duration: 0.16), update) }
     }
 
     @ViewBuilder
     private var folderContextMenu: some View {
-        if let folderRelativePath = node.folderRelativePath {
-            if canMutateFolder(folderRelativePath) {
-                Button {
-                    context.createUntitledNote(folderRelativePath)
-                } label: {
-                    Label("New Note", systemImage: "doc.badge.plus")
-                }
-                Button {
-                    context.createUntitledFolder(folderRelativePath)
-                } label: {
-                    Label("New Folder", systemImage: "folder.badge.plus")
-                }
-                if let target = folderTarget(folderRelativePath) {
-                    Button {
-                        context.requestFolderLifecycle(.rename(target))
-                    } label: {
-                        Label("Rename Folder…", systemImage: "pencil")
-                    }
-                    Button {
-                        context.requestFolderLifecycle(.move(target))
-                    } label: {
-                        Label("Move Folder…", systemImage: "folder")
-                    }
+        if let path = node.folderRelativePath {
+            if canMutateFolder(path) {
+                Button("New Note") { context.createUntitledNote(path) }
+                Button("New Folder") { context.createUntitledFolder(path) }
+                if let target = folderTarget(path) {
+                    Button("Rename Folder…") { context.requestFolderLifecycle(.rename(target)) }
+                    Button("Move Folder…") { context.requestFolderLifecycle(.move(target)) }
                 }
             }
-
             if !node.children.isEmpty {
-                Button(action: toggleEntireSubtree) {
-                    Label(
-                        subtreeIsExpanded ? "Collapse All" : "Expand All",
-                        systemImage: subtreeIsExpanded
-                            ? "rectangle.compress.vertical"
-                            : "rectangle.expand.vertical"
-                    )
-                }
+                Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
             }
-
-            if canMutateFolder(folderRelativePath) || !node.children.isEmpty {
+            Divider()
+            Button("Copy Relative Path") { context.copyRelativePath(path) }
+            Button("Reveal in Finder") { context.revealNote(path) }
+            if canMutateFolder(path) {
                 Divider()
-            }
-
-            Button {
-                context.copyRelativePath(folderRelativePath)
-            } label: {
-                Label("Copy Relative Path", systemImage: "doc.on.doc")
-            }
-            Button {
-                context.revealNote(folderRelativePath)
-            } label: {
-                Label("Reveal in Finder", systemImage: "folder")
-            }
-            if canMutateFolder(folderRelativePath) {
-                Divider()
-                Button(role: .destructive) {
-                    pendingFolderTrashPath = folderRelativePath
-                } label: {
-                    Label("Move Folder and Notes to Trash…", systemImage: "trash")
+                Button("Move Folder and Notes to Trash…", role: .destructive) {
+                    pendingFolderTrashPath = path
                 }
             }
         } else if !node.children.isEmpty {
-            Button(action: toggleEntireSubtree) {
-                Label(
-                    subtreeIsExpanded ? "Collapse All" : "Expand All",
-                    systemImage: subtreeIsExpanded
-                        ? "rectangle.compress.vertical"
-                        : "rectangle.expand.vertical"
-                )
-            }
+            Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
         }
     }
 
     @ViewBuilder
     private var folderAccessibilityActions: some View {
-        if let folderRelativePath = node.folderRelativePath {
-            if canMutateFolder(folderRelativePath) {
-                Button("New Note") {
-                    context.createUntitledNote(folderRelativePath)
+        if let path = node.folderRelativePath {
+            if canMutateFolder(path) {
+                Button("New Note") { context.createUntitledNote(path) }
+                Button("New Folder") { context.createUntitledFolder(path) }
+                if let target = folderTarget(path) {
+                    Button("Rename Folder") { context.requestFolderLifecycle(.rename(target)) }
+                    Button("Move Folder") { context.requestFolderLifecycle(.move(target)) }
                 }
-                Button("New Folder") {
-                    context.createUntitledFolder(folderRelativePath)
-                }
-                if let target = folderTarget(folderRelativePath) {
-                    Button("Rename Folder") {
-                        context.requestFolderLifecycle(.rename(target))
-                    }
-                    Button("Move Folder") {
-                        context.requestFolderLifecycle(.move(target))
-                    }
-                }
-                Button("Move Folder and Notes to Trash") {
-                    pendingFolderTrashPath = folderRelativePath
-                }
+                Button("Move Folder and Notes to Trash") { pendingFolderTrashPath = path }
             }
-            Button("Copy Relative Path") {
-                context.copyRelativePath(folderRelativePath)
-            }
-            Button("Reveal in Finder") {
-                context.revealNote(folderRelativePath)
-            }
+            Button("Copy Relative Path") { context.copyRelativePath(path) }
+            Button("Reveal in Finder") { context.revealNote(path) }
         }
         if !node.children.isEmpty {
-            Button(subtreeIsExpanded ? "Collapse All" : "Expand All") {
-                toggleEntireSubtree()
-            }
+            Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
         }
     }
 
-    private var subtreeFolderIDs: Set<String> {
-        Set([node.id]).union(node.children.reduce(into: Set<String>()) { result, child in
-            guard child.isFolder else { return }
-            result.formUnion(child.folderIDs)
-        })
+    @ViewBuilder
+    private func noteContextMenu(_ note: WindowDocumentLocation) -> some View {
+        Button("Open in New Tab") { context.openNote(note, .newTab) }
+        Divider()
+        if context.locationScope == .workspace {
+            let target = NoteLifecycleTarget(note)
+            if !CritiquePlacement.isManagedCritiquePath(note.relativePath) {
+                Button("Duplicate…") {
+                    guard let target else { return }
+                    context.requestLifecycle(.duplicate(target))
+                }
+                .disabled(!hasResolvedIdentity(note) || target == nil)
+            }
+            Button("Move or Rename…") {
+                guard let target else { return }
+                context.requestLifecycle(.move(target))
+            }
+            .disabled(!hasResolvedIdentity(note) || target == nil)
+            Divider()
+            Button("Set Aside…") { pendingDestructiveAction = .setAside }
+                .disabled(!hasResolvedIdentity(note))
+            Button("Move to Trash…") { pendingDestructiveAction = .trash }
+                .disabled(!hasResolvedIdentity(note))
+        } else if context.locationScope == .unclassified {
+            Button("Classify…") { context.requestLifecycle(.classify(note.relativePath)) }
+        } else {
+            Button("Put Back…") { onPutBack(note) }
+            if context.locationScope == .setAside {
+                Button("Move to Trash…") { pendingDestructiveAction = .trash }
+            } else {
+                Button("Delete Permanently…", role: .destructive) {
+                    pendingDestructiveAction = .delete
+                }
+            }
+        }
+        Divider()
+        Button("Copy Relative Path") { context.copyRelativePath(note.relativePath) }
+        Button("Reveal in Finder") { context.revealNote(note.relativePath) }
     }
 
-    private var subtreeIsExpanded: Bool {
-        subtreeFolderIDs.isSubset(of: expandedFolders)
+    @ViewBuilder
+    private func noteAccessibilityActions(_ note: WindowDocumentLocation) -> some View {
+        Button("Open in New Tab") { context.openNote(note, .newTab) }
+        if context.locationScope == .setAside || context.locationScope == .trash {
+            Button("Put Back") { onPutBack(note) }
+        }
+        Button("Copy Relative Path") { context.copyRelativePath(note.relativePath) }
+        Button("Reveal in Finder") { context.revealNote(note.relativePath) }
     }
+
+    private var subtreeFolderIDs: Set<String> { node.folderIDs }
+    private var subtreeIsExpanded: Bool { subtreeFolderIDs.isSubset(of: expandedFolders) }
 
     private func toggleEntireSubtree() {
-        let update = {
-            if subtreeIsExpanded {
-                expandedFolders.subtract(subtreeFolderIDs)
-            } else {
-                expandedFolders.formUnion(subtreeFolderIDs)
-            }
-        }
-        if reduceMotion {
-            update()
-        } else {
-            withAnimation(.easeInOut(duration: 0.16), update)
-        }
+        if subtreeIsExpanded { expandedFolders.subtract(subtreeFolderIDs) }
+        else { expandedFolders.formUnion(subtreeFolderIDs) }
     }
 
-    private func canCreateNote(in folderRelativePath: String) -> Bool {
-        guard context.canCreateNote else { return false }
-        let candidate = "\(folderRelativePath)/Untitled.md"
+    private func canMutateFolder(_ path: String) -> Bool {
+        guard context.locationScope == .workspace, context.canCreateNote else { return false }
+        let candidate = "\(path)/Untitled.md"
         return !context.currentVaultRole.allowsCritique
             || !CritiquePlacement.isManagedCritiquePath(candidate)
     }
 
-    private func canMutateFolder(_ folderRelativePath: String) -> Bool {
-        canCreateNote(in: folderRelativePath)
-    }
-
-    private func folderTarget(_ relativePath: String) -> FolderLifecycleTarget? {
+    private func folderTarget(_ path: String) -> FolderLifecycleTarget? {
         guard let vaultID = context.currentVaultID else { return nil }
-        return FolderLifecycleTarget(vaultID: vaultID, relativePath: relativePath)
+        return FolderLifecycleTarget(vaultID: vaultID, relativePath: path)
     }
 
-    private func performFolderTrash(_ relativePath: String) {
+    private func performFolderTrash(_ path: String) {
         Task {
-            do {
-                try await context.moveFolderToTrash(relativePath)
-            } catch {
-                context.showError(
-                    String(
-                        localized: "Could not move this folder to Trash. \(error.localizedDescription)",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-                )
-            }
-        }
-    }
-
-    private func destructiveMessage(for action: DestructiveAction?, note: WindowDocumentLocation) -> String {
-        switch action {
-        case .setAside: "Move ‘\(note.title ?? note.displayName)’ out of the active Workspace?"
-        case .trash: "Move ‘\(note.title ?? note.displayName)’ to Trash?"
-        case .delete: "Permanently delete ‘\(note.title ?? note.displayName)’? This removes the note, every active Discussion containing it, its Critique association, stable identity, and every Triptych checkpoint containing it. Finished Research Records retain a tombstone for the deleted note. This cannot be undone."
-        case nil: ""
+            do { try await context.moveFolderToTrash(path) }
+            catch { context.showError("Could not move this folder to Trash. \(error.localizedDescription)") }
         }
     }
 
@@ -2061,8 +1437,22 @@ private struct TreeNodeView: View {
             || context.resolvedIdentityPaths.contains(note.relativePath)
     }
 
+    private func destructiveMessage(
+        for action: DestructiveAction?,
+        note: WindowDocumentLocation
+    ) -> String {
+        let title = note.title ?? note.displayName
+        return switch action {
+        case .setAside: "Move ‘\(title)’ out of the active Workspace?"
+        case .trash: "Move ‘\(title)’ to Trash?"
+        case .delete: "Permanently delete ‘\(title)’? This cannot be undone."
+        case nil: ""
+        }
+    }
+
     private func perform(_ action: DestructiveAction, note: WindowDocumentLocation) {
         pendingDestructiveAction = nil
+        onWillRemove(note)
         Task {
             do {
                 switch action {
@@ -2071,50 +1461,70 @@ private struct TreeNodeView: View {
                 case .delete: try await context.deletePermanently(note.relativePath)
                 }
             } catch {
-                context.showError(
-                    "Could not \(action.rawValue.lowercased()): \(error.localizedDescription)"
-                )
+                onMutationFailed(note)
+                context.showError("Could not \(action.rawValue.lowercased()): \(error.localizedDescription)")
             }
         }
     }
+
+    private func encodedPath(_ path: String) -> String {
+        path.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? path
+    }
 }
 
-// MARK: - Note Card Row
+private struct SidebarNavigationButtonStyle: ButtonStyle {
+    @Environment(\.controlActiveState) private var controlActiveState
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                if isSelected {
+                    ScholiumColorRole.raisedSurfaceBackground.color
+                        .opacity(controlActiveState == .inactive ? 0.56 : 0.82)
+                } else if configuration.isPressed {
+                    ScholiumColorRole.raisedSurfaceBackground.color.opacity(0.36)
+                }
+            }
+            .overlay(alignment: .leading) {
+                if isSelected {
+                    Rectangle()
+                        .fill(ScholiumColorRole.accent.color)
+                        .frame(width: ScholiumMetrics.Library.selectionBoundaryWidth)
+                        .accessibilityHidden(true)
+                }
+            }
+    }
+}
 
 struct NoteCardRow: View {
     let note: WindowDocumentLocation
     let isActive: Bool
     let vaultRole: VaultRole
+    var depth: Int = 0
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: "doc.text")
+                .font(.caption)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
+                .accessibilityHidden(true)
             Text(note.title ?? note.displayName)
-                .font(ScholiumInterfaceTypography.libraryNoteTitle)
-                .fontWeight(isActive ? .semibold : .regular)
+                .font(.system(size: 12, weight: .regular))
                 .lineLimit(1)
-                .truncationMode(.tail)
-                .foregroundStyle(isActive ? Color.primary : Color.secondary)
-
+                .truncationMode(.middle)
+                .foregroundStyle(ScholiumColorRole.primaryText.color)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .frame(height: ScholiumMetrics.Library.hierarchyRowHeight)
-        .background(
-            isActive ? ScholiumColorRole.raisedSurfaceBackground.color : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        .padding(.leading, ScholiumMetrics.Library.rowHorizontalInset
+            + CGFloat(depth) * ScholiumMetrics.Library.hierarchyIndent)
+        .padding(.trailing, ScholiumMetrics.Library.rowHorizontalInset)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ScholiumMetrics.Library.hierarchyRowHeight,
+            alignment: .leading
         )
-        .overlay(alignment: .leading) {
-            if isActive {
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(ScholiumColorRole.accent.color)
-                    .frame(width: 3)
-                    .padding(.vertical, 5)
-                    .accessibilityHidden(true)
-            }
-        }
-        .focusEffectDisabled()
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .help(note.title ?? note.displayName)
     }
-
 }

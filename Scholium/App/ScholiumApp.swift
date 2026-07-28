@@ -76,6 +76,7 @@ struct ScholiumApp: App {
     @NSApplicationDelegateAdaptor(ScholiumApplicationDelegate.self) private var applicationDelegate
     @FocusedObject private var focusedWindowModel: WindowModel?
     @StateObject private var applicationBootstrap = ApplicationBootstrapController()
+    @StateObject private var attentionWindowSession = AttentionWindowSession()
 
     init() {
         // Document tabs live inside the central split item. Native window
@@ -118,7 +119,8 @@ struct ScholiumApp: App {
                     ScholiumWindowRoot(
                         workspaceStore: workspaceStore,
                         route: route.wrappedValue,
-                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
+                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry,
+                        attentionWindowSession: attentionWindowSession
                     )
                 }
             },
@@ -138,6 +140,15 @@ struct ScholiumApp: App {
         )
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands { ScholiumCommands(storageReady: applicationBootstrap.isReady) }
+
+        Window("Attention", id: "scholium-attention") {
+            AttentionWindowRoot(session: attentionWindowSession)
+        }
+        .defaultSize(width: 420, height: 560)
+        .windowResizability(.contentMinSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
 
         UtilityWindow("Research Record", id: "scholium-research-record") {
             ScholiumResearchRecordUtilityRoot(appState: focusedWindowModel)
@@ -457,6 +468,7 @@ private struct ScholiumWindowRoot: View {
     @Environment(\.dismissWindow) private var dismissWindow
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    private let attentionWindowSession: AttentionWindowSession
     @StateObject private var appState: WindowModel
     @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
     @State private var destinationBootstrapWindowID: UUID?
@@ -464,10 +476,12 @@ private struct ScholiumWindowRoot: View {
     init(
         workspaceStore: WorkspaceStore,
         route: TriptychWindowRoute,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
+        attentionWindowSession: AttentionWindowSession
     ) {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
+        self.attentionWindowSession = attentionWindowSession
         let model = WindowModel(
             workspaceStore: workspaceStore,
             nativeWindowID: route.windowID,
@@ -546,15 +560,28 @@ private struct ScholiumWindowRoot: View {
                 }
             }
             .onAppear {
-                windowCoordinator.activate {
-                    openWindow(id: "scholium-research-record")
-                }
+                windowCoordinator.activate(
+                    showResearchRecord: {
+                        openWindow(id: "scholium-research-record")
+                    },
+                    showAttention: { noteScope in
+                        attentionWindowSession.present(
+                            workspace: appState,
+                            noteScope: noteScope,
+                            activateWorkspace: {
+                                windowCoordinator.activateWorkspaceWindow()
+                            }
+                        )
+                        openWindow(id: "scholium-attention")
+                    }
+                )
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onChange(of: reduceMotion) { _, reduceMotion in
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onDisappear {
+                attentionWindowSession.detach(appState)
                 windowCoordinator.detach()
                 appState.persistWindowSessionNow()
             }
@@ -963,6 +990,12 @@ private struct ScholiumCommands: Commands {
                 Button("Dark") { appState?.colorScheme = .dark }
             }
         }
+        CommandGroup(after: .windowArrangement) {
+            Button("Attention") {
+                workspaceWindowActions?.showAttention(nil)
+            }
+            .disabled(workspaceWindowActions == nil)
+        }
         CommandMenu("Research") {
             if let appState, researchActionActions != nil {
                 ForEach(appState.researchController.actions.availability) { action in
@@ -1237,12 +1270,12 @@ final class WindowModel: ObservableObject {
     ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
+    let attentionPresentationState = AttentionPresentationState()
 
     // Window-level projections for Library leaves. DiscoveryController remains
     // the sole mutable owner.
     var noteLocationScope: NoteLocationScope {
-        get { discoveryController.library.locationScope }
-        set { discoveryController.selectLocationScope(newValue) }
+        discoveryController.library.locationScope
     }
 
     var isNeedsAttentionFilter: Bool {
@@ -1780,7 +1813,6 @@ final class WindowModel: ObservableObject {
     private var didRestoreWindowSession = false
     private var closeAttemptSequence: UInt64 = 0
     private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
-    private var libraryBrowseGeneration: UInt64 = 0
     private var identityRefreshGeneration: UInt64 = 0
     private var savedSearchMutationTail: Task<Void, Never>?
     private var advancedSearchExecutionTask: Task<Void, Never>?
@@ -2771,7 +2803,6 @@ final class WindowModel: ObservableObject {
     func requestResynthesis(_ item: AttentionQueueItem) {
         guard item.kind == .materialChangedSinceUse,
               let context = item.materialChangedSinceUse else { return }
-        discoveryController.showAttentionQueue(false)
         enqueueDocumentTransition({ [weak self] in
             guard let self else { return }
             try self.activateWorkspaceReference(
@@ -2875,17 +2906,28 @@ final class WindowModel: ObservableObject {
     }
 
     func requestWorkspaceVault(_ slot: WorkspaceVaultSlot) {
-        libraryBrowseGeneration &+= 1
-        guard discoveryController.library.workspaceSlot != slot else { return }
-        let generation = libraryBrowseGeneration
+        let currentLocation = discoveryController.library.locationScope == .unclassified
+            ? NoteLocationScope.workspace
+            : discoveryController.library.locationScope
+        guard discoveryController.library.workspaceSlot != slot
+                || discoveryController.library.locationError != nil
+                || discoveryController.locationRequestIsActive else { return }
+        let request = discoveryController.beginLocationRequest(
+            workspaceSlot: slot,
+            location: currentLocation
+        )
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.browseWorkspaceVault(slot, generation: generation)
+                try await self.browseWorkspaceVault(slot, request: request)
             } catch is CancellationError {
                 return
             } catch {
-                guard generation == self.libraryBrowseGeneration else { return }
+                guard self.discoveryController.isCurrentLocationRequest(request) else { return }
+                self.discoveryController.failLocationRequest(
+                    error.localizedDescription,
+                    for: request
+                )
                 self.showToast(
                     "Could not browse \(slot.displayName): \(error.localizedDescription)",
                     kind: .error
@@ -2895,10 +2937,7 @@ final class WindowModel: ObservableObject {
     }
 
     func requestNoteLocationScope(_ scope: NoteLocationScope) {
-        enqueueDocumentTransition { [weak self] in
-            guard let self else { return }
-            await self.selectNoteLocationScope(scope)
-        }
+        Task { [weak self] in await self?.selectNoteLocationScope(scope) }
     }
 
     func requestLifecycleNote(_ path: String, in scope: NoteLocationScope) {
@@ -3173,6 +3212,9 @@ final class WindowModel: ObservableObject {
 
     var filteredNotes: [WindowDocumentLocation] {
         var result = notes
+        guard noteLocationScope == .workspace else {
+            return result.sorted(by: notesAreOrdered)
+        }
         if isNeedsAttentionFilter, let paths = currentAttentionPaths {
             result = result.filter { paths.contains($0.relativePath) }
         }
@@ -4070,12 +4112,16 @@ final class WindowModel: ObservableObject {
 
     private func browseWorkspaceVault(
         _ slot: WorkspaceVaultSlot,
-        generation: UInt64
+        request: DiscoveryLocationRequest
     ) async throws {
         guard let vault = workspaceAssignment?.vault(for: slot) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await browseRegisteredVault(vault, slot: slot, generation: generation)
+        try await browseRegisteredVault(
+            vault,
+            slot: slot,
+            locationRequest: request
+        )
     }
 
     /// Reprojects Library onto another Triptych vault without touching the
@@ -4085,7 +4131,7 @@ final class WindowModel: ObservableObject {
     private func browseRegisteredVault(
         _ registered: RegisteredVault,
         slot: WorkspaceVaultSlot? = nil,
-        generation: UInt64? = nil
+        locationRequest: DiscoveryLocationRequest? = nil
     ) async throws {
         guard let vaultSnapshot = try await documentController.workspaceSnapshot(
             vaultID: registered.id
@@ -4098,23 +4144,46 @@ final class WindowModel: ObservableObject {
                 isDirectory: true
             )
         )
-        if let generation, generation != libraryBrowseGeneration {
+        if let locationRequest,
+           !discoveryController.isCurrentLocationRequest(locationRequest) {
             throw CancellationError()
         }
 
         let resolvedSlot = slot ?? workspaceSlot(for: registered)
-        if let resolvedSlot {
-            discoveryController.selectWorkspaceSlot(resolvedSlot)
+        let targetLocation = locationRequest?.location
+            ?? discoveryController.library.locationScope
+        let lifecycle: WorkspaceDocumentLifecycle = switch targetLocation {
+        case .workspace, .unclassified: .active
+        case .setAside: .setAside
+        case .trash: .trash
         }
-        noteLocationScope = .workspace
+        let targetNotes = vaultSnapshot.documents
+            .filter { $0.lifecycle == lifecycle }
+            .map(WindowDocumentLocation.workspace)
+            .sorted(by: notesAreOrdered)
+
+        if let locationRequest,
+           !discoveryController.isCurrentLocationRequest(locationRequest) {
+            throw CancellationError()
+        }
         currentRegisteredVault = registered
         currentVaultRole = registered.role
         vaultConfig = targetConfig
         workspaceVaultSnapshotsByID[registered.id] = vaultSnapshot
-        notes = vaultSnapshot.documents
-            .filter { $0.lifecycle == .active }
-            .map(WindowDocumentLocation.workspace)
-            .sorted(by: notesAreOrdered)
+        if let locationRequest {
+            guard discoveryController.receiveLocationResult(for: locationRequest) else {
+                throw CancellationError()
+            }
+        } else if let resolvedSlot {
+            discoveryController.synchronizeLibrarySelection(
+                workspaceSlot: resolvedSlot,
+                location: targetLocation
+            )
+        }
+        if let resolvedSlot {
+            attentionPresentationState.selectWorkspaceSlot(resolvedSlot)
+        }
+        notes = targetNotes
         refreshDocumentRevisions()
         await refreshIdentityState()
         relationshipGraph = workspaceCatalog?.graph
@@ -4200,7 +4269,11 @@ final class WindowModel: ObservableObject {
                 uniqueKeysWithValues: workspaceVaultSnapshots.map { ($0.vault.id, $0) }
             )
             if let slot = workspaceSlot(for: registered) {
-                discoveryController.selectWorkspaceSlot(slot)
+                discoveryController.synchronizeLibrarySelection(
+                    workspaceSlot: slot,
+                    location: .workspace
+                )
+                attentionPresentationState.selectWorkspaceSlot(slot)
             }
             currentRegisteredVault = registered
             currentVaultRole = registered.role
@@ -4413,34 +4486,66 @@ final class WindowModel: ObservableObject {
     }
 
     func selectNoteLocationScope(_ scope: NoteLocationScope) async {
-        guard scope != noteLocationScope else { return }
+        guard let workspaceSlot = currentWorkspaceSlot else { return }
+        guard scope != noteLocationScope
+                || discoveryController.library.locationError != nil else { return }
+        let request = discoveryController.beginLocationRequest(
+            workspaceSlot: workspaceSlot,
+            location: scope
+        )
         do {
-            let loaded = try await loadNotes(for: scope)
-            noteLocationScope = scope
-            documentController.removeAll(retainingSessions: true)
-            documentController.resetPresentationState()
+            let loaded = try await loadNotes(
+                for: scope,
+                vaultID: currentRegisteredVault?.id
+            )
+            guard discoveryController.receiveLocationResult(for: request) else { return }
             notes = loaded.sorted(by: notesAreOrdered)
             refreshDocumentRevisions()
             await refreshIdentityState()
             await refreshWindowProjection()
         } catch {
+            discoveryController.failLocationRequest(
+                error.localizedDescription,
+                for: request
+            )
             showToast(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
         }
     }
 
     func refreshNoteLocationScope() async throws {
-        notes = try await loadNotes(for: noteLocationScope).sorted(by: notesAreOrdered)
+        guard let workspaceSlot = currentWorkspaceSlot else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        let request = discoveryController.beginLocationRequest(
+            workspaceSlot: workspaceSlot,
+            location: noteLocationScope
+        )
+        let loaded: [WindowDocumentLocation]
+        do {
+            loaded = try await loadNotes(
+                for: request.location,
+                vaultID: currentRegisteredVault?.id
+            )
+        } catch {
+            discoveryController.failLocationRequest(error.localizedDescription, for: request)
+            throw error
+        }
+        guard discoveryController.receiveLocationResult(for: request) else { return }
+        notes = loaded.sorted(by: notesAreOrdered)
         refreshDocumentRevisions()
         await refreshIdentityState()
         await refreshWindowProjection()
     }
 
-    private func loadNotes(for scope: NoteLocationScope) async throws -> [WindowDocumentLocation] {
+    private func loadNotes(
+        for scope: NoteLocationScope,
+        vaultID: UUID?
+    ) async throws -> [WindowDocumentLocation] {
         if scope == .unclassified {
             let unclassified = try await documentController.unclassifiedDocuments()
             return unclassified.map(WindowDocumentLocation.unclassified)
         }
-        guard let vaultID = currentRegisteredVault?.id,
+        guard let vaultID,
               let vault = try await documentController.workspaceSnapshot(vaultID: vaultID) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }

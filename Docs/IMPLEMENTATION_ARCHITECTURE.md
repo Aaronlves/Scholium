@@ -40,12 +40,13 @@ ApplicationBootstrapController (one app-owned storage gate)
 └── Ready (explicit validated Application Support URL)
     └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
-        └── SwiftUI WindowGroup (one Codable route per scene)
+        ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowWorkspaceController
             │   ├── WindowSessionPersistenceCoordinator
             │   ├── DocumentTransitionCoordinator
             │   ├── DiscoveryController
+            │   ├── AttentionPresentationState
             │   ├── DocumentTabController
             │   ├── DocumentController
             │   │   └── DocumentSessionStore
@@ -55,6 +56,8 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── WindowPresentationRouter
             │   └── typed WindowIntent routing
             └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
+        └── SwiftUI Attention Window (one application-wide nonrestored Scene)
+            └── AttentionWindowSession (exact active-Workspace bridge only)
 
 ScholiumApplicationDelegate
 └── ScholiumWindowLifecycleRegistry (injected route readiness and flushers)
@@ -242,10 +245,10 @@ availability. `WindowModel` mirrors native visibility for commands,
 restoration, and toolbar reconciliation but never reasserts it or stores width.
 
 The Inspector has exactly three current-note modes: Overview, Connect, and
-Actions. Overview projects a current-Note Attention summary through the
-Library-owned queue and role-aware About fields; the Attention summary is one
-button, while About keeps selectable values and routes editing through its
-heading button. Zotero has no Inspector projection. Connect projects direct and
+Actions. Overview presents a current-Note Attention summary whose one button
+routes to the shared Attention window, followed by role-aware About fields;
+About keeps selectable values and routes editing through its heading button.
+Zotero has no Inspector projection. Connect projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source
 anchor as a named secondary action without a trailing glyph. Actions resolves
@@ -855,10 +858,19 @@ document buffer, autosave, undo, conflict, or retained trash state. Its diff is
 disposable presentation over retained exact bytes, not a second writable source.
 Closing Research Record therefore cannot reveal or resize Research Inspector.
 
-The Library-owned Attention queue is an inline Library destination, not a sheet
-route. Research Inspector may project only the active note's compact Attention
-summary. Recommended Bibliography is likewise rendered at the fixed Library
-bottom; its current Analysis-locked Application preparation identity is
+Attention is one standard, nonrestored SwiftUI `Window` owned by the app Scene,
+not a sheet, popover, inline Library destination, utility panel, or always-on-top
+surface. The most recently focused Workspace supplies an exact coordinator
+activation callback plus its current immutable queue projection. Per-Workspace
+`AttentionPresentationState` owns only filter, selected item, selected Scope,
+and optional current-Note subset; it owns neither Scene visibility nor derived
+items. Sidebar entry opens the selected Scope, Inspector may add the active Note,
+and a Sidebar Scope change clears that Note subset. Inspect calls the exact
+Workspace coordinator, activates that window, and routes the note through its
+`WindowModel`; no global window search, notification, or model registry
+participates. Standard Scene/window chrome owns titlebar, close, resizing, and
+active state. Recommended Bibliography remains rendered at the fixed Library
+bottom; its current Analysis-locked Application preparation identity remains
 migration debt recorded in Implementation Status.
 
 Snapshot assembly derives Material Changed Since Use only from the latest
@@ -1658,11 +1670,11 @@ contract in `Scholium/UI/Foundation` through `ScholiumColorVariables`,
 `ScholiumMetrics`, `ScholiumMotion`, and `ScholiumInterfaceTypography`.
 
 Accent and Paper are the only configurable inputs. One resolver derives every
-appearance role, including the shared Library/Apparatus surface, for native and
-generated WebKit CSS. Matching `editor.css` fallbacks preserve deterministic
-first paint. Functional/status anchors stay private. Tests enforce the input
-boundary, mappings, parity, contrast, and relationship variants; no static
-appearance palette or JSON mirror exists.
+appearance role, including distinct but closely related Navigation and
+Apparatus surfaces, for native and generated WebKit CSS. Matching `editor.css`
+fallbacks preserve deterministic first paint. Functional/status anchors stay
+private. Tests enforce the input boundary, mappings, parity, contrast, and
+relationship variants; no static appearance palette or JSON mirror exists.
 
 `ScholiumGrid` is the single native authority for the 4pt rhythm, bounded 2pt
 optical exception, semantic spacing, and component anchors. `ScholiumMetrics`

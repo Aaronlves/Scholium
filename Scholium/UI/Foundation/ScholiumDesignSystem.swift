@@ -33,6 +33,8 @@ struct ScholiumColorVariables: Equatable, Sendable {
 enum ScholiumColorRole: String, CaseIterable, Sendable {
     case documentBackground
     case surfaceBackground
+    case navigationSurfaceBackground
+    case apparatusSurfaceBackground
     case raisedSurfaceBackground
     case primaryText
     case secondaryText
@@ -120,6 +122,8 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
 struct ScholiumResolvedColorPalette: Equatable, Sendable {
     let documentBackground: UInt32
     let surfaceBackground: UInt32
+    let navigationSurfaceBackground: UInt32
+    let apparatusSurfaceBackground: UInt32
     let raisedSurfaceBackground: UInt32
     let primaryText: UInt32
     let secondaryText: UInt32
@@ -141,6 +145,8 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
         switch role {
         case .documentBackground: documentBackground
         case .surfaceBackground: surfaceBackground
+        case .navigationSurfaceBackground: navigationSurfaceBackground
+        case .apparatusSurfaceBackground: apparatusSurfaceBackground
         case .raisedSurfaceBackground: raisedSurfaceBackground
         case .primaryText: primaryText
         case .secondaryText: secondaryText
@@ -184,12 +190,31 @@ struct ScholiumColorResolver: Sendable {
             lightness: isDark ? 0.35 : 0.94,
             chromaLimit: paperChroma
         )
+        // Both peripheral planes remain Paper-derived. Navigation is the more
+        // recessive and neutral plane; Apparatus sits slightly closer to the
+        // Document without becoming a second palette or configurable input.
+        let navigationSurfaceBackground = Self.tone(
+            paperSource,
+            lightness: isDark ? 0.33 : 0.925,
+            chromaLimit: isDark ? 0.010 : 0.014
+        )
+        let apparatusSurfaceBackground = Self.tone(
+            paperSource,
+            lightness: isDark ? 0.365 : 0.95,
+            chromaLimit: isDark ? 0.016 : 0.022
+        )
         let raisedSurfaceBackground = Self.tone(
             paperSource,
             lightness: isDark ? 0.405 : 0.895,
             chromaLimit: paperChroma
         )
-        let backgrounds = [documentBackground, surfaceBackground, raisedSurfaceBackground]
+        let backgrounds = [
+            documentBackground,
+            surfaceBackground,
+            navigationSurfaceBackground,
+            apparatusSurfaceBackground,
+            raisedSurfaceBackground,
+        ]
 
         let primaryText = Self.contrastColor(
             paperSource,
@@ -267,6 +292,8 @@ struct ScholiumColorResolver: Sendable {
         return ScholiumResolvedColorPalette(
             documentBackground: documentBackground,
             surfaceBackground: surfaceBackground,
+            navigationSurfaceBackground: navigationSurfaceBackground,
+            apparatusSurfaceBackground: apparatusSurfaceBackground,
             raisedSurfaceBackground: raisedSurfaceBackground,
             primaryText: primaryText,
             secondaryText: secondaryText,
@@ -722,10 +749,10 @@ enum ScholiumGrid {
         static let minimumCustomTarget = foundationUnit * 5
         static let compactHierarchyRowHeight = foundationUnit * 6
         static let preferredCustomTarget = foundationUnit * 7
+        static let libraryHierarchyRowHeight = foundationUnit * 7
         static let documentTabStripHeight = foundationUnit * 10
         static let researchFunctionTargetHeight = foundationUnit * 11
         static let regionHeaderHeight = foundationUnit * 12
-        static let libraryFooterHeight = foundationUnit * 13
         static let iconTrackWidth = foundationUnit * 4
     }
 
@@ -800,9 +827,6 @@ enum ScholiumMetrics {
         /// identity and Apparatus mode row. Document identity and commands
         /// belong to the native toolbar and do not create a second row.
         static let regionHeaderHeight = ScholiumGrid.Dimension.regionHeaderHeight
-        /// Library-owned footer action height. It does not constrain Document
-        /// or align an unrelated bottom surface across split regions.
-        static let libraryFooterHeight = ScholiumGrid.Dimension.libraryFooterHeight
     }
 
     enum Library {
@@ -816,11 +840,17 @@ enum ScholiumMetrics {
         /// does not derive geometry from the traffic-light group, whose
         /// position and spacing remain owned by macOS.
         static let contentInset = ScholiumGrid.Spacing.regionContentInset
-        /// Fixed symbol track for ordinary top-level Library navigation rows.
-        static let navigationIconWidth = ScholiumGrid.Dimension.iconTrackWidth
-        /// A compact but still auditable custom row height shared by folders
-        /// and notes. It remains above Scholium's 20-point absolute minimum.
-        static let hierarchyRowHeight = ScholiumGrid.Dimension.compactHierarchyRowHeight
+        /// One semantic leading slot shared by disclosure, Folder, and Note
+        /// rows. No row may render a second icon beside this track.
+        static let leadingSlotWidth = ScholiumGrid.Dimension.iconTrackWidth
+        /// Folder and Note rows use the preferred macOS custom-control target.
+        /// The value is a minimum so enlarged interface text can grow.
+        static let hierarchyRowHeight = ScholiumGrid.Dimension.libraryHierarchyRowHeight
+        static let rowHorizontalInset = ScholiumGrid.Spacing.nestedContentInset
+        static let hierarchyIndent = ScholiumGrid.Dimension.iconTrackWidth
+        static let selectionBoundaryWidth = ScholiumGrid.Spacing.opticalAlignmentAdjustment
+        static let scopeIndicatorWidth: CGFloat = 18
+        static let scopeIndicatorHeight: CGFloat = 1
         static let scopeTopSpacing = ScholiumGrid.Spacing.sectionSeparation
         static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
     }
@@ -992,8 +1022,9 @@ enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
     var colorRole: ScholiumColorRole {
         switch self {
         case .document: .documentBackground
-        case .navigation, .apparatus, .floatingControl, .boundedPanel, .searchOverlay:
-            .surfaceBackground
+        case .navigation: .navigationSurfaceBackground
+        case .apparatus: .apparatusSurfaceBackground
+        case .floatingControl, .boundedPanel, .searchOverlay: .surfaceBackground
         case .denseEvidence: .documentBackground
         }
     }

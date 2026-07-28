@@ -1,3 +1,4 @@
+import ScholiumContracts
 import AppKit
 import notify
 import SwiftUI
@@ -331,6 +332,7 @@ struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let showResearchRecord: @MainActor () -> Void
+    let showAttention: @MainActor (VaultQualifiedNoteID?) -> Void
 }
 
 @MainActor
@@ -367,6 +369,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
     private var researchRecordPresenter: @MainActor () -> Void = {}
+    private var attentionPresenter: @MainActor (VaultQualifiedNoteID?) -> Void = { _ in }
     private weak var agentRequestPriorResponder: NSResponder?
     private var agentRequestWindowIsRegistered = false
     #if DEBUG
@@ -412,6 +415,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             },
             showResearchRecord: { [weak self] in
                 self?.researchRecordPresenter()
+            },
+            showAttention: { [weak self] noteScope in
+                self?.attentionPresenter(noteScope)
             }
         )
     }
@@ -420,9 +426,13 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         self.reduceMotion = reduceMotion
     }
 
-    func activate(showResearchRecord: @escaping @MainActor () -> Void) {
+    func activate(
+        showResearchRecord: @escaping @MainActor () -> Void,
+        showAttention: @escaping @MainActor (VaultQualifiedNoteID?) -> Void
+    ) {
         registerLifecycle()
         researchRecordPresenter = showResearchRecord
+        attentionPresenter = showAttention
     }
 
     func attach(to window: NSWindow) {
@@ -485,6 +495,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         unregisterAgentNoteChangeWindow()
         detachWindow()
         researchRecordPresenter = {}
+        attentionPresenter = { _ in }
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
             isRegistered = false
@@ -551,6 +562,15 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.attachedSheet?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Activates the exact workspace window owned by this coordinator. The
+    /// Attention auxiliary window uses this callback instead of searching the
+    /// global window list or broadcasting a notification.
+    func activateWorkspaceWindow() {
+        guard let window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
     func restoreAgentNoteChangeFocus() {

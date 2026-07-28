@@ -3,7 +3,7 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-28 (D-119)
+**Last target change:** 2026-07-28 (D-120)
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
@@ -1584,6 +1584,9 @@ Menus follow researcher tasks:
   vault root; Import; Duplicate; Move/Rename; Reveal; Checkpoint create/restore.
 - **Edit:** editing and **Edit Properties…**.
 - **View:** Search, document mode/text size, Sidebar, Research Inspector.
+- **Window:** standard window navigation plus **Attention**, which opens or
+  focuses the one nonrestored Attention auxiliary window for the most recently
+  focused Workspace.
 - **Research:** role-valid Actions and **Show Research Record**, never
   Attention or Checkpoints.
 - **Settings:** Triptychs, Property profiles, Research Guidance, Attention,
@@ -1621,12 +1624,37 @@ Menus follow researcher tasks:
   directories. Protected machine-managed folders and ambiguous legacy
   projections retain only safe nonmutating navigation.
 - The Library Location shows no total. ATTENTION follows Scope before the
-  LocationHeader, with the same 24pt content axis, a warning symbol, and
-  count. It expands/focuses an inline full-width queue, never a modal/Research
-  destination; Inspector may summarize only the current note. Attention is
-  not a Location: opening it suspends the active Location content without
-  changing the selected Location, while selecting a Location dismisses the
-  queue and presents that Location.
+  LocationHeader, with the same 24pt content axis, a warning symbol, and the
+  last trustworthy visible count for the selected Scope after machine-local
+  dismissals. It opens or focuses the one standard nonmodal Attention auxiliary
+  window and never becomes selected Library content. Inspector may open the
+  same window with a current-Note subset. Attention is not a Location: opening
+  it leaves the selected Location, source content, Document, and Sidebar
+  selection unchanged.
+- Attention is one application-wide, nonrestored SwiftUI `Window`, never a
+  sheet, popover, inline destination, custom panel, or always-on-top surface.
+  Its default size is **420 × 560pt** and its minimum usable size is **360 ×
+  320pt**; the standard titlebar owns close, resize, active, and inactive
+  behavior. It follows the most recently focused Workspace through an explicit
+  coordinator callback. Each Workspace retains session-only filter, selected
+  task, and optional current-Note scope. Sidebar entry uses the selected Scope;
+  Inspector entry adds the current Note; changing Sidebar Scope clears that
+  Note subset.
+- The Attention window groups **Identity & Metadata** (Change Attribution
+  Needed, Malformed Metadata, Unresolved Identity), **Structure & Connections**
+  (Possible Orphan, Broken Connection, Ambiguous Connection), and **Revision &
+  Reliance** (Changed Since Settled, Material Changed Since Use). Each row shows
+  the issue, resolved Note title, locator, and only real available actions.
+  Ordinary rows provide Inspect and timed Dismiss. Material Changed Since Use
+  retains Inspect, Resynthesize, and Leave Unchanged. Inspect activates the
+  exact owning Workspace without global window search or notification, opens
+  the Note, leaves Attention open, and keeps that task selected.
+- Loading retains the window structure; refreshing, stale, or failed refresh
+  retains the last trustworthy list when one exists and exposes status plus
+  Retry; failure without a prior result shows a complete error; an empty queue
+  shows a quiet completion state. When resolution, refresh, or dismissal removes
+  the selected item, focus moves next, previous, then the window filter/search
+  control. Count updates use the same Scope and dismissal ledger as the window.
 - The stable LocationHeader contains one title-style LocationPicker and only
   the actions applicable to the selected Location. Its current title always
   identifies **Library**, **Set Aside**, or **Trash**. Library shows Filter and
@@ -1768,7 +1796,7 @@ changing its mode.
 Overview presents only compact current-note projections, in this order:
 
 1. **Needs Attention:** current-note count and distinct actionable kinds form
-   one full-row native button that opens Library's Attention surface filtered
+   one full-row native button that opens the shared Attention window filtered
    to that exact Note. It has no nested **Show All** row. At zero it retains the
    heading and `0` but no reassurance sentence or decorative verdict.
 2. **About:** only non-empty role-specific fields in Appendix A. Scope and each
@@ -2245,6 +2273,12 @@ complete even when it exceeds two lines.
   next/previous/LocationPicker focus sequence defined in §18.3. Settings
   remains available through standard application routes, not as a Library
   destination.
+- Attention exposes its standard window title, filter, three group headings,
+  selected task, issue, resolved Note title, locator, state, and available
+  actions in one linear keyboard and VoiceOver order. Loading retains that
+  structure; refreshing, stale, and recoverable failure keep the last complete
+  rows operable while status and Retry remain named. When the selected task
+  disappears, focus follows the next/previous/filter sequence in §18.3.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
 - Keep accessibility labels and hints semantically complete but nonduplicative
@@ -2484,6 +2518,7 @@ only in Git history.
 | **D-113** | 8.2, 18.5, 22 | **D-114** | 18.2, 18.5, 19.2–19.6, 20, 22 |
 | **D-115** | 18.2, 18.5, 20, 22 | **D-116** | 18.5, 19.2–19.6, 20, 22 |
 | **D-118** | 1, 12–13, 18.5, 19.2–19.3, 20, 22 | **D-119** | 18.2–18.3, 19.1–19.4, 20, 22 |
+| **D-120** | 18.2–18.3, 19.1–19.4, 20, 22 |  |  |
 
 Clean-cutover inventory:
 
@@ -2747,6 +2782,23 @@ Clean-cutover inventory:
   migration. Current implementation divergence remains migration debt; human
   visual and assistive-technology acceptance remain distinct from previews
   and automation.
+- **D-120:** make Attention one standard, application-wide, nonrestored SwiftUI
+  auxiliary `Window` that follows the exact most recently focused Workspace.
+  The Sidebar entry only opens or focuses it and preserves Scope, Location,
+  source content, Document, and selection. Inspector may apply a current-Note
+  subset; Sidebar Scope changes clear that subset. Each Workspace owns only its
+  session filter and selected task, while Scene presentation alone owns window
+  visibility. Group the eight existing derived kinds into Identity & Metadata,
+  Structure & Connections, and Revision & Reliance; preserve their derivation,
+  dismissal ledger, material-revision actions, Markdown safety, and researcher
+  authority. Retain last trustworthy results during refresh, stale, and
+  recoverable failure, with explicit Retry and deterministic post-removal focus.
+  Use the exact Workspace coordinator to activate a Note and keep Attention
+  open; retain no inline queue, custom close button, sheet, popover, floating
+  panel, always-on-top behavior, global window search, notification route, or
+  compatibility branch. D-120 supersedes D-119 only where D-119 specifies an
+  inline Attention queue; every D-119 Scope, Location, Source List, lifecycle,
+  bibliography, surface, and clean-cutover rule remains in force.
 
 Unresolved work must not be described as complete:
 
