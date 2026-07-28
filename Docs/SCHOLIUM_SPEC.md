@@ -3,7 +3,7 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-28 (D-118)
+**Last target change:** 2026-07-28 (D-119)
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
@@ -1421,8 +1421,8 @@ Never add:
   arbitrary Obsidian-theme compatibility; or
 - bundled general instructions purporting to teach researchers philosophy.
 
-Required for the researcher-governed Skills cutover but not current
-reachability: protected System Skills; directly editable Working Method Skills
+The researcher-governed Skills contract requires protected System Skills;
+directly editable Working Method Skills
 for Discuss, Analyze, Synthesize, Write, Critique, and Content Fidelity;
 optional hidden Manuscript; declarative Action Profiles; bounded installation;
 standing permissions; agent change requests; portable Research Records; and
@@ -1489,9 +1489,11 @@ disabled rather than queued against a hidden runtime.
 Each configured window contains exactly one native `NSSplitViewController`
 with three sibling items:
 
-1. **Library:** Triptych identity; Analyses/Topics/Works scope; Attention;
-   Filter; one folder/note hierarchy; Recommended Bibliography; compact Set
-   Aside, Trash, and Settings routes.
+1. **Library:** Scholium and Triptych identity; one equal-column
+   **Analyses / Topics / Works** ScopeIndex; Attention; one title-style
+   LocationPicker for **Library**, **Set Aside**, and **Trash**; one active
+   location-owned source region; Library-local Filter and Add; and Recommended
+   Bibliography. Settings is not a Library destination.
 2. **Document:** selected note or the text-free semantic background.
 3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
    projections. It never owns buffers, autosave, Undo, or conflicts;
@@ -1524,7 +1526,10 @@ mirrors Library and Apparatus visibility for labels, commands, and the next
 session. Menu, toolbar, and content actions send explicit per-window intents to
 the native controller; model observation never continuously reasserts split
 state. Notes/tabs never reconstruct the shell or change peripheral
-visibility/mode. A new window's first Inspector reveal selects Overview. Each
+visibility/mode. Library Scope and Location are per-window presentation state,
+not Note, vault, or Markdown facts. Switching Scope preserves the selected
+Location and reloads that Location under the new Scope without replacing the
+open Document. A new window's first Inspector reveal selects Overview. Each
 window restores its own last Inspector mode; changing notes, Document tabs, or
 document presentation mode never changes it.
 
@@ -1566,11 +1571,12 @@ persistence is best-effort after content is safe; its failure is diagnosed but
 does not veto close or misreport a source-save failure. Late lifecycle work may
 not act on a newer route, window, document, or close attempt.
 
-The Library identity row sits below window controls; its Scholium disclosure
-and content share the 20pt region-content alignment. Traffic-light alignment
-is visual reference only, never derived geometry. No-note is text/action-free
-and VoiceOver-hidden. No Collapse Note, custom `<<`, Back/Forward, Recents, or
-Quick Open exists.
+The Library BrandHeader sits below window controls. A static Scholium wordmark
+and a separate Triptych identity menu share the Library's 24pt content axis;
+Triptych management never turns the wordmark into a second toolbar. Traffic-
+light alignment is visual reference only, never derived geometry. No-note is
+text/action-free and VoiceOver-hidden. No Collapse Note, custom `<<`,
+Back/Forward, Recents, or Quick Open exists.
 
 Menus follow researcher tasks:
 
@@ -1585,16 +1591,28 @@ Menus follow researcher tasks:
 
 ### 18.3 Library and Search
 
+- The ScopeIndex is Library's only horizontal index. Analyses, Topics, and
+  Works occupy three equal columns, with each label centered and the selected
+  item marked by a provisional **18pt × 1pt** Accent underline. It has no
+  capsule, shared backing plate, enclosing border, or full-width rule. The
+  group exposes selection, follows reading direction for Left/Right Arrow, and
+  lets Tab continue into Library content without pointer activation creating a
+  keyboard-only focus ring.
 - One native **Filter** menu groups Integrity, Metadata, Properties, Order, and
   Actions with at most one submenu level. Current Library rows and filters have
   no Review, Unreviewed, Qualified, or Unqualified state.
 - Unclassified is reachable for classification but not a permanent Library
   row. Notes outside folders appear at vault root.
-- Folder/note rows form one hierarchy at one semantic callout size and compact
-  24pt height. Use weight, color, indentation, and symbols—not size. Notes are
-  one line without sublines and expose full titles accessibly. At most one
-  redundant state mark precedes title; selection remains visible off-focus.
-- The Library-header Add button directly creates at the current vault root.
+- Folder/note rows form one hierarchy at one semantic callout size and a
+  provisional **28pt minimum** rhythm that grows rather than clips when text
+  requires it. Use weight, color, indentation, and symbols—not size. One
+  leading semantic slot contains either a folder disclosure or a Note symbol;
+  a folder never repeats both disclosure and folder icon. Notes are one line
+  without sublines and expose full titles accessibly. At most one redundant
+  state mark precedes title; selected, focused, disclosed, drop-target, and
+  inactive-selected remain distinct, and selection stays visible off-focus.
+- When Library is selected, the LocationHeader Add button directly creates at
+  the current vault root.
   Every ordinary folder row offers direct **New Note** and **New Folder**, then
   **Rename Folder…**, **Move Folder…**, conditional subtree expansion/collapse,
   Copy Relative Path, Reveal in Finder, and destructive **Move Folder and Notes
@@ -1602,28 +1620,51 @@ Menus follow researcher tasks:
   routes. Neither creation action opens a sheet. Library enumerates empty real
   directories. Protected machine-managed folders and ambiguous legacy
   projections retain only safe nonmutating navigation.
-- LIBRARY shows no total. Triptych-wide ATTENTION follows scope before Library,
-  with the same 10pt edge, warning symbol, and count. It expands/focuses an
-  inline full-width queue, never a modal/Research destination; Inspector may
-  summarize only the current note.
-- **Set Aside** and **Trash** are same-plane Library destinations, never
-  overlays, cards, sheets, or separate Sidebar modes. They replace only the
-  Library heading and hierarchy region; Triptych identity, scope, Attention,
-  Recommended Bibliography, and the 52pt footer remain stable. On successful
-  load the heading shows borderless Back, localized title, and localized count;
-  Filter and New Note are unavailable. Back, Escape, or the active footer item
-  returns to Library; the other destination switches directly. Attention and a
-  lifecycle destination dismiss each other. The hidden hierarchy stays mounted
-  to preserve context but accepts no input and leaves the accessibility tree.
-- Lifecycle rows keep the 24pt rhythm. A single-line truncated title opens the
-  note in place; a fixed 20pt trailing **Put Back** control remains keyboard and
-  VoiceOver reachable even when visually quiet. Hover is optional. After Put
-  Back, Move to Trash, or permanent deletion removes a row, focus moves next,
-  previous, then Back; cancellation or failure restores the originating row.
-- Compact Recommended Bibliography stays above the footer even when None,
-  horizontally scrolls `Author, Year, Title` leads with thin rules, and links
-  to the full surface. Use `&` for two authors and first author + `et al.` for
-  three or more.
+- The Library Location shows no total. ATTENTION follows Scope before the
+  LocationHeader, with the same 24pt content axis, a warning symbol, and
+  count. It expands/focuses an inline full-width queue, never a modal/Research
+  destination; Inspector may summarize only the current note. Attention is
+  not a Location: opening it suspends the active Location content without
+  changing the selected Location, while selecting a Location dismisses the
+  queue and presents that Location.
+- The stable LocationHeader contains one title-style LocationPicker and only
+  the actions applicable to the selected Location. Its current title always
+  identifies **Library**, **Set Aside**, or **Trash**. Library shows Filter and
+  Add; Set Aside and Trash omit those controls instead of retaining disabled
+  icon arrays. The header keeps the same position and height while the source
+  region changes.
+- The LocationPicker is one native menu of three mutually exclusive items.
+  Its selected item uses a checkmark; Set Aside and Trash may show a last-
+  complete count as neutral location metadata. Missing, refreshing, or failed
+  counts never disable selection or change the selected Location. Opening the
+  menu enters its native keyboard order; Arrow keys, Home, End, and Return
+  navigate and choose, while Escape closes the menu and restores focus to the
+  LocationPicker. Leaving Set Aside or Trash requires choosing Library or
+  another Location; there is no parallel Back control, footer toggle, or
+  lifecycle tab row.
+- **Set Aside** and **Trash** are same-plane Library Locations, never overlays,
+  cards, sheets, or separate Sidebar modes. Selecting one replaces only the
+  source-region content; BrandHeader, ScopeIndex, Attention, LocationHeader,
+  and Recommended Bibliography remain stable. Switching Scope retains the
+  Location and loads its content for the new Scope. An empty Location remains
+  selected and shows its own short empty state rather than silently returning
+  to Library. At most one Location content subtree accepts input or appears in
+  the accessibility tree; an implementation may retain inactive presentation
+  solely to preserve disclosure or scroll context only while it remains
+  layout-neutral, inert, and accessibility-hidden.
+- Lifecycle rows reuse the same provisional 28pt minimum OutlineRow rhythm and
+  Note semantic slot. A single-line truncated title opens the note in place;
+  a trailing **Put Back** control keeps a preferred **28pt** target and remains
+  keyboard and VoiceOver reachable without hover. Ordinary lifecycle rows draw
+  no separator. After Put Back, Move to Trash, or permanent deletion removes a
+  row, focus moves next, previous, then LocationPicker; cancellation or failure
+  restores the originating row.
+- Compact Recommended Bibliography follows the one source region, stays
+  available across Scope and Location, and uses whitespace rather than a
+  footer boundary to remain secondary. Its empty state says **No
+  recommendations** rather than overloading **None**; available leads
+  horizontally scroll as `Author, Year, Title` and link to the full surface.
+  Use `&` for two authors and first author + `et al.` for three or more.
 - Debate Importance ordering first requires one exact Debate Scope.
 - Shared Search follows Section 13: compact centered surface, always-visible
   scopes, no empty sheet, bounded results that identify match context and
@@ -1909,7 +1950,6 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Trash / TRASH | 纸篓 |
 | Move to Trash… | 移至纸篓… |
 | Put Back… | 放回… |
-| Back to Library | 返回研究文档 |
 
 The literal `Trash/` directory, paths, stable identifiers, enum/raw values,
 and researcher-authored titles remain verbatim and are never translated.
@@ -1925,6 +1965,28 @@ Until sustained Usable Core acceptance, this is semantic direction, not a
 pixel gate. Except accessibility, readability, source safety, and native
 boundaries, Sections 18–20 metrics remain provisional and cannot override
 native behavior, add state owners, or delay the core.
+
+Canonical design system in brief:
+
+- Document remains primary; Library, Document, and Apparatus are distinct,
+  opaque semantic planes derived from one Paper resolver.
+- System sans organizes interface structure, Alegreya carries readable
+  research content, and Victor Mono identifies exact source and revisions.
+- Typography, the purpose-named 4pt grid, whitespace, alignment, and semantic
+  color establish hierarchy before rules, containers, or elevation.
+- Native macOS controls own geometry, focus, selection, menus, sheets, and
+  transient presentation. Scholium adds no parallel window or control skin.
+- Inspector uses one ModeIndex, section/fact/reading grammar, relationship
+  clusters, Action rows, and local state views; ordinary rows and sections are
+  borderless by default. Library's canonical target uses one ScopeIndex,
+  LocationPicker, and Source List under §18.3.
+- Interface copy follows §19.6, and every component carries the applicable
+  keyboard, accessibility, localization, appearance, and recovery states from
+  §20.
+
+Exploratory documents retain only unresolved proposals. Once a visual recipe
+enters this specification and becomes reachable, its implementation evidence
+belongs in `IMPLEMENTATION_STATUS.md`, not in a parallel design guide.
 
 ### 19.1 No custom glass
 
@@ -1945,11 +2007,13 @@ cards, colorful category tiles, score badges, agent avatars, chat bubbles,
 nested rounded containers, or decorative workflow diagrams. Selection and
 consequence remain clear through native state, typography, symbols, and text.
 
-Library lifecycle destinations and pane-local titlebar controls retain their
-existing opaque plane. They neither dim retained content nor float above it,
-and add no material, reflection, grabber, rounded panel, accessory row,
-separately measured bar, shadow, or sheet motion. Pane-local hosts consume the
-native safe area once; the titlebar owns vertical alignment.
+Library Locations and pane-local titlebar controls retain one opaque
+navigation plane. Location content neither dims retained content nor floats
+above it, and adds no material, reflection, grabber, rounded panel, accessory
+row, separately measured bar, shadow, or sheet motion. The LocationPicker's
+transient menu remains system-owned rather than becoming a Scholium popover.
+Pane-local hosts consume the native safe area once; the titlebar owns vertical
+alignment.
 
 ### 19.2 Typography and color
 
@@ -1978,9 +2042,12 @@ native safe area once; the titlebar owns vertical alignment.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
   **Paper** `#F8F0E2`. One resolver derives every Light, Dark, and Increase
-  Contrast semantic output; Library and Apparatus share the peripheral surface.
-  No output, Navigation surface, or functional/status hue is independently
-  configurable.
+  Contrast semantic output. Library uses a `navigationSurface` that is slightly
+  more recessive and neutral than the Apparatus `apparatusSurface`; both remain
+  Paper-derived roles, not additional author inputs or palettes. Their exact
+  perceptual separation is provisional and must retain text/state contrast
+  under every appearance. No derived output or functional/status hue is
+  independently configurable.
 - Native and WebKit consume the same derived `ScholiumColorRole` outputs.
   Feature views name no raw value, and generated WebKit properties are
   transport, not a second palette. Private functional/status anchors adapt to
@@ -2021,12 +2088,22 @@ radius, shadow, border, gradient, or paper scales.
 - Grid roles are optical alignment **2pt**, label/accessory **4pt**, inline
   control **8pt**, nested content **12pt**, section separation **16pt**, and
   region content **20pt**. Fixed component anchors remain purpose-owned:
-  compact hierarchy row **24pt**, preferred/minimum custom targets **28/20pt**,
-  Document tab strip **40pt**, Action target **44pt**, region header **48pt**,
-  and Library footer **52pt**.
+  preferred/minimum custom targets **28/20pt**, Document tab strip **40pt**,
+  Action target **44pt**, and region header **48pt**. A general compact
+  **24pt** row role does not size Library rows, and Library has no fixed footer
+  anchor.
 - The Library's **300pt minimum readable thickness** is a component-specific
   containment threshold outside the grid, not a spacing role, preferred width,
   or scene minimum.
+- `ScholiumGrid.Library` provisionally owns the Library's **24pt** content
+  axis, **12pt** row-surface inset, **28pt** minimum row rhythm, **16pt**
+  hierarchy indentation step, **12–14pt** semantic leading slot, **8pt**
+  leading-to-title gap, and **18pt × 1pt** ScopeIndex selection underline.
+  Row surfaces begin at the 12pt inset while content headings and principal
+  controls align to the 24pt axis. BrandHeader and LocationHeader retain
+  intrinsic content-driven height rather than copying a toolbar or retired
+  footer height. These values remain provisional until they pass the 300pt,
+  localization, scaling, contrast, and human visual-acceptance matrix.
 - `ScholiumGrid.Apparatus` independently owns the Inspector's provisional
   **28pt** content inset, **18pt** selected-mode underline, **78pt** minimum fact
   label column, **14pt** fact-column gap, **204pt** horizontal FactGrid
@@ -2036,9 +2113,9 @@ radius, shadow, border, gradient, or paper scales.
 - The one-time **320pt** first-reveal request is an AppKit container initial
   condition outside the grid. It is not a design Variable, persisted setting,
   minimum, maximum, or continuously enforced preference.
-- Set Aside and Trash reuse the region-content, inline-control,
-  label/accessory, hierarchy-row, action-target, and footer roles above; they
-  create no parallel spacing namespace.
+- Set Aside and Trash reuse `ScholiumGrid.Library` and the common OutlineRow
+  and LocationHeader components. They create no parallel lifecycle spacing
+  namespace, destination header, or footer role.
 - Motion is purpose-named, interruptible, and removed under Reduce Motion. No
   duration scale, parallax, animated grain, or decorative motion.
 - Document rhythm remains renderer-aware and provisional until Review/Edit
@@ -2158,11 +2235,16 @@ complete even when it exceeds two lines.
   accessibility routes. A successful action moves selection to the created
   note; a failure leaves the current selection and source unchanged and reports
   the reason without opening a naming dialog.
-- Lifecycle destination headings expose the localized name and successful
-  count as one heading; active footer entries expose selection. The retained
-  Library hierarchy is accessibility-hidden while a destination is active.
-  Put Back remains in keyboard and VoiceOver order without hover, and row
-  removal follows the next/previous/Back focus sequence defined in §18.3.
+- Library exposes the static Scholium wordmark and Triptych identity menu as
+  distinct elements. ScopeIndex is one logical horizontal group with current
+  selection and reading-direction-aware arrow navigation. LocationPicker
+  exposes its localized current Location, expanded state, and selected native
+  menu item; optional counts are values, not badges or selection state.
+  Inactive Location content is accessibility-hidden. Put Back remains in
+  keyboard and VoiceOver order without hover, and row removal follows the
+  next/previous/LocationPicker focus sequence defined in §18.3. Settings
+  remains available through standard application routes, not as a Library
+  destination.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
 - Keep accessibility labels and hints semantically complete but nonduplicative
@@ -2179,9 +2261,10 @@ complete even when it exceeds two lines.
   every lifecycle/error state, and WebKit/AppKit focus transitions.
 - At the Library boundary, verify both permitted narrow outcomes: expanded at
   **300pt or wider**, or natively collapsed. The open-but-unreadable compressed
-  state is forbidden; the three Triptych scopes and longest fixed Library
-  heading remain single-line at the threshold in English, with localized and
-  right-to-left variants covered by the adaptation matrix.
+  state is forbidden. All three Triptych scopes, the current Location, and
+  applicable Library actions remain reachable at the threshold; localized and
+  right-to-left variants are covered by the adaptation matrix. Library rows
+  grow vertically rather than clipping enlarged interface text.
 - Keep the configured minimum inline separation from both structural dividers.
   At 200% document text, prose must reflow without page-level horizontal
   reading scroll; only wide tables, code, and mathematics may scroll inside
@@ -2400,7 +2483,7 @@ only in Git history.
 | **D-111** | 7.3, 17, 22 | **D-112** | 18.5, 19.6, 20, 22 |
 | **D-113** | 8.2, 18.5, 22 | **D-114** | 18.2, 18.5, 19.2–19.6, 20, 22 |
 | **D-115** | 18.2, 18.5, 20, 22 | **D-116** | 18.5, 19.2–19.6, 20, 22 |
-| **D-118** | 1, 12–13, 18.5, 19.2–19.3, 20, 22 |  |  |
+| **D-118** | 1, 12–13, 18.5, 19.2–19.3, 20, 22 | **D-119** | 18.2–18.3, 19.1–19.4, 20, 22 |
 
 Clean-cutover inventory:
 
@@ -2643,14 +2726,36 @@ Clean-cutover inventory:
   philosophical weight, truth, evidence, or acceptance. This is a pre-release
   clean cutover; existing `?` bytes acquire the current meaning without
   automatic source migration.
+- **D-119:** converge Library on one Scope-constrained Source List without
+  changing Triptych roles, lifecycle meaning, recovery, split-view ownership,
+  open Documents, or researcher authority. BrandHeader, equal-column
+  ScopeIndex, Attention, LocationHeader, and Recommended Bibliography remain
+  stable while a native LocationPicker chooses Library, Set Aside, or Trash
+  and replaces only the source-region content. The selected Location persists
+  across Scope changes; Attention is a separate queue that preserves that
+  selection. Remove the lifecycle footer, Back control, active-footer return,
+  and Settings destination. Library is the explicit return menu item;
+  Triptych management remains the identity menu and Settings remains a
+  standard application route. Use one semantic leading slot per OutlineRow,
+  with provisional 24pt content axis, 12pt row inset, 28pt minimum rhythm, and
+  16pt indentation step. Derive distinct but closely related
+  `navigationSurface` and `apparatusSurface` roles from the one Paper resolver.
+  D-119 supersedes D-087 and D-088 only where their former Library footer,
+  Back, destination-header, shared-peripheral-surface, or compact-row rules
+  conflict. Retain no compatibility UI, duplicate Location state, double
+  folder iconography, parallel lifecycle palette, or research-source
+  migration. Current implementation divergence remains migration debt; human
+  visual and assistive-technology acceptance remain distinct from previews
+  and automation.
 
 Unresolved work must not be described as complete:
 
 - sustained manual VoiceOver, Full Keyboard Access, Voice Control, Dictation,
   contrast, scaling, localization, and installed-IME acceptance;
 - final document rhythm and production mono comparison;
-- researcher-governed Actions/Skills implementation, unified Discussion, and
-  portable Research Record acceptance;
+- researcher acceptance of researcher-governed Actions/Skills, unified
+  Discussion, portable Research Record, and the default Methods' philosophical
+  quality and fidelity;
 - broader Search ranking/usability evaluation;
 - packaged Release performance thresholds and measurements; and
 - clean-tagged distribution and external-install evidence.
