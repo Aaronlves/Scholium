@@ -4,8 +4,8 @@
     "source": "> [!mini] Scope\n\n+[[Support]] -[[Ground]] ?[[Conflict]] [[Neutral]]\n\n[Web](https://example.test)\n\nClaim[^1] with $x + y$.\n\n[^1]: Basis\n",
     "callouts": ["orient"],
     "links": [
-      {"target": "Support", "vectorKind": "supports_target"},
-      {"target": "Ground", "vectorKind": "supported_by_target"},
+      {"target": "Support", "vectorKind": "supports"},
+      {"target": "Ground", "vectorKind": "opposes"},
       {"target": "Conflict", "vectorKind": "incompatible"},
       {"target": "Neutral", "vectorKind": "neutral"},
       {"target": "https://example.test", "vectorKind": null}
@@ -136,9 +136,9 @@
     "source": "\uFEFFPrelude 🧭\r\n\r\n+[[Support#Claim|Supports]] then [Topic](topics/Topic%20Name.md#Scope).\r\n-[[Ground#^block]] ?[[Conflict]] [[Neutral]] ![[figure.png|320]] C++[[Adjacent]] \\+[[Escaped]]\r\n",
     "callouts": [],
     "links": [
-      {"target": "Support", "vectorKind": "supports_target"},
+      {"target": "Support", "vectorKind": "supports"},
       {"target": "topics/Topic Name.md", "vectorKind": null},
-      {"target": "Ground", "vectorKind": "supported_by_target"},
+      {"target": "Ground", "vectorKind": "opposes"},
       {"target": "Conflict", "vectorKind": "incompatible"},
       {"target": "Neutral", "vectorKind": "neutral"},
       {"target": "figure.png", "vectorKind": null},
@@ -188,7 +188,7 @@
     "source": "> [!state] 范围 🧭\n\n+[[Café#论点|支持]] [[العربية]] ?[[עברית]]\n\n主张[^理由] and ^[توضيح 🧭] with $变量 + x$.\n\n[^理由]: 根拠 é",
     "callouts": ["state"],
     "links": [
-      {"target": "Café", "vectorKind": "supports_target"},
+      {"target": "Café", "vectorKind": "supports"},
       {"target": "العربية", "vectorKind": "neutral"},
       {"target": "עברית", "vectorKind": "incompatible"}
     ],

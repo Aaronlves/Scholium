@@ -429,9 +429,11 @@ struct ScholiumColorResolver: Sendable {
 
 /// One visual and accessible vocabulary for explicit Markdown Connections.
 /// Standard command symbols remain direct SF Symbols at their call sites.
-enum ScholiumConnectionPresentation: Int, CaseIterable, Identifiable, Sendable {
+enum ScholiumConnectionPresentation: Int, CaseIterable, Hashable, Identifiable, Sendable {
     case supports
-    case supportedBy
+    case supportsThisNote
+    case opposes
+    case opposesThisNote
     case incompatible
     case neutral
 
@@ -439,10 +441,10 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Identifiable, Sendable {
 
     init(vectorKind: VectorLinkKind?, currentIsSource: Bool) {
         self = switch vectorKind {
-        case .supportsTarget:
-            currentIsSource ? .supports : .supportedBy
-        case .supportedByTarget:
-            currentIsSource ? .supportedBy : .supports
+        case .supports:
+            currentIsSource ? .supports : .supportsThisNote
+        case .opposes:
+            currentIsSource ? .opposes : .opposesThisNote
         case .incompatible:
             .incompatible
         case .neutral, .none:
@@ -453,30 +455,22 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .supports: ScholiumL10n.dynamicString("Supports")
-        case .supportedBy: ScholiumL10n.dynamicString("Supported By")
-        case .incompatible: ScholiumL10n.dynamicString("Incompatible With")
+        case .supportsThisNote: ScholiumL10n.dynamicString("Supports This Note")
+        case .opposes: ScholiumL10n.dynamicString("Opposes")
+        case .opposesThisNote: ScholiumL10n.dynamicString("Opposes This Note")
+        case .incompatible: ScholiumL10n.dynamicString("Incompatible")
         case .neutral: ScholiumL10n.dynamicString("Related")
         }
     }
 
-    /// Minimal predicates used by the HTML study. A circle around every mark
-    /// adds visual mass without adding meaning, so Connect uses these compact
-    /// directional glyphs and exposes the full predicate to accessibility and
-    /// pointer help.
-    var symbolText: String {
+    var glyphKind: ScholiumConnectionGlyphKind {
         switch self {
-        case .supports: "↑"
-        case .supportedBy: "↓"
-        case .incompatible: "×"
-        case .neutral: "—"
-        }
-    }
-
-    var colorRole: ScholiumColorRole {
-        switch self {
-        case .supports, .supportedBy: .connectionSupport
-        case .incompatible: .connectionIncompatible
-        case .neutral: .connectionNeutral
+        case .supports: .supports
+        case .supportsThisNote: .supportedBy
+        case .opposes: .opposes
+        case .opposesThisNote: .opposedBy
+        case .incompatible: .incompatible
+        case .neutral: .neutral
         }
     }
 }
@@ -745,26 +739,41 @@ enum ScholiumGrid {
         static let trailingScrollViewportFraction: CGFloat = 0.45
     }
 
-    /// Inspector-only rhythm derived from the approved HTML study. These are
-    /// layout variables rather than leaf-view literals: the mode strip,
-    /// section hierarchy, dense content groups, and Action rows each have a
-    /// distinct responsibility and therefore a distinct cadence.
+    /// Inspector-owned layout variables. The mode strip, section hierarchy,
+    /// dense content groups, and Action rows each have a distinct cadence.
     enum Apparatus {
+        static let contentInset = foundationUnit * 7
         static let modeStripHeight = foundationUnit * 10
-        static let modeColumnGap = foundationUnit * 5
+        static let modeColumnGap: CGFloat = 0
+        static let selectedModeIndicatorWidth = foundationUnit * 4.5
+        static let selectedModeIndicatorHeight = foundationUnit / 4
+        static let firstSectionGap = foundationUnit * 4
+        static let sectionGap = foundationUnit * 4
         static let headingToContentGap = foundationUnit * 2.5
         static let contentRowGap = foundationUnit * 2
         static let contentLineSpacing = foundationUnit
-        static let contentToRuleGap = foundationUnit * 4
-        static let actionRowVerticalInset = foundationUnit * 2.5
+        static let iconColumnWidth = foundationUnit * 4
+        static let iconToTextGap = foundationUnit * 2
+        static let relationGlyphColumnWidth = foundationUnit * 6
+        static let relationGlyphSize = foundationUnit * 5
+        static let relationGlyphToTextGap = foundationUnit
+        static let relationClusterGap = foundationUnit * 3
+        static let relationPinnedGlyphTop = foundationUnit * 9
+        static let relationRowVerticalInset = foundationUnit
+        static let relationRowMinimumHeight = foundationUnit * 9
+        static let actionRowVerticalInset = foundationUnit * 2
+        static let actionRowMinimumHeight = foundationUnit * 11
         static let actionCopyGap = foundationUnit
-        static let activityHUDInset = foundationUnit * 2
-        static let activityHUDCornerRadius = foundationUnit * 1.5
-        static let factGridMinimumWidth = foundationUnit * 65
-        static let factLabelWidth = foundationUnit * 21
+        static let factGridMinimumWidth = foundationUnit * 51
+        static let factLabelMinimumWidth = foundationUnit * 19.5
+        static let factColumnGap = foundationUnit * 3.5
+        static let factValueMinimumWidth = factGridMinimumWidth
+            - factLabelMinimumWidth
+            - factColumnGap
         static let longTextLabelGap = foundationUnit
         static let longTextIndent = foundationUnit * 3
         static let readingBlockGap = foundationUnit * 2
+        static let bottomInset = contentInset
     }
 }
 
@@ -796,18 +805,6 @@ enum ScholiumMetrics {
         static let libraryFooterHeight = ScholiumGrid.Dimension.libraryFooterHeight
     }
 
-    /// Shared alignment and spacing for the two permanent peripheral regions.
-    /// Library- or Apparatus-specific hierarchy may add semantic indentation,
-    /// but ordinary sections and controls must begin from this common contract.
-    enum Peripheral {
-        static let contentInset = ScholiumGrid.Spacing.regionContentInset
-        static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
-        static let sectionContentSpacing = ScholiumGrid.Spacing.inlineControlGap
-        static let sectionContentInset = ScholiumGrid.Spacing.nestedContentInset
-        static let iconColumnWidth = ScholiumGrid.Dimension.iconTrackWidth
-        static let iconToTextSpacing = ScholiumGrid.Spacing.inlineControlGap
-    }
-
     enum Library {
         /// Smallest width at which the complete Library remains readable while
         /// expanded. The longest fixed English header, its count and action,
@@ -818,14 +815,14 @@ enum ScholiumMetrics {
         /// Ordinary Library content uses its own stable inset. It deliberately
         /// does not derive geometry from the traffic-light group, whose
         /// position and spacing remain owned by macOS.
-        static let contentInset = Peripheral.contentInset
+        static let contentInset = ScholiumGrid.Spacing.regionContentInset
         /// Fixed symbol track for ordinary top-level Library navigation rows.
-        static let navigationIconWidth = Peripheral.iconColumnWidth
+        static let navigationIconWidth = ScholiumGrid.Dimension.iconTrackWidth
         /// A compact but still auditable custom row height shared by folders
         /// and notes. It remains above Scholium's 20-point absolute minimum.
         static let hierarchyRowHeight = ScholiumGrid.Dimension.compactHierarchyRowHeight
-        static let scopeTopSpacing = Peripheral.sectionSpacing
-        static let sectionSpacing = Peripheral.sectionSpacing
+        static let scopeTopSpacing = ScholiumGrid.Spacing.sectionSeparation
+        static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
     }
 
     enum Document {
@@ -839,40 +836,54 @@ enum ScholiumMetrics {
     }
 
     enum Apparatus {
+        /// One initial suggestion, mirroring the system inspector's ideal-width
+        /// semantics. AppKit continues to own subsequent resizing.
+        static let firstRevealWidth: CGFloat = 320
         /// Component-owned height for the Overview/Connections/Functions row and
         /// the trailing Research Inspector header. It does not size the window
         /// toolbar or the standard window controls.
         static let headerHeight = ScholiumGrid.Apparatus.modeStripHeight
         /// All three Inspector modes share one outer content edge. Individual
         /// sections must not invent their own horizontal padding.
-        static let contentInset = Peripheral.contentInset
-        static let firstSectionSpacing = Peripheral.sectionSpacing
-        static let sectionSpacing = Peripheral.sectionSpacing
+        static let contentInset = ScholiumGrid.Apparatus.contentInset
+        static let firstSectionSpacing = ScholiumGrid.Apparatus.firstSectionGap
+        static let sectionSpacing = ScholiumGrid.Apparatus.sectionGap
         /// Internal section rhythm is deliberately separate from the spacing
         /// between complete sections.
         static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
-        /// Concrete note links, statuses, and other section content begin one
-        /// level inside their section heading while retaining the outer
-        /// trailing alignment edge.
-        static let sectionContentInset = Peripheral.sectionContentInset
         static let rowSpacing = ScholiumGrid.Apparatus.contentRowGap
         static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
-        static let contentToRuleSpacing = ScholiumGrid.Apparatus.contentToRuleGap
         static let modeColumnSpacing = ScholiumGrid.Apparatus.modeColumnGap
+        static let selectedModeIndicatorWidth =
+            ScholiumGrid.Apparatus.selectedModeIndicatorWidth
+        static let selectedModeIndicatorHeight =
+            ScholiumGrid.Apparatus.selectedModeIndicatorHeight
         static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
+        static let actionRowMinimumHeight = ScholiumGrid.Apparatus.actionRowMinimumHeight
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
-        static let activityHUDInset = ScholiumGrid.Apparatus.activityHUDInset
-        static let activityHUDCornerRadius = ScholiumGrid.Apparatus.activityHUDCornerRadius
         static let factGridMinimumWidth = ScholiumGrid.Apparatus.factGridMinimumWidth
-        static let factLabelWidth = ScholiumGrid.Apparatus.factLabelWidth
+        static let factLabelMinimumWidth = ScholiumGrid.Apparatus.factLabelMinimumWidth
+        static let factColumnSpacing = ScholiumGrid.Apparatus.factColumnGap
+        static let factValueMinimumWidth = ScholiumGrid.Apparatus.factValueMinimumWidth
         static let longTextLabelSpacing = ScholiumGrid.Apparatus.longTextLabelGap
         static let longTextIndent = ScholiumGrid.Apparatus.longTextIndent
         static let readingBlockSpacing = ScholiumGrid.Apparatus.readingBlockGap
         /// A fixed symbol track keeps every row's text on the same scan line,
         /// regardless of the optical width of its SF Symbol.
-        static let iconColumnWidth = Peripheral.iconColumnWidth
-        static let iconToTextSpacing = Peripheral.iconToTextSpacing
-        static let bottomInset = ScholiumGrid.Spacing.regionContentInset
+        static let iconColumnWidth = ScholiumGrid.Apparatus.iconColumnWidth
+        static let iconToTextSpacing = ScholiumGrid.Apparatus.iconToTextGap
+        static let relationGlyphColumnWidth =
+            ScholiumGrid.Apparatus.relationGlyphColumnWidth
+        static let relationGlyphSize = ScholiumGrid.Apparatus.relationGlyphSize
+        static let relationGlyphToTextSpacing =
+            ScholiumGrid.Apparatus.relationGlyphToTextGap
+        static let relationClusterSpacing = ScholiumGrid.Apparatus.relationClusterGap
+        static let relationPinnedGlyphTop = ScholiumGrid.Apparatus.relationPinnedGlyphTop
+        static let relationRowVerticalInset =
+            ScholiumGrid.Apparatus.relationRowVerticalInset
+        static let relationRowMinimumHeight =
+            ScholiumGrid.Apparatus.relationRowMinimumHeight
+        static let bottomInset = ScholiumGrid.Apparatus.bottomInset
     }
 
     enum Search {

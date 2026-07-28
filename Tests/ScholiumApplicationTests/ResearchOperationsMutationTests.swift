@@ -1138,6 +1138,7 @@ struct ResearchFunctionOperationsTests {
         )
 
         #expect(record.kind == .discussion)
+        #expect(record.fidelityCompletion == .notApplicable)
         #expect(record.participatingNotes.count == 2)
         #expect(try await handle.documents.load(fixture.analysisID).rawContent
             == analysisBefore.rawContent)
@@ -2227,8 +2228,18 @@ struct ResearchFunctionOperationsTests {
 
         let completed = try await handle.research.completeProtectedFunction(retry)
         #expect(completed.state == .complete)
+        #expect(completed.actuallyUsedMaterialNoteIDs == [])
         #expect(completed.childRunIDs == [automatic.effectiveFidelityRunID])
         #expect(try await handle.research.completeProtectedFunction(retry) == completed)
+        let portableURL = recordsURL.appendingPathComponent(
+            parent.runID.uuidString.lowercased() + ".json"
+        )
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: portableURL)
+        )
+        #expect(portable.actuallyUsedMaterials.isEmpty)
+        #expect(portable.fidelityCompletion == .completed)
         await runtime.shutdown()
     }
 
@@ -2738,8 +2749,19 @@ struct ResearchFunctionOperationsTests {
         #expect(!develop.isEnabled)
         #expect(develop.repairReasons.contains { $0.code == .missingWorkflow })
 
+        let stream = await handle.events.events()
+        var iterator = stream.makeAsyncIterator()
+        _ = try #require(await iterator.next())
         let repaired = try await handle.research.installDefaultWorkingMethods()
         #expect(repaired.document.binding(for: .analyze)?.state == .installedDefault)
+        let configurationEvent = try #require(await iterator.next())
+        if case .researchConfigurationInvalidated = configurationEvent {
+            #expect(configurationEvent.snapshot.triptych.id == fixture.assignment.id)
+        } else {
+            Issue.record(
+                "Working Method installation did not invalidate Action availability."
+            )
+        }
         let repairedDevelop = try #require(
             try await handle.research.availableProtectedFunctions(for: analysis).first {
                 $0.function == .develop
@@ -3483,6 +3505,8 @@ struct ResearchFunctionOperationsTests {
             )
         )
         let protectedRun = try await handle.research.protectedFunctionRun(id: action.runID)
+        #expect(action.instructions.contains("actuallyUsedMaterialNoteIDs is required"))
+        #expect(action.instructions.contains("\"actuallyUsedMaterialNoteIDs\" : ["))
         // Keep the original and resynthesis completions on the same timestamp
         // to prove lineage wins the tie, while keeping that timestamp after
         // both preparations so each portable record remains temporally valid.
@@ -3523,6 +3547,7 @@ struct ResearchFunctionOperationsTests {
             throw error
         }
         #expect(completed.state == .complete)
+        #expect(completed.actuallyUsedMaterialNoteIDs == [analysis.noteID])
         let repeated: ResearchFunctionCompletion
         do {
             repeated = try await handle.research.completeProtectedFunction(submission)
@@ -3565,6 +3590,7 @@ struct ResearchFunctionOperationsTests {
         }
         #expect(portable.id == action.runID)
         #expect(portable.action?.actionID == .synthesize)
+        #expect(portable.fidelityCompletion == .notRequired)
         #expect(portable.primaryNoteID == topic.noteID)
         #expect(portable.actuallyUsedMaterials == [try PortableResearchMaterialUse(
             noteID: analysis.noteID,
@@ -3740,7 +3766,21 @@ struct ResearchFunctionOperationsTests {
             }
         }
 
-        _ = try await handle.research.completeProtectedFunction(
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeProtectedFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: run.runID,
+                    confirmationToken: run.snapshot.confirmationToken,
+                    actuallyUsedMaterialNoteIDs: nil,
+                    summary: "The Material-use report was omitted.",
+                    didModifyTarget: false,
+                    activityCompletion: activity,
+                    submittedAt: submittedAt
+                )
+            )
+        }
+
+        let completed = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: run.runID,
                 confirmationToken: run.snapshot.confirmationToken,
@@ -3750,6 +3790,19 @@ struct ResearchFunctionOperationsTests {
                 submittedAt: submittedAt
             )
         )
+        #expect(completed.actuallyUsedMaterialNoteIDs == [])
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: portableURL)
+        )
+        #expect(portable.actuallyUsedMaterials.isEmpty)
+        #expect(portable.fidelityCompletion == .notRequired)
         try Data("# Analysis\n\nChanged but unused.\n".utf8).write(
             to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
             options: .atomic
@@ -3758,6 +3811,117 @@ struct ResearchFunctionOperationsTests {
         #expect(!refreshed.discovery.catalog.attention.contains {
             $0.kind == .materialChangedSinceUse
         })
+        await runtime.shutdown()
+    }
+
+    @Test("Unavailable current Action Fidelity remains explicit in its portable record")
+    func unavailableActionFidelityIsRecordedAsUnverified() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .checkFidelity,
+                target: actionNote(analysis),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "fidelity-checks")!:
+                        .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
+                ]
+            )
+        )
+        let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
+        let completion = try await handle.research.completeAction(
+            ResearchActionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: run.snapshot.confirmationToken,
+                finalTargetFingerprint: analysis.fingerprint,
+                actuallyUsedMaterialNoteIDs: [],
+                summary: "The exact recorded revision could not be checked.",
+                didModifyTarget: false,
+                fidelityOutcomes: [FidelityCheckOutcome(
+                    check: .content,
+                    state: .unavailable,
+                    summary: "The source was unavailable."
+                )]
+            )
+        )
+        #expect(completion.state == .unverified)
+        #expect(completion.actuallyUsedMaterialNoteIDs == [])
+
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: portableURL)
+        )
+        #expect(portable.fidelityCompletion == .unverified)
+        #expect(portable.actuallyUsedMaterials.isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("Completed Fidelity records process completion rather than a pass verdict")
+    func completedActionFidelityIncludesIssuesFound() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .checkFidelity,
+                target: actionNote(topic),
+                parameterValues: [
+                    ResearchActionModuleID(rawValue: "fidelity-checks")!:
+                        .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
+                ]
+            )
+        )
+        let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
+        let completion = try await handle.research.completeAction(
+            ResearchActionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: run.snapshot.confirmationToken,
+                finalTargetFingerprint: topic.fingerprint,
+                actuallyUsedMaterialNoteIDs: [],
+                summary: "The exact revision was checked and one issue was retained.",
+                didModifyTarget: false,
+                fidelityOutcomes: [FidelityCheckOutcome(
+                    check: .content,
+                    state: .issuesFound,
+                    summary: "One claim remained unsupported.",
+                    findings: ["The final inference lacks textual support."]
+                )]
+            )
+        )
+        #expect(completion.state == .complete)
+
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        let portable = try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: portableURL)
+        )
+        #expect(portable.fidelityCompletion == .completed)
         await runtime.shutdown()
     }
 
@@ -3999,6 +4163,7 @@ struct ResearchFunctionOperationsTests {
             startingRevision: output.fingerprint,
             endingRevision: saved.document.fingerprint
         )])
+        #expect(portable.fidelityCompletion == .notRequired)
         await reopenedRuntime.shutdown()
     }
 

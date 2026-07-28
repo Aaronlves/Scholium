@@ -1643,6 +1643,11 @@ public actor WorkspaceHandle {
 
     func endResearchConfigurationMutation(_ id: UUID) {
         endSourceMutation(id)
+        let snapshot = currentSnapshot
+        let events = events
+        Task {
+            await events.publishResearchConfigurationInvalidated(snapshot: snapshot)
+        }
     }
 
     private func beginRefreshCycle() async throws {

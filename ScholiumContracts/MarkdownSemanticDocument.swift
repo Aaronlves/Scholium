@@ -215,7 +215,7 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
     }
 
     public static let current = MarkdownEditingDialect(
-        version: 2,
+        version: 4,
         callouts: CalloutSemanticRole.allCases.compactMap { role in
             guard role != .neutral else { return nil }
             return Callout(
@@ -233,18 +233,18 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
             ),
             VectorLinkOperator(
                 marker: "+",
-                kind: .supportsTarget,
+                kind: .supports,
                 meaning: "The containing note supports the target note."
             ),
             VectorLinkOperator(
                 marker: "-",
-                kind: .supportedByTarget,
-                meaning: "The target note supports the containing note."
+                kind: .opposes,
+                meaning: "The containing note opposes the target note."
             ),
             VectorLinkOperator(
                 marker: "?",
                 kind: .incompatible,
-                meaning: "The containing and target notes cannot both be true."
+                meaning: "The containing and target notes are mutually incompatible."
             ),
         ],
         footnotes: Footnotes(
@@ -321,10 +321,10 @@ public enum LinkSyntax: String, Codable, Hashable, Sendable {
 public enum VectorLinkKind: String, Codable, Hashable, CaseIterable, Sendable {
     case neutral
     /// Plus-prefixed B in A means A supports B.
-    case supportsTarget = "supports_target"
-    /// Minus-prefixed B in A means B supports A.
-    case supportedByTarget = "supported_by_target"
-    /// Question-prefixed B means A and B cannot both be true.
+    case supports
+    /// Minus-prefixed B in A means A opposes B without asserting contradiction.
+    case opposes
+    /// Question-prefixed B in A records an undirected incompatibility between A and B.
     case incompatible
 }
 
@@ -1119,7 +1119,7 @@ public enum MarkdownSemanticParser {
                     diagnostics.append(MarkdownDiagnostic(
                         code: .noncanonicalRelationshipSyntax,
                         severity: .information,
-                        message: "The legacy typed annotation is ignored. Use +[[Target]], -[[Target]], or ?[[Target]] for an explicit relation.",
+                        message: "The legacy typed annotation is ignored. Use +[[Target]] to support, -[[Target]] to oppose, or ?[[Target]] for incompatibility.",
                         span: span
                     ))
                 }
@@ -1184,7 +1184,7 @@ public enum MarkdownSemanticParser {
                 diagnostics.append(MarkdownDiagnostic(
                     code: .noncanonicalRelationshipSyntax,
                     severity: .information,
-                    message: "Legacy relation arrows are neutral connections. Use +[[Target]], -[[Target]], or ?[[Target]] for an explicit relation.",
+                    message: "Legacy relation arrows are neutral connections. Use +[[Target]] to support, -[[Target]] to oppose, or ?[[Target]] for incompatibility.",
                     span: span
                 ))
                 links.append(LinkOccurrence(
@@ -1215,8 +1215,8 @@ public enum MarkdownSemanticParser {
         guard location >= 0, let prefix else { return nil }
         let kind: VectorLinkKind
         switch prefix {
-        case "+": kind = .supportsTarget
-        case "-": kind = .supportedByTarget
+        case "+": kind = .supports
+        case "-": kind = .opposes
         case "?": kind = .incompatible
         default: return nil
         }

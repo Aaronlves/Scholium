@@ -1,7 +1,7 @@
 export type VectorLinkKind =
   | "neutral"
-  | "supports_target"
-  | "supported_by_target"
+  | "supports"
+  | "opposes"
   | "incompatible";
 
 export interface LinkPreview {
@@ -15,8 +15,8 @@ export interface LinkPreview {
 
 const vectorKinds = new Set<VectorLinkKind>([
   "neutral",
-  "supports_target",
-  "supported_by_target",
+  "supports",
+  "opposes",
   "incompatible",
 ]);
 

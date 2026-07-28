@@ -74,7 +74,9 @@ public struct RelatedSearchItem: Hashable, Identifiable, Sendable {
         case itemLinksToConcept = "item_links_to_concept"
         case conceptSupportsItem = "concept_supports_item"
         case itemSupportsConcept = "item_supports_concept"
-        case incompatible
+        case conceptOpposesItem = "concept_opposes_item"
+        case itemOpposesConcept = "item_opposes_concept"
+        case incompatible = "incompatible"
     }
 
     public var id: String {
@@ -109,6 +111,10 @@ public struct RelatedSearchItem: Hashable, Identifiable, Sendable {
             "Supported by \(concept.title)"
         case .itemSupportsConcept:
             "Supports \(concept.title)"
+        case .conceptOpposesItem:
+            "Opposed by \(concept.title)"
+        case .itemOpposesConcept:
+            "Opposes \(concept.title)"
         case .incompatible:
             "Incompatible with \(concept.title)"
         }
@@ -415,8 +421,8 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
                   let note = notesByID[destination],
                   Self.includes(note, in: scope) else { continue }
             let relationship: RelatedSearchItem.Relationship = switch edge.occurrence.vectorKind {
-            case .supportsTarget: .conceptSupportsItem
-            case .supportedByTarget: .itemSupportsConcept
+            case .supports: .conceptSupportsItem
+            case .opposes: .conceptOpposesItem
             case .incompatible: .incompatible
             case .neutral, nil: .conceptLinksToItem
             }
@@ -434,8 +440,8 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
                   let note = notesByID[source],
                   Self.includes(note, in: scope) else { continue }
             let relationship: RelatedSearchItem.Relationship = switch edge.occurrence.vectorKind {
-            case .supportsTarget: .itemSupportsConcept
-            case .supportedByTarget: .conceptSupportsItem
+            case .supports: .itemSupportsConcept
+            case .opposes: .itemOpposesConcept
             case .incompatible: .incompatible
             case .neutral, nil: .itemLinksToConcept
             }
@@ -672,7 +678,7 @@ public enum WorkspaceCatalogBuilder {
                 return kind != .neutral
             }
             if !hasExplicitRelation {
-                reasons.append("no explicit support or incompatibility relation")
+                reasons.append("no explicit support, opposition, or question relation")
             }
             let hasCrossVaultConnection = outgoing.contains { edge in
                 guard let destination = edge.destination?.note else { return false }
@@ -764,9 +770,6 @@ public enum WorkspaceCatalogBuilder {
         analysisTitle: String,
         semantic: MarkdownSemanticDocument
     ) -> String? {
-        if occurrence.vectorKind == .supportedByTarget {
-            return "This note is explicitly supported by the Unqualified Analysis ‘\(analysisTitle)’."
-        }
         if semantic.callouts.contains(where: {
             $0.role == .cite && $0.span.contains(occurrence.span)
         }) {

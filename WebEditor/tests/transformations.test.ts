@@ -12,7 +12,7 @@ describe("exact Markdown transformations", () => {
     const cases = [
       ["bold", "**claim**"], ["emphasis", "*claim*"], ["strikethrough", "~~claim~~"],
       ["highlight", "==claim=="], ["inlineCode", "`claim`"], ["wikilink", "[[claim]]"],
-      ["vectorSupportsTarget", "+[[claim]]"], ["vectorSupportedByTarget", "-[[claim]]"],
+      ["vectorSupports", "+[[claim]]"], ["vectorOpposes", "-[[claim]]"],
       ["vectorIncompatible", "?[[claim]]"],
     ] as const;
     for (const [command, expected] of cases) expect(apply("claim", command, 0, 5).source).toBe(expected);

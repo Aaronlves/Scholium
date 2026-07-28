@@ -3,10 +3,10 @@ import Foundation
 
 public enum RelationshipPredicate: String, Codable, CaseIterable, Sendable {
     case supports
+    case opposes
     case contradicts
     case extends
     case refines
-    case questions
     case incompatibleWith = "incompatible_with"
     case cites
     case seeAlso = "see-also"
@@ -46,7 +46,7 @@ public enum RelationshipPredicate: String, Codable, CaseIterable, Sendable {
         case .seeAlso, .connected: .navigation
         case .cites: .citation
         case .evidenceFor, .isCaseFor, .isSourceFor, .isBackgroundFor, .isNotEvidenceFor: .evidence
-        case .supports, .contradicts, .extends, .refines, .questions, .incompatibleWith, .pressures, .targets,
+        case .supports, .opposes, .contradicts, .extends, .refines, .incompatibleWith, .pressures, .targets,
              .objectsTo, .rebuts, .undercuts, .repliesTo, .concedes, .qualifies,
              .elicits, .tests, .illustrates, .counterexampleTo, .attributesTo, .interprets: .argument
         case .supersedes, .derivedFrom: .revision
@@ -57,7 +57,9 @@ public enum RelationshipPredicate: String, Codable, CaseIterable, Sendable {
 
     public var directionConvention: RelationshipDirectionConvention {
         switch self {
-        case .supports, .contradicts, .extends, .refines, .questions:
+        case .supports, .opposes:
+            .containingActsOnTarget
+        case .contradicts, .extends, .refines:
             .targetActsOnContaining
         case .seeAlso, .connected, .incompatibleWith:
             .undirected
@@ -262,7 +264,7 @@ public struct RelationshipEdge: Codable, Hashable, Identifiable, Sendable {
             predicate = .connected
             directional = false
             explicit = false
-        case .supportsTarget:
+        case .supports:
             subject = containing.relativePath
             subjectNote = containing
             object = targetPath
@@ -270,12 +272,12 @@ public struct RelationshipEdge: Codable, Hashable, Identifiable, Sendable {
             predicate = .supports
             directional = true
             explicit = true
-        case .supportedByTarget:
-            subject = targetPath
-            subjectNote = target
-            object = containing.relativePath
-            objectNote = containing
-            predicate = .supports
+        case .opposes:
+            subject = containing.relativePath
+            subjectNote = containing
+            object = targetPath
+            objectNote = target
+            predicate = .opposes
             directional = true
             explicit = true
         case .incompatible:
@@ -348,7 +350,7 @@ public struct RelationshipEdge: Codable, Hashable, Identifiable, Sendable {
     }
 
     /// Projects one already-resolved explicit relationship into graph direction.
-    /// Vector-Link v1 uses ``vector(vaultID:containingPath:targetPath:kind:locator:syntax:resolution:)``.
+    /// Vector-Link v3 uses ``vector(containing:target:targetPath:kind:locator:syntax:resolution:)``.
     public static func explicit(
         containingPath: String,
         targetPath: String,

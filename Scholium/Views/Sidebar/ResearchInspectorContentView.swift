@@ -42,40 +42,38 @@ enum ResearchProjectionFreshness: Equatable, Sendable {
     }
 }
 
-struct ResearchProjectionFreshnessBanner: View {
+struct ResearchProjectionFreshnessView: View {
     let freshness: ResearchProjectionFreshness
     let retry: () -> Void
 
     var body: some View {
         Group {
             if freshness.isActionable {
-                ScholiumApparatusSection("SOURCE FRESHNESS") {
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
-                    ) {
-                        Text(freshness.titleResource)
-                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let detail = freshness.detail {
-                            Text(detail)
-                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                                .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if freshness.permitsRetry {
-                            ScholiumApparatusActionButton(
-                                "Retry Refresh",
-                                systemImage: "arrow.clockwise",
-                                detail: "Rebuild derived state from the current saved source.",
-                                action: retry
-                            )
-                        }
+                ScholiumApparatusStateView(
+                    freshness.titleResource,
+                    detail: freshness.detail,
+                    systemImage: systemImage,
+                    showsProgress: freshness == .refreshing,
+                    density: freshness.detail == nil ? .line : .block
+                ) {
+                    if freshness.permitsRetry {
+                        Button("Retry", action: retry)
+                            .controlSize(.small)
+                            .buttonStyle(.borderless)
                     }
                 }
                 .accessibilityIdentifier("scholium.researchProjectionFreshness")
             }
+        }
+    }
+
+    private var systemImage: String {
+        switch freshness {
+        case .refreshing: "arrow.triangle.2.circlepath"
+        case .current: "checkmark.circle"
+        case .stale: "clock.arrow.circlepath"
+        case .failed: "exclamationmark.triangle"
+        case .unavailable: "slash.circle"
         }
     }
 }
@@ -108,18 +106,20 @@ struct ResearchOverviewView: View {
     let note: WindowDocumentLocation
     let context: ResearchInspectorContentContext
 
+    @State private var attentionIsHovering = false
+
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(
                 alignment: .leading,
                 spacing: ScholiumMetrics.Apparatus.sectionSpacing
             ) {
-                ResearchProjectionFreshnessBanner(
+                attentionSection
+                aboutSection
+                ResearchProjectionFreshnessView(
                     freshness: context.freshness,
                     retry: context.retryRefresh
                 )
-                attentionSection
-                aboutSection
             }
             .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
             .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
@@ -131,53 +131,84 @@ struct ResearchOverviewView: View {
     }
 
     private var attentionSection: some View {
-        ScholiumApparatusSection(
-            "NEEDS ATTENTION",
-            content: {
-                if !context.visibleAttentionItems.isEmpty {
+        Button(action: context.openAttention) {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
+            ) {
+                HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
+                    Text("NEEDS ATTENTION")
+                        .scholiumApparatusHeadingStyle()
+                    Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
+                    Text(context.visibleAttentionItems.count.formatted())
+                        .font(
+                            ScholiumInterfaceTypography.apparatusMetadata
+                                .monospacedDigit()
+                        )
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .accessibilityHidden(true)
+                }
+
+                if !visibleAttentionKinds.isEmpty {
                     VStack(
                         alignment: .leading,
                         spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
                     ) {
-                        ForEach(Array(context.visibleAttentionItems.prefix(3))) { item in
-                            VStack(
-                                alignment: .leading,
-                                spacing: ScholiumMetrics.Apparatus.longTextLabelSpacing
-                            ) {
-                                Text(attentionTitle(for: item.kind))
-                                    .font(ScholiumInterfaceTypography.apparatusBody.weight(.semibold))
-                                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                                Text(item.message)
-                                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                                    .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.leading, ScholiumMetrics.Apparatus.longTextIndent)
-                            }
+                        ForEach(
+                            Array(visibleAttentionKinds.prefix(3)),
+                            id: \.rawValue
+                        ) { kind in
+                            Text(attentionTitle(for: kind))
+                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        ScholiumApparatusActionButton(
-                            "Show All",
-                            systemImage: "exclamationmark.triangle",
-                            detail: "Open the complete Attention queue.",
-                            action: context.openAttention
-                        )
                     }
                 }
-            },
-            trailing: {
-                Text(context.visibleAttentionItems.count.formatted())
-                    .font(ScholiumInterfaceTypography.apparatusMetadata.monospacedDigit())
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
             }
-        )
+        }
+        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+            isHovering: attentionIsHovering,
+            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight
+        ))
+        .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+        .onHover { attentionIsHovering = $0 }
+        .accessibilityLabel("Needs Attention")
+        .accessibilityValue("\(context.visibleAttentionItems.count) items")
         .accessibilityIdentifier("scholium.researchOverview.attention")
     }
 
     private var aboutSection: some View {
-        ScholiumApparatusSection(aboutTitle) {
+        VStack(alignment: .leading, spacing: 0) {
+            ScholiumApparatusSectionHeaderButton(
+                aboutTitle,
+                actionLabel: "Edit Properties",
+                systemImage: "slider.horizontal.3",
+                accessibilityIdentifier: "scholium.about.edit",
+                action: context.openProperties
+            )
+            .padding(.bottom, ScholiumMetrics.Apparatus.sectionContentSpacing)
+
             VStack(
                 alignment: .leading,
                 spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
             ) {
+                if !propertyFacts.isEmpty {
+                    ScholiumApparatusFactGrid(facts: propertyFacts)
+                }
+
+                if let invalidResearchUnitMessage {
+                    ScholiumApparatusStateView(
+                        "Research Unit",
+                        detail: invalidResearchUnitMessage,
+                        systemImage: "exclamationmark.triangle",
+                        density: .block
+                    )
+                }
+
                 ForEach(Array(readingBlocks.enumerated()), id: \.offset) { _, block in
                     ScholiumApparatusReadingBlock(
                         label: block.label,
@@ -185,21 +216,12 @@ struct ResearchOverviewView: View {
                         monospacedDigits: block.monospacedDigits
                     )
                 }
-
-                if !propertyFacts.isEmpty {
-                    ScholiumApparatusFactGrid(facts: propertyFacts)
-                }
-
-                ScholiumApparatusActionButton(
-                    "Edit Properties",
-                    systemImage: "slider.horizontal.3",
-                    detail: nil,
-                    action: context.openProperties
-                )
-                .accessibilityIdentifier("scholium.about.edit")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
+            .accessibilityIdentifier("scholium.about")
         }
-        .accessibilityIdentifier("scholium.about")
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private struct ReadingBlock {
@@ -210,13 +232,8 @@ struct ResearchOverviewView: View {
 
     private var readingBlocks: [ReadingBlock] {
         switch context.researchUnit.state {
-        case .absent:
+        case .absent, .invalid:
             return []
-        case .invalid(let message):
-            return [ReadingBlock(
-                label: ScholiumL10n.dynamicString("Research Unit"),
-                text: message
-            )]
         case .declared:
             var result: [ReadingBlock] = []
             let entries = AboutProfileCatalog.entries(
@@ -250,6 +267,13 @@ struct ResearchOverviewView: View {
             }
             return result
         }
+    }
+
+    private var invalidResearchUnitMessage: String? {
+        guard case .invalid(let message) = context.researchUnit.state else {
+            return nil
+        }
+        return message
     }
 
     private var propertyFacts: [ScholiumApparatusFact] {
@@ -341,6 +365,13 @@ struct ResearchOverviewView: View {
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"
         case .unresolvedIdentity: "Unresolved Identity"
+        }
+    }
+
+    private var visibleAttentionKinds: [AttentionQueueKind] {
+        var seen = Set<String>()
+        return context.visibleAttentionItems.compactMap { item in
+            seen.insert(item.kind.rawValue).inserted ? item.kind : nil
         }
     }
 

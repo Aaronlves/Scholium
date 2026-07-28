@@ -195,6 +195,7 @@ public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Senda
             primaryNoteID: primaryNoteID,
             participatingNotes: participatingNotes,
             statements: statements,
+            fidelityCompletion: .notApplicable,
             startedAt: createdAt,
             finishedAt: finishedAt
         )

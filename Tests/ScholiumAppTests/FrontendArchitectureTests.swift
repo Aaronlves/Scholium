@@ -141,6 +141,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let apparatusComponentsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumApparatusComponents.swift"
+            ),
+            encoding: .utf8
+        )
         let splitSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
@@ -184,13 +190,10 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("libraryItem.maximumThickness"))
         #expect(!splitSource.contains("libraryItem.automaticMaximumThickness"))
         #expect(!splitSource.contains("documentItem.minimumThickness"))
-        #expect(!splitSource.contains("ScholiumResearchInspectorSplitItemConfiguration"))
         #expect(!splitSource.contains("apparatusItem.minimumThickness"))
-        #expect(!splitSource.contains("apparatusItem.maximumThickness"))
-        #expect(!splitSource.contains("apparatusItem.automaticMaximumThickness"))
-        #expect(!splitSource.contains("apparatusItem.preferredThicknessFraction"))
-        #expect(!splitSource.contains("apparatusItem.holdingPriority"))
-        #expect(!splitSource.contains("apparatusItem.collapseBehavior"))
+        #expect(splitSource.contains(
+            "apparatusItem.maximumThickness = NSSplitViewItem.unspecifiedDimension"
+        ))
         #expect(splitSource.contains("toggleInspector(nil)"))
         #expect(!splitSource.contains("effectiveRect proposedEffectiveRect"))
         #expect(!splitSource.contains("dividerHitExpansion"))
@@ -203,10 +206,11 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains("host.sizingOptions = []"))
         #expect(!splitSource.contains("sizingOptions = [.minSize]"))
         #expect(!splitSource.contains("scholium.library.preferred-width"))
-        #expect(!splitSource.contains("scholium.apparatus.preferred-width"))
-        #expect(!splitSource.contains("priority = .init(999)"))
-        #expect(!splitSource.contains("restoreResearchInspectorWidthIfNeeded"))
-        #expect(!splitSource.contains("rememberResearchInspectorWidth"))
+        #expect(splitSource.contains("ScholiumFirstApparatusWidthOffer"))
+        #expect(splitSource.contains("prepareForReveal(animated:"))
+        #expect(splitSource.contains("revealAnimationDidFinish()"))
+        #expect(splitSource.contains("firstApparatusWidthOffer.offerIfReady()"))
+        #expect(splitSource.contains("ScholiumMetrics.Apparatus.firstRevealWidth"))
         #expect(!splitSource.contains("splitView.adjustSubviews"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
         #expect(splitSource.contains("ScholiumSurfaceContainerViewController"))
@@ -303,8 +307,11 @@ struct FrontendArchitectureTests {
             "item.style = .plain"
         ))
         #expect(!toolbarSource.contains("glassEffect"))
-        #expect(noteSource.contains("private var inspectorTabs"))
+        #expect(noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
+        #expect(apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
+        #expect(apparatusComponentsSource.contains(".focusable()"))
+        #expect(apparatusComponentsSource.contains(".onMoveCommand(perform: move)"))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
@@ -325,10 +332,7 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Library.hierarchyRowHeight
                 >= ScholiumMetrics.Accessibility.minimumCustomTarget
         )
-        #expect(
-            ScholiumMetrics.Library.contentInset
-                == ScholiumMetrics.Peripheral.contentInset
-        )
+        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Spacing.regionContentInset)
         #expect(ScholiumMetrics.Library.minimumReadableWidth == 300)
     }
 
@@ -425,21 +429,31 @@ struct FrontendArchitectureTests {
 
     }
 
-    @Test("Research Inspector uses AppKit's unmodified semantic item")
-    func researchInspectorUsesAppKitDefaults() {
-        let controller = NSViewController()
-        controller.view = NSView(
-            frame: NSRect(
-                x: 0,
-                y: 0,
-                width: 320,
-                height: 600
-            )
+    @Test("Research Inspector keeps AppKit behavior after removing its fixed maximum")
+    func researchInspectorKeepsAppKitBehavior() throws {
+        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>.Controller(
+            initialLibraryVisible: true,
+            initialApparatusVisible: false,
+            documentTabs: [],
+            selectedDocumentTabID: nil,
+            selectDocumentTab: { _ in },
+            closeDocumentTab: { _ in },
+            libraryVisibilityDidChange: { _ in },
+            researchInspectorVisibilityDidChange: { _ in },
+            splitControllerDidAttach: { _ in },
+            splitControllerDidDetach: { _ in },
+            library: EmptyView(),
+            document: EmptyView(),
+            apparatus: EmptyView()
         )
-        let item = NSSplitViewItem(inspectorWithViewController: controller)
+
+        _ = controller.view
+        let item = try #require(controller.splitViewItems.last)
 
         #expect(item.behavior == .inspector)
         #expect(item.canCollapse)
+        #expect(item.isCollapsed)
+        #expect(item.maximumThickness == NSSplitViewItem.unspecifiedDimension)
     }
 
     @Test("Library hierarchy, Attention, Recommended Bibliography, and filters share one contract")
@@ -629,38 +643,82 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let noteSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let previewSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/PreviewCatalog/ScholiumComponentCatalog.swift"
+            ),
+            encoding: .utf8
+        )
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
 
+        #expect(ScholiumMetrics.Apparatus.contentInset == 28)
         #expect(
             ScholiumMetrics.Apparatus.contentInset
-                == ScholiumMetrics.Peripheral.contentInset
+                != ScholiumMetrics.Library.contentInset
         )
         #expect(
             ScholiumMetrics.Apparatus.firstSectionSpacing
-                == ScholiumMetrics.Peripheral.sectionSpacing
+                == ScholiumGrid.Apparatus.firstSectionGap
         )
         #expect(
             ScholiumMetrics.Apparatus.sectionSpacing
-                == ScholiumMetrics.Peripheral.sectionSpacing
+                == ScholiumGrid.Apparatus.sectionGap
         )
         #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
                 == ScholiumGrid.Apparatus.headingToContentGap
         )
         #expect(
-            ScholiumMetrics.Apparatus.sectionContentInset
-                == ScholiumMetrics.Peripheral.sectionContentInset
-        )
-        #expect(
             ScholiumMetrics.Apparatus.iconColumnWidth
-                == ScholiumMetrics.Peripheral.iconColumnWidth
+                == ScholiumGrid.Apparatus.iconColumnWidth
         )
         #expect(
             ScholiumMetrics.Apparatus.iconToTextSpacing
-                == ScholiumMetrics.Peripheral.iconToTextSpacing
+                == ScholiumGrid.Apparatus.iconToTextGap
         )
+        #expect(ScholiumMetrics.Apparatus.factGridMinimumWidth == 204)
+        #expect(ScholiumMetrics.Apparatus.factLabelMinimumWidth == 78)
+        #expect(ScholiumMetrics.Apparatus.factColumnSpacing == 14)
+        #expect(ScholiumMetrics.Apparatus.relationGlyphColumnWidth == 24)
+        #expect(ScholiumMetrics.Apparatus.relationGlyphSize == 20)
+        #expect(ScholiumMetrics.Apparatus.relationGlyphToTextSpacing == 4)
+        #expect(ScholiumMetrics.Apparatus.relationClusterSpacing == 12)
+        #expect(ScholiumMetrics.Apparatus.relationPinnedGlyphTop == 36)
+        #expect(ScholiumMetrics.Apparatus.relationRowMinimumHeight == 36)
+        #expect(ScholiumMetrics.Apparatus.actionRowMinimumHeight == 44)
 
         #expect(componentsSource.contains("struct ScholiumApparatusSection"))
         #expect(componentsSource.contains("struct ScholiumApparatusRow"))
+        #expect(componentsSource.contains("struct ScholiumApparatusFactGrid"))
+        #expect(componentsSource.contains("struct ScholiumApparatusActionRowContent"))
+        #expect(componentsSource.contains("struct ScholiumApparatusStateView"))
+        #expect(componentsSource.contains("struct ScholiumApparatusQuietRowButtonStyle"))
+        #expect(componentsSource.contains("struct ScholiumApparatusSectionHeaderButton"))
+        #expect(componentsSource.contains("struct ScholiumInspectorModeIndex"))
+        #expect(componentsSource.contains("struct ScholiumConnectionGlyph"))
+        #expect(!componentsSource.contains("select(mode)\n        focusedMode = mode"))
+        #expect(componentsSource.contains("select(nextMode)\n        focusedMode = nextMode"))
+        #expect(componentsSource.contains("ViewThatFits(in: .horizontal)"))
+        #expect(componentsSource.contains("ForEach(visibleFacts)"))
+        #expect(componentsSource.contains(
+            "idealWidth: ScholiumMetrics.Apparatus.factValueMinimumWidth"
+        ))
+        #expect(componentsSource.contains("configuration.isPressed"))
+        #expect(componentsSource.contains(
+            "ScholiumInterfaceTypography.apparatusBody.weight(.semibold)"
+        ))
+        #expect(!componentsSource.contains(".accessibilityHint(detail"))
         #expect(componentsSource.contains(
             "width: ScholiumMetrics.Apparatus.iconColumnWidth"
         ))
@@ -673,17 +731,17 @@ struct FrontendArchitectureTests {
         #expect(researchSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
-        #expect(researchSource.components(
-            separatedBy: "ScholiumApparatusSection("
-        ).count >= 4)
         #expect(researchSource.contains("attentionSection"))
+        #expect(!researchSource.contains("if !context.visibleAttentionItems.isEmpty"))
         #expect(researchSource.contains("aboutSection"))
         #expect(researchSource.contains("propertyFacts"))
+        #expect(researchSource.contains("ResearchProjectionFreshnessView("))
+        #expect(researchSource.contains("ScholiumApparatusStateView("))
         #expect(connectionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
         #expect(connectionsSource.contains(
-            ".padding(.leading, ScholiumMetrics.Apparatus.sectionContentInset)"
+            "Image(systemName: isExpanded ? \"chevron.down\" : \"chevron.forward\")"
         ))
         #expect(connectionsSource.contains(
             "ScholiumInterfaceTypography.apparatusResearchContent"
@@ -691,15 +749,69 @@ struct FrontendArchitectureTests {
         #expect(actionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
-        #expect(researchSource.contains("visibleAttentionItems.prefix(3)"))
-        #expect(researchSource.contains("ScholiumApparatusActionButton(\n                    \"Edit Properties\""))
+        #expect(actionsSource.contains("ScholiumApparatusActionRowContent("))
+        #expect(actionsSource.contains("ScholiumApparatusStateView("))
+        #expect(actionsSource.contains("ResearchActionVisualSection"))
+        #expect(actionsSource.contains("BuiltInActionVisualGroup"))
+        #expect(actionsSource.contains("title: \"RESEARCH\""))
+        #expect(actionsSource.contains("title: \"REVIEW\""))
+        #expect(actionsSource.contains("title: \"RESEARCHER SKILLS\""))
+        #expect(actionsSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
+        #expect(!actionsSource.contains("@FocusedValue(\\.scholiumResearchActionActions)"))
+        #expect(actionsSource.contains("if shouldRestoreKeyboardFocus"))
+        #expect(actionsSource.contains("registerFocusOwner(item.id)"))
+        #expect(actionsSource.contains("action(!activationWasPointerDriven)"))
+        #expect(actionsSource.contains("case .leftMouseDown, .leftMouseUp"))
+        #expect(!actionsSource.contains(
+            "focusRestorationTask?.cancel()\n            hasKeyboardFocus = true\n            action()"
+        ))
+        #expect(!actionsSource.contains("ScholiumStructuralRule()"))
+        #expect(actionsSource.contains("ResearchActionHelpModifier(text: item.helpText)"))
+        #expect(!actionsSource.contains(".accessibilityHint(detailText"))
+        #expect(researchSource.contains("visibleAttentionKinds.prefix(3)"))
+        #expect(!researchSource.contains("Text(item.message)"))
+        #expect(!researchSource.contains("\"Show All\""))
+        #expect(researchSource.contains("if let invalidResearchUnitMessage"))
+        #expect(researchSource.contains("systemImage: \"exclamationmark.triangle\""))
+        #expect(researchSource.contains("ScholiumApparatusSectionHeaderButton("))
+        #expect(researchSource.contains("actionLabel: \"Edit Properties\""))
+        #expect(researchSource.contains("accessibilityIdentifier: \"scholium.about.edit\""))
+        #expect(researchSource.contains(".accessibilityIdentifier(\"scholium.about\")"))
         #expect(!researchSource.contains("Customize"))
         #expect(!researchSource.contains("prefix(5)"))
         #expect(!researchSource.contains("Scholarly Status"))
         #expect(!researchSource.contains("Provenance"))
         #expect(!researchSource.contains("Derived State"))
-        #expect(connectionsSource.contains("ScholiumApparatusRow("))
+        #expect(connectionsSource.contains("private var relationButton: some View"))
+        #expect(connectionsSource.contains("pinnedViews: [.sectionHeaders]"))
+        #expect(connectionsSource.contains("connectionGroupHeader("))
+        #expect(connectionsSource.contains("ScholiumColorRole.surfaceBackground.color"))
+        #expect(connectionsSource.contains("ConnectionRelationshipCluster"))
+        #expect(connectionsSource.contains("relationGlyphColumnWidth"))
+        #expect(connectionsSource.contains("relationPinnedGlyphTop"))
+        #expect(connectionsSource.contains("GeometryReader"))
+        #expect(!connectionsSource.contains("symbolText"))
+        #expect(connectionsSource.contains("Open relation source"))
+        #expect(!connectionsSource.contains("Image(systemName: \"arrow.up.forward\")"))
+        #expect(!connectionsSource.contains("Text(\"↗\")"))
         #expect(!connectionsSource.contains("DisclosureGroup(\n            isExpanded:"))
+        #expect(noteSource.contains("ScholiumInspectorModeIndex("))
+        #expect(previewSource.contains("ScholiumInspectorModeIndex("))
+        #expect(previewSource.contains("private struct InspectorCatalogActionButton"))
+        #expect(!previewSource.contains("[\"Overview\", \"Connect\", \"Actions\"]"))
+        #expect(previewSource.contains("catalogAttentionSummary"))
+        #expect(previewSource.contains("ScholiumApparatusSectionHeaderButton("))
+        #expect(!previewSource.contains("ScholiumApparatusSection(\"ACTIONS\")"))
+        #expect(previewSource.contains("ScholiumApparatusSection(\"RESEARCH\")"))
+        #expect(previewSource.contains("ScholiumApparatusSection(\"REVIEW\")"))
+        #expect(previewSource.contains(
+            "ScholiumApparatusSection(\"RESEARCHER SKILLS\")"
+        ))
+        #expect(previewSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
+        #expect(previewSource.contains("catalogConnectionCluster("))
+        #expect(previewSource.contains("ScholiumConnectionGlyph(kind: kind)"))
+        #expect(appSource.contains("case .researchConfigurationInvalidated = event"))
+        #expect(appSource.contains("refreshResearchActionAvailability()"))
     }
 
     @Test("The Library is opaque and the no-note detail is a quiet semantic surface")
@@ -757,17 +869,14 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains(".disabled(!isAvailable)"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
-        #expect(ScholiumMetrics.Library.contentInset == ScholiumMetrics.Peripheral.contentInset)
-        #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumMetrics.Peripheral.sectionSpacing)
-        #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumMetrics.Peripheral.contentInset)
-        #expect(ScholiumMetrics.Apparatus.sectionSpacing == ScholiumMetrics.Peripheral.sectionSpacing)
+        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Spacing.regionContentInset)
+        #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
+        #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Apparatus.contentInset)
+        #expect(ScholiumMetrics.Apparatus.contentInset != ScholiumMetrics.Library.contentInset)
+        #expect(ScholiumMetrics.Apparatus.sectionSpacing == ScholiumGrid.Apparatus.sectionGap)
         #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
                 == ScholiumGrid.Apparatus.headingToContentGap
-        )
-        #expect(
-            ScholiumMetrics.Apparatus.sectionContentInset
-                == ScholiumMetrics.Peripheral.sectionContentInset
         )
         #expect(ScholiumMetrics.Apparatus.headerHeight == ScholiumGrid.Apparatus.modeStripHeight)
         #expect(ScholiumMetrics.Apparatus.headerHeight == 40)
@@ -1329,8 +1438,8 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Dimension.libraryFooterHeight == 52)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 
-        #expect(ScholiumMetrics.Peripheral.contentInset == ScholiumGrid.Spacing.regionContentInset)
-        #expect(ScholiumMetrics.Peripheral.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
+        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Spacing.regionContentInset)
+        #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == ScholiumGrid.Dimension.compactHierarchyRowHeight)
         #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
 
@@ -2037,7 +2146,7 @@ struct FrontendArchitectureTests {
             target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
             targetFingerprint: DocumentFingerprint(content: "Target body"),
             title: "Target note",
-            relationship: .supportsTarget,
+            relationship: .supports,
             fragment: "Claim",
             htmlBody: "<p>Target body</p>"
         )
@@ -2196,38 +2305,43 @@ struct FrontendArchitectureTests {
     @Test("The live Connections inspector uses one semantic presentation")
     func sharedConnectionPresentation() throws {
         let expected: [
-            (ScholiumConnectionPresentation, String, String, ScholiumColorRole)
+            (ScholiumConnectionPresentation, String, ScholiumConnectionGlyphKind)
         ] = [
-            (.supports, "Supports", "↑", .connectionSupport),
-            (.supportedBy, "Supported By", "↓", .connectionSupport),
-            (.incompatible, "Incompatible With", "×", .connectionIncompatible),
-            (.neutral, "Related", "—", .connectionNeutral),
+            (.supports, "Supports", .supports),
+            (.supportsThisNote, "Supports This Note", .supportedBy),
+            (.opposes, "Opposes", .opposes),
+            (.opposesThisNote, "Opposes This Note", .opposedBy),
+            (.incompatible, "Incompatible", .incompatible),
+            (.neutral, "Related", .neutral),
         ]
-        for (presentation, title, symbolText, colorRole) in expected {
+        for (presentation, title, glyphKind) in expected {
             #expect(presentation.title == title)
-            #expect(presentation.symbolText == symbolText)
-            #expect(presentation.colorRole == colorRole)
+            #expect(presentation.glyphKind == glyphKind)
         }
 
         #expect(ScholiumConnectionPresentation(
-            vectorKind: .supportsTarget,
+            vectorKind: .supports,
             currentIsSource: true
         ) == .supports)
         #expect(ScholiumConnectionPresentation(
-            vectorKind: .supportsTarget,
+            vectorKind: .supports,
             currentIsSource: false
-        ) == .supportedBy)
+        ) == .supportsThisNote)
         #expect(ScholiumConnectionPresentation(
-            vectorKind: .supportedByTarget,
+            vectorKind: .opposes,
             currentIsSource: true
-        ) == .supportedBy)
+        ) == .opposes)
         #expect(ScholiumConnectionPresentation(
-            vectorKind: .supportedByTarget,
+            vectorKind: .opposes,
             currentIsSource: false
-        ) == .supports)
+        ) == .opposesThisNote)
         #expect(ScholiumConnectionPresentation(
             vectorKind: .incompatible,
             currentIsSource: true
+        ) == .incompatible)
+        #expect(ScholiumConnectionPresentation(
+            vectorKind: .incompatible,
+            currentIsSource: false
         ) == .incompatible)
         #expect(ScholiumConnectionPresentation(
             vectorKind: nil,

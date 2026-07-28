@@ -253,6 +253,15 @@ struct ResearchActionExecutionContractsTests {
                 from: JSONSerialization.data(withJSONObject: completionObject)
             )
         }
+
+        completionObject.removeValue(forKey: "unsupported")
+        completionObject.removeValue(forKey: "actuallyUsedMaterialNoteIDs")
+        #expect(throws: DecodingError.self) {
+            _ = try decoder.decode(
+                ResearchActionCompletionSubmission.self,
+                from: JSONSerialization.data(withJSONObject: completionObject)
+            )
+        }
     }
 
     private func parameterProfile() throws -> ResearchActionProfile {

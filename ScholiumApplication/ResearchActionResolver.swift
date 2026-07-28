@@ -104,13 +104,16 @@ extension WorkspaceHandle {
             submission.functionSubmission
         )
         let completion = attachingAgentActions(to: protectedCompletion)
+        guard let actuallyUsedMaterialNoteIDs = completion.actuallyUsedMaterialNoteIDs else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
         return ResearchActionCompletion(
             actionID: actionID,
             runID: completion.runID,
             state: ResearchActionRunState(completion.state),
             targetFingerprint: completion.targetFingerprint,
             materialFingerprints: completion.materialFingerprints,
-            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs ?? [],
+            actuallyUsedMaterialNoteIDs: actuallyUsedMaterialNoteIDs,
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
             outputFingerprint: completion.outputFingerprint,

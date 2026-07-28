@@ -296,10 +296,10 @@ class ListMarkerWidget extends WidgetType {
 }
 
 const vectorLinkSemantics: Record<VectorLinkKind, {label: string; symbol: string}> = {
-  neutral: { label: "Related note", symbol: "link" },
-  supports_target: { label: "Supports", symbol: "arrow.right.circle" },
-  supported_by_target: { label: "Supported by", symbol: "arrow.left.circle" },
-  incompatible: { label: "Incompatible with", symbol: "xmark.circle" },
+  neutral: { label: "Related note", symbol: "—" },
+  supports: { label: "Supports", symbol: "+" },
+  opposes: { label: "Opposes", symbol: "−" },
+  incompatible: { label: "Incompatible", symbol: "" },
 };
 
 class VectorLinkIconWidget extends WidgetType {
@@ -313,7 +313,17 @@ class VectorLinkIconWidget extends WidgetType {
     span.title = semantics.label;
     span.setAttribute("role", "img");
     span.setAttribute("aria-label", semantics.label);
-    span.dataset.symbol = semantics.symbol;
+    if (this.kind === "incompatible") {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 20 20");
+      svg.setAttribute("aria-hidden", "true");
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M3.1 10.1c2.5-.2 4.5-.1 6.1.1L10 7.1M16.9 10.1c-2.5-.2-4.5-.1-6.1.1L10 13.1");
+      svg.append(path);
+      span.append(svg);
+    } else {
+      span.textContent = semantics.symbol;
+    }
     return span;
   }
   // Let CodeMirror place the caret at this replacement when it is clicked so
@@ -408,7 +418,7 @@ function isFencedDelimiterLine(doc: Text, block: SemanticCodeBlockRange, lineFro
 }
 
 const legacyRelationshipPredicates = new Set([
-  "supports", "contradicts", "extends", "refines", "questions", "incompatible_with",
+  "supports", "contradicts", "extends", "refines", "incompatible_with",
   "cites", "see_also", "connected", "answers", "subquestion_of", "premise_of",
   "concludes", "assumes", "pressures", "uses_concept", "has_commitment", "targets",
   "objects_to", "rebuts", "undercuts", "replies_to", "concedes", "depends_on",
@@ -2555,9 +2565,9 @@ document.body.append(previewPopover);
 
 const relationshipLabels: Record<VectorLinkKind, string> = {
   neutral: "Related note",
-  supports_target: "Supports",
-  supported_by_target: "Supported by",
-  incompatible: "Incompatible with",
+  supports: "Supports",
+  opposes: "Opposes",
+  incompatible: "Incompatible",
 };
 let previewTimer: number | undefined;
 let pendingPreviewAnchor: HTMLElement | null = null;
@@ -2756,7 +2766,7 @@ editor.scrollDOM.addEventListener("scroll", () => {
 
 const allCommands = [
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode",
-  "standardLink", "wikilink", "vectorSupportsTarget", "vectorSupportedByTarget", "vectorIncompatible",
+  "standardLink", "wikilink", "vectorSupports", "vectorOpposes", "vectorIncompatible",
   "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
   "blockQuotation", "bulletList", "numberedList", "taskList", "fencedCode", "thematicBreak",
   "calloutOrient", "calloutCite", "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",

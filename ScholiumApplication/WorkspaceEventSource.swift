@@ -90,6 +90,15 @@ public actor WorkspaceEventSource: WorkspaceEventStreaming {
         )), snapshot: snapshot)
     }
 
+    func publishResearchConfigurationInvalidated(snapshot: WorkspaceSnapshot) {
+        publish(.researchConfigurationInvalidated(
+            WorkspaceResearchConfigurationInvalidatedEvent(
+                generation: nextGeneration(),
+                snapshot: snapshot
+            )
+        ), snapshot: snapshot)
+    }
+
     func publishRuntimeReloaded(
         runtimeIdentity: TriptychRuntimeIdentity,
         snapshot: WorkspaceSnapshot

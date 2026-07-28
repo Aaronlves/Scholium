@@ -534,11 +534,21 @@ public struct PortableResearchDiscrepancy: Codable, Hashable, Identifiable, Send
     }
 }
 
+/// Scholium-established completion state for the Fidelity process attached to
+/// one portable record. Completion means that the declared checks ran against
+/// the recorded revision; it is not a truth, quality, or acceptance verdict.
+public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Sendable {
+    case notRequired = "not_required"
+    case completed
+    case unverified
+    case notApplicable = "not_applicable"
+}
+
 /// Whitelisted, portable scholarly evidence for one finished Discussion or
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let id: UUID
@@ -552,6 +562,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let participatingNotes: [PortableResearchNoteRevision]
     public let statements: [PortableResearchStatement]
     public let actuallyUsedMaterials: [PortableResearchMaterialUse]
+    public let fidelityCompletion: PortableResearchFidelityCompletion
     public let confirmedChanges: [PortableResearchConfirmedChange]
     public let discrepancies: [PortableResearchDiscrepancy]
     public let startedAt: Date
@@ -570,6 +581,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         participatingNotes: [PortableResearchNoteRevision],
         statements: [PortableResearchStatement],
         actuallyUsedMaterials: [PortableResearchMaterialUse] = [],
+        fidelityCompletion: PortableResearchFidelityCompletion,
         confirmedChanges: [PortableResearchConfirmedChange] = [],
         discrepancies: [PortableResearchDiscrepancy] = [],
         startedAt: Date,
@@ -626,6 +638,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case .action:
             guard action != nil,
                   method != nil,
+                  fidelityCompletion != .notApplicable,
                   primaryNoteID.map({ participatingByID[$0] != nil }) ?? true else {
                 throw PortableResearchRecordError.invalidRecord
             }
@@ -633,7 +646,11 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             guard let primaryNoteID,
                   participatingByID[primaryNoteID] != nil,
                   !statements.isEmpty,
-                  continuationLineage == nil else {
+                  continuationLineage == nil,
+                  actuallyUsedMaterials.isEmpty,
+                  fidelityCompletion == .notApplicable,
+                  confirmedChanges.isEmpty,
+                  discrepancies.isEmpty else {
                 throw PortableResearchRecordError.invalidRecord
             }
         }
@@ -653,6 +670,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.actuallyUsedMaterials = actuallyUsedMaterials.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
         }
+        self.fidelityCompletion = fidelityCompletion
         self.confirmedChanges = confirmedChanges.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
         }
@@ -676,6 +694,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case participatingNotes = "participating_notes"
         case statements
         case actuallyUsedMaterials = "actually_used_materials"
+        case fidelityCompletion = "fidelity_completion"
         case confirmedChanges = "confirmed_changes"
         case discrepancies
         case startedAt = "started_at"
@@ -690,17 +709,13 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == 1 || schemaVersion == Self.currentSchemaVersion else {
+        guard schemaVersion == Self.currentSchemaVersion else {
             throw PortableResearchRecordError.unsupportedSchemaVersion(schemaVersion)
         }
         let continuationLineage = try container.decodeIfPresent(
             ResearchContinuationLineage.self,
             forKey: .continuationLineage
         )
-        guard schemaVersion == Self.currentSchemaVersion
-                || continuationLineage == nil else {
-            throw PortableResearchRecordError.invalidRecord
-        }
         try self.init(
             id: container.decode(UUID.self, forKey: .id),
             triptychID: container.decode(UUID.self, forKey: .triptychID),
@@ -730,6 +745,10 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             actuallyUsedMaterials: container.decode(
                 [PortableResearchMaterialUse].self,
                 forKey: .actuallyUsedMaterials
+            ),
+            fidelityCompletion: container.decode(
+                PortableResearchFidelityCompletion.self,
+                forKey: .fidelityCompletion
             ),
             confirmedChanges: container.decode(
                 [PortableResearchConfirmedChange].self,

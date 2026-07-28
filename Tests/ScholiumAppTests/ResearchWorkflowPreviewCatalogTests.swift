@@ -45,9 +45,15 @@ struct ResearchWorkflowPreviewCatalogTests {
         #expect(!source.contains("Show Narrow Fallback"))
         #expect(source.contains("#Preview(\"Research Record Fixed Utility\")"))
         #expect(source.contains(".frame(width: 760, height: 680)"))
+        #expect(source.contains("Fidelity could not be completed for this recorded revision."))
+        #expect(source.contains("Agent-reported Materials used"))
         #expect(source.contains("researcherSkillProofFixtures.filter"))
         #expect(source.contains("$0.isEnabled && $0.showsInActions"))
         #expect(source.contains("counterexampleStressTestFixture.applicableRoles"))
+        #expect(source.contains("ScholiumApparatusSection(\"RESEARCH\")"))
+        #expect(source.contains("ScholiumApparatusSection(\"REVIEW\")"))
+        #expect(source.contains("ScholiumApparatusSection(\"RESEARCHER SKILLS\")"))
+        #expect(source.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
     }
 
     @Test("Actions and settings use the frozen researcher-governed vocabulary")

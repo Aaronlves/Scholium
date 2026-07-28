@@ -19,17 +19,36 @@ struct RelationshipTests {
         #expect(first.id == second.id)
     }
 
-    @Test("Linked paper supports the containing output")
+    @Test("Containing note acts on the target for directional public stances")
     func supportsDirection() {
-        let edge = RelationshipEdge.explicit(
+        let support = RelationshipEdge.explicit(
             containingPath: "output/chapter.md",
             targetPath: "papers/paper.md",
             predicate: .supports,
             locator: locator,
             resolution: .resolved("papers/paper.md")
         )
-        #expect(edge.subjectPath == "papers/paper.md")
-        #expect(edge.objectPath == "output/chapter.md")
+        let opposition = RelationshipEdge.explicit(
+            containingPath: "output/chapter.md",
+            targetPath: "papers/paper.md",
+            predicate: .opposes,
+            locator: locator,
+            resolution: .resolved("papers/paper.md")
+        )
+        for edge in [support, opposition] {
+            #expect(edge.subjectPath == "output/chapter.md")
+            #expect(edge.objectPath == "papers/paper.md")
+            #expect(edge.isDirectional)
+        }
+
+        let incompatibility = RelationshipEdge.explicit(
+            containingPath: "output/chapter.md",
+            targetPath: "papers/paper.md",
+            predicate: .incompatibleWith,
+            locator: locator,
+            resolution: .resolved("papers/paper.md")
+        )
+        #expect(!incompatibility.isDirectional)
     }
 
     @Test("Citation direction runs from containing note to target")

@@ -218,15 +218,23 @@ records that migration debt without treating this workaround as target authority
 
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width
-binding, window search, opening correction, or persisted divider geometry
-intervenes. Library alone receives the specified 300pt native content minimum,
-without a preferred/maximum width or second geometry owner. Other split items
-receive no Scholium thickness, fraction, priority, or restoration state. A
-scene/window minimum remains contingent on the complete adaptation matrix.
+binding, window search, persisted divider geometry, or continuous correction
+intervenes. Library receives the specified 300pt native content minimum,
+without a preferred/maximum width or second geometry owner. Apparatus clears
+the system Inspector item's fixed maximum, installs its initial collapsed state
+before adding the item to the native split, and uses a controller-lifetime
+adapter that offers the provisional 320pt ideal exactly once after the first explicit
+reveal, only when Document can retain at least that width. The offer is neither
+persisted nor replayed; all later resizing, hiding, showing, and restoration
+remain AppKit-owned. No item receives a Scholium fraction, holding priority, or
+restoration state. A scene/window minimum remains contingent on the complete
+adaptation matrix.
 
 Apparatus uses `NSSplitViewItem(inspectorWithViewController:)`; production does
-not mutate its geometry, safe area, separator, or collapse policy. The native item and
-`toggleInspector(_:)` own transitions. Because the nested split may sit outside
+not replace its native minimum, divider, safe area, separator, or collapse
+policy. The one initial ideal-width offer above is released immediately after
+application; the native item and `toggleInspector(_:)` own transitions. Because
+the nested split may sit outside
 the responder chain, the collapsed Show route is a borderless hosted item, not
 the platform-wrapped standard toolbar item, and bridges with the View command
 through the exact per-window coordinator. Selected-document state supplies
@@ -234,11 +242,21 @@ availability. `WindowModel` mirrors native visibility for commands,
 restoration, and toolbar reconciliation but never reasserts it or stores width.
 
 The Inspector has exactly three current-note modes: Overview, Connect, and
-Actions. Overview projects compact Attention and role-aware About fields;
-Zotero has no Inspector projection. Connect projects direct and derived
-relations. Actions resolves the public role-valid Action matrix and presents
-each default as a direct full-row operation; visible custom Profiles follow in
-one Researcher Skills group. Availability is bound to the exact current Note,
+Actions. Overview projects a current-Note Attention summary through the
+Library-owned queue and role-aware About fields; the Attention summary is one
+button, while About keeps selectable values and routes editing through its
+heading button. Zotero has no Inspector projection. Connect projects direct and
+derived relations as single full-row targets, pins the original collapsible
+group header within its sole vertical scroll, and retains the distinct source
+anchor as a named secondary action without a trailing glyph. Actions resolves
+the public role-valid Action matrix, presents the
+canonical defaults under quiet Research and Review headings, keeps visible
+custom Profiles in one Researcher Skills group, and keeps Settle under
+Judgment. Every launcher remains the same direct full-row operation and invokes
+its exact Inspector-supplied window route; focused routing belongs to menu
+commands rather than row activation. Pointer activation does not write keyboard
+focus, while keyboard traversal and deliberate restoration retain it.
+Availability is bound to the exact current Note,
 clears while it is being rechecked, and rejects a late result from a previous
 Target. No Research Activity chronology, Work with Agent wrapper, or Research
 Record launcher is projected there. A quiet row for each portable active
@@ -461,7 +479,7 @@ public Use Case, CLI command, next action, or rendered packet exposes its
 retired finalizer. Public `ResearchOperations` delegates here;
 Dialogue/Critique have no alternate preparation path.
 
-### Portable Research Record v1 and Local Execution v2
+### Portable Research Record storage v1, record schema 3, and Local Execution v2
 
 `PortableResearchRecordStore` owns one JSON file per intellectual record under
 `.scholium/research-records/v1/records/`; `active/` owns one file per unfinished
@@ -509,6 +527,16 @@ use evidence. The portable record stores the Material's frozen revision and
 role, not a later projection. Strict record validation cross-checks the use's
 Note identity, qualified reference, role, title, and revision against its
 participant fact while still retaining a later deletion tombstone as history.
+For current Action runs, the protected optional representation distinguishes
+retained Function-era absence from an explicit report; the Action decoder
+requires the field, and record construction rejects absence instead of
+coalescing it to `[]`. Schema 3 adds the closed `fidelity_completion` value:
+Action permits `not_required`, `completed`, or `unverified`, while Discussion
+requires `not_applicable`. Application derives that process fact from terminal
+state plus exact-revision Fidelity evidence; it does not copy an Agent verdict.
+Schema 1/2 record files are isolated as unsupported and remain unchanged. The
+`v1` directory name continues to version this storage layout rather than the
+individual JSON schema.
 They have no generic metadata escape hatch and cannot encode a
 protected Function ID, assembled instructions, raw key, bookmark, absolute
 path, diff, token count, transport log, or window state. Strict decoding is
@@ -1461,10 +1489,15 @@ delimiter rules to CodeMirror. Swift parses committed revisions for Read,
 graph, diagnostics, and persistence-adjacent consumers. TypeScript incrementally
 parses the uncommitted buffer for immediate Live Preview only, and shared
 fixtures require its source spans and meanings to agree with Contracts.
-The dialect explicitly carries the case-sensitive named/inline footnote
-syntax, two-space-or-tab continuation ownership, and first-reference ordinal
-rule as well as callouts, Vector Links, and mathematics. The TypeScript adapter
-fails closed when it receives a footnote dialect it does not implement.
+Dialect 4 explicitly carries the case-sensitive named/inline footnote syntax,
+two-space-or-tab continuation ownership, first-reference ordinal rule, and the
+Vector-Link v3 relation grammar alongside callouts and mathematics. Its four
+kinds are neutral, supports, opposes, and incompatible. Support and opposition
+are directed from the containing Note to the target; neutral and incompatibility
+canonicalize their resolved endpoints and remain undirected. Only support and
+opposition inverse presentation is derived after graph resolution. The
+TypeScript adapter fails closed when it
+receives a dialect it does not implement.
 
 Complete note source uses one CodeMirror language owner built from
 `yamlFrontmatter` around the locked Markdown language. Closed frontmatter is a
@@ -1483,7 +1516,9 @@ Lezer compatibility and maps every node boundary back to the exact original
 UTF-16 offset, so CRLF, leading BOM, Unicode decomposition, and final-newline
 form remain source-authoritative. These nodes locate editing syntax; Swift
 `MarkdownSemanticDocument` and `GraphSnapshot` remain the authorities for
-diagnostics, identity, relationship meaning, and committed Read output.
+diagnostics, identity, relationship meaning, and committed Read output. Graph
+contract 5 invalidates the retired reverse-support and directed-Questions
+projection rather than decoding it as current state.
 
 The mode-neutral base catalog is also explicit rather than assumed. Contracts
 publishes source-located CommonMark/GFM blocks plus strong, emphasis,

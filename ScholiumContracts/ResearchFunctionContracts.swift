@@ -1224,7 +1224,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
         confirmationToken: UUID,
         finalTargetFingerprint: DocumentFingerprint? = nil,
         finalMaterialFingerprints: [UUID: DocumentFingerprint] = [:],
-        actuallyUsedMaterialNoteIDs: [UUID] = [],
+        actuallyUsedMaterialNoteIDs: [UUID]? = [],
         summary: String,
         didModifyTarget: Bool,
         activityCompletion: ResearchActivityCompletionSubmission? = nil,
@@ -1238,9 +1238,9 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
         self.confirmationToken = confirmationToken
         self.finalTargetFingerprint = finalTargetFingerprint
         self.finalMaterialFingerprints = finalMaterialFingerprints
-        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs.isEmpty
-            ? nil
-            : actuallyUsedMaterialNoteIDs.sorted { $0.uuidString < $1.uuidString }
+        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs?.sorted {
+            $0.uuidString < $1.uuidString
+        }
         self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         self.didModifyTarget = didModifyTarget
         self.activityCompletion = activityCompletion
@@ -1287,7 +1287,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         state: ResearchFunctionRunState,
         targetFingerprint: DocumentFingerprint,
         materialFingerprints: [UUID: DocumentFingerprint],
-        actuallyUsedMaterialNoteIDs: [UUID] = [],
+        actuallyUsedMaterialNoteIDs: [UUID]? = [],
         summary: String,
         didModifyTarget: Bool,
         outputFingerprint: DocumentFingerprint? = nil,
@@ -1305,9 +1305,9 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         self.state = state
         self.targetFingerprint = targetFingerprint
         self.materialFingerprints = materialFingerprints
-        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs.isEmpty
-            ? nil
-            : actuallyUsedMaterialNoteIDs.sorted { $0.uuidString < $1.uuidString }
+        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs?.sorted {
+            $0.uuidString < $1.uuidString
+        }
         self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         self.didModifyTarget = didModifyTarget
         self.outputFingerprint = outputFingerprint

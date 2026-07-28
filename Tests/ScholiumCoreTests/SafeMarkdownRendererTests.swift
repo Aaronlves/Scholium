@@ -271,8 +271,8 @@ struct SafeMarkdownRendererTests {
         ).htmlBody
 
         #expect(rendered.contains("class=\"wiki-link scholium-vector\""))
-        #expect(rendered.contains("data-vector-kind=\"supports_target\""))
-        #expect(rendered.contains("data-vector-kind=\"supported_by_target\""))
+        #expect(rendered.contains("data-vector-kind=\"supports\""))
+        #expect(rendered.contains("data-vector-kind=\"opposes\""))
         #expect(rendered.contains("data-vector-kind=\"incompatible\""))
         #expect(rendered.contains("data-vector-kind=\"neutral\""))
         #expect(!rendered.contains("+[[B]]"))

@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record v1 and Local Execution v2")
+@Suite("Portable Research Record storage v1/schema 3 and Local Execution v2")
 struct ResearchRecordV1StoresTests {
     @Test("A post-rename failure leaves exact committed bytes observable")
     func secureReplacementReportsPostRenameUncertainty() throws {
@@ -129,6 +129,7 @@ struct ResearchRecordV1StoresTests {
         #expect(pinned.participatingNotes == record.participatingNotes)
         #expect(pinned.statements == record.statements)
         #expect(pinned.actuallyUsedMaterials == record.actuallyUsedMaterials)
+        #expect(pinned.fidelityCompletion == record.fidelityCompletion)
         #expect(pinned.confirmedChanges == record.confirmedChanges)
         #expect(pinned.discrepancies == record.discrepancies)
         #expect(pinned.sourceReference == record.sourceReference)
@@ -184,6 +185,47 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.records.map(\.id) == [record.id])
         #expect(listing.issues.count == 1)
         #expect(listing.issues.first?.fileName == corruptURL.lastPathComponent)
+    }
+
+    @Test("Portable schema 1 and 2 files remain byte-unchanged and unsupported")
+    func portableLegacySchemasRemainUntouched() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let current = try makePortableRecord()
+        _ = try await store.createFinishedRecord(current)
+        let legacy = try makePortableRecord(
+            id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAC")!
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var object = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(legacy)) as? [String: Any]
+        )
+        object["schema_version"] = 2
+        object.removeValue(forKey: "fidelity_completion")
+        let bytes = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        let legacyURL = fixture.control
+            .appendingPathComponent("research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(legacy.id.uuidString.lowercased() + ".json")
+        try bytes.write(to: legacyURL)
+        let modificationDate = Date(timeIntervalSince1970: 1_234)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600), .modificationDate: modificationDate],
+            ofItemAtPath: legacyURL.path
+        )
+
+        let listing = try await store.listing(location: .records)
+
+        #expect(listing.records == [current])
+        #expect(listing.issues.map(\.fileName) == [legacyURL.lastPathComponent])
+        #expect(try Data(contentsOf: legacyURL) == bytes)
+        let attributes = try FileManager.default.attributesOfItem(atPath: legacyURL.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        #expect((attributes[.modificationDate] as? Date) == modificationDate)
     }
 
     @Test("An interrupted permanent-deletion rename restores on reopen")
@@ -366,6 +408,7 @@ struct ResearchRecordV1StoresTests {
         #expect(try await store.activeDiscussions().discussions.isEmpty)
         let retained = try await store.record(id: finished.id)
         #expect(retained.statements == finished.statements)
+        #expect(retained.fidelityCompletion == finished.fidelityCompletion)
         #expect(retained.participatingNotes.first {
             $0.noteID == deletedNoteID
         }?.isTombstone == true)
@@ -896,6 +939,7 @@ struct ResearchRecordV1StoresTests {
                 text: "No source change was needed.",
                 createdAt: Date(timeIntervalSince1970: 20)
             )],
+            fidelityCompletion: .notRequired,
             startedAt: Date(timeIntervalSince1970: 10),
             finishedAt: Date(timeIntervalSince1970: 20)
         )

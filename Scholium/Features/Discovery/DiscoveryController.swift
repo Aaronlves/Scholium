@@ -26,6 +26,10 @@ struct DiscoveryLibraryState: Equatable {
     var preparedLifecyclePath: String?
     var showsUnclassified = false
     var showsAttentionQueue = false
+    /// Nil presents the Triptych-wide queue. Inspector entry supplies the
+    /// current Note so the same Library-owned surface can present its bounded
+    /// subset without creating a second Attention destination.
+    var attentionNoteScope: VaultQualifiedNoteID?
     var lifecycleScope: NoteLocationScope?
     var lifecycleItems: [LifecycleLocationItem] = []
     var lifecycleIsLoading = false
@@ -278,14 +282,19 @@ final class DiscoveryController: ObservableObject {
         library.showsUnclassified = isPresented
     }
 
-    func showAttentionQueue(_ isPresented: Bool) {
+    func showAttentionQueue(
+        _ isPresented: Bool,
+        note: VaultQualifiedNoteID? = nil
+    ) {
         library.showsAttentionQueue = isPresented
+        library.attentionNoteScope = isPresented ? note : nil
         if isPresented { dismissLifecycleListing() }
     }
 
     func presentLifecycleListing(_ scope: NoteLocationScope) {
         activeLifecycleRequestID = nil
         library.showsAttentionQueue = false
+        library.attentionNoteScope = nil
         library.lifecycleScope = scope
         library.lifecycleItems = []
         library.lifecycleError = nil
@@ -297,6 +306,7 @@ final class DiscoveryController: ObservableObject {
         let request = DiscoveryLifecycleRequest(id: UUID(), scope: scope)
         activeLifecycleRequestID = request.id
         library.showsAttentionQueue = false
+        library.attentionNoteScope = nil
         library.lifecycleScope = scope
         library.lifecycleItems = []
         library.lifecycleError = nil

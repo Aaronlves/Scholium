@@ -57,6 +57,7 @@ final class ScholiumUITests: XCTestCase {
     private enum QAWorkspaceMetricContract {
         static let preferredWidth: CGFloat = 1_180
         static let libraryMinimumReadableWidth: CGFloat = 300
+        static let apparatusFirstRevealWidth: CGFloat = 320
         static let frameTolerance: CGFloat = 18
     }
 
@@ -1356,9 +1357,78 @@ final class ScholiumUITests: XCTestCase {
             app.descendants(matching: .any)["scholium.researchStrip"].exists
         )
 
-        selectResearchInspectorMode("overview")
+        let inspector = selectResearchInspectorMode("overview")
+        XCTAssertEqual(
+            inspector.frame.width,
+            QAWorkspaceMetricContract.apparatusFirstRevealWidth,
+            accuracy: QAWorkspaceMetricContract.frameTolerance,
+            "The first explicit Inspector reveal should receive the provisional ideal width."
+        )
+        func attentionCount(_ value: String) -> XCUIElement {
+            app.staticTexts
+                .matching(identifier: "scholium.researchOverview.attention")
+                .matching(NSPredicate(format: "value == %@", value))
+                .firstMatch
+        }
+        XCTAssertTrue(attentionCount("1").waitForExistence(timeout: 3))
+        let overviewScreenshot = XCTAttachment(
+            screenshot: app.windows.firstMatch.screenshot()
+        )
+        overviewScreenshot.name = "Inspector D-114 — Overview at first reveal"
+        overviewScreenshot.lifetime = .keepAlways
+        add(overviewScreenshot)
         selectResearchInspectorMode("connect")
         selectResearchInspectorMode("actions")
+
+        let connectMode = app.buttons[
+            "scholium.inspectorMode.connect"
+        ].firstMatch
+        let actionsMode = app.buttons[
+            "scholium.inspectorMode.actions"
+        ].firstMatch
+        actionsMode.click()
+
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        func focusModeButton(_ button: XCUIElement) {
+            for _ in 0..<12 where !keyboardFocus.evaluate(with: button) {
+                app.typeKey(.tab, modifierFlags: [.shift])
+            }
+            XCTAssertTrue(
+                keyboardFocus.evaluate(with: button),
+                "The ModeIndex must be reachable from Inspector content by keyboard."
+            )
+        }
+
+        focusModeButton(actionsMode)
+        app.typeKey(.leftArrow, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { connectMode.isSelected })
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { actionsMode.isSelected })
+
+        focusModeButton(actionsMode)
+        app.typeKey(.tab, modifierFlags: [])
+        let analyze = app.descendants(matching: .any)[
+            "scholium.researchAction.analyze"
+        ].firstMatch
+        let actionFocus = XCTNSPredicateExpectation(
+            predicate: keyboardFocus,
+            object: analyze
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [actionFocus], timeout: 3), .completed)
+
+        let inspectorToggle = app.descendants(matching: .any)[
+            "scholium.toggleInspector"
+        ].firstMatch
+        inspectorToggle.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        inspectorToggle.click()
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            inspector.frame.width,
+            QAWorkspaceMetricContract.apparatusFirstRevealWidth,
+            accuracy: QAWorkspaceMetricContract.frameTolerance,
+            "Hiding and showing must not reassert or discard the current native width."
+        )
 
         let secondRow = app.descendants(matching: .any)[
             "scholium.noteRow.QA Autosave B.md"
@@ -1371,9 +1441,6 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 8) {
             documentTitle.value as? String == "QA Autosave B"
         })
-        let actionsMode = app.buttons[
-            "scholium.inspectorMode.actions"
-        ].firstMatch
         XCTAssertTrue(actionsMode.isSelected)
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchAction.discuss"
@@ -3013,6 +3080,9 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(recordWindow.staticTexts["Synthetic Action Agent"].exists)
         XCTAssertTrue(recordWindow.staticTexts[
             "A bounded nonconversational analysis report."
+        ].exists)
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.fidelity.unverified"
         ].exists)
 
         let tombstoneIdentifier =
@@ -4955,39 +5025,6 @@ final class ScholiumUITests: XCTestCase {
         )
     }
 
-    /// The native AppKit divider exposes a sub-point accessibility frame even
-    /// though its pointer target is wider. Probe a few nearby pixels so this
-    /// journey exercises the same public divider interaction as a researcher
-    /// instead of assuming the AX frame is the complete hit region.
-    @MainActor
-    private func dragNativeSplitter(
-        _ splitter: XCUIElement,
-        within splitGroup: XCUIElement,
-        horizontalDelta: CGFloat,
-        until condition: @escaping () -> Bool
-    ) -> Bool {
-        let splitFrame = splitGroup.frame
-        let dividerFrame = splitter.frame
-        guard splitFrame.width > 0, splitFrame.height > 0 else { return false }
-        let dividerX = (dividerFrame.midX - splitFrame.minX) / splitFrame.width
-        let dividerY = (dividerFrame.midY - splitFrame.minY) / splitFrame.height
-        for offset in [CGFloat.zero, -2, 2, -4, 4] {
-            // Build the pointer coordinate from the stable split-group frame.
-            // XCUI's coordinate relative to a 0.5pt splitter collapses to the
-            // element origin on current macOS, while the enclosing split group
-            // preserves the real screen coordinate.
-            let origin = splitGroup.coordinate(
-                withNormalizedOffset: CGVector(dx: dividerX, dy: dividerY)
-            ).withOffset(CGVector(dx: offset, dy: 0))
-            origin.press(
-                forDuration: 0.2,
-                thenDragTo: origin.withOffset(CGVector(dx: horizontalDelta, dy: 0))
-            )
-            if waitUntil(timeout: 1.5, condition: condition) { return true }
-        }
-        return false
-    }
-
     @MainActor
     private func waitUntil(timeout: TimeInterval, condition: @escaping () -> Bool) -> Bool {
         let expectation = XCTNSPredicateExpectation(
@@ -5798,7 +5835,7 @@ final class ScholiumUITests: XCTestCase {
         topicParticipant["starting_revision"] = topicStartingRevision
 
         var portableRecord: [String: Any] = [
-            "schema_version": 2,
+            "schema_version": 3,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "kind": "action",
@@ -5860,6 +5897,7 @@ final class ScholiumUITests: XCTestCase {
                     ? analysis.fingerprint
                     : topicStartingRevision,
             ]],
+            "fidelity_completion": "unverified",
             "confirmed_changes": [],
             "discrepancies": [],
             "started_at": startedAt,

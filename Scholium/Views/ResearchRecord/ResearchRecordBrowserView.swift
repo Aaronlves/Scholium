@@ -414,6 +414,7 @@ private struct ResearchRecordDetailView: View {
                 )
                 ResearchRecordEvidenceSection(
                     materials: record.actuallyUsedMaterials,
+                    fidelityCompletion: record.fidelityCompletion,
                     changes: record.confirmedChanges,
                     discrepancies: record.discrepancies,
                     participants: record.participatingNotes
@@ -647,17 +648,32 @@ private struct ResearchRecordStatementView: View {
 
 private struct ResearchRecordEvidenceSection: View {
     let materials: [PortableResearchMaterialUse]
+    let fidelityCompletion: PortableResearchFidelityCompletion
     let changes: [PortableResearchConfirmedChange]
     let discrepancies: [PortableResearchDiscrepancy]
     let participants: [PortableResearchNoteRevision]
 
     var body: some View {
-        if !materials.isEmpty || !changes.isEmpty || !discrepancies.isEmpty {
+        if !materials.isEmpty
+            || fidelityCompletion == .unverified
+            || !changes.isEmpty
+            || !discrepancies.isEmpty {
             ScholiumStructuralRule()
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text("Observed and Reported Evidence")
                     .font(ScholiumInterfaceTypography.sectionTitle)
                     .accessibilityHeading(.h2)
+                if fidelityCompletion == .unverified {
+                    Label(
+                        "Fidelity could not be completed for this recorded revision.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(ScholiumInterfaceTypography.apparatusBody)
+                    .accessibilityLabel(
+                        "Fidelity could not be completed for this recorded revision."
+                    )
+                    .accessibilityIdentifier("scholium.researchRecord.fidelity.unverified")
+                }
                 if !materials.isEmpty {
                     Text("Agent-Reported Materials Used")
                         .font(ScholiumInterfaceTypography.editorialLabel)
@@ -708,6 +724,16 @@ private struct ResearchRecordDetailsDisclosure: View {
                 }
                 if let source = record.sourceReference {
                     LabeledContent("Source", value: source.displayName)
+                }
+                if record.kind == .action, record.actuallyUsedMaterials.isEmpty {
+                    LabeledContent("Agent-reported Materials used", value: "None")
+                }
+                if record.kind == .action,
+                   record.fidelityCompletion != .unverified {
+                    LabeledContent(
+                        "Fidelity",
+                        value: record.fidelityCompletion.interfaceTitle
+                    )
                 }
                 ForEach(record.participatingNotes) { participant in
                     ResearchRecordRevisionDetails(participant: participant)
@@ -928,6 +954,21 @@ private extension PortableResearchRecordKind {
             String(localized: "Action", table: "Localizable", bundle: .module)
         case .discussion:
             String(localized: "Discussion", table: "Localizable", bundle: .module)
+        }
+    }
+}
+
+private extension PortableResearchFidelityCompletion {
+    var interfaceTitle: String {
+        switch self {
+        case .notRequired:
+            String(localized: "Not required", table: "Localizable", bundle: .module)
+        case .completed:
+            String(localized: "Completed", table: "Localizable", bundle: .module)
+        case .unverified:
+            String(localized: "Unverified", table: "Localizable", bundle: .module)
+        case .notApplicable:
+            String(localized: "Not applicable", table: "Localizable", bundle: .module)
         }
     }
 }

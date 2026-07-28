@@ -84,7 +84,7 @@ struct MarkdownSemanticDocumentTests {
         title: Vector Fixture
         hidden: "+[[YAML Literal]]"
         ---
-        A +[[Supported]] and -[[Supporting]] while ?[[Incompatible]] and [[Related]].
+        A +[[Supported]] and -[[Opposed]] while ?[[Incompatible]] and [[Related]].
         + [[List Neutral]]
         \\+[[Escaped Marker]]
         C++[[Adjacent Word]]
@@ -100,8 +100,8 @@ struct MarkdownSemanticDocumentTests {
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "Vector.md", rawContent: source))
         let byTarget = Dictionary(uniqueKeysWithValues: semantic.links.map { ($0.target, $0) })
 
-        #expect(byTarget["Supported"]?.vectorKind == .supportsTarget)
-        #expect(byTarget["Supporting"]?.vectorKind == .supportedByTarget)
+        #expect(byTarget["Supported"]?.vectorKind == .supports)
+        #expect(byTarget["Opposed"]?.vectorKind == .opposes)
         #expect(byTarget["Incompatible"]?.vectorKind == .incompatible)
         #expect(byTarget["Related"]?.vectorKind == .neutral)
         #expect(byTarget["List Neutral"]?.vectorKind == .neutral)
@@ -168,7 +168,7 @@ struct MarkdownSemanticDocumentTests {
     func mismatchedBackticks() {
         let source = "` unmatched +[[Visible]] ``\nText ``` ?[[Hidden]] ```"
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "ticks.md", rawContent: source))
-        #expect(semantic.links.contains { $0.target == "Visible" && $0.vectorKind == .supportsTarget })
+        #expect(semantic.links.contains { $0.target == "Visible" && $0.vectorKind == .supports })
         #expect(!semantic.links.contains { $0.target == "Hidden" })
     }
     @Test("Source spans remain exact across BOM, CRLF, and Unicode")

@@ -132,7 +132,7 @@ public struct LinkGraphDiagnostic: Codable, Hashable, Sendable {
 }
 
 public struct GraphSnapshot: Codable, Sendable {
-    public static let currentContractVersion = 3
+    public static let currentContractVersion = 5
     public let contractVersion: Int
     public let generation: Int
     /// Hash of the complete source manifest from which this graph was built.

@@ -21,7 +21,9 @@ Prefer a narrow supported reconstruction to a complete-looking one. Mark charita
 
 ## Pass 3: reanalyze and pressure-test
 
-Compare the reconstruction with the current Analysis. Correct omissions or overstatements, then test the strongest warranted version:
+First reread the accessible source against the current Analysis and ask whether the Analysis faithfully represents it. Correct only a bounded set of identified omissions or overstatements, then recheck the affected claims once. Move anything still unresolved into attributed feedback or explicit uncertainty rather than extending the loop.
+
+Then test the strongest warranted version:
 
 - ambiguous concepts or rival definitions;
 - missing premise support;
@@ -31,6 +33,8 @@ Compare the reconstruction with the current Analysis. Correct omissions or overs
 - alternative interpretations that remain live.
 
 Attribute this pressure-testing to the agent. Do not turn it into a claim about what the author intended or what the researcher believes.
+
+This final source review does not replace independent Content Fidelity against the exact saved revision after the substantive pass.
 
 ## Update discipline
 

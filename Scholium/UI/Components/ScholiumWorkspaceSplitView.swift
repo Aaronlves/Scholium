@@ -75,6 +75,67 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
 
 }
 
+/// A controller-lifetime adapter for the system Inspector's ideal-width
+/// semantics. It owns no persisted value and releases the split geometry after
+/// one completed reveal.
+@MainActor
+private final class ScholiumFirstApparatusWidthOffer {
+    private weak var splitView: NSSplitView?
+    private weak var apparatusItem: NSSplitViewItem?
+    private var didOffer = false
+    private var isPending = false
+    private var awaitsRevealAnimation = false
+
+    func connect(splitView: NSSplitView, apparatusItem: NSSplitViewItem) {
+        self.splitView = splitView
+        self.apparatusItem = apparatusItem
+    }
+
+    func prepareForReveal(animated: Bool) {
+        guard !didOffer else { return }
+        isPending = true
+        awaitsRevealAnimation = animated
+    }
+
+    func revealAnimationDidFinish() {
+        awaitsRevealAnimation = false
+        offerIfReady()
+    }
+
+    /// Offer the wider study width exactly once after the first explicit
+    /// reveal. If the window cannot preserve a document region at least as
+    /// wide as the Inspector, keep AppKit's result and never reassert it.
+    func offerIfReady() {
+        guard isPending,
+              !didOffer,
+              !awaitsRevealAnimation,
+              let splitView,
+              let apparatusItem,
+              !apparatusItem.isCollapsed,
+              let apparatusView = splitView.arrangedSubviews.last,
+              let documentView = splitView.arrangedSubviews.dropLast().last
+        else { return }
+        isPending = false
+        didOffer = true
+        splitView.layoutSubtreeIfNeeded()
+
+        let proposedWidth = ScholiumMetrics.Apparatus.firstRevealWidth
+        let currentWidth = apparatusView.frame.width
+        guard currentWidth < proposedWidth else { return }
+        let additionalWidth = proposedWidth - currentWidth
+        guard documentView.frame.width - additionalWidth >= proposedWidth else {
+            return
+        }
+
+        let dividerIndex = splitView.arrangedSubviews.count - 2
+        splitView.setPosition(
+            splitView.bounds.maxX - proposedWidth,
+            ofDividerAt: dividerIndex
+        )
+        splitView.layoutSubtreeIfNeeded()
+    }
+}
+
 /// One native three-region workspace. Library, Document, and Apparatus are
 /// siblings in a single NSSplitViewController; AppKit owns resizing, divider
 /// geometry, compression, collapse transitions, and live collapsed state.
@@ -183,6 +244,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
         private let initialLibraryVisible: Bool
         private let initialApparatusVisible: Bool
         private var didApplyInitialVisibility = false
+        private let firstApparatusWidthOffer = ScholiumFirstApparatusWidthOffer()
         private var observesVisibility = false
         private var libraryVisibilityDidChange: (Bool) -> Void
         private var researchInspectorVisibilityDidChange: (Bool) -> Void
@@ -285,10 +347,22 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             apparatusItem = NSSplitViewItem(
                 inspectorWithViewController: apparatusBackgroundController
             )
+            // Seed restoration before AppKit installs the item. NSSplitViewItem
+            // otherwise begins expanded and can briefly draw before
+            // viewWillAppear applies the window-scoped visibility state.
+            apparatusItem.isCollapsed = !initialApparatusVisible
+            // The system inspector defaults to a fixed 270-point column on
+            // macOS 14 and later. Reset only its maximum so the researcher can
+            // resize it; retain AppKit's native minimum, collapse, and divider.
+            apparatusItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
 
             addSplitViewItem(libraryItem)
             addSplitViewItem(documentItem)
             addSplitViewItem(apparatusItem)
+            firstApparatusWidthOffer.connect(
+                splitView: splitView,
+                apparatusItem: apparatusItem
+            )
         }
 
         override func viewWillAppear() {
@@ -367,8 +441,19 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
                   apparatusItem != nil,
                   researchInspectorIsVisible != visible
             else { return }
+            if visible {
+                firstApparatusWidthOffer.prepareForReveal(animated: animated)
+            }
             if animated {
-                toggleInspector(nil)
+                let firstApparatusWidthOffer = self.firstApparatusWidthOffer
+                NSAnimationContext.runAnimationGroup { context in
+                    context.allowsImplicitAnimation = true
+                    toggleInspector(nil)
+                } completionHandler: {
+                    Task { @MainActor in
+                        firstApparatusWidthOffer.revealAnimationDidFinish()
+                    }
+                }
             } else {
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0
@@ -376,12 +461,14 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
                     toggleInspector(nil)
                 }
                 splitView.layoutSubtreeIfNeeded()
+                firstApparatusWidthOffer.offerIfReady()
             }
             reportVisibility()
         }
 
         override func splitViewDidResizeSubviews(_ notification: Notification) {
             super.splitViewDidResizeSubviews(notification)
+            firstApparatusWidthOffer.offerIfReady()
             reportVisibility()
         }
 
@@ -393,6 +480,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             libraryVisibilityDidChange(!libraryItem.isCollapsed)
             researchInspectorVisibilityDidChange(!apparatusItem.isCollapsed)
         }
+
     }
 }
 

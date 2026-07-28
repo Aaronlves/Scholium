@@ -4,7 +4,7 @@ import {projectDialectSemantics} from "../projection";
 import type {MarkdownEditingDialect} from "../protocol";
 
 const dialect: MarkdownEditingDialect = {
-  version: 2,
+  version: 3,
   callouts: [
     {identifier: "orient", aliases: ["mini"], label: "Orientation", meaning: "Scope"},
     {identifier: "cite", aliases: ["bibli", "bibliography", "cited"], label: "Source", meaning: "Source"},
@@ -16,8 +16,8 @@ const dialect: MarkdownEditingDialect = {
   ],
   vectorLinkOperators: [
     {marker: "", kind: "neutral", meaning: "Neutral"},
-    {marker: "+", kind: "supports_target", meaning: "Supports"},
-    {marker: "-", kind: "supported_by_target", meaning: "Supported by"},
+    {marker: "+", kind: "supports", meaning: "Supports"},
+    {marker: "-", kind: "opposes", meaning: "Opposes"},
     {marker: "?", kind: "incompatible", meaning: "Incompatible"},
   ],
   footnotes: {

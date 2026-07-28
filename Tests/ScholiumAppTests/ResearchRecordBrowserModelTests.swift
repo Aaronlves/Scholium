@@ -120,6 +120,7 @@ struct ResearchRecordBrowserModelTests {
                 participatingNotes: record.participatingNotes,
                 statements: record.statements,
                 actuallyUsedMaterials: record.actuallyUsedMaterials,
+                fidelityCompletion: record.fidelityCompletion,
                 confirmedChanges: record.confirmedChanges,
                 discrepancies: record.discrepancies,
                 startedAt: record.startedAt,
@@ -155,6 +156,7 @@ struct ResearchRecordBrowserModelTests {
             participatingNotes: record.participatingNotes,
             statements: record.statements,
             actuallyUsedMaterials: record.actuallyUsedMaterials,
+            fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
             discrepancies: record.discrepancies,
             startedAt: record.startedAt,
@@ -244,6 +246,7 @@ struct ResearchRecordBrowserModelTests {
             method: base.method,
             participatingNotes: base.participatingNotes + [topic, tombstone],
             statements: base.statements,
+            fidelityCompletion: base.fidelityCompletion,
             startedAt: base.startedAt,
             finishedAt: base.finishedAt
         )
@@ -405,6 +408,7 @@ struct ResearchRecordBrowserModelTests {
             primaryNoteID: noteID,
             participatingNotes: [note],
             statements: [statement],
+            fidelityCompletion: .notApplicable,
             startedAt: finishedAt,
             finishedAt: finishedAt,
             isPinned: isPinned
@@ -451,6 +455,7 @@ struct ResearchRecordBrowserModelTests {
                 text: "The argument map was reviewed.",
                 createdAt: finishedAt
             )],
+            fidelityCompletion: .notRequired,
             startedAt: finishedAt,
             finishedAt: finishedAt,
             isPinned: isPinned

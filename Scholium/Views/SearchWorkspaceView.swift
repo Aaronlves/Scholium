@@ -819,6 +819,10 @@ struct SpotlightSearchPanelView: View {
             String(localized: "Supported by \(item.concept.title)")
         case .itemSupportsConcept:
             String(localized: "Supports \(item.concept.title)")
+        case .conceptOpposesItem:
+            String(localized: "Opposed by \(item.concept.title)")
+        case .itemOpposesConcept:
+            String(localized: "Opposes \(item.concept.title)")
         case .incompatible:
             String(localized: "Incompatible with \(item.concept.title)")
         }
@@ -957,6 +961,10 @@ private struct RelatedSearchResultRow: View {
             String(localized: "Supported by \(item.concept.title)")
         case .itemSupportsConcept:
             String(localized: "Supports \(item.concept.title)")
+        case .conceptOpposesItem:
+            String(localized: "Opposed by \(item.concept.title)")
+        case .itemOpposesConcept:
+            String(localized: "Opposes \(item.concept.title)")
         case .incompatible:
             String(localized: "Incompatible with \(item.concept.title)")
         }

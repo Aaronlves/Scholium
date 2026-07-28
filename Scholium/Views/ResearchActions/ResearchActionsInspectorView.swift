@@ -1,3 +1,4 @@
+import AppKit
 import ScholiumContracts
 import SwiftUI
 
@@ -79,23 +80,23 @@ struct ResearchActionsPresentation {
                         hasCancellationBarrier || availabilityIsUnconfirmed,
                     reopensActiveDiscussion:
                         availability.id == .discuss && hasActiveDiscussion,
-                    disabledReason: availability.isEnabled
-                        ? hasCancellationBarrier
-                            ? String(
-                                localized: "Resolve the pending Action cancellation before starting another Action.",
-                                table: "Localizable",
-                                bundle: .module
-                            )
-                            : availabilityIsUnconfirmed
-                                ? availabilityError
-                                    ?? String(
-                                        localized: "Checking this Action…",
-                                        table: "Localizable",
-                                        bundle: .module
-                                    )
-                                : nil
-                        : availability.repairReasons.first?.interfaceDescription
-                            ?? "Unavailable for this note."
+                    disabledReason: hasCancellationBarrier
+                        ? String(
+                            localized: "Resolve the pending Action cancellation before starting another Action.",
+                            table: "Localizable",
+                            bundle: .module
+                        )
+                        : availabilityIsUnconfirmed
+                            ? availabilityError
+                                ?? String(
+                                    localized: "Checking this Action…",
+                                    table: "Localizable",
+                                    bundle: .module
+                                )
+                            : availability.isEnabled
+                                ? nil
+                                : availability.repairReasons.first?.interfaceDescription
+                                    ?? "Unavailable for this note."
                 )
             }
         return Self(
@@ -125,29 +126,72 @@ struct ResearchActionItemPresentation: Identifiable {
 
     var id: ResearchActionID { availability.id }
     var title: String { availability.buttonName }
-    var isEnabled: Bool {
-        reopensActiveDiscussion
-            || availability.isEnabled && !isBlockedByCancellationRecovery
-    }
     var canPresent: Bool {
         reopensActiveDiscussion
             || availability.canPresentInInterface && !isBlockedByCancellationRecovery
     }
     var group: ResearchActionAvailabilityGroup { availability.group }
-    var detail: String {
-        reopensActiveDiscussion
-            ? String(
+    var detail: String? {
+        if reopensActiveDiscussion {
+            return String(
                 localized: "Continue the current Discussion.",
                 table: "Localizable",
                 bundle: .module
             )
-            : disabledReason ?? availability.definition.interfaceSummary
+        }
+        return canPresent ? nil : disabledReason
+    }
+
+    var helpText: String? {
+        detail == nil ? availability.definition.interfaceSummary : nil
+    }
+}
+
+/// Presentation-only grouping for Scholium's closed default Action matrix.
+/// Researcher-defined Profiles never enter this switch: they remain an open,
+/// ordered collection under Researcher Skills and use the same row component.
+private enum BuiltInActionVisualGroup: Equatable {
+    case research
+    case review
+}
+
+private extension ResearchActionItemPresentation {
+    var builtInVisualGroup: BuiltInActionVisualGroup {
+        switch availability.definition.executionKind {
+        case .discussion, .analysis, .synthesis, .writing, .manuscript:
+            .research
+        case .critique, .checkFidelity:
+            .review
+        }
+    }
+}
+
+private struct ResearchActionVisualSection: Identifiable {
+    enum ID: Hashable {
+        case research
+        case review
+        case researcherSkills
+    }
+
+    let id: ID
+    let title: LocalizedStringResource
+    let items: [ResearchActionItemPresentation]
+}
+
+private struct ResearchActionHelpModifier: ViewModifier {
+    let text: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let text, !text.isEmpty {
+            content.help(text)
+        } else {
+            content
+        }
     }
 }
 
 struct ResearchActionsInspectorView: View {
-    @FocusedValue(\.scholiumResearchActionActions) private var focusedResearchActions
-
     let presentation: ResearchActionsPresentation
     let freshness: ResearchProjectionFreshness
     let focusRequest: ResearchActionFocusRequest?
@@ -164,48 +208,41 @@ struct ResearchActionsInspectorView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.Apparatus.sectionSpacing
+            ) {
                 if presentation.pendingCancellationBarrierCount > 0 {
                     pendingCancellationNotice
-                    ScholiumStructuralRule()
-                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
                 }
                 ForEach(presentation.cancellationRecoveries) { recovery in
                     cancellationRecoveryNotice(recovery)
-                    ScholiumStructuralRule()
-                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
                 }
                 if case .failed(let reason) = freshness {
                     refreshNotice(reason)
-                    ScholiumStructuralRule()
-                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
                 }
 
                 if presentation.isCheckingAvailability && presentation.items.isEmpty {
-                    ProgressView("Checking Actions…")
-                        .controlSize(.small)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ScholiumApparatusStateView(
+                        "Checking Actions…",
+                        systemImage: "arrow.triangle.2.circlepath",
+                        showsProgress: true
+                    )
                         .accessibilityIdentifier("scholium.researchActions.loading")
                 } else if let error = presentation.availabilityError {
                     availabilityNotice(error)
                 }
 
-                actionRows(presentation.defaultItems())
-
-                if !researcherItems.isEmpty {
-                    ScholiumStructuralRule()
-                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
-                    ScholiumApparatusSection("RESEARCHER SKILLS", showsDivider: false) {
-                        actionRows(researcherItems)
-                    } trailing: {
-                        EmptyView()
+                ForEach(actionSections) { section in
+                    ScholiumApparatusSection(section.title) {
+                        actionRows(section.items)
                     }
                 }
 
                 if presentation.target != nil {
-                    ScholiumStructuralRule()
-                        .padding(.vertical, ScholiumMetrics.Apparatus.contentToRuleSpacing)
-                    settlementLauncher
+                    ScholiumApparatusSection("JUDGMENT") {
+                        settlementLauncher
+                    }
                 }
             }
             .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
@@ -221,9 +258,8 @@ struct ResearchActionsInspectorView: View {
     @ViewBuilder
     private func actionRows(_ rows: [ResearchActionItemPresentation]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
+            ForEach(rows) { item in
                 actionRow(item)
-                if index < rows.count - 1 { ScholiumStructuralRule() }
             }
         }
     }
@@ -237,41 +273,39 @@ struct ResearchActionsInspectorView: View {
             focusRequestToken: focusRequest?.actionID == item.id
                 ? focusRequest?.token
                 : nil
-        ) {
-            registerFocusOwner(item.id)
-            if let focusedResearchActions {
-                focusedResearchActions.open(item.id)
-            } else {
-                select(item.id)
+        ) { shouldRestoreKeyboardFocus in
+            if shouldRestoreKeyboardFocus {
+                registerFocusOwner(item.id)
             }
+            select(item.id)
         }
         .disabled(!item.canPresent)
-        .help(item.canPresent ? item.detail : item.disabledReason ?? item.detail)
+        .modifier(ResearchActionHelpModifier(text: item.helpText))
         .accessibilityIdentifier("scholium.researchAction.\(item.id.rawValue)")
     }
 
     private func refreshNotice(_ reason: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Action availability may be incomplete.", systemImage: "exclamationmark.triangle")
-                .font(.callout.weight(.semibold))
-            Text(reason)
-                .font(.caption)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+        ScholiumApparatusStateView(
+            "Action availability may be incomplete.",
+            detail: reason,
+            systemImage: "exclamationmark.triangle",
+            density: .block
+        ) {
             Button("Retry", action: retryRefresh)
+                .controlSize(.small)
         }
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func availabilityNotice(_ reason: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Actions could not be resolved.", systemImage: "exclamationmark.triangle")
-                .font(.callout.weight(.semibold))
-            Text(reason)
-                .font(.caption)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+        ScholiumApparatusStateView(
+            "Actions could not be resolved.",
+            detail: reason,
+            systemImage: "exclamationmark.triangle",
+            density: .block
+        ) {
             Button("Retry", action: retryRefresh)
+                .controlSize(.small)
         }
-        .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("scholium.researchActions.error")
     }
 
@@ -279,38 +313,33 @@ struct ResearchActionsInspectorView: View {
         _ recovery: ResearchActionCancellationRecovery
     ) -> some View {
         let isRetrying = presentation.retryingCancellationRecoveryIDs.contains(recovery.runID)
-        return VStack(alignment: .leading, spacing: 8) {
-            Label(
-                "A prepared Action still needs cancellation.",
-                systemImage: "exclamationmark.arrow.triangle.2.circlepath"
-            )
-            .font(.callout.weight(.semibold))
-            Text(recovery.errorMessage)
-                .font(.caption)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+        return ScholiumApparatusStateView(
+            "A prepared Action still needs cancellation.",
+            detail: recovery.errorMessage,
+            systemImage: "exclamationmark.arrow.triangle.2.circlepath",
+            showsProgress: isRetrying,
+            density: .block
+        ) {
             Button(
                 isRetrying
                     ? "Retrying Cancellation…"
                     : "Retry Cancellation",
                 action: { retryCancellationRecovery(recovery.runID) }
             )
+            .controlSize(.small)
             .disabled(isRetrying)
         }
-        .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier(
             "scholium.researchActions.cancellationRecovery.\(recovery.runID.uuidString.lowercased())"
         )
     }
 
     private var pendingCancellationNotice: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-            Text("Waiting for interrupted Action cleanup…")
-                .font(.callout)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .combine)
+        ScholiumApparatusStateView(
+            "Waiting for interrupted Action cleanup…",
+            systemImage: "arrow.triangle.2.circlepath",
+            showsProgress: true
+        )
         .accessibilityIdentifier("scholium.researchActions.pendingCancellation")
     }
 
@@ -320,11 +349,9 @@ struct ResearchActionsInspectorView: View {
         return ResearchActionRowButton(
             title: isCurrent ? "Settled" : "Settle",
             systemImage: "checkmark.circle",
-            detail: isCurrent
-                ? "This saved revision is settled."
-                : "Record that this saved revision is sufficiently stable for current research.",
+            detail: nil,
             showsChevron: true
-        ) {
+        ) { _ in
             presentsSettlement = true
         }
         .disabled(presentation.target == nil)
@@ -382,6 +409,34 @@ struct ResearchActionsInspectorView: View {
     private var researcherItems: [ResearchActionItemPresentation] {
         presentation.items.filter { $0.group == .researcherSkill }
     }
+
+    private var researchItems: [ResearchActionItemPresentation] {
+        presentation.defaultItems().filter { $0.builtInVisualGroup == .research }
+    }
+
+    private var reviewItems: [ResearchActionItemPresentation] {
+        presentation.defaultItems().filter { $0.builtInVisualGroup == .review }
+    }
+
+    private var actionSections: [ResearchActionVisualSection] {
+        [
+            ResearchActionVisualSection(
+                id: .research,
+                title: "RESEARCH",
+                items: researchItems
+            ),
+            ResearchActionVisualSection(
+                id: .review,
+                title: "REVIEW",
+                items: reviewItems
+            ),
+            ResearchActionVisualSection(
+                id: .researcherSkills,
+                title: "RESEARCHER SKILLS",
+                items: researcherItems
+            ),
+        ].filter { !$0.items.isEmpty }
+    }
 }
 
 private struct ResearchActionRowButton: View {
@@ -391,7 +446,7 @@ private struct ResearchActionRowButton: View {
     let showsChevron: Bool
     let localizesTitle: Bool
     let focusRequestToken: UUID?
-    let action: () -> Void
+    let action: (_ shouldRestoreKeyboardFocus: Bool) -> Void
 
     @State private var isHovering = false
     @State private var focusRestorationTask: Task<Void, Never>?
@@ -404,7 +459,7 @@ private struct ResearchActionRowButton: View {
         showsChevron: Bool = true,
         localizesTitle: Bool = true,
         focusRequestToken: UUID? = nil,
-        action: @escaping () -> Void
+        action: @escaping (_ shouldRestoreKeyboardFocus: Bool) -> Void
     ) {
         self.title = title
         self.systemImage = systemImage
@@ -418,57 +473,16 @@ private struct ResearchActionRowButton: View {
     var body: some View {
         Button {
             focusRestorationTask?.cancel()
-            hasKeyboardFocus = true
-            action()
+            action(!activationWasPointerDriven)
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .frame(width: ScholiumMetrics.Apparatus.iconColumnWidth)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.actionCopySpacing) {
-                    Group {
-                        if localizesTitle {
-                            Text(LocalizedStringKey(title))
-                        } else {
-                            Text(verbatim: title)
-                        }
-                    }
-                    .font(ScholiumInterfaceTypography.apparatusActionTitle)
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
-                    if let detail, !detail.isEmpty {
-                        Text(LocalizedStringKey(detail))
-                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if showsChevron {
-                    Image(systemName: "chevron.forward")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
-                        .accessibilityHidden(true)
-                }
-            }
-            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-            .padding(.vertical, ScholiumMetrics.Apparatus.actionRowVerticalInset)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                alignment: .leading
-            )
-            .contentShape(Rectangle())
-            .background(
-                isHovering ? ScholiumColorRole.raisedSurfaceBackground.color : Color.clear,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
+            ScholiumApparatusActionRowContent(
+                title: titleText,
+                systemImage: systemImage,
+                detail: detailText,
+                showsChevron: showsChevron
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(isHovering: isHovering))
         .focusable()
         .focused($hasKeyboardFocus)
         .onHover { isHovering = $0 }
@@ -486,5 +500,33 @@ private struct ResearchActionRowButton: View {
             focusRestorationTask?.cancel()
             focusRestorationTask = nil
         }
+    }
+
+    /// Pointer activation should not schedule a keyboard-only focus ring when
+    /// the presented Action sheet closes. A nil current event is retained as a
+    /// focus-restoring activation because VoiceOver and other accessibility
+    /// clients can invoke a native Button without synthesizing a mouse event.
+    private var activationWasPointerDriven: Bool {
+        switch NSApp.currentEvent?.type {
+        case .leftMouseDown, .leftMouseUp,
+             .rightMouseDown, .rightMouseUp,
+             .otherMouseDown, .otherMouseUp:
+            true
+        default:
+            false
+        }
+    }
+
+    private var titleText: Text {
+        localizesTitle
+            ? Text(LocalizedStringKey(title))
+            : Text(verbatim: title)
+    }
+
+    private var detailText: Text? {
+        guard let detail, !detail.isEmpty else { return nil }
+        return localizesTitle
+            ? Text(LocalizedStringKey(detail))
+            : Text(verbatim: detail)
     }
 }

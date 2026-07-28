@@ -49,7 +49,7 @@ struct ResearchFunctionContractsTests {
         ) == resynthesis)
     }
 
-    @Test("Actually-used Material testimony is optional and deterministic on the wire")
+    @Test("Actually-used Material testimony preserves explicit empty and retained missing states")
     func actuallyUsedMaterialTestimonyCompatibility() throws {
         let first = UUID()
         let second = UUID()
@@ -68,6 +68,20 @@ struct ResearchFunctionContractsTests {
             ResearchFunctionCompletionSubmission.self,
             from: data
         ) == submission)
+
+        let explicitlyEmpty = ResearchFunctionCompletionSubmission(
+            runID: UUID(),
+            confirmationToken: UUID(),
+            actuallyUsedMaterialNoteIDs: [],
+            summary: "No selected Material was actually used.",
+            didModifyTarget: false
+        )
+        let emptyData = try JSONEncoder().encode(explicitlyEmpty)
+        let emptyObject = try #require(
+            JSONSerialization.jsonObject(with: emptyData) as? [String: Any]
+        )
+        #expect(explicitlyEmpty.actuallyUsedMaterialNoteIDs == [])
+        #expect((emptyObject["actuallyUsedMaterialNoteIDs"] as? [String]) == [])
 
         var legacy = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Any]

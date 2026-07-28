@@ -171,9 +171,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private static let consumedScrollRestoreHistoryLimit = 64
         private static let vectorSymbolDataURIs = Dictionary(
             uniqueKeysWithValues: [
-                "link", "arrow.right.circle", "arrow.left.circle", "xmark.circle",
+                "link", "plus.circle", "minus.circle",
             ].map { ($0, symbolDataURI(named: $0)) }
+                + [("incompatible", incompatibleVectorSymbolDataURI)]
         )
+        private static let incompatibleVectorSymbolDataURI: String = {
+            let svg = """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+              <path d="M3.1 10.1c2.5-.2 4.5-.1 6.1.1L10 7.1M16.9 10.1c-2.5-.2-4.5-.1-6.1.1L10 13.1" fill="none" stroke="black" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            """
+            return "data:image/svg+xml;base64,\(Data(svg.utf8).base64EncodedString())"
+        }()
 
         private var documentID: String
         private var fingerprint: String
@@ -1194,9 +1203,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const origins = new Map();
                 const vectorSemantics = {
                   neutral: {label: 'Related note', symbol: \(jsonLiteral(vectorSymbolDataURIs["link"] ?? ""))},
-                  supports_target: {label: 'Supports', symbol: \(jsonLiteral(vectorSymbolDataURIs["arrow.right.circle"] ?? ""))},
-                  supported_by_target: {label: 'Supported by', symbol: \(jsonLiteral(vectorSymbolDataURIs["arrow.left.circle"] ?? ""))},
-                  incompatible: {label: 'Incompatible with', symbol: \(jsonLiteral(vectorSymbolDataURIs["xmark.circle"] ?? ""))}
+                  supports: {label: 'Supports', symbol: \(jsonLiteral(vectorSymbolDataURIs["plus.circle"] ?? ""))},
+                  opposes: {label: 'Opposes', symbol: \(jsonLiteral(vectorSymbolDataURIs["minus.circle"] ?? ""))},
+                  incompatible: {label: 'Incompatible', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
                 };
 
                 function renderMathNodes() {
@@ -1843,7 +1852,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         p { margin: var(--scholium-rhythm-paragraph-gap) 0; } a { color: LinkText; text-underline-offset: .12em; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
         .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }
-        .scholium-document .scholium-vector-supports-target, .scholium-document .scholium-vector-supported-by-target { color: var(--scholium-color-connection-support); }
+        .scholium-document .scholium-vector-supports { color: var(--scholium-color-connection-support); }
+        .scholium-document .scholium-vector-opposes { color: var(--scholium-color-connection-incompatible); }
         .scholium-document .scholium-vector-incompatible { color: var(--scholium-color-connection-incompatible); }
         .scholium-vector-icon { display: inline-block; width: .92em; height: .92em; margin-right: .24em; vertical-align: -.08em; background-color: currentColor; -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
         .scholium-highlight { color: CanvasText; background: Mark; border-radius: 3px; padding-inline: .06em; }

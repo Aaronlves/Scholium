@@ -8,7 +8,7 @@ struct MarkdownEditingDialectTests {
     func dialectProjection() throws {
         let dialect = MarkdownEditingDialect.current
 
-        #expect(dialect.version == 2)
+        #expect(dialect.version == 4)
         #expect(dialect.callouts.map(\.identifier) == [
             "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
         ])
@@ -16,7 +16,7 @@ struct MarkdownEditingDialectTests {
         #expect(dialect.callouts.first { $0.identifier == "state" }?.aliases.contains("objection") == true)
         #expect(dialect.vectorLinkOperators.map(\.marker) == ["", "+", "-", "?"])
         #expect(dialect.vectorLinkOperators.map(\.kind) == [
-            .neutral, .supportsTarget, .supportedByTarget, .incompatible,
+            .neutral, .supports, .opposes, .incompatible,
         ])
         #expect(dialect.footnotes.namedReferenceOpening == "[^")
         #expect(dialect.footnotes.namedReferenceClosing == "]")

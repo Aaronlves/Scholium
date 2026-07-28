@@ -190,34 +190,27 @@ body,
   text-underline-offset: 0.15em;
 }
 .cm-live-vector-neutral { color: var(--scholium-color-connection-neutral); }
-.cm-live-vector-supports-target,
-.cm-live-vector-supported-by-target { color: var(--scholium-color-connection-support); }
+.cm-live-vector-supports { color: var(--scholium-color-connection-support); }
+.cm-live-vector-opposes { color: var(--scholium-color-connection-incompatible); }
 .cm-live-vector-incompatible { color: var(--scholium-color-connection-incompatible); }
 
 .cm-live-vector-icon {
-  --scholium-vector-symbol: var(--scholium-symbol-link);
   display: inline-block;
   inline-size: .92em;
   block-size: .92em;
   margin-inline-end: .24em;
   vertical-align: -.08em;
-  background-color: currentColor;
-  -webkit-mask: var(--scholium-vector-symbol) center / contain no-repeat;
-  mask: var(--scholium-vector-symbol) center / contain no-repeat;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: .84em;
+  font-weight: 650;
+  line-height: .92em;
+  text-align: center;
 }
 .cm-live-vector-icon-neutral { color: var(--scholium-color-connection-neutral); }
-.cm-live-vector-icon-supports-target {
-  --scholium-vector-symbol: var(--scholium-symbol-supports);
-  color: var(--scholium-color-connection-support);
-}
-.cm-live-vector-icon-supported-by-target {
-  --scholium-vector-symbol: var(--scholium-symbol-supported-by);
-  color: var(--scholium-color-connection-support);
-}
-.cm-live-vector-icon-incompatible {
-  --scholium-vector-symbol: var(--scholium-symbol-incompatible);
-  color: var(--scholium-color-connection-incompatible);
-}
+.cm-live-vector-icon-supports { color: var(--scholium-color-connection-support); }
+.cm-live-vector-icon-opposes { color: var(--scholium-color-connection-incompatible); }
+.cm-live-vector-icon-incompatible { color: var(--scholium-color-connection-incompatible); }
+.cm-live-vector-icon-incompatible svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 1.45; stroke-linecap: round; stroke-linejoin: round; }
 
 .cm-live-embed {
   color: var(--scholium-color-accent);

@@ -840,10 +840,10 @@ private struct ScholiumCommands: Commands {
             Button("Wikilink") { editorActions?.perform(.wikilink) }
                 .disabled(editorActions?.isAvailable(.wikilink) != true)
             Menu("Vector Link") {
-                Button("Supports Target") { editorActions?.perform(.vectorSupportsTarget) }
-                    .disabled(editorActions?.isAvailable(.vectorSupportsTarget) != true)
-                Button("Supported by Target") { editorActions?.perform(.vectorSupportedByTarget) }
-                    .disabled(editorActions?.isAvailable(.vectorSupportedByTarget) != true)
+                Button("Supports") { editorActions?.perform(.vectorSupports) }
+                    .disabled(editorActions?.isAvailable(.vectorSupports) != true)
+                Button("Opposes") { editorActions?.perform(.vectorOpposes) }
+                    .disabled(editorActions?.isAvailable(.vectorOpposes) != true)
                 Button("Incompatible") { editorActions?.perform(.vectorIncompatible) }
                     .disabled(editorActions?.isAvailable(.vectorIncompatible) != true)
             }
@@ -5678,8 +5678,15 @@ final class WindowModel: ObservableObject {
 
     private func receiveWorkspaceEvents(_ events: [UUID: WorkspaceEvent]) {
         guard let capabilities = activeWorkspaceCapabilities,
-              let event = events[capabilities.id],
-              case .inventoryChanged(let change) = event,
+              let event = events[capabilities.id] else { return }
+
+        if case .researchConfigurationInvalidated = event {
+            Task { [weak self] in
+                await self?.refreshResearchActionAvailability()
+            }
+        }
+
+        guard case .inventoryChanged(let change) = event,
               let vaultID = currentRegisteredVault?.id else { return }
         for move in change.moved where move.previousLocation.vaultID == vaultID
             && move.location.vaultID == vaultID {

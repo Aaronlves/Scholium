@@ -602,14 +602,21 @@ struct WindowControllerArchitectureTests {
     @Test("Attention and lifecycle destinations are mutually exclusive")
     func attentionAndLifecycleDestinationMutualExclusion() {
         let controller = DiscoveryController()
+        let noteScope = VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "analysis.md"
+        )
 
-        controller.showAttentionQueue(true)
+        controller.showAttentionQueue(true, note: noteScope)
+        #expect(controller.library.attentionNoteScope == noteScope)
         controller.presentLifecycleListing(.trash)
         #expect(!controller.library.showsAttentionQueue)
+        #expect(controller.library.attentionNoteScope == nil)
         #expect(controller.library.lifecycleScope == .trash)
 
         controller.showAttentionQueue(true)
         #expect(controller.library.showsAttentionQueue)
+        #expect(controller.library.attentionNoteScope == nil)
         #expect(controller.library.lifecycleScope == nil)
     }
 

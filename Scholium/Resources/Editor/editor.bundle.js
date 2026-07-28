@@ -21364,7 +21364,7 @@
   });
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 5;
+  var EDITOR_PROTOCOL_VERSION = 7;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21401,8 +21401,8 @@
     "inlineCode",
     "standardLink",
     "wikilink",
-    "vectorSupportsTarget",
-    "vectorSupportedByTarget",
+    "vectorSupports",
+    "vectorOpposes",
     "vectorIncompatible",
     "paragraph",
     "heading1",
@@ -21460,7 +21460,7 @@
     const vectors = dialect.vectorLinkOperators;
     const footnotes = dialect.footnotes;
     const mathematics = dialect.mathematics;
-    return dialect.version === 2 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32 && callouts.every((callout) => Boolean(callout) && typeof callout.identifier === "string" && callout.identifier.length <= 64 && Array.isArray(callout.aliases) && callout.aliases.length <= 32 && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64) && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Array.isArray(vectors) && vectors.length === 4 && vectors.every((vector) => Boolean(vector) && ["", "+", "-", "?"].includes(vector.marker) && ["neutral", "supports_target", "supported_by_target", "incompatible"].includes(vector.kind) && typeof vector.meaning === "string" && vector.meaning.length <= 1e3) && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
+    return dialect.version === 4 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32 && callouts.every((callout) => Boolean(callout) && typeof callout.identifier === "string" && callout.identifier.length <= 64 && Array.isArray(callout.aliases) && callout.aliases.length <= 32 && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64) && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Array.isArray(vectors) && vectors.length === 4 && vectors.every((vector) => Boolean(vector) && ["", "+", "-", "?"].includes(vector.marker) && ["neutral", "supports", "opposes", "incompatible"].includes(vector.kind) && typeof vector.meaning === "string" && vector.meaning.length <= 1e3) && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
   }
   function validOperation(operation) {
     switch (operation.type) {
@@ -21709,8 +21709,8 @@ ${blankRow(table.position.columnCount)}`;
     strikethrough: ["~~", "~~", "Strikethrough"],
     highlight: ["==", "==", "Highlight"],
     wikilink: ["[[", "]]", "Wikilink"],
-    vectorSupportsTarget: ["+[[", "]]", "Supports Link"],
-    vectorSupportedByTarget: ["-[[", "]]", "Supported-by Link"],
+    vectorSupports: ["+[[", "]]", "Supports Link"],
+    vectorOpposes: ["-[[", "]]", "Opposes Link"],
     vectorIncompatible: ["?[[", "]]", "Incompatible Link"]
   };
   function normalized(range) {
@@ -30909,8 +30909,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   // previews.ts
   var vectorKinds = /* @__PURE__ */ new Set([
     "neutral",
-    "supports_target",
-    "supported_by_target",
+    "supports",
+    "opposes",
     "incompatible"
   ]);
   function validatedLinkPreviews(value, documentLength) {
@@ -31037,10 +31037,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
   };
   var vectorLinkSemantics = {
-    neutral: { label: "Related note", symbol: "link" },
-    supports_target: { label: "Supports", symbol: "arrow.right.circle" },
-    supported_by_target: { label: "Supported by", symbol: "arrow.left.circle" },
-    incompatible: { label: "Incompatible with", symbol: "xmark.circle" }
+    neutral: { label: "Related note", symbol: "\u2014" },
+    supports: { label: "Supports", symbol: "+" },
+    opposes: { label: "Opposes", symbol: "\u2212" },
+    incompatible: { label: "Incompatible", symbol: "" }
   };
   var VectorLinkIconWidget = class extends WidgetType {
     kind;
@@ -31058,7 +31058,17 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       span.title = semantics.label;
       span.setAttribute("role", "img");
       span.setAttribute("aria-label", semantics.label);
-      span.dataset.symbol = semantics.symbol;
+      if (this.kind === "incompatible") {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 20 20");
+        svg.setAttribute("aria-hidden", "true");
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", "M3.1 10.1c2.5-.2 4.5-.1 6.1.1L10 7.1M16.9 10.1c-2.5-.2-4.5-.1-6.1.1L10 13.1");
+        svg.append(path);
+        span.append(svg);
+      } else {
+        span.textContent = semantics.symbol;
+      }
       return span;
     }
     // Let CodeMirror place the caret at this replacement when it is clicked so
@@ -31142,7 +31152,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     "contradicts",
     "extends",
     "refines",
-    "questions",
     "incompatible_with",
     "cites",
     "see_also",
@@ -32991,9 +33000,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   document.body.append(previewPopover);
   var relationshipLabels = {
     neutral: "Related note",
-    supports_target: "Supports",
-    supported_by_target: "Supported by",
-    incompatible: "Incompatible with"
+    supports: "Supports",
+    opposes: "Opposes",
+    incompatible: "Incompatible"
   };
   var previewTimer;
   var pendingPreviewAnchor = null;
@@ -33178,8 +33187,8 @@ ${preview.fragment}` : relationship;
     "inlineCode",
     "standardLink",
     "wikilink",
-    "vectorSupportsTarget",
-    "vectorSupportedByTarget",
+    "vectorSupports",
+    "vectorOpposes",
     "vectorIncompatible",
     "paragraph",
     "heading1",

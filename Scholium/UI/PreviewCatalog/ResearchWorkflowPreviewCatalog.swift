@@ -127,22 +127,22 @@ private enum ResearchActionsProofRole: String, CaseIterable, Hashable, Identifia
         switch self {
         case .analysis:
             [
-                .init(id: "discuss", title: "Discuss", detail: "Continue a passage or whole-note discussion.", symbol: "bubble.left.and.bubble.right"),
-                .init(id: "analyze", title: "Analyze", detail: "Analyze or reanalyze the explicitly bound source.", symbol: "doc.text.magnifyingglass"),
-                .init(id: "fidelity", title: "Check Fidelity", detail: "Check without modifying Markdown.", symbol: "checkmark.seal"),
+                .init(id: "discuss", title: "Discuss", help: "Continue a passage or whole-note discussion.", symbol: "bubble.left.and.bubble.right"),
+                .init(id: "analyze", title: "Analyze", help: "Analyze or reanalyze the explicitly bound source.", symbol: "doc.text.magnifyingglass"),
+                .init(id: "fidelity", title: "Check Fidelity", help: "Check without modifying Markdown.", symbol: "checkmark.seal"),
             ]
         case .topic:
             [
-                .init(id: "discuss", title: "Discuss", detail: "Continue a passage, note, or multi-note discussion.", symbol: "bubble.left.and.bubble.right"),
-                .init(id: "synthesize", title: "Synthesize", detail: "Integrate warranted analyses and sources into this Topic.", symbol: "arrow.triangle.merge"),
-                .init(id: "fidelity", title: "Check Fidelity", detail: "Check without modifying Markdown.", symbol: "checkmark.seal"),
+                .init(id: "discuss", title: "Discuss", help: "Continue a passage, note, or multi-note discussion.", symbol: "bubble.left.and.bubble.right"),
+                .init(id: "synthesize", title: "Synthesize", help: "Integrate warranted analyses and sources into this Topic.", symbol: "arrow.triangle.merge"),
+                .init(id: "fidelity", title: "Check Fidelity", help: "Check without modifying Markdown.", symbol: "checkmark.seal"),
             ]
         case .work:
             [
-                .init(id: "discuss", title: "Discuss", detail: "Discuss without changing this Work.", symbol: "bubble.left.and.bubble.right"),
-                .init(id: "write", title: "Write", detail: "Make an explicitly bounded change to this Work.", symbol: "square.and.pencil"),
-                .init(id: "critique", title: "Critique", detail: "Return criticism before any separately authorized Write phase.", symbol: "text.magnifyingglass"),
-                .init(id: "fidelity", title: "Check Fidelity", detail: "Check without modifying Markdown.", symbol: "checkmark.seal"),
+                .init(id: "discuss", title: "Discuss", help: "Discuss without changing this Work.", symbol: "bubble.left.and.bubble.right"),
+                .init(id: "write", title: "Write", help: "Make an explicitly bounded change to this Work.", symbol: "square.and.pencil"),
+                .init(id: "critique", title: "Critique", help: "Return criticism before any separately authorized Write phase.", symbol: "text.magnifyingglass"),
+                .init(id: "fidelity", title: "Check Fidelity", help: "Check without modifying Markdown.", symbol: "checkmark.seal"),
             ]
         }
     }
@@ -151,7 +151,7 @@ private enum ResearchActionsProofRole: String, CaseIterable, Hashable, Identifia
 private struct ResearchActionProofItem: Identifiable {
     let id: String
     let title: String
-    let detail: String
+    let help: String
     let symbol: String
 }
 
@@ -179,7 +179,7 @@ private struct ResearcherSkillProofFixture: Identifiable {
         ResearchActionProofItem(
             id: id,
             title: name,
-            detail: "Researcher Skill revision \(revision)",
+            help: "Researcher Skill revision \(revision)",
             symbol: symbol
         )
     }
@@ -232,6 +232,13 @@ private let researcherSkillProofFixtures = [
     compareInterpretationsFixture,
 ]
 
+private let settleProofItem = ResearchActionProofItem(
+    id: "settle",
+    title: "Settle",
+    help: "Record the saved revision as sufficiently stable for current research.",
+    symbol: "checkmark.circle"
+)
+
 private struct ResearchActionsProof: View {
     @State private var role: ResearchActionsProofRole = .analysis
 
@@ -241,9 +248,20 @@ private struct ResearchActionsProof: View {
         }
     }
 
+    private var researchActions: [ResearchActionProofItem] {
+        role.actions.filter { !["critique", "fidelity"].contains($0.id) }
+    }
+
+    private var reviewActions: [ResearchActionProofItem] {
+        role.actions.filter { ["critique", "fidelity"].contains($0.id) }
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+            LazyVStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.Apparatus.sectionSpacing
+            ) {
                 Picker("Note role", selection: $role) {
                     ForEach(ResearchActionsProofRole.allCases) { role in
                         Text(role.rawValue).tag(role)
@@ -252,42 +270,36 @@ private struct ResearchActionsProof: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("scholium.proofs.actions.role")
 
-                ResearchProofSection(title: "DEFAULT ACTIONS") {
-                    VStack(spacing: 0) {
-                        ForEach(role.actions) { action in
-                            ResearchActionProofRow(action: action)
-                            if action.id != role.actions.last?.id {
-                                ScholiumStructuralRule()
-                            }
-                        }
+                ScholiumApparatusSection("RESEARCH") {
+                    actionRows(researchActions)
+                }
+
+                ScholiumApparatusSection("REVIEW") {
+                    actionRows(reviewActions)
+                }
+
+                if !visibleResearcherSkills.isEmpty {
+                    ScholiumApparatusSection("RESEARCHER SKILLS") {
+                        actionRows(visibleResearcherSkills.map(\.actionItem))
                     }
                 }
 
-                ResearchProofSection(title: "RESEARCHER SKILLS") {
-                    if visibleResearcherSkills.isEmpty {
-                        Text("No Researcher Skills for this Note role.")
-                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(visibleResearcherSkills) { skill in
-                                ResearchActionProofRow(action: skill.actionItem)
-                                if skill.id != visibleResearcherSkills.last?.id {
-                                    ScholiumStructuralRule()
-                                }
-                            }
-                        }
-                    }
+                ScholiumApparatusSection("JUDGMENT") {
+                    ResearchActionProofRow(action: settleProofItem)
                 }
-
-                Text("Connect remains a separate Inspector area. Research Record remains an independent window.")
-                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
+            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
+            .padding(.vertical, ScholiumMetrics.Apparatus.firstSectionSpacing)
             .frame(maxWidth: 680, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+    private func actionRows(_ actions: [ResearchActionProofItem]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(actions) { action in
+                ResearchActionProofRow(action: action)
+            }
         }
     }
 }
@@ -295,35 +307,21 @@ private struct ResearchActionsProof: View {
 private struct ResearchActionProofRow: View {
     let action: ResearchActionProofItem
 
+    @State private var isHovering = false
+
     var body: some View {
         Button(action: {}) {
-            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Image(systemName: action.symbol)
-                    .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text(action.title)
-                        .font(ScholiumInterfaceTypography.apparatusActionTitle)
-                    Text(action.detail)
-                        .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-                Image(systemName: "chevron.forward")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-            .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-            .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight, alignment: .leading)
-            .contentShape(Rectangle())
+            ScholiumApparatusActionRowContent(
+                title: Text(verbatim: action.title),
+                systemImage: action.symbol,
+                showsChevron: true
+            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(isHovering: isHovering))
+        .onHover { isHovering = $0 }
+        .help(action.help)
         .accessibilityLabel(action.title)
-        .accessibilityHint(action.detail)
+        .accessibilityHint(action.help)
         .accessibilityIdentifier("scholium.proofs.action.\(action.id)")
     }
 }
@@ -1036,42 +1034,30 @@ private struct ResearchRecordReadingProof: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                Text("Whether salience supplies a reason")
+                Text("Analyze What Is It Like to Be a Bat?")
                     .font(ScholiumInterfaceTypography.documentTitle)
                     .accessibilityAddTraits(.isHeader)
-                Text("Discussion, 25 July 2026")
+                Text("Analyze, 25 July 2026")
                     .font(ScholiumInterfaceTypography.metadata)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
 
                 ResearchRecordTurn(
-                    speaker: "Researcher",
-                    context: "Comment on Attention and Salience.md, paragraphs 8–10",
-                    prose: "The present distinction seems too quick. If salience changes the practical option-space, why is that not already a reason-giving role?"
-                )
-                ScholiumStructuralRule()
-                ResearchRecordTurn(
-                    speaker: "Agent",
-                    context: "Response",
-                    prose: "One possibility is to distinguish making an option available for deliberation from counting in favor of it. The current note states that distinction, but does not yet defend it against cases where availability itself is normatively structured."
-                )
-                ScholiumStructuralRule()
-                ResearchRecordTurn(
                     speaker: "Agent Feedback",
                     context: "Bounded report",
-                    prose: "I used the focal passage and the selected Analysis. I did not establish that the distinction survives the strongest constitutivist reply. I recommend preserving this exchange as an unresolved pressure point."
+                    prose: "The source boundary and reconstruction were recorded, but the required final check could not inspect one locator-backed passage. The limitation remains explicit."
                 )
                 ScholiumStructuralRule()
-                ResearchRecordTurn(
-                    speaker: "Researcher",
-                    context: "Reply",
-                    prose: "Reanalyze the source distinction before recommending any change to the Topic."
+                Label(
+                    "Fidelity could not be completed for this recorded revision.",
+                    systemImage: "exclamationmark.triangle"
                 )
+                .font(ScholiumInterfaceTypography.apparatusBody)
 
                 DisclosureGroup("Record Details") {
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        LabeledContent("Action", value: "Discuss")
+                        LabeledContent("Action", value: "Analyze")
+                        LabeledContent("Agent-reported Materials used", value: "None")
                         LabeledContent("Starting revision", value: "f4d77c2a")
-                        LabeledContent("Result", value: "No Markdown write")
                     }
                     .font(ScholiumInterfaceTypography.apparatusBody)
                     .padding(.top, ScholiumGrid.Spacing.inlineControlGap)

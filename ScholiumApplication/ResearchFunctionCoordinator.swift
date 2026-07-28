@@ -1318,6 +1318,12 @@ extension WorkspaceHandle {
                 expected: material.fingerprint
             ))
         }
+        if snapshot.actionSnapshot != nil,
+           submission.actuallyUsedMaterialNoteIDs == nil {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "A current Action completion must explicitly report the Materials actually used, including an empty report."
+            )
+        }
         let actuallyUsedMaterialNoteIDs = submission.actuallyUsedMaterialNoteIDs ?? []
         guard Set(actuallyUsedMaterialNoteIDs).count == actuallyUsedMaterialNoteIDs.count,
               Set(actuallyUsedMaterialNoteIDs).isSubset(of: materialIDs) else {
@@ -1568,7 +1574,7 @@ extension WorkspaceHandle {
             state: state,
             targetFingerprint: finalTargetFingerprint,
             materialFingerprints: finalMaterialFingerprints,
-            actuallyUsedMaterialNoteIDs: actuallyUsedMaterialNoteIDs,
+            actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
             summary: stored.completion?.summary ?? submission.summary,
             didModifyTarget: targetChanged,
             outputFingerprint: submission.outputFingerprint,
@@ -1673,7 +1679,7 @@ extension WorkspaceHandle {
             state: completion.state,
             targetFingerprint: completion.targetFingerprint,
             materialFingerprints: completion.materialFingerprints,
-            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs ?? [],
+            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
             outputFingerprint: completion.outputFingerprint,
@@ -1710,8 +1716,7 @@ extension WorkspaceHandle {
                     confirmationToken: submission.confirmationToken,
                     finalTargetFingerprint: submission.finalTargetFingerprint,
                     finalMaterialFingerprints: submission.finalMaterialFingerprints,
-                    actuallyUsedMaterialNoteIDs:
-                        submission.actuallyUsedMaterialNoteIDs ?? [],
+                    actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
                     summary: submission.summary,
                     didModifyTarget: submission.didModifyTarget,
                     outputFingerprint: submission.outputFingerprint,
@@ -2245,7 +2250,7 @@ extension WorkspaceHandle {
         }
         if isKeyedWrite {
             sections += [
-                "Report completion once with the delivery-only write key and the exact current Target path if you believe it changed. Do not calculate or transcribe fingerprints. Scholium checks the frozen Target authorization itself and creates Awaiting Fidelity only for a confirmed change.",
+                "Report completion once with the delivery-only write key and the exact current Target path if you believe it changed. actuallyUsedMaterialNoteIDs is required: list only frozen Materials actually used, or use [] to report explicitly that none were used. Do not calculate or transcribe fingerprints. Scholium checks the frozen Target authorization itself and creates Awaiting Fidelity only for a confirmed change.",
                 "The keyed completion block is appended only to the live delivery packet. It is not persisted in the Research Record.",
             ]
             return sections.joined(separator: "\n")
@@ -2256,7 +2261,7 @@ extension WorkspaceHandle {
             confirmationToken: confirmationToken
         )
         sections += [
-            "Submit completion with this run ID and confirmation token. Supply the final full Target fingerprint and a full final Material fingerprint keyed by every Material note ID above. Report only the stable Note IDs of Materials actually used; leave the list empty rather than treating selection as use. Scholium does not infer that an edit, use, or audit occurred.",
+            "Submit completion with this run ID and confirmation token. Supply the final full Target fingerprint and a full final Material fingerprint keyed by every Material note ID above. actuallyUsedMaterialNoteIDs is required: report only the stable Note IDs of Materials actually used. An empty list explicitly reports that no selected Material was used; do not omit it or treat selection as use. Scholium does not infer that an edit, use, or audit occurred.",
             "This Action-specific schema is intentionally not directly submittable: replace every REPLACE_WITH value. For a write, set didModifyTarget truthfully. Supply the exact Fidelity outcomes, Critique output fingerprint, or Manuscript child run IDs shown for this Action.",
             "Completion submission template (JSON):",
             completionTemplate,
@@ -2367,7 +2372,7 @@ extension WorkspaceHandle {
             state: completion.state,
             targetFingerprint: completion.targetFingerprint,
             materialFingerprints: completion.materialFingerprints,
-            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs ?? [],
+            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
             outputFingerprint: completion.outputFingerprint,
@@ -2390,13 +2395,18 @@ extension WorkspaceHandle {
         if [.complete, .unverified].contains(automatic.state),
            let parent = try? await researchFunctionRun(id: automatic.parentRunID),
            let parentCompletion = parent.reusedCompletion {
+            guard let actuallyUsedMaterialNoteIDs =
+                    parentCompletion.actuallyUsedMaterialNoteIDs else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The current parent Action has no explicit actually-used Material report."
+                )
+            }
             let submission = ResearchActionCompletionSubmission(
                 runID: automatic.parentRunID,
                 confirmationToken: parent.snapshot.confirmationToken,
                 finalTargetFingerprint: parentCompletion.targetFingerprint,
                 finalMaterialFingerprints: parentCompletion.materialFingerprints,
-                actuallyUsedMaterialNoteIDs:
-                    parentCompletion.actuallyUsedMaterialNoteIDs ?? [],
+                actuallyUsedMaterialNoteIDs: actuallyUsedMaterialNoteIDs,
                 summary: parentCompletion.summary,
                 didModifyTarget: parentCompletion.didModifyTarget,
                 outputFingerprint: parentCompletion.outputFingerprint,
@@ -2596,7 +2606,8 @@ extension WorkspaceHandle {
         stored: StoredFunctionRecord,
         confirmedWrite: MultiTargetCompletionReport?
     ) async throws -> PortableResearchRecord? {
-        guard completion.function != .discuss,
+        guard [.complete, .unverified].contains(completion.state),
+              completion.function != .discuss,
               let actionSnapshot = stored.snapshot.actionSnapshot else {
             return nil
         }
@@ -2734,7 +2745,12 @@ extension WorkspaceHandle {
         let materialsByID = Dictionary(
             uniqueKeysWithValues: snapshot.request.materials.map { ($0.noteID, $0) }
         )
-        let actuallyUsedMaterials = try (completion.actuallyUsedMaterialNoteIDs ?? [])
+        guard let actuallyUsedMaterialNoteIDs = completion.actuallyUsedMaterialNoteIDs else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "A current Action completion has no explicit actually-used Material report."
+            )
+        }
+        let actuallyUsedMaterials = try actuallyUsedMaterialNoteIDs
             .map { noteID -> PortableResearchMaterialUse in
                 guard let material = materialsByID[noteID] else {
                     throw ResearchFunctionContractError.invalidCompletion(
@@ -2766,11 +2782,32 @@ extension WorkspaceHandle {
             participatingNotes: participatingNotes,
             statements: [feedback],
             actuallyUsedMaterials: actuallyUsedMaterials,
+            fidelityCompletion: try portableFidelityCompletion(for: completion),
             confirmedChanges: changes,
             discrepancies: discrepancies,
             startedAt: snapshot.preparedAt,
             finishedAt: completion.completedAt
         )
+    }
+
+    private func portableFidelityCompletion(
+        for completion: ResearchFunctionCompletion
+    ) throws -> PortableResearchFidelityCompletion {
+        switch completion.state {
+        case .complete:
+            return completion.fidelityEvidenceKey == nil ? .notRequired : .completed
+        case .unverified:
+            guard completion.fidelityEvidenceKey != nil else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "An unverified Action record requires exact-revision Fidelity evidence."
+                )
+            }
+            return .unverified
+        case .prepared, .awaitingFidelity, .stale, .cancelled:
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Only a complete or unverified Action can create a portable Research Record."
+            )
+        }
     }
 
     private func storedFunctionRecord(runID: UUID) async throws -> StoredFunctionRecord {
@@ -2868,8 +2905,7 @@ extension WorkspaceHandle {
                     state: .stale,
                     targetFingerprint: completion.targetFingerprint,
                     materialFingerprints: completion.materialFingerprints,
-                    actuallyUsedMaterialNoteIDs:
-                        completion.actuallyUsedMaterialNoteIDs ?? [],
+                    actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
                     summary: completion.summary,
                     didModifyTarget: completion.didModifyTarget,
                     outputFingerprint: completion.outputFingerprint,
@@ -2904,7 +2940,14 @@ extension WorkspaceHandle {
                     == Set(snapshot.request.materials.map(\.noteID)) else {
                 return false
             }
-            let actuallyUsedIDs = completion.actuallyUsedMaterialNoteIDs ?? []
+            let actuallyUsedIDs: [UUID]
+            if let reported = completion.actuallyUsedMaterialNoteIDs {
+                actuallyUsedIDs = reported
+            } else if snapshot.actionSnapshot == nil {
+                actuallyUsedIDs = []
+            } else {
+                return false
+            }
             guard Set(actuallyUsedIDs).count == actuallyUsedIDs.count,
                   Set(actuallyUsedIDs).isSubset(
                     of: Set(snapshot.request.materials.map(\.noteID))

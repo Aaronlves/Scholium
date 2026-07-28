@@ -1119,8 +1119,16 @@ final class WorkspaceStore: ObservableObject {
         let publicationStart = ContinuousClock().now
         eventGates[triptychID] = gate
         workspaceEvents[triptychID] = event
-        workspaceSnapshots[triptychID] = event.snapshot
         workspaceEventGenerations[triptychID] = event.generation
+        // Research Guidance changes invalidate Action resolution but do not
+        // rebuild or supersede the current workspace snapshot. Publishing the
+        // typed event must therefore not clear an existing stale/failed
+        // derived-state status or replay the same snapshot through every
+        // document consumer.
+        if case .researchConfigurationInvalidated = event {
+            return
+        }
+        workspaceSnapshots[triptychID] = event.snapshot
         workspaceDerivedRefreshStatuses[triptychID] = event.derivedRefreshStatus
         let publicationDuration = publicationStart.duration(to: ContinuousClock().now)
         Self.publicationLogger.info(

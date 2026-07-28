@@ -88,9 +88,11 @@ struct PortableResearchRecordContractsTests {
         #expect(Set(object.keys) == [
             "schema_version", "id", "triptych_id", "kind", "action", "method",
             "participating_notes", "statements", "actually_used_materials",
-            "confirmed_changes", "discrepancies", "started_at", "finished_at",
-            "is_pinned", "primary_note_id",
+            "fidelity_completion", "confirmed_changes", "discrepancies",
+            "started_at", "finished_at", "is_pinned", "primary_note_id",
         ])
+        #expect(object["schema_version"] as? Int == 3)
+        #expect(object["fidelity_completion"] as? String == "not_required")
         let source = String(decoding: data, as: UTF8.self)
         for forbidden in [
             "function", "execution_kind", "prepared_instructions", "prompt",
@@ -103,6 +105,67 @@ struct PortableResearchRecordContractsTests {
             PortableResearchRecord.self,
             from: data
         ) == record)
+    }
+
+    @Test("Schema 3 requires explicit Material and Fidelity completion fields")
+    func schemaThreeIsStrict() throws {
+        for fidelity in [
+            PortableResearchFidelityCompletion.notRequired,
+            .completed,
+            .unverified,
+        ] {
+            let action = try makeRecord(fidelityCompletion: fidelity)
+            #expect(try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONEncoder.scholium.encode(action)
+            ) == action)
+        }
+
+        let record = try makeRecord()
+        let encoded = try JSONEncoder.scholium.encode(record)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        for version in [1, 2] {
+            object["schema_version"] = version
+            #expect(throws: PortableResearchRecordError.self) {
+                _ = try JSONDecoder.scholium.decode(
+                    PortableResearchRecord.self,
+                    from: JSONSerialization.data(withJSONObject: object)
+                )
+            }
+        }
+
+        object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "actually_used_materials")
+        #expect(throws: (any Error).self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object["fidelity_completion"] = "not_applicable"
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        object["fidelity_completion"] = "unknown"
+        #expect(throws: (any Error).self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
     }
 
     @Test("Actually-used Materials must match their portable participant facts")
@@ -338,6 +401,7 @@ struct PortableResearchRecordContractsTests {
                     title: participant.title,
                     revision: DocumentFingerprint(content: "a different revision")
                 )],
+                fidelityCompletion: .notRequired,
                 startedAt: Date(timeIntervalSince1970: 10),
                 finishedAt: Date(timeIntervalSince1970: 20)
             )
@@ -351,6 +415,7 @@ struct PortableResearchRecordContractsTests {
                 method: try PortableResearchMethodReference(snapshot: snapshot),
                 participatingNotes: [participant],
                 statements: [],
+                fidelityCompletion: .notRequired,
                 confirmedChanges: [try PortableResearchConfirmedChange(
                     noteID: participant.noteID,
                     startingRevision: snapshot.target.fingerprint,
@@ -389,7 +454,8 @@ struct PortableResearchRecordContractsTests {
 
     private func makeRecord(
         sourceReference: ResearchSourceReference? = nil,
-        includeMaterialUse: Bool = false
+        includeMaterialUse: Bool = false,
+        fidelityCompletion: PortableResearchFidelityCompletion = .notRequired
     ) throws -> PortableResearchRecord {
         let snapshot = try makeActionSnapshot()
         let ending = DocumentFingerprint(content: "# Topic\nRevised")
@@ -442,6 +508,7 @@ struct PortableResearchRecordContractsTests {
             participatingNotes: includeMaterialUse ? [note, analysisParticipant] : [note],
             statements: [feedback],
             actuallyUsedMaterials: includeMaterialUse ? [materialUse] : [],
+            fidelityCompletion: fidelityCompletion,
             confirmedChanges: [try PortableResearchConfirmedChange(
                 noteID: snapshot.target.noteID,
                 startingRevision: snapshot.target.fingerprint,

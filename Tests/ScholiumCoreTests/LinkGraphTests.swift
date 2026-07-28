@@ -526,7 +526,7 @@ struct LinkGraphTests {
         }.count == 2)
     }
 
-    @Test("The four canonical link forms preserve neutral, support, and incompatibility directions")
+    @Test("The four canonical link forms preserve neutral, support, opposition, and incompatibility semantics")
     func canonicalVectorDirections() {
         let a = document("Claims/A.md", "[[Claims/B]] +[[Claims/C]] -[[Claims/D]] ?[[Claims/E]]")
         let b = document("Claims/B.md", "")
@@ -560,11 +560,11 @@ struct LinkGraphTests {
                 && $0.objectPath == "Claims/C.md"
         })
         #expect(snapshot.relationships.contains {
-            $0.predicate == .supports
+            $0.predicate == .opposes
                 && $0.isExplicit
                 && $0.isDirectional
-                && $0.subjectPath == "Claims/D.md"
-                && $0.objectPath == "Claims/A.md"
+                && $0.subjectPath == "Claims/A.md"
+                && $0.objectPath == "Claims/D.md"
         })
         #expect(snapshot.relationships.contains {
             $0.predicate == .incompatibleWith
@@ -574,10 +574,10 @@ struct LinkGraphTests {
         })
     }
 
-    @Test("Vector support normalizes direction and duplicate authoring")
+    @Test("Repeated vector support normalizes duplicate authoring")
     func vectorSupportNormalization() {
-        let a = document("Claims/A.md", "+[[Claims/B]]")
-        let b = document("Claims/B.md", "-[[Claims/A]]")
+        let a = document("Claims/A.md", "+[[Claims/B]] +[[Claims/B]]")
+        let b = document("Claims/B.md", "")
         let documents = [a, b]
         let semantics = Dictionary(uniqueKeysWithValues: documents.map { (id($0.relativePath), MarkdownSemanticDocument(parsing: $0)) })
         let snapshot = LinkGraphBuilder.build(
@@ -596,8 +596,8 @@ struct LinkGraphTests {
 
     @Test("Reciprocal support remains two distinct vector edges")
     func reciprocalVectorSupport() {
-        let a = document("Claims/A.md", "+[[Claims/B]] -[[Claims/B]]")
-        let b = document("Claims/B.md", "")
+        let a = document("Claims/A.md", "+[[Claims/B]]")
+        let b = document("Claims/B.md", "+[[Claims/A]]")
         let documents = [a, b]
         let semantics = Dictionary(uniqueKeysWithValues: documents.map { (id($0.relativePath), MarkdownSemanticDocument(parsing: $0)) })
         let snapshot = LinkGraphBuilder.build(
@@ -611,8 +611,8 @@ struct LinkGraphTests {
         #expect(Set(support.map { "\($0.subjectPath)->\($0.objectPath)" }) == ["Claims/A.md->Claims/B.md", "Claims/B.md->Claims/A.md"])
     }
 
-    @Test("Vector incompatibility is symmetric and deduplicated")
-    func vectorIncompatibility() {
+    @Test("Reciprocal incompatibility normalizes to one undirected edge")
+    func reciprocalVectorIncompatibility() {
         let a = document("Claims/A.md", "?[[Claims/B]]")
         let b = document("Claims/B.md", "?[[Claims/A]]")
         let documents = [a, b]
@@ -623,10 +623,12 @@ struct LinkGraphTests {
             documents: semantics
         )
 
-        let incompatible = snapshot.relationships.filter { $0.predicate == .incompatibleWith }
-        #expect(incompatible.count == 1)
-        #expect(incompatible[0].isDirectional == false)
-        #expect(incompatible[0].occurrences.count == 2)
+        let incompatibilities = snapshot.relationships.filter {
+            $0.predicate == .incompatibleWith
+        }
+        #expect(incompatibilities.count == 1)
+        #expect(!incompatibilities[0].isDirectional)
+        #expect(incompatibilities[0].occurrences.count == 2)
         #expect(snapshot.diagnostics.contains { $0.code == .duplicateRelationship })
     }
 
@@ -653,10 +655,10 @@ struct LinkGraphTests {
         let outgoing = try #require(snapshot.outgoing[id(source.relativePath)])
         #expect(outgoing.count == 2)
         #expect(outgoing[0].occurrence.alias == "short")
-        #expect(outgoing[0].occurrence.vectorKind == .supportsTarget)
+        #expect(outgoing[0].occurrence.vectorKind == .supports)
         #expect(outgoing[0].destination?.kind == .heading)
         #expect(outgoing[0].destination?.span?.start.line == 5)
-        #expect(outgoing[1].occurrence.vectorKind == .supportedByTarget)
+        #expect(outgoing[1].occurrence.vectorKind == .opposes)
         #expect(outgoing[1].destination?.kind == .block)
         #expect(outgoing[1].destination?.span?.start.line == 7)
     }
@@ -683,7 +685,7 @@ struct LinkGraphTests {
             $0.code == .broken && $0.source.relativePath == source.relativePath && $0.span.start.line == 2
         })
         #expect(snapshot.relationships.contains {
-            $0.vectorKind == .supportsTarget && $0.resolution == .ambiguous(["Papers/Agency.md", "Topics/Agency.md"])
+            $0.vectorKind == .supports && $0.resolution == .ambiguous(["Papers/Agency.md", "Topics/Agency.md"])
         })
         #expect(snapshot.relationships.contains {
             $0.vectorKind == .incompatible && $0.resolution == .broken("Missing")

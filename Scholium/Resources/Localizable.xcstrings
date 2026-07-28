@@ -17,6 +17,42 @@
         }
       }
     },
+    "Agent-reported Materials used" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Agent-reported Materials used" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Agent 报告的已用材料" } }
+      }
+    },
+    "Completed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Completed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已完成" } }
+      }
+    },
+    "Fidelity could not be completed for this recorded revision." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Fidelity could not be completed for this recorded revision." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此记录版本未能完成核查。" } }
+      }
+    },
+    "Not applicable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Not applicable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不适用" } }
+      }
+    },
+    "Not required" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Not required" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不需要" } }
+      }
+    },
+    "Unverified" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Unverified" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未核实" } }
+      }
+    },
     "Inspect" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "new", "value" : "Inspect" } },
@@ -10084,37 +10120,10 @@
         }
       }
     },
-    "Incompatible With" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Incompatible With"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不相容"
-          }
-        }
-      }
-    },
     "Incompatible with %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Incompatible with %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "与 %@ 不兼容"
-          }
-        }
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Incompatible with %@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "与 %@ 不相容" } }
       }
     },
     "Incomplete" : {
@@ -13147,22 +13156,6 @@
         }
       }
     },
-    "No Researcher Skills for this Note role." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Researcher Skills for this Note role."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有适用于此笔记角色的研究者技能。"
-          }
-        }
-      }
-    },
     "No Scholium request history is associated with this Critique." : {
       "localizations" : {
         "en" : {
@@ -13976,6 +13969,30 @@
             "value" : "此阶段仅可更改当前笔记。"
           }
         }
+      }
+    },
+    "Opposes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Opposes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "反对" } }
+      }
+    },
+    "Opposes %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Opposes %@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "反对 %@" } }
+      }
+    },
+    "Opposed by %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Opposed by %@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "受到 %@ 反对" } }
+      }
+    },
+    "Opposes This Note" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Opposes This Note" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "反对此笔记" } }
       }
     },
     "Open" : {
@@ -16122,6 +16139,38 @@
         }
       }
     },
+    "JUDGMENT" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "JUDGMENT"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "判断"
+          }
+        }
+      }
+    },
+    "RESEARCH" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "RESEARCH"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究"
+          }
+        }
+      }
+    },
     "RESEARCHER SKILLS" : {
       "localizations" : {
         "en" : {
@@ -16134,6 +16183,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究者技能"
+          }
+        }
+      }
+    },
+    "REVIEW" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "REVIEW"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审查"
           }
         }
       }
@@ -21033,22 +21098,6 @@
         }
       }
     },
-    "Show All" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Show All"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示全部"
-          }
-        }
-      }
-    },
     "Show Preview" : {
       "localizations" : {
         "en" : {
@@ -21920,23 +21969,6 @@
         }
       }
     },
-    "Supported By" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Supported By"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "受支持"
-          }
-        }
-      }
-    },
     "Supported by %@" : {
       "localizations" : {
         "en" : {
@@ -21949,39 +21981,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "由 %@ 支持"
-          }
-        }
-      }
-    },
-    "Supported by Target" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Supported by Target"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "由目标支持"
-          }
-        }
-      }
-    },
-    "Supported, incompatible, and related notes will appear here with their authoritative source line." : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Supported, incompatible, and related notes will appear here with their authoritative source line."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "受支持、不相容及相关的笔记会显示在这里，并附上对应的原文行。"
           }
         }
       }
@@ -22003,6 +22002,12 @@
         }
       }
     },
+    "Supports This Note" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Supports This Note" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "支持此笔记" } }
+      }
+    },
     "Supports %@" : {
       "localizations" : {
         "en" : {
@@ -22015,22 +22020,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "支持 %@"
-          }
-        }
-      }
-    },
-    "Supports Target" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Supports Target"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "支持目标"
           }
         }
       }

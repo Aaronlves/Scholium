@@ -149,6 +149,70 @@ struct WorkspaceCatalogTests {
         ).isEmpty)
     }
 
+    @Test("Related Search preserves opposition direction and undirected incompatibility")
+    func relatedSearchPreservesStanceDirection() {
+        let topics = vault("Topics", .topicKnowledge)
+        let works = vault("Works", .draftProject)
+        let concept = note(
+            "Agency.md",
+            "# Agency\n\n-[[Target Claim]]\n?[[Conflicting Claim]]"
+        )
+        let target = note("Target.md", "# Target Claim")
+        let conflict = note("Conflict.md", "# Conflicting Claim")
+        let opponent = note("Opponent.md", "# Opposing Draft\n\n-[[Agency]]")
+        let incompatible = note("Incompatible.md", "# Incompatible Draft\n\n?[[Agency]]")
+        let documents: [(RegisteredVault, NoteDocument)] = [
+            (topics, concept),
+            (works, target),
+            (works, conflict),
+            (works, opponent),
+            (works, incompatible),
+        ]
+        let semantics = Dictionary(uniqueKeysWithValues: documents.map { vault, document in
+            let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
+            return (id, MarkdownSemanticDocument(parsing: document))
+        })
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: documents.map { vault, document in
+                let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
+                return catalogNote(vault, document, semantic: semantics[id])
+            },
+            documents: semantics,
+            resolutionScope: .workspace,
+            sourceManifestHash: "manifest"
+        )
+        let snapshot = WorkspaceCatalogBuilder.build(
+            vaults: [topics, works],
+            documents: [
+                topics.id: [concept],
+                works.id: [target, conflict, opponent, incompatible],
+            ],
+            graph: graph
+        )
+        let results = snapshot.relatedSearchResults(
+            for: "Agency",
+            scope: .triptych,
+            searchGeneration: SearchGenerationID(
+                triptychID: UUID(),
+                sequence: 1,
+                sourceManifestHash: "manifest"
+            )
+        )
+        let relationships = Dictionary(uniqueKeysWithValues: results.map {
+            ($0.note.title, ($0.relationship, $0.explanation))
+        })
+
+        #expect(relationships["Target Claim"]?.0 == .conceptOpposesItem)
+        #expect(relationships["Target Claim"]?.1 == "Opposed by Agency")
+        #expect(relationships["Conflicting Claim"]?.0 == .incompatible)
+        #expect(relationships["Conflicting Claim"]?.1 == "Incompatible with Agency")
+        #expect(relationships["Opposing Draft"]?.0 == .itemOpposesConcept)
+        #expect(relationships["Opposing Draft"]?.1 == "Opposes Agency")
+        #expect(relationships["Incompatible Draft"]?.0 == .incompatible)
+        #expect(relationships["Incompatible Draft"]?.1 == "Incompatible with Agency")
+    }
+
     @Test("Related identity preserves diacritics while folding case")
     func relatedIdentityDoesNotEraseDiacritics() {
         let topics = vault("Topics", .topicKnowledge)

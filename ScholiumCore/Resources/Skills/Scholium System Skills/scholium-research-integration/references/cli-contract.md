@@ -79,6 +79,13 @@ Analyze, Synthesize, or Write completion that changed the Target returns
 `awaiting_fidelity` plus a `prepare_fidelity` action. Use it instead of
 constructing a Fidelity request manually:
 
+Every current Action completion requires `actuallyUsedMaterialNoteIDs`.
+Report only frozen Material Note IDs that actually informed the result;
+selection does not establish use. `[]` is an explicit report that no selected
+Material was used, not a default, and the field must not be omitted. Recover
+the exact completion template with `action show --format json` or
+`action show --format markdown`.
+
 ```sh
 scholium action prepare-fidelity <parent-run-id> \
   --triptych <triptych> --format json

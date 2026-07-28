@@ -207,8 +207,6 @@ private struct DocumentSessionFallback: View {
 
 struct ResearchInspectorView: View {
     @ObservedObject private var controller: ResearchController
-    @Environment(\.layoutDirection) private var layoutDirection
-    @FocusState private var focusedMode: ResearchInspectorMode?
 
     let note: WindowDocumentLocation
     let graph: GraphSnapshot?
@@ -252,7 +250,10 @@ struct ResearchInspectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            inspectorTabs
+            ScholiumInspectorModeIndex(
+                selectedMode: controller.inspector.mode,
+                select: controller.selectInspectorMode
+            )
 
             Group {
                 switch controller.inspector.mode {
@@ -283,53 +284,6 @@ struct ResearchInspectorView: View {
         .accessibilityIdentifier("scholium.researchInspector")
     }
 
-    private var inspectorTabs: some View {
-        ZStack(alignment: .bottom) {
-            ScholiumStructuralRule()
-
-            HStack(spacing: ScholiumMetrics.Apparatus.modeColumnSpacing) {
-                ForEach(ResearchInspectorMode.allCases) { mode in
-                    InspectorModeButton(
-                        mode: mode,
-                        isSelected: controller.inspector.mode == mode,
-                        focusedMode: $focusedMode,
-                        select: { selectMode(mode) },
-                        move: { moveFocus(from: mode, direction: $0) }
-                    )
-                    .frame(minWidth: 0, maxWidth: .infinity)
-                }
-            }
-            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-        }
-        .frame(minHeight: ScholiumMetrics.Apparatus.headerHeight)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Research Inspector")
-    }
-
-    private func selectMode(_ mode: ResearchInspectorMode) {
-        controller.selectInspectorMode(mode)
-        focusedMode = mode
-    }
-
-    private func moveFocus(
-        from mode: ResearchInspectorMode,
-        direction: MoveCommandDirection
-    ) {
-        let modes = ResearchInspectorMode.allCases
-        guard let index = modes.firstIndex(of: mode) else { return }
-        let visualStep: Int
-        switch direction {
-        case .left:
-            visualStep = layoutDirection == .leftToRight ? -1 : 1
-        case .right:
-            visualStep = layoutDirection == .leftToRight ? 1 : -1
-        default:
-            return
-        }
-        let nextIndex = (index + visualStep + modes.count) % modes.count
-        selectMode(modes[nextIndex])
-    }
-
     private var relationshipContext: RelationshipInspectorContext {
         RelationshipInspectorContext(
             graph: graph,
@@ -343,55 +297,6 @@ struct ResearchInspectorView: View {
                 controller.requestOpen(reference, sourceLine: line)
             }
         )
-    }
-}
-
-private struct InspectorModeButton: View {
-    @State private var isHovering = false
-    let mode: ResearchInspectorMode
-    let isSelected: Bool
-    let focusedMode: FocusState<ResearchInspectorMode?>.Binding
-    let select: () -> Void
-    let move: (MoveCommandDirection) -> Void
-
-    var body: some View {
-        Button(action: select) {
-            Text(mode.interfaceTitleResource)
-                .font(
-                    isSelected
-                        ? ScholiumInterfaceTypography.apparatusModeSelected
-                        : ScholiumInterfaceTypography.apparatusMode
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.9)
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: ScholiumMetrics.Apparatus.headerHeight
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .focusable(interactions: .activate)
-        .focused(focusedMode, equals: mode)
-        .foregroundStyle(
-            isSelected || isHovering
-                ? ScholiumColorRole.primaryText.color
-                : ScholiumColorRole.secondaryText.color
-        )
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(
-                    isSelected
-                        ? ScholiumColorRole.accent.color
-                        : ScholiumColorRole.secondaryText.color.opacity(isHovering ? 0.45 : 0)
-                )
-                .frame(height: isSelected ? 2 : 1)
-                .padding(.horizontal, 14)
-        }
-        .onHover { isHovering = $0 }
-        .onMoveCommand(perform: move)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("scholium.inspectorMode.\(mode.rawValue)")
     }
 }
 // MARK: - Note Content View

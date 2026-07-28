@@ -3,7 +3,7 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-27 (D-112)
+**Last target change:** 2026-07-28 (D-118)
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
@@ -66,8 +66,8 @@ unrecognized Triptych files.
 - **Fidelity** audits the exact revision's philosophical content and, when an
   applicable Researcher Skill is bound, citations. It remains distinct from
   Settle and Critique.
-- **Connect** is the Inspector surface for source-located neutral, support, or
-  incompatibility relations. **Attention** contains derived, recoverable
+- **Connect** is the Inspector surface for source-located neutral, support,
+  opposition, or incompatibility relations. **Attention** contains derived, recoverable
   warnings; it makes no philosophical judgment.
 - **Properties** is the human-facing projection of frontmatter. A **Research
   Unit** is the minimal YAML declaration of the epistemic scope represented by
@@ -722,6 +722,19 @@ researcher responses. It excludes assembled prompts, raw keys, bookmarks,
 absolute paths, token counts, transport logs, routine save events, derived
 index freshness, window state, and stored diff hunks.
 
+Every current Action completion contains a complete Material-use report.
+`actuallyUsedMaterialNoteIDs: []` is the Agent's explicit report that no frozen
+Material was actually used; omission is invalid, and Scholium never infers an
+empty report from selection or silence. Membership remains Agent testimony,
+while Scholium validates each reported identity, role, qualified reference,
+title, and exact starting revision.
+
+Every portable Action record also preserves whether exact-revision Fidelity
+was `not_required`, `completed`, or `unverified`; a Discussion records only
+`not_applicable`. `completed` means the required checks ran against the exact
+recorded revision, including checks that found issues. It does not mean passed,
+true, important, philosophically adequate, improved, or accepted.
+
 Intellectual records live under `.scholium/research-records/v1/` as one file
 per record in `active/` or `records/`. Pending requests, grants,
 credentials, temporary transport state, and rebuildable indexes remain in
@@ -1096,14 +1109,26 @@ deferred until Comment anchoring is reliable.
 | --- | --- |
 | `[[B]]` | neutral, undirected A—B |
 | `+[[B]]` | A supports B |
-| `-[[B]]` | B supports A |
-| `?[[B]]` | symmetric incompatibility A—B |
+| `-[[B]]` | A opposes B |
+| `?[[B]]` | undirected incompatibility A—B |
 
-These forms replace legacy typed-link syntax; aliases, headings, and fragments
-remain valid. Preserve legacy bytes and diagnose them without automatic
-conversion. Never infer support from keywords, proximity, folders, or
-multi-hop paths. Incoming and Outgoing views show direction and exact source
-without permanent badge clutter.
+`+` and `-` describe the containing Note's stance toward the target: support
+is favorable argumentative direction, while opposition is an authored
+negative stance without a claim of strict contradiction. `?` instead records
+one mutual incompatibility: both Notes cannot be retained together in the
+researcher's current account, without asserting which should be rejected or
+that either is false. None certifies that the relation succeeds, counts as
+evidence, or is accepted beyond its explicit authoring. The inverse phrases
+**Supports This Note** and **Opposes This Note** are derived only when the
+current Note is the object; incompatibility has no direction or inverse label.
+
+These Vector-Link v3 forms replace both legacy typed-link syntax and the
+pre-release v2 meaning of `?[[B]]`; retain no reverse-support or directed-
+question decoder. Aliases, headings, and fragments remain
+valid. Preserve research-file bytes and never rewrite or reinterpret a marker
+through heuristics. Never infer support, opposition, or incompatibility from
+keywords, proximity, folders, or multi-hop paths. Incoming and Outgoing views
+show direction and exact source without permanent badge clutter.
 
 ## 13. Search and Attention
 
@@ -1474,17 +1499,27 @@ with three sibling items:
 
 The workspace starts at **1180 × 760**, not a minimum. SwiftUI Scene data owns
 route identity and restoration; AppKit owns window, divider, compression,
-collapse, fullscreen, and frame geometry. Scholium neither corrects opening
-frames nor persists divider geometry. It declares no scene/window minimum
+collapse, fullscreen, and frame geometry. Scholium never persists, restores,
+observes, or continuously reasserts divider geometry. The only additional
+initial condition is that a newly created window's first explicit Apparatus
+reveal may request a provisional **320pt** readable thickness once, after the
+native split is attached. That request yields to the remaining Document space
+and native bounds; it is not a minimum, maximum, restored divider value, or
+later-reveal preference. After that one transition, AppKit and direct user
+resizing remain authoritative. Scholium declares no scene/window minimum
 unless the complete adaptation matrix proves one necessary. The sole specified
 content constraint is the expanded Library's **300pt minimum readable
 thickness**: AppKit must keep it at or above that boundary or collapse it.
 This is neither a preferred width, restored divider value, nor parallel
-geometry owner. Library remains a semantic Sidebar, Apparatus an unmodified
-Inspector, and all three planes opaque with one-pixel rules.
+geometry owner. Library remains a semantic Sidebar and Apparatus a semantic
+Inspector. All three planes are opaque, and the native tracking separator is
+the sole inter-pane boundary; Scholium draws no parallel main divider or
+shadow.
 
-New windows show Library and hide Apparatus. Restore applies both visibility
-values once; then native collapsed state is authoritative and the model only
+New windows show Library and hide Apparatus. Initial or restored peripheral
+visibility is installed before the native split's first presentation; the
+window never draws an expanded Apparatus and then retracts it during launch.
+Restore applies both visibility values once; then native collapsed state is authoritative and the model only
 mirrors Library and Apparatus visibility for labels, commands, and the next
 session. Menu, toolbar, and content actions send explicit per-window intents to
 the native controller; model observation never continuously reasserts split
@@ -1665,14 +1700,22 @@ does not adapt into another primary interface, and never appears inside
 Inspector. Its leading record list remains compact and top-aligned in ready,
 empty, and filtered-empty states; controls and rows use compact native macOS
 density while every custom target retains the minimum accessible hit region.
+Normal Action Material-use and Fidelity facts remain in the existing collapsed
+**Record Details**. An `unverified` Fidelity state instead appears once in the
+evidence area as a complete textual statement; it is not duplicated in Details
+and does not acquire a badge, score, color-only meaning, tooltip, filter, or
+new disclosure. Discussions show neither inapplicable row.
 There is
 exactly one native trailing Inspector per
 Workspace, with **Overview, Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
 tabs, panels, or windows. Their text labels use a restrained ink underline,
-not a filled/capsule segment; labels remain horizontally reachable rather than
-truncating. The selected mode is exposed accessibly, Left/Right Arrow changes
-mode, Tab enters its content, and every mode owns at most one vertical scroll.
+not a filled/capsule segment. The index uses three equal columns with each
+label centered, no Scholium-drawn full-width bottom rule, and a provisional
+**18pt** Accent underline for the selected item. Labels remain horizontally
+reachable rather than truncating. The selected mode is exposed accessibly,
+Left/Right Arrow changes mode, Tab enters its content, and every mode owns at
+most one vertical scroll.
 
 A new window begins in Overview and stores its last mode per window. Restoring
 a window restores that mode; switching notes, Document tabs, or
@@ -1683,17 +1726,22 @@ changing its mode.
 
 Overview presents only compact current-note projections, in this order:
 
-1. **Needs Attention:** current-note count, distinct actionable kinds, and a
-   full-row Show All route to Library's complete queue. At zero it retains the
+1. **Needs Attention:** current-note count and distinct actionable kinds form
+   one full-row native button that opens Library's Attention surface filtered
+   to that exact Note. It has no nested **Show All** row. At zero it retains the
    heading and `0` but no reassurance sentence or decorative verdict.
 2. **About:** only non-empty role-specific fields in Appendix A. Scope and each
-   Limitation use reading blocks. **Edit Properties** is a native full-row
-   action; About has no Customize route. There is no Research Status, Key
+   Limitation use reading blocks. The complete About heading row is the direct
+   **Edit Properties** button; the values and reading blocks remain static and
+   selectable rather than becoming button content. There is no bottom Edit
+   row and About has no Customize route. There is no Research Status, Key
    Properties, Provenance, Derived State, or Zotero section.
 
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and
 offers Retry where applicable; it never claims reading, truth, or evidence.
+In Overview it follows the About projection and its Edit Properties route; it
+is not promoted to a separate section or card.
 
 Connect begins with three expanded, independently collapsible groups:
 
@@ -1703,26 +1751,53 @@ Connect begins with three expanded, independently collapsible groups:
 | Topic | Related Sources, Neighbor Topics, Related Works |
 | Work | Related Sources, Related Topics, Neighbor Works |
 
-Within a group, explicit links sort supports, supported by, incompatible, then
-neutral. Minimal ↑, ↓, ×, and — marks state predicate and direction; titles
-wrap. Do not open a second panel merely to show a title. Preserve source
-anchors. An empty group retains its heading and `0` without **None**. Connect
-shows the same freshness state before its groups. Stale or failed state keeps
-the last complete graph readable and offers a full-row Retry action.
+Within a group, links form ordered relationship clusters: Supports, Supports
+This Note, Opposes, Opposes This Note, Incompatible, then neutral Related.
+Counts appear only on the three major group headings. A cluster shows one
+custom 20pt relationship glyph in a 24pt leading track with a 4pt gap to the
+shared title axis; individual Note rows repeat neither symbol, relationship
+label, nor count. Support uses mirrored open/fork marks, opposition uses
+mirrored terminal/blocking marks, incompatibility uses one undirected pair of
+strokes repelling at the center, and neutral uses one quiet undirected
+connection. These marks share one restrained semantic text color and never
+encode truth, force, or value by hue. Titles wrap. Do not open a second panel
+merely to show a title. Preserve source anchors. An empty group retains its
+heading and `0` without **None**. Connect shows the same freshness state before
+its groups. Stale or failed state keeps the last complete graph readable and
+offers a full-row Retry action.
 
-Actions begins directly with the role-valid default Actions in Section 8.1.
-There is no horizontal Research Activity HUD, completed chronology, generic
-**Open Research Record** row, **Work with Agent** wrapper, or mode picker. The
+Relation rows remain single full-row native buttons with a provisional 36pt
+minimum rhythm, no default separators, and no trailing diagonal-open glyph.
+Their concise pointer help and accessible name state the relationship from the
+current Note's perspective. Primary activation opens the connected Note,
+using the source line when that peer owns the relation occurrence. When the
+distinct source-return route remains applicable, it stays available as an
+explicitly named context and accessibility action without adding a second
+detail panel. Each original group heading is a sticky section header inside
+Connect's sole scroll owner. While one relationship cluster scrolls, its one
+decorative glyph pins immediately below that heading, remains bounded by its
+own cluster, and hands off to the next glyph. Neither heading nor glyph is
+fixed to a window coordinate, copied into a second state owner, or exposed
+twice accessibly.
+
+Actions has no generic **Actions** section heading. The role-valid defaults in
+Section 8.1 retain their canonical order while appearing in two quiet semantic
+groups: **Research** contains Discuss and the applicable Analyze, Synthesize,
+or Write Action; **Review** contains Critique where applicable and Check
+Fidelity. There is no horizontal Research Activity HUD, completed chronology,
+generic **Open Research Record** row, **Work with Agent** wrapper, or mode picker. The
 Discuss Action itself reopens the current Note's resumable active Discussion
 and automatically includes its existing line Comments. It has no second
 active-Discussion row or parallel destination.
 
 Researcher-enabled custom Actions follow under one **Researcher Skills** group
 in the researcher-chosen order. Only Profiles with **Show in Actions** enabled
-appear. Availability fails closed while checking; an unavailable Action states
+appear. This is an open ordered collection using the same generic row and
+direct per-window Action route; adding a Skill never requires a new Inspector
+component or case-specific visual branch. Availability fails closed while checking; an unavailable Action states
 only its first executable repair. Settle remains a quiet direct current-note
-action, and Attention remains in Overview/Library rather than becoming
-completed history.
+action under one **Judgment** group, and Attention remains in Overview/Library
+rather than becoming completed history.
 
 Each Action is one native full-row button with a direct symbol, the shortest
 accurate title, explanation only under §19.6, and only when useful a trailing
@@ -1730,6 +1805,14 @@ chevron or shortcut. Its modular sheet shows the necessary scholarly inputs
 and app-owned authority or recovery facts without exposing assembled prompts,
 package internals, or technical mode names. The active Action and its sheet
 retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.
+All Action launchers use one shared visual row recipe with a **44pt** minimum
+operation rhythm and no default row or group separator. Availability checking,
+ready, unavailable, running, error, cancellation recovery, Settle, and Settled
+remain distinct states without changing Action routing or ownership. A default
+Action whose title already identifies the task shows no ordinary explanation.
+An unavailable Action shows only its first executable repair. Error and
+recovery information may use the complete required text and is never truncated
+to the ordinary two-line explanation budget.
 
 Functional text is never a generic blue link or a separate **Open** button.
 Body and secondary colors, hover surface, focus ring, button semantics, and
@@ -1743,21 +1826,30 @@ supplies uppercase strings; runtime code never forces case, so Chinese and
 other languages retain natural writing.
 
 Inspector layout uses named `ScholiumGrid.Apparatus` variables rather than
-leaf-view literals. Short facts form one section-level two-column grid with a
-shared label column and first-baseline alignment. If the available width or
-localized labels cannot fit, the complete grid becomes stacked; individual
-rows never switch independently. Scope, Research Scope, Limitations, and other
-long researcher prose always use a reading block: label on its own line and
-Alegreya content on the next line with a 12pt leading indent. Labels and action
-names remain system sans semibold; field values, explanations, and research
-prose use Alegreya; exact paths and revisions remain monospaced. Counts use
-monospaced digits without changing the surrounding face.
+leaf-view literals. Its provisional native content inset is **28pt**. Short
+facts form one section-level two-column grid with a shared, trailing-aligned
+label column of at least **78pt**, a **14pt** column gap, one common leading
+axis for values, and first-baseline alignment. The horizontal candidate keeps
+at least **204pt** of content width; ordinary canonical labels therefore remain
+horizontal in **300pt** and **278pt** Inspector scenarios after the content
+insets. If available width, 200% readability, or localized labels cannot fit,
+one `ViewThatFits` decision stacks the complete grid; individual rows never
+switch independently. Empty values do not create rows. Scope, Research Scope,
+Limitations, and other long researcher prose always use a reading block: label
+on its own line and Alegreya content on the next line with a 12pt leading
+indent. Labels, diagnostic/state names, and action names remain system sans semibold; field values,
+explanations, and research prose use Alegreya; exact paths and revisions remain
+monospaced. Counts use monospaced digits without changing the surrounding
+face.
 
 Provisional rhythm is a 28pt minimum scanning/action row, 12pt Alegreya with
 approximately 17–18pt reading leading, 4pt label-to-copy gap, 8pt between
-reading blocks, and 16pt between sections. The native comparison catalog and
-human review may revise typography, grid, indent, and spacing while preserving
-semantics, interaction, researcher control, and accessibility.
+reading blocks, and 16pt between sections. Apparatus sections, ordinary Action
+rows, and relation rows draw no boundary by default. A local boundary must be
+enabled explicitly for a named ownership, consequence, or recovery distinction.
+The native comparison catalog and human review may revise typography, grid,
+indent, and spacing while preserving semantics, interaction, researcher
+control, and accessibility.
 
 Document has no bottom Research Strip or hidden-Inspector duplicate. Action
 handoff remains keyboard/VoiceOver reachable; its sheet survives launch and
@@ -1805,6 +1897,7 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
 | Discuss / Analyze / Synthesize / Write | 讨论 / 分析 / 综合 / 写入 |
 | Critique / Check Fidelity / Manuscript | 评析 / 核查 / 稿件 |
+| Research / Review / Judgment (Actions groups) | 研究 / 审查 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Completion / Research Scope / Limitation | 完成度 / 研究范围 / 局限 |
@@ -1868,6 +1961,10 @@ native safe area once; the titlebar owns vertical alignment.
   titles, linked research objects, researcher judgments, field values,
   explanations, Scope, Limitations, and other research content when density,
   scaling, and mixed-script fallback remain legible.
+- Apparatus text never exceeds the adjacent Document Body at the default
+  Appearance. Its interface labels and headings use the quieter semantic text
+  roles; its 12pt content values and explanations may use Alegreya, but small
+  text still meets §20 contrast and mixed-script legibility requirements.
 - **Victor Mono** is for Source, code, exact excerpts, anchored review content,
   revision identities, paths, stable identifiers, and diffs.
 - The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
@@ -1914,7 +2011,9 @@ radius, shadow, border, gradient, or paper scales.
   legible.
 - Purpose-named boundaries are structural divider, subtle boundary, and
   floating boundary; Increase Contrast strengthens roles rather than adding
-  new ones.
+  new ones. Apparatus sections, ordinary rows, and Action rows default to no
+  boundary; a consumer must explicitly request a boundary for a named semantic
+  distinction.
 - Native controls own interaction states. Custom targets prefer **28pt** and
   never fall below **20pt**; this does not redefine native sizes.
 - Standard actions use direct SF Symbols. Domain symbols may centralize
@@ -1928,6 +2027,15 @@ radius, shadow, border, gradient, or paper scales.
 - The Library's **300pt minimum readable thickness** is a component-specific
   containment threshold outside the grid, not a spacing role, preferred width,
   or scene minimum.
+- `ScholiumGrid.Apparatus` independently owns the Inspector's provisional
+  **28pt** content inset, **18pt** selected-mode underline, **78pt** minimum fact
+  label column, **14pt** fact-column gap, **204pt** horizontal FactGrid
+  threshold, and **44pt** Action-row rhythm. These names may reuse a general
+  value only when the purpose is genuinely the same; Inspector-specific rhythm
+  is not expressed by borrowing a peripheral or Library metric.
+- The one-time **320pt** first-reveal request is an AppKit container initial
+  condition outside the grid. It is not a design Variable, persisted setting,
+  minimum, maximum, or continuously enforced preference.
 - Set Aside and Trash reuse the region-content, inline-control,
   label/accessory, hierarchy-row, action-target, and footer roles above; they
   create no parallel spacing namespace.
@@ -1943,7 +2051,11 @@ Layout defaults support testing, not independent gates. AppKit owns chrome and
 split geometry; Scholium owns semantic order and necessary content insets.
 Scenes have no Scholium numeric minimum unless the complete adaptation matrix
 proves one. Independently, the Library content threshold in §18.2 adds no
-preferred/maximum width or persisted divider position.
+preferred/maximum width or persisted divider position. The first-reveal
+**320pt** Apparatus request is applied at most once per newly created native
+split controller and is skipped or clamped when Document space cannot
+accommodate it; later hiding, showing, restoration, and direct resizing never
+replay it.
 
 Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, Research
 Record **760 × 680**, and fixed Settings content **700 × 560**. Regions scroll
@@ -2009,6 +2121,11 @@ when the title cannot faithfully distinguish their declared boundary. No
 control accumulates a label, subtitle, tooltip, and adjacent paragraph that all
 explain the same action.
 
+Compact Freshness, checking, stale, and Settled state lines obey the same
+nonduplication rule and do not become independent sections or cards. Error,
+conflict, permission, cancellation recovery, and source-protection detail is
+complete even when it exceeds two lines.
+
 ## 20. Accessibility and adaptation
 
 - Support System, Light, and Dark without hard-coded inversion.
@@ -2022,6 +2139,18 @@ explain the same action.
   accessible list without requiring hover. Research Record exposes its list,
   filters, dialogue order, participants, anchors, and Record Details with
   complete keyboard navigation inside its fixed readable utility-window size.
+- Inspector acceptance covers Overview, Connect, and Actions at **320pt** and
+  **278pt**, plus long English, mixed English/Chinese, right-to-left layout,
+  empty facts, long values, unavailable Actions, and 200% readability. The
+  ModeIndex remains one logical horizontal group; a FactGrid stays horizontal
+  or stacks as one whole; Action error and recovery text remains complete.
+- Overview exposes the complete Needs Attention summary as one button with the
+  current-Note count and scope, while the About heading exposes the
+  **Edit Properties** action without absorbing selectable values into the
+  control. Each Connect Note row is one primary button whose accessible name
+  states its relationship; its cluster glyph is decorative and hidden from
+  accessibility. A distinct source anchor remains a named accessibility action
+  after the visual trailing glyph is removed.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, Action sheets, conflict comparison, and
   Research Record close.
@@ -2269,6 +2398,9 @@ only in Git history.
 | **D-107** | 7.1, 8.1, 14, 22 | **D-108** | 7.2, 8.1–8.2, 18.4–18.5, 20, 22 |
 | **D-109** | 18.5, 20, 22 | **D-110** | 8.2, 17, 22 |
 | **D-111** | 7.3, 17, 22 | **D-112** | 18.5, 19.6, 20, 22 |
+| **D-113** | 8.2, 18.5, 22 | **D-114** | 18.2, 18.5, 19.2–19.6, 20, 22 |
+| **D-115** | 18.2, 18.5, 20, 22 | **D-116** | 18.5, 19.2–19.6, 20, 22 |
+| **D-118** | 1, 12–13, 18.5, 19.2–19.3, 20, 22 |  |  |
 
 Clean-cutover inventory:
 
@@ -2455,6 +2587,62 @@ Clean-cutover inventory:
   executable repair. Keep permission, provenance, conflict, destructive
   consequence, failure, and recovery detail in the appropriate body or
   presentation rather than hiding or truncating it to satisfy brevity.
+- **D-113:** cut the pre-release portable Research Record contract directly to
+  schema 3. Require explicit Agent Material-use testimony and preserve the
+  Scholium-established Fidelity completion state without adding an execution
+  trace or philosophical verdict. Schema 1/2 record files remain byte-, mode-,
+  mtime-, permission-, and location-unchanged; they are unsupported, unparsed,
+  unprojected, unmigrated, undeleted, and nonauthorizing. The
+  `.scholium/research-records/v1/` name remains the storage-layout version.
+- **D-114:** converge the existing native Research Inspector on one compact
+  Apparatus component system without changing its modes, research semantics,
+  state owners, scroll owners, Action routes, or three-pane structure. Keep the
+  native split separator as the sole pane boundary; remove Scholium-drawn
+  ModeIndex, section, and Action-row default rules. Use an equal three-column
+  ModeIndex with a short selected underline, a section-level FactGrid that
+  adapts only as a whole, reading blocks for long prose, fixed relation-symbol
+  columns, one shared Action-row visual recipe, and compact local state lines.
+  A new window may request a provisional 320pt Apparatus thickness only on its
+  first explicit reveal; do not persist, restore, observe, or replay that
+  request. Retain complete error, conflict, permission, and recovery text and
+  keep human visual and assistive-technology acceptance distinct from previews
+  and automation.
+- **D-115:** install initial or restored Inspector collapse state before the
+  native split's first presentation so launch never flashes a transient pane.
+  Within Actions, retain canonical Action order and routing while grouping
+  defaults as Research and Review, custom entries as Researcher Skills, and
+  Settle as Judgment. Use headings and whitespace without cards, default rules,
+  or a generic Actions heading; preserve one linear keyboard and VoiceOver
+  order through every group.
+- **D-116:** make Inspector interaction follow the same editorial hierarchy as
+  its content. Needs Attention is one current-Note summary button with no
+  nested Show All row; About keeps selectable content while its heading alone
+  opens Edit Properties. State names use interface-label typography. Connect
+  uses one relaxed full-row relationship button with no trailing diagonal
+  glyph, retains a named source-anchor alternative, and keeps the active group
+  heading available as the original sticky collapse button within its one
+  scroll owner. Action rows always call
+  their exact current-window typed route; focused routing remains for commands,
+  not row activation. Built-in visual grouping stays closed while arbitrary
+  researcher-enabled Skills remain one generic ordered collection. Pointer
+  activation never writes keyboard focus merely to select a mode or launch a
+  row, and a pointer-launched Action does not schedule a keyboard-only focus
+  ring when its presentation closes. Tab, arrow-key traversal, accessibility
+  activation, and deliberate keyboard post-presentation restoration retain
+  visible native focus.
+- **D-118:** adopt Vector-Link v3: bare links remain neutral,
+  `+` means the containing Note supports the target, `-` means it opposes the
+  target, and `?` records mutual incompatibility without direction. Retain no
+  public reverse-support or directed-Questions kind, decoder, authoring
+  command, label, fixture, or derived graph contract. Derive only support and
+  opposition inverse presentation from subject/object; preserve every exact
+  marker and source anchor without rewriting research files. Connect groups
+  rows by relationship and shows one accessible-text-redundant custom glyph
+  per cluster, with major headings and the current cluster glyph sticky inside
+  the sole scroll owner. Keep counts, direction, and resolution distinct from
+  philosophical weight, truth, evidence, or acceptance. This is a pre-release
+  clean cutover; existing `?` bytes acquire the current meaning without
+  automatic source migration.
 
 Unresolved work must not be described as complete:
 

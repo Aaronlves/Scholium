@@ -487,6 +487,20 @@ public struct WorkspaceResearchRecordsChangedEvent: Sendable {
     }
 }
 
+/// Invalidates projections that resolve mutable Research Guidance state.
+/// The event deliberately does not claim that an attempted configuration
+/// mutation committed: consumers reread the exact current Method, Skill,
+/// Profile, and permission state after the mutation gate closes.
+public struct WorkspaceResearchConfigurationInvalidatedEvent: Sendable {
+    public let generation: UInt64
+    public let snapshot: WorkspaceSnapshot
+
+    public init(generation: UInt64, snapshot: WorkspaceSnapshot) {
+        self.generation = generation
+        self.snapshot = snapshot
+    }
+}
+
 public struct WorkspaceRuntimeReloadedEvent: Sendable {
     public let generation: UInt64
     public let runtimeIdentity: TriptychRuntimeIdentity
@@ -521,6 +535,9 @@ public enum WorkspaceEvent: Sendable {
     case inventoryChanged(WorkspaceInventoryChangedEvent)
     case derivedStateChanged(WorkspaceDerivedStateChangedEvent)
     case researchRecordsChanged(WorkspaceResearchRecordsChangedEvent)
+    case researchConfigurationInvalidated(
+        WorkspaceResearchConfigurationInvalidatedEvent
+    )
     case runtimeReloaded(WorkspaceRuntimeReloadedEvent)
 
     public var generation: UInt64 {
@@ -530,6 +547,7 @@ public enum WorkspaceEvent: Sendable {
         case .inventoryChanged(let event): event.generation
         case .derivedStateChanged(let event): event.generation
         case .researchRecordsChanged(let event): event.generation
+        case .researchConfigurationInvalidated(let event): event.generation
         case .runtimeReloaded(let event): event.generation
         }
     }
@@ -541,6 +559,7 @@ public enum WorkspaceEvent: Sendable {
         case .inventoryChanged(let event): event.snapshot
         case .derivedStateChanged(let event): event.snapshot
         case .researchRecordsChanged(let event): event.snapshot
+        case .researchConfigurationInvalidated(let event): event.snapshot
         case .runtimeReloaded(let event): event.snapshot
         }
     }
@@ -557,6 +576,7 @@ public enum WorkspaceEvent: Sendable {
              .sourceCommitted,
              .inventoryChanged,
              .researchRecordsChanged,
+             .researchConfigurationInvalidated,
              .runtimeReloaded:
             .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
         }

@@ -152,295 +152,388 @@ private struct LifecycleDestinationCatalog: View {
     }
 }
 
-/// Native design-only comparison for the D-102 Inspector typography. It uses
-/// real research-density examples but owns no product state or behavior.
-private struct PropertiesTypographyComparisonBoard: View {
-    let panelWidth: CGFloat
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 20) {
-            PropertiesTypographySample(
-                treatment: .editorialHybrid,
-                width: panelWidth
-            )
-            PropertiesTypographySample(
-                treatment: .allSerif,
-                width: panelWidth
-            )
-        }
-        .padding(20)
-        .scholiumSurface(.document)
-    }
-}
-
-private struct PropertiesTypographySample: View {
-    enum Treatment: String {
-        case editorialHybrid = "Editorial hybrid"
-        case allSerif = "All Serif"
+/// Native D-114 acceptance board for the Inspector component system. It uses
+/// production Apparatus components but owns no application state or routing.
+private struct InspectorConvergenceCatalog: View {
+    enum Scenario: Equatable {
+        case standard
+        case narrow
+        case longEnglish
+        case mixedCJKAndEmpty
+        case rightToLeft
+        case syntheticLargeText
     }
 
-    let treatment: Treatment
-    let width: CGFloat
+    let scenario: Scenario
+    @State private var selectedMode: ResearchInspectorMode
 
-    private var usesHybrid: Bool { treatment == .editorialHybrid }
+    init(
+        scenario: Scenario,
+        initialMode: ResearchInspectorMode = .overview
+    ) {
+        self.scenario = scenario
+        _selectedMode = State(initialValue: initialMode)
+    }
+
+    private var width: CGFloat { scenario == .narrow ? 278 : 320 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: treatment.rawValue)
-                    .font(usesHybrid
-                        ? ScholiumInterfaceTypography.rowTitle
-                        : ScholiumTypography.swiftUIReadingFont(
-                            size: 13,
-                            relativeTo: .body,
-                            bold: true
-                        ))
-                Text(verbatim: width == 320 ? "320 pt" : "Narrow width")
-                    .font(usesHybrid
-                        ? ScholiumInterfaceTypography.metadata
-                        : ScholiumTypography.swiftUIReadingFont(
-                            size: 11,
-                            relativeTo: .caption
-                        ))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            }
-            .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-            .padding(.vertical, ScholiumGrid.Spacing.nestedContentInset)
-
-            ScholiumStructuralRule()
-
+        VStack(spacing: 0) {
+            ScholiumInspectorModeIndex(
+                selectedMode: selectedMode,
+                select: { selectedMode = $0 }
+            )
             ScrollView {
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                    sampleSection("NEEDS ATTENTION", count: "0") {
-                        EmptyView()
-                    }
-
-                    sampleSection("ANALYSIS ABOUT") {
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.readingBlockSpacing) {
-                            shortFacts([
-                                .init(id: "completion", label: "Completion", value: "6/11"),
-                                .init(id: "authors", label: "Authors", value: "María Zambrano; 李明"),
-                                .init(id: "year", label: "Year", value: "2024"),
-                                .init(id: "type", label: "Type", value: "Edited collection"),
-                            ])
-                            readingBlock(
-                                "Limitation",
-                                "Only the English translation and Chapters 1–6 were consulted; the archival appendix remains unavailable."
-                            )
-                            readingBlock(
-                                "Limitation",
-                                "“Abstract”, tags, and Collections are bibliographic metadata, not evidence for the source's argument."
-                            )
-                            action(
-                                "Edit Properties",
-                                symbol: "slider.horizontal.3",
-                                detail: nil
-                            )
-                        }
-                    }
-
-                    sampleSection("WORK ABOUT") {
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.readingBlockSpacing) {
-                            readingBlock(
-                                "Research Scope",
-                                "Whether fittingness reasons alter a researcher's practical option-space without collapsing into a generic value-ranking thesis."
-                            )
-                            readingBlock(
-                                "Limitation",
-                                "The current note brackets the historical genealogy and addresses only the contemporary objection."
-                            )
-                            shortFacts([
-                                .init(id: "kind", label: "Kind", value: "Dissertation chapter"),
-                                .init(id: "venue", label: "Venue", value: "Doctoral dissertation / 博士论文"),
-                            ])
-                        }
-                    }
-
-                    sampleSection("CONNECT") {
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
-                            countedSubheading("RELATED SOURCES", count: "0")
-                            countedSubheading("RELATED TOPICS", count: "0")
-                            countedSubheading("NEIGHBOR WORKS", count: "0")
-                        }
-                    }
-
-                    sampleSection("ACTIONS") {
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
-                            action(
-                                "Discuss",
-                                symbol: "bubble.left.and.bubble.right",
-                                detail: "Reflect without changing the note."
-                            )
-                            action(
-                                "Write",
-                                symbol: "square.and.pencil",
-                                detail: "Prepare one bounded write to the current Work."
-                            )
-                            action(
-                                "Check Fidelity",
-                                symbol: "checkmark.seal",
-                                detail: "Save the current edit before preparing this check.",
-                                enabled: false
-                            )
-                        }
-                    }
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.Apparatus.sectionSpacing
+                ) {
+                    modeContent
                 }
-                .padding(ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
+                .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
+                .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
             }
+            .scrollContentBackground(.hidden)
         }
-        .frame(width: width, height: 860, alignment: .topLeading)
+        .frame(width: width, height: 680, alignment: .topLeading)
         .scholiumSurface(.apparatus)
-        .scholiumBoundary(.subtleBoundary, in: Rectangle())
+        .environment(
+            \.layoutDirection,
+            scenario == .rightToLeft ? .rightToLeft : .leftToRight
+        )
+        .environment(
+            \.dynamicTypeSize,
+            scenario == .syntheticLargeText ? .accessibility3 : .large
+        )
     }
 
-    private func sampleSection<Content: View>(
-        _ title: String,
-        count: String? = nil,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionContentSpacing) {
-            HStack(alignment: .firstTextBaseline) {
-                heading(title)
-                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-                if let count {
-                    Text(verbatim: count)
-                        .font(countFont.monospacedDigit())
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+    @ViewBuilder
+    private var modeContent: some View {
+        switch selectedMode {
+        case .overview:
+            overviewContent
+        case .connect:
+            connectContent
+        case .actions:
+            actionsContent
+        }
+    }
+
+    private var overviewContent: some View {
+        Group {
+            catalogAttentionSummary
+
+            VStack(alignment: .leading, spacing: 0) {
+                ScholiumApparatusSectionHeaderButton(
+                    "ABOUT THIS ANALYSIS",
+                    actionLabel: "Edit Properties",
+                    systemImage: "slider.horizontal.3",
+                    accessibilityIdentifier: "scholium.preview.about.edit",
+                    action: {}
+                )
+                .padding(.bottom, ScholiumMetrics.Apparatus.sectionContentSpacing)
+
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
+                ) {
+                    ScholiumApparatusFactGrid(facts: facts)
+                    ScholiumApparatusReadingBlock(
+                        label: readingLabel,
+                        text: readingText
+                    )
                 }
             }
-            content()
-        }
-    }
 
-    @ViewBuilder
-    private func heading(_ title: String) -> some View {
-        if usesHybrid {
-            Text(verbatim: title).scholiumApparatusHeadingStyle()
-        } else {
-            Text(verbatim: title)
-                .font(ScholiumTypography.swiftUIReadingFont(
-                    size: 10,
-                    relativeTo: .caption,
-                    bold: true
-                ))
-                .tracking(0.7)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-        }
-    }
-
-    private var countFont: Font {
-        usesHybrid
-            ? ScholiumInterfaceTypography.metadata
-            : ScholiumTypography.swiftUIReadingFont(size: 11, relativeTo: .caption)
-    }
-
-    @ViewBuilder
-    private func shortFacts(_ facts: [ScholiumApparatusFact]) -> some View {
-        if usesHybrid {
-            ScholiumApparatusFactGrid(facts: facts)
-        } else {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.rowSpacing) {
-                ForEach(facts) { fact in
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline) {
-                            serifLabel(fact.label)
-                            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-                            serifValue(fact.value)
-                        }
-                        VStack(alignment: .leading, spacing: 4) {
-                            serifLabel(fact.label)
-                            serifValue(fact.value)
-                                .padding(.leading, ScholiumMetrics.Apparatus.longTextIndent)
-                        }
-                    }
-                }
+            if scenario == .longEnglish {
+                failureState
             }
         }
     }
 
-    @ViewBuilder
-    private func readingBlock(_ label: String, _ text: String) -> some View {
-        if usesHybrid {
-            ScholiumApparatusReadingBlock(label: label, text: text)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                serifLabel(label)
-                serifValue(text)
-                    .padding(.leading, ScholiumMetrics.Apparatus.longTextIndent)
-            }
-        }
-    }
-
-    private func countedSubheading(_ title: String, count: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            heading(title)
-            Spacer()
-            Text(verbatim: count)
-                .font(countFont.monospacedDigit())
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-        }
-    }
-
-    @ViewBuilder
-    private func action(
-        _ title: LocalizedStringResource,
-        symbol: String,
-        detail: String?,
-        enabled: Bool = true
-    ) -> some View {
-        if usesHybrid {
-            ScholiumApparatusActionButton(
-                title,
-                systemImage: symbol,
-                detail: detail,
-                action: {}
+    private var connectContent: some View {
+        Group {
+            catalogConnectionGroup(
+                "NEIGHBOR ANALYSES",
+                clusters: [
+                    (.supports, [
+                        "Attention and practical commitment",
+                        "Standards of provisional acceptance",
+                    ]),
+                    (.opposes, ["Immediate-result models of inquiry"]),
+                ]
             )
-            .disabled(!enabled)
-        } else {
-            Button(action: {}) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: symbol)
-                        .frame(width: 14)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(ScholiumTypography.swiftUIReadingFont(
-                                size: 12,
-                                relativeTo: .body,
-                                bold: true
-                            ))
-                        if let detail {
-                            serifValue(detail)
-                                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                        }
-                    }
-                    Spacer(minLength: 4)
+            catalogConnectionGroup(
+                "RELATED TOPICS",
+                clusters: [
+                    (.incompatible, ["Temporal structure of inquiry"]),
+                ]
+            )
+            catalogConnectionGroup("RELATED WORKS", clusters: [])
+        }
+    }
+
+    private var actionsContent: some View {
+        Group {
+            ScholiumApparatusSection("RESEARCH") {
+                VStack(alignment: .leading, spacing: 0) {
+                    InspectorCatalogActionButton(
+                        "Discuss",
+                        systemImage: "bubble.left.and.bubble.right",
+                        action: {}
+                    )
+                    InspectorCatalogActionButton(
+                        "Analyze",
+                        systemImage: "doc.text.magnifyingglass",
+                        action: {}
+                    )
+                }
+            }
+            ScholiumApparatusSection("REVIEW") {
+                InspectorCatalogActionButton(
+                    "Check Fidelity",
+                    systemImage: "checkmark.seal",
+                    detail: disabledDetail,
+                    action: {}
+                )
+                .disabled(disabledDetail != nil)
+            }
+            ScholiumApparatusSection("RESEARCHER SKILLS") {
+                InspectorCatalogActionButton(
+                    "Counterexample Stress Test",
+                    systemImage: "scope",
+                    detail: "Tests the current argument without changing the note.",
+                    action: {}
+                )
+            }
+            ScholiumApparatusSection("JUDGMENT") {
+                InspectorCatalogActionButton(
+                    "Settle",
+                    systemImage: "checkmark.circle",
+                    action: {}
+                )
+            }
+        }
+    }
+
+    private var catalogAttentionSummary: some View {
+        Button(action: {}) {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
+            ) {
+                HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
+                    Text("NEEDS ATTENTION")
+                        .scholiumApparatusHeadingStyle()
+                    Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
+                    count(scenario == .longEnglish ? "2" : "0")
                     Image(systemName: "chevron.forward")
                         .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .accessibilityHidden(true)
                 }
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+                if scenario == .longEnglish {
+                    Text("Unsupported field · Source access needs review")
+                        .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(!enabled)
+        }
+        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+            isHovering: false,
+            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight
+        ))
+        .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+        .accessibilityLabel("Needs Attention")
+        .accessibilityValue(scenario == .longEnglish ? "2 items" : "0 items")
+    }
+
+    private func catalogConnectionGroup(
+        _ title: LocalizedStringResource,
+        clusters: [(ScholiumConnectionGlyphKind, [String])]
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
+        ) {
+            ScholiumApparatusRow(
+                leading: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .accessibilityHidden(true)
+                },
+                content: {
+                    Text(title)
+                        .scholiumApparatusHeadingStyle()
+                },
+                trailing: {
+                    count(clusters.reduce(0) { $0 + $1.1.count }.formatted())
+                }
+            )
+
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.Apparatus.relationClusterSpacing
+            ) {
+                ForEach(Array(clusters.enumerated()), id: \.offset) { _, cluster in
+                    catalogConnectionCluster(kind: cluster.0, titles: cluster.1)
+                }
+            }
         }
     }
 
-    private func serifLabel(_ text: String) -> some View {
-        Text(verbatim: text)
-            .font(ScholiumTypography.swiftUIReadingFont(
-                size: 12,
-                relativeTo: .body,
-                bold: true
-            ))
+    private func catalogConnectionCluster(
+        kind: ScholiumConnectionGlyphKind,
+        titles: [String]
+    ) -> some View {
+        HStack(
+            alignment: .top,
+            spacing: ScholiumMetrics.Apparatus.relationGlyphToTextSpacing
+        ) {
+            ScholiumConnectionGlyph(kind: kind)
+                .frame(
+                    width: ScholiumMetrics.Apparatus.relationGlyphSize,
+                    height: ScholiumMetrics.Apparatus.relationGlyphSize
+                )
+                .frame(
+                    width: ScholiumMetrics.Apparatus.relationGlyphColumnWidth,
+                    height: ScholiumMetrics.Apparatus.relationRowMinimumHeight
+                )
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(titles, id: \.self) { title in
+                    Button(action: {}) {
+                        Text(verbatim: title)
+                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+                        isHovering: false,
+                        minimumHeight: ScholiumMetrics.Apparatus.relationRowMinimumHeight,
+                        verticalInset: ScholiumMetrics.Apparatus.relationRowVerticalInset
+                    ))
+                    .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+                }
+            }
+        }
+    }
+
+    private var failureState: some View {
+        ScholiumApparatusStateView(
+            "Refresh Failed",
+            detail: "The saved source changed while the relationship projection was being rebuilt. The previous projection remains visible and no research content was modified.",
+            systemImage: "exclamationmark.triangle",
+            density: .block
+        ) {
+            Button("Retry", action: {})
+                .controlSize(.small)
+        }
+    }
+
+    private func count(_ value: String) -> some View {
+        Text(verbatim: value)
+            .font(ScholiumInterfaceTypography.apparatusMetadata.monospacedDigit())
             .foregroundStyle(ScholiumColorRole.secondaryText.color)
     }
 
-    private func serifValue(_ text: String) -> some View {
-        Text(verbatim: text)
-            .font(ScholiumTypography.swiftUIReadingFont(size: 12, relativeTo: .body))
-            .foregroundStyle(ScholiumColorRole.primaryText.color)
-            .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-            .fixedSize(horizontal: false, vertical: true)
+    private var facts: [ScholiumApparatusFact] {
+        switch scenario {
+        case .mixedCJKAndEmpty:
+            [
+                .init(id: "kind", label: "类型", value: "章节"),
+                .init(id: "authors", label: "作者", value: "崔宏卿"),
+                .init(id: "venue", label: "出处", value: "博士论文"),
+                .init(id: "series", label: "丛书", value: ""),
+            ]
+        case .rightToLeft:
+            [
+                .init(id: "kind", label: "النوع", value: "فصل"),
+                .init(id: "authors", label: "المؤلف", value: "باحث تجريبي"),
+                .init(id: "year", label: "السنة", value: "2026"),
+            ]
+        case .longEnglish:
+            [
+                .init(id: "kind", label: "Kind", value: "Edited book chapter"),
+                .init(
+                    id: "authors",
+                    label: "Authors",
+                    value: "Alexandra Montgomery-Wainwright and Bernard Williams"
+                ),
+                .init(
+                    id: "venue",
+                    label: "Venue",
+                    value: "Proceedings of the International Society for the Study of Practical Reason"
+                ),
+            ]
+        case .standard, .narrow, .syntheticLargeText:
+            [
+                .init(id: "kind", label: "Kind", value: "Chapter"),
+                .init(id: "authors", label: "Authors", value: "Hongqing Cui"),
+                .init(id: "venue", label: "Venue", value: "Dissertation"),
+            ]
+        }
+    }
+
+    private var readingLabel: String {
+        scenario == .rightToLeft ? "النطاق" : "Scope"
+    }
+
+    private var readingText: String {
+        switch scenario {
+        case .mixedCJKAndEmpty:
+            "考察恰当性理由如何影响研究者的实践选项空间。"
+        case .rightToLeft:
+            "مثال اتجاهي لفحص المحاذاة والقراءة دون تغيير ترتيب التصفح."
+        default:
+            "Whether fittingness reasons alter a researcher's practical option-space."
+        }
+    }
+
+    private var disabledDetail: String? {
+        scenario == .longEnglish
+            ? "Save the current edit before checking fidelity."
+            : nil
+    }
+}
+
+/// A catalog-only native wrapper around the production Action row recipe. The
+/// real Actions surface retains its feature-owned routing and focus behavior.
+private struct InspectorCatalogActionButton: View {
+    let title: LocalizedStringResource
+    let systemImage: String
+    let detail: String?
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    init(
+        _ title: LocalizedStringResource,
+        systemImage: String,
+        detail: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.detail = detail
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            ScholiumApparatusActionRowContent(
+                title: Text(title),
+                systemImage: systemImage,
+                detail: detail.flatMap { $0.isEmpty ? nil : Text($0) },
+                showsChevron: true
+            )
+        }
+        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(isHovering: isHovering))
+        .onHover { isHovering = $0 }
     }
 }
 
@@ -833,6 +926,45 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
 #Preview("Lifecycle Destination — 简体中文") {
     LifecycleDestinationCatalog(scenario: .chinese)
         .environment(\.locale, Locale(identifier: "zh-Hans"))
+}
+
+#Preview("Inspector D-114 — 320 pt") {
+    InspectorConvergenceCatalog(scenario: .standard)
+}
+
+#Preview("Inspector D-114 — 278 pt") {
+    InspectorConvergenceCatalog(scenario: .narrow)
+}
+
+#Preview("Inspector D-114 — Long and Disabled") {
+    InspectorConvergenceCatalog(
+        scenario: .longEnglish,
+        initialMode: .actions
+    )
+}
+
+#Preview("Inspector D-114 — Long Refresh Failure") {
+    InspectorConvergenceCatalog(scenario: .longEnglish)
+}
+
+#Preview("Inspector D-114 — 中英与空字段") {
+    InspectorConvergenceCatalog(scenario: .mixedCJKAndEmpty)
+        .environment(\.locale, Locale(identifier: "zh-Hans"))
+}
+
+#Preview("Inspector D-114 — RTL") {
+    InspectorConvergenceCatalog(
+        scenario: .rightToLeft,
+        initialMode: .connect
+    )
+        .environment(\.locale, Locale(identifier: "ar"))
+}
+
+#Preview("Inspector D-114 — Synthetic Large Text Stress") {
+    InspectorConvergenceCatalog(
+        scenario: .syntheticLargeText,
+        initialMode: .actions
+    )
 }
 
 #Preview("Victor Mono vs System Mono") {

@@ -18,8 +18,8 @@ const inlineMarkers: Partial<Record<MarkdownEditorCommand, [string, string, stri
   strikethrough: ["~~", "~~", "Strikethrough"],
   highlight: ["==", "==", "Highlight"],
   wikilink: ["[[", "]]", "Wikilink"],
-  vectorSupportsTarget: ["+[[", "]]", "Supports Link"],
-  vectorSupportedByTarget: ["-[[", "]]", "Supported-by Link"],
+  vectorSupports: ["+[[", "]]", "Supports Link"],
+  vectorOpposes: ["-[[", "]]", "Opposes Link"],
   vectorIncompatible: ["?[[", "]]", "Incompatible Link"],
 };
 

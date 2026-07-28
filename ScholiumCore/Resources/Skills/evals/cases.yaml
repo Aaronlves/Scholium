@@ -65,7 +65,7 @@ cases:
     expected_function: develop
     expected_primary: scholium-analyze
     expected_result: source-grounded-pressure-test
-    invariants: [no-separate-critic-mode, reconstruction-first, agent-criticism-attributed, strongest-reply-and-residual-pressure]
+    invariants: [no-separate-critic-mode, reconstruction-first, final-source-review, bounded-recheck, not-a-substitute-for-fidelity, agent-criticism-attributed, strongest-reply-and-residual-pressure]
 
   - id: synthesize-topic-contribution
     request: Integrate the two checked Analyses into this Topic only where they genuinely change its problem map.

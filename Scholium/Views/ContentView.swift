@@ -233,7 +233,7 @@ struct ContentView: View {
 
     private var attentionQueueContext: AttentionQueueContext {
         AttentionQueueContext(
-            items: appState.workspaceCatalog?.attention ?? [],
+            items: scopedAttentionQueueItems,
             errorMessage: appState.workspaceCatalogError,
             isRefreshing: appState.isRefreshingWorkspaceCatalog,
             dismissalDays: appState.triptychSettings.attentionDismissalDays,
@@ -266,12 +266,31 @@ struct ContentView: View {
                 appState.showFrontmatterEditor = true
             },
             openAttention: {
-                appState.discoveryController.showAttentionQueue(true)
+                guard let note = appState.currentNote,
+                      let vaultID = appState.currentDocumentVaultID else { return }
+                appState.discoveryController.showAttentionQueue(
+                    true,
+                    note: VaultQualifiedNoteID(
+                        vaultID: vaultID,
+                        relativePath: note.relativePath
+                    )
+                )
             },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
             }
         )
+    }
+
+    private var scopedAttentionQueueItems: [AttentionQueueItem] {
+        let items = appState.workspaceCatalog?.attention ?? []
+        guard let scope = appState.discoveryController.library.attentionNoteScope else {
+            return items
+        }
+        return items.filter {
+            $0.note.vaultID == scope.vaultID
+                && $0.note.relativePath == scope.relativePath
+        }
     }
 
     private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
