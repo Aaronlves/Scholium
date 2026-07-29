@@ -180,7 +180,7 @@ private struct LifecycleDestinationCatalog: View {
 /// Location behavior, selection, typography, and accessibility are not
 /// represented by a separate mock layout.
 @MainActor
-private struct SidebarCutoverCatalog: View {
+struct SidebarCutoverCatalog: View {
     enum Scenario: Equatable {
         case standard
         case filteredLongCJK
@@ -360,7 +360,7 @@ private struct SidebarCutoverCatalog: View {
 /// Native Attention acceptance board using the exact production task row and
 /// the same transient-popover geometry. It keeps deterministic state variants
 /// available without opening a research Workspace or reconstructing source.
-private struct AttentionPopoverCatalog: View {
+struct AttentionPopoverCatalog: View {
     enum Scenario: Equatable {
         case ready
         case loading
@@ -417,10 +417,12 @@ private struct AttentionPopoverCatalog: View {
             .padding(ScholiumGrid.Spacing.sectionSeparation)
             Divider()
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(
             width: ScholiumMetrics.Attention.popoverWidth,
-            height: ScholiumMetrics.Attention.popoverHeight
+            height: ScholiumMetrics.Attention.popoverHeight,
+            alignment: .top
         )
         .scholiumSurface(.denseEvidence)
     }

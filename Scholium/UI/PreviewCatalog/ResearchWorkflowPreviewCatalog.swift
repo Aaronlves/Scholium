@@ -332,29 +332,96 @@ private struct ResearchActionProofRow: View {
 
 // MARK: - Generic modular Skill-run sheet
 
-private struct ResearchActionSheetProof: View {
+enum ResearchActionProofKind: String, CaseIterable, Identifiable {
+    case discuss
+    case analyze
+    case synthesize
+    case write
+    case critique
+    case checkFidelity
+    case manuscript
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .discuss: "Discuss"
+        case .analyze: "Analyze"
+        case .synthesize: "Synthesize"
+        case .write: "Write"
+        case .critique: "Critique"
+        case .checkFidelity: "Check Fidelity"
+        case .manuscript: "Manuscript"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .discuss: "text.bubble"
+        case .analyze: "doc.text.magnifyingglass"
+        case .synthesize: "arrow.triangle.merge"
+        case .write: "pencil"
+        case .critique: "text.magnifyingglass"
+        case .checkFidelity: "checkmark.shield"
+        case .manuscript: "doc.richtext"
+        }
+    }
+
+    var target: String {
+        switch self {
+        case .analyze: "Attention and Salience.md (Analysis)"
+        case .synthesize: "Attention and Normative Reasons.md (Topic)"
+        case .write, .critique, .manuscript: "Revisable Judgment.md (Work)"
+        case .discuss, .checkFidelity: "Current note"
+        }
+    }
+
+    var candidateWriteScope: String {
+        switch self {
+        case .analyze: "Current Analysis only"
+        case .synthesize: "Current Topic only"
+        case .write: "Current Work only"
+        case .critique: "Critique output only; Work is read-only"
+        case .manuscript: "Separately authorized Work phases only"
+        case .discuss, .checkFidelity: "None; current note is read-only"
+        }
+    }
+
+    var includesRequest: Bool { self != .checkFidelity }
+    var includesSource: Bool { self == .analyze }
+    var includesChecks: Bool { self == .checkFidelity }
+}
+
+struct ResearchActionSheetProof: View {
+    let action: ResearchActionProofKind
     @State private var selectedMaterial = "Attention and Salience.md"
-    @State private var preservesAlternatives = true
-    @State private var emphasis = "Dialectical structure"
-    @State private var instruction = "Reconstruct the strongest objection before replying."
+    @State private var request = "State the scholarly task in your own words."
+    @State private var checksContent = true
+    @State private var checksCitations = true
+
+    init(action: ResearchActionProofKind = .analyze) {
+        self.action = action
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 ResearchSheetIdentity(
-                    action: "Analyze",
-                    skill: "Analyze Source, working revision 3",
-                    target: "Attention and Salience.md",
+                    action: action.title,
+                    skill: "\(action.title), working revision 3",
+                    target: action.target,
                     revision: "f4d77c2a"
                 )
                 ScholiumStructuralRule()
 
                 ResearchProofSection(title: "SKILL PARAMETERS") {
                     Grid(alignment: .leading, horizontalSpacing: ScholiumGrid.Spacing.sectionSeparation, verticalSpacing: ScholiumGrid.Spacing.nestedContentInset) {
-                        GridRow {
-                            Text("Source")
-                            Button("Nagel, What Is It Like to Be a Bat?.pdf") {}
-                                .accessibilityIdentifier("scholium.proofs.run.source")
+                        if action.includesRequest {
+                            GridRow {
+                                Text("Request")
+                                TextField("Describe the task", text: $request, axis: .vertical)
+                                    .lineLimit(2...4)
+                            }
                         }
                         GridRow {
                             Text("Passage")
@@ -368,38 +435,37 @@ private struct ResearchActionSheetProof: View {
                             }
                             .labelsHidden()
                         }
-                        GridRow {
-                            Text("Emphasis")
-                            Picker("Emphasis", selection: $emphasis) {
-                                Text("Dialectical structure").tag("Dialectical structure")
-                                Text("Conceptual distinctions").tag("Conceptual distinctions")
+                        if action.includesSource {
+                            GridRow {
+                                Text("Source")
+                                Button("Nagel, What Is It Like to Be a Bat?.pdf") {}
+                                    .accessibilityIdentifier("scholium.proofs.run.source")
                             }
-                            .labelsHidden()
                         }
-                        GridRow {
-                            Text("Instruction")
-                            TextField(
-                                "Optional bounded instruction",
-                                text: $instruction,
-                                axis: .vertical
-                            )
-                                .lineLimit(2...4)
+                        if action.includesChecks {
+                            GridRow(alignment: .top) {
+                                Text("Checks")
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Toggle("Content", isOn: $checksContent)
+                                    Toggle("Citations", isOn: $checksCitations)
+                                }
+                                .toggleStyle(.checkbox)
+                            }
                         }
                     }
                     .font(ScholiumInterfaceTypography.apparatusBody)
-                    Toggle("Preserve competing interpretations", isOn: $preservesAlternatives)
-                        .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
                 }
 
                 ScholiumStructuralRule()
-                ResearchAuthorityFacts()
-                ResearchSheetButtons(primary: "Begin Analyze")
+                ResearchAuthorityFacts(action: action)
+                ResearchActionProofFooter()
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
             .frame(maxWidth: 720, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("scholium.proofs.runSheet")
+        .scholiumSurface(.denseEvidence)
     }
 }
 
@@ -425,12 +491,19 @@ private struct ResearchSheetIdentity: View {
 }
 
 private struct ResearchAuthorityFacts: View {
+    let action: ResearchActionProofKind
+
     var body: some View {
         ResearchProofSection(title: "APP-OWNED BOUNDARY") {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 LabeledContent("Permission", value: "Ask Me Every Time")
-                LabeledContent("Candidate write scope", value: "Current Analysis only")
-                LabeledContent("Recovery", value: "Exact written Notes")
+                LabeledContent("Candidate write scope", value: action.candidateWriteScope)
+                LabeledContent(
+                    "Recovery",
+                    value: action.candidateWriteScope.hasPrefix("None")
+                        ? "No Target write"
+                        : "Exact written Notes"
+                )
                 LabeledContent("Conflicts", value: "Revalidated before write")
                 LabeledContent("Conflict recovery", value: "Retained displaced bytes")
                 Text("The Skill can declare requirements, but it cannot hide or expand these fields.")
@@ -438,6 +511,20 @@ private struct ResearchAuthorityFacts: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .font(ScholiumInterfaceTypography.apparatusResearchContent)
+        }
+    }
+}
+
+private struct ResearchActionProofFooter: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Button("Cancel") {}
+                .keyboardShortcut(.cancelAction)
+            Spacer()
+            Button("Copy Only") {}
+            Button("Open in Codex") {}
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
         }
     }
 }

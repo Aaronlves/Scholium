@@ -5002,6 +5002,115 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testStage4CompleteWindowProofsAreReachableAndWindowLocal() {
+        app.menuBars.menuBarItems["QA"].click()
+        let openProofs = app.menuItems["Open Design Contract Complete-Window Proofs"]
+        XCTAssertTrue(openProofs.waitForExistence(timeout: 3))
+        openProofs.click()
+
+        let windowA = app.windows["Stage 4 Proof — Window A"]
+        XCTAssertTrue(
+            windowA.waitForExistence(timeout: 8),
+            "The Debug-only Stage 4 complete-window proof did not open."
+        )
+        XCTAssertTrue(
+            windowA.buttons["scholium.vault.paper_analysis"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(
+            windowA.descendants(matching: .any)["scholium.stage4.documentTitle"].exists
+        )
+        XCTAssertTrue(
+            windowA.descendants(matching: .any)["scholium.stage4.apparatusTitle"].exists
+        )
+        let proofState = windowA.menuButtons["scholium.stage4.scenario"]
+        XCTAssertTrue(proofState.exists)
+        XCTAssertEqual(proofState.value as? String, "Committed content")
+
+        windowA.buttons["scholium.stage4.proof.searchAttention"].click()
+        XCTAssertTrue(
+            windowA.descendants(matching: .any)["scholium.stage4.search"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(windowA.textFields["scholium.searchField"].exists)
+
+        windowA.buttons["scholium.stage4.proof.actionConflictRecovery"].click()
+        let analyze = windowA.buttons["scholium.stage4.action.Analyze"]
+        XCTAssertTrue(analyze.waitForExistence(timeout: 3))
+        analyze.click()
+        let actionSheet = windowA.descendants(matching: .any)[
+            "scholium.stage4.actionSheet"
+        ]
+        XCTAssertTrue(actionSheet.waitForExistence(timeout: 3))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !actionSheet.exists })
+        XCTAssertTrue(windowA.exists)
+
+        windowA.buttons["scholium.stage4.proof.multiwindow"].click()
+        let openPair = windowA.buttons["scholium.stage4.openPair"]
+        XCTAssertTrue(openPair.waitForExistence(timeout: 3))
+        openPair.click()
+
+        let windowB = app.windows["Stage 4 Proof — Window B"]
+        XCTAssertTrue(windowB.waitForExistence(timeout: 8))
+        XCTAssertTrue(windowA.exists)
+
+        let localSheetA = windowA.buttons["scholium.stage4.localSheet.A"]
+        XCTAssertTrue(localSheetA.waitForExistence(timeout: 3))
+        localSheetA.click()
+        XCTAssertTrue(
+            windowA.descendants(matching: .any)["scholium.stage4.windowLocalSheet.A"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertFalse(
+            windowB.descendants(matching: .any)["scholium.stage4.windowLocalSheet.B"]
+                .exists
+        )
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(windowA.exists)
+        XCTAssertTrue(windowB.exists)
+    }
+
+    @MainActor
+    func testStage4CompleteWindowProofsKeepAttentionUnavailableControlsTopAligned() {
+        app.activate()
+        let qaMenu = app.menuBars.menuBarItems["QA"]
+        XCTAssertTrue(qaMenu.waitForExistence(timeout: 5))
+        qaMenu.click()
+        let openProofs = app.menuItems["Open Design Contract Complete-Window Proofs"]
+        XCTAssertTrue(openProofs.waitForExistence(timeout: 3))
+        openProofs.click()
+
+        let window = app.windows["Stage 4 Proof — Window A"]
+        XCTAssertTrue(window.waitForExistence(timeout: 8))
+        window.buttons["scholium.stage4.proof.searchAttention"].click()
+
+        let proofState = window.menuButtons["scholium.stage4.scenario"]
+        XCTAssertTrue(proofState.waitForExistence(timeout: 3))
+        proofState.click()
+        let attentionReadyItem = app.menuItems["Attention ready"]
+        XCTAssertTrue(attentionReadyItem.waitForExistence(timeout: 3))
+        attentionReadyItem.click()
+
+        let attentionHeading = window.staticTexts["Attention"].firstMatch
+        let attentionFilter = window.textFields["Search Attention"]
+        XCTAssertTrue(attentionHeading.waitForExistence(timeout: 3))
+        XCTAssertTrue(attentionFilter.waitForExistence(timeout: 3))
+        let readyHeadingMinY = attentionHeading.frame.minY
+        let readyFilterMinY = attentionFilter.frame.minY
+
+        proofState.click()
+        let attentionUnavailableItem = app.menuItems["Attention unavailable"]
+        XCTAssertTrue(attentionUnavailableItem.waitForExistence(timeout: 3))
+        attentionUnavailableItem.click()
+        XCTAssertTrue(
+            window.staticTexts["Could Not Load Attention"].waitForExistence(timeout: 3)
+        )
+        XCTAssertLessThanOrEqual(abs(attentionHeading.frame.minY - readyHeadingMinY), 1)
+        XCTAssertLessThanOrEqual(abs(attentionFilter.frame.minY - readyFilterMinY), 1)
+    }
+
+    @MainActor
     func testAgentNoteChangeRequestSheetUsesNativeBoundedDecisionUI() {
         let window = app.windows.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
@@ -5062,7 +5171,8 @@ final class ScholiumUITests: XCTestCase {
             "-scholium.settings.selectedPane", "research-guidance",
             "-scholium.settings.researchGuidanceCategory", "Methods",
         ]
-        if name.contains("testResearchWorkflowInterfaceProofs") {
+        if name.contains("testResearchWorkflowInterfaceProofs")
+            || name.contains("testStage4CompleteWindowProofs") {
             application.launchArguments += ["--scholium-research-workflow-proofs"]
         }
         if name.contains("testAgentNoteChangeRequestSheet") {

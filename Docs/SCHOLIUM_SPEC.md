@@ -1693,7 +1693,10 @@ Menus follow researcher tasks:
 - Loading retains the popover structure; refreshing, stale, or failed refresh
   retains the last trustworthy list when one exists and exposes status plus
   Retry; failure without a prior result shows a complete error; an empty queue
-  shows a quiet completion state. When resolution, refresh, or dismissal removes
+  shows a quiet completion state. The heading and search/filter controls remain
+  top-aligned in ready, loading, empty, stale, and complete-error states; only
+  the list or state region below them consumes the remaining height. When
+  resolution, refresh, or dismissal removes
   the selected item, focus moves next, previous, then the popover filter/search
   control. Count updates use the same Scope and dismissal ledger as the popover.
 - The stable LocationHeader contains one title-style LocationPicker and only
@@ -1737,7 +1740,11 @@ Menus follow researcher tasks:
   page-level Location content: they align to the shared **28pt** peripheral
   edge and begin one **16pt** section step below LocationHeader. They never
   borrow the tighter **12pt** OutlineRow surface inset. Populated Note and
-  Folder rows retain that row inset and their existing hierarchy rhythm.
+  Folder rows retain that row inset and their existing hierarchy rhythm. An
+  initial Library load with no trustworthy projection uses one system
+  indeterminate progress indicator and the explicit **Loading Library…** name;
+  it does not use a shimmer, skeleton, or moving highlight. Staged replacement
+  never places that loading treatment over retained trustworthy content.
 - Lifecycle rows reuse the same provisional 28pt minimum OutlineRow rhythm and
   Note semantic slot. A single-line truncated title opens the note in place;
   a trailing **Put Back** control keeps a preferred **28pt** target and remains
@@ -1956,6 +1963,14 @@ An unavailable Action shows only its first executable repair. Error and
 recovery information may use the complete required text and is never truncated
 to the ordinary two-line explanation budget.
 
+A running Action retains that ordinary row structure and minimum rhythm rather
+than becoming a taller state block. Its leading Action symbol yields to one
+small indeterminate progress indicator; the Action title remains on the shared
+title axis; trailing text states **Running**; and a separately named direct
+Cancel control replaces the ready-state chevron. It adds no ordinary second
+line. Larger interface text or localization may grow the row rather than clip
+its title, state, or cancellation route.
+
 Functional text is never a generic blue link or a separate **Open** button.
 Body and secondary colors, hover surface, focus ring, button semantics, and
 the full hit region make interaction recognizable without depending on color,
@@ -2018,6 +2033,24 @@ Editing**. Comparison shows exact editor/disk revisions and offers **Return to
 Editing** or **Reload from Disk**. Checkpoint restore, editor Undo, and Research
 Record are never interchangeable; editor `Command-Z` never means checkpoint
 restoration.
+
+Autosave, conflict, and checkpoint-result presentation belongs to Document,
+never Actions or Research Inspector. Ordinary autosave creates no Save button
+and no success toast. **Save Failed** appears there as a persistent
+**Autosave Failed** bottom status toast that states the editor buffer remains
+available; the existing Retry/comparison recovery routes remain Document-owned
+and never become Research Actions. An unresolved **Conflict** uses the same
+Document-owned position, states that autosave is paused because the file
+changed outside Scholium, preserves the editor buffer, and exposes **Compare
+Changes**. These failure toasts remain until the state changes or the
+researcher chooses the applicable recovery path; they do not time out as if
+the failure were resolved.
+
+Checkpoint availability is not a document state, toast, or Action row; its
+entry remains under File. A successful restore alone produces one transient
+Document confirmation, **Checkpoint Restored**, and states that Scholium
+created the Before Restore checkpoint. This completion feedback never implies
+that editor Undo became checkpoint restoration.
 
 Destructive actions use exactly **Set Aside**, **Move to Trash**, **Put Back**,
 **Delete Permanently**, and **Cancel** when applicable.
@@ -2409,6 +2442,13 @@ complete even when it exceeds two lines.
   the compact preview becomes a separate accessibility target.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
+- A running Action exposes its Action name and **Running** state together while
+  retaining a distinct, explicitly named Cancel control in the same linear
+  Actions order. Its progress animation is not the sole state channel.
+- Document-owned Autosave Failed and Conflict toasts announce their state,
+  retained-buffer consequence, and available recovery action. Persistent
+  failure remains reachable after its announcement; the transient Checkpoint
+  Restored confirmation is announced once without moving document focus.
 - Keep accessibility labels and hints semantically complete but nonduplicative
   under §19.6. The visible two-line authoring budget never removes information
   needed to distinguish source, state, authority, consequence, or recovery.

@@ -179,6 +179,26 @@ struct ScholiumApp: App {
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
         .commandsRemoved()
+
+        WindowGroup(
+            "Design Contract Complete-Window Proofs",
+            id: "scholium-stage4-design-proofs",
+            for: DesignContractProofWindowRoute.self,
+            content: { route in
+                DesignContractCompleteWindowProofs(route: route.wrappedValue)
+            },
+            defaultValue: { .primary }
+        )
+        .defaultSize(
+            width: ScholiumMetrics.Workspace.preferredWidth,
+            height: ScholiumMetrics.Workspace.preferredHeight
+                + ScholiumGrid.Dimension.regionHeaderHeight
+        )
+        .windowResizability(.automatic)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .windowToolbarStyle(.unified(showsTitle: true))
+        .commandsRemoved()
         #endif
     }
 }
@@ -1043,6 +1063,13 @@ private struct ScholiumCommands: Commands {
                     Divider()
                     Button("Open Research Workflow Interface Proofs") {
                         openWindow(id: "scholium-research-workflow-proofs")
+                    }
+                    Divider()
+                    Button("Open Design Contract Complete-Window Proofs") {
+                        openWindow(
+                            id: "scholium-stage4-design-proofs",
+                            value: DesignContractProofWindowRoute.primary
+                        )
                     }
                 }
             }

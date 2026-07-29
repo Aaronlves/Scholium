@@ -45,8 +45,11 @@ struct ArchitectureBoundaryTests {
                     of: repositoryRoot.path + "/",
                     with: ""
                 )
-                if source.contains("import " + "ScholiumCore") { coreImports.append(relativePath) }
-                if source.contains("import ScholiumApplication"),
+                let imports = source
+                    .split(whereSeparator: \.isNewline)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                if imports.contains("import ScholiumCore") { coreImports.append(relativePath) }
+                if imports.contains("import ScholiumApplication"),
                    !allowedApplicationImports.contains(relativePath) {
                     applicationImports.append(relativePath)
                 }
@@ -55,7 +58,10 @@ struct ArchitectureBoundaryTests {
         for relativeRoot in ["Tests/ScholiumAppTests", "Tests/ScholiumApplicationTests"] {
             for file in try swiftFiles(beneath: repositoryRoot.appendingPathComponent(relativeRoot)) {
                 let source = try String(contentsOf: file, encoding: .utf8)
-                if source.contains("import " + "ScholiumCore") {
+                let imports = source
+                    .split(whereSeparator: \.isNewline)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                if imports.contains("import ScholiumCore") {
                     coreImports.append(file.path.replacingOccurrences(
                         of: repositoryRoot.path + "/",
                         with: ""

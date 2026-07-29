@@ -90,7 +90,10 @@ struct FrontendArchitectureTests {
 
         #expect(appSource.contains("id: \"scholium-bootstrap\""))
         #expect(appSource.contains("for: BootstrapWindowRoute.self"))
-        #expect(appSource.components(separatedBy: "WindowGroup(").count == 3)
+        // Two production scenes remain separate; the third source occurrence
+        // is the suppressed Debug-only Stage 4 proof scene.
+        #expect(appSource.components(separatedBy: "WindowGroup(").count == 4)
+        #expect(appSource.contains("id: \"scholium-stage4-design-proofs\""))
         #expect(!appSource.contains("id: \"scholium-editor\""))
         #expect(!appSource.contains("Window(\"Editor\""))
         #expect(appSource.contains("private struct ScholiumBootstrapRoot"))
@@ -739,6 +742,9 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains("content.popover("))
         #expect(attentionSource.contains("AttentionPopoverContent(session: session)"))
         #expect(attentionSource.contains("session.dismiss()"))
+        #expect(attentionSource.contains(
+            ".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)"
+        ))
         #expect(!attentionSource.contains(".searchable("))
         #expect(!attentionSource.contains("placement: .toolbar"))
         #expect(appSource.contains("lazy var attentionPopoverSession"))
@@ -762,6 +768,9 @@ struct FrontendArchitectureTests {
         }
         #expect(previewSource.contains("SidebarView(controller: controller, context: context)"))
         #expect(previewSource.contains("AttentionQueueRow("))
+        #expect(previewSource.contains(
+            "height: ScholiumMetrics.Attention.popoverHeight,\n            alignment: .top"
+        ))
     }
 
     @Test("Overview, Connect, and Actions share one variable-driven Apparatus geometry")

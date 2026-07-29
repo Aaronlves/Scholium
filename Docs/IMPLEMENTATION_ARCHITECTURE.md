@@ -796,10 +796,15 @@ failure.
   plus named appearance and accessibility review entry points. Its synthetic
   research-workflow catalog proves the §8 Action matrix, modular Skill-run
   sheet, staged installer, categorized Skill settings, Agent change request,
-  fixed-size secondary Research Record, and permission-invalid state without resolving
-  or mutating production state. A suppressed Debug window makes that catalog
-  reachable only from an explicitly enabled QA command. Preview code is
-  development-only and does not enter the released interface.
+  fixed-size secondary Research Record, and permission-invalid state without
+  resolving or mutating production state. A separate Stage 4 design-contract
+  harness composes the production Sidebar, Search, Attention task surface, and
+  Action-sheet recipes inside synthetic 1180 × 760 Workspace shells. Its typed
+  Debug scene values provide paired A/B windows for presentation-ownership
+  comparison without becoming Workspace, document, Triptych, or route
+  authority. Suppressed Debug windows make both catalogs reachable only from
+  an explicitly enabled QA command. Preview code is development-only and does
+  not enter the released interface.
 - `ScholiumContracts` contains boundary values, capability protocols,
   deterministic source transformations, immutable snapshots, events, and
   delivery-safe errors. It has no filesystem, database, network, UI, watcher,

@@ -105,6 +105,7 @@ struct AttentionQueueView: View {
             }
         }
         .frame(minWidth: 360, minHeight: 320)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task {
             pruneExpiredDismissals()
             presentation.reconcileVisibleItems(visibleItemIDs)
@@ -257,6 +258,7 @@ struct AttentionQueueView: View {
             Button("Retry") { Task { await session.refresh() } }
                 .disabled(session.isRefreshing)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("scholium.attentionError")
     }
 
@@ -271,6 +273,7 @@ struct AttentionQueueView: View {
                     .font(ScholiumInterfaceTypography.metadata)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("scholium.attentionEmpty")
     }
 
