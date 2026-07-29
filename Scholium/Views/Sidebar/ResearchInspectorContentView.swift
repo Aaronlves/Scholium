@@ -83,13 +83,16 @@ struct ResearchOverviewPresentation {
     let visibleAttentionItems: [AttentionQueueItem]
     let freshness: ResearchProjectionFreshness
     let propertiesConfiguration: VaultPropertiesConfiguration?
+    let zoteroItemKey: String?
 }
 
 struct ResearchInspectorContentContext {
     let presentation: ResearchOverviewPresentation
+    let attentionPopoverSession: AttentionPopoverSession?
     let openProperties: () -> Void
     let openAttention: () -> Void
     let retryRefresh: () -> Void
+    let openZoteroItem: (String) async -> Void
 
     var researchUnit: ResearchUnitDeclaration { presentation.researchUnit }
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
@@ -97,6 +100,7 @@ struct ResearchInspectorContentContext {
     var propertiesConfiguration: VaultPropertiesConfiguration? {
         presentation.propertiesConfiguration
     }
+    var zoteroItemKey: String? { presentation.zoteroItemKey }
 }
 
 /// Document-local research context. Authoritative note content remains the
@@ -107,6 +111,7 @@ struct ResearchOverviewView: View {
     let context: ResearchInspectorContentContext
 
     @State private var attentionIsHovering = false
+    @State private var zoteroIsHovering = false
 
     var body: some View {
         ScrollView(.vertical) {
@@ -170,9 +175,14 @@ struct ResearchOverviewView: View {
                 }
             }
         }
-        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+        .scholiumAttentionPopover(
+            anchor: .inspector,
+            session: context.attentionPopoverSession
+        )
+        .buttonStyle(ScholiumQuietRowButtonStyle(
             isHovering: attentionIsHovering,
-            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight
+            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
+            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
         .onHover { attentionIsHovering = $0 }
@@ -220,6 +230,27 @@ struct ResearchOverviewView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
             .accessibilityIdentifier("scholium.about")
+
+            if let itemKey = context.zoteroItemKey {
+                Button {
+                    Task { await context.openZoteroItem(itemKey) }
+                } label: {
+                    ScholiumApparatusActionRowContent(
+                        title: Text("Open in Zotero"),
+                        systemImage: "arrow.up.forward.app",
+                        showsChevron: false
+                    )
+                }
+                .buttonStyle(ScholiumQuietRowButtonStyle(
+                    isHovering: zoteroIsHovering,
+                    minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    verticalInset: 0
+                ))
+                .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+                .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
+                .onHover { zoteroIsHovering = $0 }
+                .accessibilityIdentifier("scholium.researchOverview.openInZotero")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -387,10 +418,11 @@ struct ResearchOverviewView: View {
 
 #Preview {
     ResearchOverviewView(
-        note: .unclassified(NoteDocument(
+        note: .syntheticPreview(
             relativePath: "topics/consciousness.md",
-            rawContent: "# Consciousness\n"
-        )),
+            rawContent: "# Consciousness\n",
+            vaultRole: .topicKnowledge
+        ),
         context: ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
                 researchUnit: ResearchUnitDeclaration(
@@ -399,11 +431,14 @@ struct ResearchOverviewView: View {
                 ),
                 visibleAttentionItems: [],
                 freshness: .unavailable("No workspace is open."),
-                propertiesConfiguration: nil
+                propertiesConfiguration: nil,
+                zoteroItemKey: nil
             ),
+            attentionPopoverSession: nil,
             openProperties: {},
             openAttention: {},
-            retryRefresh: {}
+            retryRefresh: {},
+            openZoteroItem: { _ in }
         )
     )
     .frame(width: 320, height: 620)

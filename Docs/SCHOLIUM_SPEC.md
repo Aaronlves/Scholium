@@ -3,7 +3,7 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-28 (D-120)
+**Last target change:** 2026-07-29 (D-134)
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
@@ -32,8 +32,6 @@ unrecognized Triptych files.
 - A **Scholium Triptych** (**Triptych**) is one configured workspace containing
   exactly three vaults: **Analyses**, **Topics**, and **Works**. Their ordinary
   documents are an **Analysis**, **Topic**, and **Work**.
-- **Unclassified** temporarily stages imported Markdown before the researcher
-  assigns it to a vault.
 - A **Research Action** is a researcher-selected scholarly transition or
   authority boundary exposed by the Research Inspector's **Actions** mode and
   executed through the shared Application API. The stable default Actions are
@@ -216,8 +214,7 @@ The portable directory beside Works contains only:
 - per-vault Properties profiles;
 - Working Method Skills, Action Profiles, explicit bindings, and portable
   intellectual Research Records under `.scholium/research-records/v1/`;
-- user packages at `.scholium/skills/<skill-id>/SKILL.md`; and
-- imports at `.scholium/unclassified/`.
+- user packages at `.scholium/skills/<skill-id>/SKILL.md`.
 
 It may be synchronized through ordinary cloud storage or Git; Scholium never
 uploads it automatically.
@@ -256,12 +253,19 @@ Triptych-local technical instructions are managed only in **Settings →
 Research Guidance**. Inventory is discovered from the filesystem and CLI, not
 a standing generated index.
 
-### 3.5 Import and Unclassified
+### 3.5 Import
 
-Import copies Markdown into `.scholium/unclassified/` without changing the
-original. The copy is readable and editable but receives no role-specific
-role-aware About, Settle, or Critique behavior until classified into Analyses,
-Topics, or Works. Irrelevant Markdown should not be imported.
+Import copies a regular UTF-8 Markdown file directly into the root of the
+currently selected Analyses, Topics, or Works vault. The external original
+remains unchanged; the imported Note preserves its exact bytes, including BOM,
+newline style, malformed or unknown YAML, and final newline. A collision uses
+`Name 2.md`, then the next available ordinal, without replacing either file.
+The imported file is immediately an ordinary Note of the selected Scope; root-
+level Notes require no classification workflow.
+
+The removed pre-release `.scholium/unclassified/` staging location is not read,
+projected, migrated, normalized, or deleted. Existing bytes there remain
+researcher-controlled but invisible to current Scholium.
 
 ## 4. Works folders and organization
 
@@ -510,7 +514,7 @@ backfill a missing machine-local pin; it does not create a second pin for
 identical bytes.
 If portable-state replacement fails, Scholium may remove a newly created pin
 only when the storage boundary proves failure occurred before rename. Any
-post-rename or unclassified outcome retains the pin even if a later concurrent
+post-rename or commit-uncertain outcome retains the pin even if a later concurrent
 Settle has already replaced the portable current state.
 Save failure, dirty conflict, unknown stable identity, or a revision mismatch
 blocks Settle. A later saved fingerprint keeps the prior statement, offers
@@ -1281,8 +1285,8 @@ uses neither an online Web API credential nor a researcher-deployed server.
 Its absence blocks no core workflow.
 
 **Settings → Integrations → Zotero** shows connection status, **Open Zotero**,
-**Test Connection**, **Refresh Library Information**, **Clear Connection
-History**, last successful time, and a concise local/read-only privacy statement.
+one **Check Connection** action, **Clear Connection History**, last successful
+time, and a concise local/read-only privacy statement.
 When disabled, direct the researcher to **Allow other applications on this
 computer to communicate with Zotero** in Zotero's Advanced settings.
 
@@ -1293,6 +1297,12 @@ from About and ordinary Properties. Scholium has no **Create Analysis from
 Zotero**, matching, comparison, confirmation, or metadata-overwrite flow. Only
 a protected machine or authorized agent mutation may write the key through the
 current-fingerprint boundary.
+
+When the current Analysis has a valid normalized key, Overview exposes one quiet
+**Open in Zotero** action that opens that exact item in Zotero Desktop. The
+action displays neither the key nor fetched Zotero metadata, performs no
+matching or confirmation, and is absent for Topics, Works, and Analyses without
+a valid key.
 
 When Analyze or another eligible Analysis Action begins preparation with a
 non-empty key,
@@ -1317,9 +1327,20 @@ changes Zotero data, files, or live SQLite.
 
 ### 15.3 Recommended Bibliography
 
-One Triptych-wide **Recommended Bibliography** section is fixed at Library's
-bottom across vault scopes and labelled **Reading leads, not evidence**. It is
-not a Research Action, Inspector launcher, note appendix, Zotero write path, or
+One Triptych-wide **Recommended Bibliography** utility is fixed at the
+Sidebar bottom outside Library's Scope-, Location-, selection-, filter-, and
+source-list ownership. It remains in the same position when Analyses, Topics,
+Works, Library, Set Aside, or Trash changes, and only a Triptych change changes
+its research boundary. Its compact band uses the heading, fixed sibling
+position, structural boundary, and **Triptych Recommended Bibliography**
+accessibility group to express that ownership; it adds no explanatory subcopy.
+The complete band is one button: its heading row shows the nonzero count and a
+quiet forward chevron, while the second row shows **No recommendations** or one
+static `Author, Year, Title` preview. It contains no compact horizontal list,
+individual candidate action, or diagonal-open glyph. Activating any part of the
+band opens the complete researcher-facing surface for handling agent-
+recommended literature. It is not Library content, a vault projection, a
+Research Action, Inspector launcher, note appendix, Zotero write path, or
 evidence store.
 
 Optional goals are Background Reading, Core Positions, Historical
@@ -1344,7 +1365,7 @@ conflicting or incomplete authors, or ambiguous titles. A matched Analysis
 proves no coverage beyond its Research Unit and evidence.
 
 Rows show title, authors/year, goals, one short reason, and verification/match
-state. Actions are **Open Analysis**, verified-key **Open in Zotero**, and
+state. Actions are **Open Analysis** when a matched Analysis exists and
 **Dismiss**. The section provides **Recommend…**, **Copy Instructions**,
 **Cancel**, and **Update Recommendations**; preserves prior results on refresh
 failure; and distinguishes empty, successful-zero, preparing, awaiting-agent,
@@ -1489,11 +1510,14 @@ disabled rather than queued against a hidden runtime.
 Each configured window contains exactly one native `NSSplitViewController`
 with three sibling items:
 
-1. **Library:** Scholium and Triptych identity; one equal-column
-   **Analyses / Topics / Works** ScopeIndex; Attention; one title-style
-   LocationPicker for **Library**, **Set Aside**, and **Trash**; one active
-   location-owned source region; Library-local Filter and Add; and Recommended
-   Bibliography. Settings is not a Library destination.
+1. **Sidebar:** a Library navigation region containing Scholium and Triptych
+   identity; one quiet equal-column **Analyses / Topics / Works** ScopeIndex
+   with no Attention statistics; one conditional current-Scope Attention alert;
+   one title-style LocationPicker for **Library**, **Set
+   Aside**, and **Trash**; one active location-owned source region; and
+   Library-local Filter and Add. A fixed Triptych-wide Recommended
+   Bibliography utility is its sibling below the Library source region.
+   Settings is not a Library destination.
 2. **Document:** selected note or the text-free semantic background.
 3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
    projections. It never owns buffers, autosave, Undo, or conflicts;
@@ -1547,6 +1571,14 @@ shell. Tracking separators remain structural bounds. Add no split-item
 accessory row, custom title strip, Inspector replacement, ellipsis, fixed
 height, automatic glass-like item, or Liquid Glass.
 
+Attention never enters the Document toolbar. While Sidebar is visible, its
+conditional current-Scope alert is the only workspace-chrome signal;
+collapsing Sidebar removes that signal without transferring a count, symbol,
+reserved gap, or popover anchor. Inspector retains its distinct current-Note
+summary. **Window → Attention** is enabled only when the focused Workspace has
+a visible Sidebar alert or Inspector summary capable of anchoring the transient
+popover; otherwise showing Sidebar restores the contextual route.
+
 If needed, the collapsed Inspector's Show control and View command may send one
 explicit intent through the exact window coordinator to the native split.
 The Inspector routes share selected-document availability and preserve native
@@ -1572,7 +1604,7 @@ does not veto close or misreport a source-save failure. Late lifecycle work may
 not act on a newer route, window, document, or close attempt.
 
 The Library BrandHeader sits below window controls. A static Scholium wordmark
-and a separate Triptych identity menu share the Library's 24pt content axis;
+and a separate Triptych identity menu share the 28pt peripheral page edge;
 Triptych management never turns the wordmark into a second toolbar. Traffic-
 light alignment is visual reference only, never derived geometry. No-note is
 text/action-free and VoiceOver-hidden. No Collapse Note, custom `<<`,
@@ -1584,9 +1616,9 @@ Menus follow researcher tasks:
   vault root; Import; Duplicate; Move/Rename; Reveal; Checkpoint create/restore.
 - **Edit:** editing and **Edit Properties…**.
 - **View:** Search, document mode/text size, Sidebar, Research Inspector.
-- **Window:** standard window navigation plus **Attention**, which opens or
-  focuses the one nonrestored Attention auxiliary window for the most recently
-  focused Workspace.
+- **Window:** standard window navigation plus **Attention**. The command is
+  enabled only when the focused Workspace has a visible Sidebar or Inspector
+  Attention anchor, and opens that anchor's transient popover.
 - **Research:** role-valid Actions and **Show Research Record**, never
   Attention or Checkpoints.
 - **Settings:** Triptychs, Property profiles, Research Guidance, Attention,
@@ -1600,18 +1632,25 @@ Menus follow researcher tasks:
   capsule, shared backing plate, enclosing border, or full-width rule. The
   group exposes selection, follows reading direction for Left/Right Arrow, and
   lets Tab continue into Library content without pointer activation creating a
-  keyboard-only focus ring.
+  keyboard-only focus ring. Scope labels expose no Attention count visually or
+  accessibly; Attention state belongs to the conditional current-Scope alert or
+  the current-Note Inspector summary.
 - One native **Filter** menu groups Integrity, Metadata, Properties, Order, and
-  Actions with at most one submenu level. Current Library rows and filters have
-  no Review, Unreviewed, Qualified, or Unqualified state.
-- Unclassified is reachable for classification but not a permanent Library
-  row. Notes outside folders appear at vault root.
+  Actions with at most one submenu level. Its icon-only entry hides the
+  redundant outer menu indicator; native submenu chevrons remain. Current
+  Library rows and filters have no Review, Unreviewed, Qualified, or
+  Unqualified state.
+- Notes outside folders appear at vault root as ordinary Library rows.
 - Folder/note rows form one hierarchy at one semantic callout size and a
   provisional **28pt minimum** rhythm that grows rather than clips when text
-  requires it. Use weight, color, indentation, and symbols—not size. One
-  leading semantic slot contains either a folder disclosure or a Note symbol;
-  a folder never repeats both disclosure and folder icon. Notes are one line
-  without sublines and expose full titles accessibly. At most one redundant
+  requires it. Folder and unselected Note titles use Regular; only the selected
+  Note uses Semibold. Use color, indentation, symbols, and this restrained
+  selection weight—not size or permanent Folder emphasis. One leading semantic
+  slot contains either a folder disclosure or a Note symbol; a folder never
+  repeats both disclosure and folder icon. Notes are one line without sublines,
+  use middle truncation for the Beta, and expose full titles through pointer
+  help and accessibility names. The Beta adds no custom marquee, fade-mask
+  reveal, or scroll-linked title motion. At most one redundant
   state mark precedes title; selected, focused, disclosed, drop-target, and
   inactive-selected remain distinct, and selection stays visible off-focus.
 - When Library is selected, the LocationHeader Add button directly creates at
@@ -1623,38 +1662,59 @@ Menus follow researcher tasks:
   routes. Neither creation action opens a sheet. Library enumerates empty real
   directories. Protected machine-managed folders and ambiguous legacy
   projections retain only safe nonmutating navigation.
-- The Library Location shows no total. ATTENTION follows Scope before the
-  LocationHeader, with the same 24pt content axis, a warning symbol, and the
-  last trustworthy visible count for the selected Scope after machine-local
-  dismissals. It opens or focuses the one standard nonmodal Attention auxiliary
-  window and never becomes selected Library content. Inspector may open the
-  same window with a current-Note subset. Attention is not a Location: opening
-  it leaves the selected Location, source content, Document, and Sidebar
-  selection unchanged.
-- Attention is one application-wide, nonrestored SwiftUI `Window`, never a
-  sheet, popover, inline destination, custom panel, or always-on-top surface.
-  Its default size is **420 × 560pt** and its minimum usable size is **360 ×
-  320pt**; the standard titlebar owns close, resize, active, and inactive
-  behavior. It follows the most recently focused Workspace through an explicit
-  coordinator callback. Each Workspace retains session-only filter, selected
-  task, and optional current-Note scope. Sidebar entry uses the selected Scope;
-  Inspector entry adds the current Note; changing Sidebar Scope clears that
-  Note subset.
-- The Attention window groups **Identity & Metadata** (Change Attribution
+- The Library Location shows no total. Attention treats zero as the steady
+  state, **1–3** unresolved items as its primary design condition, and larger
+  queues as exceptional accumulation rather than a separate mode or hard cap.
+  When the selected Scope's last trustworthy count is zero, Sidebar contains
+  no Attention row, reserved gap, visible zero, or accessibility target. When
+  the count is nonzero, one full-width **ATTENTION** alert appears after
+  ScopeIndex and before LocationHeader on the **28pt** peripheral page edge.
+  Its warning symbol, exact count, and persistent raised Navigation surface
+  make the condition prominent without relying on color alone. It has no
+  leading selection rule or other decorative Accent boundary.
+  It neither auto-opens, steals focus, pulses, nor repeats attention-seeking
+  motion. The complete alert opens a native transient Attention popover from
+  itself and never becomes selected Library content. Inspector may open the
+  same Workspace-owned queue from its current-Note summary. Attention is not a Location:
+  opening it leaves the selected Location, source content, Document, and
+  Sidebar selection unchanged.
+- Refresh preserves the last trustworthy per-Scope counts and the corresponding
+  current-Scope alert while Sidebar is visible. A first load with no trustworthy result never
+  claims zero. If it fails, the alert position shows a distinct non-counting
+  **Attention Unavailable** state with Retry rather than hiding a potentially
+  urgent condition. Resolving or dismissing the final item removes the alert;
+  if that disappearing control owns keyboard focus, focus moves to
+  LocationPicker. No reassurance row replaces it.
+- Attention is one native transient SwiftUI popover owned by the exact
+  Workspace window, never an application-wide Scene, sheet, inline destination,
+  custom panel, or always-on-top surface. Its preferred bounded content size is
+  **420 × 480pt**. Sidebar alert and Inspector summary each anchor the same
+  Workspace-owned queue to their complete trigger.
+  Native transient behavior dismisses it after outside activation or Escape;
+  opening a Note or Resynthesize also dismisses it. It has no custom or manual
+  close control. Dismissing and reopening within the same Workspace may retain
+  its session filter and selection. Activating a different Workspace window
+  resets query, kind filter, selected task, and current-Note subset; the
+  machine-local dismissal ledger is unaffected. The conditional Sidebar alert
+  uses the selected Scope; Inspector entry adds the current Note. Changing Sidebar
+  Scope clears that Note subset and switches the queue to the newly selected
+  Scope.
+- The Attention popover groups **Identity & Metadata** (Change Attribution
   Needed, Malformed Metadata, Unresolved Identity), **Structure & Connections**
   (Possible Orphan, Broken Connection, Ambiguous Connection), and **Revision &
   Reliance** (Changed Since Settled, Material Changed Since Use). Each row shows
   the issue, resolved Note title, locator, and only real available actions.
   Ordinary rows provide Inspect and timed Dismiss. Material Changed Since Use
-  retains Inspect, Resynthesize, and Leave Unchanged. Inspect activates the
-  exact owning Workspace without global window search or notification, opens
-  the Note, leaves Attention open, and keeps that task selected.
-- Loading retains the window structure; refreshing, stale, or failed refresh
+  retains Inspect, Resynthesize, and Leave Unchanged. Inspect opens the Note in
+  the exact owning Workspace without global window search or notification and
+  dismisses the popover; its session selection remains available if the same
+  Workspace reopens Attention before the task changes.
+- Loading retains the popover structure; refreshing, stale, or failed refresh
   retains the last trustworthy list when one exists and exposes status plus
   Retry; failure without a prior result shows a complete error; an empty queue
   shows a quiet completion state. When resolution, refresh, or dismissal removes
-  the selected item, focus moves next, previous, then the window filter/search
-  control. Count updates use the same Scope and dismissal ledger as the window.
+  the selected item, focus moves next, previous, then the popover filter/search
+  control. Count updates use the same Scope and dismissal ledger as the popover.
 - The stable LocationHeader contains one title-style LocationPicker and only
   the actions applicable to the selected Location. Its current title always
   identifies **Library**, **Set Aside**, or **Trash**. Library shows Filter and
@@ -1662,6 +1722,9 @@ Menus follow researcher tasks:
   icon arrays. The header keeps the same position and height while the source
   region changes.
 - The LocationPicker is one native menu of three mutually exclusive items.
+  Its title presentation is quiet and borderless: it has no enclosing fill,
+  bezel, capsule, or custom disclosure glyph, and relies on the menu's one
+  native indicator.
   Its selected item uses a checkmark; Set Aside and Trash may show a last-
   complete count as neutral location metadata. Missing, refreshing, or failed
   counts never disable selection or change the selected Location. Opening the
@@ -1670,16 +1733,30 @@ Menus follow researcher tasks:
   LocationPicker. Leaving Set Aside or Trash requires choosing Library or
   another Location; there is no parallel Back control, footer toggle, or
   lifecycle tab row.
+- Ordinary ScopeIndex and LocationPicker navigation stages the target Source
+  List from the latest accepted Workspace snapshot while the last committed
+  Scope/Location pair remains intact, then commits the target pair and list
+  atomically. It never replaces a trustworthy Source List with a full-page
+  Loading state merely because an in-memory projection crosses an asynchronous
+  boundary. Loading remains available only when no trustworthy committed
+  projection exists or an explicit recovery/refresh owns that state. A staged
+  target failure retains the prior pair and content and reports the failure;
+  it never presents that target's error under the prior Location title.
 - **Set Aside** and **Trash** are same-plane Library Locations, never overlays,
   cards, sheets, or separate Sidebar modes. Selecting one replaces only the
-  source-region content; BrandHeader, ScopeIndex, Attention, LocationHeader,
-  and Recommended Bibliography remain stable. Switching Scope retains the
-  Location and loads its content for the new Scope. An empty Location remains
-  selected and shows its own short empty state rather than silently returning
-  to Library. At most one Location content subtree accepts input or appears in
-  the accessibility tree; an implementation may retain inactive presentation
-  solely to preserve disclosure or scroll context only while it remains
-  layout-neutral, inert, and accessibility-hidden.
+  source-region content; BrandHeader, ScopeIndex, conditional Attention state,
+  LocationHeader, and Recommended Bibliography retain their ownership.
+  Switching Scope retains the Location and loads its content for the new Scope.
+  An empty Location remains selected and shows its own short empty state rather
+  than silently returning to Library. At most one Location content subtree
+  accepts input or appears in the accessibility tree; an implementation may
+  retain inactive presentation solely to preserve disclosure or scroll context
+  only while it remains layout-neutral, inert, and accessibility-hidden.
+- Library, Set Aside, and Trash empty, loading, and error states are
+  page-level Location content: they align to the shared **28pt** peripheral
+  edge and begin one **16pt** section step below LocationHeader. They never
+  borrow the tighter **12pt** OutlineRow surface inset. Populated Note and
+  Folder rows retain that row inset and their existing hierarchy rhythm.
 - Lifecycle rows reuse the same provisional 28pt minimum OutlineRow rhythm and
   Note semantic slot. A single-line truncated title opens the note in place;
   a trailing **Put Back** control keeps a preferred **28pt** target and remains
@@ -1687,12 +1764,20 @@ Menus follow researcher tasks:
   no separator. After Put Back, Move to Trash, or permanent deletion removes a
   row, focus moves next, previous, then LocationPicker; cancellation or failure
   restores the originating row.
-- Compact Recommended Bibliography follows the one source region, stays
-  available across Scope and Location, and uses whitespace rather than a
-  footer boundary to remain secondary. Its empty state says **No
-  recommendations** rather than overloading **None**; available leads
-  horizontally scroll as `Author, Year, Title` and link to the full surface.
-  Use `&` for two authors and first author + `et al.` for three or more.
+- Compact Recommended Bibliography is an intrinsic-height fixed Sidebar
+  utility below and outside the Library source scroll. It is never a Source
+  List section, Location, footer navigation control, vault projection, or
+  selected Library row. It shares the complete Sidebar's Paper-derived
+  `navigationSurface`, uses one
+  structural top boundary, and no card, shadow, or fixed numeric height. Its
+  complete band is one quiet full-width button with the same raised hover/press
+  grammar as other summary rows, not a card or bezel. Its heading row contains
+  the nonzero count and a quiet forward chevron; the second row uses the 10pt
+  metadata role for **No recommendations** or one static, single-line
+  `Author, Year, Title` preview. It has no horizontal candidate scroller or
+  compact per-candidate action; the complete list and operations belong to the
+  full surface. Use `&` for two authors and first author + `et al.` for three or
+  more.
 - Debate Importance ordering first requires one exact Debate Scope.
 - Shared Search follows Section 13: compact centered surface, always-visible
   scopes, no empty sheet, bounded results that identify match context and
@@ -1746,11 +1831,15 @@ and the application interface are not changed by a document configuration;
 only the shared Line width changes Source layout.
 
 Subject to the transfer rule in §18.2, Document toolbar order is conditional
-Show Sidebar; Heading Outline and compact identity; mode and Search; Research
-Record; conditional Show Inspector. Scholium controls are borderless ink. No
-second identity row, Document Properties button, or More control exists.
+Show Sidebar; Heading
+Outline and compact identity; mode and Search; Research Record; conditional
+Show Inspector. Scholium controls are borderless ink. No second identity row,
+Document Properties button, or More control exists.
 Complete Properties is in Research; direct controls retain menu/keyboard
-routes. Document Text Size is per-window and source-neutral.
+routes. The compact identity uses secondary text while the in-document H1
+remains primary. It is static during Beta scrolling; no custom H1-to-toolbar
+identity handoff or scroll-linked title animation is included. Document Text
+Size is per-window and source-neutral.
 
 Properties performs targeted frontmatter edits and distinguishes absent,
 empty, invalid, derived, and not-applicable. Exact YAML stays available in
@@ -1796,15 +1885,18 @@ changing its mode.
 Overview presents only compact current-note projections, in this order:
 
 1. **Needs Attention:** current-note count and distinct actionable kinds form
-   one full-row native button that opens the shared Attention window filtered
+   one full-row native button that opens the Workspace Attention popover filtered
    to that exact Note. It has no nested **Show All** row. At zero it retains the
    heading and `0` but no reassurance sentence or decorative verdict.
 2. **About:** only non-empty role-specific fields in Appendix A. Scope and each
    Limitation use reading blocks. The complete About heading row is the direct
    **Edit Properties** button; the values and reading blocks remain static and
    selectable rather than becoming button content. There is no bottom Edit
-   row and About has no Customize route. There is no Research Status, Key
-   Properties, Provenance, Derived State, or Zotero section.
+   row and About has no Customize route. A current Analysis with a valid
+   protected Zotero item key appends one quiet full-row **Open in Zotero**
+   action inside About; it exposes neither the key nor fetched metadata and is
+   absent for every other target. There is no Research Status, Key Properties,
+   Provenance, Derived State, or separate Zotero section.
 
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and
@@ -1996,8 +2088,10 @@ native behavior, add state owners, or delay the core.
 
 Canonical design system in brief:
 
-- Document remains primary; Library, Document, and Apparatus are distinct,
-  opaque semantic planes derived from one Paper resolver.
+- Document remains primary; Sidebar, Document, and Apparatus are distinct,
+  opaque structural planes derived from one Paper resolver. The complete
+  Sidebar shares one Navigation surface; Apparatus remains a document-adjacent
+  margin whose tone is much closer to Document than Navigation.
 - System sans organizes interface structure, Alegreya carries readable
   research content, and Victor Mono identifies exact source and revisions.
 - Typography, the purpose-named 4pt grid, whitespace, alignment, and semantic
@@ -2043,12 +2137,25 @@ transient menu remains system-owned rather than becoming a Scholium popover.
 Pane-local hosts consume the native safe area once; the titlebar owns vertical
 alignment.
 
+The fixed Recommended Bibliography band is a sibling Sidebar utility, not a
+Library Location or Source List footer. It shares the complete Sidebar's
+Paper-derived Navigation surface; one structural top boundary, fixed position,
+heading, and accessible Triptych-scoped group express its ownership without
+explanatory subcopy, a card, blur, material, decorative elevation, or an
+independent palette. Its named top and bottom insets place the content slightly
+above visual centre and preserve a calm bottom edge.
+
 ### 19.2 Typography and color
 
 - System sans is interface structure: navigation names, chrome, menus,
   controls, Settings, alerts, section headings, field labels, action names,
   dates, and compact scanning cues. The fixed **Scholium** Alegreya wordmark
   remains the identity exception.
+- Library Folder and unselected Note titles use the same 12pt Regular system
+  role; only the selected Note uses Semibold. The compact Document-toolbar
+  identity uses the 13pt system body role with secondary ink. Recommended
+  Bibliography's empty state uses the purpose-named 10pt metadata role with
+  secondary ink; a populated compact preview uses the editorial citation role.
 - **Alegreya** is for Review/Edit prose and may identify content-derived
   titles, linked research objects, researcher judgments, field values,
   explanations, Scope, Limitations, and other research content when density,
@@ -2069,13 +2176,16 @@ alignment.
   role spacing/composition parameters without acquiring a separate palette.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
-  **Paper** `#F8F0E2`. One resolver derives every Light, Dark, and Increase
-  Contrast semantic output. Library uses a `navigationSurface` that is slightly
-  more recessive and neutral than the Apparatus `apparatusSurface`; both remain
-  Paper-derived roles, not additional author inputs or palettes. Their exact
-  perceptual separation is provisional and must retain text/state contrast
-  under every appearance. No derived output or functional/status hue is
-  independently configurable.
+  **Paper** `#FEF8ED`. In Light appearance Paper is the illuminated Document
+  plane; one resolver derives every other Light output and every Dark and
+  Increase Contrast semantic output. The complete Sidebar, including Recommended
+  Bibliography, uses one recessive and neutral `navigationSurface`. Inspector's
+  `apparatusSurface` is a document-adjacent Paper role: it remains subtly
+  distinct across the native split while staying perceptually much closer to
+  `documentBackground` than to Navigation. These roles are not additional
+  author inputs or palettes; their exact separation is provisional and must
+  retain text/state contrast under every appearance. No derived output or
+  functional/status hue is independently configurable.
 - Native and WebKit consume the same derived `ScholiumColorRole` outputs.
   Feature views name no raw value, and generated WebKit properties are
   transport, not a second palette. Private functional/status anchors adapt to
@@ -2094,7 +2204,12 @@ purpose-named roles, never numbered positions. Invent no numbered opacity,
 radius, shadow, border, gradient, or paper scales.
 
 - Interface type roles: identity, section title, row title, metadata, and
-  narrowly approved editorial hierarchy. Document roles: Body,
+  narrowly approved editorial hierarchy. Library exposes purpose-named Folder,
+  Note, selected-Note, Attention-alert, bibliography-empty, and
+  bibliography-preview roles; the toolbar exposes the compact-identity role.
+  These roles may resolve to a shared point
+  size but leaf views do not recreate their weights or sizes. Document roles:
+  Body,
   `heading(level:)`, Exact Source, Code, Diff, Revision Identity.
 - Document Rhythm exposes one machine-local Line width input with the default,
   range, unit, and shared-mode ownership in §18.4. It creates no second
@@ -2104,6 +2219,11 @@ radius, shadow, border, gradient, or paper scales.
   consume those roles without owning a palette value.
 - Surfaces are opaque semantic planes; dense evidence is quietest and most
   legible.
+- `SidebarAttentionAlert` is one state-derived presentation component, not an
+  owner of diagnostics or counts. Zero produces no component. Nonzero combines
+  the existing raised Navigation surface, warning symbol, label, and exact
+  count; unavailable substitutes complete diagnostic text and Retry. No
+  Attention count, aggregate, or anchor is projected into the Document toolbar.
 - Purpose-named boundaries are structural divider, subtle boundary, and
   floating boundary; Increase Contrast strengthens roles rather than adding
   new ones. Apparatus sections, ordinary rows, and Action rows default to no
@@ -2115,25 +2235,32 @@ radius, shadow, border, gradient, or paper scales.
   Scholium meaning, but text remains primary.
 - Grid roles are optical alignment **2pt**, label/accessory **4pt**, inline
   control **8pt**, nested content **12pt**, section separation **16pt**, and
-  region content **20pt**. Fixed component anchors remain purpose-owned:
+  region content **20pt**. The two peripheral planes share a separate **28pt**
+  page-edge inset; their internal rhythms remain purpose-owned. Fixed
+  component anchors remain purpose-owned:
   preferred/minimum custom targets **28/20pt**, Document tab strip **40pt**,
   Action target **44pt**, and region header **48pt**. A general compact
-  **24pt** row role does not size Library rows, and Library has no fixed footer
-  anchor.
+  **24pt** row role does not size Library rows, and Library has no fixed
+  lifecycle-footer anchor. Recommended Bibliography's fixed position uses its
+  intrinsic content height rather than a footer-height Variable.
 - The Library's **300pt minimum readable thickness** is a component-specific
   containment threshold outside the grid, not a spacing role, preferred width,
   or scene minimum.
-- `ScholiumGrid.Library` provisionally owns the Library's **24pt** content
-  axis, **12pt** row-surface inset, **28pt** minimum row rhythm, **16pt**
+- `ScholiumGrid.Peripheral` owns the shared **28pt** outer page edge for
+  Library and Inspector. `ScholiumGrid.Library` independently owns the
+  Library's **12pt** row-surface inset, **28pt** minimum row rhythm, **16pt**
   hierarchy indentation step, **12–14pt** semantic leading slot, **8pt**
   leading-to-title gap, and **18pt × 1pt** ScopeIndex selection underline.
-  Row surfaces begin at the 12pt inset while content headings and principal
-  controls align to the 24pt axis. BrandHeader and LocationHeader retain
+  Ordinary row content begins at the 12pt inset while a selected or pressed
+  navigation feedback surface may span the Source List width; the surface does
+  not change the content axis. Content headings and principal controls align to
+  the shared 28pt page edge. BrandHeader and LocationHeader retain
   intrinsic content-driven height rather than copying a toolbar or retired
   footer height. These values remain provisional until they pass the 300pt,
   localization, scaling, contrast, and human visual-acceptance matrix.
-- `ScholiumGrid.Apparatus` independently owns the Inspector's provisional
-  **28pt** content inset, **18pt** selected-mode underline, **78pt** minimum fact
+- `ScholiumGrid.Apparatus` maps its outer inset to the shared peripheral edge
+  and independently owns the Inspector's **18pt** selected-mode underline,
+  **78pt** minimum fact
   label column, **14pt** fact-column gap, **204pt** horizontal FactGrid
   threshold, and **44pt** Action-row rhythm. These names may reuse a general
   value only when the purpose is genuinely the same; Inspector-specific rhythm
@@ -2145,7 +2272,9 @@ radius, shadow, border, gradient, or paper scales.
   and LocationHeader components. They create no parallel lifecycle spacing
   namespace, destination header, or footer role.
 - Motion is purpose-named, interruptible, and removed under Reduce Motion. No
-  duration scale, parallax, animated grain, or decorative motion.
+  duration scale, parallax, animated grain, decorative motion, or repeating
+  Attention pulse. Conditional Attention presence remains understandable with
+  motion entirely absent.
 - Document rhythm remains renderer-aware and provisional until Review/Edit
   pass side-by-side review at ordinary, narrow, mixed-script, and 200%
   text conditions.
@@ -2252,7 +2381,10 @@ complete even when it exceeds two lines.
 - Overview exposes the complete Needs Attention summary as one button with the
   current-Note count and scope, while the About heading exposes the
   **Edit Properties** action without absorbing selectable values into the
-  control. Each Connect Note row is one primary button whose accessible name
+  control. A current Analysis with a valid Zotero item key exposes one
+  keyboard- and VoiceOver-reachable **Open in Zotero** button inside About;
+  neither the key nor metadata enters the accessibility tree. Each Connect
+  Note row is one primary button whose accessible name
   states its relationship; its cluster glyph is decorative and hidden from
   accessibility. A distinct source anchor remains a named accessibility action
   after the visual trailing glyph is removed.
@@ -2265,20 +2397,34 @@ complete even when it exceeds two lines.
   the reason without opening a naming dialog.
 - Library exposes the static Scholium wordmark and Triptych identity menu as
   distinct elements. ScopeIndex is one logical horizontal group with current
-  selection and reading-direction-aware arrow navigation. LocationPicker
-  exposes its localized current Location, expanded state, and selected native
-  menu item; optional counts are values, not badges or selection state.
-  Inactive Location content is accessibility-hidden. Put Back remains in
-  keyboard and VoiceOver order without hover, and row removal follows the
-  next/previous/LocationPicker focus sequence defined in §18.3. Settings
-  remains available through standard application routes, not as a Library
-  destination.
-- Attention exposes its standard window title, filter, three group headings,
+  selection and reading-direction-aware arrow navigation, and exposes no
+  Attention values. The conditional Sidebar alert exposes
+  **Open Attention** with its selected Scope and exact count; zero contributes
+  no element or gap. If its last item disappears while it owns keyboard focus,
+  focus moves to LocationPicker. Collapsing Sidebar adds no Attention element,
+  count, value, or reserved gap to the Document toolbar; the contextual route
+  returns when Sidebar is shown, while an applicable Inspector summary remains
+  independently reachable.
+  LocationPicker exposes its localized current Location, expanded state, and
+  selected native menu item; optional Location counts are values, not badges or
+  selection state. Inactive Location content is accessibility-hidden. Put Back
+  remains in keyboard and VoiceOver order without hover, and row removal
+  follows the next/previous/LocationPicker focus sequence defined in §18.3.
+  Settings remains available through standard application routes, not as a
+  Library destination.
+- Attention exposes its popover heading, filter, three group headings,
   selected task, issue, resolved Note title, locator, state, and available
   actions in one linear keyboard and VoiceOver order. Loading retains that
   structure; refreshing, stale, and recoverable failure keep the last complete
   rows operable while status and Retry remain named. When the selected task
   disappears, focus follows the next/previous/filter sequence in §18.3.
+- Recommended Bibliography is exposed after the Library source region as one
+  **Triptych Recommended Bibliography** group. Its accessible scope does not
+  rely on fixed position or surface color, and its full workflow remains
+  keyboard and VoiceOver reachable across Scope and Location changes. The
+  compact band contains one **Open Recommended Bibliography** button whose value
+  is **No recommendations** or the recommendation count; no candidate inside
+  the compact preview becomes a separate accessibility target.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
 - Keep accessibility labels and hints semantically complete but nonduplicative
@@ -2519,6 +2665,19 @@ only in Git history.
 | **D-115** | 18.2, 18.5, 20, 22 | **D-116** | 18.5, 19.2–19.6, 20, 22 |
 | **D-118** | 1, 12–13, 18.5, 19.2–19.3, 20, 22 | **D-119** | 18.2–18.3, 19.1–19.4, 20, 22 |
 | **D-120** | 18.2–18.3, 19.1–19.4, 20, 22 |  |  |
+| **D-121** | 15.3, 18.2–18.3, 19.1–19.3, 20, 22 |  |  |
+| **D-122** | 18.2–18.3, 19.1–19.3, 20, 22 |  |  |
+| **D-123** | 18.3, 18.5, 19.2–19.3, 20, 22 |  |  |
+| **D-124** | 15.3, 18.3, 19.1–19.3, 20, 22 |  |  |
+| **D-125** | 18.2–18.3, 20, 22 |  |  |
+| **D-126** | 15.3, 18.3–18.4, 19.2–19.3, 20, 22 |  |  |
+| **D-127** | 18.2–18.4, 19.2–19.3, 20, 22 |  |  |
+| **D-128** | 18.3, 19.2–19.3, 22 |  |  |
+| **D-129** | 18.2–18.4, 19.2–19.3, 20, 22 |  |  |
+| **D-130** | 18.2–18.3, 19.2–19.3, 20, 22 |  |  |
+| **D-131** | 15.2–15.3, 18.5, 20, 22 |  |  |
+| **D-132** | 1, 3.3, 3.5, 5, 18.3, 20, 22 | **D-133** | 15.1, 20, 22 |
+| **D-134** | 18.2–18.4, 19.3, 20, 22 |  |  |
 
 Clean-cutover inventory:
 
@@ -2585,8 +2744,10 @@ Clean-cutover inventory:
   `zotero_item_key` as an Analysis-only protected-machine field and attach one
   exact, labelled, nonblocking Zotero bibliographic snapshot plus the formal
   integration Skill to each eligible Research Action; never cache it across
-  tasks, show it in Inspector, copy it into Markdown, or treat metadata as
-  source evidence. Use one Inspector heading token, fact grids, long-text
+  tasks, show its key or metadata in Inspector, copy it into Markdown, or treat
+  metadata as source evidence. D-131 supersedes only the former blanket ban on
+  an exact current-Analysis Zotero navigation action. Use one Inspector heading
+  token, fact grids, long-text
   reading blocks, quiet meaningful empty states, and native full-row actions.
   No compatibility layer is retained for this pre-production cutover; unknown
   YAML remains exact source without recognized semantics. D-106 supersedes its
@@ -2764,12 +2925,13 @@ Clean-cutover inventory:
 - **D-119:** converge Library on one Scope-constrained Source List without
   changing Triptych roles, lifecycle meaning, recovery, split-view ownership,
   open Documents, or researcher authority. BrandHeader, equal-column
-  ScopeIndex, Attention, LocationHeader, and Recommended Bibliography remain
-  stable while a native LocationPicker chooses Library, Set Aside, or Trash
-  and replaces only the source-region content. The selected Location persists
-  across Scope changes; Attention is a separate queue that preserves that
-  selection. Remove the lifecycle footer, Back control, active-footer return,
-  and Settings destination. Library is the explicit return menu item;
+  ScopeIndex, LocationHeader, and Recommended Bibliography retain their
+  ownership while a native LocationPicker chooses Library, Set Aside, or Trash
+  and replaces only the source-region content. Attention remains a separate
+  queue that preserves Location and source selection; D-127 governs its
+  conditional Sidebar presentation. Remove the lifecycle footer, Back control,
+  active-footer return, and Settings destination. Library is the explicit
+  return menu item;
   Triptych management remains the identity menu and Settings remains a
   standard application route. Use one semantic leading slot per OutlineRow,
   with provisional 24pt content axis, 12pt row inset, 28pt minimum rhythm, and
@@ -2784,11 +2946,12 @@ Clean-cutover inventory:
   and automation.
 - **D-120:** make Attention one standard, application-wide, nonrestored SwiftUI
   auxiliary `Window` that follows the exact most recently focused Workspace.
-  The Sidebar entry only opens or focuses it and preserves Scope, Location,
-  source content, Document, and selection. Inspector may apply a current-Note
-  subset; Sidebar Scope changes clear that subset. Each Workspace owns only its
-  session filter and selected task, while Scene presentation alone owns window
-  visibility. Group the eight existing derived kinds into Identity & Metadata,
+  A Sidebar or transferred-toolbar route only opens or focuses it and preserves
+  Scope, Location, source content, Document, and selection. Inspector may apply
+  a current-Note subset; Sidebar Scope changes clear that subset. Each
+  Workspace owns only its session filter and selected task, while Scene
+  presentation alone owns window visibility. Group the eight existing derived
+  kinds into Identity & Metadata,
   Structure & Connections, and Revision & Reliance; preserve their derivation,
   dismissal ledger, material-revision actions, Markdown safety, and researcher
   authority. Retain last trustworthy results during refresh, stale, and
@@ -2799,9 +2962,203 @@ Clean-cutover inventory:
   compatibility branch. D-120 supersedes D-119 only where D-119 specifies an
   inline Attention queue; every D-119 Scope, Location, Source List, lifecycle,
   bibliography, surface, and clean-cutover rule remains in force.
+- **D-121:** make Recommended Bibliography a fixed, intrinsic-height,
+  Triptych-wide Sidebar apparatus outside Library's Source List scroll and all
+  Scope, Location, selection, filter, sorting, and lifecycle ownership. Use the
+  Paper-derived apparatus surface plus one structural top boundary, and name
+  the Triptych and **Reading leads, not evidence** boundary in visible and
+  accessible structure. Retain no scrolling Source List section, Library row,
+  Location destination, vault-scoped styling, fixed numeric footer height,
+  card, shadow, or parallel palette. This is a presentation and ownership
+  correction only: it changes no recommendation data, Analysis-bound
+  preparation migration debt, agent handoff, Zotero matching, dismissal,
+  source Markdown, or researcher authority. D-121 supersedes D-119 only where
+  D-119 leaves Recommended Bibliography inside the Library source region;
+  every other D-119 and D-120 rule remains in force.
+- **D-122:** align surface color with structural kinship. The complete Sidebar,
+  including the fixed Recommended Bibliography utility, uses one
+  `navigationSurface`; Bibliography remains outside Source List ownership and
+  relies on its structural top boundary, fixed position, Triptych label, and
+  evidence-boundary copy rather than an alternate background. Inspector keeps
+  the semantic `apparatusSurface`, but its Paper-derived tone moves much closer
+  to `documentBackground` than Navigation so it reads as the Document's
+  marginal research context rather than a second peripheral navigation plane.
+  Retain the native split divider, distinct semantic roles, Light/Dark/Increase
+  Contrast resolution, and local raised interaction states. The Triptych menu
+  uses only its native menu indicator and retains no duplicate custom chevron.
+  D-122 supersedes D-119 and D-121 only where they assign Recommended
+  Bibliography an Apparatus-colored band or keep Inspector equally separated
+  from Document; all workflow, ownership, accessibility, and clean-cutover
+  rules remain in force.
+- **D-123:** promote the researcher-approved Light Editorial Parchment proof
+  into the production design system. Replace the Paper input with the app-icon-
+  aligned `#FEF8ED`; use it directly as Light `documentBackground`, and derive
+  Navigation, Apparatus, raised surfaces, neutral ink, Dark, and Increase
+  Contrast roles through the existing single resolver. Keep Accent
+  `#A94C22` as the only hue input and retain no blue typographic or navigation
+  palette. Render LocationPicker through one quiet borderless native menu with
+  one native indicator and mutually exclusive selected-item semantics. Share
+  the short Accent underline's visual recipe between ScopeIndex and ModeIndex
+  while their purpose-owned dimensions remain separate. Sticky Inspector
+  headings and relationship-glyph occlusion consume the exact Apparatus
+  surface instead of a floating-control surface, so they cannot appear as
+  independent rectangular tiles. The QA acceptance board consumes these same
+  production Variables and Components and retains no local palette. D-123
+  supersedes D-092 only for the former Paper input and D-122 only where the
+  approved refinement is more specific; all state, workflow, native-control,
+  adaptation, and clean-cutover rules remain in force.
+- **D-124:** remove the compact Recommended Bibliography explanatory subcopy.
+  Let its heading, fixed sibling position, structural boundary, and
+  `Triptych Recommended Bibliography` accessibility group carry ownership;
+  retain the evidence boundary in the full workflow and research semantics,
+  not as persistent Sidebar instruction. Give the fixed band purpose-named
+  12pt top and 16pt bottom insets so its content sits slightly higher and keeps
+  a calm bottom edge. Establish one purpose-named 28pt peripheral page-edge
+  inset shared by Sidebar and Inspector while their row, hierarchy, and section
+  rhythms remain independent. Route every Library, Set Aside, and Trash empty,
+  loading, or error state through that page edge while keeping populated row
+  surfaces on their distinct 12pt inset. Delete the obsolete display localization and
+  acceptance-board copy rather than retaining a compatibility branch. D-124
+  supersedes D-121 and D-122 only where they require visible scope/evidence
+  subcopy, and D-114/D-119 only where their outer content axes differ; all
+  Triptych ownership, fixed placement, workflow, and accessibility rules remain
+  in force.
+- **D-125:** eliminate transient full-page Loading during ordinary
+  Analyses/Topics/Works and Library/Set Aside/Trash navigation. Stage the
+  target from the latest accepted per-window Workspace snapshot, retain the
+  committed Scope/Location pair while staging, and atomically replace pair and
+  Source List only after the target is complete. Reject late request identities
+  as before. A staged failure retains the prior projection and reports the
+  failure rather than displaying it beneath the wrong Location; Loading/Error
+  pages remain for cases with no trustworthy projection or explicit recovery.
+  Retain no timer, animation, false progress, stale-target presentation, or
+  second Scope/Location owner. This changes no source reads, Markdown bytes,
+  lifecycle meaning, filters, sorting, disclosure, document selection, or
+  filesystem refresh authority.
+- **D-126:** complete the Beta's static Sidebar hierarchy without introducing
+  title motion. Keep Folder and unselected Note titles at one 12pt Regular
+  system role and give only the selected Note Semibold emphasis; retain
+  single-line middle truncation, pointer help, and accessible full names. Keep
+  the accepted full-width selected/pressed navigation feedback while the text
+  axis retains its 12pt row inset. Hide only the Filter entry's redundant menu
+  indicator while retaining native submenu and LocationPicker indicators.
+  Make the entire fixed Recommended Bibliography band one button with heading,
+  nonzero count, quiet forward chevron, and either a purpose-named 10pt empty
+  state or one static `Author, Year, Title` preview; retain no compact
+  horizontal candidate scroller, per-candidate target, or diagonal-open glyph.
+  Render the compact toolbar identity in secondary text and retain no Beta
+  H1-to-toolbar identity handoff, marquee, fade-mask reveal, or custom title
+  animation. Reuse semantic typography roles and the shared quiet row Button
+  component rather than leaf-view fonts or a bibliography-only interaction
+  skin. This changes no recommendation data, full-surface operations, popover
+  ownership, Location/Scope state, document selection, Markdown bytes, or
+  researcher authority.
+- **D-127:** treat Attention as a rare, urgent exception rather than permanent
+  Sidebar navigation. Zero is its steady state, **1–3** unresolved items are
+  the primary design condition, and larger queues are exceptional accumulation,
+  not a hard cap or alternate mode. For a zero selected-Scope count, retain no
+  Sidebar row, reserved gap, visible zero, or accessibility target. For a
+  nonzero count, show one full-width alert between ScopeIndex and LocationHeader
+  with warning symbol, exact count, persistent raised Navigation surface, and
+  Accent boundary; never auto-open it, move focus to it, or use repeating
+  attention-seeking motion. Nonselected Scopes expose compact exact nonzero
+  metadata in ScopeIndex. When Sidebar is collapsed and any Scope remains
+  nonempty, transfer exactly one compact signal to the Document toolbar;
+  activation opens the selected Scope when nonempty, otherwise the first
+  nonempty Scope in Analyses, Topics, Works order, without changing workspace
+  navigation or the open Document. Resolution of the last selected-Scope item
+  removes the alert and moves focus to LocationPicker only if the disappearing
+  alert owned it. Preserve last trustworthy counts during refresh; a failed
+  first load reports **Attention Unavailable** with Retry instead of claiming
+  zero. Keep **Window → Attention**, the standard auxiliary window, dismissal,
+  grouping, source safety, and researcher judgment unchanged. Retain no
+  permanent zero row, color-only or motion-only meaning, auto-open behavior,
+  duplicate queue owner, or compatibility branch. D-127 supersedes D-119 and
+  D-120 only where they imply a permanently visible Sidebar entry or selected-
+  Scope-only visibility signal.
+- **D-128:** remove the conditional Sidebar Attention alert's leading Accent
+  rule. Warning symbol, exact count, persistent raised Navigation surface,
+  placement, complete-row activation, focus behavior, and state semantics
+  already establish urgency without making the alert resemble a selected
+  Source List row. Add no replacement decoration, color input, or compatibility
+  branch. D-128 supersedes D-127 only where D-127 requires that Accent boundary;
+  all remaining D-127 behavior stays in force subject to D-129's presentation
+  cutover.
+- **D-129:** clean-cut Attention presentation from D-120's standard auxiliary
+  Window to one native transient SwiftUI popover owned by each exact Workspace
+  window. Sidebar alert, collapsed-Sidebar toolbar signal, and Inspector summary
+  are the only anchors and all render the same derived queue; **Window →
+  Attention** is enabled only when one of those anchors is visible and invokes
+  the preferred visible route. Native outside activation and Escape dismiss the
+  popover; Inspect and Resynthesize dismiss before continuing in the exact
+  Workspace. Retain no manual close control, detached Scene, app-wide session
+  bridge, NSWindow attachment, global search, notification route, sheet, panel,
+  inline queue, or compatibility branch. The same Workspace may retain its
+  filter and selected task across ordinary popover dismissal. Switching to a
+  different Workspace resets query, kind filter, selected task, and current-
+  Note subset; timed and revision-bound dismissal records remain machine-local
+  and unchanged. Preserve the three groups, Scope routing, Note subset,
+  refreshing/stale/error retention, removal focus order, exact counts, source
+  safety, and researcher judgment. D-129 supersedes D-120 only for Scene,
+  window, lifetime, close, activation, and cross-Workspace session clauses, and
+  supersedes D-127 where it names the auxiliary Window; every other D-119,
+  D-120, D-127, and D-128 rule remains in force.
+- **D-130:** remove all Attention statistics from the Analyses, Topics, and
+  Works ScopeIndex labels, including accessibility values. ScopeIndex remains
+  pure Triptych navigation with equal columns, selection, and reading-direction
+  arrow behavior. While Sidebar is visible, the conditional current-Scope
+  alert alone expresses Attention; while Sidebar is collapsed, the one
+  transferred toolbar signal retains its total and exact activation Scope.
+  Preserve per-Scope counts internally for those two routes and for dismissal
+  reconciliation, but retain no hidden Scope-label count, count animation,
+  reserved label width, metadata token, or compatibility branch. D-130
+  supersedes D-127 and D-129 only where they require or permit ScopeIndex
+  Attention values; all other conditional-alert and popover behavior remains in
+  force.
+- **D-131:** move exact Zotero item navigation to the object that owns the
+  identity. A current Analysis with a valid protected `zotero_item_key`
+  exposes one quiet full-row **Open in Zotero** action inside Overview's About
+  projection. The action opens the exact item through the existing read-only
+  presentation adapter and exposes no key, metadata, matching, confirmation,
+  attachment, or write path. It is absent for Topics, Works, and Analyses
+  without a valid key. Remove **Open in Zotero** from Recommended
+  Bibliography candidates; those rows retain only **Open Analysis** when
+  matched and **Dismiss**. Retain no duplicate route or compatibility branch.
+  D-131 supersedes D-102 only where it prohibited this bounded Inspector action
+  and supersedes the prior §15.3 candidate-action list; every remaining Zotero
+  source, task-context, recommendation, safety, and researcher-authority rule
+  stays in force.
+- **D-132:** remove the pre-release Unclassified product concept by clean
+  cutover. Import writes exact UTF-8 Markdown bytes directly to the current
+  Scope's vault root and resolves filename collisions without replacement;
+  root-level Notes are ordinary Library Notes. Remove all classification UI,
+  state, contracts, storage APIs, transaction roles, CLI aliases, and
+  compatibility branches. Do not migrate, inspect, normalize, expose, or
+  delete existing `.scholium/unclassified/` bytes. D-132 supersedes every
+  prior rule requiring import staging or classification.
+- **D-133:** replace Zotero's duplicate **Test Connection** and **Refresh
+  Library Information** controls with one **Check Connection** action. It
+  performs the same read-only localhost refresh and owns the resulting status,
+  library summary, error, and last-successful-time update. Retain no duplicate
+  control or compatibility label.
+- **D-134:** remove Attention from the Document toolbar entirely. Sidebar's
+  conditional current-Scope alert and Inspector's current-Note summary are the
+  only popover anchors. Collapsing Sidebar creates no transferred symbol,
+  count, aggregate, reserved width, UserDefaults observation, or toolbar
+  routing state. **Window → Attention** is enabled only while one of the two
+  contextual anchors is visible; showing Sidebar restores the primary route.
+  Preserve per-Scope derivation, the dismissal ledger, popover grouping,
+  filtering, selection, refresh/error retention, source safety, and researcher
+  authority. Retain no toolbar compatibility item or anchor case. D-134
+  supersedes D-127, D-129, and D-130 only where they require or permit the
+  collapsed-Sidebar toolbar signal; every remaining conditional-alert,
+  Inspector-summary, and transient-popover rule stays in force.
 
 Unresolved work must not be described as complete:
 
+- complete-window visual proof for Attention at **0 / 1 / 3** items, including
+  collapsed Sidebar absence, 300pt Sidebar, inactive
+  window, Light/Dark, Increase Contrast, right-to-left layout, and focus removal;
 - sustained manual VoiceOver, Full Keyboard Access, Voice Control, Dictation,
   contrast, scaling, localization, and installed-IME acceptance;
 - final document rhythm and production mono comparison;

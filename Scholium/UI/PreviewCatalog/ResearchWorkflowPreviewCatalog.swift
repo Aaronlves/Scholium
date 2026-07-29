@@ -317,7 +317,11 @@ private struct ResearchActionProofRow: View {
                 showsChevron: true
             )
         }
-        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(isHovering: isHovering))
+        .buttonStyle(ScholiumQuietRowButtonStyle(
+            isHovering: isHovering,
+            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
+            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
+        ))
         .onHover { isHovering = $0 }
         .help(action.help)
         .accessibilityLabel(action.title)

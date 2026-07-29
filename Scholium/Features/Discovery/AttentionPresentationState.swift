@@ -33,8 +33,9 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Session-only presentation owned by one Workspace. Scene visibility remains
-/// the sole responsibility of the app's standard Attention `Window`.
+/// Session-only presentation owned by one Workspace window. The transient
+/// popover owns visibility; this value owns only filtering, selection, Scope,
+/// and the optional current-Note subset.
 @MainActor
 final class AttentionPresentationState: ObservableObject {
     @Published var filter = AttentionQueueFilter()
@@ -64,6 +65,16 @@ final class AttentionPresentationState: ObservableObject {
 
     func select(_ itemID: String?) {
         selectedItemID = itemID
+    }
+
+    /// A Workspace-window change starts a fresh Attention visit. Machine-local
+    /// dismissals remain intact, but transient query, kind, Note scope, and row
+    /// focus never leak from the previously active window.
+    func resetForWorkspaceSwitch() {
+        filter = AttentionQueueFilter()
+        selectedItemID = nil
+        noteScope = nil
+        previousVisibleItemIDs = []
     }
 
     /// Reconciles selection after refresh, dismissal, or resolution. The old

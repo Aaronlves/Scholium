@@ -309,6 +309,63 @@ struct VaultRepositoryTests {
         #expect(duplicate.relativePath == "new/Created copy.md")
     }
 
+    @Test("Import preserves exact source bytes at the vault root and resolves collisions")
+    func importPreservesExactSourceAndResolvesCollisions() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        let source = Data([0xEF, 0xBB, 0xBF]) + Data(
+            "---\r\nunknown: [source material\r\n---\r\n# Imported\r\n".utf8
+        )
+
+        let first = try await repository.importMarkdown(
+            preferredFilename: "Imported.md",
+            sourceData: source
+        )
+        let second = try await repository.importMarkdown(
+            preferredFilename: "Imported.md",
+            sourceData: source
+        )
+
+        #expect(first.relativePath == "Imported.md")
+        #expect(second.relativePath == "Imported 2.md")
+        #expect(try Data(contentsOf: f.root.appendingPathComponent(first.relativePath)) == source)
+        #expect(try Data(contentsOf: f.root.appendingPathComponent(second.relativePath)) == source)
+        #expect(!FileManager.default.fileExists(
+            atPath: f.root.appendingPathComponent(".scholium/unclassified").path
+        ))
+    }
+
+    @Test("Import rejects non-Markdown and non-UTF-8 source material")
+    func importRejectsUnsupportedSource() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+
+        await #expect(throws: DocumentImportError.self) {
+            _ = try await repository.importMarkdown(
+                preferredFilename: "Imported.txt",
+                sourceData: Data("# Imported\n".utf8)
+            )
+        }
+        await #expect(throws: DocumentImportError.self) {
+            _ = try await repository.importMarkdown(
+                preferredFilename: "Imported.md",
+                sourceData: Data([0xFF, 0xFE, 0x00])
+            )
+        }
+    }
+
     @Test("Folder inventory includes empty directories and one directory move preserves all contents")
     func folderInventoryAndMove() async throws {
         let f = try fixture()

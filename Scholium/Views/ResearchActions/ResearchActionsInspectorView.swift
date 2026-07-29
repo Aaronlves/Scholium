@@ -482,7 +482,11 @@ private struct ResearchActionRowButton: View {
                 showsChevron: showsChevron
             )
         }
-        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(isHovering: isHovering))
+        .buttonStyle(ScholiumQuietRowButtonStyle(
+            isHovering: isHovering,
+            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
+            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
+        ))
         .focusable()
         .focused($hasKeyboardFocus)
         .onHover { isHovering = $0 }

@@ -180,25 +180,6 @@ struct TriptychControlTests {
         #expect(try Data(contentsOf: unrecognizedURL) == unrecognizedData)
     }
 
-    @Test("Import preserves originals and resolves name collisions")
-    func importCopiesMarkdown() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = TriptychControlStore(worksVaultURL: fixture.works)
-        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
-        _ = try await store.bootstrap(vaultIDs: ids)
-        let source = fixture.root.appendingPathComponent("Outside.md")
-        try Data("# Imported\n".utf8).write(to: source)
-
-        let first = try await store.importMarkdown(at: source)
-        let second = try await store.importMarkdown(at: source)
-
-        #expect(first.lastPathComponent == "Outside.md")
-        #expect(second.lastPathComponent == "Outside 2.md")
-        #expect(try String(contentsOf: source, encoding: .utf8) == "# Imported\n")
-        #expect(try String(contentsOf: first, encoding: .utf8) == "# Imported\n")
-    }
-
     @Test("Stable identities survive moves and duplicates receive new IDs")
     func stableIdentityRules() async throws {
         let fixture = try Fixture()
@@ -518,35 +499,6 @@ struct TriptychControlTests {
         )
         #expect(resolved.id == first.id)
         #expect(try await store.pendingIdentityRebindings(vaultID: vaultID).first?.fingerprint == editedFingerprint)
-    }
-
-    @Test("Unclassified Markdown is editable with revision checks")
-    func unclassifiedEditing() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = TriptychControlStore(worksVaultURL: fixture.works)
-        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
-        _ = try await store.bootstrap(vaultIDs: ids)
-        let source = fixture.root.appendingPathComponent("Outside.md")
-        try Data("# Imported\n".utf8).write(to: source)
-        _ = try await store.importMarkdown(at: source)
-
-        let original = try await store.loadUnclassified(relativePath: "Outside.md")
-        let saved = try await store.saveUnclassified(
-            relativePath: "Outside.md",
-            content: "# Edited\n",
-            expectedRevision: original.fingerprint
-        )
-
-        #expect(saved.rawContent == "# Edited\n")
-        #expect(try await store.unclassifiedDocuments().map(\.relativePath) == ["Outside.md"])
-        await #expect(throws: VaultRepositoryError.self) {
-            _ = try await store.saveUnclassified(
-                relativePath: "Outside.md",
-                content: "# Stale\n",
-                expectedRevision: original.fingerprint
-            )
-        }
     }
 
     private struct Fixture {

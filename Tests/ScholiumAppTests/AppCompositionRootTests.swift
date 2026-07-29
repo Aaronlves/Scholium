@@ -232,7 +232,10 @@ struct AppCompositionRootTests {
     func transientDocumentDetachmentRetainsCloseFlush() async throws {
         let store = makeTestWorkspaceStore()
         let window = WindowModel(workspaceStore: store)
-        window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
+        window.documentController.selectUnavailableDocument(
+            vaultID: UUID(),
+            relativePath: "Active.md"
+        )
 
         let token = UUID()
         var flushCount = 0
@@ -297,7 +300,10 @@ struct AppCompositionRootTests {
             workspaceStore: makeTestWorkspaceStore(),
             lifecyclePolicy: policy
         )
-        window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
+        window.documentController.selectUnavailableDocument(
+            vaultID: UUID(),
+            relativePath: "Active.md"
+        )
         let token = UUID()
         window.registerEditorFlush(
             for: "Active.md",
@@ -359,7 +365,10 @@ struct AppCompositionRootTests {
             }
         )
         await window.restoreWindowSession(id: UUID())
-        window.documentController.selectUnclassifiedDocument(relativePath: "Active.md")
+        window.documentController.selectUnavailableDocument(
+            vaultID: UUID(),
+            relativePath: "Active.md"
+        )
         let token = UUID()
         var contentFlushCount = 0
         window.registerEditorFlush(

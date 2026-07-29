@@ -156,6 +156,7 @@ private let connectionScrollCoordinateSpace = "scholium.connect.scroll"
 struct ConnectionsInspectorView: View {
     let context: RelationshipInspectorContext
 
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     @State private var expandedGroups = Set(ConnectionPeerGroup.allCases)
 
     private var projection: CombinedConnectionsProjection {
@@ -228,9 +229,14 @@ struct ConnectionsInspectorView: View {
         } label: {
             ScholiumApparatusRow(
                 leading: {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.forward")
+                    Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .animation(
+                            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+                            value: isExpanded
+                        )
                         .accessibilityHidden(true)
                 },
                 content: {
@@ -250,7 +256,7 @@ struct ConnectionsInspectorView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(ScholiumColorRole.surfaceBackground.color)
+        .scholiumSurface(.apparatus)
         .frame(minHeight: ScholiumGrid.Dimension.compactHierarchyRowHeight)
         .accessibilityLabel(group.title(currentRole: projection.currentRole))
         .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
@@ -311,7 +317,7 @@ private struct ConnectionRelationshipCluster: View {
                         width: ScholiumMetrics.Apparatus.relationGlyphColumnWidth,
                         height: ScholiumMetrics.Apparatus.relationRowMinimumHeight
                     )
-                    .background(ScholiumColorRole.surfaceBackground.color)
+                    .scholiumSurface(.apparatus)
                     .offset(y: min(desiredOffset, maximumOffset))
             }
             .allowsHitTesting(false)
@@ -365,7 +371,7 @@ private struct CombinedConnectionRow: View {
         Button(action: openPrimary) {
             relationLabel
         }
-        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+        .buttonStyle(ScholiumQuietRowButtonStyle(
             isHovering: isHovering,
             minimumHeight: ScholiumMetrics.Apparatus.relationRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.relationRowVerticalInset

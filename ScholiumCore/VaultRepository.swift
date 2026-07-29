@@ -436,6 +436,54 @@ public actor VaultRepository {
         } catch { throw error }
     }
 
+    /// Copies exact UTF-8 Markdown bytes into the vault root without replacing
+    /// an existing note. Imported frontmatter remains source material and is
+    /// not normalized through the new-note creation contract.
+    public func importMarkdown(
+        preferredFilename: String,
+        sourceData: Data
+    ) throws -> NoteDocument {
+        let filename = URL(fileURLWithPath: preferredFilename).lastPathComponent
+        guard filename == preferredFilename,
+              filename.caseInsensitiveCompare(".md") != .orderedSame,
+              URL(fileURLWithPath: filename).pathExtension
+                .caseInsensitiveCompare("md") == .orderedSame,
+              let content = NoteDocument.decodeUTF8PreservingBOM(sourceData) else {
+            throw DocumentImportError.unsupportedSource(preferredFilename)
+        }
+
+        let requested = URL(fileURLWithPath: filename)
+        let base = requested.deletingPathExtension().lastPathComponent
+        let ext = requested.pathExtension
+        var ordinal = 1
+        while true {
+            let relativePath = ordinal == 1
+                ? filename
+                : "\(base) \(ordinal).\(ext)"
+            do {
+                _ = try newFileURL(relativePath: relativePath)
+                try mutationCoordinator.create(
+                    path: markdownRelativePath(relativePath),
+                    data: sourceData
+                )
+                let readback = try readSource(relativePath: relativePath)
+                let expected = DocumentFingerprint(data: sourceData)
+                let observed = DocumentFingerprint(data: readback)
+                guard observed == expected else {
+                    throw VaultRepositoryError.readbackMismatch(
+                        expected: expected,
+                        current: observed
+                    )
+                }
+                return NoteDocument(relativePath: relativePath, rawContent: content)
+            } catch VaultRepositoryError.fileAlreadyExists {
+                ordinal += 1
+            } catch VaultRepositoryError.pathCollision {
+                ordinal += 1
+            }
+        }
+    }
+
     /// Duplicates exact source bytes into a new note path.
     public func duplicate(
         relativePath: String,

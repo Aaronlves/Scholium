@@ -310,7 +310,7 @@ final class ScholiumUITests: XCTestCase {
             })
         }
 
-        XCTContext.runActivity(named: "Overview excludes the retired Zotero appendix") { _ in
+        XCTContext.runActivity(named: "Overview exposes exact Analysis Zotero navigation") { _ in
             let analyses = app.buttons["scholium.vault.paper_analysis"].firstMatch
             analyses.click()
             let analysisRow = app.descendants(matching: .any)[
@@ -327,11 +327,11 @@ final class ScholiumUITests: XCTestCase {
                 XCTAssertTrue(inspector.waitForExistence(timeout: 3))
             }
             selectResearchInspectorMode("overview")
-            XCTAssertFalse(
-                app.descendants(matching: .any)["scholium.zoteroSourceSection"].exists,
-                "Overview must not retain the superseded Zotero source appendix."
-            )
-            XCTAssertFalse(app.buttons["Open in Zotero"].exists)
+            let openInZotero = app.descendants(matching: .any)[
+                "scholium.researchOverview.openInZotero"
+            ]
+            XCTAssertTrue(openInZotero.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.staticTexts["QAITEM01"].exists)
             XCTAssertFalse(app.buttons["Open PDF in Preview"].exists)
             XCTAssertFalse(app.buttons["Open Attachment"].exists)
         }
@@ -1365,9 +1365,9 @@ final class ScholiumUITests: XCTestCase {
             "The first explicit Inspector reveal should receive the provisional ideal width."
         )
         func attentionCount(_ value: String) -> XCUIElement {
-            app.staticTexts
+            app.descendants(matching: .any)
                 .matching(identifier: "scholium.researchOverview.attention")
-                .matching(NSPredicate(format: "value == %@", value))
+                .matching(NSPredicate(format: "value == %@", "\(value) items"))
                 .firstMatch
         }
         XCTAssertTrue(attentionCount("1").waitForExistence(timeout: 3))
@@ -2237,12 +2237,14 @@ final class ScholiumUITests: XCTestCase {
             )
         }
 
-        let bibliographyHeading = app.staticTexts["RECOMMENDED BIBLIOGRAPHY"].firstMatch
-        XCTAssertTrue(bibliographyHeading.waitForExistence(timeout: 3))
+        let bibliographyUtility = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.utility"
+        ].firstMatch
+        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 3))
         XCTAssertLessThanOrEqual(
-            bibliographyHeading.frame.height,
-            20,
-            "The longest fixed Library heading must remain on one line at the readable minimum."
+            bibliographyUtility.frame.height,
+            72,
+            "The fixed Recommended Bibliography utility must retain its compact two-line composition at the readable minimum."
         )
 
         let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
@@ -2324,6 +2326,10 @@ final class ScholiumUITests: XCTestCase {
                 identifier: "scholium.toggleSidebar"
             ).count,
             1
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.toolbar.attention"].exists,
+            "Collapsing Sidebar must not transfer Attention into the Document toolbar."
         )
         sidebarReveal.click()
         XCTAssertTrue(library.waitForExistence(timeout: 5))
@@ -3601,11 +3607,11 @@ final class ScholiumUITests: XCTestCase {
         XCTAssertTrue(attentionButton.waitForExistence(timeout: 5))
         attentionButton.click()
 
-        let attentionWindow = app.windows["Attention"].firstMatch
-        XCTAssertTrue(attentionWindow.waitForExistence(timeout: 10))
-        XCTAssertGreaterThanOrEqual(attentionWindow.frame.width, 360)
-        XCTAssertGreaterThanOrEqual(attentionWindow.frame.height, 320)
-        let kindPicker = attentionWindow.descendants(matching: .any)[
+        let attentionPopover = app.popovers.firstMatch
+        XCTAssertTrue(attentionPopover.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(attentionPopover.frame.width, 360)
+        XCTAssertGreaterThanOrEqual(attentionPopover.frame.height, 320)
+        let kindPicker = attentionPopover.descendants(matching: .any)[
             "scholium.attentionKindFilter"
         ].firstMatch
         XCTAssertTrue(kindPicker.waitForExistence(timeout: 5))
@@ -3613,7 +3619,7 @@ final class ScholiumUITests: XCTestCase {
         let materialChanged = app.menuItems["Material Changed Since Use"].firstMatch
         XCTAssertTrue(materialChanged.waitForExistence(timeout: 3))
         materialChanged.click()
-        let attentionItem = attentionWindow.descendants(matching: .any).matching(
+        let attentionItem = attentionPopover.descendants(matching: .any).matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@",
                 "scholium.attentionItem."
@@ -3623,13 +3629,13 @@ final class ScholiumUITests: XCTestCase {
         attentionItem.click()
         // The native Outline exposes each Section header as the first disabled
         // row; the task itself is the next row and owns selection.
-        let selectedRow = attentionWindow.outlineRows.element(boundBy: 1)
+        let selectedRow = attentionPopover.outlineRows.element(boundBy: 1)
         XCTAssertTrue(selectedRow.isSelected)
-        let inspect = attentionWindow.buttons["Inspect"].firstMatch
+        let inspect = attentionPopover.buttons["Inspect"].firstMatch
         XCTAssertTrue(inspect.waitForExistence(timeout: 5))
         inspect.click()
 
-        XCTAssertTrue(attentionWindow.exists)
+        XCTAssertTrue(waitUntil(timeout: 5) { !attentionPopover.exists })
         XCTAssertTrue(waitUntil(timeout: 8) {
             (documentTitle.value as? String) == "QA Autosave A"
         })
@@ -3637,12 +3643,17 @@ final class ScholiumUITests: XCTestCase {
         let attentionMenuItem = app.menuItems["Attention"].firstMatch
         XCTAssertTrue(attentionMenuItem.waitForExistence(timeout: 3))
         attentionMenuItem.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { attentionWindow.isHittable })
-        XCTAssertTrue(attentionItem.exists)
-        XCTAssertTrue(selectedRow.isSelected)
+        XCTAssertTrue(attentionPopover.waitForExistence(timeout: 5))
+        let reopenedItem = attentionPopover.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.attentionItem."
+            )
+        ).firstMatch
+        XCTAssertTrue(reopenedItem.waitForExistence(timeout: 5))
 
         let evidence = XCTAttachment(screenshot: app.screenshot())
-        evidence.name = "Sidebar clean cutover and persistent Attention window"
+        evidence.name = "Sidebar clean cutover and transient Attention popover"
         evidence.lifetime = .keepAlways
         add(evidence)
     }
@@ -3853,114 +3864,6 @@ final class ScholiumUITests: XCTestCase {
             "A checkpoint containing a permanently deleted note must be invalidated instead of retaining recoverable bytes."
         )
         XCTAssertFalse(app.staticTexts[checkpointName].exists)
-    }
-
-    @MainActor
-    func testInterruptedTransactionRecoveryRequiresInspectionBeforeResolution() throws {
-        waitForDocumentSurface()
-
-        let manifestURL = triptychDirectory.appendingPathComponent(".scholium/manifest.json")
-        XCTAssertTrue(
-            waitUntil(timeout: 10) { FileManager.default.fileExists(atPath: manifestURL.path) },
-            "The disposable Triptych must publish its portable identity before a recovery record can be bound to it."
-        )
-        let manifestData = try Data(contentsOf: manifestURL)
-        let manifest = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
-        )
-        let triptychID = try XCTUnwrap(manifest["id"] as? String)
-
-        let interruptedSource = "# QA Interrupted Import\n\nExact disposable source that resolution must not modify.\n"
-        let unclassifiedDirectory = triptychDirectory
-            .appendingPathComponent(".scholium/unclassified", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: unclassifiedDirectory,
-            withIntermediateDirectories: true
-        )
-        let interruptedSourceURL = unclassifiedDirectory
-            .appendingPathComponent("QA Interrupted Import.md")
-        try write(interruptedSource, to: interruptedSourceURL)
-
-        let recoveryDirectory = homeDirectory
-            .appendingPathComponent("ApplicationSupport/Triptychs", isDirectory: true)
-            .appendingPathComponent(triptychID, isDirectory: true)
-            .appendingPathComponent("transactions", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: recoveryDirectory,
-            withIntermediateDirectories: true
-        )
-        let recoveryFile = recoveryDirectory.appendingPathComponent("transaction-recovery.json")
-        let failure = "Synthetic interrupted classification requires explicit file inspection."
-        let payload: [String: Any] = [
-            "records": [[
-                "id": UUID().uuidString,
-                "triptychID": triptychID,
-                "operation": "unclassifiedClassification",
-                "createdAt": Date().timeIntervalSinceReferenceDate,
-                "failure": failure,
-                "files": [[
-                    "path": "QA Interrupted Import.md",
-                    "alternatePath": "01-analyses/QA Interrupted Import.md",
-                    "role": "classifiedSource",
-                    "state": "externallyChanged",
-                    "detail": "Inspect both locations before marking this recovery record complete.",
-                ]],
-            ]],
-        ]
-        let recoveryData = try JSONSerialization.data(
-            withJSONObject: payload,
-            options: [.prettyPrinted, .sortedKeys]
-        )
-        try recoveryData.write(to: recoveryFile, options: .atomic)
-
-        relaunchApplication(initialWorkspaceWidth: 1380)
-        let notice = app.descendants(matching: .any)["scholium.transactionRecovery.notice"]
-        XCTAssertTrue(notice.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Transaction Recovery Required"].exists)
-        let inspect = app.buttons["Inspect Recovery…"]
-        XCTAssertTrue(inspect.waitForExistence(timeout: 5))
-        inspect.click()
-
-        XCTAssertTrue(app.staticTexts["Transaction Recovery"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Classify Imported Note"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts[failure].waitForExistence(timeout: 5))
-        let recoveryFileRow = app.descendants(matching: .any)[
-            "Externally changed, Unclassified source, Unclassified, QA Interrupted Import.md"
-        ]
-        XCTAssertTrue(recoveryFileRow.waitForExistence(timeout: 5))
-        XCTAssertEqual(try source(at: interruptedSourceURL), interruptedSource)
-
-        let markComplete = app.buttons["Mark Recovery Complete…"]
-        XCTAssertTrue(markComplete.waitForExistence(timeout: 5))
-        markComplete.click()
-        XCTAssertTrue(app.staticTexts["Mark Recovery Complete?"].waitForExistence(timeout: 5))
-        let confirmationSheet = app.sheets
-            .matching(NSPredicate(format: "label == %@", "alert"))
-            .firstMatch
-        XCTAssertTrue(confirmationSheet.waitForExistence(timeout: 5))
-        let confirm = confirmationSheet.buttons["Mark Recovery Complete"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
-        confirm.click()
-
-        XCTAssertTrue(app.staticTexts["No Pending Recovery"].waitForExistence(timeout: 10))
-        XCTAssertEqual(
-            try source(at: interruptedSourceURL),
-            interruptedSource,
-            "Resolving a recovery record must not mutate the file it asked the researcher to inspect."
-        )
-        XCTAssertTrue(
-            waitUntil(timeout: 5) {
-                guard let data = try? Data(contentsOf: recoveryFile),
-                      let object = try? JSONSerialization.jsonObject(with: data),
-                      let dictionary = object as? [String: Any],
-                      let records = dictionary["records"] as? [Any] else { return false }
-                return records.isEmpty
-            },
-            "Mark Recovery Complete must remove only the inspected durable record."
-        )
-
-        app.buttons["Close"].click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !notice.exists })
     }
 
     @MainActor
@@ -4194,24 +4097,47 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
-    func testOverviewKeepsZoteroOutOfCurrentNoteProjections() throws {
+    func testOverviewRoutesZoteroOnlyFromCurrentAnalysis() throws {
         _ = selectResearchInspectorMode("overview")
-        let sourceSection = app.descendants(matching: .any)[
-            "scholium.zoteroSourceSection"
+        let openInZotero = app.descendants(matching: .any)[
+            "scholium.researchOverview.openInZotero"
         ]
-        XCTAssertFalse(sourceSection.exists)
-        XCTAssertFalse(app.buttons["Open in Zotero"].exists)
+        XCTAssertTrue(openInZotero.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["QAITEM01"].exists)
         XCTAssertFalse(app.buttons["Open PDF in Preview"].exists)
         XCTAssertFalse(app.buttons["Open Attachment"].exists)
-        XCTAssertFalse(app.buttons["Reveal in Finder"].exists)
+
+        let topics = app.buttons["scholium.vault.topic_knowledge"].firstMatch
+        topics.click()
+        let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
+        XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
+        topicRow.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
+
+        let works = app.buttons["scholium.vault.output"].firstMatch
+        works.click()
+        let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
+        XCTAssertTrue(workRow.waitForExistence(timeout: 8))
+        workRow.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
+
+        let analyses = app.buttons["scholium.vault.paper_analysis"].firstMatch
+        analyses.click()
+        let analysisRow = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave A.md"
+        ]
+        XCTAssertTrue(analysisRow.waitForExistence(timeout: 8))
+        analysisRow.click()
+        XCTAssertTrue(openInZotero.waitForExistence(timeout: 8))
     }
 
     @MainActor
-    func testRecommendedBibliographyFollowsTheCurrentSourceAcrossScopes() throws {
-        let librarySection = app.descendants(matching: .any)[
-            "scholium.recommendedBibliography.library"
+    func testRecommendedBibliographyRemainsSidebarUtilityAcrossScopes() throws {
+        let bibliographyUtility = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.utility"
         ]
-        XCTAssertTrue(librarySection.waitForExistence(timeout: 8))
+        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 8))
+        let initialFrame = bibliographyUtility.frame
 
         let openDetails = app.descendants(matching: .any)[
             "scholium.recommendedBibliography.open"
@@ -4251,7 +4177,8 @@ final class ScholiumUITests: XCTestCase {
         let topic = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
         XCTAssertTrue(topic.waitForExistence(timeout: 8))
         topic.click()
-        XCTAssertTrue(librarySection.waitForExistence(timeout: 8))
+        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 8))
+        XCTAssertEqual(bibliographyUtility.frame.minY, initialFrame.minY, accuracy: 1)
         openDetails.click()
         XCTAssertTrue(details.waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)[
@@ -4263,7 +4190,8 @@ final class ScholiumUITests: XCTestCase {
         let work = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
         XCTAssertTrue(work.waitForExistence(timeout: 8))
         work.click()
-        XCTAssertTrue(librarySection.waitForExistence(timeout: 8))
+        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 8))
+        XCTAssertEqual(bibliographyUtility.frame.minY, initialFrame.minY, accuracy: 1)
         openDetails.click()
         XCTAssertTrue(details.waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)[
@@ -5404,7 +5332,9 @@ final class ScholiumUITests: XCTestCase {
         ].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         picker.click()
-        let item = app.menuItems[title].firstMatch
+        let item = app.menuItems.matching(
+            NSPredicate(format: "title == %@ OR label == %@", title, title)
+        ).firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 3))
         item.click()
         XCTAssertTrue(waitUntil(timeout: 8) {
@@ -6030,6 +5960,23 @@ final class ScholiumUITests: XCTestCase {
                         "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)",
                 ]
             )
+        }
+        if name.contains("testCanonicalAcceptanceJourney")
+            || name.contains("testOverviewRoutesZoteroOnlyFromCurrentAnalysis") {
+            let analysisURL = analyses.appendingPathComponent("QA Autosave A.md")
+            var source = try String(contentsOf: analysisURL, encoding: .utf8)
+            guard let frontmatterStart = source.range(of: "---\n") else {
+                throw NSError(
+                    domain: "ScholiumUITests.Configuration",
+                    code: 4,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The Analysis fixture has no frontmatter boundary.",
+                    ]
+                )
+            }
+            source.insert(contentsOf: "zotero_item_key: QAITEM01\n", at: frontmatterStart.upperBound)
+            try write(source, to: analysisURL)
         }
         if name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl") {
             let visualNoteURL = analyses.appendingPathComponent("QA Autosave A.md")

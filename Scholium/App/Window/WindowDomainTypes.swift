@@ -7,7 +7,6 @@ import Foundation
 /// operations remain fingerprint-gated application operations.
 enum NoteLocationScope: String, CaseIterable, Identifiable, Hashable, Sendable {
     case workspace = "Workspace"
-    case unclassified = "Unclassified"
     case setAside = "Set Aside"
     case trash = "Trash"
 
@@ -15,7 +14,7 @@ enum NoteLocationScope: String, CaseIterable, Identifiable, Hashable, Sendable {
 
     var prefix: String? {
         switch self {
-        case .workspace, .unclassified: nil
+        case .workspace: nil
         case .setAside: "Set Aside/"
         case .trash: "Trash/"
         }
@@ -86,14 +85,12 @@ enum NoteLifecycleRequest: Identifiable, Equatable, Sendable {
     case duplicate(NoteLifecycleTarget)
     case move(NoteLifecycleTarget)
     case putBack(String)
-    case classify(String)
 
     var id: String {
         switch self {
         case .duplicate(let target): "duplicate:\(target.id)"
         case .move(let target): "move:\(target.id)"
         case .putBack(let path): "put-back:\(path)"
-        case .classify(let path): "classify:\(path)"
         }
     }
 }

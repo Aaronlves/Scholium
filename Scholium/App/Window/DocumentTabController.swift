@@ -42,15 +42,12 @@ enum DocumentTabActivationResult: Equatable, Sendable {
 
 private enum DocumentTabKey: Hashable, Sendable {
     case workspace(DocumentSessionKey)
-    case unclassified(String)
     case unavailable(vaultID: UUID, relativePath: String)
 
     init(_ document: WindowSelectedDocument) {
         switch document {
         case .workspace(let descriptor):
             self = .workspace(descriptor.sessionKey)
-        case .unclassified(let relativePath):
-            self = .unclassified(relativePath)
         case .unavailable(let vaultID, let relativePath):
             self = .unavailable(vaultID: vaultID, relativePath: relativePath)
         }

@@ -163,7 +163,7 @@ public struct ResearchSourceIdentity: Codable, Hashable, Sendable {
         try container.encodeIfPresent(zoteroAttachmentKey, forKey: .zoteroAttachmentKey)
     }
 
-    private static func normalizedZoteroKey(_ value: String?) throws -> String? {
+    public static func normalizedZoteroKey(_ value: String?) throws -> String? {
         guard let value else { return nil }
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !normalized.isEmpty,

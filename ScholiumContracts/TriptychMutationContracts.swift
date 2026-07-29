@@ -4,7 +4,6 @@ public enum TriptychMutationOperation: String, Codable, Hashable, Sendable {
     case noteSave
     case noteMove
     case folderMove
-    case unclassifiedClassification
     case permanentDeletion
 }
 
@@ -13,8 +12,6 @@ public enum TriptychMutationFileRole: String, Codable, Hashable, Sendable {
     case movedNote
     case movedFolder
     case incomingLinkRewrite
-    case classifiedSource
-    case classifiedDestination
     case deletedNote
     case associatedCritique
 }
@@ -30,7 +27,7 @@ public enum TriptychMutationRecoveryState: String, Codable, Hashable, Sendable {
 
 public struct TriptychMutationRecoveryFile: Codable, Hashable, Sendable, Identifiable {
     public var id: String {
-        "\(vaultID?.uuidString ?? "unclassified"):\(path):\(role.rawValue)"
+        "\(vaultID?.uuidString ?? "external"):\(path):\(role.rawValue)"
     }
 
     public let vaultID: UUID?
@@ -153,22 +150,6 @@ public struct TriptychMoveCommit: Hashable, Sendable {
         self.committedRevision = committedRevision
         self.graphGeneration = graphGeneration
         self.rewrites = rewrites
-    }
-}
-
-public struct UnclassifiedClassificationCommit: Hashable, Sendable {
-    public let sourceRelativePath: String
-    public let destination: VaultQualifiedNoteID
-    public let committedRevision: DocumentFingerprint
-
-    public init(
-        sourceRelativePath: String,
-        destination: VaultQualifiedNoteID,
-        committedRevision: DocumentFingerprint
-    ) {
-        self.sourceRelativePath = sourceRelativePath
-        self.destination = destination
-        self.committedRevision = committedRevision
     }
 }
 

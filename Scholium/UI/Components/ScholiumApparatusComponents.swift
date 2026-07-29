@@ -223,16 +223,12 @@ private struct ScholiumInspectorModeButton: View {
                 : ScholiumColorRole.secondaryText.color
         )
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(
-                    isSelected
-                        ? ScholiumColorRole.accent.color
-                        : ScholiumColorRole.secondaryText.color.opacity(isHovering ? 0.45 : 0)
-                )
-                .frame(
-                    width: ScholiumMetrics.Apparatus.selectedModeIndicatorWidth,
-                    height: ScholiumMetrics.Apparatus.selectedModeIndicatorHeight
-                )
+            ScholiumEditorialIndexUnderline(
+                isSelected: isSelected,
+                isHovering: isHovering,
+                width: ScholiumMetrics.Apparatus.selectedModeIndicatorWidth,
+                height: ScholiumMetrics.Apparatus.selectedModeIndicatorHeight
+            )
         }
         .onHover { isHovering = $0 }
         .onMoveCommand(perform: move)
@@ -487,39 +483,6 @@ struct ScholiumApparatusActionRowContent: View {
     }
 }
 
-/// One quiet native-button treatment for Inspector rows. The label supplies
-/// semantic content; this style owns only hit geometry and pointer/press
-/// feedback so Overview, Connect, and Actions do not invent parallel control
-/// surfaces.
-struct ScholiumApparatusQuietRowButtonStyle: ButtonStyle {
-    let isHovering: Bool
-    var minimumHeight = ScholiumMetrics.Apparatus.actionRowMinimumHeight
-    var horizontalInset = ScholiumGrid.Spacing.inlineControlGap
-    var verticalInset = ScholiumMetrics.Apparatus.actionRowVerticalInset
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, horizontalInset)
-            .padding(.vertical, verticalInset)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: minimumHeight,
-                alignment: .leading
-            )
-            .contentShape(Rectangle())
-            .background(
-                isHovering || configuration.isPressed
-                    ? ScholiumColorRole.raisedSurfaceBackground.color
-                    : Color.clear,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
-            .opacity(configuration.isPressed ? 0.78 : 1)
-    }
-}
-
 /// An actionable Inspector section heading. The heading remains an interface
 /// label while the complete row is one native Button; the section content
 /// stays ordinary selectable/readable material rather than becoming part of
@@ -559,7 +522,7 @@ struct ScholiumApparatusSectionHeaderButton: View {
                     .accessibilityHidden(true)
             }
         }
-        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+        .buttonStyle(ScholiumQuietRowButtonStyle(
             isHovering: isHovering,
             minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
             verticalInset: 0

@@ -67,21 +67,6 @@ struct DocumentPathAndCapabilitiesTests {
         #expect(capabilities.lifecycleActions.isEmpty)
     }
 
-    @Test("Unclassified documents permit only edit and classify")
-    func unclassifiedBoundary() {
-        let capabilities = DocumentCapabilities(
-            role: .other,
-            lifecycle: .active,
-            identity: .unresolved,
-            isManagedCritique: false,
-            isUnclassified: true
-        )
-        #expect(capabilities.canEditSource)
-        #expect(capabilities.lifecycleActions == [.classify])
-        #expect(!capabilities.canComment)
-        #expect(!capabilities.canUseResearchFunctions)
-    }
-
     @Test("Managed Critique is commentable but not editable, reviewable, duplicable, or agent-writable")
     func critiqueBoundary() {
         let capabilities = DocumentCapabilities(

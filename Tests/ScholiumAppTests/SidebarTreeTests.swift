@@ -8,14 +8,14 @@ struct SidebarTreeTests {
     func folderActionsUseExactVaultRelativePath() throws {
         let tree = buildTree(
             from: [
-                .unclassified(NoteDocument(
+                .syntheticPreview(
                     relativePath: "papers/Ethics/Agency/Argument.md",
                     rawContent: "# Argument\n"
-                )),
-                .unclassified(NoteDocument(
+                ),
+                .syntheticPreview(
                     relativePath: "papers/Ethics/Overview.md",
                     rawContent: "# Overview\n"
-                )),
+                ),
             ],
             notesAreOrdered: { $0.relativePath < $1.relativePath }
         )
@@ -31,14 +31,14 @@ struct SidebarTreeTests {
     func ambiguousHiddenRootsHaveNoActionPath() throws {
         let tree = buildTree(
             from: [
-                .unclassified(NoteDocument(
+                .syntheticPreview(
                     relativePath: "papers/Shared/Analysis.md",
                     rawContent: "# Analysis\n"
-                )),
-                .unclassified(NoteDocument(
+                ),
+                .syntheticPreview(
                     relativePath: "topics/Shared/Topic.md",
                     rawContent: "# Topic\n"
-                )),
+                ),
             ],
             notesAreOrdered: { $0.relativePath < $1.relativePath }
         )
@@ -51,10 +51,10 @@ struct SidebarTreeTests {
     func emptyFoldersAreVisible() throws {
         let tree = buildTree(
             from: [
-                .unclassified(NoteDocument(
+                .syntheticPreview(
                     relativePath: "papers/Ethics/Overview.md",
                     rawContent: "# Overview\n"
-                )),
+                ),
             ],
             folderRelativePaths: [
                 "papers",
@@ -78,18 +78,18 @@ struct SidebarTreeTests {
     func expandedHierarchyUsesFlatSectionProjection() throws {
         let tree = buildTree(
             from: [
-                .unclassified(NoteDocument(
+                .syntheticPreview(
                     relativePath: "papers/Arguments/Agency/Reply.md",
                     rawContent: "# Reply\n"
-                )),
-                .unclassified(NoteDocument(
+                ),
+                .syntheticPreview(
                     relativePath: "papers/Arguments/Overview.md",
                     rawContent: "# Overview\n"
-                )),
-                .unclassified(NoteDocument(
+                ),
+                .syntheticPreview(
                     relativePath: "Loose.md",
                     rawContent: "# Loose\n"
-                )),
+                ),
             ],
             notesAreOrdered: { $0.relativePath < $1.relativePath }
         )

@@ -907,9 +907,7 @@ struct ZoteroSettingsView: View {
                     Button("Open Zotero") {
                         Task { await settingsModel.openZotero() }
                     }
-                    Button("Test Connection") { testConnection() }
-                        .disabled(isTesting)
-                    Button("Refresh Library Information") { refresh() }
+                    Button("Check Connection") { refresh() }
                         .disabled(isTesting)
                     Button("Clear Connection History", role: .destructive) {
                         Task {
@@ -952,8 +950,6 @@ struct ZoteroSettingsView: View {
     private var statusColor: Color {
         info.status == .available ? .green : .orange
     }
-
-    private func testConnection() { refresh() }
 
     private func refresh() {
         isTesting = true

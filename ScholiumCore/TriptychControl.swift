@@ -48,7 +48,6 @@ public actor TriptychControlStore {
     }
 
     public let controlURL: URL
-    public let unclassifiedURL: URL
 
     private let manifestURL: URL
     private let settingsURL: URL
@@ -59,7 +58,6 @@ public actor TriptychControlStore {
         controlURL = worksVaultURL.standardizedFileURL
             .deletingLastPathComponent()
             .appendingPathComponent(".scholium", isDirectory: true)
-        unclassifiedURL = controlURL.appendingPathComponent("unclassified", isDirectory: true)
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
@@ -74,7 +72,7 @@ public actor TriptychControlStore {
         guard Set(vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases) else {
             throw TriptychControlError.invalidManifest
         }
-        try fileManager.createDirectory(at: unclassifiedURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
 
         let now = Date()
         let manifest: TriptychManifest
@@ -115,82 +113,6 @@ public actor TriptychControlStore {
     public func saveSettings(_ settings: TriptychSettings) throws {
         try ensureControlDirectory()
         try encode(settings, to: settingsURL)
-    }
-
-    /// Copies source Markdown into portable Unclassified staging without
-    /// modifying the original file.
-    public func importMarkdown(at sourceURL: URL) throws -> URL {
-        let resolved = sourceURL.resolvingSymlinksInPath().standardizedFileURL
-        let values = try resolved.resourceValues(forKeys: [.isRegularFileKey])
-        guard values.isRegularFile == true,
-              resolved.pathExtension.caseInsensitiveCompare("md") == .orderedSame else {
-            throw TriptychControlError.unsupportedImport(sourceURL.path)
-        }
-        try fileManager.createDirectory(at: unclassifiedURL, withIntermediateDirectories: true)
-        let destination = availableImportURL(named: resolved.lastPathComponent)
-        try fileManager.copyItem(at: resolved, to: destination)
-        return destination
-    }
-
-    public func unclassifiedDocuments() throws -> [NoteDocument] {
-        try ensureControlDirectory()
-        guard let enumerator = fileManager.enumerator(
-            at: unclassifiedURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-        var documents: [NoteDocument] = []
-        for case let url as URL in enumerator {
-            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-            if values.isSymbolicLink == true {
-                enumerator.skipDescendants()
-                throw TriptychControlError.invalidUnclassifiedPath(url.path)
-            }
-            guard values.isRegularFile == true,
-                  url.pathExtension.caseInsensitiveCompare("md") == .orderedSame else { continue }
-            let relativePath = Self.relativePath(of: url, under: unclassifiedURL)
-            documents.append(try loadUnclassified(relativePath: relativePath))
-        }
-        return documents.sorted { $0.relativePath < $1.relativePath }
-    }
-
-    public func loadUnclassified(relativePath: String) throws -> NoteDocument {
-        let url = try unclassifiedFileURL(relativePath, mustExist: true)
-        let data = try Data(contentsOf: url)
-        guard let content = NoteDocument.decodeUTF8PreservingBOM(data) else {
-            throw CocoaError(.fileReadInapplicableStringEncoding)
-        }
-        return NoteDocument(relativePath: relativePath, rawContent: content)
-    }
-
-    public func saveUnclassified(
-        relativePath: String,
-        content: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> NoteDocument {
-        let url = try unclassifiedFileURL(relativePath, mustExist: true)
-        let currentData = try Data(contentsOf: url)
-        let current = DocumentFingerprint(data: currentData)
-        guard current == expectedRevision else {
-            throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
-        }
-        let document = NoteDocument(relativePath: relativePath, rawContent: content)
-        try Data(content.utf8).write(to: url, options: .atomic)
-        let readback = try Data(contentsOf: url)
-        let observed = DocumentFingerprint(data: readback)
-        guard observed == document.fingerprint else {
-            throw VaultRepositoryError.readbackMismatch(expected: document.fingerprint, current: observed)
-        }
-        return document
-    }
-
-    public func removeUnclassified(relativePath: String, expectedRevision: DocumentFingerprint) throws {
-        let url = try unclassifiedFileURL(relativePath, mustExist: true)
-        let current = DocumentFingerprint(data: try Data(contentsOf: url))
-        guard current == expectedRevision else {
-            throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
-        }
-        try fileManager.removeItem(at: url)
     }
 
     public func identity(
@@ -785,47 +707,6 @@ public actor TriptychControlStore {
 
     private func identityPayload() throws -> IdentityFile {
         try decodeIfPresent(IdentityFile.self, from: identitiesURL) ?? IdentityFile(records: [])
-    }
-
-    private func unclassifiedFileURL(_ relativePath: String, mustExist: Bool) throws -> URL {
-        let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
-        guard !relativePath.isEmpty,
-              !relativePath.hasPrefix("/"),
-              !components.contains(".."),
-              !components.contains("."),
-              !components.contains(""),
-              URL(fileURLWithPath: relativePath).pathExtension.caseInsensitiveCompare("md") == .orderedSame else {
-            throw TriptychControlError.invalidUnclassifiedPath(relativePath)
-        }
-        let root = unclassifiedURL.standardizedFileURL
-        let candidate = root.appendingPathComponent(relativePath).standardizedFileURL
-        guard candidate.path.hasPrefix(root.path + "/") else {
-            throw TriptychControlError.invalidUnclassifiedPath(relativePath)
-        }
-        if mustExist {
-            let values = try candidate.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-            guard values.isRegularFile == true, values.isSymbolicLink != true else {
-                throw TriptychControlError.invalidUnclassifiedPath(relativePath)
-            }
-        }
-        return candidate
-    }
-
-    private static func relativePath(of file: URL, under root: URL) -> String {
-        String(file.standardizedFileURL.path.dropFirst(root.standardizedFileURL.path.count + 1))
-    }
-
-    private func availableImportURL(named name: String) -> URL {
-        let requested = unclassifiedURL.appendingPathComponent(name)
-        guard fileManager.fileExists(atPath: requested.path) else { return requested }
-        let base = requested.deletingPathExtension().lastPathComponent
-        let ext = requested.pathExtension
-        var index = 2
-        while true {
-            let candidate = unclassifiedURL.appendingPathComponent("\(base) \(index).\(ext)")
-            if !fileManager.fileExists(atPath: candidate.path) { return candidate }
-            index += 1
-        }
     }
 
     private func ensureControlDirectory() throws {

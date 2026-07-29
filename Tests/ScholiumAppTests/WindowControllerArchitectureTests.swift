@@ -7,6 +7,18 @@ import Testing
 @Suite("Window controller architecture")
 @MainActor
 struct WindowControllerArchitectureTests {
+    @Test("Workspace activation distinguishes a popover key transition from a window switch")
+    func attentionWorkspaceSwitchDetection() {
+        let registry = ScholiumWindowLifecycleRegistry()
+        let first = UUID()
+        let second = UUID()
+
+        #expect(!registry.noteWorkspaceWindowActivated(first))
+        #expect(!registry.noteWorkspaceWindowActivated(first))
+        #expect(registry.noteWorkspaceWindowActivated(second))
+        #expect(registry.noteWorkspaceWindowActivated(first))
+    }
+
     @Test("Feature controllers emit closed intents without mutating peers")
     func closedIntentRouting() {
         let reference = fixtureReference(path: "Topics/Agency.md")
@@ -194,14 +206,9 @@ struct WindowControllerArchitectureTests {
         #expect(second.expandedFolders(in: scope).isEmpty)
     }
 
-    @Test("One controller selection covers stable and path-only documents")
+    @Test("One controller selection covers stable and unavailable documents")
     func documentControllerOwnsTheCompleteSelection() {
         let controller = DocumentController()
-
-        controller.selectUnclassifiedDocument(relativePath: "Inbox/Imported.md")
-        #expect(controller.selectedDocument == .unclassified(relativePath: "Inbox/Imported.md"))
-        #expect(controller.selectedDocumentPath == "Inbox/Imported.md")
-        #expect(controller.activeDocument == nil)
 
         let recoveryVaultID = UUID()
         controller.selectUnavailableDocument(
@@ -386,20 +393,21 @@ struct WindowControllerArchitectureTests {
     @Test("Path-only fallback presentation state is retained by the controller")
     func fallbackPresentationStateIsControllerOwned() {
         let path = "Inbox/Imported.md"
-        let target = DocumentEditingTarget.unclassified(relativePath: path)
+        let vaultID = UUID()
+        let target = DocumentEditingTarget.unavailable(relativePath: path)
         let controller = DocumentController()
         controller.restorePresentationState(
             modes: [path: NotePresentationMode.source.rawValue],
             scrollPositions: [path: 0.42],
             vaultID: nil
         )
-        controller.selectUnclassifiedDocument(relativePath: path)
+        controller.selectUnavailableDocument(vaultID: vaultID, relativePath: path)
 
         let session = controller.session(for: target)
         #expect(session.presentationMode == .source)
         #expect(session.scrollFraction == 0.42)
         controller.clearSelection(forRemovedPaths: [path])
-        controller.selectUnclassifiedDocument(relativePath: path)
+        controller.selectUnavailableDocument(vaultID: vaultID, relativePath: path)
         #expect(controller.session(for: target) === session)
     }
 
@@ -576,6 +584,45 @@ struct WindowControllerArchitectureTests {
         #expect(controller.library.locationError == nil)
     }
 
+    @Test("Ordinary Location navigation stages without replacing trusted content with Loading")
+    func stagedLocationReplacement() {
+        let controller = DiscoveryController()
+        let request = controller.beginLocationRequest(
+            workspaceSlot: .topicKnowledge,
+            location: .trash,
+            presentation: .stagedReplacement
+        )
+
+        #expect(!controller.library.locationIsLoading)
+        #expect(controller.library.workspaceSlot == .paperAnalysis)
+        #expect(controller.library.locationScope == .workspace)
+
+        controller.failLocationRequest("target failed", for: request)
+        #expect(controller.library.locationError == nil)
+        #expect(controller.library.workspaceSlot == .paperAnalysis)
+        #expect(controller.library.locationScope == .workspace)
+    }
+
+    @Test("Window Scope and Location navigation stages from the published Workspace snapshot")
+    func stagedLocationNavigationAdoption() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(
+            source.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 2
+        )
+        #expect(source.contains("private func currentWorkspaceVaultSnapshot("))
+        #expect(source.contains("workspaceVaultSnapshotsByID[vaultID]"))
+    }
+
     @Test("Changing Scope or Location rejects the previous request")
     func locationSwitchRejectsStaleResponse() {
         let controller = DiscoveryController()
@@ -710,7 +757,7 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(attentionSource.contains("@ObservedObject private var session: AttentionWindowSession"))
+        #expect(attentionSource.contains("@ObservedObject private var session: AttentionPopoverSession"))
         #expect(attentionSource.contains("session.inspect(item)"))
         #expect(!attentionSource.contains("WindowModel"))
         #expect(!attentionSource.contains("@EnvironmentObject"))

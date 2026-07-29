@@ -448,13 +448,13 @@ struct WindowLifecycleTests {
         let secondID = UUID()
         let first = DocumentTabItem(
             id: firstID,
-            document: .unclassified(relativePath: "First.md"),
+            document: .unavailable(vaultID: UUID(), relativePath: "First.md"),
             title: "First",
             toolTip: "First.md"
         )
         let second = DocumentTabItem(
             id: secondID,
-            document: .unclassified(relativePath: "Second.md"),
+            document: .unavailable(vaultID: UUID(), relativePath: "Second.md"),
             title: "Second",
             toolTip: "Second.md"
         )

@@ -4,7 +4,6 @@ import SwiftUI
 struct RecommendedBibliographySection: View {
     @ObservedObject var controller: RecommendedBibliographyController
     let openAnalysis: (VaultQualifiedNoteID) -> Void
-    let openZoteroItem: (String) async -> Void
     let copyText: (String) -> Void
     let repairMethod: () -> Void
 
@@ -229,13 +228,6 @@ struct RecommendedBibliographySection: View {
                         .buttonStyle(.link)
                         .font(.caption2)
                 }
-                if let key = candidate.matchedZoteroItemKey {
-                    Button("Open in Zotero") {
-                        Task { await openZoteroItem(key) }
-                    }
-                    .buttonStyle(.link)
-                    .font(.caption2)
-                }
                 Button("Dismiss") {
                     controller.dismiss(candidateID: candidate.id)
                 }
@@ -275,87 +267,81 @@ struct RecommendedBibliographySection: View {
     }
 }
 
-/// The Library's compact, scan-first projection. It deliberately keeps the
-/// complete recommendation workflow in the existing popover rather than
-/// squeezing forms and explanations into the navigation column.
+/// The Sidebar's fixed, Triptych-wide agent-recommendation utility. It is a
+/// sibling of Library navigation and keeps the complete workflow in the
+/// existing popover rather than squeezing forms into the navigation column.
 struct SidebarRecommendedBibliographySection: View {
     @ObservedObject var controller: RecommendedBibliographyController
     let openAnalysis: (VaultQualifiedNoteID) -> Void
-    let openZoteroItem: (String) async -> Void
     let copyText: (String) -> Void
     let repairMethod: () -> Void
 
     @State private var showsDetails = false
+    @State private var isHovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                Text("RECOMMENDED BIBLIOGRAPHY")
-                    .font(ScholiumInterfaceTypography.editorialLabel)
-                    .tracking(0.7)
-                    .foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            Button {
+                showsDetails = true
+            } label: {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 6) {
+                        Text("RECOMMENDED BIBLIOGRAPHY")
+                            .font(ScholiumInterfaceTypography.editorialLabel)
+                            .tracking(0.7)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
 
-                Spacer(minLength: 4)
+                        Spacer(minLength: 4)
 
-                if !controller.visibleCandidates.isEmpty {
-                    Text(controller.visibleCandidates.count.formatted())
-                        .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .fixedSize()
-                        .accessibilityLabel(
-                            "\(controller.visibleCandidates.count) bibliography recommendations"
-                        )
-                }
-
-                Button {
-                    showsDetails = true
-                } label: {
-                    Image(systemName: "arrow.up.right.square")
-                        .frame(
-                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .fixedSize()
-                .layoutPriority(2)
-                .help(
-                    controller.target == nil
-                        ? "Open an Analysis to prepare new recommendations; existing Triptych recommendations remain available"
-                        : "Open Recommended Bibliography"
-                )
-                .accessibilityLabel("Open Recommended Bibliography")
-                .accessibilityIdentifier("scholium.recommendedBibliography.open")
-            }
-
-            if controller.visibleCandidates.isEmpty {
-                Text("No recommendations")
-                    .font(ScholiumInterfaceTypography.libraryHierarchy)
-                    .foregroundStyle(.secondary)
-            } else {
-                ScrollView(.horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        ForEach(Array(controller.visibleCandidates.enumerated()), id: \.element.id) { index, candidate in
-                            literatureEntry(candidate)
-                            if index < controller.visibleCandidates.count - 1 {
-                                ScholiumStructuralRule(orientation: .vertical)
-                                    .frame(height: 28)
-                                    .padding(.horizontal, 8)
-                            }
+                        if !controller.visibleCandidates.isEmpty {
+                            Text(controller.visibleCandidates.count.formatted())
+                                .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                                .fixedSize()
                         }
+
+                        Image(systemName: "chevron.forward")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(ScholiumColorRole.mutedText.color)
+                            .accessibilityHidden(true)
+                    }
+
+                    if let firstCandidate = controller.visibleCandidates.first {
+                        literatureEntry(firstCandidate)
+                            .font(ScholiumInterfaceTypography.bibliographyPreview)
+                            .foregroundStyle(ScholiumColorRole.primaryText.color)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Text("No recommendations")
+                            .font(ScholiumInterfaceTypography.bibliographyEmptyState)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     }
                 }
-                .scrollIndicators(.hidden)
-                .accessibilityLabel("Recommended literature")
+                .padding(.top, ScholiumMetrics.Library.bibliographyTopInset)
+                .padding(.bottom, ScholiumMetrics.Library.bibliographyBottomInset)
             }
+            .buttonStyle(ScholiumQuietRowButtonStyle(
+                isHovering: isHovering,
+                minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                horizontalInset: ScholiumMetrics.Library.contentInset,
+                verticalInset: 0
+            ))
+            .onHover { isHovering = $0 }
+            .help(
+                controller.target == nil
+                    ? "Open an Analysis to prepare new recommendations; existing Triptych recommendations remain available"
+                    : "Open Recommended Bibliography"
+            )
+            .accessibilityLabel("Open Recommended Bibliography")
+            .accessibilityValue(recommendationAccessibilityValue)
+            .accessibilityIdentifier("scholium.recommendedBibliography.open")
         }
         .popover(isPresented: $showsDetails, arrowEdge: .trailing) {
             ScrollView {
                 RecommendedBibliographySection(
                     controller: controller,
                     openAnalysis: openAnalysis,
-                    openZoteroItem: openZoteroItem,
                     copyText: copyText,
                     repairMethod: repairMethod
                 )
@@ -365,18 +351,21 @@ struct SidebarRecommendedBibliographySection: View {
             .scholiumSurface(.boundedPanel)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.recommendedBibliography.library")
+        .accessibilityLabel("Triptych Recommended Bibliography")
+        .accessibilityIdentifier("scholium.recommendedBibliography.utility")
     }
 
     private func literatureEntry(
         _ candidate: RecommendedBibliographyCandidate
     ) -> some View {
         let title = candidate.identity.title ?? candidate.identity.rawCitation
-        return HStack(spacing: 0) {
-            Text(literatureIdentity(candidate) + ", ")
-            Text(title).italic()
-        }
-        .font(ScholiumInterfaceTypography.literatureCitation)
+        return Text(verbatim: "\(literatureIdentity(candidate)), \(title)")
+    }
+
+    private var recommendationAccessibilityValue: String {
+        controller.visibleCandidates.isEmpty
+            ? "No recommendations"
+            : "\(controller.visibleCandidates.count) recommendations"
     }
 
     private func literatureIdentity(

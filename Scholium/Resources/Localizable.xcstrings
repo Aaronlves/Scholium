@@ -2942,6 +2942,22 @@
         }
       }
     },
+    "Attention Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attention Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关注事项不可用"
+          }
+        }
+      }
+    },
     "Attention and Salience.md" : {
       "localizations" : {
         "en" : {
@@ -2986,6 +3002,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关注设置已保存"
+          }
+        }
+      }
+    },
+    "Attention, 7 items" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "注意事项，7 项"
           }
         }
       }
@@ -3414,6 +3440,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "粗体，700"
+          }
+        }
+      }
+    },
+    "Book Project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "书籍项目"
           }
         }
       }
@@ -3991,6 +4027,16 @@
         }
       }
     },
+    "Check Connection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查连接"
+          }
+        }
+      }
+    },
     "Check Fidelity" : {
       "localizations" : {
         "en" : {
@@ -4035,6 +4081,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在检查操作…"
+          }
+        }
+      }
+    },
+    "Checking Attention" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Checking Attention"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查关注事项"
           }
         }
       }
@@ -4939,70 +5001,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "引文"
-          }
-        }
-      }
-    },
-    "Classified as %@: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Classified as %@: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已分类为 %@：%@"
-          }
-        }
-      }
-    },
-    "Classify" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Classify"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分类"
-          }
-        }
-      }
-    },
-    "Classify Imported Notes…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Classify Imported Notes…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为导入的笔记分类…"
-          }
-        }
-      }
-    },
-    "Classify…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Classify…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分类…"
           }
         }
       }
@@ -6397,22 +6395,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法打开纸篓"
-          }
-        }
-      }
-    },
-    "Could Not Open Unclassified" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could Not Open Unclassified"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法打开未分类"
           }
         }
       }
@@ -8823,6 +8805,16 @@
         }
       }
     },
+    "Editorial Parchment Proof — Light" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑羊皮纸视觉证明 — 浅色"
+          }
+        }
+      }
+    },
     "Edit…" : {
       "localizations" : {
         "en" : {
@@ -9657,22 +9649,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "聚焦一个 Scholium 工作区以查看其研究记录。"
-          }
-        }
-      }
-    },
-    "Focus a Scholium workspace, then choose Window → Attention." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Focus a Scholium workspace, then choose Window → Attention."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "先聚焦一个 Scholium 工作区，然后选择“窗口”→“关注”。"
           }
         }
       }
@@ -10547,18 +10523,18 @@
         }
       }
     },
-    "Imported %lld Markdown file%@ into Unclassified." : {
+    "Imported %lld Markdown file%@ into %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Imported %lld Markdown file%@ into Unclassified."
+            "value" : "Imported %1$lld Markdown file%2$@ into %3$@."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已将 %lld 个 Markdown 文件%@导入“未分类”。"
+            "value" : "已将 %1$lld 个 Markdown 文件%2$@导入 %3$@。"
           }
         }
       }
@@ -14040,22 +14016,6 @@
         }
       }
     },
-    "No Unclassified Notes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Unclassified Notes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有未分类笔记"
-          }
-        }
-      }
-    },
     "No Zotero item matched by DOI or ISBN, citation key, or exact title, author, and year." : {
       "localizations" : {
         "en" : {
@@ -14980,6 +14940,16 @@
         }
       }
     },
+    "Open Editorial Parchment Proof" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开编辑羊皮纸视觉证明"
+          }
+        }
+      }
+    },
     "Open Lines %lld–%lld" : {
       "localizations" : {
         "en" : {
@@ -15444,22 +15414,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在打开纸篓…"
-          }
-        }
-      }
-    },
-    "Opening Unclassified…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opening Unclassified…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开未分类…"
           }
         }
       }
@@ -17890,22 +17844,6 @@
         }
       }
     },
-    "Refresh Library Information" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Refresh Library Information"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刷新文档列表信息"
-          }
-        }
-      }
-    },
     "Refresh Needed" : {
       "localizations" : {
         "en" : {
@@ -19632,6 +19570,22 @@
         }
       }
     },
+    "Retries loading the derived Attention queue." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Retries loading the derived Attention queue."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新加载派生的关注事项队列。"
+          }
+        }
+      }
+    },
     "Retries migration of app-owned records without changing the Markdown note." : {
       "localizations" : {
         "en" : {
@@ -19676,6 +19630,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试"
+          }
+        }
+      }
+    },
+    "Retry Attention" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Retry Attention"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试关注事项"
           }
         }
       }
@@ -23534,22 +23504,6 @@
         }
       }
     },
-    "Test Connection" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Test Connection"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "测试连接"
-          }
-        }
-      }
-    },
     "Text Reliability" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -25465,6 +25419,22 @@
         }
       }
     },
+    "Triptych Recommended Bibliography" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Triptych Recommended Bibliography"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "脉络推荐书目"
+          }
+        }
+      }
+    },
     "Triptych Scope" : {
       "localizations" : {
         "en" : {
@@ -25703,22 +25673,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未更改的第 %1$lld 行，行尾为 %2$@：%3$@"
-          }
-        }
-      }
-    },
-    "Unclassified" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Unclassified"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未分类"
           }
         }
       }

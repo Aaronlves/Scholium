@@ -169,7 +169,6 @@ public enum DocumentLifecycleAction: String, Codable, CaseIterable, Hashable, Se
     case moveToTrash
     case putBack
     case deletePermanently
-    case classify
 }
 
 public struct DocumentCapabilities: Codable, Equatable, Sendable {
@@ -183,25 +182,16 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
         role: VaultRole,
         lifecycle: WorkspaceDocumentLifecycle,
         identity: DocumentIdentityResolution,
-        isManagedCritique: Bool,
-        isUnclassified: Bool = false
+        isManagedCritique: Bool
     ) {
         self.isManagedCritique = isManagedCritique
-        guard identity == .resolved || isUnclassified else {
+        guard identity == .resolved else {
             canEditSource = false
             canComment = false
             canUseResearchFunctions = false
             lifecycleActions = []
             return
         }
-        if isUnclassified {
-            canEditSource = true
-            canComment = false
-            canUseResearchFunctions = false
-            lifecycleActions = [.classify]
-            return
-        }
-
         canEditSource = !isManagedCritique && lifecycle == .active
         canComment = lifecycle == .active && (
             role == .sourceCorpus

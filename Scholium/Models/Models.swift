@@ -138,22 +138,18 @@ enum ResearchUnitEdit: Hashable, Sendable {
   }
 }
 
-/// One window-visible document location. Workspace documents retain the shared
-/// immutable Application snapshot; Unclassified documents retain the exact Core
-/// document without inventing a vault or portable identity.
+/// One window-visible document location backed by the shared immutable
+/// Application snapshot for its exact Triptych vault.
 enum WindowDocumentLocation: Identifiable, Hashable, Sendable {
   enum ID: Hashable, Sendable {
     case workspace(VaultQualifiedNoteID)
-    case unclassified(String)
   }
 
   case workspace(WorkspaceNoteSnapshot)
-  case unclassified(NoteDocument)
 
   var id: ID {
     switch self {
     case .workspace(let snapshot): .workspace(snapshot.id)
-    case .unclassified(let document): .unclassified(document.relativePath)
     }
   }
 
@@ -165,7 +161,6 @@ enum WindowDocumentLocation: Identifiable, Hashable, Sendable {
   var document: NoteDocument {
     switch self {
     case .workspace(let snapshot): snapshot.document
-    case .unclassified(let document): document
     }
   }
 
@@ -173,19 +168,52 @@ enum WindowDocumentLocation: Identifiable, Hashable, Sendable {
     switch (lhs, rhs) {
     case (.workspace(let lhs), .workspace(let rhs)):
       lhs == rhs
-    case (.unclassified(let lhs), .unclassified(let rhs)):
-      lhs.relativePath == rhs.relativePath && lhs.fingerprint == rhs.fingerprint
-    default:
-      false
     }
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine(id)
     hasher.combine(document.fingerprint)
-    if case .workspace(let snapshot) = self {
-      hasher.combine(snapshot)
+    switch self {
+    case .workspace(let snapshot): hasher.combine(snapshot)
     }
+  }
+}
+
+extension WindowDocumentLocation {
+  /// Synthetic workspace-backed Note used only by SwiftUI previews and the
+  /// component catalog. Production construction continues to consume an
+  /// Application-owned `WorkspaceNoteSnapshot`.
+  static func syntheticPreview(
+    relativePath: String,
+    rawContent: String,
+    vaultRole: VaultRole = .other
+  ) -> Self {
+    let document = NoteDocument(
+      relativePath: relativePath,
+      rawContent: rawContent
+    )
+    return .workspace(WorkspaceNoteSnapshot(
+      id: VaultQualifiedNoteID(
+        vaultID: UUID(),
+        relativePath: relativePath
+      ),
+      vaultRole: vaultRole,
+      stableIdentity: .resolved(UUID()),
+      document: document,
+      fileMetadata: WorkspaceFileMetadata(
+        byteCount: document.sourceBytes.count,
+        creationDate: nil,
+        modificationDate: nil
+      ),
+      lifecycle: .active,
+      graphCounts: WorkspaceGraphCounts(
+        incoming: 0,
+        outgoing: 0,
+        broken: 0,
+        ambiguous: 0
+      )
+    ))
   }
 }
 

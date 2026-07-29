@@ -1,25 +1,25 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  --scholium-color-document-background: #fff9f0;
-  --scholium-color-surface-background: #f2eadc;
-  --scholium-color-navigation-surface-background: #ebe5dc;
-  --scholium-color-apparatus-surface-background: #f5ede0;
-  --scholium-color-raised-surface-background: #e3dbce;
-  --scholium-color-primary-text: #15110b;
-  --scholium-color-secondary-text: #423c31;
-  --scholium-color-muted-text: #5b5449;
-  --scholium-color-separator: #b7b0a3;
-  --scholium-color-accent: #9f4318;
+  --scholium-color-document-background: #fef8ed;
+  --scholium-color-surface-background: #f4eee3;
+  --scholium-color-navigation-surface-background: #ece8e1;
+  --scholium-color-apparatus-surface-background: #f9f3e8;
+  --scholium-color-raised-surface-background: #ddd8cf;
+  --scholium-color-primary-text: #28241d;
+  --scholium-color-secondary-text: #4c473e;
+  --scholium-color-muted-text: #615c53;
+  --scholium-color-separator: #c5c0b5;
+  --scholium-color-accent: #9d4114;
   --scholium-color-accent-hover: #812f02;
   --scholium-color-notification-highlight: #ad7b3d;
   --scholium-color-information: #3d6379;
   --scholium-color-attention: #81520a;
   --scholium-color-destructive: #8d453e;
-  --scholium-color-confirmed: #40684e;
+  --scholium-color-confirmed: #3e664b;
   --scholium-color-agent-authorship: #61577c;
   --scholium-color-connection-neutral: #6f593f;
-  --scholium-color-connection-support: #326960;
+  --scholium-color-connection-support: #2f675e;
   --scholium-color-connection-incompatible: #72516a;
   --scholium-symbol-link: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAGKADAAQAAAABAAAAGAAAAADiNXWtAAACV0lEQVRIDe3US0hVQRjA8atpD3uIFYVWBIYkRIsWbQqyMFq4KF1EhVAQEe1EEkRbSItA3FRQFBHUwkKCHkJQ5EYMQty46GVU0KYWtehhLwur/z/uwFw9V68Grfzg55lz5pyZ+b6Zayo1E5NUIG+S/qTuOTzcgVqU4QVuoRej+KdYwded+IrfGE5ff3E9CyefVuTzVQV68AnnsRHlMJu7+I4zKMSUwjI6+D18RCsWIo4l3NzBT1TFHbm0V/NSGLyF9oIsH5mJZTudpT/xcQlPL8CVN2M55qMAY2MND9yb7rjD2k4Uu+jcjnO4hg7cQB3mIo6l3LjJb+KHSRPM4oVlsK7V8IRchh+/hftxEbsRTs0i2ocxgpvIGk5YiXbUwNMxiFKE2EZjCM9gWdyTNljGSwiT0swMT0sZuvASrvAK/CFtgJmFOEbDY7kX+/EBt2HmGRF/VELPQeyBA5vqPGyBkz+Gg1oyN9nBH6bbZt6A10gMB9iJAZyCv1jDqxm5wpOogiWoxRc0Yj1WwTHGRThuxfRsgpvl6sNJcEXH4fHbmr660fVw0gcwM7NKjDBBEb2L8Rlulj+YEE9pHIWbb581dzFX8QhZB6cvZe2MHzBla+6/gfCc5t94z99X2IcDuA9LaWY5xWzeOoQnaILHMkzidSVOwNK5J2uRWHOeZ0Q4Rf4fdzUO5Gab9gg84+U4AuvehzY8R1xGbpMjXoUrrYAZbE6//o2r+zOM6+iEWeQ0OO+NS9MJ3UwnWAczeId+uPqxB4BHE0ecQfxmITceXffG0k15YL75P/EHCCx3R5I0KkcAAAAASUVORK5CYII=");
   --scholium-symbol-supports: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACTUlEQVQ4EdXUPUhVYRzH8Zu9v1lmZVb0wkVILMReKInIorbApWjJhlpaCsHBQMSpralyU2lpCGppDrqGi1T2oqgpSmARBb1aiSXl93v13O4591Q4NPiDD97znHOe1/8xkZhtmfOPCedzvxTbUIg36Ec3vmPGWcMb59GJH/iVZYLfD3AODhyb6Izn8tRhNGAn3iGFxxiFs7bdZwrQgXo8gQPGxkEq8AwfcBXlyEM022logYP1YA/+mI3cuYa3qIUz+lvmc7MRX9CO5ciJW3Aaz3EJRYhmGQ3rYIdB5vGjFR6ke56TTbS4tEG4HdG9pylxHM7sKLI7L+P6FR5hMUKp5soDuo2103dcxQLYiTbjFrpxCAthnMQNWD27kU5wMEmunLUjf4WdWr9VODLNWr4Dl+/B7oLPWYpdsN130vHCuH/OwE5/YhUuwk6ddRD3cgl8/gxc5RjewxRP/Zkaxd/f4Evukav4hDbch9tgHNBKOQU7d/Yu3wQfinUfigfTg5tYHbrz+8KXL6MPJxCs1ok4iQlUIpStXFkVdm6xu3fRHKMhhZMIOuVnYgeG8RArEIr7eBb+g2nCBnja2bG27STYGu+5NVfwGX5UsUnS2owBWOx2HjdzmtODOtAFfEQKfjyZZL/ogfnQQVinrsIqGYez99lFWIkSWBV1sET9tJ8ik+hyfXkvalAFD6QXrzEGy8ySqoAVcRfX0QWrJpNox96wLYkD2I99WA9XYEm+gPV7D+14CT+SUOI6Dh6wI/fZL2wLlmIUQ7DjEeR0SNv/zSRjEXIpUvpbJgAAAABJRU5ErkJggg==");
@@ -279,15 +279,15 @@ body,
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --scholium-color-document-background: #2f2920;
-    --scholium-color-surface-background: #3f3a30;
+    --scholium-color-document-background: #2e2921;
+    --scholium-color-surface-background: #3f3a31;
     --scholium-color-navigation-surface-background: #383530;
-    --scholium-color-apparatus-surface-background: #433e35;
-    --scholium-color-raised-surface-background: #4e483e;
+    --scholium-color-apparatus-surface-background: #332e26;
+    --scholium-color-raised-surface-background: #4d483f;
     --scholium-color-primary-text: #f0eae1;
-    --scholium-color-secondary-text: #d1cabc;
-    --scholium-color-muted-text: #bfb8ab;
-    --scholium-color-separator: #7d766a;
+    --scholium-color-secondary-text: #d0cabf;
+    --scholium-color-muted-text: #beb8ad;
+    --scholium-color-separator: #7c776d;
     --scholium-color-accent: #ffa17b;
     --scholium-color-accent-hover: #feae8e;
     --scholium-color-notification-highlight: #daa668;
@@ -304,15 +304,15 @@ body,
 
 @media (prefers-contrast: more) {
   :root {
-    --scholium-color-document-background: #fff9f0;
-    --scholium-color-surface-background: #f2eadc;
-    --scholium-color-navigation-surface-background: #ebe5dc;
-    --scholium-color-apparatus-surface-background: #f5ede0;
-    --scholium-color-raised-surface-background: #e3dbce;
-    --scholium-color-primary-text: #15110b;
-    --scholium-color-secondary-text: #423c31;
-    --scholium-color-muted-text: #494338;
-    --scholium-color-separator: #8c8579;
+    --scholium-color-document-background: #fef8ed;
+    --scholium-color-surface-background: #f4eee3;
+    --scholium-color-navigation-surface-background: #ece8e1;
+    --scholium-color-apparatus-surface-background: #f9f3e8;
+    --scholium-color-raised-surface-background: #ddd8cf;
+    --scholium-color-primary-text: #28241d;
+    --scholium-color-secondary-text: #454138;
+    --scholium-color-muted-text: #474239;
+    --scholium-color-separator: #8b857c;
     --scholium-color-accent: #6e2b0a;
     --scholium-color-accent-hover: #501a01;
     --scholium-color-notification-highlight: #95631e;
@@ -334,15 +334,15 @@ body,
 
 @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
   :root {
-    --scholium-color-document-background: #2f2920;
-    --scholium-color-surface-background: #3f3a30;
+    --scholium-color-document-background: #2e2921;
+    --scholium-color-surface-background: #3f3a31;
     --scholium-color-navigation-surface-background: #383530;
-    --scholium-color-apparatus-surface-background: #433e35;
-    --scholium-color-raised-surface-background: #4e483e;
+    --scholium-color-apparatus-surface-background: #332e26;
+    --scholium-color-raised-surface-background: #4d483f;
     --scholium-color-primary-text: #f0eae1;
-    --scholium-color-secondary-text: #ebe4d6;
-    --scholium-color-muted-text: #ebe4d6;
-    --scholium-color-separator: #a59d91;
+    --scholium-color-secondary-text: #eae4d9;
+    --scholium-color-muted-text: #eae4d9;
+    --scholium-color-separator: #a39e94;
     --scholium-color-accent: #fedccf;
     --scholium-color-accent-hover: #fdded2;
     --scholium-color-notification-highlight: #f6bf7e;
@@ -353,6 +353,6 @@ body,
     --scholium-color-agent-authorship: #e6e0fd;
     --scholium-color-connection-neutral: #fae0c2;
     --scholium-color-connection-support: #b6f0e5;
-    --scholium-color-connection-incompatible: #ffdbf5;
+    --scholium-color-connection-incompatible: #fed7f4;
   }
 }

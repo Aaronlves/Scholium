@@ -1,47 +1,73 @@
 import ScholiumContracts
 import SwiftUI
 
-struct AttentionWindowRoot: View {
-    @ObservedObject var session: AttentionWindowSession
+private struct AttentionPopoverContent: View {
+    @ObservedObject var session: AttentionPopoverSession
 
     var body: some View {
-        Group {
-            if let presentation = session.presentation {
-                AttentionQueueView(
-                    presentation: presentation,
-                    session: session
-                )
-            } else {
-                ContentUnavailableView(
-                    "No Active Triptych",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text("Focus a Scholium workspace, then choose Window → Attention.")
-                )
-            }
-        }
-        .frame(minWidth: 360, minHeight: 320)
-        .preferredColorScheme(session.preferredColorScheme)
-        .scholiumSurface(.denseEvidence)
-        .background {
-            AttentionWindowAttachment(session: session)
-                .frame(width: 0, height: 0)
+        if let presentation = session.presentation {
+            AttentionQueueView(
+                presentation: presentation,
+                session: session
+            )
+            .frame(
+                width: ScholiumMetrics.Attention.popoverWidth,
+                height: ScholiumMetrics.Attention.popoverHeight
+            )
+            .scholiumSurface(.denseEvidence)
         }
     }
 }
 
-/// The standard auxiliary-window projection for one exact Workspace. Derived
-/// queue data remains immutable input from the Scene session; only filter,
+private struct AttentionPopoverPresenter: ViewModifier {
+    let anchor: AttentionPopoverAnchor
+    @ObservedObject var session: AttentionPopoverSession
+
+    func body(content: Content) -> some View {
+        content.popover(
+            isPresented: Binding(
+                get: { session.isPresented(from: anchor) },
+                set: { isPresented in
+                    if !isPresented, session.isPresented(from: anchor) {
+                        session.dismiss()
+                    }
+                }
+            ),
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            AttentionPopoverContent(session: session)
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func scholiumAttentionPopover(
+        anchor: AttentionPopoverAnchor,
+        session: AttentionPopoverSession?
+    ) -> some View {
+        if let session {
+            modifier(AttentionPopoverPresenter(anchor: anchor, session: session))
+        } else {
+            self
+        }
+    }
+}
+
+/// The transient popover projection for one exact Workspace. Derived queue
+/// data remains immutable input from the Workspace session; only filter,
 /// selection, Note scope, and machine-local dismissal state are mutable here.
 struct AttentionQueueView: View {
     @ObservedObject private var presentation: AttentionPresentationState
-    @ObservedObject private var session: AttentionWindowSession
+    @ObservedObject private var session: AttentionPopoverSession
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var dismissalLedgerData = Data()
     @FocusState private var filterFocused: Bool
 
     init(
         presentation: AttentionPresentationState,
-        session: AttentionWindowSession
+        session: AttentionPopoverSession
     ) {
         _presentation = ObservedObject(wrappedValue: presentation)
         _session = ObservedObject(wrappedValue: session)
@@ -96,6 +122,10 @@ struct AttentionQueueView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Attention")
+                .font(ScholiumInterfaceTypography.sectionTitle)
+                .accessibilityAddTraits(.isHeader)
+
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     scopeSummary
@@ -369,7 +399,7 @@ struct AttentionQueueView: View {
 
 /// Shared production task row. Preview Catalog reuses this exact row so
 /// typography, action wrapping, title truncation, and locator density do not
-/// drift from the standard Attention window.
+/// drift from the production Attention popover.
 struct AttentionQueueRow: View {
     let item: AttentionQueueItem
     let noteTitle: String

@@ -326,14 +326,14 @@ struct FrontendArchitectureTests {
             ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"
         ))
         #expect(!appSource.contains("Collapse Note"))
-        #expect(sidebarSource.contains(".font(.system(size: 12, weight: .semibold))"))
-        #expect(sidebarSource.contains(".font(.system(size: 12, weight: .regular))"))
+        #expect(sidebarSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
+        #expect(sidebarSource.contains("ScholiumInterfaceTypography.libraryNoteTitle"))
         #expect(sidebarSource.contains("ScholiumInterfaceTypography.metadata"))
         #expect(
             ScholiumMetrics.Library.hierarchyRowHeight
                 >= ScholiumMetrics.Accessibility.minimumCustomTarget
         )
-        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Spacing.regionContentInset)
+        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Library.minimumReadableWidth == 300)
     }
 
@@ -406,6 +406,32 @@ struct FrontendArchitectureTests {
                 )
             }
         }
+
+        let toolbarSource = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent(
+                    "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
+                ),
+            encoding: .utf8
+        )
+        #expect(!toolbarSource.contains("scholium.toolbar.attention"))
+        #expect(!toolbarSource.contains("ScholiumWorkspaceAttentionToolbarView"))
+
+        let windowManagementSource = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent(
+                    "Scholium/UI/Components/ScholiumWindowManagement.swift"
+                ),
+            encoding: .utf8
+        )
+        #expect(!windowManagementSource.contains("anchor: .toolbar"))
+        #expect(!windowManagementSource.contains("preferredPresentationSlot"))
     }
 
     @Test("Native split backgrounds fill the titlebar without an extension effect")
@@ -475,16 +501,64 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let componentsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
 
         #expect(typographySource.contains("static let libraryHierarchy = Font.callout"))
+        #expect(typographySource.contains("static let libraryFolderTitle = libraryHierarchy"))
         #expect(typographySource.contains("static let libraryNoteTitle = libraryHierarchy"))
+        #expect(typographySource.contains("static let librarySelectedNoteTitle"))
+        #expect(typographySource.contains("static let bibliographyEmptyState = metadata"))
         #expect(typographySource.contains("static let noteTitle = Font.body"))
         #expect(typographySource.contains("static let literatureCitation"))
-        #expect(sidebarSource.contains("Text(\"ATTENTION\")"))
-        #expect(sidebarSource.contains("Image(systemName: \"exclamationmark.triangle\")"))
+        #expect(typographySource.contains("static let libraryLocation"))
+        #expect(componentsSource.contains("struct SidebarAttentionAlert"))
+        #expect(componentsSource.contains("title: \"ATTENTION\""))
+        #expect(componentsSource.contains("Image(systemName: \"exclamationmark.triangle\")"))
         #expect(!sidebarSource.contains(".focusEffectDisabled()"))
         #expect(sidebarSource.contains("ScholiumColorRole.navigationSurfaceBackground.color"))
         #expect(!sidebarSource.contains(".pickerStyle(.segmented)"))
+        #expect(sidebarSource.contains("ScholiumLibraryLocationPicker(selection:"))
+        #expect(componentsSource.contains("struct ScholiumLibraryLocationPicker"))
+        #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
+        #expect(componentsSource.contains(".menuStyle(.borderlessButton)"))
+        #expect(componentsSource.contains("locationChoice(\"Library\", value: .workspace)"))
+        #expect(componentsSource.contains("locationChoice(\"Set Aside\", value: .setAside)"))
+        #expect(componentsSource.contains("locationChoice(\"Trash\", value: .trash)"))
+        #expect(componentsSource.contains(".accessibilityLabel(\"Location\")"))
+        #expect(componentsSource.contains(".accessibilityValue(selectedTitle)"))
+        #expect(!componentsSource.contains(".accessibilityRepresentation"))
+        #expect(!componentsSource.contains("Picker(\"Location\""))
+        #expect(!componentsSource.contains("Image(systemName: \"chevron"))
+        #expect(sidebarSource.contains(".menuIndicator(.hidden)"))
+        #expect(sidebarSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
+        #expect(sidebarSource.contains("ScholiumInterfaceTypography.librarySelectedNoteTitle"))
+        #expect(sidebarSource.contains("ScholiumEditorialIndexUnderline("))
+        #expect(sidebarSource.contains(
+            "ScholiumMotion.disclosure(reduceMotion: reduceMotion)"
+        ))
+        #expect(!sidebarSource.contains(
+            "withAnimation(.easeInOut(duration: 0.16)"
+        ))
+        #expect(sidebarSource.contains("if let attentionAlertState"))
+        #expect(componentsSource.contains("case active(count: Int)"))
+        #expect(componentsSource.contains("case checking"))
+        #expect(componentsSource.contains("case unavailable"))
+        let attentionSurfaceStart = try #require(componentsSource.range(
+            of: "private struct SidebarAttentionAlertSurface"
+        ))
+        let attentionSurfaceEnd = try #require(componentsSource.range(
+            of: "private struct SidebarAttentionAlertButtonStyle",
+            range: attentionSurfaceStart.upperBound ..< componentsSource.endIndex
+        ))
+        let attentionSurface = componentsSource[
+            attentionSurfaceStart.lowerBound ..< attentionSurfaceEnd.lowerBound
+        ]
+        #expect(!attentionSurface.contains("overlay(alignment: .leading)"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
         #expect(sidebarSource.contains(
@@ -506,10 +580,18 @@ struct FrontendArchitectureTests {
             sidebarBody.lowerBound ..< sidebarSectionsEnd.lowerBound
         ]
         let scope = try #require(sidebarSections.range(of: "scopeIndex"))
-        let attention = try #require(sidebarSections.range(of: "attentionButton"))
+        let attention = try #require(sidebarSections.range(of: "SidebarAttentionAlert("))
         let library = try #require(sidebarSections.range(of: "locationHeader"))
+        let sourceScroll = try #require(sidebarSections.range(of: "ScrollView(.vertical)"))
+        let bibliography = try #require(sidebarSections.range(
+            of: "recommendedBibliographyUtility"
+        ))
         #expect(scope.lowerBound < attention.lowerBound)
         #expect(attention.lowerBound < library.lowerBound)
+        #expect(sourceScroll.lowerBound < bibliography.lowerBound)
+        let sourceRegion = sidebarSections[sourceScroll.lowerBound ..< bibliography.lowerBound]
+        #expect(!sourceRegion.contains("SidebarRecommendedBibliographySection("))
+        #expect(sourceRegion.contains("scholium.noteList"))
         #expect(sidebarSections.contains(
             "pinnedViews: [.sectionHeaders]"
         ))
@@ -531,9 +613,32 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("Section(\"Review\")"))
 
         #expect(sidebarSource.contains("SidebarRecommendedBibliographySection("))
+        #expect(sidebarSource.contains(
+            ".background(ScholiumColorRole.navigationSurfaceBackground.color)"
+        ))
+        #expect(sidebarSource.contains("ScholiumStructuralRule()"))
         #expect(!sidebarSource.contains("SidebarLiteratureSection("))
         #expect(!sidebarSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
-        #expect(!sidebarSource.contains("sidebarBottomRegion"))
+
+        let brandStart = try #require(sidebarSource.range(of: "private var brandHeader"))
+        let brandEnd = try #require(sidebarSource.range(
+            of: "private var scopeIndex",
+            range: brandStart.upperBound ..< sidebarSource.endIndex
+        ))
+        let brandHeader = sidebarSource[brandStart.lowerBound ..< brandEnd.lowerBound]
+        #expect(brandHeader.contains("Menu {"))
+        #expect(!brandHeader.contains("Image(systemName: \"chevron.down\")"))
+        let scopeIndexStart = try #require(sidebarSource.range(of: "private var scopeIndex"))
+        let scopeIndexEnd = try #require(sidebarSource.range(
+            of: "private func isCurrent",
+            range: scopeIndexStart.upperBound ..< sidebarSource.endIndex
+        ))
+        let scopeIndexSource = sidebarSource[
+            scopeIndexStart.lowerBound ..< scopeIndexEnd.lowerBound
+        ]
+        #expect(!scopeIndexSource.contains("attentionCount"))
+        #expect(!scopeIndexSource.contains("contentTransition(.numericText())"))
+        #expect(!scopeIndexSource.contains("accessibilityValue"))
     }
 
     @Test("Lifecycle destinations reuse the Library grid without overlay chrome")
@@ -548,22 +653,40 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let componentsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
 
         for required in [
-            "Picker(\"Location\"",
-            "Text(\"Library\").tag(NoteLocationScope.workspace)",
-            "Text(\"Set Aside\").tag(NoteLocationScope.setAside)",
-            "Text(\"Trash\").tag(NoteLocationScope.trash)",
+            "ScholiumLibraryLocationPicker(selection: locationSelection)",
             "ScholiumMetrics.Library.hierarchyRowHeight",
             "ScholiumMetrics.Accessibility.preferredCustomTarget",
             "ScholiumGrid.Spacing.inlineControlGap",
             "ScholiumGrid.Spacing.labelAccessoryGap",
             "ScholiumGrid.Spacing.sectionSeparation",
+            "ScholiumLibrarySourceState",
             "pinnedViews: [.sectionHeaders]",
             "scholium.lifecyclePutBack.",
         ] {
             #expect(sidebarSource.contains(required), "Missing lifecycle destination contract: \(required)")
         }
+        for required in [
+            "locationChoice(\"Library\", value: .workspace)",
+            "locationChoice(\"Set Aside\", value: .setAside)",
+            "locationChoice(\"Trash\", value: .trash)",
+            ".menuStyle(.borderlessButton)",
+            "struct ScholiumLibrarySourceState",
+            ".padding(.horizontal, ScholiumMetrics.Library.contentInset)",
+            ".accessibilityLabel(\"Location\")",
+            ".accessibilityValue(selectedTitle)",
+        ] {
+            #expect(componentsSource.contains(required), "Missing LocationPicker component contract: \(required)")
+        }
+        #expect(!componentsSource.contains("Picker(\"Location\""))
+        #expect(!componentsSource.contains(".accessibilityRepresentation"))
 
         for removed in [
             "SidebarLifecycleCard",
@@ -585,9 +708,10 @@ struct FrontendArchitectureTests {
         }
         #expect(!sidebarSource.contains("private enum SidebarSpacing"))
         #expect(!sidebarSource.contains("private enum LifecycleSpacing"))
+        #expect(ScholiumMetrics.Library.sourceStateVerticalInset == 16)
     }
 
-    @Test("Attention search lives in the standard auxiliary window without custom chrome")
+    @Test("Attention search lives in the transient Workspace popover without custom close chrome")
     func attentionSearchOwnershipContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -612,21 +736,27 @@ struct FrontendArchitectureTests {
 
         #expect(attentionSource.contains("TextField(\"Search Attention\""))
         #expect(attentionSource.contains("scholium.attentionSearch"))
-        #expect(attentionSource.contains(".preferredColorScheme(session.preferredColorScheme)"))
+        #expect(attentionSource.contains("content.popover("))
+        #expect(attentionSource.contains("AttentionPopoverContent(session: session)"))
+        #expect(attentionSource.contains("session.dismiss()"))
         #expect(!attentionSource.contains(".searchable("))
         #expect(!attentionSource.contains("placement: .toolbar"))
-        #expect(appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
-        #expect(!appSource.contains("UtilityWindow(\"Attention\""))
+        #expect(appSource.contains("lazy var attentionPopoverSession"))
+        #expect(!appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
+        #expect(!appSource.contains("AttentionWindowSession"))
         #expect(!attentionSource.contains("Button(\"Close\""))
         for requiredPreview in [
-            "Sidebar D-120 — 300 pt",
-            "Sidebar D-120 — Filter + Long CJK",
-            "Sidebar D-120 — RTL + Large Text",
-            "Attention D-120 — Ready",
-            "Attention D-120 — Loading",
-            "Attention D-120 — Empty",
-            "Attention D-120 — Stale",
-            "Attention D-120 — Error",
+            "Sidebar D-127 — Three Attention Items",
+            "Sidebar D-127 — One Attention Item",
+            "Sidebar D-127 — Zero Attention Items",
+            "Sidebar D-123 — Short Height",
+            "Sidebar D-123 — Filter + Long CJK",
+            "Sidebar D-123 — RTL + Large Text",
+            "Attention D-129 — Ready",
+            "Attention D-129 — Loading",
+            "Attention D-129 — Empty",
+            "Attention D-129 — Stale",
+            "Attention D-129 — Error",
         ] {
             #expect(previewSource.contains(requiredPreview))
         }
@@ -643,6 +773,12 @@ struct FrontendArchitectureTests {
         let componentsSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumApparatusComponents.swift"
+            ),
+            encoding: .utf8
+        )
+        let sharedComponentsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
             ),
             encoding: .utf8
         )
@@ -686,7 +822,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.contentInset == 28)
         #expect(
             ScholiumMetrics.Apparatus.contentInset
-                != ScholiumMetrics.Library.contentInset
+                == ScholiumMetrics.Library.contentInset
         )
         #expect(
             ScholiumMetrics.Apparatus.firstSectionSpacing
@@ -724,7 +860,8 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains("struct ScholiumApparatusFactGrid"))
         #expect(componentsSource.contains("struct ScholiumApparatusActionRowContent"))
         #expect(componentsSource.contains("struct ScholiumApparatusStateView"))
-        #expect(componentsSource.contains("struct ScholiumApparatusQuietRowButtonStyle"))
+        #expect(!componentsSource.contains("struct ScholiumApparatusQuietRowButtonStyle"))
+        #expect(sharedComponentsSource.contains("struct ScholiumQuietRowButtonStyle"))
         #expect(componentsSource.contains("struct ScholiumApparatusSectionHeaderButton"))
         #expect(componentsSource.contains("struct ScholiumInspectorModeIndex"))
         #expect(componentsSource.contains("struct ScholiumConnectionGlyph"))
@@ -735,7 +872,7 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains(
             "idealWidth: ScholiumMetrics.Apparatus.factValueMinimumWidth"
         ))
-        #expect(componentsSource.contains("configuration.isPressed"))
+        #expect(sharedComponentsSource.contains("configuration.isPressed"))
         #expect(componentsSource.contains(
             "ScholiumInterfaceTypography.apparatusBody.weight(.semibold)"
         ))
@@ -761,8 +898,9 @@ struct FrontendArchitectureTests {
         #expect(connectionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
         ))
+        #expect(connectionsSource.contains("Image(systemName: \"chevron.right\")"))
         #expect(connectionsSource.contains(
-            "Image(systemName: isExpanded ? \"chevron.down\" : \"chevron.forward\")"
+            "ScholiumMotion.disclosure(reduceMotion: reduceMotion)"
         ))
         #expect(connectionsSource.contains(
             "ScholiumInterfaceTypography.apparatusResearchContent"
@@ -798,6 +936,12 @@ struct FrontendArchitectureTests {
         #expect(researchSource.contains("actionLabel: \"Edit Properties\""))
         #expect(researchSource.contains("accessibilityIdentifier: \"scholium.about.edit\""))
         #expect(researchSource.contains(".accessibilityIdentifier(\"scholium.about\")"))
+        #expect(researchSource.contains("title: Text(\"Open in Zotero\")"))
+        #expect(researchSource.contains("systemImage: \"arrow.up.forward.app\""))
+        #expect(researchSource.contains(
+            ".accessibilityIdentifier(\"scholium.researchOverview.openInZotero\")"
+        ))
+        #expect(!researchSource.contains("ZOTERO SOURCE"))
         #expect(!researchSource.contains("Customize"))
         #expect(!researchSource.contains("prefix(5)"))
         #expect(!researchSource.contains("Scholarly Status"))
@@ -806,7 +950,8 @@ struct FrontendArchitectureTests {
         #expect(connectionsSource.contains("private var relationButton: some View"))
         #expect(connectionsSource.contains("pinnedViews: [.sectionHeaders]"))
         #expect(connectionsSource.contains("connectionGroupHeader("))
-        #expect(connectionsSource.contains("ScholiumColorRole.surfaceBackground.color"))
+        #expect(connectionsSource.contains(".scholiumSurface(.apparatus)"))
+        #expect(!connectionsSource.contains("ScholiumColorRole.surfaceBackground.color"))
         #expect(connectionsSource.contains("ConnectionRelationshipCluster"))
         #expect(connectionsSource.contains("relationGlyphColumnWidth"))
         #expect(connectionsSource.contains("relationPinnedGlyphTop"))
@@ -890,10 +1035,10 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains(".disabled(!isAvailable)"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
-        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Spacing.regionContentInset)
+        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
         #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Apparatus.contentInset)
-        #expect(ScholiumMetrics.Apparatus.contentInset != ScholiumMetrics.Library.contentInset)
+        #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumMetrics.Library.contentInset)
         #expect(ScholiumMetrics.Apparatus.sectionSpacing == ScholiumGrid.Apparatus.sectionGap)
         #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
@@ -1189,7 +1334,7 @@ struct FrontendArchitectureTests {
         #expect(controller.inspector.isVisible)
     }
 
-    @Test("Recommended Bibliography remains an isolated Library feature")
+    @Test("Recommended Bibliography is a Triptych apparatus outside the Library source region")
     func recommendedBibliographyOwnershipAndPlacement() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1216,13 +1361,25 @@ struct FrontendArchitectureTests {
         }
         #expect(controller.contains("final class RecommendedBibliographyController"))
         #expect(controller.contains("It owns no repository, skill package, YAML, or filesystem authority."))
-        #expect(!section.contains("Reading leads, not evidence."))
+        #expect(!section.contains("Triptych · Reading leads, not evidence"))
+        #expect(section.contains("Triptych Recommended Bibliography"))
+        #expect(section.contains("Image(systemName: \"chevron.forward\")"))
+        #expect(section.contains("controller.visibleCandidates.first"))
+        #expect(section.contains("ScholiumInterfaceTypography.bibliographyEmptyState"))
+        #expect(section.contains("ScholiumQuietRowButtonStyle("))
+        #expect(section.contains(".accessibilityValue(recommendationAccessibilityValue)"))
+        #expect(!section.contains(".accessibilityElement(children: .ignore)"))
+        #expect(!section.contains("arrow.up.right.square"))
+        #expect(!section.contains("ScrollView(.horizontal)"))
         #expect(section.contains("Update Recommendations"))
-        #expect(section.contains("Open in Zotero"))
+        #expect(!section.contains("Open in Zotero"))
+        #expect(!section.contains("openZoteroItem"))
         #expect(section.contains("Dismiss"))
         #expect(section.contains("Repair in Research Guidance"))
         #expect(section.contains("Recommended Bibliography"))
         #expect(!section.contains("SidebarLiteratureSection"))
+        #expect(ScholiumMetrics.Library.bibliographyTopInset == 12)
+        #expect(ScholiumMetrics.Library.bibliographyBottomInset == 16)
 
     }
 
@@ -1452,6 +1609,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Spacing.regionContentInset == 20)
         #expect(ScholiumGrid.Spacing.documentShellInsetCSSPixels == 32)
         #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
+        #expect(ScholiumGrid.Peripheral.contentInset == 28)
         #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
         #expect(ScholiumGrid.Dimension.libraryHierarchyRowHeight == 28)
         #expect(ScholiumGrid.Dimension.documentTabStripHeight == 40)
@@ -1459,7 +1617,8 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 
-        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Spacing.regionContentInset)
+        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
+        #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == ScholiumGrid.Dimension.libraryHierarchyRowHeight)
         #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
@@ -1669,40 +1828,40 @@ struct FrontendArchitectureTests {
         #expect(ScholiumInlineStatusKind.information.colorRole == .information)
         #expect(ScholiumColorVariable.allCases == [.accent, .paper])
         #expect(ScholiumColorVariables.editorialCopper[.accent] == 0xA94C22)
-        #expect(ScholiumColorVariables.editorialCopper[.paper] == 0xF8F0E2)
+        #expect(ScholiumColorVariables.editorialCopper[.paper] == 0xFEF8ED)
 
         let expectedLight: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0xFFF9F0,
-            .surfaceBackground: 0xF2EADC,
-            .navigationSurfaceBackground: 0xEBE5DC,
-            .apparatusSurfaceBackground: 0xF5EDE0,
-            .raisedSurfaceBackground: 0xE3DBCE,
-            .primaryText: 0x15110B,
-            .secondaryText: 0x423C31,
-            .mutedText: 0x5B5449,
-            .separator: 0xB7B0A3,
-            .accent: 0x9F4318,
+            .documentBackground: 0xFEF8ED,
+            .surfaceBackground: 0xF4EEE3,
+            .navigationSurfaceBackground: 0xECE8E1,
+            .apparatusSurfaceBackground: 0xF9F3E8,
+            .raisedSurfaceBackground: 0xDDD8CF,
+            .primaryText: 0x28241D,
+            .secondaryText: 0x4C473E,
+            .mutedText: 0x615C53,
+            .separator: 0xC5C0B5,
+            .accent: 0x9D4114,
             .accentHover: 0x812F02,
             .notificationHighlight: 0xAD7B3D,
             .information: 0x3D6379,
             .attention: 0x81520A,
             .destructive: 0x8D453E,
-            .confirmed: 0x40684E,
+            .confirmed: 0x3E664B,
             .agentAuthorship: 0x61577C,
             .connectionNeutral: 0x6F593F,
-            .connectionSupport: 0x326960,
+            .connectionSupport: 0x2F675E,
             .connectionIncompatible: 0x72516A,
         ]
         let expectedDark: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0x2F2920,
-            .surfaceBackground: 0x3F3A30,
+            .documentBackground: 0x2E2921,
+            .surfaceBackground: 0x3F3A31,
             .navigationSurfaceBackground: 0x383530,
-            .apparatusSurfaceBackground: 0x433E35,
-            .raisedSurfaceBackground: 0x4E483E,
+            .apparatusSurfaceBackground: 0x332E26,
+            .raisedSurfaceBackground: 0x4D483F,
             .primaryText: 0xF0EAE1,
-            .secondaryText: 0xD1CABC,
-            .mutedText: 0xBFB8AB,
-            .separator: 0x7D766A,
+            .secondaryText: 0xD0CABF,
+            .mutedText: 0xBEB8AD,
+            .separator: 0x7C776D,
             .accent: 0xFFA17B,
             .accentHover: 0xFEAE8E,
             .notificationHighlight: 0xDAA668,
@@ -1716,15 +1875,15 @@ struct FrontendArchitectureTests {
             .connectionIncompatible: 0xD2ADC8,
         ]
         let expectedIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0xFFF9F0,
-            .surfaceBackground: 0xF2EADC,
-            .navigationSurfaceBackground: 0xEBE5DC,
-            .apparatusSurfaceBackground: 0xF5EDE0,
-            .raisedSurfaceBackground: 0xE3DBCE,
-            .primaryText: 0x15110B,
-            .secondaryText: 0x423C31,
-            .mutedText: 0x494338,
-            .separator: 0x8C8579,
+            .documentBackground: 0xFEF8ED,
+            .surfaceBackground: 0xF4EEE3,
+            .navigationSurfaceBackground: 0xECE8E1,
+            .apparatusSurfaceBackground: 0xF9F3E8,
+            .raisedSurfaceBackground: 0xDDD8CF,
+            .primaryText: 0x28241D,
+            .secondaryText: 0x454138,
+            .mutedText: 0x474239,
+            .separator: 0x8B857C,
             .accent: 0x6E2B0A,
             .accentHover: 0x501A01,
             .notificationHighlight: 0x95631E,
@@ -1738,15 +1897,15 @@ struct FrontendArchitectureTests {
             .connectionIncompatible: 0x4A2C43,
         ]
         let expectedIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0x2F2920,
-            .surfaceBackground: 0x3F3A30,
+            .documentBackground: 0x2E2921,
+            .surfaceBackground: 0x3F3A31,
             .navigationSurfaceBackground: 0x383530,
-            .apparatusSurfaceBackground: 0x433E35,
-            .raisedSurfaceBackground: 0x4E483E,
+            .apparatusSurfaceBackground: 0x332E26,
+            .raisedSurfaceBackground: 0x4D483F,
             .primaryText: 0xF0EAE1,
-            .secondaryText: 0xEBE4D6,
-            .mutedText: 0xEBE4D6,
-            .separator: 0xA59D91,
+            .secondaryText: 0xEAE4D9,
+            .mutedText: 0xEAE4D9,
+            .separator: 0xA39E94,
             .accent: 0xFEDCCF,
             .accentHover: 0xFDDED2,
             .notificationHighlight: 0xF6BF7E,
@@ -1757,7 +1916,7 @@ struct FrontendArchitectureTests {
             .agentAuthorship: 0xE6E0FD,
             .connectionNeutral: 0xFAE0C2,
             .connectionSupport: 0xB6F0E5,
-            .connectionIncompatible: 0xFFDBF5,
+            .connectionIncompatible: 0xFED7F4,
         ]
 
         for palette in [
@@ -2292,7 +2451,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumColorRole.connectionSupport.resolvedRGBValue(
             for: aqua,
             increasedContrast: false
-        ) == 0x326960)
+        ) == 0x2F675E)
         #expect(ScholiumColorRole.connectionSupport.resolvedRGBValue(
             for: darkAqua,
             increasedContrast: false
@@ -2321,13 +2480,13 @@ struct FrontendArchitectureTests {
         #expect(ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
             for: darkAqua,
             increasedContrast: true
-        ) == 0xFFDBF5)
+        ) == 0xFED7F4)
 
         #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#01423a"))
         #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#4a2c43"))
         #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#b6f0e5"))
-        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#ffdbf5"))
-        for value in ["#01423a", "#4a2c43", "#b6f0e5", "#ffdbf5"] {
+        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#fed7f4"))
+        for value in ["#01423a", "#4a2c43", "#b6f0e5", "#fed7f4"] {
             #expect(css.contains(value))
         }
     }

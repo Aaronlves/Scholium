@@ -6,7 +6,6 @@ struct NoteLifecycleActions {
     let duplicate: @MainActor (NoteLifecycleTarget, String) async throws -> Void
     let move: @MainActor (NoteLifecycleTarget, String) async throws -> Void
     let putBack: @MainActor (String) async throws -> Void
-    let classify: @MainActor (String, WorkspaceVaultSlot, String) async throws -> Void
 }
 
 struct NoteLifecycleView: View {
@@ -16,7 +15,6 @@ struct NoteLifecycleView: View {
     let actions: NoteLifecycleActions
 
     @State private var destination = ""
-    @State private var classificationSlot: WorkspaceVaultSlot = .paperAnalysis
     @State private var isWorking = false
     @State private var errorMessage: String?
 
@@ -27,20 +25,6 @@ struct NoteLifecycleView: View {
                     Label(sheetTitle, systemImage: symbol)
                         .font(.title2.weight(.semibold))
                     Spacer()
-                }
-
-                if case .classify = request {
-                    adaptiveField(
-                        "Destination",
-                        wide: {
-                            destinationPicker
-                                .frame(minWidth: 300)
-                        },
-                        compact: {
-                            destinationPicker
-                                .frame(maxWidth: .infinity)
-                        }
-                    )
                 }
 
                 if case .putBack = request {
@@ -128,22 +112,11 @@ struct NoteLifecycleView: View {
         }
     }
 
-    private var destinationPicker: some View {
-        Picker("Destination", selection: $classificationSlot) {
-            ForEach(WorkspaceVaultSlot.allCases) { slot in
-                Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
-            }
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-    }
-
     private var sheetTitle: String {
         switch request {
         case .duplicate: "Duplicate Note"
         case .move: "Move or Rename Note"
         case .putBack: "Put Back Note"
-        case .classify: "Classify Imported Note"
         }
     }
 
@@ -152,7 +125,6 @@ struct NoteLifecycleView: View {
         case .duplicate: "Duplicate"
         case .move: "Move"
         case .putBack: "Put Back"
-        case .classify: "Classify"
         }
     }
 
@@ -161,7 +133,6 @@ struct NoteLifecycleView: View {
         case .duplicate: "plus.square.on.square"
         case .move: "folder"
         case .putBack: "arrow.uturn.backward"
-        case .classify: "tray.and.arrow.down"
         }
     }
 
@@ -173,8 +144,6 @@ struct NoteLifecycleView: View {
             "Moving or renaming preserves the note identity, Discussion, and Research Record."
         case .putBack:
             "Put Back returns this note to its exact original vault-relative location. Scholium never renames it or chooses another folder."
-        case .classify:
-            "Classification moves the imported copy from Unclassified into the selected Triptych vault. The original external file remains unchanged."
         }
     }
 
@@ -187,8 +156,6 @@ struct NoteLifecycleView: View {
             destination = target.relativePath
         case .putBack(let path):
             destination = actions.putBackDestination(path) ?? ""
-        case .classify(let path):
-            destination = path
         }
     }
 
@@ -203,8 +170,6 @@ struct NoteLifecycleView: View {
                     try await actions.move(source, destination)
                 case .putBack(let source):
                     try await actions.putBack(source)
-                case .classify(let source):
-                    try await actions.classify(source, classificationSlot, destination)
                 }
                 dismiss()
             } catch {

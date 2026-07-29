@@ -81,6 +81,16 @@ struct DiscoveryLocationRequest: Equatable, Sendable {
     let id: UUID
     let workspaceSlot: WorkspaceVaultSlot
     let location: NoteLocationScope
+    let presentation: DiscoveryLocationRequestPresentation
+}
+
+enum DiscoveryLocationRequestPresentation: Equatable, Sendable {
+    /// No trustworthy committed Source List is available for the requested
+    /// projection, so the Location page must expose its loading/error states.
+    case contentLoading
+    /// Ordinary Scope/Location navigation stages a complete target while the
+    /// last committed pair remains visible, then replaces it atomically.
+    case stagedReplacement
 }
 
 /// Per-window owner for Library and Search presentation state. Document tabs
@@ -252,15 +262,17 @@ final class DiscoveryController: ObservableObject {
     @discardableResult
     func beginLocationRequest(
         workspaceSlot: WorkspaceVaultSlot,
-        location: NoteLocationScope
+        location: NoteLocationScope,
+        presentation: DiscoveryLocationRequestPresentation = .contentLoading
     ) -> DiscoveryLocationRequest {
         let request = DiscoveryLocationRequest(
             id: UUID(),
             workspaceSlot: workspaceSlot,
-            location: location
+            location: location,
+            presentation: presentation
         )
         activeLocationRequest = request
-        library.locationIsLoading = true
+        library.locationIsLoading = presentation == .contentLoading
         library.locationError = nil
         return request
     }
@@ -283,7 +295,7 @@ final class DiscoveryController: ObservableObject {
         guard isCurrent(request) else { return }
         activeLocationRequest = nil
         library.locationIsLoading = false
-        library.locationError = message
+        library.locationError = request.presentation == .contentLoading ? message : nil
     }
 
     func replaceFilters(_ filters: DiscoveryFilterState) {

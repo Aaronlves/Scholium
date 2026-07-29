@@ -410,8 +410,6 @@ public struct NoteIdentityReconciliation: Codable, Hashable, Sendable {
 
 public enum TriptychControlError: LocalizedError, Sendable {
     case invalidManifest
-    case unsupportedImport(String)
-    case invalidUnclassifiedPath(String)
     case invalidIdentityCandidate(UUID)
     case identityPathAlreadyAssigned(String)
     case identityRebindingNotFound(UUID)
@@ -420,10 +418,6 @@ public enum TriptychControlError: LocalizedError, Sendable {
         switch self {
         case .invalidManifest:
             return "The Triptych manifest is missing or does not match the selected vaults."
-        case .unsupportedImport(let path):
-            return "Only regular Markdown files can be imported: \(path)"
-        case .invalidUnclassifiedPath(let path):
-            return "Invalid Unclassified Markdown path: \(path)"
         case .invalidIdentityCandidate(let id):
             return "The selected note identity is no longer a valid candidate: \(id.uuidString)"
         case .identityPathAlreadyAssigned(let path):

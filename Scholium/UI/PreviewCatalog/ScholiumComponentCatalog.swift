@@ -162,19 +162,20 @@ private struct LifecycleDestinationCatalog: View {
 
     private func item(path: String, title: String) -> LifecycleLocationItem {
         let escapedTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
-        let document = NoteDocument(
+        let note = WindowDocumentLocation.syntheticPreview(
             relativePath: path,
-            rawContent: "---\ntitle: \"\(escapedTitle)\"\n---\n"
+            rawContent: "---\ntitle: \"\(escapedTitle)\"\n---\n",
+            vaultRole: .topicKnowledge
         )
         return LifecycleLocationItem(
-            note: .unclassified(document),
-            revision: document.fingerprint,
+            note: note,
+            revision: note.document.fingerprint,
             noteID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         )
     }
 }
 
-/// D-120 Sidebar acceptance board. This is the production `SidebarView` with
+/// D-127 Sidebar acceptance board. This is the production `SidebarView` with
 /// disposable in-memory projections, so pinned Sections, disclosure, filters,
 /// Location behavior, selection, typography, and accessibility are not
 /// represented by a separate mock layout.
@@ -187,15 +188,19 @@ private struct SidebarCutoverCatalog: View {
         case loading
         case error
         case rightToLeftLargeText
+        case attentionZero
+        case attentionOne
     }
 
     let scenario: Scenario
+    let height: CGFloat
     private let vaultID = UUID(uuidString: "00000000-0000-0000-0000-000000000120")!
     @StateObject private var controller: DiscoveryController
     @StateObject private var bibliography: RecommendedBibliographyController
 
-    init(scenario: Scenario) {
+    init(scenario: Scenario, height: CGFloat = 680) {
         self.scenario = scenario
+        self.height = height
         var library = DiscoveryLibraryState()
         if scenario == .filteredLongCJK { library.filters.needsAttention = true }
         if scenario == .loading { library.locationIsLoading = true }
@@ -216,7 +221,7 @@ private struct SidebarCutoverCatalog: View {
 
     var body: some View {
         SidebarView(controller: controller, context: context)
-            .frame(width: 300, height: 680, alignment: .topLeading)
+            .frame(width: 300, height: height, alignment: .topLeading)
             .environment(
                 \.layoutDirection,
                 scenario == .rightToLeftLargeText ? .rightToLeft : .leftToRight
@@ -232,7 +237,10 @@ private struct SidebarCutoverCatalog: View {
             triptychName: scenario == .filteredLongCJK
                 ? "Dissertation · 规范理由与注意"
                 : "Dissertation",
-            attentionItems: attentionItems,
+            attentionCounts: previewAttentionCounts,
+            attentionError: scenario == .error
+                ? "The Attention projection is temporarily unavailable."
+                : nil,
             filteredNotes: notes,
             allNotes: notes,
             folders: folders,
@@ -257,8 +265,10 @@ private struct SidebarCutoverCatalog: View {
             propertyValues: [:],
             resolvedIdentityPaths: Set(notes.map(\.relativePath)),
             bibliographyController: bibliography,
+            attentionPopoverSession: nil,
             notesAreOrdered: { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending },
             openAttention: {},
+            retryAttention: {},
             selectLocationScope: { location in
                 controller.synchronizeLibrarySelection(
                     workspaceSlot: controller.library.workspaceSlot,
@@ -283,9 +293,7 @@ private struct SidebarCutoverCatalog: View {
             setAside: { _ in },
             moveToTrash: { _ in },
             deletePermanently: { _ in },
-            classify: { _, _, _ in },
             openRecommendedAnalysis: { _ in },
-            openRecommendedZoteroItem: { _ in },
             copyRecommendedBibliographyText: { _ in },
             repairRecommendedBibliographyMethod: {},
             revealCurrentVault: {},
@@ -325,35 +333,34 @@ private struct SidebarCutoverCatalog: View {
         ]
     }
 
-    private var attentionItems: [AttentionQueueItem] {
-        (0..<7).map { index in
-            AttentionQueueItem(
-                kind: index.isMultiple(of: 2) ? .possibleOrphan : .malformedMetadata,
-                severity: .warning,
-                note: VaultNoteReference(
-                    vaultID: vaultID,
-                    vaultName: "Analyses",
-                    vaultRole: .sourceCorpus,
-                    relativePath: "papers/Conceptual architecture/Current chapter/QA \(index).md"
-                ),
-                message: "Disposable Preview Catalog issue \(index + 1)."
-            )
+    private var previewAttentionCounts: AttentionScopeCounts? {
+        guard scenario != .loading, scenario != .error else { return nil }
+        let selectedCount = switch scenario {
+        case .attentionZero: 0
+        case .attentionOne: 1
+        default: 3
         }
+        return AttentionScopeCounts(values: [
+            .paperAnalysis: selectedCount,
+            .topicKnowledge: 2,
+            .output: 0,
+        ])
     }
 
     private func note(_ path: String, title: String) -> WindowDocumentLocation {
         let escapedTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
-        return .unclassified(NoteDocument(
+        return .syntheticPreview(
             relativePath: path,
-            rawContent: "---\ntitle: \"\(escapedTitle)\"\n---\n"
-        ))
+            rawContent: "---\ntitle: \"\(escapedTitle)\"\n---\n",
+            vaultRole: .sourceCorpus
+        )
     }
 }
 
 /// Native Attention acceptance board using the exact production task row and
-/// the same standard-window geometry. It keeps deterministic state variants
+/// the same transient-popover geometry. It keeps deterministic state variants
 /// available without opening a research Workspace or reconstructing source.
-private struct AttentionWindowCatalog: View {
+private struct AttentionPopoverCatalog: View {
     enum Scenario: Equatable {
         case ready
         case loading
@@ -370,6 +377,8 @@ private struct AttentionWindowCatalog: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("Attention")
+                    .font(ScholiumInterfaceTypography.sectionTitle)
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Analyses").font(ScholiumInterfaceTypography.rowTitle)
@@ -409,7 +418,10 @@ private struct AttentionWindowCatalog: View {
             Divider()
             content
         }
-        .frame(width: 420, height: 560)
+        .frame(
+            width: ScholiumMetrics.Attention.popoverWidth,
+            height: ScholiumMetrics.Attention.popoverHeight
+        )
         .scholiumSurface(.denseEvidence)
     }
 
@@ -720,9 +732,10 @@ private struct InspectorConvergenceCatalog: View {
                 }
             }
         }
-        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+        .buttonStyle(ScholiumQuietRowButtonStyle(
             isHovering: false,
-            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight
+            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
+            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
         .accessibilityLabel("Needs Attention")
@@ -791,7 +804,7 @@ private struct InspectorConvergenceCatalog: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(ScholiumApparatusQuietRowButtonStyle(
+                    .buttonStyle(ScholiumQuietRowButtonStyle(
                         isHovering: false,
                         minimumHeight: ScholiumMetrics.Apparatus.relationRowMinimumHeight,
                         verticalInset: ScholiumMetrics.Apparatus.relationRowVerticalInset
@@ -911,7 +924,11 @@ private struct InspectorCatalogActionButton: View {
                 showsChevron: true
             )
         }
-        .buttonStyle(ScholiumApparatusQuietRowButtonStyle(isHovering: isHovering))
+        .buttonStyle(ScholiumQuietRowButtonStyle(
+            isHovering: isHovering,
+            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
+            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
+        ))
         .onHover { isHovering = $0 }
     }
 }
@@ -1307,49 +1324,61 @@ private struct ScholarlyEditorialWorkspaceSlice: View {
         .environment(\.locale, Locale(identifier: "zh-Hans"))
 }
 
-#Preview("Sidebar D-120 — 300 pt") {
+#Preview("Sidebar D-127 — Three Attention Items") {
     SidebarCutoverCatalog(scenario: .standard)
 }
 
-#Preview("Sidebar D-120 — Filter + Long CJK") {
+#Preview("Sidebar D-127 — One Attention Item") {
+    SidebarCutoverCatalog(scenario: .attentionOne)
+}
+
+#Preview("Sidebar D-127 — Zero Attention Items") {
+    SidebarCutoverCatalog(scenario: .attentionZero)
+}
+
+#Preview("Sidebar D-123 — Short Height") {
+    SidebarCutoverCatalog(scenario: .standard, height: 460)
+}
+
+#Preview("Sidebar D-123 — Filter + Long CJK") {
     SidebarCutoverCatalog(scenario: .filteredLongCJK)
         .environment(\.locale, Locale(identifier: "zh-Hans"))
 }
 
-#Preview("Sidebar D-120 — Empty") {
+#Preview("Sidebar D-123 — Empty") {
     SidebarCutoverCatalog(scenario: .empty)
 }
 
-#Preview("Sidebar D-120 — Loading") {
+#Preview("Sidebar D-123 — Loading") {
     SidebarCutoverCatalog(scenario: .loading)
 }
 
-#Preview("Sidebar D-120 — Error") {
+#Preview("Sidebar D-123 — Error") {
     SidebarCutoverCatalog(scenario: .error)
 }
 
-#Preview("Sidebar D-120 — RTL + Large Text") {
+#Preview("Sidebar D-123 — RTL + Large Text") {
     SidebarCutoverCatalog(scenario: .rightToLeftLargeText)
 }
 
-#Preview("Attention D-120 — Ready") {
-    AttentionWindowCatalog(scenario: .ready)
+#Preview("Attention D-129 — Ready") {
+    AttentionPopoverCatalog(scenario: .ready)
 }
 
-#Preview("Attention D-120 — Loading") {
-    AttentionWindowCatalog(scenario: .loading)
+#Preview("Attention D-129 — Loading") {
+    AttentionPopoverCatalog(scenario: .loading)
 }
 
-#Preview("Attention D-120 — Empty") {
-    AttentionWindowCatalog(scenario: .empty)
+#Preview("Attention D-129 — Empty") {
+    AttentionPopoverCatalog(scenario: .empty)
 }
 
-#Preview("Attention D-120 — Stale") {
-    AttentionWindowCatalog(scenario: .stale)
+#Preview("Attention D-129 — Stale") {
+    AttentionPopoverCatalog(scenario: .stale)
 }
 
-#Preview("Attention D-120 — Error") {
-    AttentionWindowCatalog(scenario: .error)
+#Preview("Attention D-129 — Error") {
+    AttentionPopoverCatalog(scenario: .error)
 }
 
 #Preview("Inspector D-114 — 320 pt") {

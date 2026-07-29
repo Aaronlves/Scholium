@@ -226,14 +226,20 @@ enum ScholiumInterfaceTypography {
     /// One scan rhythm for both folders and notes. Hierarchy is expressed by
     /// weight, color, indentation, and symbols rather than a size change.
     static let libraryHierarchy = Font.callout
-    /// Library note names and the compact document identity are navigation
-    /// language. The scrolling document title remains editorial serif.
+    /// Library Folders and unselected Notes share a regular scan weight.
+    /// Selection alone adds semibold emphasis without changing point size.
+    static let libraryFolderTitle = libraryHierarchy
     static let libraryNoteTitle = libraryHierarchy
+    static let librarySelectedNoteTitle = libraryNoteTitle.weight(.semibold)
+    /// The compact native-toolbar identity is positional metadata. The
+    /// scrolling document title remains the primary editorial identity.
+    static let workspaceToolbarIdentity = Font.body
     static let noteTitle = Font.body
     static let literatureCitation = ScholiumTypography.swiftUIReadingFont(
         size: 12,
         relativeTo: .body
     )
+    static let bibliographyPreview = literatureCitation
     static let apparatusTitle = ScholiumTypography.swiftUIReadingFont(
         size: 17,
         relativeTo: .headline,
@@ -242,7 +248,11 @@ enum ScholiumInterfaceTypography {
     static let sectionTitle = Font.headline.weight(.medium)
     static let rowTitle = libraryHierarchy.weight(.medium)
     static let metadata = Font.caption.weight(.medium)
+    static let bibliographyEmptyState = metadata
     static let editorialLabel = Font.caption2.weight(.semibold)
+    /// The LocationPicker is the primary title of its stable Library header.
+    /// It uses the macOS default interface size without acquiring a bezel.
+    static let libraryLocation = Font.system(size: 13, weight: .semibold)
 
     /// Inspector chrome follows the compact type scale frozen in the HTML
     /// study. Selection changes weight, not size, so switching modes does not

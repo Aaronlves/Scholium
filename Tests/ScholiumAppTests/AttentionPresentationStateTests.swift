@@ -6,6 +6,20 @@ import Testing
 @Suite("Attention presentation state")
 @MainActor
 struct AttentionPresentationStateTests {
+    @Test("Sidebar Attention projects exact counts without toolbar routing state")
+    func scopeCountProjection() {
+        let counts = AttentionScopeCounts(values: [
+            .paperAnalysis: 2,
+            .topicKnowledge: 0,
+            .output: 1,
+        ])
+
+        #expect(counts.count(for: .paperAnalysis) == 2)
+        #expect(counts.count(for: .topicKnowledge) == 0)
+        #expect(counts.count(for: .output) == 1)
+        #expect(AttentionScopeCounts(values: [:]).count(for: .paperAnalysis) == 0)
+    }
+
     @Test("The three visual groups cover each existing derived kind exactly once")
     func groupsAreCompleteAndExclusive() {
         let grouped = AttentionIssueGroup.allCases.flatMap(\.kinds)
@@ -35,6 +49,24 @@ struct AttentionPresentationStateTests {
         #expect(state.workspaceSlot == .output)
         #expect(state.noteScope == nil)
         #expect(state.selectedItemID == nil)
+    }
+
+    @Test("A Workspace-window switch resets transient filtering and selection")
+    func workspaceSwitchResetsTransientState() {
+        let state = AttentionPresentationState()
+        let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Topic.md")
+        state.present(workspaceSlot: .topicKnowledge, noteScope: note)
+        state.filter.query = "orphan"
+        state.filter.kind = .possibleOrphan
+        state.select("task-1")
+
+        state.resetForWorkspaceSwitch()
+
+        #expect(state.filter.query.isEmpty)
+        #expect(state.filter.kind == nil)
+        #expect(state.selectedItemID == nil)
+        #expect(state.noteScope == nil)
+        #expect(state.workspaceSlot == .topicKnowledge)
     }
 
     @Test("Removed tasks select next, then previous, then the filter control")

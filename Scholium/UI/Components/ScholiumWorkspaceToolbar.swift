@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Foundation
 import ScholiumContracts
 import SwiftUI
 
@@ -338,8 +339,8 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
                 Text(note.title ?? note.displayName)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .font(ScholiumInterfaceTypography.noteTitle)
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .font(ScholiumInterfaceTypography.workspaceToolbarIdentity)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .help(note.title ?? note.displayName)
                     .accessibilityIdentifier("scholium.documentNoteName")
             }
@@ -424,10 +425,9 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
             return appState.documentController.session(for: descriptor)
         }
         guard let note = appState.currentNote else { return nil }
-        let target: DocumentEditingTarget = appState.noteLocationScope == .unclassified
-            ? .unclassified(relativePath: note.relativePath)
-            : .unavailable(relativePath: note.relativePath)
-        return appState.documentController.session(for: target)
+        return appState.documentController.session(
+            for: .unavailable(relativePath: note.relativePath)
+        )
     }
 }
 

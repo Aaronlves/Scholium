@@ -15,8 +15,8 @@ public enum EvidentialLayer: String, Codable, CaseIterable, Sendable {
 /// A vault-qualified reference used by catalog, Attention, and navigation.
 ///
 /// This is an identity and routing value, not an evidence assertion.
-/// `stableNoteID` is optional because unclassified and malformed notes may
-/// not yet have a reconciled portable identity.
+/// `stableNoteID` is optional because malformed or externally changed notes
+/// may not yet have a reconciled portable identity.
 public struct VaultNoteReference: Codable, Hashable, Identifiable, Sendable {
     public var id: String { "\(vaultID.uuidString):\(relativePath)" }
     public let vaultID: UUID

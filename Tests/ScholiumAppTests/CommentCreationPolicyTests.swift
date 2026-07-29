@@ -7,10 +7,10 @@ import Testing
 struct CommentCreationPolicyTests {
     @Test("A passage parameter cannot be created without a selection")
     func missingSelectionHasNoAnchor() {
-        let note = WindowDocumentLocation.unclassified(NoteDocument(
+        let note = WindowDocumentLocation.syntheticPreview(
             relativePath: "Analysis.md",
             rawContent: "# Analysis\n\nA bounded claim.\n"
-        ))
+        )
 
         #expect(ResearchFunctionSelectionCapture.anchor(
             for: nil,
@@ -24,10 +24,10 @@ struct CommentCreationPolicyTests {
         let source = "# Analysis\n\nA bounded claim.\n"
         let selectedText = "bounded claim"
         let selectedRange = (source as NSString).range(of: selectedText)
-        let note = WindowDocumentLocation.unclassified(NoteDocument(
+        let note = WindowDocumentLocation.syntheticPreview(
             relativePath: "Analysis.md",
             rawContent: source
-        ))
+        )
         let selection = MarkdownReviewSelection(
             startLine: 3,
             endLine: 3,
@@ -50,10 +50,10 @@ struct CommentCreationPolicyTests {
 
     @Test("An ambiguous rendered selection does not create an Action anchor")
     func ambiguousRenderedSelectionHasNoAnchor() {
-        let note = WindowDocumentLocation.unclassified(NoteDocument(
+        let note = WindowDocumentLocation.syntheticPreview(
             relativePath: "Topic.md",
             rawContent: "# Topic\n\nA claim.\n\nA claim.\n"
-        ))
+        )
         let selection = MarkdownReviewSelection(
             startLine: 3,
             endLine: 5,

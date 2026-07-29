@@ -47,6 +47,7 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── DocumentTransitionCoordinator
             │   ├── DiscoveryController
             │   ├── AttentionPresentationState
+            │   ├── AttentionPopoverSession (exact Workspace adapter)
             │   ├── DocumentTabController
             │   ├── DocumentController
             │   │   └── DocumentSessionStore
@@ -56,8 +57,6 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── WindowPresentationRouter
             │   └── typed WindowIntent routing
             └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
-        └── SwiftUI Attention Window (one application-wide nonrestored Scene)
-            └── AttentionWindowSession (exact active-Workspace bridge only)
 
 ScholiumApplicationDelegate
 └── ScholiumWindowLifecycleRegistry (injected route readiness and flushers)
@@ -163,7 +162,12 @@ menu send a target folder value to `WindowModel`, which flushes the current
 editor and calls the Application-owned untitled-note use case. Application
 atomically advances through occupied default paths; the view never scans or
 writes the vault and no presentation route participates. Folder disclosure and
-subtree expansion remain `DiscoveryController` state. Core enumerates real
+subtree expansion remain `DiscoveryController` state. A disclosure commits its
+flat visible-row projection without a list-wide layout animation; the row's
+single chevron alone consumes the shared, Reduce-Motion-aware
+`ScholiumMotion.disclosure` recipe also used by Connect. This prevents departing
+Note labels from interpolating through their owning Folder while retaining one
+stable row identity and one controller-owned disclosure set. Core enumerates real
 directories so empty classifications survive projection, but folder paths never
 enter the portable identity store. Direct New Folder creation atomically claims
 one default directory name. Empty-folder creation and empty-folder moves publish
@@ -246,9 +250,13 @@ restoration, and toolbar reconciliation but never reasserts it or stores width.
 
 The Inspector has exactly three current-note modes: Overview, Connect, and
 Actions. Overview presents a current-Note Attention summary whose one button
-routes to the shared Attention window, followed by role-aware About fields;
+routes to the exact Workspace's Attention popover, followed by role-aware About fields;
 About keeps selectable values and routes editing through its heading button.
-Zotero has no Inspector projection. Connect projects direct and
+For a current Analysis only, the window root normalizes its non-empty protected
+Zotero item key and supplies one immutable navigation value plus the existing
+`ZoteroBridge` presentation effect. About renders that value as one quiet
+**Open in Zotero** row without exposing the key, fetched metadata, matching, or
+confirmation. Connect projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source
 anchor as a named secondary action without a trailing glyph. Actions resolves
@@ -751,7 +759,7 @@ Recommended Bibliography follows a separate Triptych-library capability
 boundary:
 
 ```text
-RecommendedBibliographySection (fixed at Library bottom)
+SidebarRecommendedBibliographySection (fixed Sidebar utility outside Source List scroll)
         ↓ compact presentation values and closures
 RecommendedBibliographyController (one window)
         ↓ RecommendedBibliographyClient
@@ -772,7 +780,9 @@ evidence, and performs conservative duplicate discrimination without note or
 Zotero mutation. Core owns portable storage,
 package resolution, path safety, and matching inputs. The App owns goals,
 purpose, focus, stale-response rejection, refresh presentation, and compact
-rows. Prior results remain visible through refresh and failure.
+rows. Candidate rows route only to a matched Analysis or Dismiss; they no
+longer open Zotero directly. Prior results remain visible through refresh and
+failure.
 
 ## Source layout
 
@@ -823,7 +833,7 @@ dismissal uses the route identity, so a stale callback cannot dismiss a newer
 sheet. Route payloads carry note paths only as navigation projections; they do
 not own document sessions. Note creation is not a sheet route; lifecycle sheets
 remain only for operations that require researcher-supplied destinations or
-classification.
+researcher input.
 
 `ContentView` has one `.sheet(item:)`, one typed alert presentation, and one
 persistent `ScholiumWorkspaceSplitView` root for each configured workspace
@@ -858,20 +868,44 @@ document buffer, autosave, undo, conflict, or retained trash state. Its diff is
 disposable presentation over retained exact bytes, not a second writable source.
 Closing Research Record therefore cannot reveal or resize Research Inspector.
 
-Attention is one standard, nonrestored SwiftUI `Window` owned by the app Scene,
-not a sheet, popover, inline Library destination, utility panel, or always-on-top
-surface. The most recently focused Workspace supplies an exact coordinator
-activation callback plus its current immutable queue projection. Per-Workspace
+Attention is one native transient SwiftUI popover owned by each exact
+`WindowModel`, not an app-wide Scene, sheet, inline Library destination,
+utility panel, or always-on-top surface. Per-Workspace
 `AttentionPresentationState` owns only filter, selected item, selected Scope,
-and optional current-Note subset; it owns neither Scene visibility nor derived
-items. Sidebar entry opens the selected Scope, Inspector may add the active Note,
-and a Sidebar Scope change clears that Note subset. Inspect calls the exact
-Workspace coordinator, activates that window, and routes the note through its
-`WindowModel`; no global window search, notification, or model registry
-participates. Standard Scene/window chrome owns titlebar, close, resizing, and
-active state. Recommended Bibliography remains rendered at the fixed Library
-bottom; its current Analysis-locked Application preparation identity remains
-migration debt recorded in Implementation Status.
+and optional current-Note subset; `AttentionPopoverSession` adapts that state
+and the current immutable queue to the Sidebar, toolbar, and Inspector anchors
+without duplicating either. `AttentionScopeCounts` is a read-only projection of
+the same catalog and machine-local dismissal ledger. Sidebar consumes only the
+selected Scope's conditional alert; ScopeIndex labels never consume or expose
+the count, and zero contributes no row or gap. When Sidebar is collapsed, the one native toolbar
+controller consumes the same projection and installs exactly one compact signal
+only while any Scope is nonempty. Its typed action names an exact Scope without
+mutating Library Scope, Location, selection, or Document. A missing first
+catalog remains checking, and a failed first load presents Attention Unavailable
+with Retry rather than zero. Inspector may add the active Note, and a Sidebar
+Scope change clears that Note subset. SwiftUI's transient popover behavior owns
+outside-click and Escape dismissal; Inspect and Resynthesize dismiss before
+routing through the same exact `WindowModel`. The application-wide lifecycle
+registry records exact Workspace focus changes so the newly active Workspace
+resets query, kind, Note subset, and selected task without treating popover
+key-window changes or app deactivation as Workspace switches. No global window
+search, notification, model registry, detached Attention Scene, or NSWindow
+attachment participates. Recommended Bibliography is the fixed, intrinsic-height sibling
+below the Library Source List scroll. It shares the Sidebar's navigation
+surface and adds one structural boundary but owns no Scope, Location, selection,
+filter, sort, disclosure, or lifecycle state. Inspector alone consumes the
+document-adjacent apparatus surface. Its current Analysis-locked Application
+preparation identity remains migration debt recorded in Implementation Status.
+
+Ordinary Scope and Location navigation uses a
+`DiscoveryLocationRequest(.stagedReplacement)`. `DiscoveryController` retains
+the last committed Scope/Location pair until completion and still rejects late
+request identities. `WindowModel.currentWorkspaceVaultSnapshot` first consumes
+the immutable snapshot already published into `workspaceVaultSnapshotsByID`;
+the Application operation is only an initial-construction fallback. A complete
+target pair and Source List commit together, while staged failure retains the
+prior projection and reports through the existing toast path. Explicit refresh
+continues to use the content-loading/error presentation.
 
 Snapshot assembly derives Material Changed Since Use only from the latest
 completed Synthesize Action record for a Topic/Material pair whose
@@ -895,7 +929,9 @@ workspace refresh, Comment, Critique, availability, or run state. Its Overview,
 Connect, and Actions modes share the one native trailing split
 item and one per-window `ResearchInspectorMode`; legacy stored strings are
 normalized only while restoring that window. Mode changes and note/tab changes
-never reconstruct the retained Document host.
+never reconstruct the retained Document host. `ResearchOverviewPresentation`
+contains at most one normalized Zotero navigation key for the current Analysis;
+the view neither derives nor displays protected machine data.
 
 The public Action panel uses one typed `researchAction` sheet route carrying
 only a stable Target reference, Action ID, and presentation ID. The router owns
@@ -1278,8 +1314,8 @@ Checkpoint restore remains the only visible recovery mechanism.
 note. It carries vault-qualified identity, exact `NoteDocument`,
 descriptor-observed file metadata, a fingerprint-bound title projection, and
 graph counts. The app does not maintain a second mutable `Note` or YAML value
-model; the only app wrapper distinguishes a workspace snapshot from an
-Unclassified `NoteDocument` without copying either source.
+model; the app wrapper carries only the Application-owned workspace snapshot
+without copying its exact source.
 
 Contracts' `PropertyContract` catalog is the sole canonical vocabulary and
 ownership authority. It defines role-specific keys, value kinds, empty
@@ -1669,12 +1705,46 @@ contract in `Scholium/UI/Foundation` through `ScholiumColorVariables`,
 `ScholiumColorResolver`, derived `ScholiumColorRole`s, `ScholiumGrid`,
 `ScholiumMetrics`, `ScholiumMotion`, and `ScholiumInterfaceTypography`.
 
-Accent and Paper are the only configurable inputs. One resolver derives every
-appearance role, including distinct but closely related Navigation and
-Apparatus surfaces, for native and generated WebKit CSS. Matching `editor.css`
+Accent and Paper are the only configurable inputs. D-123's Paper is the exact
+Light Document anchor; one resolver derives every other appearance role for
+native and generated WebKit CSS. The complete Sidebar uses the Navigation
+surface; Inspector uses a distinct Apparatus role whose tone is deliberately
+much closer to Document than Navigation. Sticky Inspector headers and
+relationship-glyph occlusion reuse that exact Apparatus role rather than a
+floating-control surface. Matching `editor.css`
 fallbacks preserve deterministic first paint. Functional/status anchors stay
 private. Tests enforce the input boundary, mappings, parity, contrast, and
 relationship variants; no static appearance palette or JSON mirror exists.
+
+`ScholiumLibraryLocationPicker` owns the borderless native Location menu and
+its single indicator without owning Location state. ScopeIndex and ModeIndex
+pass their independent dimensions to `ScholiumEditorialIndexUnderline`, which
+owns only the shared semantic color and visibility recipe. The Debug Editorial
+Parchment acceptance board consumes these production components and resolved
+roles; it is not a second design-system source.
+
+The compact Recommended Bibliography component retains no explanatory subcopy
+or horizontal candidate list. Its one native Button owns the full fixed band,
+shows at most the first static citation preview, and opens the existing complete
+surface. `ScholiumQuietRowButtonStyle` supplies the same raised hover/press
+grammar used by Inspector summary/action rows without taking over each
+consumer's purpose-owned height or insets.
+`ScholiumMetrics.Library.bibliographyTopInset` and
+`bibliographyBottomInset` map its asymmetric vertical rhythm to the shared grid;
+the heading and accessibility group continue to carry Triptych-wide identity.
+`ScholiumInterfaceTypography` owns the Folder, unselected Note, selected Note,
+compact toolbar identity, bibliography preview, and bibliography empty-state
+roles; leaf views no longer restate their sizes or weights.
+
+`ScholiumGrid.Peripheral.contentInset` is the one 28pt outer page-edge source
+for Library and Inspector. `ScholiumMetrics.Library` and
+`ScholiumMetrics.Apparatus` map to it; their internal row, hierarchy, and section
+variables remain separate.
+
+`ScholiumLibrarySourceState` owns the common Library/Set Aside/Trash empty,
+loading, and error page inset. It maps horizontal content to the peripheral
+edge and vertical entry to `sourceStateVerticalInset`; it does not wrap
+populated OutlineRows or alter their denser row-surface inset.
 
 `ScholiumGrid` is the single native authority for the 4pt rhythm, bounded 2pt
 optical exception, semantic spacing, and component anchors. `ScholiumMetrics`

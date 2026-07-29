@@ -164,7 +164,6 @@ struct ArchitectureBoundaryTests {
             ("identity recovery coordinator", #"\bNoteIdentityRecoveryCoordinator\s*\("#),
             ("move coordinator", #"\bTriptychMoveCoordinator\s*\("#),
             ("permanent-deletion coordinator", #"\bNotePermanentDeletionCoordinator\s*\("#),
-            ("classification coordinator", #"\bUnclassifiedClassificationCoordinator\s*\("#),
             ("FSEvents watcher", #"\bFSEventStreamCreate\s*\("#),
             ("Zotero MCP server", #"\bZoteroMCPServer\s*\("#),
             ("Triptych storage path", "appendingPathComponent\\s*\\(\\s*\\\"Triptychs\\\""),
@@ -269,7 +268,7 @@ struct ArchitectureBoundaryTests {
         #expect(duplicateYAML.firstMatch(in: source, range: range) == nil)
         #expect(!source.contains("WorkspaceVaultProjectionService"))
         #expect(source.contains("case workspace(WorkspaceNoteSnapshot)"))
-        #expect(source.contains("case unclassified(NoteDocument)"))
+        #expect(!source.localizedCaseInsensitiveContains("unclassified"))
     }
 
     @Test("Document and property leaves receive narrow values and actions")

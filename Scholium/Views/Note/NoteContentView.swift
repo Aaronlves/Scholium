@@ -171,9 +171,7 @@ struct DocumentFeatureView: View {
                 DocumentSessionFallback(
                     note: note,
                     controller: controller,
-                    target: state.locationScope == .unclassified
-                        ? .unclassified(relativePath: note.relativePath)
-                        : .unavailable(relativePath: note.relativePath),
+                    target: .unavailable(relativePath: note.relativePath),
                     state: state,
                     actions: actions,
                     critiqueProvenanceContext: critiqueProvenanceContext
@@ -1010,7 +1008,7 @@ struct NoteContentView: View {
 
     private var previewTaskIdentity: String {
         let generation = state.workspaceCatalog?.graph?.generation ?? -1
-        return "\(state.currentVaultID?.uuidString ?? "unclassified"):\(noteFingerprint.sha256):\(generation):\(presentationMode.rawValue):\(hasUnsavedChanges)"
+        return "\(state.currentVaultID?.uuidString ?? "unavailable"):\(noteFingerprint.sha256):\(generation):\(presentationMode.rawValue):\(hasUnsavedChanges)"
     }
 
     @MainActor
@@ -1816,18 +1814,21 @@ private extension ResearchWriteScope {
 
 #Preview {
     let controller = DocumentController()
-    let note = WindowDocumentLocation.unclassified(NoteDocument(
+    let note = WindowDocumentLocation.syntheticPreview(
         relativePath: "topics/consciousness.md",
-        rawContent: "---\ntitle: Consciousness\n---\n\n# Consciousness\n\nThis is a test note."
-    ))
+        rawContent: "---\ntitle: Consciousness\n---\n\n# Consciousness\n\nThis is a test note.",
+        vaultRole: .topicKnowledge
+    )
     let state = DocumentFeatureState(
         notes: [note],
         selectedDocumentPath: note.relativePath,
         ordinarySearchScope: .triptych,
-        currentVaultID: nil,
-        vaultRole: .other,
-        locationScope: .unclassified,
-        noteIdentityByPath: [:],
+        currentVaultID: note.workspaceSnapshot?.id.vaultID,
+        vaultRole: .topicKnowledge,
+        locationScope: .workspace,
+        noteIdentityByPath: [
+            note.relativePath: note.workspaceSnapshot?.stableIdentity.resolvedID,
+        ].compactMapValues { $0 },
         documentRevisions: [note.relativePath: note.document.fingerprint],
         workspaceCatalog: nil,
         propertiesConfiguration: nil,

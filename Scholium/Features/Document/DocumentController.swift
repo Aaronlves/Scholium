@@ -10,17 +10,16 @@ struct WindowDocumentDescriptor: Hashable, Sendable {
 }
 
 /// The one selected document projection owned by a window. Workspace notes
-/// carry stable session identity; Unclassified and identity-recovery notes
-/// remain explicitly path-addressed without inventing a vault identity.
+/// carry stable session identity; identity-recovery notes remain explicitly
+/// path-addressed until their stable identity is available again.
 enum WindowSelectedDocument: Hashable, Sendable {
     case workspace(WindowDocumentDescriptor)
-    case unclassified(relativePath: String)
     case unavailable(vaultID: UUID, relativePath: String)
 
     var relativePath: String {
         switch self {
         case .workspace(let descriptor): descriptor.reference.relativePath
-        case .unclassified(let relativePath), .unavailable(_, let relativePath): relativePath
+        case .unavailable(_, let relativePath): relativePath
         }
     }
 
@@ -28,7 +27,6 @@ enum WindowSelectedDocument: Hashable, Sendable {
         switch self {
         case .workspace(let descriptor): descriptor.reference.vaultID
         case .unavailable(let vaultID, _): vaultID
-        case .unclassified: nil
         }
     }
 
@@ -43,11 +41,10 @@ enum WindowSelectedDocument: Hashable, Sendable {
 }
 
 /// Immutable delivery-layer address for one editor session. Workspace notes
-/// follow stable identity through renames; portable Unclassified documents
-/// remain path-addressed because they intentionally have no vault identity.
+/// follow stable identity through renames; unavailable documents retain only
+/// the path required for recovery presentation.
 enum DocumentEditingTarget: Hashable, Sendable {
     case workspace(DocumentSessionKey)
-    case unclassified(relativePath: String)
     case unavailable(relativePath: String)
 }
 
@@ -67,7 +64,6 @@ extension WindowSelectedDocument {
     var editingTarget: DocumentEditingTarget {
         switch self {
         case .workspace(let descriptor): .workspace(descriptor.sessionKey)
-        case .unclassified(let relativePath): .unclassified(relativePath: relativePath)
         case .unavailable(_, let relativePath): .unavailable(relativePath: relativePath)
         }
     }
@@ -233,8 +229,6 @@ final class DocumentController: ObservableObject {
         switch target {
         case .workspace(let key):
             stableTarget = "\(key.vaultID.uuidString.lowercased()):\(key.noteID.uuidString.lowercased())"
-        case .unclassified(let path):
-            stableTarget = "unclassified:\(path)"
         case .unavailable(let path):
             stableTarget = "unavailable:\(path)"
         }
@@ -272,27 +266,13 @@ final class DocumentController: ObservableObject {
         try await requireOperations().load(id)
     }
 
-    func loadUnclassified(relativePath: String) async throws -> NoteDocument {
-        try await requireOperations().loadUnclassified(relativePath: relativePath)
-    }
-
-    func unclassifiedDocuments() async throws -> [NoteDocument] {
-        try await requireOperations().unclassifiedDocuments()
-    }
-
-    func importUnclassifiedMarkdown(at sourceURL: URL) async throws -> URL {
-        try await requireOperations().importUnclassifiedMarkdown(at: sourceURL)
-    }
-
-    func saveUnclassified(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
+    func importMarkdown(
+        at sourceURL: URL,
+        intoVault vaultID: UUID
     ) async throws -> NoteDocument {
-        try await requireOperations().saveUnclassified(
-            relativePath: relativePath,
-            source: source,
-            expectedRevision: expectedRevision
+        try await requireOperations().importMarkdown(
+            at: sourceURL,
+            intoVault: vaultID
         )
     }
 
@@ -428,20 +408,6 @@ final class DocumentController: ObservableObject {
         try await requireOperations().recoverInterruptedTransactions()
     }
 
-    func classifyUnclassified(
-        _ relativePath: String,
-        into slot: WorkspaceVaultSlot,
-        destinationRelativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> UnclassifiedClassificationCommit {
-        try await requireOperations().classifyUnclassified(
-            relativePath,
-            into: slot,
-            destinationRelativePath: destinationRelativePath,
-            expectedRevision: expectedRevision
-        )
-    }
-
     @discardableResult
     func resolveIdentity(
         _ ambiguity: NoteIdentityAmbiguity,
@@ -513,14 +479,10 @@ final class DocumentController: ObservableObject {
                 target: .workspace(descriptor.sessionKey),
                 path: descriptor.reference.relativePath
             )
-        case .unclassified, .unavailable:
+        case .unavailable:
             _ = session(for: document.editingTarget)
         }
         refreshChromeProjection()
-    }
-
-    func selectUnclassifiedDocument(relativePath: String) {
-        selectDocument(.unclassified(relativePath: relativePath))
     }
 
     func selectUnavailableDocument(vaultID: UUID, relativePath: String) {
@@ -959,7 +921,7 @@ final class DocumentController: ObservableObject {
         switch selectedDocument.editingTarget {
         case .workspace(let key):
             return sessions.retainedSession(for: .workspace(key))
-        case .unclassified, .unavailable:
+        case .unavailable:
             return sessions.retainedSession(for: selectedDocument.editingTarget)
         }
     }
@@ -1024,7 +986,7 @@ final class DocumentController: ObservableObject {
                 ?? retainedReferences[key]?.relativePath
                 ?? snapshots[key]?.id.relativePath
                 ?? ""
-        case .unclassified(let relativePath), .unavailable(let relativePath):
+        case .unavailable(let relativePath):
             relativePath
         }
     }
@@ -1382,12 +1344,6 @@ final class DocumentController: ObservableObject {
                 changeSet: .source(source),
                 expectedRevision: expectedRevision
             ).document
-        case .unclassified(let relativePath):
-            return try await saveUnclassified(
-                relativePath: relativePath,
-                source: source,
-                expectedRevision: expectedRevision
-            )
         case .unavailable:
             throw DocumentControllerError.documentUnavailable
         }
@@ -1401,8 +1357,6 @@ final class DocumentController: ObservableObject {
             return try await load(
                 VaultQualifiedNoteID(vaultID: key.vaultID, relativePath: path)
             )
-        case .unclassified(let relativePath):
-            return try await loadUnclassified(relativePath: relativePath)
         case .unavailable:
             throw DocumentControllerError.documentUnavailable
         }

@@ -163,7 +163,7 @@ struct TransactionRecoveryView: View {
     }
 
     private func vaultName(_ vaultID: UUID?) -> String {
-        guard let vaultID else { return "Unclassified" }
+        guard let vaultID else { return "External file" }
         return vaultNames[vaultID] ?? "Vault \(vaultID.uuidString)"
     }
 
@@ -177,7 +177,6 @@ struct TransactionRecoveryView: View {
                 table: "Localizable",
                 bundle: .module
             )
-        case .unclassifiedClassification: "Classify Imported Note"
         case .permanentDeletion: "Permanent Deletion"
         }
     }
@@ -231,8 +230,6 @@ private struct RecoveryFileRow: View {
         case .movedFolder:
             String(localized: "Moved folder", table: "Localizable", bundle: .module)
         case .incomingLinkRewrite: "Incoming link rewrite"
-        case .classifiedSource: "Unclassified source"
-        case .classifiedDestination: "Classified destination"
         case .deletedNote: "Deleted note"
         case .associatedCritique: "Associated Critique"
         }

@@ -17,7 +17,7 @@ struct ScholiumColorVariables: Equatable, Sendable {
 
     static let editorialCopper = Self(
         accent: 0xA94C22,
-        paper: 0xF8F0E2
+        paper: 0xFEF8ED
     )
 
     subscript(variable: ScholiumColorVariable) -> UInt32 {
@@ -180,33 +180,34 @@ struct ScholiumColorResolver: Sendable {
         let contrastTarget = increasedContrast ? 7.0 : 4.5
         let paperChroma = isDark ? 0.018 : 0.028
 
-        let documentBackground = Self.tone(
-            paperSource,
-            lightness: isDark ? 0.285 : 0.985,
-            chromaLimit: paperChroma
-        )
+        // In Light appearance the approved Paper Variable is the illuminated
+        // document plane itself. Dark appearance remains a resolver output
+        // rather than a hard-coded inversion.
+        let documentBackground = isDark
+            ? Self.tone(paperSource, lightness: 0.285, chromaLimit: paperChroma)
+            : variables.paper
         let surfaceBackground = Self.tone(
             paperSource,
-            lightness: isDark ? 0.35 : 0.94,
+            lightness: isDark ? 0.35 : 0.952,
             chromaLimit: paperChroma
         )
-        // Both peripheral planes remain Paper-derived. Navigation is the more
-        // recessive and neutral plane; Apparatus sits slightly closer to the
-        // Document without becoming a second palette or configurable input.
+        // Both peripheral roles remain Paper-derived. Navigation owns the
+        // complete Sidebar, while Apparatus is a document-adjacent margin
+        // whose tone stays deliberately closer to Document than Navigation.
         let navigationSurfaceBackground = Self.tone(
             paperSource,
-            lightness: isDark ? 0.33 : 0.925,
-            chromaLimit: isDark ? 0.010 : 0.014
+            lightness: isDark ? 0.33 : 0.932,
+            chromaLimit: isDark ? 0.010 : 0.0103
         )
         let apparatusSurfaceBackground = Self.tone(
             paperSource,
-            lightness: isDark ? 0.365 : 0.95,
-            chromaLimit: isDark ? 0.016 : 0.022
+            lightness: isDark ? 0.305 : 0.967,
+            chromaLimit: isDark ? 0.017 : 0.024
         )
         let raisedSurfaceBackground = Self.tone(
             paperSource,
-            lightness: isDark ? 0.405 : 0.895,
-            chromaLimit: paperChroma
+            lightness: isDark ? 0.405 : 0.8845,
+            chromaLimit: isDark ? paperChroma : 0.0139
         )
         let backgrounds = [
             documentBackground,
@@ -218,7 +219,7 @@ struct ScholiumColorResolver: Sendable {
 
         let primaryText = Self.contrastColor(
             paperSource,
-            startingLightness: isDark ? 0.94 : 0.18,
+            startingLightness: isDark ? 0.94 : 0.262,
             chromaLimit: 0.014,
             backgrounds: backgrounds,
             target: contrastTarget,
@@ -226,7 +227,7 @@ struct ScholiumColorResolver: Sendable {
         )
         let secondaryText = Self.contrastColor(
             paperSource,
-            startingLightness: isDark ? 0.84 : 0.36,
+            startingLightness: isDark ? 0.84 : 0.40,
             chromaLimit: 0.020,
             backgrounds: backgrounds,
             target: contrastTarget,
@@ -234,7 +235,7 @@ struct ScholiumColorResolver: Sendable {
         )
         let mutedText = Self.contrastColor(
             paperSource,
-            startingLightness: isDark ? 0.76 : 0.45,
+            startingLightness: isDark ? 0.76 : 0.478,
             chromaLimit: 0.020,
             backgrounds: backgrounds,
             target: contrastTarget,
@@ -244,7 +245,7 @@ struct ScholiumColorResolver: Sendable {
             paperSource,
             lightness: isDark
                 ? (increasedContrast ? 0.70 : 0.57)
-                : (increasedContrast ? 0.62 : 0.76),
+                : (increasedContrast ? 0.62 : 0.808),
             chromaLimit: 0.020
         )
         let accent = Self.contrastColor(
@@ -766,10 +767,16 @@ enum ScholiumGrid {
         static let trailingScrollViewportFraction: CGFloat = 0.45
     }
 
+    /// The two scholarly peripheral planes share one calm page edge. Their
+    /// internal row, hierarchy, and section rhythms remain independently owned.
+    enum Peripheral {
+        static let contentInset = foundationUnit * 7
+    }
+
     /// Inspector-owned layout variables. The mode strip, section hierarchy,
     /// dense content groups, and Action rows each have a distinct cadence.
     enum Apparatus {
-        static let contentInset = foundationUnit * 7
+        static let contentInset = Peripheral.contentInset
         static let modeStripHeight = foundationUnit * 10
         static let modeColumnGap: CGFloat = 0
         static let selectedModeIndicatorWidth = foundationUnit * 4.5
@@ -836,10 +843,10 @@ enum ScholiumMetrics {
         /// still owns resizing and collapse; this is not a preferred width or
         /// a window minimum.
         static let minimumReadableWidth: CGFloat = 300
-        /// Ordinary Library content uses its own stable inset. It deliberately
-        /// does not derive geometry from the traffic-light group, whose
-        /// position and spacing remain owned by macOS.
-        static let contentInset = ScholiumGrid.Spacing.regionContentInset
+        /// Library and Inspector share the peripheral page edge. This does not
+        /// merge their row, hierarchy, or section rhythm, and it deliberately
+        /// does not derive geometry from the traffic-light group.
+        static let contentInset = ScholiumGrid.Peripheral.contentInset
         /// One semantic leading slot shared by disclosure, Folder, and Note
         /// rows. No row may render a second icon beside this track.
         static let leadingSlotWidth = ScholiumGrid.Dimension.iconTrackWidth
@@ -853,6 +860,21 @@ enum ScholiumMetrics {
         static let scopeIndicatorHeight: CGFloat = 1
         static let scopeTopSpacing = ScholiumGrid.Spacing.sectionSeparation
         static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
+        /// The fixed bibliography band sits slightly above the visual centre
+        /// of its region so its last line keeps a calm window-edge margin.
+        static let bibliographyTopInset = ScholiumGrid.Spacing.nestedContentInset
+        static let bibliographyBottomInset = ScholiumGrid.Spacing.sectionSeparation
+        /// Empty, loading, and error content begins one section step below the
+        /// stable LocationHeader while retaining the shared peripheral edge.
+        static let sourceStateVerticalInset = ScholiumGrid.Spacing.sectionSeparation
+    }
+
+    enum Attention {
+        /// Attention is intentionally a bounded, transient queue for a small
+        /// number of urgent derived issues. Native popover chrome and arrow
+        /// geometry remain system-owned.
+        static let popoverWidth: CGFloat = 420
+        static let popoverHeight: CGFloat = 480
     }
 
     enum Document {
@@ -1379,7 +1401,11 @@ enum ScholiumMotion {
     }
 
     static func disclosure(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .easeInOut(duration: 0.18)
+        reduceMotion ? nil : .easeOut(duration: 0.12)
+    }
+
+    static func sidebarAttentionPresentation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.18)
     }
 
     static func transientStatus(reduceMotion: Bool) -> Animation? {

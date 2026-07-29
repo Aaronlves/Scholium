@@ -804,7 +804,7 @@ struct FlowLayout: Layout {
 // MARK: - Preview
 
 #Preview {
-    FrontmatterEditorView(note: .unclassified(NoteDocument(
+    FrontmatterEditorView(note: .syntheticPreview(
         relativePath: "papers/smith2023.md",
         rawContent: """
         ---
@@ -815,6 +815,7 @@ struct FlowLayout: Layout {
         research_unit:
           completion: 6/11
         ---
-        """
-    ))) { _, _, _ in }
+        """,
+        vaultRole: .sourceCorpus
+    )) { _, _, _ in }
 }

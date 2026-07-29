@@ -163,6 +163,7 @@ final class ScholiumWindowLifecycleRegistry {
     }
 
     private var entries: [UUID: Entry] = [:]
+    private var activeWorkspaceWindowID: UUID?
     private let policy: ScholiumLifecyclePolicy
 
     init(policy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()) {
@@ -171,6 +172,15 @@ final class ScholiumWindowLifecycleRegistry {
 
     var hasRegisteredWindows: Bool {
         entries.values.contains(where: \.isRegistered)
+    }
+
+    /// Returns true only when focus moved from a different Scholium Workspace
+    /// window. Popover key-window transitions and app deactivation therefore
+    /// do not erase the current window's transient Attention work.
+    func noteWorkspaceWindowActivated(_ id: UUID) -> Bool {
+        let switchedWorkspace = activeWorkspaceWindowID.map { $0 != id } ?? false
+        activeWorkspaceWindowID = id
+        return switchedWorkspace
     }
 
     func register(id: UUID, flusher: @escaping Flusher) {
@@ -332,7 +342,12 @@ struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let showResearchRecord: @MainActor () -> Void
-    let showAttention: @MainActor (VaultQualifiedNoteID?) -> Void
+    let showAttention: @MainActor (
+        AttentionPopoverAnchor,
+        VaultQualifiedNoteID?
+    ) -> Void
+    let showPreferredAttention: @MainActor () -> Void
+    let canShowAttention: @MainActor () -> Bool
 }
 
 @MainActor
@@ -369,7 +384,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
     private var researchRecordPresenter: @MainActor () -> Void = {}
-    private var attentionPresenter: @MainActor (VaultQualifiedNoteID?) -> Void = { _ in }
+    private var attentionPresenter:
+        @MainActor (
+            AttentionPopoverAnchor,
+            WorkspaceVaultSlot?,
+            VaultQualifiedNoteID?
+        ) -> Void = { _, _, _ in }
     private weak var agentRequestPriorResponder: NSResponder?
     private var agentRequestWindowIsRegistered = false
     #if DEBUG
@@ -416,8 +436,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             showResearchRecord: { [weak self] in
                 self?.researchRecordPresenter()
             },
-            showAttention: { [weak self] noteScope in
-                self?.attentionPresenter(noteScope)
+            showAttention: { [weak self] anchor, noteScope in
+                self?.attentionPresenter(anchor, nil, noteScope)
+            },
+            showPreferredAttention: { [weak self] in
+                self?.showPreferredAttention()
+            },
+            canShowAttention: { [weak self] in
+                self?.preferredAttentionRoute() != nil
             }
         )
     }
@@ -428,7 +454,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     func activate(
         showResearchRecord: @escaping @MainActor () -> Void,
-        showAttention: @escaping @MainActor (VaultQualifiedNoteID?) -> Void
+        showAttention: @escaping @MainActor (
+            AttentionPopoverAnchor,
+            WorkspaceVaultSlot?,
+            VaultQualifiedNoteID?
+        ) -> Void
     ) {
         registerLifecycle()
         researchRecordPresenter = showResearchRecord
@@ -495,7 +525,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         unregisterAgentNoteChangeWindow()
         detachWindow()
         researchRecordPresenter = {}
-        attentionPresenter = { _ in }
+        attentionPresenter = { _, _, _ in }
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
             isRegistered = false
@@ -564,15 +594,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.attachedSheet?.makeKeyAndOrderFront(nil)
     }
 
-    /// Activates the exact workspace window owned by this coordinator. The
-    /// Attention auxiliary window uses this callback instead of searching the
-    /// global window list or broadcasting a notification.
-    func activateWorkspaceWindow() {
-        guard let window else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-    }
-
     func restoreAgentNoteChangeFocus() {
         defer { agentRequestPriorResponder = nil }
         guard let window, let responder = agentRequestPriorResponder else { return }
@@ -580,8 +601,63 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        if lifecycleRegistry.noteWorkspaceWindowActivated(windowID) {
+            appState.attentionPopoverSession.resetForWorkspaceSwitch()
+        }
         appState.agentNoteChangePresentationCoordinator.noteWindowActivated(windowID)
         previousDelegate?.windowDidBecomeKey?(notification)
+    }
+
+    private struct PreferredAttentionRoute {
+        let anchor: AttentionPopoverAnchor
+        let workspaceSlot: WorkspaceVaultSlot?
+        let noteScope: VaultQualifiedNoteID?
+    }
+
+    private func showPreferredAttention() {
+        guard let route = preferredAttentionRoute() else { return }
+        attentionPresenter(route.anchor, route.workspaceSlot, route.noteScope)
+    }
+
+    private func preferredAttentionRoute() -> PreferredAttentionRoute? {
+        let ledgerData = UserDefaults.standard.data(
+            forKey: AttentionPreferences.dismissalLedgerKey
+        ) ?? Data()
+        let counts = AttentionPreferences.visibleScopeCounts(
+            catalog: appState.workspaceCatalog,
+            assignment: appState.workspaceAssignment,
+            dismissalLedgerData: ledgerData
+        )
+        let selectedSlot = appState.discoveryController.library.workspaceSlot
+
+        if appState.sidebarVisible,
+           let count = counts?.count(for: selectedSlot), count > 0 {
+            return PreferredAttentionRoute(
+                anchor: .sidebar,
+                workspaceSlot: selectedSlot,
+                noteScope: nil
+            )
+        }
+
+        guard appState.researchInspectorVisible,
+              let note = appState.currentNote,
+              let vaultID = appState.currentDocumentVaultID
+        else { return nil }
+        let noteScope = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: note.relativePath
+        )
+        let ledger = AttentionPreferences.decodeLedger(ledgerData)
+        let noteItems = (appState.workspaceCatalog?.attention ?? []).filter {
+            $0.note.vaultID == noteScope.vaultID
+                && $0.note.relativePath == noteScope.relativePath
+        }
+        guard !ledger.visible(noteItems).isEmpty else { return nil }
+        return PreferredAttentionRoute(
+            anchor: .inspector,
+            workspaceSlot: nil,
+            noteScope: noteScope
+        )
     }
 
     private func registerQAFocusRequest() {

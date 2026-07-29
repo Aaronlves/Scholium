@@ -113,7 +113,7 @@ extension ScholiumCLI {
         Add --probe to perform only the MCP initialize lifecycle check; it does
         not read Zotero data or perform an import.
         Registry roles and accepted aliases:
-        source_corpus, topic_knowledge, draft_project, other, unclassified,
+        source_corpus, topic_knowledge, draft_project, other,
         sources, knowledge, project, and works.
 
         Existing-note mutations require the exact SHA-256 reported by

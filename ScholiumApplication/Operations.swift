@@ -52,31 +52,14 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
-    public func loadUnclassified(relativePath: String) async throws -> NoteDocument {
-        let handle = try await reference.requireHandle()
-        return try await handle.loadUnclassifiedDocument(relativePath: relativePath)
-    }
-
-    public func unclassifiedDocuments() async throws -> [NoteDocument] {
-        let handle = try await reference.requireHandle()
-        return try await handle.unclassifiedDocuments()
-    }
-
-    public func importUnclassifiedMarkdown(at sourceURL: URL) async throws -> URL {
-        let handle = try await reference.requireHandle()
-        return try await handle.importUnclassifiedMarkdown(at: sourceURL)
-    }
-
-    public func saveUnclassified(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
+    public func importMarkdown(
+        at sourceURL: URL,
+        intoVault vaultID: UUID
     ) async throws -> NoteDocument {
         let handle = try await reference.requireHandle()
-        return try await handle.saveUnclassifiedDocument(
-            relativePath: relativePath,
-            source: source,
-            expectedRevision: expectedRevision
+        return try await handle.importMarkdown(
+            at: sourceURL,
+            intoVault: vaultID
         )
     }
 
@@ -230,21 +213,6 @@ public actor DocumentOperations: DocumentUseCases {
     public func recoverInterruptedTransactions() async throws -> [String] {
         let handle = try await reference.requireHandle()
         return await handle.recoverInterruptedDocumentTransactions()
-    }
-
-    public func classifyUnclassified(
-        _ relativePath: String,
-        into slot: WorkspaceVaultSlot,
-        destinationRelativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> UnclassifiedClassificationCommit {
-        let handle = try await reference.requireHandle()
-        return try await handle.classifyUnclassifiedDocument(
-            relativePath,
-            into: slot,
-            destinationRelativePath: destinationRelativePath,
-            expectedRevision: expectedRevision
-        )
     }
 
     @discardableResult

@@ -26,7 +26,7 @@ struct DocumentSessionLifecycleTests {
     func unifiedTargets() {
         let store = DocumentSessionStore()
         let workspace = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
-        let fallback = DocumentEditingTarget.unclassified(relativePath: "Inbox\\literal.md")
+        let fallback = DocumentEditingTarget.unavailable(relativePath: "Inbox\\literal.md")
 
         #expect(store.session(for: workspace) === store.session(for: workspace))
         #expect(store.session(for: fallback) === store.session(for: fallback))
@@ -74,7 +74,7 @@ struct DocumentSessionLifecycleTests {
     @Test("A clean detached zero-lease session is fully reaped")
     func detachedEviction() {
         let store = DocumentSessionStore()
-        let target = DocumentEditingTarget.unclassified(relativePath: "Closed.md")
+        let target = DocumentEditingTarget.unavailable(relativePath: "Closed.md")
         let session = store.session(for: target)
         session.editingSource = "large exact source"
         session.originalEditingSource = "large exact source"

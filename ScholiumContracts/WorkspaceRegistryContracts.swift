@@ -16,7 +16,7 @@ public enum VaultRole: String, Codable, CaseIterable, Sendable {
         case .sourceCorpus: "Analyses"
         case .topicKnowledge: "Topics"
         case .draftProject: "Works"
-        case .other: "Unclassified"
+        case .other: "Other"
         }
     }
 
@@ -29,7 +29,7 @@ public enum VaultRole: String, Codable, CaseIterable, Sendable {
         case "source_corpus", "sources", "analyses": self = .sourceCorpus
         case "topic_knowledge", "knowledge", "topics": self = .topicKnowledge
         case "draft_project", "project", "works": self = .draftProject
-        case "other", "unclassified": self = .other
+        case "other": self = .other
         default: return nil
         }
     }

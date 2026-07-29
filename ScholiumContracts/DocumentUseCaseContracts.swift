@@ -23,3 +23,14 @@ public enum DocumentCreationError: LocalizedError, Equatable, Sendable {
         }
     }
 }
+
+public enum DocumentImportError: LocalizedError, Equatable, Sendable {
+    case unsupportedSource(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedSource(let path):
+            "Only regular UTF-8 Markdown files can be imported: \(path)"
+        }
+    }
+}

@@ -241,8 +241,10 @@ struct ContentView: View {
                     ),
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
                 freshness: researchProjectionFreshness,
-                propertiesConfiguration: appState.currentDocumentPropertiesConfiguration
+                propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
+                zoteroItemKey: currentAnalysisZoteroItemKey
             ),
+            attentionPopoverSession: appState.attentionPopoverSession,
             openProperties: {
                 guard let path = appState.currentNote?.relativePath else { return }
                 appState.editingNotePath = path
@@ -252,6 +254,7 @@ struct ContentView: View {
                 guard let note = appState.currentNote,
                       let vaultID = appState.currentDocumentVaultID else { return }
                 windowCoordinator.actions.showAttention(
+                    .inspector,
                     VaultQualifiedNoteID(
                         vaultID: vaultID,
                         relativePath: note.relativePath
@@ -260,7 +263,17 @@ struct ContentView: View {
             },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
+            },
+            openZoteroItem: { itemKey in
+                await appState.zoteroBridge.openInZotero(zoteroKey: itemKey)
             }
+        )
+    }
+
+    private var currentAnalysisZoteroItemKey: String? {
+        guard appState.currentDocumentVaultRole == .sourceCorpus else { return nil }
+        return ZoteroBridge.normalizedItemKey(
+            appState.currentNote?.frontmatter["zotero_item_key"]?.scalarString
         )
     }
 
@@ -478,7 +491,10 @@ struct ContentView: View {
             : nil
         return SidebarContext(
             triptychName: appState.workspaceAssignment?.triptych.name ?? "Not Selected",
-            attentionItems: scopedSidebarAttentionItems,
+            attentionCounts: sidebarAttentionCounts,
+            attentionError: appState.workspaceCatalog == nil
+                ? appState.workspaceCatalogError
+                : nil,
             filteredNotes: appState.filteredNotes,
             allNotes: appState.notes,
             folders: appState.currentLibraryFolders,
@@ -508,8 +524,14 @@ struct ContentView: View {
             propertyValues: propertyFilterOptions.valuesByKey,
             resolvedIdentityPaths: Set(appState.noteIdentityByPath.keys),
             bibliographyController: appState.researchController.bibliography,
+            attentionPopoverSession: appState.attentionPopoverSession,
             notesAreOrdered: { appState.notesAreOrdered($0, $1) },
-            openAttention: { windowCoordinator.actions.showAttention(nil) },
+            openAttention: {
+                windowCoordinator.actions.showAttention(.sidebar, nil)
+            },
+            retryAttention: {
+                Task { await appState.refreshWorkspaceCatalog() }
+            },
             selectLocationScope: { appState.requestNoteLocationScope($0) },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
             selectWorkspaceVault: { appState.requestWorkspaceVault($0) },
@@ -543,22 +565,12 @@ struct ContentView: View {
             setAside: { try await appState.setAsideNote($0) },
             moveToTrash: { try await appState.moveNoteToTrash($0) },
             deletePermanently: { try await appState.deleteNotePermanently($0) },
-            classify: { path, slot, destination in
-                try await appState.classifyUnclassified(
-                    path,
-                    into: slot,
-                    destination: destination
-                )
-            },
             openRecommendedAnalysis: { reference in
                 guard let note = appState.workspaceCatalog?.notes.first(where: {
                     $0.reference.vaultID == reference.vaultID
                         && $0.reference.relativePath == reference.relativePath
                 }) else { return }
                 appState.requestOpenNote(note.reference)
-            },
-            openRecommendedZoteroItem: { itemKey in
-                await appState.zoteroBridge.openInZotero(zoteroKey: itemKey)
             },
             copyRecommendedBibliographyText: { text in
                 NSPasteboard.general.clearContents()
@@ -583,13 +595,12 @@ struct ContentView: View {
         )
     }
 
-    private var scopedSidebarAttentionItems: [AttentionQueueItem]? {
-        guard let catalog = appState.workspaceCatalog else { return nil }
-        guard let vaultID = appState.workspaceAssignment?
-            .vault(for: appState.discoveryController.library.workspaceSlot)?.id else {
-            return []
-        }
-        return catalog.attention.filter { $0.note.vaultID == vaultID }
+    private var sidebarAttentionCounts: AttentionScopeCounts? {
+        AttentionPreferences.visibleScopeCounts(
+            catalog: appState.workspaceCatalog,
+            assignment: appState.workspaceAssignment,
+            dismissalLedgerData: attentionDismissalLedgerData
+        )
     }
 
     private var currentWorkspaceSlot: WorkspaceVaultSlot? {
@@ -726,14 +737,7 @@ struct ContentView: View {
                     move: { source, destination in
                         try await appState.moveNote(source, to: destination)
                     },
-                    putBack: { try await appState.putBackNote($0) },
-                    classify: { source, slot, destination in
-                        try await appState.classifyUnclassified(
-                            source,
-                            into: slot,
-                            destination: destination
-                        )
-                    }
+                    putBack: { try await appState.putBackNote($0) }
                 )
             )
         case .folderLifecycle(let request):

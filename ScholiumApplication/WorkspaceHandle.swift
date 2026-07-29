@@ -624,36 +624,78 @@ public actor WorkspaceHandle {
         return try await repository.load(relativePath: id.relativePath)
     }
 
-    func loadUnclassifiedDocument(relativePath: String) async throws -> NoteDocument {
-        try requireActive()
-        return try await services.controlStore.loadUnclassified(relativePath: relativePath)
-    }
-
-    func unclassifiedDocuments() async throws -> [NoteDocument] {
-        try requireActive()
-        return try await services.controlStore.unclassifiedDocuments()
-    }
-
-    func importUnclassifiedMarkdown(at sourceURL: URL) async throws -> URL {
+    func importMarkdown(
+        at sourceURL: URL,
+        intoVault vaultID: UUID
+    ) async throws -> NoteDocument {
         try requireActive()
         let secured = sourceURL.startAccessingSecurityScopedResource()
         defer {
             if secured { sourceURL.stopAccessingSecurityScopedResource() }
         }
-        return try await services.controlStore.importMarkdown(at: sourceURL)
-    }
-
-    func saveUnclassifiedDocument(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> NoteDocument {
-        try requireActive()
-        return try await services.controlStore.saveUnclassified(
-            relativePath: relativePath,
-            content: source,
-            expectedRevision: expectedRevision
+        let resolved = sourceURL.resolvingSymlinksInPath().standardizedFileURL
+        let values = try resolved.resourceValues(
+            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
         )
+        guard values.isRegularFile == true,
+              values.isSymbolicLink != true,
+              resolved.pathExtension.caseInsensitiveCompare("md") == .orderedSame else {
+            throw DocumentImportError.unsupportedSource(sourceURL.path)
+        }
+        let sourceData = try Data(contentsOf: resolved, options: [.mappedIfSafe])
+        guard NoteDocument.decodeUTF8PreservingBOM(sourceData) != nil else {
+            throw DocumentImportError.unsupportedSource(sourceURL.path)
+        }
+
+        let mutationID = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationID) }
+        }
+        let repository = try repository(vaultID: vaultID)
+        let document = try await repository.importMarkdown(
+            preferredFilename: resolved.lastPathComponent,
+            sourceData: sourceData
+        )
+        let id = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: document.relativePath
+        )
+        do {
+            guard try await services.controlStore.identity(
+                forVaultID: vaultID,
+                relativePath: document.relativePath,
+                fingerprint: document.fingerprint
+            ) != nil else {
+                throw NoteIdentityRecoveryError.identityUnresolved(document.relativePath)
+            }
+        } catch {
+            try? await repository.removeCreatedFileForRollback(
+                relativePath: document.relativePath,
+                createdRevision: document.fingerprint
+            )
+            throw error
+        }
+        endSourceMutation(mutationID)
+        ownsMutation = false
+        do {
+            _ = try await refresh(
+                publication: .explicit,
+                failureDisposition: .staleAfterCommittedMutation(
+                    affectedVaultIDs: [vaultID]
+                ),
+                sourceCatalogPreparation: Self.catalogPreparation(
+                    upserts: [id],
+                    refreshFolderVaultIDs: [vaultID]
+                )
+            )
+        } catch {
+            throw ScholiumApplicationError.committedButRefreshFailed(
+                document.fingerprint,
+                error.localizedDescription
+            )
+        }
+        return document
     }
 
     func createDocument(
@@ -1147,70 +1189,6 @@ public actor WorkspaceHandle {
             }
         }
         return issues
-    }
-
-    func classifyUnclassifiedDocument(
-        _ relativePath: String,
-        into slot: WorkspaceVaultSlot,
-        destinationRelativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> UnclassifiedClassificationCommit {
-        try requireActive()
-        let mutationID = try await beginSourceMutation()
-        var ownsMutation = true
-        defer {
-            if ownsMutation { endSourceMutation(mutationID) }
-        }
-        guard let destinationVault = assignment.vault(for: slot),
-              let destinationRepository = services.repositories[destinationVault.id] else {
-            throw ScholiumApplicationError.incompleteTriptych(assignment.id)
-        }
-        let source = try await services.controlStore.loadUnclassified(
-            relativePath: relativePath
-        )
-        guard source.fingerprint == expectedRevision else {
-            throw VaultRepositoryError.conflict(
-                expected: expectedRevision,
-                current: source.fingerprint
-            )
-        }
-        let coordinator = UnclassifiedClassificationCoordinator(
-            triptychID: services.manifest.id,
-            control: services.controlStore,
-            destinationVaultID: destinationVault.id,
-            destinationRepository: destinationRepository,
-            recoveryStore: services.transactionRecoveryStore
-        )
-        let commit = try await coordinator.classify(
-            sourceRelativePath: relativePath,
-            expectedRevision: expectedRevision,
-            destinationRelativePath: destinationRelativePath
-        )
-        _ = try await services.controlStore.identity(
-            forVaultID: destinationVault.id,
-            relativePath: commit.destination.relativePath,
-            fingerprint: commit.committedRevision
-        )
-        endSourceMutation(mutationID)
-        ownsMutation = false
-        do {
-            _ = try await refresh(
-                publication: .explicit,
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [destinationVault.id]
-                ),
-                sourceCatalogPreparation: Self.catalogPreparation(
-                    upserts: [commit.destination],
-                    refreshFolderVaultIDs: [destinationVault.id]
-                )
-            )
-        } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                commit.committedRevision,
-                error.localizedDescription
-            )
-        }
-        return commit
     }
 
     func refresh() async throws -> WorkspaceSnapshot {

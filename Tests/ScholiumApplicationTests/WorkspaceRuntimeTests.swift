@@ -113,6 +113,39 @@ struct WorkspaceRuntimeTests {
         #expect(await iterator.next() == nil)
     }
 
+    @Test("Document import commits exact bytes to the selected vault root and republishes the Note")
+    func importMarkdownIntoSelectedVault() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let sourceURL = fixture.rootURL.appendingPathComponent("Imported.md")
+        let source = Data([0xEF, 0xBB, 0xBF]) + Data(
+            "---\r\nunknown: [source material\r\n---\r\n# Imported\r\n".utf8
+        )
+        try source.write(to: sourceURL)
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topicsID = try #require(
+            fixture.assignment.vault(for: .topicKnowledge)?.id
+        )
+
+        let imported = try await handle.documents.importMarkdown(
+            at: sourceURL,
+            intoVault: topicsID
+        )
+
+        #expect(imported.relativePath == "Imported.md")
+        #expect(try Data(contentsOf: sourceURL) == source)
+        #expect(try Data(contentsOf: fixture.topicsURL.appendingPathComponent("Imported.md")) == source)
+        #expect(try await handle.snapshot().document(id: VaultQualifiedNoteID(
+            vaultID: topicsID,
+            relativePath: "Imported.md"
+        ))?.fingerprint == imported.fingerprint)
+        await runtime.shutdown()
+    }
+
     @Test("Discovery uses Core search and snapshot membership remains fixed")
     func discoveryAndFrozenMembership() async throws {
         let fixture = try await ApplicationFixture.make()

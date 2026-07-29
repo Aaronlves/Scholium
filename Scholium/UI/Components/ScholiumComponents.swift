@@ -31,6 +31,249 @@ struct ScholiumStructuralRule: View {
     }
 }
 
+/// One restrained selection mark shared by editorial indexes. Each consumer
+/// retains its own purpose-named dimensions; this component owns only color
+/// and visibility treatment.
+struct ScholiumEditorialIndexUnderline: View {
+    let isSelected: Bool
+    var isHovering = false
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        Rectangle()
+            .fill(
+                isSelected
+                    ? ScholiumColorRole.accent.color
+                    : ScholiumColorRole.secondaryText.color.opacity(isHovering ? 0.45 : 0)
+            )
+            .frame(width: width, height: height)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+enum SidebarAttentionAlertState: Equatable {
+    case active(count: Int)
+    case checking
+    case unavailable
+}
+
+/// The rare current-Scope Attention exception. Queue derivation and dismissal
+/// remain outside this component; it owns only the stable alert grammar used
+/// at the Sidebar's navigation level.
+struct SidebarAttentionAlert: View {
+    let state: SidebarAttentionAlertState
+    let open: () -> Void
+    let retry: () -> Void
+
+    var body: some View {
+        switch state {
+        case .active(let count):
+            Button(action: open) {
+                content(
+                    title: "ATTENTION",
+                    trailing: count.formatted(),
+                    showsProgress: false
+                )
+            }
+            .buttonStyle(SidebarAttentionAlertButtonStyle())
+            .help("Open Attention")
+            .accessibilityValue("\(count) items")
+            .accessibilityIdentifier("scholium.location.attention")
+        case .checking:
+            content(
+                title: "Checking Attention",
+                trailing: nil,
+                showsProgress: true
+            )
+            .modifier(SidebarAttentionAlertSurface())
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("scholium.attentionChecking")
+        case .unavailable:
+            Button(action: retry) {
+                content(
+                    title: "Attention Unavailable",
+                    trailing: "Retry",
+                    showsProgress: false
+                )
+            }
+            .buttonStyle(SidebarAttentionAlertButtonStyle())
+            .help("Retry Attention")
+            .accessibilityHint("Retries loading the derived Attention queue.")
+            .accessibilityIdentifier("scholium.attentionUnavailable")
+        }
+    }
+
+    private func content(
+        title: LocalizedStringKey,
+        trailing: String?,
+        showsProgress: Bool
+    ) -> some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(ScholiumColorRole.attention.color)
+                .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(ScholiumInterfaceTypography.editorialLabel)
+                .tracking(0.7)
+            Spacer(minLength: 0)
+            if showsProgress {
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityHidden(true)
+            } else if let trailing {
+                Text(trailing)
+                    .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            }
+        }
+        .foregroundStyle(ScholiumColorRole.primaryText.color)
+    }
+}
+
+private struct SidebarAttentionAlertSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                alignment: .leading
+            )
+            .background(
+                ScholiumColorRole.raisedSurfaceBackground.color,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+    }
+}
+
+private struct SidebarAttentionAlertButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .modifier(SidebarAttentionAlertSurface())
+            .opacity(configuration.isPressed ? 0.76 : 1)
+    }
+}
+
+/// One quiet full-row Button treatment shared by editorial summary and action
+/// rows. Callers retain their purpose-owned hit height and content insets; the
+/// component owns only the common raised hover/press feedback.
+struct ScholiumQuietRowButtonStyle: ButtonStyle {
+    let isHovering: Bool
+    let minimumHeight: CGFloat
+    let horizontalInset: CGFloat
+    let verticalInset: CGFloat
+
+    init(
+        isHovering: Bool,
+        minimumHeight: CGFloat,
+        horizontalInset: CGFloat = ScholiumGrid.Spacing.inlineControlGap,
+        verticalInset: CGFloat
+    ) {
+        self.isHovering = isHovering
+        self.minimumHeight = minimumHeight
+        self.horizontalInset = horizontalInset
+        self.verticalInset = verticalInset
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, horizontalInset)
+            .padding(.vertical, verticalInset)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: minimumHeight,
+                alignment: .leading
+            )
+            .contentShape(Rectangle())
+            .background(
+                isHovering || configuration.isPressed
+                    ? ScholiumColorRole.raisedSurfaceBackground.color
+                    : Color.clear,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
+    }
+}
+
+/// The stable Library / Set Aside / Trash state selector. One native `Menu`
+/// owns both the quiet label and its checkmarked, mutually-exclusive commands;
+/// Scholium adds no bezel, background, or second chevron.
+struct ScholiumLibraryLocationPicker: View {
+    @Binding var selection: NoteLocationScope
+
+    var body: some View {
+        Menu {
+            locationChoice("Library", value: .workspace)
+            locationChoice("Set Aside", value: .setAside)
+            locationChoice("Trash", value: .trash)
+        } label: {
+            Text(selectedTitle)
+                .font(ScholiumInterfaceTypography.libraryLocation)
+                .foregroundStyle(ScholiumColorRole.accent.color)
+                .lineLimit(1)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .tint(ScholiumColorRole.accent.color)
+        .fixedSize()
+        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
+        .accessibilityLabel("Location")
+        .accessibilityValue(selectedTitle)
+        .accessibilityIdentifier("scholium.locationPicker")
+    }
+
+    private func locationChoice(
+        _ title: LocalizedStringKey,
+        value: NoteLocationScope
+    ) -> some View {
+        let isSelected = selection == value
+        return Button {
+            selection = value
+        } label: {
+            if isSelected {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    private var selectedTitle: String {
+        switch selection {
+        case .workspace:
+            ScholiumL10n.dynamicString("Library")
+        case .setAside:
+            ScholiumL10n.dynamicString("Set Aside")
+        case .trash:
+            ScholiumL10n.dynamicString("Trash")
+        }
+    }
+}
+
+/// Page-level content for a Library Location when no OutlineRow is being
+/// presented. It deliberately uses the shared peripheral page edge rather
+/// than the tighter row-surface inset used by Notes and Folders.
+struct ScholiumLibrarySourceState<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+            .padding(.vertical, ScholiumMetrics.Library.sourceStateVerticalInset)
+    }
+}
+
 struct ScholiumPanelHeader<Trailing: View>: View {
     let title: String
     let subtitle: String?

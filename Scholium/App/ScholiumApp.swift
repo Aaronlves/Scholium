@@ -76,7 +76,6 @@ struct ScholiumApp: App {
     @NSApplicationDelegateAdaptor(ScholiumApplicationDelegate.self) private var applicationDelegate
     @FocusedObject private var focusedWindowModel: WindowModel?
     @StateObject private var applicationBootstrap = ApplicationBootstrapController()
-    @StateObject private var attentionWindowSession = AttentionWindowSession()
 
     init() {
         // Document tabs live inside the central split item. Native window
@@ -119,8 +118,7 @@ struct ScholiumApp: App {
                     ScholiumWindowRoot(
                         workspaceStore: workspaceStore,
                         route: route.wrappedValue,
-                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry,
-                        attentionWindowSession: attentionWindowSession
+                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
                     )
                 }
             },
@@ -141,15 +139,6 @@ struct ScholiumApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands { ScholiumCommands(storageReady: applicationBootstrap.isReady) }
 
-        Window("Attention", id: "scholium-attention") {
-            AttentionWindowRoot(session: attentionWindowSession)
-        }
-        .defaultSize(width: 420, height: 560)
-        .windowResizability(.contentMinSize)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .commandsRemoved()
-
         UtilityWindow("Research Record", id: "scholium-research-record") {
             ScholiumResearchRecordUtilityRoot(appState: focusedWindowModel)
         }
@@ -166,6 +155,19 @@ struct ScholiumApp: App {
         }
 
         #if DEBUG
+        Window(
+            "Editorial Parchment Proof — Light",
+            id: "scholium-editorial-parchment-proof"
+        ) {
+            EditorialParchmentProof()
+        }
+        .defaultSize(width: 1_180, height: 760)
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .windowToolbarStyle(.unified(showsTitle: true))
+        .commandsRemoved()
+
         Window(
             "Research Workflow Interface Proofs",
             id: "scholium-research-workflow-proofs"
@@ -468,7 +470,6 @@ private struct ScholiumWindowRoot: View {
     @Environment(\.dismissWindow) private var dismissWindow
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
-    private let attentionWindowSession: AttentionWindowSession
     @StateObject private var appState: WindowModel
     @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
     @State private var destinationBootstrapWindowID: UUID?
@@ -476,12 +477,10 @@ private struct ScholiumWindowRoot: View {
     init(
         workspaceStore: WorkspaceStore,
         route: TriptychWindowRoute,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
-        attentionWindowSession: AttentionWindowSession
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
     ) {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
-        self.attentionWindowSession = attentionWindowSession
         let model = WindowModel(
             workspaceStore: workspaceStore,
             nativeWindowID: route.windowID,
@@ -522,7 +521,9 @@ private struct ScholiumWindowRoot: View {
                     Task {
                         do {
                             let imported = try await appState.importMarkdownFiles(urls)
-                            appState.showToast(String(localized: "Imported \(imported.count) Markdown file\(imported.count == 1 ? "" : "s") into Unclassified.", table: "Localizable", bundle: .module))
+                            let destination = appState.currentWorkspaceSlot?.displayName
+                                ?? "current vault"
+                            appState.showToast(String(localized: "Imported \(imported.count) Markdown file\(imported.count == 1 ? "" : "s") into \(destination).", table: "Localizable", bundle: .module))
                         } catch {
                             appState.vaultError = error.localizedDescription
                         }
@@ -564,15 +565,12 @@ private struct ScholiumWindowRoot: View {
                     showResearchRecord: {
                         openWindow(id: "scholium-research-record")
                     },
-                    showAttention: { noteScope in
-                        attentionWindowSession.present(
-                            workspace: appState,
-                            noteScope: noteScope,
-                            activateWorkspace: {
-                                windowCoordinator.activateWorkspaceWindow()
-                            }
+                    showAttention: { anchor, workspaceSlot, noteScope in
+                        appState.attentionPopoverSession.present(
+                            from: anchor,
+                            workspaceSlot: workspaceSlot,
+                            noteScope: noteScope
                         )
-                        openWindow(id: "scholium-attention")
                     }
                 )
                 windowCoordinator.update(reduceMotion: reduceMotion)
@@ -581,7 +579,6 @@ private struct ScholiumWindowRoot: View {
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onDisappear {
-                attentionWindowSession.detach(appState)
                 windowCoordinator.detach()
                 appState.persistWindowSessionNow()
             }
@@ -992,9 +989,9 @@ private struct ScholiumCommands: Commands {
         }
         CommandGroup(after: .windowArrangement) {
             Button("Attention") {
-                workspaceWindowActions?.showAttention(nil)
+                workspaceWindowActions?.showPreferredAttention()
             }
-            .disabled(workspaceWindowActions == nil)
+            .disabled(workspaceWindowActions?.canShowAttention() != true)
         }
         CommandMenu("Research") {
             if let appState, researchActionActions != nil {
@@ -1040,6 +1037,10 @@ private struct ScholiumCommands: Commands {
                     Divider()
                 }
                 if qaResearchWorkflowProofsAreEnabled {
+                    Button("Open Editorial Parchment Proof") {
+                        openWindow(id: "scholium-editorial-parchment-proof")
+                    }
+                    Divider()
                     Button("Open Research Workflow Interface Proofs") {
                         openWindow(id: "scholium-research-workflow-proofs")
                     }
@@ -1271,6 +1272,7 @@ final class WindowModel: ObservableObject {
         self?.handleWindowIntent(intent)
     }
     let attentionPresentationState = AttentionPresentationState()
+    lazy var attentionPopoverSession = AttentionPopoverSession(workspace: self)
 
     // Window-level projections for Library leaves. DiscoveryController remains
     // the sole mutable owner.
@@ -2248,15 +2250,6 @@ final class WindowModel: ObservableObject {
     }
 
     var currentDocumentCapabilities: DocumentCapabilities {
-        if case .unclassified = documentController.selectedDocument {
-            return DocumentCapabilities(
-                role: .other,
-                lifecycle: .active,
-                identity: .unresolved,
-                isManagedCritique: false,
-                isUnclassified: currentNote != nil
-            )
-        }
         if let capabilities = currentNote?.workspaceSnapshot?.capabilities {
             return capabilities
         }
@@ -2358,7 +2351,6 @@ final class WindowModel: ObservableObject {
 
     @discardableResult
     private func requireResolvedIdentity(for path: String) throws -> UUID? {
-        if noteLocationScope == .unclassified { return nil }
         guard let noteID = noteIdentityByPath[path] else {
             throw NoteIdentityRecoveryError.identityUnresolved(path)
         }
@@ -2906,15 +2898,14 @@ final class WindowModel: ObservableObject {
     }
 
     func requestWorkspaceVault(_ slot: WorkspaceVaultSlot) {
-        let currentLocation = discoveryController.library.locationScope == .unclassified
-            ? NoteLocationScope.workspace
-            : discoveryController.library.locationScope
+        let currentLocation = discoveryController.library.locationScope
         guard discoveryController.library.workspaceSlot != slot
                 || discoveryController.library.locationError != nil
                 || discoveryController.locationRequestIsActive else { return }
         let request = discoveryController.beginLocationRequest(
             workspaceSlot: slot,
-            location: currentLocation
+            location: currentLocation,
+            presentation: .stagedReplacement
         )
         Task { [weak self] in
             guard let self else { return }
@@ -4083,10 +4074,16 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func importMarkdownFiles(_ urls: [URL]) async throws -> [URL] {
-        var imported: [URL] = []
+    func importMarkdownFiles(_ urls: [URL]) async throws -> [NoteDocument] {
+        guard let vaultID = currentRegisteredVault?.id else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        var imported: [NoteDocument] = []
         for url in urls {
-            imported.append(try await documentController.importUnclassifiedMarkdown(at: url))
+            imported.append(try await documentController.importMarkdown(
+                at: url,
+                intoVault: vaultID
+            ))
         }
         return imported
     }
@@ -4133,11 +4130,9 @@ final class WindowModel: ObservableObject {
         slot: WorkspaceVaultSlot? = nil,
         locationRequest: DiscoveryLocationRequest? = nil
     ) async throws {
-        guard let vaultSnapshot = try await documentController.workspaceSnapshot(
+        let vaultSnapshot = try await currentWorkspaceVaultSnapshot(
             vaultID: registered.id
-        ) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
+        )
         let targetConfig = await workspaceStore.vaultConfig(
             rootURL: URL(
                 fileURLWithPath: registered.canonicalPath,
@@ -4153,7 +4148,7 @@ final class WindowModel: ObservableObject {
         let targetLocation = locationRequest?.location
             ?? discoveryController.library.locationScope
         let lifecycle: WorkspaceDocumentLifecycle = switch targetLocation {
-        case .workspace, .unclassified: .active
+        case .workspace: .active
         case .setAside: .setAside
         case .trash: .trash
         }
@@ -4491,7 +4486,8 @@ final class WindowModel: ObservableObject {
                 || discoveryController.library.locationError != nil else { return }
         let request = discoveryController.beginLocationRequest(
             workspaceSlot: workspaceSlot,
-            location: scope
+            location: scope,
+            presentation: .stagedReplacement
         )
         do {
             let loaded = try await loadNotes(
@@ -4541,23 +4537,35 @@ final class WindowModel: ObservableObject {
         for scope: NoteLocationScope,
         vaultID: UUID?
     ) async throws -> [WindowDocumentLocation] {
-        if scope == .unclassified {
-            let unclassified = try await documentController.unclassifiedDocuments()
-            return unclassified.map(WindowDocumentLocation.unclassified)
-        }
-        guard let vaultID,
-              let vault = try await documentController.workspaceSnapshot(vaultID: vaultID) else {
+        guard let vaultID else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
+        let vault = try await currentWorkspaceVaultSnapshot(vaultID: vaultID)
         let lifecycle: WorkspaceDocumentLifecycle = switch scope {
         case .workspace: .active
         case .setAside: .setAside
         case .trash: .trash
-        case .unclassified: .active
         }
         return vault.documents
             .filter { $0.lifecycle == lifecycle }
             .map(WindowDocumentLocation.workspace)
+    }
+
+    /// Window publication is the first source for ordinary navigation. The
+    /// Application operation remains the fallback when initial construction
+    /// has not yet installed that immutable snapshot.
+    private func currentWorkspaceVaultSnapshot(
+        vaultID: UUID
+    ) async throws -> WorkspaceVaultSnapshot {
+        if let snapshot = workspaceVaultSnapshotsByID[vaultID] {
+            return snapshot
+        }
+        guard let snapshot = try await documentController.workspaceSnapshot(
+            vaultID: vaultID
+        ) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return snapshot
     }
 
     func lifecycleLocationItems(for scope: NoteLocationScope) async throws -> [LifecycleLocationItem] {
@@ -4659,6 +4667,7 @@ final class WindowModel: ObservableObject {
                     inVault: vault.id,
                     parentRelativePath: parentRelativePath
                 )
+                try await refreshCachedWorkspaceVaultSnapshot(vaultID: vault.id)
                 try await browseRegisteredVault(vault)
                 expandFolderAncestors(folder.rawValue, vaultID: vault.id)
                 showToast(
@@ -4711,6 +4720,7 @@ final class WindowModel: ObservableObject {
             to: commit.destinationFolder.rawValue,
             vaultID: target.vaultID
         )
+        try await refreshCachedWorkspaceVaultSnapshot(vaultID: target.vaultID)
         try await browseRegisteredVault(vault)
         scheduleWorkspaceCatalogRefresh()
     }
@@ -4741,8 +4751,23 @@ final class WindowModel: ObservableObject {
             vaultID: vaultID
         )
         lifecycleMutationGeneration &+= 1
+        try await refreshCachedWorkspaceVaultSnapshot(vaultID: vaultID)
         try await refreshNoteLocationScope()
         scheduleWorkspaceCatalogRefresh()
+    }
+
+    /// Folder mutations publish a new authoritative snapshot before returning,
+    /// but the per-window Combine projection may still be queued on the main
+    /// actor. Refresh the exact vault cache before rebuilding the visible tree
+    /// so newly created empty folders and folder moves cannot be hidden by the
+    /// preceding window generation.
+    private func refreshCachedWorkspaceVaultSnapshot(vaultID: UUID) async throws {
+        guard let snapshot = try await documentController.workspaceSnapshot(
+            vaultID: vaultID
+        ) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        workspaceVaultSnapshotsByID[vaultID] = snapshot
     }
 
     private func projectFolderMove(_ commit: FolderMoveCommit) {
@@ -4811,6 +4836,7 @@ final class WindowModel: ObservableObject {
             to: destination,
             expectedRevision: expected
         )
+        try await refreshCachedWorkspaceVaultSnapshot(vaultID: target.documentID.vaultID)
         try await browseRegisteredVault(vault)
         openNote(destination)
         return document
@@ -4846,6 +4872,7 @@ final class WindowModel: ObservableObject {
             noteID: target.stableNoteID,
             vaultID: target.documentID.vaultID
         )
+        try await refreshCachedWorkspaceVaultSnapshot(vaultID: target.documentID.vaultID)
         try await browseRegisteredVault(vault)
         openNote(destination)
         scheduleWorkspaceCatalogRefresh()
@@ -4923,33 +4950,6 @@ final class WindowModel: ObservableObject {
         try removeDocumentTabs(vaultID: vaultID, removedPaths: deletedPaths)
         try await refreshNoteLocationScope()
         lifecycleMutationGeneration &+= 1
-    }
-
-    func classifyUnclassified(
-        _ path: String,
-        into slot: WorkspaceVaultSlot,
-        destination requestedPath: String
-    ) async throws {
-        try await flushRegisteredEditorIfNeeded()
-        guard noteLocationScope == .unclassified,
-              let expected = documentRevisions[path] else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        let destination = Self.markdownPath(requestedPath)
-        do {
-            _ = try await documentController.classifyUnclassified(
-                path,
-                into: slot,
-                destinationRelativePath: destination,
-                expectedRevision: expected
-            )
-        } catch {
-            await refreshTransactionRecoveryRecords()
-            throw error
-        }
-        try await refreshNoteLocationScope()
-        scheduleWorkspaceCatalogRefresh()
-        showToast(String(localized: "Classified as \(slot.displayName): \(destination)", table: "Localizable", bundle: .module))
     }
 
     func refreshTransactionRecoveryRecords() async {
@@ -5235,8 +5235,14 @@ final class WindowModel: ObservableObject {
                 vaultName: vault.name,
                 vaultRole: vault.role
             )
+        } else if let descriptor = selectionDescriptor(for: path) {
+            documentController.selectDocument(descriptor)
         } else {
-            documentController.selectDocument(selectionDescriptor(for: path))
+            showToast(
+                String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module),
+                kind: .warning
+            )
+            return
         }
         synchronizeDocumentTabs(after: tabActivation)
     }
@@ -5265,16 +5271,6 @@ final class WindowModel: ObservableObject {
                 descriptor.reference,
                 tabActivation: tabActivation
             )
-        case .unclassified(let relativePath):
-            guard let location = notes.first(where: { $0.relativePath == relativePath }) else {
-                throw WindowNavigationError.noteUnavailable(relativePath)
-            }
-            PerformanceProbe.shared.beginReadActivation(documentID: relativePath)
-            documentController.selectUnclassifiedDocument(relativePath: relativePath)
-            if location.workspaceSnapshot != nil {
-                documentController.selectDocument(document)
-            }
-            synchronizeDocumentTabs(after: tabActivation)
         case .unavailable(let vaultID, let relativePath):
             guard notes.contains(where: { $0.relativePath == relativePath }) else {
                 throw WindowNavigationError.noteUnavailable(relativePath)
@@ -5491,16 +5487,13 @@ final class WindowModel: ObservableObject {
         documentDescriptor(for: path)?.reference
     }
 
-    private func selectionDescriptor(for path: String) -> WindowSelectedDocument {
+    private func selectionDescriptor(for path: String) -> WindowSelectedDocument? {
         if let descriptor = documentDescriptor(for: path) {
             return .workspace(descriptor)
         }
-        if noteLocationScope == .unclassified {
-            return .unclassified(relativePath: path)
-        }
         guard let vaultID = notes.first(where: { $0.relativePath == path })?
             .workspaceSnapshot?.id.vaultID ?? currentRegisteredVault?.id else {
-            return .unclassified(relativePath: path)
+            return nil
         }
         return .unavailable(vaultID: vaultID, relativePath: path)
     }
@@ -5513,8 +5506,9 @@ final class WindowModel: ObservableObject {
         guard documentController.activeDocument == nil else { return }
         if let descriptor = documentDescriptor(for: selectedDocumentPath) {
             documentController.selectDocument(.workspace(descriptor))
-        } else if documentController.activeDocument == nil {
-            documentController.selectDocument(selectionDescriptor(for: selectedDocumentPath))
+        } else if documentController.activeDocument == nil,
+                  let descriptor = selectionDescriptor(for: selectedDocumentPath) {
+            documentController.selectDocument(descriptor)
         }
         synchronizeDocumentTabs(after: .preserveTabMembership)
     }
@@ -5647,7 +5641,9 @@ final class WindowModel: ObservableObject {
                 changeSet: .frontmatter(edits),
                 expectedRevision: expectedRevision
             )
-            let saved = await replaceSavedDocument(result.document)
+            guard let saved = await replaceSavedDocument(result.document) else {
+                throw WindowNavigationError.noteUnavailable(note.relativePath)
+            }
             lastSaveError = nil
             return saved
         } catch {
@@ -5657,9 +5653,6 @@ final class WindowModel: ObservableObject {
     }
 
     func diskDocument(for path: String) async throws -> NoteDocument {
-        if noteLocationScope == .unclassified {
-            return try await documentController.loadUnclassified(relativePath: path)
-        }
         guard let context = activeDocumentContext(for: path) else {
             throw VaultRepositoryError.fileDoesNotExist(path)
         }
@@ -5685,8 +5678,7 @@ final class WindowModel: ObservableObject {
     private func refreshIdentityState() async {
         identityRefreshGeneration &+= 1
         let refreshGeneration = identityRefreshGeneration
-        guard noteLocationScope != .unclassified,
-              let vault = currentRegisteredVault else {
+        guard let vault = currentRegisteredVault else {
             noteIdentityByPath = [:]
             identityAmbiguities = []
             pendingIdentityRebindings = []
@@ -5961,18 +5953,9 @@ final class WindowModel: ObservableObject {
     /// projections. A parse or index failure can make derived state stale, but
     /// must never make the editor retry an already committed repository write
     /// or reject a disk revision the researcher explicitly accepted.
-    private func replaceSavedDocument(_ document: NoteDocument) async -> WindowDocumentLocation {
-        if case .unclassified? = documentController.selectedDocument {
-            let saved = WindowDocumentLocation.unclassified(document)
-            if noteLocationScope == .unclassified,
-               let index = notes.firstIndex(where: { $0.relativePath == document.relativePath }) {
-                notes[index] = saved
-            }
-            return saved
-        }
-
+    private func replaceSavedDocument(_ document: NoteDocument) async -> WindowDocumentLocation? {
         guard let context = activeDocumentContext(for: document.relativePath) else {
-            return .unclassified(document)
+            return nil
         }
         let previous = workspaceVaultSnapshotsByID[context.vaultID]?.documents.first(where: {
             $0.stableIdentity.resolvedID == context.noteID

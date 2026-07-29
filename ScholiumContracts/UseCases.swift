@@ -3,10 +3,7 @@ import Foundation
 public protocol DocumentUseCases: Sendable {
     func snapshot() async throws -> [WorkspaceVaultSnapshot]
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
-    func loadUnclassified(relativePath: String) async throws -> NoteDocument
-    func unclassifiedDocuments() async throws -> [NoteDocument]
-    func importUnclassifiedMarkdown(at sourceURL: URL) async throws -> URL
-    func saveUnclassified(relativePath: String, source: String, expectedRevision: DocumentFingerprint) async throws -> NoteDocument
+    func importMarkdown(at sourceURL: URL, intoVault vaultID: UUID) async throws -> NoteDocument
     func create(_ id: VaultQualifiedNoteID, content: String) async throws -> NoteDocument
     func create(_ request: DocumentCreationRequest) async throws -> NoteDocument
     /// Creates an empty note at the first unoccupied default path in `folderRelativePath`.
@@ -36,7 +33,6 @@ public protocol DocumentUseCases: Sendable {
     func putBack(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
     func deletePermanently(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> PermanentDeletionCommit
     func recoverInterruptedTransactions() async throws -> [String]
-    func classifyUnclassified(_ relativePath: String, into slot: WorkspaceVaultSlot, destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> UnclassifiedClassificationCommit
     func resolveIdentity(_ ambiguity: NoteIdentityAmbiguity, candidateID: UUID?) async throws -> NoteIdentityRecord
     func documentPreviewCatalog(
         source: VaultQualifiedNoteID,

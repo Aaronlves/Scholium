@@ -35,11 +35,18 @@ actor ZoteroBridge {
     }
 
     func openInZotero(zoteroKey: String) {
-        let key = zoteroKey.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !key.isEmpty,
-              let url = URL(string: "zotero://select/library/items/\(key)") else { return }
+        guard let url = Self.itemURL(zoteroKey: zoteroKey) else { return }
         #if canImport(AppKit)
         NSWorkspace.shared.open(url)
         #endif
+    }
+
+    nonisolated static func normalizedItemKey(_ value: String?) -> String? {
+        try? ResearchSourceIdentity.normalizedZoteroKey(value)
+    }
+
+    nonisolated static func itemURL(zoteroKey: String?) -> URL? {
+        guard let key = normalizedItemKey(zoteroKey) else { return nil }
+        return URL(string: "zotero://select/library/items/\(key)")
     }
 }

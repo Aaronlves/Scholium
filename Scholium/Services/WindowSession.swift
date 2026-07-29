@@ -266,7 +266,7 @@ final class WorkspaceStore: ObservableObject {
             localAgentBridge = nil
             localAgentBridgeStartupFailure = .systemCall("start", EIO)
             Self.publicationLogger.error(
-                "Local Agent bridge startup failed with an unclassified local error."
+                "Local Agent bridge startup failed with an unrecognized local error."
             )
         }
     }
