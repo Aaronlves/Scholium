@@ -220,7 +220,8 @@ route or second toolbar exists. No split-content titlebar host remains in the
 current construction: under full-size content it rendered beneath the
 toolbar's pointer hit-testing layer even when accessibility could still
 discover it. This tracked-toolbar transfer is the current safe implementation,
-but it does not satisfy D-091's pane-ownership requirement; the status ledger
+but it does not satisfy `SCHOLIUM_SPEC.md` §18.2's pane-ownership requirement;
+the status ledger
 records that migration debt without treating this workaround as target authority.
 
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
@@ -334,7 +335,7 @@ adapter. Contracts contain no application-defined labels, symbols, package
 storage, YAML inspection, or layout. Researcher-owned Profile labels are
 declarative data, not interface code.
 
-D-106's public layer begins in `ScholiumContracts` with validated
+The §8 Research Action public layer begins in `ScholiumContracts` with validated
 `ResearchActionID`, public execution kinds and Target roles, role-filtered
 default definitions, a unified native parameter model, and a fail-closed
 schema-v2 `ResearchActionSnapshot`. Each preparation freezes the exact Target,
@@ -793,7 +794,7 @@ failure.
 - `Scholium/UI/PreviewCatalog` contains deterministic Debug-only component
   matrices for ready, empty, loading, error, conflict, and long-text states,
   plus named appearance and accessibility review entry points. Its synthetic
-  research-workflow catalog proves the D-106 Action matrix, modular Skill-run
+  research-workflow catalog proves the §8 Action matrix, modular Skill-run
   sheet, staged installer, categorized Skill settings, Agent change request,
   fixed-size secondary Research Record, and permission-invalid state without resolving
   or mutating production state. A suppressed Debug window makes that catalog
@@ -873,24 +874,27 @@ Attention is one native transient SwiftUI popover owned by each exact
 utility panel, or always-on-top surface. Per-Workspace
 `AttentionPresentationState` owns only filter, selected item, selected Scope,
 and optional current-Note subset; `AttentionPopoverSession` adapts that state
-and the current immutable queue to the Sidebar, toolbar, and Inspector anchors
-without duplicating either. `AttentionScopeCounts` is a read-only projection of
-the same catalog and machine-local dismissal ledger. Sidebar consumes only the
+and the current immutable queue to the Sidebar and Inspector anchors without
+duplicating either. `AttentionScopeCounts` is a read-only projection of the
+same catalog and machine-local dismissal ledger. Sidebar consumes only the
 selected Scope's conditional alert; ScopeIndex labels never consume or expose
-the count, and zero contributes no row or gap. When Sidebar is collapsed, the one native toolbar
-controller consumes the same projection and installs exactly one compact signal
-only while any Scope is nonempty. Its typed action names an exact Scope without
-mutating Library Scope, Location, selection, or Document. A missing first
-catalog remains checking, and a failed first load presents Attention Unavailable
-with Retry rather than zero. Inspector may add the active Note, and a Sidebar
-Scope change clears that Note subset. SwiftUI's transient popover behavior owns
-outside-click and Escape dismissal; Inspect and Resynthesize dismiss before
-routing through the same exact `WindowModel`. The application-wide lifecycle
-registry records exact Workspace focus changes so the newly active Workspace
-resets query, kind, Note subset, and selected task without treating popover
-key-window changes or app deactivation as Workspace switches. No global window
-search, notification, model registry, detached Attention Scene, or NSWindow
-attachment participates. Recommended Bibliography is the fixed, intrinsic-height sibling
+the count, and zero contributes no row or gap. The Document toolbar consumes
+no Attention count, observation, item, action, reserved width, or popover
+anchor. A missing first catalog remains checking, and a failed first load
+presents Attention Unavailable with Retry rather than zero. Inspector may add
+the active Note, and a Sidebar Scope change clears that Note subset. SwiftUI's
+transient popover behavior owns outside-click and Escape dismissal; Inspect and
+Resynthesize dismiss before routing through the same exact `WindowModel`.
+**Window → Attention** asks the exact `WorkspaceWindowCoordinator` for a visible
+contextual route: the nonzero selected-Scope Sidebar alert first, then the
+nonempty current-Note Inspector summary. Without either visible anchor the
+command is disabled; it never synthesizes a toolbar or detached presentation
+route. The application-wide lifecycle registry records exact Workspace focus
+changes so the newly active Workspace resets query, kind, Note subset, and
+selected task without treating popover key-window changes or app deactivation
+as Workspace switches. No global window search, notification, model registry,
+detached Attention Scene, NSWindow attachment, or toolbar compatibility state
+participates. Recommended Bibliography is the fixed, intrinsic-height sibling
 below the Library Source List scroll. It shares the Sidebar's navigation
 surface and adds one structural boundary but owns no Scope, Location, selection,
 filter, sort, disclosure, or lifecycle state. Inspector alone consumes the
@@ -1705,7 +1709,7 @@ contract in `Scholium/UI/Foundation` through `ScholiumColorVariables`,
 `ScholiumColorResolver`, derived `ScholiumColorRole`s, `ScholiumGrid`,
 `ScholiumMetrics`, `ScholiumMotion`, and `ScholiumInterfaceTypography`.
 
-Accent and Paper are the only configurable inputs. D-123's Paper is the exact
+Accent and Paper are the only configurable inputs. Section 19.2's Paper is the exact
 Light Document anchor; one resolver derives every other appearance role for
 native and generated WebKit CSS. The complete Sidebar uses the Navigation
 surface; Inspector uses a distinct Apparatus role whose tone is deliberately

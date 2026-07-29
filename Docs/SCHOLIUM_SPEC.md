@@ -3,13 +3,14 @@
 **Status:** Canonical product, interface, and release specification
 **Applies to:** Scholium for macOS and its agent-facing CLI
 **Canonicalized:** 2026-07-17
-**Last target change:** 2026-07-29 (D-134)
+**Consolidated:** 2026-07-29
 
 This is Scholium's sole target authority for product, interface, action
 language, Scholarly Editorialism, accessibility, release, and stable decisions.
 `IMPLEMENTATION_ARCHITECTURE.md` describes structure; `IMPLEMENTATION_STATUS.md`,
 README, live construction, and tests establish reachability and evidence.
-Current divergence is migration work, not an alternative rule.
+Implementation divergence is tracked outside this document and never defines
+an alternative target.
 
 In this specification:
 
@@ -22,10 +23,11 @@ In this specification:
 Apple HIG and the selected SDK own platform/API behavior; this specification
 owns the Triptych, scholarly semantics, evidence, and research governance.
 
-The direct-agent-edit model supersedes Proposal and unapplied-Revision
-workflows. Unsupported pre-release app state fails closed or is ignored. This
-clean cutover never deletes or normalizes researcher Markdown, custom YAML, or
-unrecognized Triptych files.
+Scholium uses direct agent edits and has no Proposal or unapplied-Revision
+workflow. Unsupported application state fails closed and remains unparsed and
+untouched; unsupported data never authorizes behavior. Scholium never deletes
+or normalizes researcher Markdown, custom YAML, or unrecognized Triptych files
+merely because it does not interpret them.
 
 ## 1. Canonical terminology
 
@@ -263,10 +265,6 @@ newline style, malformed or unknown YAML, and final newline. A collision uses
 The imported file is immediately an ordinary Note of the selected Scope; root-
 level Notes require no classification workflow.
 
-The removed pre-release `.scholium/unclassified/` staging location is not read,
-projected, migrated, normalized, or deleted. Existing bytes there remain
-researcher-controlled but invisible to current Scholium.
-
 ## 4. Works folders and organization
 
 Works is an ordinary researcher-defined Markdown hierarchy. Scholium creates
@@ -296,12 +294,11 @@ editable Markdown; Scholium does not set filesystem read-only permissions.
 ### 5.1 Document modes and YAML
 
 - **Review** renders committed content for reading, selection, navigation, and
-  commenting. Its internal and persisted mode identifier remains `read`.
+  commenting.
 - **Edit** edits the exact body through a visual projection, shares
   Review's semantic render components, typography, callout presentation,
   document measure, and theme variables, reveals syntax only around the active
-  construct, and shows neither YAML nor line numbers. Its internal and
-  persisted mode identifier remains `livePreview`. Inactive content should
+  construct, and shows neither YAML nor line numbers. Inactive content should
   match Review; caret, selection, marked-text composition, and the active
   construct are the permitted editing differences.
 - **Source** edits complete Markdown and YAML, shows line numbers, and retains
@@ -322,9 +319,9 @@ justification.
 An inactive Edit callout atomically projects one half-open source
 range. Selection reveals source only on actual overlap, not boundary contact.
 Down Arrow from above enters at the range start; Up Arrow from below or a
-pointer press on its rendered title/body enters at its logical end. CodeMirror then
-resumes native editing. Only the disclosure mark changes fold state by pointer;
-the focused summary retains keyboard disclosure.
+pointer press on its rendered title/body enters at its logical end. Editing
+then resumes at that source position. Only the disclosure mark changes fold
+state by pointer; the focused summary retains keyboard disclosure.
 
 Review and Edit support Obsidian-compatible inline `$…$` and display
 `$$…$$` mathematics outside YAML, code, raw HTML, comments, and escaped
@@ -335,18 +332,18 @@ diagnostic; rendering never rewrites it.
 Review and Edit treat Obsidian-compatible `![[Target]]` embeds, including
 aliases and heading or block fragments, as source-located neutral links.
 Inactive embeds share protected presentation, navigation, and diagnostics; the
-active construct reveals its exact syntax. This stage neither reads nor
-transcludes target content or creates philosophical relationship edges. Any
-later transclusion requires a separate recursion, cycle, authorization,
-external-change, and large-file contract.
+active construct reveals its exact syntax. Scholium neither reads nor
+transcludes target content through an embed and creates no philosophical
+relationship edge from one. Transclusion remains outside the current product
+boundary.
 
 Internal links and Vector Links provide bounded previews without becoming
 evidence or another source authority. Review additionally previews footnote
 references on ordinary hover; a footnote preview contains only the referenced
 definition. Footnote focus, activation, navigation, and return controls belong
 to Review only, with keyboard and accessibility-equivalent routes. Edit keeps
-the rendered marker passive: selecting it performs only CodeMirror's ordinary
-cursor placement at the underlying Markdown. Source exposes the exact text.
+the rendered marker passive: selecting it performs only ordinary cursor
+placement at the underlying Markdown. Source exposes the exact text.
 
 Review and Edit have a direct keyboard toggle. Source is entered through
 the mode menu. It may alter protected or machine-facing YAML; the researcher
@@ -399,7 +396,7 @@ the first H1, then filename. One shared resolver supplies Workspace, Search,
 Link Graph, and Research Actions.
 
 Creation/modification times are app-owned Research Record facts, not
-Properties; existing timestamp keys remain exact custom source.
+Properties; timestamp keys in Markdown remain exact custom source.
 
 An Analysis may pair whole-number `debate_importance` (0–10) with
 `debate_importance_scope`. Both are required together and comparable only
@@ -408,13 +405,14 @@ It is not project relevance, source quality, truth, prestige, or citation
 impact. After choosing one exact scope, Library may sort rated Analyses high to
 low with unrated notes afterward. No global cross-debate ranking exists;
 Scholium neither generates nor presents Project Relevance. Existing
-`relevance` and `relevance_rating` keys remain preserved custom data.
+`relevance` and `relevance_rating` are preserved custom data with no Scholium
+semantics.
 
 About omits absent fields without explanatory empty copy. Its role-specific
 order is defined in Appendix A. `status` has no Scholium semantics, query,
 index, filter, ordering, or UI. Work `deadline`, Topic/Work YAML `title`,
 required markers, and **Open Properties by Default** likewise do not exist.
-Unknown source YAML remains byte-preserved but acquires no retired semantics.
+Unknown source YAML remains byte-preserved but acquires no Scholium semantics.
 
 ### 5.3 Create, duplicate, rename, and identity
 
@@ -459,7 +457,7 @@ contents move with the same directory without being parsed or rewritten.
 **Move Folder and Notes to Trash…** requires confirmation, moves the directory
 once beneath `Trash/`, and gives each descendant note the ordinary Trash
 location semantics while preserving its stable identity. The folder itself
-still has no lifecycle identity. Managed Critiques and ambiguous legacy folder
+still has no lifecycle identity. Managed Critiques and ambiguous folder
 projections omit all source-mutating folder actions. Every contextual operation
 has an equivalent accessibility action; secondary click is never the only path.
 
@@ -587,25 +585,7 @@ truth, failure, or settlement.
 Scholium has no app-owned Annotation record, marginal-note store, Annotation
 action, or overlay. A researcher annotates a document authoritatively by
 editing its Markdown, including an ordinary semantic Callout when a visibly
-separate note is useful. Scholium never converts retired Annotation records
-into Markdown automatically.
-
-### 7.3 Clean cutover
-
-Pre-production Human Review, Qualification, ResearcherComment, app-owned
-Annotation, pre-Function Dialogue, separate Comment/Discuss archives, Research
-Activity history, legacy Function bindings, and legacy grants are unsupported
-by the new model. Repository code, shipped legacy Workflow Skills, construction
-paths, decoders, migrations, projections, Search fields, tests, and UI that
-exist only for those authorities are deleted when their replacement becomes
-reachable; they are not retained as compatibility architecture.
-
-The cutover never deletes or rewrites researcher Markdown, unknown YAML,
-unrecognized Triptych files, or pre-existing machine-local data merely because
-the new application no longer reads it. Unsupported legacy data remains
-byte-unchanged, but a pre-production application provides no parser, migration,
-projection, recovery path, authorization route, or dedicated reveal entry for
-it. It never appears in the current interface or becomes a new Research Record.
+separate note is useful.
 
 ## 8. Research Actions, Method Skills, and direct agent work
 
@@ -660,8 +640,8 @@ external agent, then inspect the response or confirmed source state. Scholium
 contains no embedded agent runtime, does not monitor agent reasoning, and never
 claims that opening an agent app means the task was accepted or completed.
 
-Provider-neutral copy and explicit app selection remain available. A later
-Codex handoff may open a new task at the exact requested root with locator-only
+Provider-neutral copy and explicit app selection remain available. A Codex
+handoff may open a new task at the exact requested root with locator-only
 bootstrap data; it must not append to an existing task, auto-submit, select a
 model, alter permissions, or put Target or Material content in a launch URL.
 
@@ -726,6 +706,10 @@ researcher responses. It excludes assembled prompts, raw keys, bookmarks,
 absolute paths, token counts, transport logs, routine save events, derived
 index freshness, window state, and stored diff hunks.
 
+Portable Research Records use schema version 3. Decoding rejects another
+schema version or unknown fields without projecting, authorizing, rewriting,
+or deleting the underlying file.
+
 Every current Action completion contains a complete Material-use report.
 `actuallyUsedMaterialNoteIDs: []` is the Agent's explicit report that no frozen
 Material was actually used; omission is invalid, and Scholium never infers an
@@ -753,9 +737,9 @@ participant; Pin is explicit. Record titles derive quietly from Action,
 context, and date and are not editable.
 
 The detail uses attributed editorial prose, fine rules, restrained context,
-and collapsed **Record Details**, not chat bubbles. New line Comments retain
-only their revision-bound inclusive line range; legacy exact-passage data is
-never required for a new Comment or agent handoff. Multi-note context appears
+and collapsed **Record Details**, not chat bubbles. Line Comments retain only
+their revision-bound inclusive line range; no stored passage copy is required
+for a Comment or agent handoff. Multi-note context appears
 once. Active Discussion
 never moves into this window. The toolbar, Research menu, and keyboard route
 open the window without revealing or changing Inspector state.
@@ -917,8 +901,8 @@ concrete request, and current validated identities and revisions. Destructive
 lifecycle operations, out-of-Triptych writes, record edits, unsupported create,
 delete, rename, or conflict overwrite never become silently authorized.
 
-One Application coordinator owns Action availability, preparation, completion,
-cancellation, and Fidelity. Preparation resolves Origin and exact revision,
+One application-level coordinator owns Action availability, preparation,
+completion, cancellation, and Fidelity. Preparation resolves Origin and exact revision,
 validates source access and focal Materials, resolves the exact Method Skill
 and Profile, creates recovery evidence, freezes the write set, rechecks every
 revision, and rolls back partial preparation. Discuss and Settle use separate
@@ -1126,13 +1110,12 @@ evidence, or is accepted beyond its explicit authoring. The inverse phrases
 **Supports This Note** and **Opposes This Note** are derived only when the
 current Note is the object; incompatibility has no direction or inverse label.
 
-These Vector-Link v3 forms replace both legacy typed-link syntax and the
-pre-release v2 meaning of `?[[B]]`; retain no reverse-support or directed-
-question decoder. Aliases, headings, and fragments remain
-valid. Preserve research-file bytes and never rewrite or reinterpret a marker
-through heuristics. Never infer support, opposition, or incompatibility from
-keywords, proximity, folders, or multi-hop paths. Incoming and Outgoing views
-show direction and exact source without permanent badge clutter.
+These are the only Vector-Link forms. Aliases, headings, and fragments remain
+valid. Scholium has no reverse-support or directed-question relation. Preserve
+research-file bytes and never rewrite or reinterpret a marker through
+heuristics. Never infer support, opposition, or incompatibility from keywords,
+proximity, folders, or multi-hop paths. Incoming and Outgoing views show
+direction and exact source without permanent badge clutter.
 
 ## 13. Search and Attention
 
@@ -1168,7 +1151,7 @@ temporarily selects **This Note**. Dismissal restores the prior scope unless the
 researcher explicitly changed it, cancels work, rejects stale results, and
 clears query/results while retaining scope and saved searches.
 
-Beta Search contract v4 uses one deterministic local SQLite FTS5 corpus for
+Beta Search uses one deterministic local SQLite FTS5 corpus for
 the active Triptych. **This Vault** is a predicate over that corpus and
 **Triptych** uses it without a vault predicate, so BM25 statistics remain
 comparable across Analyses, Topics, and Works. **This Note** instead searches
@@ -1184,8 +1167,8 @@ prefix `*`, clause exclusion, lexical fields `title`, `alias`, `heading`,
 `callout` and `has:broken-link`. Structured filter-only queries are valid. A
 query containing only excluded free text is invalid. `status` produces an
 explicit unsupported-field diagnostic because it is not a Scholium property.
-Unknown fields or canonical values, removed `vault`, `role`, or `metadata`
-fields, malformed escapes, CJK prefix `*`, and unsupported OR, grouping, NEAR,
+Unknown fields or canonical values, `vault`, `role`, or `metadata` fields,
+malformed escapes, CJK prefix `*`, and unsupported OR, grouping, NEAR,
 regular-expression, fuzzy, range, or nested syntax produce an inline query
 diagnostic and never silently broaden retrieval. Scope is selected only by the
 visible interface or CLI option.
@@ -1214,8 +1197,8 @@ source-manifest hash, source fingerprint or editor revision, and freshness
 token. A stale result must refresh rather than navigate. Building, refreshing,
 stale, failed, and query-invalid are distinct states; cancellation is not a
 failure. A failed routine refresh continues serving the last complete
-generation, while a first or incompatible v3 build never falls back to the
-different v1 ranking contract. One generation publishes atomically or not at
+generation, while a first or incompatible build never serves results from a
+different ranking contract. One generation publishes atomically or not at
 all and its disposable index stores no writable research authority.
 
 An exact Topic match may show its direct resolved Connections in a separately
@@ -1248,9 +1231,7 @@ any time when a self-contained Triptych milestone is genuinely useful.
 Every checkpoint is self-contained; includes all vaults and portable control
 state needed to interpret them; lives outside the vaults; and never depends on
 another checkpoint, even if filesystem cloning is used internally. Manual
-checkpoints remain until the researcher deletes them. Retained legacy automatic
-checkpoints may remain recoverable but do not authorize or describe a current
-Action.
+checkpoints remain until the researcher deletes them.
 
 File offers **Create Checkpoint…**, **Restore from Checkpoint…**, and **Reveal
 Checkpoints in Finder**. Restore compares created, changed, moved, and deleted
@@ -1268,8 +1249,8 @@ the Notes actually written; it is not an application-authored account of the
 research. Settle may pin an exact entry as a researcher-selected settled
 version without turning it into a truth claim. Temporary write recovery and
 settled-version retention remain separate references over verified immutable
-bytes. Corrupt legacy recovery metadata must not cause unrelated recoverable
-bytes to be deleted or silently attributed to a note. Durable settled-pin
+bytes. Invalid recovery metadata must not cause unrelated recoverable bytes to
+be deleted or silently attributed to a note. Durable settled-pin
 manifests, not the derived SQLite row, own pin identity and ordering; a missing
 or field-mismatched row is rebuilt only from a fully validated manifest. Pin
 order allocation is coordinated across local processes. If a validated
@@ -1372,9 +1353,9 @@ failure; and distinguishes empty, successful-zero, preparing, awaiting-agent,
 stale, malformed, duplicate, ambiguous, Zotero-unavailable, and general error
 states through text/symbol plus accessible focus and narrow adaptation.
 
-The delivery-neutral `RecommendedBibliographyUseCases` is separate from
+Recommended Bibliography preparation and completion remain separate from
 Research Actions. CLI provides `bibliography prepare`, `show`, `complete`,
-and `cancel`; Core/Application owns normalization and duplicate discrimination.
+and `cancel`; Scholium owns normalization and duplicate discrimination.
 
 ### 15.4 Optional external-agent Zotero MCP
 
@@ -1398,8 +1379,8 @@ report the boundary without global configuration scans or database bypass.
 
 Before onboarding or workspace restoration, one app-owned bootstrap state is
 either **Starting**, **Ready**, or **Storage Unavailable**. Only Ready contains
-the validated Application Support location and may construct `WorkspaceStore`
-or `WorkspaceRuntime`. Storage Unavailable replaces the app root with a
+the validated Application Support location and may construct workspace state
+or services. Storage Unavailable replaces the app root with a
 nonmodal recoverable failure page; **Retry** is the default action, **Details**
 reveals selectable diagnostic text, and **Quit** remains available. New Window,
 New Triptych, and all workspace commands stay disabled. Retry performs a fresh
@@ -1420,8 +1401,8 @@ permission matrix before opening the workspace.
 
 Failure retains setup input. Success opens one configured workspace and closes
 Bootstrap only after that exact workspace route has attached its native window,
-split, and toolbar; they never compete. SwiftUI restores recoverable Workspace
-routes directly. The presented Bootstrap default is used only when no
+split, and toolbar; they never compete. Recoverable Workspace routes restore
+directly. The presented Bootstrap default is used only when no
 recoverable Workspace exists. Bootstrap starts at **720 × 720**; this is an
 initial size, not a minimum. Expired folder access instead uses the workspace's
 bounded **Restore Access** sheet and preserves its active document. Settings
@@ -1453,11 +1434,11 @@ Deferred beyond experimental release: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,
 inheritance and sharing; and Work finding overlays.
 
-**Run with Codex** is not a 1.0 feature. Background/noninteractive execution,
-auto-submission, streamed thread/tool state, general agent-host approval or
-interruption control, and App Server or SDK orchestration require a fresh 2.0
-decision. D-106's narrow typed note-change request does not broaden into those
-capabilities. 1.0 **Open in Codex** must imply none of them.
+**Run with Codex** is outside the 1.0 boundary. Background/noninteractive
+execution, auto-submission, streamed thread/tool state, general agent-host
+approval or interruption control, and App Server or SDK orchestration require
+a future product decision. The current typed note-change request does not
+broaden into those capabilities, and **Open in Codex** implies none of them.
 
 File-backed Method Skills and Action Profiles are Settings-owned Research
 Guidance, not a marketplace, runtime, specialized request taxonomy, or
@@ -1507,8 +1488,8 @@ While storage is unavailable, no workspace route, window session, repository,
 watcher, index, or restore task may be constructed, and workspace commands are
 disabled rather than queued against a hidden runtime.
 
-Each configured window contains exactly one native `NSSplitViewController`
-with three sibling items:
+Each configured window contains exactly one native split view with three
+sibling items:
 
 1. **Sidebar:** a Library navigation region containing Scholium and Triptych
    identity; one quiet equal-column **Analyses / Topics / Works** ScopeIndex
@@ -1523,20 +1504,20 @@ with three sibling items:
    projections. It never owns buffers, autosave, Undo, or conflicts;
    full chronology belongs to Research Record.
 
-The workspace starts at **1180 × 760**, not a minimum. SwiftUI Scene data owns
-route identity and restoration; AppKit owns window, divider, compression,
-collapse, fullscreen, and frame geometry. Scholium never persists, restores,
-observes, or continuously reasserts divider geometry. The only additional
+The workspace starts at **1180 × 760**, not a minimum. Scene state owns route
+identity and restoration; the native window and split controller own divider,
+compression, collapse, fullscreen, and frame geometry. Scholium never
+persists, restores, observes, or continuously reasserts divider geometry. The only additional
 initial condition is that a newly created window's first explicit Apparatus
 reveal may request a provisional **320pt** readable thickness once, after the
 native split is attached. That request yields to the remaining Document space
 and native bounds; it is not a minimum, maximum, restored divider value, or
-later-reveal preference. After that one transition, AppKit and direct user
-resizing remain authoritative. Scholium declares no scene/window minimum
+later-reveal preference. After that one transition, the native container and
+direct user resizing remain authoritative. Scholium declares no scene/window minimum
 unless the complete adaptation matrix proves one necessary. The sole specified
 content constraint is the expanded Library's **300pt minimum readable
-thickness**: AppKit must keep it at or above that boundary or collapse it.
-This is neither a preferred width, restored divider value, nor parallel
+thickness**: the native split must keep it at or above that boundary or
+collapse it. This is neither a preferred width, restored divider value, nor parallel
 geometry owner. Library remains a semantic Sidebar and Apparatus a semantic
 Inspector. All three planes are opaque, and the native tracking separator is
 the sole inter-pane boundary; Scholium draws no parallel main divider or
@@ -1588,8 +1569,8 @@ Triptych-scoped and remains available in every configured workspace; opening it
 with a Target applies the removable **This Note** filter.
 
 With two or more documents, a Document-owned strip appears only in the middle
-item. Each tab references one retained editor session. `.unspecified`
-`NSTabViewController` owns containment; Scholium supplies equal-width selection
+item. Each tab references one retained editor session. The native tab
+controller owns containment; Scholium supplies equal-width selection
 and save-before-transition. One stable document has at most one tab in a
 window; repeated open or **Open in New Tab** selects that tab in place. Close
 flushes and selects a retained neighbor; last close returns no-note. Tabs
@@ -1660,7 +1641,7 @@ Menus follow researcher tasks:
   Copy Relative Path, Reveal in Finder, and destructive **Move Folder and Notes
   to Trash…**. Equivalent accessibility actions provide non-secondary-click
   routes. Neither creation action opens a sheet. Library enumerates empty real
-  directories. Protected machine-managed folders and ambiguous legacy
+  directories. Protected machine-managed folders and ambiguous
   projections retain only safe nonmutating navigation.
 - The Library Location shows no total. Attention treats zero as the steady
   state, **1–3** unresolved items as its primary design condition, and larger
@@ -1685,7 +1666,7 @@ Menus follow researcher tasks:
   urgent condition. Resolving or dismissing the final item removes the alert;
   if that disappearing control owns keyboard focus, focus moves to
   LocationPicker. No reassurance row replaces it.
-- Attention is one native transient SwiftUI popover owned by the exact
+- Attention is one native transient popover owned by the exact
   Workspace window, never an application-wide Scene, sheet, inline destination,
   custom panel, or always-on-top surface. Its preferred bounded content size is
   **420 × 480pt**. Sidebar alert and Inspector summary each anchor the same
@@ -1811,7 +1792,7 @@ convert to macOS points. `ch` resolves against Review/Edit Body type or Source's
 exact-source type and therefore does not promise an exact character count.
 Shared ownership and units are approved; the 72ch default still requires the
 adaptation matrix and researcher side-by-side acceptance. Edit and
-Source reconfigure one retained CodeMirror state; window, split, theme,
+Source reconfigure one retained editor state; window, split, theme,
 line-width, or text-size changes never replace it or create an Editor window.
 
 Appearance is machine-local configuration and never Markdown or vault state.
@@ -1850,8 +1831,8 @@ quiet, and `zotero_item_key` and Analysis title are never selectable there.
 
 Apparatus contains Research Inspector only; active Discussion, Research Record,
 and checkpoint recovery keep distinct ownership. Active Discussion opens as an
-Action sheet. Research Record is an independent, nonrestored `UtilityWindow`,
-reads the focused Triptych directly, and keeps a fixed **760 × 680** content
+Action sheet. Research Record is an independent, nonrestored native utility
+window, reads the focused Triptych directly, and keeps a fixed **760 × 680** content
 size chosen for readable temporary inspection. It uses one native list/detail
 layout, has no Workspace Sidebar control or alternate wide/narrow presentation,
 does not adapt into another primary interface, and never appears inside
@@ -1986,15 +1967,15 @@ semibold, 0.7pt tracking, and secondary text color. English localization
 supplies uppercase strings; runtime code never forces case, so Chinese and
 other languages retain natural writing.
 
-Inspector layout uses named `ScholiumGrid.Apparatus` variables rather than
-leaf-view literals. Its provisional native content inset is **28pt**. Short
+Inspector layout uses purpose-named Apparatus metrics rather than leaf-view
+literals. Its provisional native content inset is **28pt**. Short
 facts form one section-level two-column grid with a shared, trailing-aligned
 label column of at least **78pt**, a **14pt** column gap, one common leading
 axis for values, and first-baseline alignment. The horizontal candidate keeps
 at least **204pt** of content width; ordinary canonical labels therefore remain
 horizontal in **300pt** and **278pt** Inspector scenarios after the content
 insets. If available width, 200% readability, or localized labels cannot fit,
-one `ViewThatFits` decision stacks the complete grid; individual rows never
+one container-level adaptation stacks the complete grid; individual rows never
 switch independently. Empty values do not create rows. Scope, Research Scope,
 Limitations, and other long researcher prose always use a reading block: label
 on its own line and Alegreya content on the next line with a 12pt leading
@@ -2120,7 +2101,7 @@ rules, and restrained elevation.
 System chrome, menus, presentations, controls, focus, selection, semantic
 Sidebar/Inspector, and tracking separators stay native. Document tabs are
 ordinary Document controls, not simulated window tabs. Incidental system
-material is not a token. This supersedes prior glass/material rules.
+material is not a token.
 
 Research Guidance, Actions, permission sheets, and Research Record use
 continuous native planes, textual list/detail structure, editorial hierarchy,
@@ -2186,7 +2167,7 @@ above visual centre and preserve a calm bottom edge.
   author inputs or palettes; their exact separation is provisional and must
   retain text/state contrast under every appearance. No derived output or
   functional/status hue is independently configurable.
-- Native and WebKit consume the same derived `ScholiumColorRole` outputs.
+- Native and WebKit surfaces consume the same derived semantic color outputs.
   Feature views name no raw value, and generated WebKit properties are
   transport, not a second palette. Private functional/status anchors adapt to
   appearance and contrast.
@@ -2219,8 +2200,8 @@ radius, shadow, border, gradient, or paper scales.
   consume those roles without owning a palette value.
 - Surfaces are opaque semantic planes; dense evidence is quietest and most
   legible.
-- `SidebarAttentionAlert` is one state-derived presentation component, not an
-  owner of diagnostics or counts. Zero produces no component. Nonzero combines
+- The Sidebar Attention alert is one state-derived presentation component, not
+  an owner of diagnostics or counts. Zero produces no component. Nonzero combines
   the existing raised Navigation surface, warning symbol, label, and exact
   count; unavailable substitutes complete diagnostic text and Retry. No
   Attention count, aggregate, or anchor is projected into the Document toolbar.
@@ -2246,8 +2227,8 @@ radius, shadow, border, gradient, or paper scales.
 - The Library's **300pt minimum readable thickness** is a component-specific
   containment threshold outside the grid, not a spacing role, preferred width,
   or scene minimum.
-- `ScholiumGrid.Peripheral` owns the shared **28pt** outer page edge for
-  Library and Inspector. `ScholiumGrid.Library` independently owns the
+- Peripheral metrics own the shared **28pt** outer page edge for Library and
+  Inspector. Library metrics independently own the
   Library's **12pt** row-surface inset, **28pt** minimum row rhythm, **16pt**
   hierarchy indentation step, **12–14pt** semantic leading slot, **8pt**
   leading-to-title gap, and **18pt × 1pt** ScopeIndex selection underline.
@@ -2255,20 +2236,20 @@ radius, shadow, border, gradient, or paper scales.
   navigation feedback surface may span the Source List width; the surface does
   not change the content axis. Content headings and principal controls align to
   the shared 28pt page edge. BrandHeader and LocationHeader retain
-  intrinsic content-driven height rather than copying a toolbar or retired
+  intrinsic content-driven height rather than copying a toolbar or
   footer height. These values remain provisional until they pass the 300pt,
   localization, scaling, contrast, and human visual-acceptance matrix.
-- `ScholiumGrid.Apparatus` maps its outer inset to the shared peripheral edge
-  and independently owns the Inspector's **18pt** selected-mode underline,
+- Apparatus metrics map the outer inset to the shared peripheral edge and
+  independently own the Inspector's **18pt** selected-mode underline,
   **78pt** minimum fact
   label column, **14pt** fact-column gap, **204pt** horizontal FactGrid
   threshold, and **44pt** Action-row rhythm. These names may reuse a general
   value only when the purpose is genuinely the same; Inspector-specific rhythm
   is not expressed by borrowing a peripheral or Library metric.
-- The one-time **320pt** first-reveal request is an AppKit container initial
+- The one-time **320pt** first-reveal request is a native-container initial
   condition outside the grid. It is not a design Variable, persisted setting,
   minimum, maximum, or continuously enforced preference.
-- Set Aside and Trash reuse `ScholiumGrid.Library` and the common OutlineRow
+- Set Aside and Trash reuse the Library metrics and common OutlineRow
   and LocationHeader components. They create no parallel lifecycle spacing
   namespace, destination header, or footer role.
 - Motion is purpose-named, interruptible, and removed under Reduce Motion. No
@@ -2281,8 +2262,9 @@ radius, shadow, border, gradient, or paper scales.
 
 ### 19.4 Provisional layout defaults
 
-Layout defaults support testing, not independent gates. AppKit owns chrome and
-split geometry; Scholium owns semantic order and necessary content insets.
+Layout defaults support testing, not independent gates. Native containers own
+chrome and split geometry; Scholium owns semantic order and necessary content
+insets.
 Scenes have no Scholium numeric minimum unless the complete adaptation matrix
 proves one. Independently, the Library content threshold in §18.2 adds no
 preferred/maximum width or persisted divider position. The first-reveal
@@ -2293,15 +2275,15 @@ replay it.
 
 Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, Research
 Record **760 × 680**, and fixed Settings content **700 × 560**. Regions scroll
-independently; Document takes remaining space without a fixed size. AppKit
+independently; Document takes remaining space without a fixed size. Native
 geometry stays outside the grid. WebKit uses `rem`, `ch`, CSS px, and viewport
 units without point conversion. The selected **48–96ch** Line width is centered
 inside the available Document width while `max(...)` retains the **20/32/40 CSS
 px** minimum border separations. Wide tables, code, and mathematics may scroll
 inside that measure; prose reflows without page-level horizontal reading
 scroll. The 72ch default and typographic rhythm still require ordinary, narrow,
-mixed-script, and 200% visual acceptance. Fractional browser-proof translations
-are superseded; screenshots and prototype coordinates remain evidence only.
+mixed-script, and 200% visual acceptance. Screenshots and prototype coordinates
+remain evidence only and never define native/CSS unit conversion.
 
 ### 19.5 Application icon
 
@@ -2318,7 +2300,7 @@ other Scholium-owned effects. Debug, QA, and release bundles derive their icon
 representations from the same approved artwork. The platform may scale or mask
 those representations; Scholium does not crop, recompose, or maintain a second
 icon lineage. Replacing the artwork requires explicit researcher approval and
-a new recorded decision.
+an update to this canonical rule.
 
 ### 19.6 Interface writing and explanatory copy
 
@@ -2438,7 +2420,7 @@ complete even when it exceeds two lines.
   its current value in character-width units, and supports standard keyboard
   adjustment and VoiceOver without requiring pointer dragging.
 - Test long labels, mixed English/Chinese, right-to-left chrome, minimum width,
-  every lifecycle/error state, and WebKit/AppKit focus transitions.
+  every lifecycle/error state, and editor/native-container focus transitions.
 - At the Library boundary, verify both permitted narrow outcomes: expanded at
   **300pt or wider**, or natively collapsed. The open-but-unreadable compressed
   state is forbidden. All three Triptych scopes, the current Location, and
@@ -2572,8 +2554,8 @@ Application Support, preferences, bookmarks, and derived state.
 
 The measured boundary is user-visible and accessible: a selectable, unblocked
 library; complete visible Search results; or rendered, interactive Review/Edit
-content after native publication and WebKit readiness. Semantic projection or
-an internal callback alone is insufficient. Retain raw durations, p50, p95,
+content after native publication and editor-renderer readiness. Semantic
+projection or an internal callback alone is insufficient. Retain raw durations, p50, p95,
 maximum, mean, valid and invalid sample counts with reasons, correctness,
 machine record, artifact identity, fixture identity, and raw outputs outside
 every research vault. Missing process roles, changed process sets, provenance
@@ -2581,7 +2563,7 @@ mismatch, incomplete samples, or unapproved thresholds fail closed.
 
 The 100,000-CJK fixture must remain editable at beginning, middle, and end with
 working undo, mode switching, and byte-exact save. After 50 note/mode switches,
-retained editor/WebView counts and total app-plus-WebKit memory must converge
+retained editor-renderer counts and total app-plus-renderer memory must converge
 rather than grow monotonically. These are correctness and stability conditions,
 not percentile results. Current measurements and remaining activation work
 belong only in `IMPLEMENTATION_STATUS.md`.
@@ -2624,550 +2606,30 @@ share a certificate private key outside its responsible organization.
 
 ### 21.6 Change control
 
-Every target change records task, affected sections/scope, trust/source impact,
-vault/app compatibility, required evidence, and new non-goals/questions.
-Temporary code or visuals never become authority accidentally.
+Every approved target change updates the affected canonical rule and removes
+the text it replaces in the same patch. Git owns prior versions; this document
+does not preserve supersession chains or compatibility narratives for an
+unreleased product. Architecture records structural consequences, and status
+records implementation, migration, verification, acceptance, and release
+evidence. Temporary code or visuals never become authority accidentally.
 
-## 22. Decision index and unresolved work
+## 22. Unresolved target decisions
 
-Sections 1–21 are the complete contract. Stable or implemented decisions are
-not restated here: implementation does not retire their target rules. This
-index preserves IDs and canonical locations; deleted or superseded IDs remain
-only in Git history.
+Sections 1–21 are the complete current contract. Git history owns replaced
+rules and decision chronology; decision IDs that remain in dated status or
+test names are historical locators, not independent product authority.
+Implementation and acceptance gaps belong in `IMPLEMENTATION_STATUS.md`.
 
-| Decision | Canonical section | Decision | Canonical section |
-| --- | --- | --- | --- |
-| **D-003** | 5.1, 18.1 | **D-084** | 7, 8.1, 18.5 |
-| **D-031** | 13 | **D-037** | 7, 8.1–8.2 |
-| **D-038** | 8.4 | **D-039** | 5.2, 7.1 |
-| **D-040** | 8.3 | **D-042** | 5.1, 18.4, 19.2–19.3 |
-| **D-043** | 7.2 | **D-049** | 8.3, 15.3 |
-| **D-050** | 8.4 | **D-052** | 18.2, 19.4 |
-| **D-055** | 18.3, 18.5 | **D-059** | 8.1, 17 |
-| **D-060** | 18.2, 19.1 | **D-074** | 3.2, 18.2 |
-| **D-076** | 3.2, 16 | **D-078** | Introduction, 3–4 |
-| **D-079** | 8.2, 18.5 | **D-081** | 18.7 |
-| **D-083** | Introduction, 8.2–8.4 | **D-085** | 5.1 |
-| **D-086** | 5.1 | **D-087** | 18.2–18.5, 19.3–19.4, 20 |
-| **D-088** | 18.3, 19.1, 19.3–19.4, 20 | **D-089** | 18.7 |
-| **D-090** | 18.2, 19.3–19.4, 20 | **D-091** | 18.2, 18.4–18.5, 19.1, 20 |
-| **D-092** | 19.2–19.3, 20 | **D-093** | 18.2, 18.4, 19.2–19.4, 20 |
-| **D-094** | 3.2, 18.2 | **D-095** | 18.2, 20 |
-| **D-096** | 8.5, 14 | **D-097** | 19.5 |
-| **D-098** | 13, 18.3, 20 | **D-100** | 5.1, 18.4, 19.2–19.4, 20 |
-| **D-101** | 1–2, 5–11, 13–14, 18–22 | **D-102** | 5.2, 8.1, 13, 15.2, 18.4–18.7, 19.2–19.3, Appendix A |
-| **D-103** | 5.3, 18.2–18.3, 20 | **D-104** | 3.3, 16, 18.1–18.2, 20 |
-| **D-105** | 7, 8.1–8.2, 9–11, 13, 18.1, 18.5, 18.7, 22 | **D-106** | 1–3, 5–11, 13, 16–22 |
-| **D-107** | 7.1, 8.1, 14, 22 | **D-108** | 7.2, 8.1–8.2, 18.4–18.5, 20, 22 |
-| **D-109** | 18.5, 20, 22 | **D-110** | 8.2, 17, 22 |
-| **D-111** | 7.3, 17, 22 | **D-112** | 18.5, 19.6, 20, 22 |
-| **D-113** | 8.2, 18.5, 22 | **D-114** | 18.2, 18.5, 19.2–19.6, 20, 22 |
-| **D-115** | 18.2, 18.5, 20, 22 | **D-116** | 18.5, 19.2–19.6, 20, 22 |
-| **D-118** | 1, 12–13, 18.5, 19.2–19.3, 20, 22 | **D-119** | 18.2–18.3, 19.1–19.4, 20, 22 |
-| **D-120** | 18.2–18.3, 19.1–19.4, 20, 22 |  |  |
-| **D-121** | 15.3, 18.2–18.3, 19.1–19.3, 20, 22 |  |  |
-| **D-122** | 18.2–18.3, 19.1–19.3, 20, 22 |  |  |
-| **D-123** | 18.3, 18.5, 19.2–19.3, 20, 22 |  |  |
-| **D-124** | 15.3, 18.3, 19.1–19.3, 20, 22 |  |  |
-| **D-125** | 18.2–18.3, 20, 22 |  |  |
-| **D-126** | 15.3, 18.3–18.4, 19.2–19.3, 20, 22 |  |  |
-| **D-127** | 18.2–18.4, 19.2–19.3, 20, 22 |  |  |
-| **D-128** | 18.3, 19.2–19.3, 22 |  |  |
-| **D-129** | 18.2–18.4, 19.2–19.3, 20, 22 |  |  |
-| **D-130** | 18.2–18.3, 19.2–19.3, 20, 22 |  |  |
-| **D-131** | 15.2–15.3, 18.5, 20, 22 |  |  |
-| **D-132** | 1, 3.3, 3.5, 5, 18.3, 20, 22 | **D-133** | 15.1, 20, 22 |
-| **D-134** | 18.2–18.4, 19.3, 20, 22 |  |  |
+Only questions that can still change the target remain here:
 
-Clean-cutover inventory:
+- approve or revise the default Document rhythm, including the 72ch default,
+  after ordinary, narrow, mixed-script, and 200% side-by-side acceptance;
+- promote or revise provisional interface metrics only after the complete
+  adaptation and human visual-acceptance matrix; and
+- approve the packaged G7 p95 thresholds before they become release limits.
 
-- **D-078:** do not rename or retain the removed project-specific role, schema
-  profiles, evidential layer, CLI spellings, fixtures, decoders, or GUI
-  contracts. Do not migrate or delete researcher-vault files; unsupported
-  custom YAML stays exact source without acquiring a hidden app schema.
-- **D-083:** retain no KBManager app-support import; v0 registry/window
-  migration; noncanonical persisted vault-role spelling; retired Settings
-  destination migration; retired Search scope or positional CLI Search form;
-  duplicated status-property alias; single-prompt migration; deprecated
-  Dialogue/Critique facade; package-entry `skills assemble` command; alternate
-  Function CLI spelling; missing-field Research Skill binding decoder; or
-  Dialogue response-contract fallback.
-- **D-091:** retain no shared peripheral toolbar, split-item accessory row,
-  custom title strip/height/background, load-time geometry change, duplicate
-  Show/Hide route, or glass-wrapped transfer control. Inspector visibility must
-  still use the exact native split.
-- **D-092:** retain no static appearance palette, Navigation input, duplicate
-  status role, renderer-owned color, or public functional/status hue. Accent
-  and Paper remain the only inputs to the shared native/WebKit resolver.
-- **D-093:** replace Document Styles with machine-local named Appearance
-  configurations and retain no generated CSS preview. Keep protected semantic
-  component structure, shared mathematics/code/table roles, and additive
-  sanitized CSS compatibility. D-100 supersedes only D-093's former absence of
-  a maximum document measure.
-- **D-094:** one stable document appears at most once in one window's Document
-  tabs; repeated open selects the retained page while other windows stay
-  independent.
-- **D-095:** content safety may veto a bounded close or termination attempt;
-  machine-local presentation persistence may not, and late work is attempt-
-  scoped.
-- **D-096:** existing-file mutation requires durable expected/candidate bytes
-  plus a verifiable displaced-file-preserving commit boundary; otherwise fail
-  closed without a **Saved** claim.
-- **D-097:** retain one approved application-icon lineage across debug, QA, and
-  release bundles; retain no prior icon, Appearance-derived variant, mirrored
-  copy, interface-glyph reuse, or packaging-specific replacement.
-- **D-098:** retain exactly one Triptych lexical corpus, the three public
-  scopes, finite contract-v4 syntax, exact-identity precedence, symmetric CJK
-  verification, versioned freshness, a separate direct Related section, and
-  the non-dimming opaque command surface and full-row editorial result-target
-  treatment; retain no per-vault federation, hidden scope/filter bypass,
-  raw-source corpus, vector/AI ranking, exposed implementation score, visible
-  workspace scrim, custom blur, or partial system-selection slab.
-- **D-100:** Appearance exposes one machine-local Line width, default **72ch**,
-  range **48–96ch**, and step **1ch**, shared by Review, Edit, and Source.
-  Retain no built-in preset, full-width switch, percentage mode, or per-mode
-  override. Center the measure with the mode-specific minimum insets, keep
-  Source exact-source typography, and update retained CodeMirror presentation
-  without replacing its edit state.
-- **D-101:** retained only for the three-mode Inspector, authoritative Markdown
-  annotation, revision-bound Settle, short-lived write authority, and
-  Application-owned containment, fingerprint, conflict, and recovery. D-106
-  supersedes its chronology, public Action, and separate Comment model.
-- **D-102:** separate canonical property vocabulary, default About profiles,
-  and creation requirements; require no creation properties or
-  required-looking markers.
-  Remove all `status` semantics and Search support, Work `deadline`, Topic/Work
-  YAML `title`, default Properties disclosure, About Customize, and visual
-  Zotero presentation. Use role-aware Research Units: Analysis Completion plus
-  Limitations, Topic/Work Scope plus Limitations, with Work labelled Research
-  Scope. Resolve titles through the shared role-aware fallback. Treat
-  `zotero_item_key` as an Analysis-only protected-machine field and attach one
-  exact, labelled, nonblocking Zotero bibliographic snapshot plus the formal
-  integration Skill to each eligible Research Action; never cache it across
-  tasks, show its key or metadata in Inspector, copy it into Markdown, or treat
-  metadata as source evidence. D-131 supersedes only the former blanket ban on
-  an exact current-Analysis Zotero navigation action. Use one Inspector heading
-  token, fact grids, long-text
-  reading blocks, quiet meaningful empty states, and native full-row actions.
-  No compatibility layer is retained for this pre-production cutover; unknown
-  YAML remains exact source without recognized semantics. D-106 supersedes its
-  former Action presentation.
-- **D-103:** make New Note a direct focused-window action rather than a
-  lifecycle sheet. Library Add and File/keyboard create an empty, selected note
-  at the current vault root; a folder context action and accessibility
-  equivalent create in that exact folder. Claim the first available
-  `Untitled[ N].md` path atomically, retry only path collisions, never replace
-  source, and omit the operation in protected machine-managed folders. Treat a
-  folder only as a path classification, enumerate empty folders, and add direct
-  `Untitled Folder[ N]` creation plus Rename, Move, and confirmed Move Folder
-  and Notes to Trash. A folder operation renames one directory entry after a
-  complete descendant-note revision preflight; notes—not folders—retain stable
-  IDs, receive one batch path rebinding, and drive exact incoming-link and
-  app-owned path migration. Non-Markdown descendants move byte-unchanged.
-  Complete the menu with conditional Expand/Collapse All, Copy Relative Path,
-  Reveal in Finder, note-row Copy Relative Path, and equivalent accessibility
-  actions. Fail closed on managed Critiques, ambiguous projections, symlinks,
-  destination/subtree collisions, stale inventory, or incomplete rollback.
-- **D-104:** require a validated real per-user Application Support root before
-  constructing production workspace state. Retain no temporary-directory
-  fallback, implicit read-only runtime, queued workspace command, or modal
-  alert loop. Storage failure owns the app root with default Retry, selectable
-  Details, and Quit; retry revalidates from scratch. QA may use only an
-  explicitly supplied isolated root.
-- **D-105:** retain no Human
-  Review, Qualification, ResearcherComment, app-owned Annotation, pre-Function
-  Dialogue archive, or `review:` Search syntax, projection, database column,
-  saved-query compatibility, UI, store, decoder, migration, or recovery path.
-  Researcher annotations belong in authoritative Markdown as direct prose or
-  semantic Callouts. Never convert retired app-owned records into Markdown or
-  alter research files during clean cutover. D-106 supersedes its former
-  passage-record authority by organizing Comments inside Discussion.
-- **D-106:** adopt researcher-governed Research Actions and ordinary editable
-  Method Skills. Expose Discuss/Analyze/Check Fidelity for Analysis,
-  Discuss/Synthesize/Check Fidelity for Topic, and Discuss/Write/Critique/Check
-  Fidelity for Work, with no default mode picker; keep Manuscript installed
-  only as a hidden optional custom Action. Separate protected mechanism, directly
-  editable Working Methods, read-only bundled references, Researcher Skills,
-  and declarative Action Profiles. Classify Research Guidance by Methods,
-  Researcher Skills, Permissions, Sources & Integrations, and Recovery &
-  Technical rather than flattening packages. Use explicit active/disabled
-  bindings with no silent bundled fallback, staged disabled-first local Skill
-  installation, three standing permission policies, and independently bounded
-  agent-requested child phases. Unify passage and whole-note Comments inside
-  resumable Discussion. Remove Research Activity history and keep active
-  Discussion in Actions while portable finished records use one independent
-  fixed-size list/detail Research Record window, recoverable Record Trash, and
-  disposable on-demand comparison. Record only narrow application facts, attributed agent
-  testimony, and deliberate researcher judgment; infer no intention, truth,
-  success, failure, or acceptance. Add revision-bound Material Changed Since
-  Use without calling a Topic wrong or outdated. Delete superseded repository
-  code, shipped legacy Skills, construction, decoders, projections, tests, and
-  UI once replacements are reachable, while leaving researcher Markdown,
-  unknown YAML, unrecognized Triptych files, and unsupported legacy data
-  byte-unchanged and unauthorized. D-106 supersedes D-101 and D-105 wherever
-  they require separate Comment/Discuss records, Research Activity, old public
-  Actions, immutable bundled Workflow methods, or machine-local intellectual
-  Research Records; their remaining source-integrity and clean-cutover rules
-  stay in force.
-- **D-107:** replace automatic whole-Triptych Action checkpoints with bounded
-  exact-Note recovery. Opening an Action saves only its current Target;
-  preparation never flushes unrelated Notes. Scholium-mediated writes retain
-  displaced exact bytes through the per-Note recovery ledger, while manual
-  whole-Triptych checkpoints remain researcher-initiated. Each distinct Settle
-  revision pins one machine-local exact-byte version, deduplicated by stable
-  Note and fingerprint. Recovery & Technical offers per-Note limits of 10, 30,
-  50, or no automatic deletion, defaults to 30, and explicitly previews older
-  pins before a lower limit removes them. The confirmed exact pin set is
-  journaled until idempotent cleanup finishes, without absorbing later pins.
-  Portable Settle state remains one current judgment per Note and remains
-  semantically independent of recovery. Retention order is a durable per-Note
-  monotonic sequence and does not change when the machine clock moves backward.
-- **D-108:** make Comment a lightweight revision-bound line annotation rather
-  than an agent handoff. Expose it only from Review through its transient
-  selection bar; keep Edit's separate selection bar limited to formatting;
-  save Comment in place with Return, insert a line with
-  Shift-Return, and cancel with Escape. New Comments retain only Note identity,
-  fingerprint, and inclusive line range, never selected text, quotation,
-  context, or exact offsets, and never attempt reattachment after the Note
-  changes. Discuss deliberately starts agent interaction, automatically
-  collects the current Note's Comments, and reopens the one active Discussion
-  through its own Action without a duplicate current-state row. Keep Source
-  exact and free of Comment presentation, and keep required Action validation
-  at preparation without blanking stable launchers or serially resolving the
-  same Profile before a sheet can appear. Keep common formatting in Edit's
-  selection bar, Format menu, and keyboard rather than duplicating it in the
-  secondary-click menu; omit Preview from secondary click and keep footnote
-  preview and navigation in Review. Give Review Comment and Edit formatting the same opaque,
-  Variables-derived selection-surface style.
-- **D-109:** keep Research Record recognizably secondary: one nonrestored,
-  fixed **760 × 680** utility window with a readable list/detail layout. Retain
-  no Workspace Sidebar control, user-facing wide/narrow choice, stacked
-  responsive replacement, or primary-workspace adaptation. Keep the leading
-  list compact and top-aligned without shrinking custom controls below the
-  accessibility threshold.
-- **D-110:** keep portable Research Record deletion as one researcher-initiated
-  **Delete Record…** action with a destructive second confirmation. Do not
-  expose Record Trash, Restore, or a hidden retained-trash lifecycle. Permanent
-  deletion removes only the selected portable record and its derived Note
-  projections; it never deletes Markdown, checkpoints, exact-note recovery, or
-  unrelated records. D-110 supersedes D-106 only where D-106 requires
-  recoverable Record Trash.
-- **D-111:** because Scholium has not shipped, clean cutover exposes no legacy
-  data entry. Unsupported pre-production machine-local bytes remain untouched,
-  invisible, unparsed, unmigrated, unrecoverable through the product, and
-  nonauthorizing. Current portable Skills retain **Reveal Skills Folder**;
-  there is no **Reveal Legacy Data** command. D-111 supersedes D-106 only where
-  its preservation rule previously implied a manual reveal route.
-- **D-112:** make interface explanation exceptional rather than routine. Begin
-  with the shortest accurate label; omit supporting copy when label and context
-  suffice. When necessary, use one terse sentence or fragment authored for at
-  most two ordinary-width lines. Do not repeat one meaning across visible copy,
-  tooltip, and accessibility hint. A disabled Action shows only its first
-  executable repair. Keep permission, provenance, conflict, destructive
-  consequence, failure, and recovery detail in the appropriate body or
-  presentation rather than hiding or truncating it to satisfy brevity.
-- **D-113:** cut the pre-release portable Research Record contract directly to
-  schema 3. Require explicit Agent Material-use testimony and preserve the
-  Scholium-established Fidelity completion state without adding an execution
-  trace or philosophical verdict. Schema 1/2 record files remain byte-, mode-,
-  mtime-, permission-, and location-unchanged; they are unsupported, unparsed,
-  unprojected, unmigrated, undeleted, and nonauthorizing. The
-  `.scholium/research-records/v1/` name remains the storage-layout version.
-- **D-114:** converge the existing native Research Inspector on one compact
-  Apparatus component system without changing its modes, research semantics,
-  state owners, scroll owners, Action routes, or three-pane structure. Keep the
-  native split separator as the sole pane boundary; remove Scholium-drawn
-  ModeIndex, section, and Action-row default rules. Use an equal three-column
-  ModeIndex with a short selected underline, a section-level FactGrid that
-  adapts only as a whole, reading blocks for long prose, fixed relation-symbol
-  columns, one shared Action-row visual recipe, and compact local state lines.
-  A new window may request a provisional 320pt Apparatus thickness only on its
-  first explicit reveal; do not persist, restore, observe, or replay that
-  request. Retain complete error, conflict, permission, and recovery text and
-  keep human visual and assistive-technology acceptance distinct from previews
-  and automation.
-- **D-115:** install initial or restored Inspector collapse state before the
-  native split's first presentation so launch never flashes a transient pane.
-  Within Actions, retain canonical Action order and routing while grouping
-  defaults as Research and Review, custom entries as Researcher Skills, and
-  Settle as Judgment. Use headings and whitespace without cards, default rules,
-  or a generic Actions heading; preserve one linear keyboard and VoiceOver
-  order through every group.
-- **D-116:** make Inspector interaction follow the same editorial hierarchy as
-  its content. Needs Attention is one current-Note summary button with no
-  nested Show All row; About keeps selectable content while its heading alone
-  opens Edit Properties. State names use interface-label typography. Connect
-  uses one relaxed full-row relationship button with no trailing diagonal
-  glyph, retains a named source-anchor alternative, and keeps the active group
-  heading available as the original sticky collapse button within its one
-  scroll owner. Action rows always call
-  their exact current-window typed route; focused routing remains for commands,
-  not row activation. Built-in visual grouping stays closed while arbitrary
-  researcher-enabled Skills remain one generic ordered collection. Pointer
-  activation never writes keyboard focus merely to select a mode or launch a
-  row, and a pointer-launched Action does not schedule a keyboard-only focus
-  ring when its presentation closes. Tab, arrow-key traversal, accessibility
-  activation, and deliberate keyboard post-presentation restoration retain
-  visible native focus.
-- **D-118:** adopt Vector-Link v3: bare links remain neutral,
-  `+` means the containing Note supports the target, `-` means it opposes the
-  target, and `?` records mutual incompatibility without direction. Retain no
-  public reverse-support or directed-Questions kind, decoder, authoring
-  command, label, fixture, or derived graph contract. Derive only support and
-  opposition inverse presentation from subject/object; preserve every exact
-  marker and source anchor without rewriting research files. Connect groups
-  rows by relationship and shows one accessible-text-redundant custom glyph
-  per cluster, with major headings and the current cluster glyph sticky inside
-  the sole scroll owner. Keep counts, direction, and resolution distinct from
-  philosophical weight, truth, evidence, or acceptance. This is a pre-release
-  clean cutover; existing `?` bytes acquire the current meaning without
-  automatic source migration.
-- **D-119:** converge Library on one Scope-constrained Source List without
-  changing Triptych roles, lifecycle meaning, recovery, split-view ownership,
-  open Documents, or researcher authority. BrandHeader, equal-column
-  ScopeIndex, LocationHeader, and Recommended Bibliography retain their
-  ownership while a native LocationPicker chooses Library, Set Aside, or Trash
-  and replaces only the source-region content. Attention remains a separate
-  queue that preserves Location and source selection; D-127 governs its
-  conditional Sidebar presentation. Remove the lifecycle footer, Back control,
-  active-footer return, and Settings destination. Library is the explicit
-  return menu item;
-  Triptych management remains the identity menu and Settings remains a
-  standard application route. Use one semantic leading slot per OutlineRow,
-  with provisional 24pt content axis, 12pt row inset, 28pt minimum rhythm, and
-  16pt indentation step. Derive distinct but closely related
-  `navigationSurface` and `apparatusSurface` roles from the one Paper resolver.
-  D-119 supersedes D-087 and D-088 only where their former Library footer,
-  Back, destination-header, shared-peripheral-surface, or compact-row rules
-  conflict. Retain no compatibility UI, duplicate Location state, double
-  folder iconography, parallel lifecycle palette, or research-source
-  migration. Current implementation divergence remains migration debt; human
-  visual and assistive-technology acceptance remain distinct from previews
-  and automation.
-- **D-120:** make Attention one standard, application-wide, nonrestored SwiftUI
-  auxiliary `Window` that follows the exact most recently focused Workspace.
-  A Sidebar or transferred-toolbar route only opens or focuses it and preserves
-  Scope, Location, source content, Document, and selection. Inspector may apply
-  a current-Note subset; Sidebar Scope changes clear that subset. Each
-  Workspace owns only its session filter and selected task, while Scene
-  presentation alone owns window visibility. Group the eight existing derived
-  kinds into Identity & Metadata,
-  Structure & Connections, and Revision & Reliance; preserve their derivation,
-  dismissal ledger, material-revision actions, Markdown safety, and researcher
-  authority. Retain last trustworthy results during refresh, stale, and
-  recoverable failure, with explicit Retry and deterministic post-removal focus.
-  Use the exact Workspace coordinator to activate a Note and keep Attention
-  open; retain no inline queue, custom close button, sheet, popover, floating
-  panel, always-on-top behavior, global window search, notification route, or
-  compatibility branch. D-120 supersedes D-119 only where D-119 specifies an
-  inline Attention queue; every D-119 Scope, Location, Source List, lifecycle,
-  bibliography, surface, and clean-cutover rule remains in force.
-- **D-121:** make Recommended Bibliography a fixed, intrinsic-height,
-  Triptych-wide Sidebar apparatus outside Library's Source List scroll and all
-  Scope, Location, selection, filter, sorting, and lifecycle ownership. Use the
-  Paper-derived apparatus surface plus one structural top boundary, and name
-  the Triptych and **Reading leads, not evidence** boundary in visible and
-  accessible structure. Retain no scrolling Source List section, Library row,
-  Location destination, vault-scoped styling, fixed numeric footer height,
-  card, shadow, or parallel palette. This is a presentation and ownership
-  correction only: it changes no recommendation data, Analysis-bound
-  preparation migration debt, agent handoff, Zotero matching, dismissal,
-  source Markdown, or researcher authority. D-121 supersedes D-119 only where
-  D-119 leaves Recommended Bibliography inside the Library source region;
-  every other D-119 and D-120 rule remains in force.
-- **D-122:** align surface color with structural kinship. The complete Sidebar,
-  including the fixed Recommended Bibliography utility, uses one
-  `navigationSurface`; Bibliography remains outside Source List ownership and
-  relies on its structural top boundary, fixed position, Triptych label, and
-  evidence-boundary copy rather than an alternate background. Inspector keeps
-  the semantic `apparatusSurface`, but its Paper-derived tone moves much closer
-  to `documentBackground` than Navigation so it reads as the Document's
-  marginal research context rather than a second peripheral navigation plane.
-  Retain the native split divider, distinct semantic roles, Light/Dark/Increase
-  Contrast resolution, and local raised interaction states. The Triptych menu
-  uses only its native menu indicator and retains no duplicate custom chevron.
-  D-122 supersedes D-119 and D-121 only where they assign Recommended
-  Bibliography an Apparatus-colored band or keep Inspector equally separated
-  from Document; all workflow, ownership, accessibility, and clean-cutover
-  rules remain in force.
-- **D-123:** promote the researcher-approved Light Editorial Parchment proof
-  into the production design system. Replace the Paper input with the app-icon-
-  aligned `#FEF8ED`; use it directly as Light `documentBackground`, and derive
-  Navigation, Apparatus, raised surfaces, neutral ink, Dark, and Increase
-  Contrast roles through the existing single resolver. Keep Accent
-  `#A94C22` as the only hue input and retain no blue typographic or navigation
-  palette. Render LocationPicker through one quiet borderless native menu with
-  one native indicator and mutually exclusive selected-item semantics. Share
-  the short Accent underline's visual recipe between ScopeIndex and ModeIndex
-  while their purpose-owned dimensions remain separate. Sticky Inspector
-  headings and relationship-glyph occlusion consume the exact Apparatus
-  surface instead of a floating-control surface, so they cannot appear as
-  independent rectangular tiles. The QA acceptance board consumes these same
-  production Variables and Components and retains no local palette. D-123
-  supersedes D-092 only for the former Paper input and D-122 only where the
-  approved refinement is more specific; all state, workflow, native-control,
-  adaptation, and clean-cutover rules remain in force.
-- **D-124:** remove the compact Recommended Bibliography explanatory subcopy.
-  Let its heading, fixed sibling position, structural boundary, and
-  `Triptych Recommended Bibliography` accessibility group carry ownership;
-  retain the evidence boundary in the full workflow and research semantics,
-  not as persistent Sidebar instruction. Give the fixed band purpose-named
-  12pt top and 16pt bottom insets so its content sits slightly higher and keeps
-  a calm bottom edge. Establish one purpose-named 28pt peripheral page-edge
-  inset shared by Sidebar and Inspector while their row, hierarchy, and section
-  rhythms remain independent. Route every Library, Set Aside, and Trash empty,
-  loading, or error state through that page edge while keeping populated row
-  surfaces on their distinct 12pt inset. Delete the obsolete display localization and
-  acceptance-board copy rather than retaining a compatibility branch. D-124
-  supersedes D-121 and D-122 only where they require visible scope/evidence
-  subcopy, and D-114/D-119 only where their outer content axes differ; all
-  Triptych ownership, fixed placement, workflow, and accessibility rules remain
-  in force.
-- **D-125:** eliminate transient full-page Loading during ordinary
-  Analyses/Topics/Works and Library/Set Aside/Trash navigation. Stage the
-  target from the latest accepted per-window Workspace snapshot, retain the
-  committed Scope/Location pair while staging, and atomically replace pair and
-  Source List only after the target is complete. Reject late request identities
-  as before. A staged failure retains the prior projection and reports the
-  failure rather than displaying it beneath the wrong Location; Loading/Error
-  pages remain for cases with no trustworthy projection or explicit recovery.
-  Retain no timer, animation, false progress, stale-target presentation, or
-  second Scope/Location owner. This changes no source reads, Markdown bytes,
-  lifecycle meaning, filters, sorting, disclosure, document selection, or
-  filesystem refresh authority.
-- **D-126:** complete the Beta's static Sidebar hierarchy without introducing
-  title motion. Keep Folder and unselected Note titles at one 12pt Regular
-  system role and give only the selected Note Semibold emphasis; retain
-  single-line middle truncation, pointer help, and accessible full names. Keep
-  the accepted full-width selected/pressed navigation feedback while the text
-  axis retains its 12pt row inset. Hide only the Filter entry's redundant menu
-  indicator while retaining native submenu and LocationPicker indicators.
-  Make the entire fixed Recommended Bibliography band one button with heading,
-  nonzero count, quiet forward chevron, and either a purpose-named 10pt empty
-  state or one static `Author, Year, Title` preview; retain no compact
-  horizontal candidate scroller, per-candidate target, or diagonal-open glyph.
-  Render the compact toolbar identity in secondary text and retain no Beta
-  H1-to-toolbar identity handoff, marquee, fade-mask reveal, or custom title
-  animation. Reuse semantic typography roles and the shared quiet row Button
-  component rather than leaf-view fonts or a bibliography-only interaction
-  skin. This changes no recommendation data, full-surface operations, popover
-  ownership, Location/Scope state, document selection, Markdown bytes, or
-  researcher authority.
-- **D-127:** treat Attention as a rare, urgent exception rather than permanent
-  Sidebar navigation. Zero is its steady state, **1–3** unresolved items are
-  the primary design condition, and larger queues are exceptional accumulation,
-  not a hard cap or alternate mode. For a zero selected-Scope count, retain no
-  Sidebar row, reserved gap, visible zero, or accessibility target. For a
-  nonzero count, show one full-width alert between ScopeIndex and LocationHeader
-  with warning symbol, exact count, persistent raised Navigation surface, and
-  Accent boundary; never auto-open it, move focus to it, or use repeating
-  attention-seeking motion. Nonselected Scopes expose compact exact nonzero
-  metadata in ScopeIndex. When Sidebar is collapsed and any Scope remains
-  nonempty, transfer exactly one compact signal to the Document toolbar;
-  activation opens the selected Scope when nonempty, otherwise the first
-  nonempty Scope in Analyses, Topics, Works order, without changing workspace
-  navigation or the open Document. Resolution of the last selected-Scope item
-  removes the alert and moves focus to LocationPicker only if the disappearing
-  alert owned it. Preserve last trustworthy counts during refresh; a failed
-  first load reports **Attention Unavailable** with Retry instead of claiming
-  zero. Keep **Window → Attention**, the standard auxiliary window, dismissal,
-  grouping, source safety, and researcher judgment unchanged. Retain no
-  permanent zero row, color-only or motion-only meaning, auto-open behavior,
-  duplicate queue owner, or compatibility branch. D-127 supersedes D-119 and
-  D-120 only where they imply a permanently visible Sidebar entry or selected-
-  Scope-only visibility signal.
-- **D-128:** remove the conditional Sidebar Attention alert's leading Accent
-  rule. Warning symbol, exact count, persistent raised Navigation surface,
-  placement, complete-row activation, focus behavior, and state semantics
-  already establish urgency without making the alert resemble a selected
-  Source List row. Add no replacement decoration, color input, or compatibility
-  branch. D-128 supersedes D-127 only where D-127 requires that Accent boundary;
-  all remaining D-127 behavior stays in force subject to D-129's presentation
-  cutover.
-- **D-129:** clean-cut Attention presentation from D-120's standard auxiliary
-  Window to one native transient SwiftUI popover owned by each exact Workspace
-  window. Sidebar alert, collapsed-Sidebar toolbar signal, and Inspector summary
-  are the only anchors and all render the same derived queue; **Window →
-  Attention** is enabled only when one of those anchors is visible and invokes
-  the preferred visible route. Native outside activation and Escape dismiss the
-  popover; Inspect and Resynthesize dismiss before continuing in the exact
-  Workspace. Retain no manual close control, detached Scene, app-wide session
-  bridge, NSWindow attachment, global search, notification route, sheet, panel,
-  inline queue, or compatibility branch. The same Workspace may retain its
-  filter and selected task across ordinary popover dismissal. Switching to a
-  different Workspace resets query, kind filter, selected task, and current-
-  Note subset; timed and revision-bound dismissal records remain machine-local
-  and unchanged. Preserve the three groups, Scope routing, Note subset,
-  refreshing/stale/error retention, removal focus order, exact counts, source
-  safety, and researcher judgment. D-129 supersedes D-120 only for Scene,
-  window, lifetime, close, activation, and cross-Workspace session clauses, and
-  supersedes D-127 where it names the auxiliary Window; every other D-119,
-  D-120, D-127, and D-128 rule remains in force.
-- **D-130:** remove all Attention statistics from the Analyses, Topics, and
-  Works ScopeIndex labels, including accessibility values. ScopeIndex remains
-  pure Triptych navigation with equal columns, selection, and reading-direction
-  arrow behavior. While Sidebar is visible, the conditional current-Scope
-  alert alone expresses Attention; while Sidebar is collapsed, the one
-  transferred toolbar signal retains its total and exact activation Scope.
-  Preserve per-Scope counts internally for those two routes and for dismissal
-  reconciliation, but retain no hidden Scope-label count, count animation,
-  reserved label width, metadata token, or compatibility branch. D-130
-  supersedes D-127 and D-129 only where they require or permit ScopeIndex
-  Attention values; all other conditional-alert and popover behavior remains in
-  force.
-- **D-131:** move exact Zotero item navigation to the object that owns the
-  identity. A current Analysis with a valid protected `zotero_item_key`
-  exposes one quiet full-row **Open in Zotero** action inside Overview's About
-  projection. The action opens the exact item through the existing read-only
-  presentation adapter and exposes no key, metadata, matching, confirmation,
-  attachment, or write path. It is absent for Topics, Works, and Analyses
-  without a valid key. Remove **Open in Zotero** from Recommended
-  Bibliography candidates; those rows retain only **Open Analysis** when
-  matched and **Dismiss**. Retain no duplicate route or compatibility branch.
-  D-131 supersedes D-102 only where it prohibited this bounded Inspector action
-  and supersedes the prior §15.3 candidate-action list; every remaining Zotero
-  source, task-context, recommendation, safety, and researcher-authority rule
-  stays in force.
-- **D-132:** remove the pre-release Unclassified product concept by clean
-  cutover. Import writes exact UTF-8 Markdown bytes directly to the current
-  Scope's vault root and resolves filename collisions without replacement;
-  root-level Notes are ordinary Library Notes. Remove all classification UI,
-  state, contracts, storage APIs, transaction roles, CLI aliases, and
-  compatibility branches. Do not migrate, inspect, normalize, expose, or
-  delete existing `.scholium/unclassified/` bytes. D-132 supersedes every
-  prior rule requiring import staging or classification.
-- **D-133:** replace Zotero's duplicate **Test Connection** and **Refresh
-  Library Information** controls with one **Check Connection** action. It
-  performs the same read-only localhost refresh and owns the resulting status,
-  library summary, error, and last-successful-time update. Retain no duplicate
-  control or compatibility label.
-- **D-134:** remove Attention from the Document toolbar entirely. Sidebar's
-  conditional current-Scope alert and Inspector's current-Note summary are the
-  only popover anchors. Collapsing Sidebar creates no transferred symbol,
-  count, aggregate, reserved width, UserDefaults observation, or toolbar
-  routing state. **Window → Attention** is enabled only while one of the two
-  contextual anchors is visible; showing Sidebar restores the primary route.
-  Preserve per-Scope derivation, the dismissal ledger, popover grouping,
-  filtering, selection, refresh/error retention, source safety, and researcher
-  authority. Retain no toolbar compatibility item or anchor case. D-134
-  supersedes D-127, D-129, and D-130 only where they require or permit the
-  collapsed-Sidebar toolbar signal; every remaining conditional-alert,
-  Inspector-summary, and transient-popover rule stays in force.
-
-Unresolved work must not be described as complete:
-
-- complete-window visual proof for Attention at **0 / 1 / 3** items, including
-  collapsed Sidebar absence, 300pt Sidebar, inactive
-  window, Light/Dark, Increase Contrast, right-to-left layout, and focus removal;
-- sustained manual VoiceOver, Full Keyboard Access, Voice Control, Dictation,
-  contrast, scaling, localization, and installed-IME acceptance;
-- final document rhythm and production mono comparison;
-- researcher acceptance of researcher-governed Actions/Skills, unified
-  Discussion, portable Research Record, and the default Methods' philosophical
-  quality and fidelity;
-- broader Search ranking/usability evaluation;
-- packaged Release performance thresholds and measurements; and
-- clean-tagged distribution and external-install evidence.
+Resolving an item updates its owning canonical section and removes the item
+from this list in the same patch.
 
 ## Appendix A. Default property profiles
 
