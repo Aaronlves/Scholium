@@ -4464,12 +4464,15 @@ final class ScholiumUITests: XCTestCase {
     @MainActor
     func testDirtyExternalEditPreservesTheBufferAndPresentsConflictRecovery() throws {
         let localToken = " LOCAL-\(UUID().uuidString)"
-        let diskToken = "\n\n## External Disk Revision\n"
+        let diskToken = "## External Disk Revision — "
+            + String(repeating: "synthetic exact-source soft-wrap probe ", count: 18)
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         try enterLivePreviewAndAppend(localToken)
 
-        let originalDisk = try source(at: noteURL)
-        try write(originalDisk + diskToken, to: noteURL)
+        var externalDisk = try source(at: noteURL)
+        let frontmatterEnd = try XCTUnwrap(externalDisk.range(of: "\n---\n"))
+        externalDisk.insert(contentsOf: "\n\(diskToken)\n", at: frontmatterEnd.upperBound)
+        try write(externalDisk, to: noteURL)
 
         let conflictWindow = app.windows.firstMatch
         let compare = conflictWindow.buttons["Compare Changes"]
@@ -4479,14 +4482,61 @@ final class ScholiumUITests: XCTestCase {
             compare.waitForExistence(timeout: 12),
             "A dirty buffer and external edit must produce a persistent conflict decision."
         )
-        XCTAssertTrue(reload.exists)
-        XCTAssertTrue(keepEditing.exists)
+        let conflictStatus = conflictWindow.descendants(matching: .any)[
+            "scholium.documentStatus.conflict"
+        ]
+        XCTAssertTrue(conflictStatus.exists)
+        XCTAssertTrue(accessibilityText(of: conflictStatus).contains("Autosave Paused"))
+        XCTAssertLessThanOrEqual(
+            abs(compare.frame.midY - conflictStatus.frame.midY),
+            1,
+            "The conflict action must be vertically centered in the status toast."
+        )
+        XCTAssertFalse(reload.exists)
+        XCTAssertFalse(keepEditing.exists)
         XCTAssertTrue(try source(at: noteURL).contains(diskToken))
         XCTAssertFalse(try source(at: noteURL).contains(localToken))
 
         compare.click()
         let comparison = app.descendants(matching: .any)["scholium.conflictComparison"]
         XCTAssertTrue(comparison.waitForExistence(timeout: 5))
+        let comparisonSheet = conflictWindow.sheets.firstMatch
+        XCTAssertTrue(comparisonSheet.exists)
+        XCTAssertGreaterThanOrEqual(
+            comparisonSheet.frame.width,
+            760,
+            "Conflict comparison must retain a readable text width instead of collapsing to its controls."
+        )
+        let readableDiffLine = app.staticTexts["title: QA Autosave A"].firstMatch
+        XCTAssertTrue(
+            readableDiffLine.waitForExistence(timeout: 3),
+            "The comparison must expose an intact representative source line."
+        )
+        XCTAssertGreaterThan(
+            readableDiffLine.frame.width,
+            100,
+            "A source line must not collapse into a character-wide column."
+        )
+        let diskOnlyRows = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.conflict.row.diskOnly."
+            )
+        ).allElementsBoundByIndex
+        let wrappedDiffLine = try XCTUnwrap(
+            diskOnlyRows.max(by: { $0.frame.height < $1.frame.height }),
+            "The comparison must expose the synthetic disk-only source row."
+        )
+        XCTAssertGreaterThan(
+            wrappedDiffLine.frame.height,
+            readableDiffLine.frame.height * 1.5,
+            "A long logical source line must soft-wrap instead of requiring horizontal reading scroll."
+        )
+        XCTAssertLessThanOrEqual(
+            wrappedDiffLine.frame.width,
+            comparisonSheet.frame.width,
+            "A soft-wrapped diff row must stay within the comparison sheet."
+        )
         let currentRevision = app.descendants(matching: .any).matching(
             NSPredicate(format: "label BEGINSWITH %@", "Current Editor, SHA-256")
         ).firstMatch
@@ -4828,7 +4878,11 @@ final class ScholiumUITests: XCTestCase {
             conflictWindow.buttons["Compare Changes"].waitForExistence(timeout: 5),
             "Reload must not accept bytes that weren't shown in the comparison."
         )
-        conflictWindow.buttons["Keep Editing"].click()
+        let conflictStatus = conflictWindow.descendants(matching: .any)[
+            "scholium.documentStatus.conflict"
+        ]
+        XCTAssertTrue(conflictStatus.exists)
+        XCTAssertTrue(accessibilityText(of: conflictStatus).contains("Autosave Paused"))
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertTrue((editor.value as? String ?? "").contains(localToken))

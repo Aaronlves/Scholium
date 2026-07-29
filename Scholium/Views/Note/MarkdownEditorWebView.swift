@@ -499,6 +499,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let activeLineCount: Int
         let contentPaddingTop: String
         let contentPaddingInlineStart: String
+        let lineWrappingEnabled: Bool
+        let softWrapProbeHeight: Double
         let scrollTop: Double
         let scrollExtent: Double
         let mathRuntimeVersion: Int
@@ -646,6 +648,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 activeLineCount: document.querySelectorAll('.cm-activeLine').length,
                 contentPaddingTop: contentStyle?.paddingTop || '',
                 contentPaddingInlineStart: contentStyle?.paddingInlineStart || '',
+                lineWrappingEnabled: content?.classList.contains('cm-lineWrapping') || false,
+                softWrapProbeHeight: Array.from(document.querySelectorAll('.cm-line'))
+                    .find(line => line.textContent?.includes('SOFT_WRAP_PROBE'))
+                    ?.getBoundingClientRect().height || 0,
                 scrollTop: document.querySelector('.cm-scroller')?.scrollTop || 0,
                 scrollExtent: (() => {
                     const scroller = document.querySelector('.cm-scroller');

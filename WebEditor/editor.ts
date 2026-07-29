@@ -2072,6 +2072,7 @@ const sourceMode = [
   highlightActiveLineGutter(),
   foldGutter(),
   highlightActiveLine(),
+  EditorView.lineWrapping,
 ];
 
 let dirty = false;

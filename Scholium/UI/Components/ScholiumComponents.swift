@@ -345,15 +345,22 @@ struct ScholiumInlineStatus: View {
     let title: String
     let detail: String?
     let kind: ScholiumInlineStatusKind
+    let verticalAlignment: VerticalAlignment
 
-    init(_ title: String, detail: String? = nil, kind: ScholiumInlineStatusKind) {
+    init(
+        _ title: String,
+        detail: String? = nil,
+        kind: ScholiumInlineStatusKind,
+        verticalAlignment: VerticalAlignment = .firstTextBaseline
+    ) {
         self.title = title
         self.detail = detail
         self.kind = kind
+        self.verticalAlignment = verticalAlignment
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: verticalAlignment, spacing: 8) {
             Image(systemName: kind.symbol)
                 .scholiumForeground(kind.colorRole)
                 .accessibilityHidden(true)
@@ -369,6 +376,64 @@ struct ScholiumInlineStatus: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Persistent Document-owned source-integrity feedback. The caller retains
+/// the autosave or conflict state and supplies only the recovery actions that
+/// are valid for that exact state.
+struct ScholiumDocumentStatusToast<Actions: View>: View {
+    let title: String
+    let detail: String
+    let kind: ScholiumInlineStatusKind
+    @ViewBuilder let actions: () -> Actions
+
+    init(
+        _ title: String,
+        detail: String,
+        kind: ScholiumInlineStatusKind,
+        @ViewBuilder actions: @escaping () -> Actions
+    ) {
+        self.title = title
+        self.detail = detail
+        self.kind = kind
+        self.actions = actions
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            ScholiumInlineStatus(
+                title,
+                detail: detail,
+                kind: kind,
+                verticalAlignment: .center
+            )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            actions()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 520, alignment: .leading)
+        .scholiumEditorialSurface(
+            .floatingControl,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .accessibilityValue(detail)
+    }
+}
+
+extension ScholiumDocumentStatusToast where Actions == EmptyView {
+    init(
+        _ title: String,
+        detail: String,
+        kind: ScholiumInlineStatusKind
+    ) {
+        self.init(title, detail: detail, kind: kind) { EmptyView() }
     }
 }
 

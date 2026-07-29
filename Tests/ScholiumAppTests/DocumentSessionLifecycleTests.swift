@@ -71,6 +71,35 @@ struct DocumentSessionLifecycleTests {
         #expect(store.pinReasons(for: session).contains(reason))
     }
 
+    @Test("Document integrity presentation excludes invalid state combinations")
+    func documentIntegrityPresentation() {
+        #expect(DocumentIntegrityPresentation.resolve(
+            editError: nil,
+            conflict: nil,
+            canRetrySave: false
+        ) == nil)
+        #expect(DocumentIntegrityPresentation.resolve(
+            editError: "The save service is unavailable.",
+            conflict: nil,
+            canRetrySave: true
+        ) == .autosaveFailed(
+            message: "The save service is unavailable.",
+            canRetry: true
+        ))
+
+        let conflict = DocumentConflictSnapshot(
+            relativePath: "Conflict.md",
+            editorSource: "editor",
+            diskSource: "disk",
+            baseRevision: DocumentFingerprint(content: "base")
+        )
+        #expect(DocumentIntegrityPresentation.resolve(
+            editError: "A lower-level conflict description.",
+            conflict: conflict,
+            canRetrySave: true
+        ) == .conflict)
+    }
+
     @Test("A clean detached zero-lease session is fully reaped")
     func detachedEviction() {
         let store = DocumentSessionStore()

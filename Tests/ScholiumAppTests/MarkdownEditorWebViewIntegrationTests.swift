@@ -211,6 +211,42 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Source soft-wraps exact logical lines without changing their text or numbering")
+    func sourceSoftWrapPreservesExactLogicalLines() async throws {
+        let longLine = "SOFT_WRAP_PROBE "
+            + Array(repeating: "exact-source-token", count: 80).joined(separator: " ")
+        let source = "---\r\ntitle: Soft Wrap\r\n---\r\n\(longLine)\r\nFinal logical line.\r\n"
+        let normalizedSource = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let finalLineOffset = try #require(
+            normalizedSource.range(of: "Final logical line.")?.lowerBound
+        ).utf16Offset(in: normalizedSource)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        let generation = harness.session.generation
+        let undoLabel = harness.session.context?.undoLabel
+        harness.session.setMode(.source)
+        let sourceMode = try await harness.waitUntilPresentation(stage: "soft-wrapped Source") {
+            $0.label == "Markdown source editor"
+                && $0.lineWrappingEnabled
+                && $0.softWrapProbeHeight > 0
+        }
+        let sourceLineHeight = Double(
+            sourceMode.presentation.documentLineHeight.replacingOccurrences(of: "px", with: "")
+        ) ?? 0
+        #expect(sourceLineHeight > 0)
+        #expect(sourceMode.softWrapProbeHeight > sourceLineHeight * 2)
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(head: finalLineOffset)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     @Test("Bridge v5 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
@@ -653,22 +689,20 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.context?.undoLabel == undoBeforeLineWidthChange)
         #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
         let scrollAnchorAfterLineWidthChange = try await harness.session.currentScrollAnchor()
-        #expect(
-            scrollAnchorAfterLineWidthChange?.sourceFingerprint
-                == scrollAnchorBeforeLineWidthChange?.sourceFingerprint
+        let anchorBefore = try #require(scrollAnchorBeforeLineWidthChange)
+        let anchorAfter = try #require(scrollAnchorAfterLineWidthChange)
+        #expect(anchorAfter.sourceFingerprint == anchorBefore.sourceFingerprint)
+        // Soft wrapping changes visual block heights. Preserve the same
+        // nearby semantic source location while allowing the viewport probe
+        // to cross at most one neighboring logical line at a line boundary.
+        let sourceDistance = abs(
+            anchorAfter.sourceUTF16Offset - anchorBefore.sourceUTF16Offset
         )
-        #expect(
-            scrollAnchorAfterLineWidthChange?.sourceUTF16Offset
-                == scrollAnchorBeforeLineWidthChange?.sourceUTF16Offset
-        )
-        #expect(
-            scrollAnchorAfterLineWidthChange?.blockUTF16LowerBound
-                == scrollAnchorBeforeLineWidthChange?.blockUTF16LowerBound
-        )
-        #expect(
-            scrollAnchorAfterLineWidthChange?.blockUTF16UpperBound
-                == scrollAnchorBeforeLineWidthChange?.blockUTF16UpperBound
-        )
+        let neighboringLineBound = max(
+            anchorBefore.blockUTF16UpperBound - anchorBefore.blockUTF16LowerBound,
+            anchorAfter.blockUTF16UpperBound - anchorAfter.blockUTF16LowerBound
+        ) + 2
+        #expect(sourceDistance <= neighboringLineBound)
         harness.close()
         try await Task.sleep(for: .milliseconds(500))
 

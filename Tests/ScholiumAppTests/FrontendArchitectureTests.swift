@@ -39,6 +39,47 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("renderedReadReadyFingerprint"))
     }
 
+    @Test("Autosave failure and conflict stay in the Document surface")
+    func documentIntegrityStatusOwnership() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let noteSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let componentSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(noteSource.contains("DocumentIntegrityPresentation.resolve("))
+        #expect(noteSource.contains("ScholiumDocumentStatusToast("))
+        #expect(noteSource.contains("scholium.documentStatus.autosaveFailed"))
+        #expect(noteSource.contains("scholium.documentStatus.conflict"))
+        #expect(noteSource.contains("AccessibilityNotification.Announcement"))
+        #expect(noteSource.contains(".frame(minWidth: 760, idealWidth: 900"))
+        #expect(noteSource.contains("ScrollView(.vertical)"))
+        #expect(noteSource.contains(".frame(width: max(viewport.size.width, 1)"))
+        #expect(noteSource.contains("width: diffTextWidth(in: viewport.size.width)"))
+        #expect(noteSource.contains(".lineLimit(nil)"))
+        #expect(!noteSource.contains("ScrollView([.vertical, .horizontal])"))
+        #expect(!noteSource.contains(".fixedSize(horizontal: true, vertical: false)"))
+        #expect(!noteSource.contains(".alert(conflict == nil ? \"Save Failed\""))
+        #expect(!noteSource.contains("Native save/conflict recovery owns focus while it is visible."))
+        #expect(componentSource.contains("struct ScholiumDocumentStatusToast<Actions: View>"))
+        #expect(componentSource.contains("HStack(alignment: .center, spacing: 10)"))
+        #expect(componentSource.contains("verticalAlignment: .center"))
+        #expect(componentSource.contains("HStack(alignment: verticalAlignment, spacing: 8)"))
+        #expect(componentSource.contains(".accessibilityLabel(title)"))
+        #expect(componentSource.contains(".accessibilityValue(detail)"))
+    }
+
     @Test("A window presents at most one sheet route")
     func presentationRouteExclusivity() {
         let router = WindowPresentationRouter()
@@ -1690,6 +1731,13 @@ struct FrontendArchitectureTests {
             #expect(editorSource.contains(sourceOnlyExtension))
         }
         #expect(editorSource.contains("const sourceMode = ["))
+        let sourceModeStart = try #require(editorSource.range(of: "const sourceMode = ["))
+        let sourceModeSuffix = editorSource[sourceModeStart.upperBound...]
+        let sourceModeEnd = try #require(sourceModeSuffix.range(of: "];"))
+        let sourceModeExtensions = editorSource[
+            sourceModeStart.lowerBound..<sourceModeEnd.upperBound
+        ]
+        #expect(sourceModeExtensions.contains("EditorView.lineWrapping"))
         #expect(editorSource.contains(
             "modeCompartment.reconfigure(nextMode === \"livePreview\" ? livePreviewMode : sourceMode)"
         ))

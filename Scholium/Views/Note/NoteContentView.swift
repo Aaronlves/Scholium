@@ -7,6 +7,81 @@ enum DocumentNotificationKind {
     case error
 }
 
+enum DocumentIntegrityPresentation: Hashable {
+    case autosaveFailed(message: String, canRetry: Bool)
+    case conflict
+
+    static func resolve(
+        editError: String?,
+        conflict: DocumentConflictSnapshot?,
+        canRetrySave: Bool
+    ) -> Self? {
+        if conflict != nil { return .conflict }
+        guard let editError, !editError.isEmpty else { return nil }
+        return .autosaveFailed(message: editError, canRetry: canRetrySave)
+    }
+
+    var title: String {
+        switch self {
+        case .autosaveFailed:
+            String(localized: "Autosave Failed", table: "Localizable", bundle: .module)
+        case .conflict:
+            String(localized: "Autosave Paused", table: "Localizable", bundle: .module)
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .autosaveFailed(let message, _):
+            String(
+                localized: "Your edits are still available. \(message)",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .conflict:
+            String(
+                localized: "This file changed outside Scholium. Your edits are still available.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+    }
+
+    var kind: ScholiumInlineStatusKind {
+        switch self {
+        case .autosaveFailed: .destructive
+        case .conflict: .attention
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .autosaveFailed: "scholium.documentStatus.autosaveFailed"
+        case .conflict: "scholium.documentStatus.conflict"
+        }
+    }
+
+    var announcement: String {
+        switch self {
+        case .autosaveFailed(_, let canRetry):
+            if canRetry {
+                return String(
+                    localized: "\(title). \(detail) Retry Save is available.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            }
+            return "\(title). \(detail)"
+        case .conflict:
+            return String(
+                localized: "\(title). \(detail) Compare Changes is available.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+    }
+}
+
 struct PassageCommentSubmission: Equatable, Sendable {
     let requestID: String
     let documentID: String
@@ -773,6 +848,13 @@ struct NoteContentView: View {
     private var canRetrySave: Bool {
         documentSession.canRetrySave
     }
+    private var documentIntegrityPresentation: DocumentIntegrityPresentation? {
+        DocumentIntegrityPresentation.resolve(
+            editError: editError,
+            conflict: conflict,
+            canRetrySave: canRetrySave
+        )
+    }
     private var showConflictComparison: Bool {
         get { documentSession.showConflictComparison }
         nonmutating set { documentSession.showConflictComparison = newValue }
@@ -850,6 +932,20 @@ struct NoteContentView: View {
                 startComment: requestCommentFromDocument
             )
         ))
+        .overlay(alignment: .bottom) {
+            if let presentation = documentIntegrityPresentation {
+                ScholiumDocumentStatusToast(
+                    presentation.title,
+                    detail: presentation.detail,
+                    kind: presentation.kind
+                ) {
+                    documentIntegrityActions(presentation)
+                }
+                .accessibilityIdentifier(presentation.accessibilityIdentifier)
+                .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+                .padding(.bottom, ScholiumGrid.Spacing.sectionSeparation)
+            }
+        }
         .sheet(isPresented: Binding(
             get: { showConflictComparison },
             set: { showConflictComparison = $0 }
@@ -888,25 +984,9 @@ struct NoteContentView: View {
                 onFinished: actions.clearRequestedDiscussion
             )
         }
-        .alert(conflict == nil ? "Save Failed" : "This Note Changed on Disk", isPresented: Binding(
-            get: { editError != nil && (conflict == nil || !editorIsComposing) },
-            set: { if !$0, !editorIsComposing { editError = nil } }
-        )) {
-            if conflict != nil {
-                Button("Compare Changes") {
-                    editError = nil
-                    showConflictComparison = true
-                }
-                .keyboardShortcut(.defaultAction)
-                Button("Reload from Disk", role: .destructive) { reloadFromDisk() }
-            } else if canRetrySave {
-                Button("Retry Save") {
-                    controller.retrySave(session: documentSession, target: target)
-                }
-            }
-            Button("Keep Editing", role: .cancel) { editError = nil }
-        } message: {
-            Text(editError ?? "")
+        .task(id: documentIntegrityPresentation) {
+            guard let presentation = documentIntegrityPresentation else { return }
+            AccessibilityNotification.Announcement(presentation.announcement).post()
         }
         .onChange(of: state.requestedPresentationMode) { _, requested in
             guard let requested else { return }
@@ -919,13 +999,6 @@ struct NoteContentView: View {
         }
         .onChange(of: state.requestedDiscussionID) { _, discussionID in
             openRequestedDiscussion(discussionID)
-        }
-        .onChange(of: editError) { _, error in
-            guard error != nil, !editorIsComposing else { return }
-            // Native save/conflict recovery owns focus while it is visible.
-            // Keep the retained CodeMirror state, but dismiss disposable
-            // WebKit presentation such as link or footnote previews.
-            editorSession.resignFocus()
         }
         .onAppear {
             controller.observe(documentSession)
@@ -976,6 +1049,27 @@ struct NoteContentView: View {
         }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
+        }
+    }
+
+    @ViewBuilder
+    private func documentIntegrityActions(
+        _ presentation: DocumentIntegrityPresentation
+    ) -> some View {
+        switch presentation {
+        case .autosaveFailed(_, let canRetry):
+            if canRetry {
+                Button("Retry Save") {
+                    controller.retrySave(session: documentSession, target: target)
+                }
+                .controlSize(.small)
+            }
+        case .conflict:
+            Button("Compare Changes") {
+                showConflictComparison = true
+            }
+            .controlSize(.small)
+            .keyboardShortcut(.defaultAction)
         }
     }
 
@@ -1527,6 +1621,12 @@ struct NoteContentView: View {
 // MARK: - Research Record
 
 private struct ConflictComparisonSheet: View {
+    private enum DiffLayout {
+        static let horizontalPadding: CGFloat = 16
+        static let markerWidth: CGFloat = 16
+        static let columnSpacing: CGFloat = 8
+    }
+
     let conflict: DocumentConflictSnapshot
     let onReturnToEditing: () -> Void
     let onReloadFromDisk: () -> Void
@@ -1565,26 +1665,40 @@ private struct ConflictComparisonSheet: View {
 
             Divider()
 
-            ScrollView([.vertical, .horizontal]) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(diffLines.enumerated()), id: \.offset) { _, line in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(marker(for: line.kind))
-                                .font(ScholiumTypography.swiftUIDiff(bold: true))
-                                .foregroundStyle(color(for: line.kind))
-                                .frame(width: 16)
-                                .accessibilityLabel(label(for: line.kind))
-                            Text(line.text.isEmpty ? " " : line.text)
-                                .font(ScholiumTypography.swiftUIDiff())
-                                .textSelection(.enabled)
+            GeometryReader { viewport in
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(diffLines.enumerated()), id: \.offset) { index, line in
+                            HStack(
+                                alignment: .firstTextBaseline,
+                                spacing: DiffLayout.columnSpacing
+                            ) {
+                                Text(marker(for: line.kind))
+                                    .font(ScholiumTypography.swiftUIDiff(bold: true))
+                                    .foregroundStyle(color(for: line.kind))
+                                    .frame(width: DiffLayout.markerWidth)
+                                    .accessibilityLabel(label(for: line.kind))
+                                Text(line.text.isEmpty ? " " : line.text)
+                                    .font(ScholiumTypography.swiftUIDiff())
+                                    .frame(
+                                        width: diffTextWidth(in: viewport.size.width),
+                                        alignment: .leading
+                                    )
+                                    .lineLimit(nil)
+                                    .textSelection(.enabled)
+                            }
+                            .padding(.horizontal, DiffLayout.horizontalPadding)
+                            .padding(.vertical, 2)
+                            .frame(width: max(viewport.size.width, 1), alignment: .leading)
+                            .background(color(for: line.kind).opacity(line.kind == .unchanged ? 0 : 0.08))
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier(
+                                "scholium.conflict.row.\(identifier(for: line.kind)).\(index)"
+                            )
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(color(for: line.kind).opacity(line.kind == .unchanged ? 0 : 0.08))
                     }
+                    .padding(.vertical, 8)
                 }
-                .padding(.vertical, 8)
             }
 
             Divider()
@@ -1597,7 +1711,7 @@ private struct ConflictComparisonSheet: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 0, idealWidth: 900, minHeight: 520, idealHeight: 680)
+        .frame(minWidth: 760, idealWidth: 900, minHeight: 520, idealHeight: 680)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("scholium.conflictComparison")
     }
@@ -1640,6 +1754,24 @@ private struct ConflictComparisonSheet: View {
         case .editorOnly: "Current editor only"
         case .diskOnly: "Disk version only"
         }
+    }
+
+    private func identifier(for kind: DocumentConflictLineKind) -> String {
+        switch kind {
+        case .unchanged: "unchanged"
+        case .editorOnly: "editorOnly"
+        case .diskOnly: "diskOnly"
+        }
+    }
+
+    private func diffTextWidth(in viewportWidth: CGFloat) -> CGFloat {
+        max(
+            viewportWidth
+                - (DiffLayout.horizontalPadding * 2)
+                - DiffLayout.markerWidth
+                - DiffLayout.columnSpacing,
+            1
+        )
     }
 
     private func color(for kind: DocumentConflictLineKind) -> Color {

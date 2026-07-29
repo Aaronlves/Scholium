@@ -32582,7 +32582,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     lineNumbers(),
     highlightActiveLineGutter(),
     foldGutter(),
-    highlightActiveLine()
+    highlightActiveLine(),
+    EditorView.lineWrapping
   ];
   var dirty = false;
   var pendingKeyStartedAt = null;

@@ -301,9 +301,11 @@ editable Markdown; Scholium does not set filesystem read-only permissions.
   construct, and shows neither YAML nor line numbers. Inactive content should
   match Review; caret, selection, marked-text composition, and the active
   construct are the permitted editing differences.
-- **Source** edits complete Markdown and YAML, shows line numbers, and retains
-  the same document session, viewport, measure, and semantic colors while using
-  exact-source typography.
+- **Source** edits complete Markdown and YAML, shows logical source-line
+  numbers, and retains the same document session, viewport, measure, and
+  semantic colors while using exact-source typography. Exact text soft-wraps
+  within the available measure: visual continuation rows never insert or
+  remove source line breaks and never acquire independent line numbers.
 
 All three modes consume the selected Appearance's one shared line-width value.
 It changes only layout in Source: Victor Mono and the exact-source typography
@@ -2030,7 +2032,9 @@ execution.
 
 Conflict actions are **Compare Changes**, **Reload from Disk**, and **Keep
 Editing**. Comparison shows exact editor/disk revisions and offers **Return to
-Editing** or **Reload from Disk**. Checkpoint restore, editor Undo, and Research
+Editing** or **Reload from Disk**. Each exact comparison row retains one logical
+source line while soft-wrapping its visible text within the comparison width;
+wrapping never mutates either revision or creates a source line. Checkpoint restore, editor Undo, and Research
 Record are never interchangeable; editor `Command-Z` never means checkpoint
 restoration.
 
@@ -2312,9 +2316,11 @@ independently; Document takes remaining space without a fixed size. Native
 geometry stays outside the grid. WebKit uses `rem`, `ch`, CSS px, and viewport
 units without point conversion. The selected **48–96ch** Line width is centered
 inside the available Document width while `max(...)` retains the **20/32/40 CSS
-px** minimum border separations. Wide tables, code, and mathematics may scroll
-inside that measure; prose reflows without page-level horizontal reading
-scroll. The 72ch default and typographic rhythm still require ordinary, narrow,
+px** minimum border separations. Wide rendered tables, code, and mathematics
+may scroll inside that measure; rendered prose reflows without page-level
+horizontal reading scroll. Source mode instead soft-wraps every exact logical
+line within its measure without changing source line breaks or line numbers.
+The 72ch default and typographic rhythm still require ordinary, narrow,
 mixed-script, and 200% visual acceptance. Screenshots and prototype coordinates
 remain evidence only and never define native/CSS unit conversion.
 

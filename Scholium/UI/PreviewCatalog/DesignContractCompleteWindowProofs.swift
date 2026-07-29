@@ -847,17 +847,21 @@ private struct DocumentStatesCompleteWindowProof: View {
                 editable: true
             )
             .overlay(alignment: .bottom) {
-                Stage4DocumentStatusToast(
-                    title: toast.title,
+                ScholiumDocumentStatusToast(
+                    toast.title,
                     detail: toast.detail,
-                    kind: toast.kind,
-                    actionTitle: toast.actionTitle,
-                    action: toast.actionTitle == nil ? nil : {
-                        if scenario == .conflict {
-                            route = .conflictComparison
+                    kind: toast.kind
+                ) {
+                    if let actionTitle = toast.actionTitle {
+                        Button(actionTitle) {
+                            if scenario == .conflict {
+                                route = .conflictComparison
+                            }
                         }
+                        .controlSize(.small)
                     }
-                )
+                }
+                .accessibilityIdentifier("scholium.stage4.documentStatusToast")
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
             }
@@ -890,27 +894,27 @@ private struct DocumentStatesCompleteWindowProof: View {
         }
     }
 
-    private var toast: Stage4DocumentStatusToast.Value {
+    private var toast: Stage4DocumentStatusValue {
         switch scenario {
         case .autosaveFailed:
             .init(
                 title: "Autosave Failed",
                 detail: "Your edits are still available. Scholium will try again after the next change.",
-                kind: .error,
+                kind: .destructive,
                 actionTitle: nil
             )
         case .conflict:
             .init(
                 title: "Autosave Paused",
                 detail: "This file changed outside Scholium. Your edits are still available.",
-                kind: .warning,
+                kind: .attention,
                 actionTitle: "Compare Changes"
             )
         case .checkpointRestored:
             .init(
                 title: "Checkpoint Restored",
                 detail: "Scholium created a Before Restore checkpoint.",
-                kind: .success,
+                kind: .confirmed,
                 actionTitle: nil
             )
         default:
@@ -1017,77 +1021,11 @@ private struct Stage4RunningActionRow: View {
     }
 }
 
-private struct Stage4DocumentStatusToast: View {
-    struct Value {
-        let title: String
-        let detail: String
-        let kind: Kind
-        let actionTitle: String?
-    }
-
-    enum Kind {
-        case success
-        case information
-        case warning
-        case error
-
-        var symbol: String {
-            switch self {
-            case .success: "checkmark.circle.fill"
-            case .information: "info.circle.fill"
-            case .warning: "exclamationmark.triangle.fill"
-            case .error: "xmark.octagon.fill"
-            }
-        }
-
-        var color: Color {
-            switch self {
-            case .success: ScholiumColorRole.confirmed.color
-            case .information: ScholiumColorRole.information.color
-            case .warning: ScholiumColorRole.attention.color
-            case .error: ScholiumColorRole.destructive.color
-            }
-        }
-    }
-
+private struct Stage4DocumentStatusValue {
     let title: String
     let detail: String
-    let kind: Kind
+    let kind: ScholiumInlineStatusKind
     let actionTitle: String?
-    let action: (() -> Void)?
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: kind.symbol)
-                .font(.callout)
-                .foregroundStyle(kind.color)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout.weight(.semibold))
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .controlSize(.small)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: 520, alignment: .leading)
-        .scholiumEditorialSurface(
-            .floatingControl,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                style: .continuous
-            )
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.stage4.documentStatusToast")
-    }
 }
 
 private struct Stage4ConflictComparisonProof: View {
