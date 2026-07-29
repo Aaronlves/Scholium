@@ -2,11 +2,11 @@
 import ScholiumContracts
 import SwiftUI
 
-/// Deterministic, development-only interface proofs for D-106. These views
-/// render synthetic values and deliberately own no vault, Skill, permission,
-/// execution, or Research Record authority.
+/// Deterministic, development-only interface proofs for research workflows
+/// that still benefit from a runnable synthetic surface. These views own no
+/// vault, Skill, permission, execution, or Research Record authority.
 struct ResearchWorkflowPreviewCatalog: View {
-    @State private var selection: ResearchWorkflowProof = .actions
+    @State private var selection: ResearchWorkflowProof = .actionSheet
 
     var body: some View {
         NavigationSplitView {
@@ -28,37 +28,31 @@ struct ResearchWorkflowPreviewCatalog: View {
 }
 
 enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
-    case actions
     case actionSheet
     case skillInstaller
     case skillSettings
     case changeRequest
     case researchRecord
-    case stateMatrix
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .actions: "Actions"
         case .actionSheet: "Skill-run Sheet"
         case .skillInstaller: "Skill Installer"
         case .skillSettings: "Skill Settings"
         case .changeRequest: "Agent Change Request"
         case .researchRecord: "Research Record"
-        case .stateMatrix: "State Matrix"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .actions: "bolt"
         case .actionSheet: "list.bullet.rectangle"
         case .skillInstaller: "square.and.arrow.down"
         case .skillSettings: "slider.horizontal.3"
         case .changeRequest: "doc.badge.ellipsis"
         case .researchRecord: "books.vertical"
-        case .stateMatrix: "rectangle.grid.2x2"
         }
     }
 }
@@ -78,8 +72,6 @@ private struct ResearchWorkflowProofDetail: View {
     @ViewBuilder
     private var proofContent: some View {
         switch proof {
-        case .actions:
-            ResearchActionsProof()
         case .actionSheet:
             ResearchActionSheetProof()
         case .skillInstaller:
@@ -90,8 +82,6 @@ private struct ResearchWorkflowProofDetail: View {
             AgentChangeRequestProof()
         case .researchRecord:
             ResearchRecordUtilityProof()
-        case .stateMatrix:
-            ResearchWorkflowStateMatrixProof()
         }
     }
 }
@@ -114,56 +104,22 @@ private struct ResearchProofHeader: View {
     }
 }
 
-// MARK: - Actions
+// MARK: - Researcher Skill fixtures
 
-private enum ResearchActionsProofRole: String, CaseIterable, Hashable, Identifiable {
+private enum ResearchProofRole: String, CaseIterable, Hashable {
     case analysis = "Analysis"
     case topic = "Topic"
     case work = "Work"
-
-    var id: String { rawValue }
-
-    var actions: [ResearchActionProofItem] {
-        switch self {
-        case .analysis:
-            [
-                .init(id: "discuss", title: "Discuss", help: "Continue a passage or whole-note discussion.", symbol: "bubble.left.and.bubble.right"),
-                .init(id: "analyze", title: "Analyze", help: "Analyze or reanalyze the explicitly bound source.", symbol: "doc.text.magnifyingglass"),
-                .init(id: "fidelity", title: "Check Fidelity", help: "Check without modifying Markdown.", symbol: "checkmark.seal"),
-            ]
-        case .topic:
-            [
-                .init(id: "discuss", title: "Discuss", help: "Continue a passage, note, or multi-note discussion.", symbol: "bubble.left.and.bubble.right"),
-                .init(id: "synthesize", title: "Synthesize", help: "Integrate warranted analyses and sources into this Topic.", symbol: "arrow.triangle.merge"),
-                .init(id: "fidelity", title: "Check Fidelity", help: "Check without modifying Markdown.", symbol: "checkmark.seal"),
-            ]
-        case .work:
-            [
-                .init(id: "discuss", title: "Discuss", help: "Discuss without changing this Work.", symbol: "bubble.left.and.bubble.right"),
-                .init(id: "write", title: "Write", help: "Make an explicitly bounded change to this Work.", symbol: "square.and.pencil"),
-                .init(id: "critique", title: "Critique", help: "Return criticism before any separately authorized Write phase.", symbol: "text.magnifyingglass"),
-                .init(id: "fidelity", title: "Check Fidelity", help: "Check without modifying Markdown.", symbol: "checkmark.seal"),
-            ]
-        }
-    }
-}
-
-private struct ResearchActionProofItem: Identifiable {
-    let id: String
-    let title: String
-    let help: String
-    let symbol: String
 }
 
 private struct ResearcherSkillProofFixture: Identifiable {
     let id: String
     let name: String
     let revision: Int
-    let symbol: String
     let isEnabled: Bool
     let showsInActions: Bool
-    let applicableRoles: Set<ResearchActionsProofRole>
-    let readableRoles: Set<ResearchActionsProofRole>
+    let applicableRoles: Set<ResearchProofRole>
+    let readableRoles: Set<ResearchProofRole>
     let candidateWriteScope: String
     let requiredAuthorization: String
 
@@ -175,15 +131,6 @@ private struct ResearcherSkillProofFixture: Identifiable {
         roleDescription(for: readableRoles)
     }
 
-    var actionItem: ResearchActionProofItem {
-        ResearchActionProofItem(
-            id: id,
-            title: name,
-            help: "Researcher Skill revision \(revision)",
-            symbol: symbol
-        )
-    }
-
     var settingsStatus: String {
         if !isEnabled { return "disabled" }
         return showsInActions ? "enabled" : "enabled and hidden"
@@ -193,8 +140,8 @@ private struct ResearcherSkillProofFixture: Identifiable {
         "\(name), revision \(revision), \(settingsStatus)"
     }
 
-    private func roleDescription(for roles: Set<ResearchActionsProofRole>) -> String {
-        ResearchActionsProofRole.allCases
+    private func roleDescription(for roles: Set<ResearchProofRole>) -> String {
+        ResearchProofRole.allCases
             .filter(roles.contains)
             .map(\.rawValue)
             .joined(separator: ", ")
@@ -205,7 +152,6 @@ private let counterexampleStressTestFixture = ResearcherSkillProofFixture(
     id: "counterexample-stress-test",
     name: "Counterexample Stress Test",
     revision: 4,
-    symbol: "scope",
     isEnabled: true,
     showsInActions: true,
     applicableRoles: [.topic, .work],
@@ -218,7 +164,6 @@ private let compareInterpretationsFixture = ResearcherSkillProofFixture(
     id: "compare-interpretations",
     name: "Compare Interpretations",
     revision: 2,
-    symbol: "arrow.left.arrow.right",
     isEnabled: false,
     showsInActions: false,
     applicableRoles: [.analysis, .topic],
@@ -226,109 +171,6 @@ private let compareInterpretationsFixture = ResearcherSkillProofFixture(
     candidateWriteScope: "None",
     requiredAuthorization: "No Markdown write"
 )
-
-private let researcherSkillProofFixtures = [
-    counterexampleStressTestFixture,
-    compareInterpretationsFixture,
-]
-
-private let settleProofItem = ResearchActionProofItem(
-    id: "settle",
-    title: "Settle",
-    help: "Record the saved revision as sufficiently stable for current research.",
-    symbol: "checkmark.circle"
-)
-
-private struct ResearchActionsProof: View {
-    @State private var role: ResearchActionsProofRole = .analysis
-
-    private var visibleResearcherSkills: [ResearcherSkillProofFixture] {
-        researcherSkillProofFixtures.filter {
-            $0.isEnabled && $0.showsInActions && $0.applicableRoles.contains(role)
-        }
-    }
-
-    private var researchActions: [ResearchActionProofItem] {
-        role.actions.filter { !["critique", "fidelity"].contains($0.id) }
-    }
-
-    private var reviewActions: [ResearchActionProofItem] {
-        role.actions.filter { ["critique", "fidelity"].contains($0.id) }
-    }
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(
-                alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionSpacing
-            ) {
-                Picker("Note role", selection: $role) {
-                    ForEach(ResearchActionsProofRole.allCases) { role in
-                        Text(role.rawValue).tag(role)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("scholium.proofs.actions.role")
-
-                ScholiumApparatusSection("RESEARCH") {
-                    actionRows(researchActions)
-                }
-
-                ScholiumApparatusSection("REVIEW") {
-                    actionRows(reviewActions)
-                }
-
-                if !visibleResearcherSkills.isEmpty {
-                    ScholiumApparatusSection("RESEARCHER SKILLS") {
-                        actionRows(visibleResearcherSkills.map(\.actionItem))
-                    }
-                }
-
-                ScholiumApparatusSection("JUDGMENT") {
-                    ResearchActionProofRow(action: settleProofItem)
-                }
-            }
-            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-            .padding(.vertical, ScholiumMetrics.Apparatus.firstSectionSpacing)
-            .frame(maxWidth: 680, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .top)
-        }
-    }
-
-    private func actionRows(_ actions: [ResearchActionProofItem]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(actions) { action in
-                ResearchActionProofRow(action: action)
-            }
-        }
-    }
-}
-
-private struct ResearchActionProofRow: View {
-    let action: ResearchActionProofItem
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: {}) {
-            ScholiumApparatusActionRowContent(
-                title: Text(verbatim: action.title),
-                systemImage: action.symbol,
-                showsChevron: true
-            )
-        }
-        .buttonStyle(ScholiumQuietRowButtonStyle(
-            isHovering: isHovering,
-            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
-            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
-        ))
-        .onHover { isHovering = $0 }
-        .help(action.help)
-        .accessibilityLabel(action.title)
-        .accessibilityHint(action.help)
-        .accessibilityIdentifier("scholium.proofs.action.\(action.id)")
-    }
-}
 
 // MARK: - Generic modular Skill-run sheet
 
@@ -596,10 +438,11 @@ private struct ResearchSkillInstallerProof: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                ScholiumInlineStatus(
-                    "Installed Skills Start Disabled",
+                ResearchProofNotice(
+                    title: "Installed Skills Start Disabled",
                     detail: "Review the working Skill and its permissions before enabling its Action.",
-                    kind: .attention
+                    systemImage: "exclamationmark.triangle",
+                    colorRole: .attention
                 )
                 ResearchSheetButtons(primary: "Install Disabled")
             }
@@ -888,10 +731,11 @@ private struct AgentChangeRequestProof: View {
                     }
                 }
 
-                ScholiumInlineStatus(
-                    "Revalidated Before Decision",
+                ResearchProofNotice(
+                    title: "Revalidated Before Decision",
                     detail: "Note identity, revision, Skill revision, Profile, and standing policy remain current.",
-                    kind: .confirmed
+                    systemImage: "checkmark.circle",
+                    colorRole: .confirmed
                 )
 
                 ViewThatFits(in: .horizontal) {
@@ -1187,84 +1031,6 @@ private struct ResearchRecordTurn: View {
     }
 }
 
-// MARK: - Deterministic state matrix
-
-private enum ResearchWorkflowProofState: String, CaseIterable, Identifiable {
-    case empty = "Empty"
-    case loading = "Loading"
-    case error = "Error"
-    case conflict = "Conflict"
-    case permissionInvalid = "Permission Invalid"
-
-    var id: String { rawValue }
-}
-
-private struct ResearchWorkflowStateMatrixProof: View {
-    @State private var state: ResearchWorkflowProofState = .empty
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            Picker("State", selection: $state) {
-                ForEach(ResearchWorkflowProofState.allCases) { state in
-                    Text(state.rawValue).tag(state)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("scholium.proofs.states.picker")
-            ResearchWorkflowStateProof(state: state)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-    }
-}
-
-private struct ResearchWorkflowStateProof: View {
-    let state: ResearchWorkflowProofState
-
-    var body: some View {
-        VStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            stateContent
-        }
-        .frame(maxWidth: 620, minHeight: 300)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private var stateContent: some View {
-        switch state {
-        case .empty:
-            ScholiumEmptyState(
-                title: "No Researcher Skills",
-                detail: "Install a local Skill or continue with the working methods for this Triptych.",
-                systemImage: "square.and.arrow.down"
-            )
-        case .loading:
-            ProgressView("Validating Skill files and declared capabilities…")
-        case .error:
-            ScholiumInlineStatus(
-                "Skill Could Not Be Loaded",
-                detail: "The current working Skill remains unchanged. Review the validation report or choose another directory.",
-                kind: .destructive
-            )
-            Button("Review Validation Report") {}
-        case .conflict:
-            ScholiumInlineStatus(
-                "Target Changed on Disk",
-                detail: "The prepared run has not written anything. Reopen the Note and prepare again from its current revision.",
-                kind: .attention
-            )
-            Button("Reopen Current Revision") {}
-        case .permissionInvalid:
-            ScholiumInlineStatus(
-                "Permission Needs Review",
-                detail: "The Skill or Profile changed after approval. No previous approval can authorize this run.",
-                kind: .attention
-            )
-            Button("Review Permissions") {}
-        }
-    }
-}
-
 private struct ResearchProofSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
@@ -1281,9 +1047,34 @@ private struct ResearchProofSection<Content: View>: View {
     }
 }
 
-#Preview("Research Actions") {
-    ResearchWorkflowProofDetail(proof: .actions)
-        .frame(width: 760, height: 720)
+private struct ResearchProofNotice: View {
+    let title: LocalizedStringKey
+    let detail: LocalizedStringKey
+    let systemImage: String
+    let colorRole: ScholiumColorRole
+
+    var body: some View {
+        HStack(
+            alignment: .firstTextBaseline,
+            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ) {
+            Image(systemName: systemImage)
+                .foregroundStyle(colorRole.color)
+                .accessibilityHidden(true)
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+            ) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
 }
 
 #Preview("Modular Skill-run Sheet") {
@@ -1309,11 +1100,6 @@ private struct ResearchProofSection<Content: View>: View {
 #Preview("Research Record Fixed Utility") {
     ResearchWorkflowProofDetail(proof: .researchRecord)
         .frame(width: 760, height: 680)
-}
-
-#Preview("Workflow States") {
-    ResearchWorkflowProofDetail(proof: .stateMatrix)
-        .frame(width: 760, height: 640)
 }
 
 #Preview("Workflow Dark") {

@@ -1097,10 +1097,9 @@ private struct SidebarTreeNodeRow: View {
     private func noteRow(_ note: WindowDocumentLocation) -> some View {
         HStack(spacing: 0) {
             Button { onSelect(note) } label: {
-                NoteCardRow(
+                SidebarNoteRow(
                     note: note,
                     isActive: selectedDocumentPath == note.relativePath,
-                    vaultRole: context.currentVaultRole,
                     depth: node.depth
                 )
                 .contentShape(Rectangle())
@@ -1347,10 +1346,9 @@ private struct SidebarNavigationButtonStyle: ButtonStyle {
     }
 }
 
-struct NoteCardRow: View {
+struct SidebarNoteRow: View {
     let note: WindowDocumentLocation
     let isActive: Bool
-    let vaultRole: VaultRole
     var depth: Int = 0
 
     var body: some View {

@@ -74,8 +74,8 @@ struct FrontendArchitectureTests {
         #expect(!noteSource.contains("Native save/conflict recovery owns focus while it is visible."))
         #expect(componentSource.contains("struct ScholiumDocumentStatusToast<Actions: View>"))
         #expect(componentSource.contains("HStack(alignment: .center, spacing: 10)"))
-        #expect(componentSource.contains("verticalAlignment: .center"))
-        #expect(componentSource.contains("HStack(alignment: verticalAlignment, spacing: 8)"))
+        #expect(componentSource.contains("HStack(alignment: .center, spacing: 8)"))
+        #expect(!componentSource.contains("verticalAlignment"))
         #expect(componentSource.contains(".accessibilityLabel(title)"))
         #expect(componentSource.contains(".accessibilityValue(detail)"))
     }
@@ -131,10 +131,8 @@ struct FrontendArchitectureTests {
 
         #expect(appSource.contains("id: \"scholium-bootstrap\""))
         #expect(appSource.contains("for: BootstrapWindowRoute.self"))
-        // Two production scenes remain separate; the third source occurrence
-        // is the suppressed Debug-only Stage 4 proof scene.
-        #expect(appSource.components(separatedBy: "WindowGroup(").count == 4)
-        #expect(appSource.contains("id: \"scholium-stage4-design-proofs\""))
+        #expect(appSource.components(separatedBy: "WindowGroup(").count == 3)
+        #expect(!appSource.contains("id: \"scholium-stage4-design-proofs\""))
         #expect(!appSource.contains("id: \"scholium-editor\""))
         #expect(!appSource.contains("Window(\"Editor\""))
         #expect(appSource.contains("private struct ScholiumBootstrapRoot"))
@@ -771,13 +769,6 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
             encoding: .utf8
         )
-        let previewSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/PreviewCatalog/ScholiumComponentCatalog.swift"
-            ),
-            encoding: .utf8
-        )
-
         #expect(attentionSource.contains("TextField(\"Search Attention\""))
         #expect(attentionSource.contains("scholium.attentionSearch"))
         #expect(attentionSource.contains("content.popover("))
@@ -792,26 +783,69 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
         #expect(!appSource.contains("AttentionWindowSession"))
         #expect(!attentionSource.contains("Button(\"Close\""))
-        for requiredPreview in [
-            "Sidebar D-127 — Three Attention Items",
-            "Sidebar D-127 — One Attention Item",
-            "Sidebar D-127 — Zero Attention Items",
-            "Sidebar D-123 — Short Height",
-            "Sidebar D-123 — Filter + Long CJK",
-            "Sidebar D-123 — RTL + Large Text",
-            "Attention D-129 — Ready",
-            "Attention D-129 — Loading",
-            "Attention D-129 — Empty",
-            "Attention D-129 — Stale",
-            "Attention D-129 — Error",
+    }
+
+    @Test("Completed Sidebar and Inspector proofs leave no compatibility residue")
+    func sidebarInspectorProofResidueIsAbsent() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        for path in [
+            "Scholium/UI/PreviewCatalog/DesignContractCompleteWindowProofs.swift",
+            "Scholium/UI/PreviewCatalog/EditorialParchmentProof.swift",
+            "Scholium/UI/PreviewCatalog/ScholiumComponentCatalog.swift",
         ] {
-            #expect(previewSource.contains(requiredPreview))
+            #expect(!FileManager.default.fileExists(atPath: repository.appendingPathComponent(path).path))
         }
-        #expect(previewSource.contains("SidebarView(controller: controller, context: context)"))
-        #expect(previewSource.contains("AttentionQueueRow("))
-        #expect(previewSource.contains(
-            "height: ScholiumMetrics.Attention.popoverHeight,\n            alignment: .top"
-        ))
+
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let componentSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
+        let sidebarSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarView.swift"
+            ),
+            encoding: .utf8
+        )
+        let workflowProofSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/PreviewCatalog/ResearchWorkflowPreviewCatalog.swift"
+            ),
+            encoding: .utf8
+        )
+
+        for retiredRoute in [
+            "scholium-editorial-parchment-proof",
+            "scholium-stage4-design-proofs",
+            "DesignContractProofWindowRoute",
+        ] {
+            #expect(!appSource.contains(retiredRoute))
+        }
+        for retiredComponent in [
+            "ScholiumPanelHeader",
+            "ScholiumInlineStatus",
+            "ScholiumSourceAnchorRow",
+            "ScholiumEmptyState",
+            "ScholiumNoteRow",
+        ] {
+            #expect(!componentSource.contains(retiredComponent))
+        }
+        #expect(componentSource.contains("enum ScholiumDocumentStatusKind"))
+        #expect(sidebarSource.contains("struct SidebarNoteRow"))
+        #expect(!sidebarSource.contains("struct NoteCardRow"))
+        #expect(!workflowProofSource.contains("case actions"))
+        #expect(!workflowProofSource.contains("ResearchActionsProof"))
+        #expect(!workflowProofSource.contains("case stateMatrix"))
+        #expect(!workflowProofSource.contains("ResearchWorkflowProofState"))
     }
 
     @Test("Overview, Connect, and Actions share one variable-driven Apparatus geometry")
@@ -853,12 +887,6 @@ struct FrontendArchitectureTests {
         let noteSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/NoteContentView.swift"
-            ),
-            encoding: .utf8
-        )
-        let previewSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/PreviewCatalog/ScholiumComponentCatalog.swift"
             ),
             encoding: .utf8
         )
@@ -1012,20 +1040,6 @@ struct FrontendArchitectureTests {
         #expect(!connectionsSource.contains("Text(\"↗\")"))
         #expect(!connectionsSource.contains("DisclosureGroup(\n            isExpanded:"))
         #expect(noteSource.contains("ScholiumInspectorModeIndex("))
-        #expect(previewSource.contains("ScholiumInspectorModeIndex("))
-        #expect(previewSource.contains("private struct InspectorCatalogActionButton"))
-        #expect(!previewSource.contains("[\"Overview\", \"Connect\", \"Actions\"]"))
-        #expect(previewSource.contains("catalogAttentionSummary"))
-        #expect(previewSource.contains("ScholiumApparatusSectionHeaderButton("))
-        #expect(!previewSource.contains("ScholiumApparatusSection(\"ACTIONS\")"))
-        #expect(previewSource.contains("ScholiumApparatusSection(\"RESEARCH\")"))
-        #expect(previewSource.contains("ScholiumApparatusSection(\"REVIEW\")"))
-        #expect(previewSource.contains(
-            "ScholiumApparatusSection(\"RESEARCHER SKILLS\")"
-        ))
-        #expect(previewSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
-        #expect(previewSource.contains("catalogConnectionCluster("))
-        #expect(previewSource.contains("ScholiumConnectionGlyph(kind: kind)"))
         #expect(appSource.contains("case .researchConfigurationInvalidated = event"))
         #expect(appSource.contains("refreshResearchActionAvailability()"))
     }
@@ -1097,17 +1111,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.headerHeight == ScholiumGrid.Apparatus.modeStripHeight)
         #expect(ScholiumMetrics.Apparatus.headerHeight == 40)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
-
-        let preview = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/PreviewCatalog/ScholiumComponentCatalog.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(preview.contains(".init(increasedContrast: true)"))
-        #expect(preview.contains(".init(reduceTransparency: true)"))
-        #expect(preview.contains(".init(reduceMotion: true)"))
-        #expect(preview.contains("swiftUIReadingFont(size: 12, relativeTo: .body)"))
 
         let productionRoot = repository.appendingPathComponent("Scholium")
         let forbiddenSurfaceAPIs = [
@@ -1882,7 +1885,6 @@ struct FrontendArchitectureTests {
 
     @Test("Two color Variables resolve the approved light, dark, and contrast roles")
     func reviewedAppearancePalettes() throws {
-        #expect(ScholiumInlineStatusKind.information.colorRole == .information)
         #expect(ScholiumColorVariable.allCases == [.accent, .paper])
         #expect(ScholiumColorVariables.editorialCopper[.accent] == 0xA94C22)
         #expect(ScholiumColorVariables.editorialCopper[.paper] == 0xFEF8ED)

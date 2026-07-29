@@ -156,19 +156,6 @@ struct ScholiumApp: App {
 
         #if DEBUG
         Window(
-            "Editorial Parchment Proof — Light",
-            id: "scholium-editorial-parchment-proof"
-        ) {
-            EditorialParchmentProof()
-        }
-        .defaultSize(width: 1_180, height: 760)
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .windowToolbarStyle(.unified(showsTitle: true))
-        .commandsRemoved()
-
-        Window(
             "Research Workflow Interface Proofs",
             id: "scholium-research-workflow-proofs"
         ) {
@@ -178,26 +165,6 @@ struct ScholiumApp: App {
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
-        .commandsRemoved()
-
-        WindowGroup(
-            "Design Contract Complete-Window Proofs",
-            id: "scholium-stage4-design-proofs",
-            for: DesignContractProofWindowRoute.self,
-            content: { route in
-                DesignContractCompleteWindowProofs(route: route.wrappedValue)
-            },
-            defaultValue: { .primary }
-        )
-        .defaultSize(
-            width: ScholiumMetrics.Workspace.preferredWidth,
-            height: ScholiumMetrics.Workspace.preferredHeight
-                + ScholiumGrid.Dimension.regionHeaderHeight
-        )
-        .windowResizability(.automatic)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .windowToolbarStyle(.unified(showsTitle: true))
         .commandsRemoved()
         #endif
     }
@@ -1057,19 +1024,8 @@ private struct ScholiumCommands: Commands {
                     Divider()
                 }
                 if qaResearchWorkflowProofsAreEnabled {
-                    Button("Open Editorial Parchment Proof") {
-                        openWindow(id: "scholium-editorial-parchment-proof")
-                    }
-                    Divider()
                     Button("Open Research Workflow Interface Proofs") {
                         openWindow(id: "scholium-research-workflow-proofs")
-                    }
-                    Divider()
-                    Button("Open Design Contract Complete-Window Proofs") {
-                        openWindow(
-                            id: "scholium-stage4-design-proofs",
-                            value: DesignContractProofWindowRoute.primary
-                        )
                     }
                 }
             }

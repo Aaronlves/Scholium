@@ -3,30 +3,18 @@ import Testing
 
 @Suite("Research workflow interface proofs")
 struct ResearchWorkflowPreviewCatalogTests {
-    @Test("The catalog covers every Session 7 proof and deterministic state")
-    func coversEveryProofAndState() throws {
+    @Test("The catalog covers every retained research-workflow proof")
+    func coversEveryRetainedProof() throws {
         let source = try previewSource()
 
         for proof in [
-            "case actions",
             "case actionSheet",
             "case skillInstaller",
             "case skillSettings",
             "case changeRequest",
             "case researchRecord",
-            "case stateMatrix",
         ] {
             #expect(source.contains(proof), "Missing interface proof: \(proof)")
-        }
-
-        for state in [
-            "case empty",
-            "case loading",
-            "case error",
-            "case conflict",
-            "case permissionInvalid",
-        ] {
-            #expect(source.contains(state), "Missing deterministic state: \(state)")
         }
 
         #expect(source.contains("ResearchRecordTwoColumnProof"))
@@ -47,34 +35,11 @@ struct ResearchWorkflowPreviewCatalogTests {
         #expect(source.contains(".frame(width: 760, height: 680)"))
         #expect(source.contains("Fidelity could not be completed for this recorded revision."))
         #expect(source.contains("Agent-reported Materials used"))
-        #expect(source.contains("researcherSkillProofFixtures.filter"))
-        #expect(source.contains("$0.isEnabled && $0.showsInActions"))
-        #expect(source.contains("counterexampleStressTestFixture.applicableRoles"))
-        #expect(source.contains("ScholiumApparatusSection(\"RESEARCH\")"))
-        #expect(source.contains("ScholiumApparatusSection(\"REVIEW\")"))
-        #expect(source.contains("ScholiumApparatusSection(\"RESEARCHER SKILLS\")"))
-        #expect(source.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
     }
 
-    @Test("Actions and settings use the frozen researcher-governed vocabulary")
-    func usesFrozenVocabulary() throws {
+    @Test("Research Guidance proofs use the current researcher-governed vocabulary")
+    func usesCurrentResearchGuidanceVocabulary() throws {
         let source = try previewSource()
-
-        #expect(
-            try actionTitles(in: source, after: "case .analysis:", before: "case .topic:")
-                == ["Discuss", "Analyze", "Check Fidelity"]
-        )
-        #expect(
-            try actionTitles(in: source, after: "case .topic:", before: "case .work:")
-                == ["Discuss", "Synthesize", "Check Fidelity"]
-        )
-        #expect(
-            try actionTitles(
-                in: source,
-                after: "case .work:",
-                before: "private struct ResearchActionProofItem"
-            ) == ["Discuss", "Write", "Critique", "Check Fidelity"]
-        )
 
         for category in [
             "Methods",
@@ -201,146 +166,6 @@ struct ResearchWorkflowPreviewCatalogTests {
         #expect(appSource.contains("openWindow(id: \"scholium-research-workflow-proofs\")"))
     }
 
-    @Test("Stage 4 separates Actions from document states without a second product owner")
-    func stage4CompleteWindowProofsRemainSyntheticAndBounded() throws {
-        let source = try stage4Source()
-        let preview = try previewSource()
-
-        for proof in [
-            "case library",
-            "case searchAttention",
-            "case actions",
-            "case documentStates",
-            "case multiwindow",
-        ] {
-            #expect(source.contains(proof), "Missing Stage 4 proof: \(proof)")
-        }
-
-        for state in [
-            "case libraryStaging",
-            "case libraryReplacementFailed",
-            "case libraryInitialLoading",
-            "case libraryConfirmedEmpty",
-            "case searchRefreshing",
-            "case searchStale",
-            "case searchRefreshFailed",
-            "case searchConfirmedEmpty",
-            "case attentionReady",
-            "case attentionStale",
-            "case attentionFailed",
-            "case analysisActions",
-            "case topicActions",
-            "case workActions",
-            "case workActionsWithManuscript",
-            "case analyzeRunning",
-            "case autosaveFailed",
-            "case conflict",
-            "case checkpointRestored",
-            "case windowAnchorRemoved",
-        ] {
-            #expect(source.contains(state), "Missing Stage 4 state: \(state)")
-        }
-
-        #expect(source.contains("Stage4WorkspaceShell"))
-        #expect(source.contains("ScholiumMetrics.Library.minimumReadableWidth"))
-        #expect(source.contains("ScholiumMetrics.Apparatus.firstRevealWidth"))
-        #expect(source.contains("SidebarCutoverCatalog"))
-        #expect(source.contains("SpotlightSearchPanelView"))
-        #expect(source.contains("AttentionPopoverCatalog"))
-        #expect(source.contains("ResearchActionSheetProof"))
-        for scenarioTitle in [
-            "Analysis — all Actions",
-            "Topic — all Actions",
-            "Work — all default Actions",
-            "Work — optional Manuscript enabled",
-            "Analyze running",
-            "Autosave failed",
-            "Conflict detected",
-            "Checkpoint restored",
-        ] {
-            #expect(source.contains(scenarioTitle))
-        }
-        for action in [
-            "case discuss",
-            "case analyze",
-            "case synthesize",
-            "case write",
-            "case critique",
-            "case checkFidelity",
-            "case manuscript",
-        ] {
-            #expect(preview.contains(action), "Missing real Action proof: \(action)")
-        }
-        #expect(source.contains("Stage4ActionsList"))
-        #expect(source.contains("ScholiumApparatusSection(\"RESEARCH\")"))
-        #expect(source.contains("ScholiumApparatusSection(\"REVIEW\")"))
-        #expect(source.contains("ScholiumApparatusSection(\"RESEARCHER SKILLS\")"))
-        #expect(source.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
-        #expect(!source.contains("ScholiumApparatusSection(\"SOURCE INTEGRITY\")"))
-        #expect(source.contains("Stage4RunningActionRow"))
-        #expect(source.contains("\\(action.title), Running"))
-        #expect(source.contains("Cancel \\(action.title)"))
-        #expect(source.contains("scholium.stage4.action.cancel.\\(action.rawValue)"))
-        #expect(source.contains("ScholiumMetrics.Apparatus.actionRowMinimumHeight"))
-        #expect(!source.contains("\\(action.title) is running"))
-        #expect(source.contains("scholium.stage4.action.running"))
-        #expect(source.contains("ScholiumDocumentStatusToast"))
-        #expect(!source.contains("private struct Stage4DocumentStatusToast"))
-        #expect(source.contains("Autosave Failed"))
-        #expect(source.contains("Scholium will try again after the next change."))
-        #expect(source.contains("Autosave Paused"))
-        #expect(source.contains("This file changed outside Scholium. Your edits are still available."))
-        #expect(source.contains("Checkpoint Restored"))
-        #expect(source.contains("Scholium created a Before Restore checkpoint."))
-        #expect(!source.contains("Retry Save"))
-        #expect(!source.contains("Recovery Available"))
-        #expect(!source.contains("ProgressView(\"Running Analyze…\")"))
-        #expect(source.contains("Synthetic preserved editor buffer"))
-        #expect(source.contains("This synthetic buffer remains visible"))
-        #expect(source.contains("no vault access"))
-
-        for forbidden in [
-            "import ScholiumApplication",
-            "import ScholiumCore",
-            "WorkspaceStore(",
-            "WorkspaceRuntime(",
-            "FileManager.default",
-            "URLSession",
-        ] {
-            #expect(!source.contains(forbidden), "Stage 4 proof acquired forbidden authority: \(forbidden)")
-        }
-    }
-
-    @Test("Stage 4 keeps adaptations and paired-window identity explicit")
-    func stage4AdaptationAndMultiwindowEntriesAreExplicit() throws {
-        let source = try stage4Source()
-        let appSource = try String(
-            contentsOf: repositoryRoot().appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
-
-        for adaptation in [
-            "case dark",
-            "case increasedContrast",
-            "case reduceTransparency",
-            "case reduceMotion",
-            "case inactiveWindow",
-            "case rightToLeft",
-            "case documentText200",
-        ] {
-            #expect(source.contains(adaptation), "Missing Stage 4 adaptation: \(adaptation)")
-        }
-
-        #expect(source.contains("DesignContractProofWindowRoute"))
-        #expect(source.contains("slot == .a ? .b : .a"))
-        #expect(source.contains("scholium.stage4.openPair"))
-        #expect(source.contains("scholium.stage4.windowLocalSheet"))
-        #expect(appSource.contains("id: \"scholium-stage4-design-proofs\""))
-        #expect(appSource.contains(".defaultLaunchBehavior(.suppressed)"))
-        #expect(appSource.contains("Open Design Contract Complete-Window Proofs"))
-        #expect(appSource.contains("DesignContractProofWindowRoute.primary"))
-    }
-
     private func previewSource() throws -> String {
         try String(
             contentsOf: repositoryRoot().appendingPathComponent(
@@ -348,37 +173,6 @@ struct ResearchWorkflowPreviewCatalogTests {
             ),
             encoding: .utf8
         )
-    }
-
-    private func stage4Source() throws -> String {
-        try String(
-            contentsOf: repositoryRoot().appendingPathComponent(
-                "Scholium/UI/PreviewCatalog/DesignContractCompleteWindowProofs.swift"
-            ),
-            encoding: .utf8
-        )
-    }
-
-    private func actionTitles(
-        in source: String,
-        after start: String,
-        before end: String
-    ) throws -> [String] {
-        let section = try #require(
-            source.components(separatedBy: start)
-                .dropFirst()
-                .first?
-                .components(separatedBy: end)
-                .first
-        )
-        let expression = try NSRegularExpression(
-            pattern: #"\.init\(id: \"[^\"]+\", title: \"([^\"]+)\""#
-        )
-        let range = NSRange(section.startIndex ..< section.endIndex, in: section)
-        return expression.matches(in: section, range: range).compactMap { match in
-            guard let capture = Range(match.range(at: 1), in: section) else { return nil }
-            return String(section[capture])
-        }
     }
 
     private func repositoryRoot() -> URL {

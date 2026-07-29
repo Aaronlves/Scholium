@@ -47,7 +47,7 @@ enum DocumentIntegrityPresentation: Hashable {
         }
     }
 
-    var kind: ScholiumInlineStatusKind {
+    var kind: ScholiumDocumentStatusKind {
         switch self {
         case .autosaveFailed: .destructive
         case .conflict: .attention

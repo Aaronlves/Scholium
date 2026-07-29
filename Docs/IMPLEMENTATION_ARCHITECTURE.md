@@ -791,20 +791,15 @@ failure.
   motion, and accessibility-aware surface modifiers.
 - `Scholium/UI/Components` contains stateless Scholium building blocks plus
   the bounded native window-shell adapters described below.
-- `Scholium/UI/PreviewCatalog` contains deterministic Debug-only component
-  matrices for ready, empty, loading, error, conflict, and long-text states,
-  plus named appearance and accessibility review entry points. Its synthetic
-  research-workflow catalog proves the §8 Action matrix, modular Skill-run
-  sheet, staged installer, categorized Skill settings, Agent change request,
-  fixed-size secondary Research Record, and permission-invalid state without
-  resolving or mutating production state. A separate Stage 4 design-contract
-  harness composes the production Sidebar, Search, Attention task surface, and
-  Action-sheet recipes inside synthetic 1180 × 760 Workspace shells. Its typed
-  Debug scene values provide paired A/B windows for presentation-ownership
-  comparison without becoming Workspace, document, Triptych, or route
-  authority. Suppressed Debug windows make both catalogs reachable only from
-  an explicitly enabled QA command. Preview code is development-only and does
-  not enter the released interface.
+- `Scholium/UI/PreviewCatalog` contains the retained deterministic Debug-only
+  research-workflow catalog for the modular Skill-run sheet, staged installer,
+  categorized Skill settings, Agent change request, and fixed-size secondary
+  Research Record. It resolves or mutates no production
+  state and is reachable only through one suppressed Debug window and an
+  explicitly enabled QA command. Completed Sidebar, Inspector, generic-state,
+  complete-window, and paired-window acceptance harnesses are removed after
+  their approved target deltas and current adoption evidence are recorded.
+  Preview code is development-only and does not enter the released interface.
 - `ScholiumContracts` contains boundary values, capability protocols,
   deterministic source transformations, immutable snapshots, events, and
   delivery-safe errors. It has no filesystem, database, network, UI, watcher,

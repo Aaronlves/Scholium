@@ -400,9 +400,8 @@ struct AttentionQueueView: View {
     }
 }
 
-/// Shared production task row. Preview Catalog reuses this exact row so
-/// typography, action wrapping, title truncation, and locator density do not
-/// drift from the production Attention popover.
+/// Shared production task row for the Attention popover. It keeps typography,
+/// action wrapping, title truncation, and locator density in one implementation.
 struct AttentionQueueRow: View {
     let item: AttentionQueueItem
     let noteTitle: String

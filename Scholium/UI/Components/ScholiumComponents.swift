@@ -274,108 +274,22 @@ struct ScholiumLibrarySourceState<Content: View>: View {
     }
 }
 
-struct ScholiumPanelHeader<Trailing: View>: View {
-    let title: String
-    let subtitle: String?
-    @ViewBuilder let trailing: () -> Trailing
-
-    init(
-        _ title: String,
-        subtitle: String? = nil,
-        @ViewBuilder trailing: @escaping () -> Trailing
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self.trailing = trailing
-    }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(ScholiumInterfaceTypography.sectionTitle)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .scholiumForeground(.secondaryText)
-                }
-            }
-            Spacer(minLength: 12)
-            trailing()
-        }
-        .accessibilityElement(children: .contain)
-    }
-}
-
-extension ScholiumPanelHeader where Trailing == EmptyView {
-    init(_ title: String, subtitle: String? = nil) {
-        self.init(title, subtitle: subtitle) { EmptyView() }
-    }
-}
-
-enum ScholiumInlineStatusKind: Sendable {
-    case information
+enum ScholiumDocumentStatusKind: Sendable {
     case attention
     case destructive
-    case confirmed
-    case agentAuthorship
 
     var colorRole: ScholiumColorRole {
         switch self {
-        case .information: .information
         case .attention: .attention
         case .destructive: .destructive
-        case .confirmed: .confirmed
-        case .agentAuthorship: .agentAuthorship
         }
     }
 
     var symbol: String {
         switch self {
-        case .information: "info.circle"
         case .attention: "exclamationmark.triangle"
         case .destructive: "xmark.octagon"
-        case .confirmed: "checkmark.circle"
-        case .agentAuthorship: "sparkles"
         }
-    }
-}
-
-struct ScholiumInlineStatus: View {
-    let title: String
-    let detail: String?
-    let kind: ScholiumInlineStatusKind
-    let verticalAlignment: VerticalAlignment
-
-    init(
-        _ title: String,
-        detail: String? = nil,
-        kind: ScholiumInlineStatusKind,
-        verticalAlignment: VerticalAlignment = .firstTextBaseline
-    ) {
-        self.title = title
-        self.detail = detail
-        self.kind = kind
-        self.verticalAlignment = verticalAlignment
-    }
-
-    var body: some View {
-        HStack(alignment: verticalAlignment, spacing: 8) {
-            Image(systemName: kind.symbol)
-                .scholiumForeground(kind.colorRole)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout.weight(.semibold))
-                if let detail {
-                    Text(detail)
-                        .font(.caption)
-                        .scholiumForeground(.secondaryText)
-                        .textSelection(.enabled)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -385,13 +299,13 @@ struct ScholiumInlineStatus: View {
 struct ScholiumDocumentStatusToast<Actions: View>: View {
     let title: String
     let detail: String
-    let kind: ScholiumInlineStatusKind
+    let kind: ScholiumDocumentStatusKind
     @ViewBuilder let actions: () -> Actions
 
     init(
         _ title: String,
         detail: String,
-        kind: ScholiumInlineStatusKind,
+        kind: ScholiumDocumentStatusKind,
         @ViewBuilder actions: @escaping () -> Actions
     ) {
         self.title = title
@@ -402,13 +316,21 @@ struct ScholiumDocumentStatusToast<Actions: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            ScholiumInlineStatus(
-                title,
-                detail: detail,
-                kind: kind,
-                verticalAlignment: .center
-            )
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: kind.symbol)
+                    .scholiumForeground(kind.colorRole)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                    Text(detail)
+                        .font(.caption)
+                        .scholiumForeground(.secondaryText)
+                        .textSelection(.enabled)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .frame(maxWidth: .infinity, alignment: .leading)
             actions()
         }
         .padding(.horizontal, 16)
@@ -424,115 +346,5 @@ struct ScholiumDocumentStatusToast<Actions: View>: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityValue(detail)
-    }
-}
-
-extension ScholiumDocumentStatusToast where Actions == EmptyView {
-    init(
-        _ title: String,
-        detail: String,
-        kind: ScholiumInlineStatusKind
-    ) {
-        self.init(title, detail: detail, kind: kind) { EmptyView() }
-    }
-}
-
-struct ScholiumSourceAnchorRow: View {
-    let title: String
-    let location: String
-    let detail: String?
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "text.page.badge.magnifyingglass")
-                    .scholiumForeground(.secondaryText)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .foregroundStyle(.primary)
-                    Text(location)
-                        .font(.caption)
-                        .scholiumForeground(.secondaryText)
-                    if let detail {
-                        Text(detail)
-                            .font(.caption)
-                            .scholiumForeground(.secondaryText)
-                    }
-                }
-                Spacer(minLength: 8)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Open source location")
-    }
-}
-
-struct ScholiumEmptyState<ActionLabel: View>: View {
-    let title: String
-    let detail: String
-    let systemImage: String
-    let action: (() -> Void)?
-    @ViewBuilder let actionLabel: () -> ActionLabel
-
-    var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: systemImage)
-        } description: {
-            Text(detail)
-        } actions: {
-            if let action {
-                Button(action: action, label: actionLabel)
-            }
-        }
-    }
-}
-
-extension ScholiumEmptyState where ActionLabel == EmptyView {
-    init(title: String, detail: String, systemImage: String) {
-        self.init(
-            title: title,
-            detail: detail,
-            systemImage: systemImage,
-            action: nil
-        ) { EmptyView() }
-    }
-}
-
-struct ScholiumNoteRow: View {
-    let title: String
-    let role: String
-    let location: String
-    let symbol: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.body)
-                .scholiumForeground(.secondaryText)
-                .frame(width: 22)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
-                Text(role)
-                    .font(.caption)
-                    .scholiumForeground(.secondaryText)
-                    .lineLimit(1)
-                Text(location)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            Spacer(minLength: 8)
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
     }
 }
