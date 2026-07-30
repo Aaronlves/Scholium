@@ -86,10 +86,10 @@ struct StyleOperationsTests {
         }
     }
 
-    @Test("Appearance manifests without line width load with the current default")
-    func legacyAppearanceLineWidthDefault() async throws {
+    @Test("Appearance manifests require the canonical line width field")
+    func appearanceManifestRequiresLineWidth() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "ScholiumLegacyAppearanceLineWidth-\(UUID().uuidString)",
+            "ScholiumAppearanceLineWidthContract-\(UUID().uuidString)",
             isDirectory: true
         )
         defer { try? FileManager.default.removeItem(at: root) }
@@ -99,7 +99,7 @@ struct StyleOperationsTests {
             .appendingPathComponent("Styles", isDirectory: true)
         try FileManager.default.createDirectory(at: styles, withIntermediateDirectories: true)
 
-        let profile = DocumentAppearanceProfile(name: "Legacy")
+        let profile = DocumentAppearanceProfile(name: "Incomplete")
         let profileData = try JSONEncoder().encode(profile)
         var profileObject = try #require(
             JSONSerialization.jsonObject(with: profileData) as? [String: Any]
@@ -116,19 +116,10 @@ struct StyleOperationsTests {
 
         let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
         let loaded = try await operations.styleSnapshot()
-        let legacy = try #require(loaded.appearanceProfiles.first)
-        #expect(legacy.settings.lineWidthCharacterUnits == 72)
-        #expect(loaded.canModify)
-
-        var updated = legacy
-        updated.settings.lineWidthCharacterUnits = 80
-        _ = try await operations.updateAppearanceProfile(updated)
-        let persistedData = try Data(contentsOf: styles.appendingPathComponent("appearances.json"))
-        let persistedText = try #require(String(data: persistedData, encoding: .utf8))
-        #expect(persistedText.contains("\"lineWidthCharacterUnits\" : 80"))
-
-        let reloaded: any StyleUseCases = StyleOperations(applicationSupportURL: support)
-        #expect(try await reloaded.styleSnapshot().appearanceProfiles.first?.settings.lineWidthCharacterUnits == 80)
+        #expect(loaded.appearanceProfiles.isEmpty)
+        #expect(loaded.selectedAppearanceProfileID == nil)
+        #expect(!loaded.canModify)
+        #expect(loaded.storeError != nil)
     }
 
     @Test("CSS import and persistence stay behind StyleUseCases")

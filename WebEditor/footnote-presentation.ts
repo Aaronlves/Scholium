@@ -32,6 +32,7 @@ export interface SourceRange {
 export interface FootnoteDefinitionPresentation extends SourceRange {
   identifier: string;
   content: string;
+  contentFrom: number;
   ordinal: number | null;
   isInline: boolean;
 }
@@ -59,6 +60,7 @@ interface LineSpan {
 interface RawDefinition extends SourceRange {
   identifier: string;
   content: string;
+  contentFrom: number;
   isInline: boolean;
   marker: SourceRange;
 }
@@ -119,6 +121,9 @@ export function footnotePresentation(
     if (!match) continue;
 
     const parts = [match[2]];
+    const firstLineContentFrom = line.contentTo - match[2].length;
+    let contentFrom = firstLineContentFrom + (match[2].match(/^\s*/)?.[0].length ?? 0);
+    let foundContentStart = /\S/.test(match[2]);
     let to = line.to;
     let continuation = index + 1;
     while (continuation < lines.length) {
@@ -126,13 +131,21 @@ export function footnotePresentation(
       if (!(candidate.text.startsWith("  ") || candidate.text.startsWith("\t") || candidate.text.length === 0)) break;
       // Remove one continuation indent while preserving deeper indentation,
       // which carries nested Markdown structure inside the definition.
-      parts.push(candidate.text.replace(/^(?: {2}|\t)/, ""));
+      const continuationText = candidate.text.replace(/^(?: {2}|\t)/, "");
+      if (!foundContentStart && /\S/.test(continuationText)) {
+        const removedIndent = candidate.text.length - continuationText.length;
+        const leadingWhitespace = continuationText.match(/^\s*/)?.[0].length ?? 0;
+        contentFrom = candidate.from + removedIndent + leadingWhitespace;
+        foundContentStart = true;
+      }
+      parts.push(continuationText);
       to = candidate.to;
       continuation += 1;
     }
     rawDefinitions.push({
       identifier: match[1],
       content: parts.join("\n").trim(),
+      contentFrom,
       from: line.from,
       to,
       isInline: false,
@@ -174,6 +187,7 @@ export function footnotePresentation(
     rawDefinitions.push({
       identifier,
       content: match[1],
+      contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
       from,
       to,
       isInline: true,
@@ -220,6 +234,7 @@ export function footnotePresentation(
     .map((definition): FootnoteDefinitionPresentation => ({
       identifier: definition.identifier,
       content: definition.content,
+      contentFrom: definition.contentFrom,
       ordinal: ordinalByIdentifier.get(definition.identifier) ?? null,
       isInline: definition.isInline,
       from: definition.from,

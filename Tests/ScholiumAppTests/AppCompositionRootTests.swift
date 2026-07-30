@@ -264,6 +264,52 @@ struct AppCompositionRootTests {
         #expect(flushCount == 1)
     }
 
+    @Test("Review requests do not enqueue a redundant Application-level editor flush")
+    func reviewRequestDefersItsSingleFlushToTheDocumentSurface() async throws {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        window.documentController.selectUnavailableDocument(
+            vaultID: UUID(),
+            relativePath: "Active.md"
+        )
+        var flushCount = 0
+        var captureCount = 0
+        window.registerEditorFlush(
+            for: "Active.md",
+            token: UUID(),
+            flush: { flushCount += 1 },
+            captureForReconstruction: { captureCount += 1 }
+        )
+
+        window.requestDocumentMode(.read)
+
+        #expect(window.requestPresentationMode == .read)
+        #expect(flushCount == 0)
+        #expect(captureCount == 0)
+    }
+
+    @Test("Replacing the current note flushes exact text once without serializing discarded editor state")
+    func replacementNavigationSkipsReconstructionCapture() async throws {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        window.documentController.selectUnavailableDocument(
+            vaultID: UUID(),
+            relativePath: "Active.md"
+        )
+        var flushCount = 0
+        var captureCount = 0
+        window.registerEditorFlush(
+            for: "Active.md",
+            token: UUID(),
+            flush: { flushCount += 1 },
+            captureForReconstruction: { captureCount += 1 }
+        )
+
+        window.requestOpenNote("Missing fixture note.md")
+        await window.waitForPendingDocumentTransitionsForTesting()
+
+        #expect(flushCount == 1)
+        #expect(captureCount == 0)
+    }
+
     @Test("Triptych flush uses one aggregate registration per window")
     func triptychFlushDoesNotDoubleFlushOneWindow() async throws {
         let store = makeTestWorkspaceStore()

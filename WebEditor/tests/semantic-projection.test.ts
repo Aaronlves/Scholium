@@ -46,6 +46,14 @@ describe("Lezer-backed semantic projection", () => {
     expect(ranges.tables).toHaveLength(1);
   });
 
+  it("projects the first H1 after closed frontmatter together with later headings", () => {
+    const source = "---\ntitle: Fixture\n---\n# Document title\n\n## Section";
+    const ranges = completeProjection(source);
+
+    expect(ranges.headingLevelByLineFrom.get(source.indexOf("# Document"))).toBe(1);
+    expect(ranges.headingLevelByLineFrom.get(source.indexOf("## Section"))).toBe(2);
+  });
+
   it("does not project malformed markers as semantics", () => {
     const source = "##no heading\n**unfinished\n[broken](";
     const ranges = completeProjection(source);

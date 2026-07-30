@@ -1016,23 +1016,28 @@ struct NoteContentView: View {
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
+            if !isEditing,
+               documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256 {
+                PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+            }
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
             consumePendingSourceLocation()
         }
         .task(id: readProjectionTaskIdentity) {
-            guard presentationMode == .read else { return }
             failedReadFingerprint = nil
             documentSession.renderedReadReadyFingerprint = ""
-            documentSession.readSelection = nil
             let source = note.rawContent
             let relativePath = note.relativePath
             let fingerprint = noteFingerprint
-            documentSession.requestScrollRestore(
-                fingerprint: fingerprint.sha256,
-                reason: .documentLoad
-            )
+            if !isEditing {
+                documentSession.readSelection = nil
+                documentSession.requestScrollRestore(
+                    fingerprint: fingerprint.sha256,
+                    reason: .documentLoad
+                )
+            }
             let html = await controller.readProjectionHTML(
                 target: target,
                 relativePath: relativePath,
@@ -1074,7 +1079,7 @@ struct NoteContentView: View {
     }
 
     private var readProjectionTaskIdentity: String {
-        "\(noteFingerprint.sha256):\(presentationMode.rawValue)"
+        noteFingerprint.sha256
     }
 
     private var discussionProjectionPollIdentity: String {
@@ -1202,6 +1207,7 @@ struct NoteContentView: View {
             presentsEditor: isEditing,
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
+                && editorSession.presentedMode == presentationMode
         ) {
             readSurface
         } editor: {
@@ -1290,7 +1296,9 @@ struct NoteContentView: View {
             },
             onRenderingReady: {
                 documentSession.renderedReadReadyFingerprint = noteFingerprint.sha256
-                PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+                if !isEditing {
+                    PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+                }
             },
             observedScrollPosition: documentSession.observedScrollPosition,
             scrollRestoreRequest: documentSession.scrollRestoreRequest,
@@ -1301,10 +1309,14 @@ struct NoteContentView: View {
                 )
             },
             onScrollFractionChange: {
+                guard !isEditing else { return }
                 documentSession.observeScrollFraction($0)
                 actions.rememberScrollPosition($0)
             },
-            onScrollAnchorChange: { documentSession.observeScrollAnchor($0) },
+            onScrollAnchorChange: {
+                guard !isEditing else { return }
+                documentSession.observeScrollAnchor($0)
+            },
             targetSourceLine: isEditing ? nil : state.pendingSourceLine,
             onSourceLineReached: {
                 guard !isEditing else { return }
@@ -1398,6 +1410,16 @@ struct NoteContentView: View {
                             ?? DocumentFingerprint(content: editingSource).sha256,
                         reason: .modeHandoff
                     )
+                    let committedFingerprint = DocumentFingerprint(
+                        content: documentSession.originalEditingSource
+                    ).sha256
+                    if documentSession.renderedReadReadyFingerprint
+                        != committedFingerprint {
+                        // Never reveal a retained Review projection for the
+                        // pre-save revision while SwiftUI publishes the newly
+                        // committed Note and its hidden projection catches up.
+                        documentSession.renderedReadReadyFingerprint = ""
+                    }
                     editorSession.resignFocus()
                     finishEditing()
                 } catch { /* Controller published the recoverable error state. */ }

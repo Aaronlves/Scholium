@@ -227,32 +227,6 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
         self.callouts = callouts
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case lineWidthCharacterUnits
-        case body
-        case headings
-        case callouts
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        lineWidthCharacterUnits = try container.decodeIfPresent(
-            Double.self,
-            forKey: .lineWidthCharacterUnits
-        ) ?? Self.defaultLineWidthCharacterUnits
-        body = try container.decode(DocumentBodyAppearance.self, forKey: .body)
-        headings = try container.decode(DocumentHeadingAppearance.self, forKey: .headings)
-        callouts = try container.decode([DocumentCalloutAppearance].self, forKey: .callouts)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(lineWidthCharacterUnits, forKey: .lineWidthCharacterUnits)
-        try container.encode(body, forKey: .body)
-        try container.encode(headings, forKey: .headings)
-        try container.encode(callouts, forKey: .callouts)
-    }
-
     public static let defaultCallouts: [DocumentCalloutAppearance] = [
         .init(
             role: .orientation,

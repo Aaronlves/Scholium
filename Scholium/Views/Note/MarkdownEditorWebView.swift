@@ -312,6 +312,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     @Published private(set) var isReady = false
     @Published private(set) var isLoaded = false
+    @Published private(set) var presentedMode: NotePresentationMode?
     @Published private(set) var isDirty = false
     private(set) var line = 1
     private(set) var column = 1
@@ -348,6 +349,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var requestBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
     private var requestEpoch: UInt64 = 0
+    private var modeRequestEpoch: UInt64 = 0
+    private var modeBeingApplied: NotePresentationMode?
     private let bridgeDispatcher: any MarkdownEditorBridgeDispatching
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private var committedTextSynchronizer: ((String, String) -> Void)?
@@ -484,6 +487,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let mathMarginBlockStart: String
         let mathPaddingBlockStart: String
         let mathWidth: Double
+        let mathScrollExtent: Double
+        let mathOutputWidth: Double
+        let mathOutputInternalOverflow: Double
+        let mathStartClipping: Double
+        let mathEndClipping: Double
+        let mathMiddleTrackWidth: Double
+        let mathRightTrackWidth: Double
     }
 
     struct TestingAccessibilitySnapshot: Decodable, Sendable {
@@ -497,6 +507,25 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let gutterCount: Int
         let lineNumberCount: Int
         let activeLineCount: Int
+        let liveTitleCount: Int
+        let liveH1Count: Int
+        let liveH2Count: Int
+        let h1FontSize: String
+        let h2FontSize: String
+        let titleTextAlign: String
+        let h2TextAlign: String
+        let collapsedCodeFenceLineCount: Int
+        let collapsedCodeFenceVisibleHeight: Double
+        let collapsedBlankLineCount: Int
+        let collapsedBlankLineVisibleHeight: Double
+        let liveListMarkerCount: Int
+        let liveListMarkerUsesPrimaryText: Bool
+        let liveListMarkerText: String
+        let liveTaskSourceTokenCount: Int
+        let liveListGapCount: Int
+        let liveListGapHeight: Double
+        let quotePaddingInlineStart: String
+        let visibleLineClassSummary: String
         let contentPaddingTop: String
         let contentPaddingInlineStart: String
         let lineWrappingEnabled: Bool
@@ -635,6 +664,39 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             const footnoteStyle = style('.cm-live-footnotes-widget');
             const footnoteListStyle = style('.cm-live-footnotes-widget > ol');
             const mathStyle = style('.cm-live-math.scholium-math-display');
+            const mathGeometry = (() => {
+                const display = document.querySelector('.cm-live-math.scholium-math-display');
+                const output = display?.querySelector(':scope > .katex-display, :scope > .scholium-math-output');
+                if (!display || !output) return {
+                    scrollExtent: 0,
+                    outputWidth: 0,
+                    outputInternalOverflow: 0,
+                    startClipping: 0,
+                    endClipping: 0,
+                    middleTrackWidth: 0,
+                    rightTrackWidth: 0,
+                };
+                const originalScrollLeft = display.scrollLeft;
+                const displayBounds = display.getBoundingClientRect();
+                display.scrollLeft = 0;
+                const startBounds = output.getBoundingClientRect();
+                display.scrollLeft = display.scrollWidth;
+                const endBounds = output.getBoundingClientRect();
+                display.scrollLeft = originalScrollLeft;
+                const tracks = getComputedStyle(display).gridTemplateColumns
+                    .split(/\\s+/)
+                    .map(value => Number.parseFloat(value))
+                    .filter(value => Number.isFinite(value));
+                return {
+                    scrollExtent: Math.max(0, display.scrollWidth - display.clientWidth),
+                    outputWidth: output.getBoundingClientRect().width,
+                    outputInternalOverflow: Math.max(0, output.scrollWidth - output.clientWidth),
+                    startClipping: Math.max(0, displayBounds.left - startBounds.left),
+                    endClipping: Math.max(0, endBounds.right - displayBounds.right),
+                    middleTrackWidth: tracks[1] || 0,
+                    rightTrackWidth: tracks[2] || 0,
+                };
+            })();
             return {
                 contentEditableCount: editable.length,
                 textboxCount: textboxes.length,
@@ -646,6 +708,46 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 gutterCount: document.querySelectorAll('.cm-gutters').length,
                 lineNumberCount: document.querySelectorAll('.cm-lineNumbers .cm-gutterElement').length,
                 activeLineCount: document.querySelectorAll('.cm-activeLine').length,
+                liveTitleCount: document.querySelectorAll('.cm-live-document-title').length,
+                liveH1Count: document.querySelectorAll('.cm-live-h1').length,
+                liveH2Count: document.querySelectorAll('.cm-live-h2').length,
+                h1FontSize: style('.cm-live-h1')?.fontSize || '',
+                h2FontSize: style('.cm-live-h2')?.fontSize || '',
+                titleTextAlign: style('.cm-live-document-title')?.textAlign || '',
+                h2TextAlign: style('.cm-live-h2')?.textAlign || '',
+                collapsedCodeFenceLineCount: document.querySelectorAll('.cm-live-code-fence-line').length,
+                collapsedCodeFenceVisibleHeight: Array.from(document.querySelectorAll('.cm-live-code-fence-line'))
+                    .reduce((height, line) => height + line.getBoundingClientRect().height, 0),
+                collapsedBlankLineCount: document.querySelectorAll('.cm-live-blank-line').length,
+                collapsedBlankLineVisibleHeight: Array.from(document.querySelectorAll('.cm-live-blank-line'))
+                    .reduce((height, line) => height + line.getBoundingClientRect().height, 0),
+                liveListMarkerCount: document.querySelectorAll('.cm-live-list-marker').length,
+                liveListMarkerUsesPrimaryText: (() => {
+                    const marker = document.querySelector('.cm-live-list-marker');
+                    if (!marker) return false;
+                    const expected = getComputedStyle(document.documentElement)
+                        .getPropertyValue('--scholium-color-primary-text').trim();
+                    const probe = document.createElement('span');
+                    probe.style.color = expected;
+                    document.body.appendChild(probe);
+                    const resolvedExpected = getComputedStyle(probe).color;
+                    probe.remove();
+                    return getComputedStyle(marker).color === resolvedExpected;
+                })(),
+                liveListMarkerText: Array.from(document.querySelectorAll('.cm-live-list-marker'))
+                    .map(marker => marker.textContent || '')
+                    .join('|'),
+                liveTaskSourceTokenCount: Array.from(document.querySelectorAll('.cm-live-task-list'))
+                    .filter(line => /\\[[ xX]\\]/.test(line.textContent || ''))
+                    .length,
+                liveListGapCount: document.querySelectorAll('.cm-live-list-gap').length,
+                liveListGapHeight: document.querySelector('.cm-live-list-gap')
+                    ?.getBoundingClientRect().height || 0,
+                quotePaddingInlineStart: style('.cm-live-quote')?.paddingLeft || '',
+                visibleLineClassSummary: Array.from(document.querySelectorAll('.cm-line'))
+                    .slice(0, 16)
+                    .map(line => `${line.textContent || ''} [${line.className}]`)
+                    .join(' | '),
                 contentPaddingTop: contentStyle?.paddingTop || '',
                 contentPaddingInlineStart: contentStyle?.paddingInlineStart || '',
                 lineWrappingEnabled: content?.classList.contains('cm-lineWrapping') || false,
@@ -788,7 +890,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     mathLineHeight: mathStyle?.lineHeight || '',
                     mathMarginBlockStart: mathStyle?.marginBlockStart || '',
                     mathPaddingBlockStart: mathStyle?.paddingBlockStart || '',
-                    mathWidth: width('.cm-live-math.scholium-math-display')
+                    mathWidth: width('.cm-live-math.scholium-math-display'),
+                    mathScrollExtent: mathGeometry.scrollExtent,
+                    mathOutputWidth: mathGeometry.outputWidth,
+                    mathOutputInternalOverflow: mathGeometry.outputInternalOverflow,
+                    mathStartClipping: mathGeometry.startClipping,
+                    mathEndClipping: mathGeometry.endClipping,
+                    mathMiddleTrackWidth: mathGeometry.middleTrackWidth,
+                    mathRightTrackWidth: mathGeometry.rightTrackWidth
                 }
             };
             """,
@@ -857,10 +966,105 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         )
         guard let position = result as? [String: Any],
               let x = position["x"] as? Double,
-              let y = position["y"] as? Double,
-              let window = webView.window else {
+              let y = position["y"] as? Double else {
             throw SessionError.invalidResult
         }
+        try await testingClickPagePoint(x: x, y: y, in: webView)
+    }
+
+    func testingClickFirstFootnoteDefinition() async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const item = document.querySelector('.cm-live-footnotes-widget li[data-footnote]');
+            if (!item) return null;
+            item.scrollIntoView({block: 'center', behavior: 'auto'});
+            const rect = item.getBoundingClientRect();
+            return {x: rect.left + Math.min(12, rect.width / 2), y: (rect.top + rect.bottom) / 2};
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let position = result as? [String: Any],
+              let x = position["x"] as? Double,
+              let y = position["y"] as? Double else {
+            throw SessionError.invalidResult
+        }
+        try await testingClickPagePoint(x: x, y: y, in: webView)
+    }
+
+    func testingClickFirstTableCell() async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const cell = document.querySelector('.cm-live-table-widget th, .cm-live-table-widget td');
+            if (!cell) return null;
+            cell.scrollIntoView({block: 'center', behavior: 'auto'});
+            const rect = cell.getBoundingClientRect();
+            return {x: rect.left + Math.min(12, rect.width / 2), y: (rect.top + rect.bottom) / 2};
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let position = result as? [String: Any],
+              let x = position["x"] as? Double,
+              let y = position["y"] as? Double else {
+            throw SessionError.invalidResult
+        }
+        try await testingClickPagePoint(x: x, y: y, in: webView)
+    }
+
+    func testingClickVisibleText(_ requestedText: String) async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let scrolled = try await webView.callAsyncJavaScript(
+            """
+            for (const root of document.querySelectorAll('.cm-line')) {
+                if (root.textContent?.includes(requestedText)) {
+                    root.scrollIntoView({block: 'center', behavior: 'auto'});
+                    return true;
+                }
+            }
+            return false;
+            """,
+            arguments: ["requestedText": requestedText],
+            in: nil,
+            contentWorld: .page
+        )
+        guard scrolled as? Bool == true else { throw SessionError.invalidResult }
+        try await Task.sleep(for: .milliseconds(100))
+        let result = try await webView.callAsyncJavaScript(
+            """
+            for (const root of document.querySelectorAll('.cm-line')) {
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                    const index = node.textContent?.indexOf(requestedText) ?? -1;
+                    if (index < 0) continue;
+                    const range = document.createRange();
+                    range.setStart(node, index);
+                    range.setEnd(node, Math.min(node.length, index + Math.max(1, requestedText.length)));
+                    const rect = range.getBoundingClientRect();
+                    return {x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2};
+                }
+            }
+            return null;
+            """,
+            arguments: ["requestedText": requestedText],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let position = result as? [String: Any],
+              let x = position["x"] as? Double,
+              let y = position["y"] as? Double else {
+            throw SessionError.invalidResult
+        }
+        try await testingClickPagePoint(x: x, y: y, in: webView)
+    }
+
+    private func testingClickPagePoint(x: Double, y: Double, in webView: WKWebView) async throws {
+        guard let window = webView.window else { throw SessionError.invalidResult }
         try await Task.sleep(for: .milliseconds(100))
 
         let webViewPoint = NSPoint(
@@ -918,6 +1122,30 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard result as? Bool == true else { throw SessionError.invalidResult }
     }
 
+    func testingPressBackspace() async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            if (!content) return false;
+            const event = new KeyboardEvent('keydown', {
+                key: 'Backspace',
+                code: 'Backspace',
+                keyCode: 8,
+                which: 8,
+                bubbles: true,
+                cancelable: true
+            });
+            content.dispatchEvent(event);
+            return event.defaultPrevented;
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard result as? Bool == true else { throw SessionError.invalidResult }
+    }
+
     func testingApplyScrollAnchor(_ anchor: EditorScrollAnchor) async throws {
         guard isReady, isLoaded, let webView,
               let wireAnchor = wireAnchor(from: anchor, in: checkedSource) else {
@@ -945,8 +1173,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         invalidateRequestQueue()
         self.webView = webView
         sessionID = UUID()
+        modeRequestEpoch &+= 1
+        modeBeingApplied = nil
         updatePublished(\.isReady, to: false)
         updatePublished(\.isLoaded, to: false)
+        updatePublished(\.presentedMode, to: nil)
         updatePublished(\.errorMessage, to: nil)
         installQATerminationObserverIfEnabled()
         startupTask?.cancel()
@@ -963,8 +1194,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         startupTask?.cancel()
         cancelScheduledRecoveryCapture()
         self.webView = nil
+        modeRequestEpoch &+= 1
+        modeBeingApplied = nil
         updatePublished(\.isReady, to: false)
         updatePublished(\.isLoaded, to: false)
+        updatePublished(\.presentedMode, to: nil)
         removeQATerminationObserver()
     }
 
@@ -990,8 +1224,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: "")
         recoverySnapshot = nil
         lastKnownSelectionSnapshot = nil
+        modeRequestEpoch &+= 1
+        modeBeingApplied = nil
         updatePublished(\.isReady, to: false)
         updatePublished(\.isLoaded, to: false)
+        updatePublished(\.presentedMode, to: nil)
         updatePublished(\.isDirty, to: false)
     }
 
@@ -1012,6 +1249,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         documentVersion: Int,
         context semanticContext: MarkdownEditorContext?
     ) {
+        let wasComposing = context?.composing == true
         guard documentVersion == generation,
               markdownEditorSelectionRangesAreValid(
                 selections,
@@ -1035,6 +1273,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         } else if let interactionAvailability {
             context = interactionAvailability.context(selections: selections)
         }
+        if wasComposing, context?.composing == false {
+            reconvergePendingPresentationState()
+        }
         flushPendingSourceRange()
     }
 
@@ -1042,6 +1283,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         startupTask?.cancel()
         updatePublished(\.errorMessage, to: message)
         updatePublished(\.isLoaded, to: false)
+        updatePublished(\.presentedMode, to: nil)
     }
 
     func loadDocument(
@@ -1070,7 +1312,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
         pendingMode = mode
+        modeRequestEpoch &+= 1
+        modeBeingApplied = nil
         updatePublished(\.isLoaded, to: false)
+        updatePublished(\.presentedMode, to: nil)
         updatePublished(\.isDirty, to: false)
         updatePublished(\.errorMessage, to: nil)
         flushPendingState()
@@ -1080,15 +1325,27 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard mode != .read else { return }
         pendingMode = mode
         guard isReady, isLoaded, let webView else { return }
+        guard presentedMode != mode,
+              modeBeingApplied != mode else { return }
+        modeRequestEpoch &+= 1
+        let intendedModeRequestEpoch = modeRequestEpoch
+        modeBeingApplied = mode
         Task { [weak self] in
             guard let self else { return }
             do {
                 _ = try await send(.setMode(mode), in: webView)
+                guard intendedModeRequestEpoch == modeRequestEpoch,
+                      pendingMode == mode,
+                      self.webView === webView else { return }
+                modeBeingApplied = nil
+                updatePublished(\.presentedMode, to: mode)
                 PerformanceProbe.shared.markEditorModeReady(
                     documentID: documentID,
                     mode: mode
                 )
             } catch {
+                guard intendedModeRequestEpoch == modeRequestEpoch else { return }
+                modeBeingApplied = nil
                 let message = "The document mode change was not applied because the editor changed during text composition."
                 updatePublished(\.errorMessage, to: message)
                 _ = try? await send(.announceStatus(message), in: webView)
@@ -1098,7 +1355,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setUserCSS(_ css: String) {
         pendingUserCSS = css
-        guard isReady, let webView else { return }
+        guard isReady, isLoaded, let webView else { return }
         Task {
             _ = try? await send(.setUserCSS(css), in: webView)
         }
@@ -1106,7 +1363,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setPresentationCSS(_ css: String) {
         pendingPresentationCSS = css
-        guard isReady, let webView else { return }
+        guard isReady, isLoaded, let webView else { return }
         Task {
             _ = try? await send(.setPresentationCSS(css), in: webView)
         }
@@ -1686,9 +1943,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
                 )
-                _ = try await send(.setPresentationCSS(pendingPresentationCSS), in: webView, requiringRequestEpoch: intendedRequestEpoch)
-                _ = try await send(.setUserCSS(pendingUserCSS), in: webView, requiringRequestEpoch: intendedRequestEpoch)
-                _ = try await send(.setLinkPreviews(pendingLinkPreviews), in: webView, requiringRequestEpoch: intendedRequestEpoch)
                 if let snapshot = matchingRecovery,
                    snapshot.fingerprint == startingFingerprint,
                    snapshot.source == checkedSource {
@@ -1724,8 +1978,25 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 } else {
                     updatePublished(\.isDirty, to: false)
                 }
-                // Recovery replaces the complete EditorState and can reset the
-                // scroller. Apply the retained position only after restoration.
+                guard intendedRequestEpoch == requestEpoch,
+                      self.documentID == documentID,
+                      self.webView === webView else { return }
+                reconstructionScrollAnchor = nil
+                // Appearance and snippet stores can finish loading after the
+                // page is ready but while document initialization is still in
+                // flight. Keep the editor hidden until a serial convergence
+                // pass observes the same latest values before and after all
+                // three bridge requests. A SwiftUI update that arrives during
+                // an await therefore causes another pass instead of becoming
+                // a permanently dropped initial style or preview update.
+                try await convergePendingPresentationState(
+                    in: webView,
+                    requiringRequestEpoch: intendedRequestEpoch,
+                    documentID: documentID
+                )
+                // Recovery and the final converged styles can both change
+                // visual block heights. Restore the retained position only
+                // after both have settled into the retained EditorState.
                 if let anchor = pendingScrollAnchor,
                    let wireAnchor = wireAnchor(from: anchor, in: checkedSource) {
                     _ = try await send(
@@ -1740,14 +2011,22 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         requiringRequestEpoch: intendedRequestEpoch
                     )
                 }
-                guard intendedRequestEpoch == requestEpoch,
-                      self.documentID == documentID,
-                      self.webView === webView else { return }
-                reconstructionScrollAnchor = nil
+                var appliedMode = mode
+                while pendingMode != appliedMode {
+                    let requestedMode = pendingMode
+                    _ = try await send(
+                        .setMode(requestedMode),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                    appliedMode = requestedMode
+                }
+                modeBeingApplied = nil
+                updatePublished(\.presentedMode, to: appliedMode)
                 updatePublished(\.isLoaded, to: true)
                 PerformanceProbe.shared.markEditorModeReady(
                     documentID: documentID,
-                    mode: mode
+                    mode: appliedMode
                 )
                 flushPendingLine()
                 flushPendingSourceRange()
@@ -1757,7 +2036,60 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                       self.documentID == documentID,
                       self.webView === webView else { return }
                 updatePublished(\.isLoaded, to: false)
+                updatePublished(\.presentedMode, to: nil)
                 updatePublished(\.errorMessage, to: error.localizedDescription)
+            }
+        }
+    }
+
+    private func reconvergePendingPresentationState() {
+        guard isReady, isLoaded, context?.composing != true,
+              let webView else { return }
+        let intendedRequestEpoch = requestEpoch
+        let documentID = documentID
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            try? await self.convergePendingPresentationState(
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch,
+                documentID: documentID
+            )
+        }
+    }
+
+    private func convergePendingPresentationState(
+        in webView: WKWebView,
+        requiringRequestEpoch intendedRequestEpoch: UInt64,
+        documentID: String
+    ) async throws {
+        while true {
+            let presentationCSS = pendingPresentationCSS
+            let userCSS = pendingUserCSS
+            let linkPreviews = pendingLinkPreviews
+            _ = try await send(
+                .setPresentationCSS(presentationCSS),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            _ = try await send(
+                .setUserCSS(userCSS),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            _ = try await send(
+                .setLinkPreviews(linkPreviews),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            guard intendedRequestEpoch == requestEpoch,
+                  self.documentID == documentID,
+                  self.webView === webView else {
+                throw SessionError.staleRequest
+            }
+            if presentationCSS == pendingPresentationCSS,
+               userCSS == pendingUserCSS,
+               linkPreviews == pendingLinkPreviews {
+                return
             }
         }
     }

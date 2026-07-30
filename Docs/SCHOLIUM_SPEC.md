@@ -315,8 +315,11 @@ promise.
 
 Rendered callouts hide generated role names visually but retain them for
 accessibility. A supplied title inherits the role heading style; an untitled
-callout adds no heading. Prose uses natural start alignment, never full
-justification.
+callout adds no heading. Ordinary Body prose uses the selected Appearance's
+alignment; the canonical default is justified without hyphenation. Callout,
+table, code, mathematics, footnote, and ordinary-quotation composition remains
+owned by each protected object rule rather than inheriting Body alignment
+indiscriminately.
 
 An inactive Edit callout atomically projects one half-open source
 range. Selection reveals source only on actual overlap, not boundary contact.
@@ -1799,9 +1802,9 @@ Source; all three reduce to **20 CSS px** below **44rem**. The **32 CSS px** top
 inset and existing trailing scrolling space remain separate. CSS lengths never
 convert to macOS points. `ch` resolves against Review/Edit Body type or Source's
 exact-source type and therefore does not promise an exact character count.
-Shared ownership and units are approved; the 72ch default still requires the
-adaptation matrix and researcher side-by-side acceptance. Edit and
-Source reconfigure one retained editor state; window, split, theme,
+Shared ownership, units, and the 72ch default have passed ordinary, narrow,
+mixed-script, RTL, and 100%/200% researcher comparison. Edit and Source
+reconfigure one retained editor state; window, split, theme,
 line-width, or text-size changes never replace it or create an Editor window.
 
 Appearance is machine-local configuration and never Markdown or vault state.
@@ -2186,12 +2189,27 @@ above visual centre and preserve a calm bottom edge.
   revision identities, paths, stable identifiers, and diffs.
 - The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
   **2.0** line spacing, **1em** paragraph spacing, **0.02em** tracking,
-  justified text, and no hyphenation. Line width is configurable from
-  **48–96ch** in **1ch** steps and is shared by Review, Edit, and Source.
-  Its H1/H2/H3–H6 scales are provisionally **200/150/115%**, with centered H1
-  and medium shared heading weight. These document typography values are
-  user-configurable. Callouts inherit Body typography and expose independent
-  role spacing/composition parameters without acquiring a separate palette.
+  zero first-line indent, zero word spacing, justified text, no hyphenation,
+  kerning, and common ligatures. Line width is configurable from **48–96ch**
+  in **1ch** steps and is shared by Review, Edit, and Source.
+- Default headings use the Body family, upright style, **500** weight,
+  **1.8** line spacing, and zero tracking. H1 is **200%**, centered, with
+  **0em** before and **2em** after; H2 is **150%**, start-aligned, with
+  **0.6em** before and after; H3–H6 are **115%**, start-aligned, with **0.5em**
+  before and after. A long or mixed-script title wraps inside the same measure.
+  The first paragraph after a heading retains ordinary Body rules. Scholium
+  introduces no Abstract-specific hierarchy; an authored Abstract label is an
+  ordinary heading.
+- These document typography values are user-configurable. The eight protected
+  Callout roles inherit Body typography and expose independent role
+  spacing/composition parameters without acquiring a separate palette.
+  Ordinary Markdown quotation remains selectable prose, uses the semantic
+  Accent boundary in Review and Edit, and never becomes a Callout or card.
+  Tables, code, and mathematics keep object-local horizontal overflow; the page
+  itself never gains horizontal reading scroll. Display mathematics remains
+  centered and italic with its number on a separate physical-right track.
+  Footnote references and definitions retain Review-owned preview/navigation
+  and Edit-owned exact-source activation under §5.1.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
   **Paper** `#FEF8ED`. In Light appearance Paper is the illuminated Document
@@ -2293,9 +2311,8 @@ radius, shadow, border, gradient, or paper scales.
   duration scale, parallax, animated grain, decorative motion, or repeating
   Attention pulse. Conditional Attention presence remains understandable with
   motion entirely absent.
-- Document rhythm remains renderer-aware and provisional until Review/Edit
-  pass side-by-side review at ordinary, narrow, mixed-script, and 200%
-  text conditions.
+- Document rhythm is renderer-aware and uses the approved default and adaptive
+  behavior in §18.4 and §19.2.
 
 ### 19.4 Provisional layout defaults
 
@@ -2320,9 +2337,9 @@ px** minimum border separations. Wide rendered tables, code, and mathematics
 may scroll inside that measure; rendered prose reflows without page-level
 horizontal reading scroll. Source mode instead soft-wraps every exact logical
 line within its measure without changing source line breaks or line numbers.
-The 72ch default and typographic rhythm still require ordinary, narrow,
-mixed-script, and 200% visual acceptance. Screenshots and prototype coordinates
-remain evidence only and never define native/CSS unit conversion.
+The 72ch default and typographic rhythm have passed ordinary, narrow,
+mixed-script, RTL, and 100%/200% visual acceptance. Screenshots and prototype
+coordinates remain evidence only and never define native/CSS unit conversion.
 
 ### 19.5 Application icon
 
@@ -2668,8 +2685,6 @@ Implementation and acceptance gaps belong in `IMPLEMENTATION_STATUS.md`.
 
 Only questions that can still change the target remain here:
 
-- approve or revise the default Document rhythm, including the 72ch default,
-  after ordinary, narrow, mixed-script, and 200% side-by-side acceptance;
 - promote or revise provisional interface metrics only after the complete
   adaptation and human visual-acceptance matrix; and
 - approve the packaged G7 p95 thresholds before they become release limits.

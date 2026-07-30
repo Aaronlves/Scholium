@@ -75,7 +75,8 @@ enum DocumentAppearanceStyles {
           padding-block: 0;
           text-align: \(title.alignment.rawValue);
         }
-        .scholium-live-mode .cm-live-document-title {
+        .scholium-live-mode .cm-live-document-title,
+        .scholium-live-mode .cm-live-h1 {
           margin-block: 0;
           padding-block: var(--scholium-appearance-title-before) var(--scholium-appearance-title-after);
           text-align: \(title.alignment.rawValue);

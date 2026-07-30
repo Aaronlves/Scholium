@@ -24,6 +24,10 @@ describe("footnotePresentation", () => {
         {identifier: "b", ordinal: 1, content: "**Beta**"},
         {identifier: "a", ordinal: 2, content: "Alpha"},
       ]);
+    expect(projection.definitions.map((definition) => source.slice(
+      definition.contentFrom,
+      definition.contentFrom + definition.content.length,
+    ))).toEqual(["**Beta**", "Alpha"]);
   });
 
   it("captures bounded multiline definitions and leaves the following block outside", () => {
@@ -32,7 +36,15 @@ describe("footnotePresentation", () => {
     const definition = projection.definitions[0];
 
     expect(definition.content).toBe("First\nsecond\nthird\n\nfinal");
+    expect(source.slice(definition.contentFrom, definition.contentFrom + 5)).toBe("First");
     expect(source.slice(definition.from, definition.to)).toBe("[^one]: First\n  second\n\tthird\n\n  final\n");
+  });
+
+  it("locates the first editable content after an empty definition line", () => {
+    const source = "Text[^one].\n\n[^one]:\n  Editable continuation";
+    const definition = footnotePresentation(source).definitions[0];
+
+    expect(source.slice(definition.contentFrom)).toBe("Editable continuation");
   });
 
   it("preserves nested block indentation inside an owned definition", () => {

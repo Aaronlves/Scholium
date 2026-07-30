@@ -35,8 +35,12 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("@ObservedObject private var documentSession: DocumentSessionModel"))
         #expect(noteSource.contains("retainsEditor: documentSession.retainsEditorSurface"))
         #expect(noteSource.contains("editorIsReady: editorSession.isLoaded"))
+        #expect(noteSource.contains("editorSession.presentedMode == presentationMode"))
         #expect(noteSource.contains("mode: documentSession.retainedEditorMode"))
         #expect(noteSource.contains("renderedReadReadyFingerprint"))
+        #expect(noteSource.contains("private var readProjectionTaskIdentity: String"))
+        #expect(noteSource.contains("noteFingerprint.sha256"))
+        #expect(!noteSource.contains("guard presentationMode == .read else { return }"))
     }
 
     @Test("Autosave failure and conflict stay in the Document surface")
@@ -846,6 +850,59 @@ struct FrontendArchitectureTests {
         #expect(!workflowProofSource.contains("ResearchActionsProof"))
         #expect(!workflowProofSource.contains("case stateMatrix"))
         #expect(!workflowProofSource.contains("ResearchWorkflowProofState"))
+    }
+
+    @Test("Accepted-A heading-wrap proof stays in the QA journey and production renderer")
+    func documentHeadingProofIsQABounded() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let uiTestSource = try String(
+            contentsOf: repository.appendingPathComponent("UITests/ScholiumUITests.swift"),
+            encoding: .utf8
+        )
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let noteSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let appearanceSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Styling/DocumentAppearanceStyles.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(uiTestSource.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm"))
+        #expect(uiTestSource.contains("--scholium-document-heading-proof"))
+        #expect(uiTestSource.contains("XCUIApplication(bundleIdentifier: \"com.scholium.qa\")"))
+        #expect(uiTestSource.contains("workspace.screenshot()"))
+        #expect(uiTestSource.contains("lineHeight: 2.00"))
+        #expect(uiTestSource.contains("paragraphSpacing: 1.00"))
+        #expect(uiTestSource.contains("letterSpacing: 0.020"))
+        #expect(!uiTestSource.contains("lineHeight: 1.80"))
+        #expect(!uiTestSource.contains("lineHeight: 1.65"))
+        #expect(uiTestSource.contains("XCTAssertEqual(sliderNumericValue(lineWidth), 72)"))
+        #expect(uiTestSource.contains("Heading Study — accepted A — long mixed H1 — 1180×760 — Review — static secondary toolbar identity"))
+        #expect(uiTestSource.contains("Heading Study — accepted A — long mixed H1 — 900×760 — Review — static secondary toolbar identity"))
+        #expect(uiTestSource.contains("在长期论证中保持证据边界：Reasons, Values"))
+        #expect(!uiTestSource.contains("## Abstract"))
+        #expect(uiTestSource.contains("XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)"))
+        #expect(!appSource.contains("--scholium-document-heading-proof"))
+        #expect(!appSource.contains("scholium-document-heading-proof"))
+        #expect(appearanceSource.contains(".scholium-document p {"))
+        #expect(!appearanceSource.contains(".scholium-document h1 + p"))
+        #expect(!appearanceSource.contains(".scholium-document h2 + p"))
+        #expect(noteSource.contains("DocumentEditorHost("))
+        #expect(noteSource.contains("SafeMarkdownReadWebView("))
+        #expect(noteSource.contains("MarkdownEditorWebView("))
+        #expect(noteSource.contains("documentPresentation.css + \"\\n\" + state.appearanceCSS"))
     }
 
     @Test("Overview, Connect, and Actions share one variable-driven Apparatus geometry")
@@ -2206,6 +2263,93 @@ struct FrontendArchitectureTests {
         #expect(!calloutCSS.contains("text-align-last:"))
     }
 
+    @Test("Ordinary quotation uses the semantic Accent in Read and Live Preview")
+    func ordinaryQuotationUsesSemanticAccent() {
+        let readCSS = SafeMarkdownReadWebView.Coordinator.baseCSS
+        let editorHTML = MarkdownEditorWebView.editorHTML ?? ""
+
+        #expect(readCSS.contains(
+            "border-left: 3px solid var(--scholium-color-accent);"
+        ))
+        #expect(!readCSS.contains(
+            "border-left: 3px solid color-mix(in srgb, AccentColor"
+        ))
+        #expect(editorHTML.contains(
+            ".cm-line.cm-live-quote {\n  box-shadow: inset 3px 0 var(--scholium-color-accent);"
+        ))
+        #expect(!editorHTML.contains(
+            ".cm-line.cm-live-quote {\n  box-shadow: inset 3px 0 color-mix("
+        ))
+        #expect(editorHTML.contains(
+            "padding-left: var(--scholium-rhythm-quote-inset);"
+        ))
+    }
+
+    @Test("Edit H1 owns the document-title tier without a cached body-line condition")
+    func liveH1OwnsDocumentTitleTier() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+
+        #expect(editorSource.contains("const isDocumentTitle = headingLevel === 1;"))
+        #expect(!editorSource.contains(
+            "const isDocumentTitle = headingLevel === 1 && line.from === firstBodyLineFrom;"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "text-align: start;"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "text-align: center;"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-live-mode .cm-live-document-title,"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-live-mode .cm-live-h1 {"
+        ))
+    }
+
+    @Test("Editor reveal settles hidden WebKit geometry before scroll restoration")
+    func editorRevealOwnsAStyleBarrier() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        let fractionOperation = try #require(
+            editorSource.range(of: "setScrollFraction(requestedFraction: number) {")
+        )
+        let fractionTail = editorSource[fractionOperation.lowerBound...]
+        let fractionBarrier = try #require(fractionTail.range(
+            of: "flushPresentationStyleAndGeometry();"
+        ))
+        let fractionExtent = try #require(fractionTail.range(
+            of: "const extent = Math.max(0, editor.scrollDOM.scrollHeight"
+        ))
+        #expect(fractionBarrier.lowerBound < fractionExtent.lowerBound)
+
+        let anchorOperation = try #require(
+            editorSource.range(of: "setScrollAnchor(anchor: EditorScrollAnchor) {")
+        )
+        let anchorTail = editorSource[anchorOperation.lowerBound...]
+        let anchorBarrier = try #require(anchorTail.range(
+            of: "flushPresentationStyleAndGeometry();"
+        ))
+        let anchorGeometry = try #require(anchorTail.range(of: "editor.lineBlockAt(blockProbe)"))
+        #expect(anchorBarrier.lowerBound < anchorGeometry.lowerBound)
+        #expect(editorSource.contains("getComputedStyle(element).fontSize"))
+        #expect(editorSource.contains("element.getBoundingClientRect().width"))
+        #expect(!editorSource.contains("SCHOLIUM_UI_TEST_EDITOR_PRESENTATION_MARKER"))
+    }
+
 
     @Test("App-owned Annotation and legacy archives stay absent after clean cutover")
     func removedAnnotationAndLegacyArchivesDoNotRegress() throws {
@@ -2250,7 +2394,9 @@ struct FrontendArchitectureTests {
         #expect(css.contains("data:font/woff2;base64,"))
         #expect(!css.contains("url(fonts/"))
         #expect(css.contains(".scholium-math-display"))
-        #expect(css.contains("grid-template-columns: minmax(2.5em, 1fr) minmax(0, auto) minmax(2.5em, 1fr)"))
+        #expect(css.contains("grid-template-columns: minmax(2.5em, 1fr) max-content minmax(2.5em, 1fr)"))
+        #expect(css.contains("min-inline-size: max-content;"))
+        #expect(!css.contains("grid-template-columns: minmax(2.5em, 1fr) minmax(0, auto)"))
         #expect(css.contains("counter-increment: scholium-equation"))
         #expect(css.contains("content: \"(\" counter(scholium-equation) \")\""))
         #expect(css.contains(".scholium-math-display .katex { font-style: italic; }"))
@@ -2326,8 +2472,8 @@ struct FrontendArchitectureTests {
         ).contains(css))
     }
 
-    @Test("Review alone owns footnote preview and navigation")
-    func reviewOwnsFootnoteInteraction() throws {
+    @Test("Review owns footnote preview and navigation while Edit owns exact-source activation")
+    func footnoteInteractionStaysWithinEachModeBoundary() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -2365,7 +2511,11 @@ struct FrontendArchitectureTests {
         )
 
         #expect(!editReference.contains("addEventListener(\"mousedown\""))
-        #expect(!editSection.contains("addEventListener(\"mousedown\""))
+        #expect(editSection.contains("addEventListener(\"mousedown\""))
+        #expect(editSection.contains("beginProjectedPointerSelection"))
+        #expect(editSection.contains("definition.contentFrom"))
+        #expect(!editSection.contains("showFootnotePopover"))
+        #expect(!editSection.contains("footnote-return"))
         #expect(editReference.contains("ignoreEvent() { return false; }"))
         #expect(editSection.contains("ignoreEvent() { return false; }"))
         #expect(readHTML.contains("showFootnotePopover"))

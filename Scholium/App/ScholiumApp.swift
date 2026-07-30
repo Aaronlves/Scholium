@@ -2436,7 +2436,9 @@ final class WindowModel: ObservableObject {
         editorFlushRegistration = nil
     }
 
-    private func flushRegisteredEditorIfNeeded() async throws {
+    private func flushRegisteredEditorIfNeeded(
+        capturingEditorState: Bool = false
+    ) async throws {
         if let registration = editorFlushRegistration {
             if let selectedDocumentPath,
                selectedDocumentPath != registration.relativePath {
@@ -2446,9 +2448,14 @@ final class WindowModel: ObservableObject {
                 )
             }
             try await registration.flush()
+            if capturingEditorState {
+                try await registration.captureForReconstruction()
+            }
             return
         }
-        try await documentController.flushLeasedOrPinnedSessions()
+        try await documentController.flushLeasedOrPinnedSessions(
+            capturingEditorState: capturingEditorState
+        )
     }
 
     /// Opening an Action needs the exact current Target, not every open Note
@@ -2469,14 +2476,6 @@ final class WindowModel: ObservableObject {
         }
         guard let selectedDocument = documentController.selectedDocument else { return }
         try await documentController.flushBeforeClosing(selectedDocument)
-    }
-
-    private func captureRegisteredEditorForReconstructionIfNeeded() async throws {
-        if let registration = editorFlushRegistration {
-            try await registration.captureForReconstruction()
-            return
-        }
-        try await documentController.captureSelectedEditorForReconstruction()
     }
 
     func prepareForWindowClose() async throws -> ClosePreparationOutcome {
@@ -2518,8 +2517,11 @@ final class WindowModel: ObservableObject {
     /// Serializes every transition that can replace the active document view.
     /// The newest requested destination wins, but an already-running operation
     /// is allowed to finish before the next begins so vault state is never
-    /// mutated concurrently by two window transitions.
+    /// mutated concurrently by two window transitions. Replacement navigation
+    /// still flushes CodeMirror's exact text, but skips serializing selection,
+    /// scroll, and undo state that will be discarded with the replaced tab.
     private func enqueueDocumentTransition(
+        preservingCurrentEditorState: Bool = true,
         _ operation: @escaping @MainActor () async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
         didSucceed: (@MainActor () -> Void)? = nil,
@@ -2528,8 +2530,9 @@ final class WindowModel: ObservableObject {
         documentTransitionCoordinator.enqueue(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
-                try await self.flushRegisteredEditorIfNeeded()
-                try await self.captureRegisteredEditorForReconstructionIfNeeded()
+                try await self.flushRegisteredEditorIfNeeded(
+                    capturingEditorState: preservingCurrentEditorState
+                )
             },
             operation: operation,
             didFail: { [weak self] error in
@@ -2552,6 +2555,12 @@ final class WindowModel: ObservableObject {
             didFinish: { didFinish?() }
         )
     }
+
+    #if DEBUG
+    func waitForPendingDocumentTransitionsForTesting() async {
+        await documentTransitionCoordinator.waitForIdle()
+    }
+    #endif
 
     var ordinarySearchScope: SearchPresentationScope {
         discoveryController.search.ordinaryScope
@@ -2725,7 +2734,7 @@ final class WindowModel: ObservableObject {
             requestOpenNote(reference, disposition: .newTab)
             return
         }
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             self.openNote(path)
         }
@@ -2763,7 +2772,7 @@ final class WindowModel: ObservableObject {
             openInNewTab(reference)
             return
         }
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             try self.activateWorkspaceReference(
                 reference,
@@ -2778,7 +2787,7 @@ final class WindowModel: ObservableObject {
     func requestResynthesis(_ item: AttentionQueueItem) {
         guard item.kind == .materialChangedSinceUse,
               let context = item.materialChangedSinceUse else { return }
-        enqueueDocumentTransition({ [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false, { [weak self] in
             guard let self else { return }
             try self.activateWorkspaceReference(
                 item.note,
@@ -2853,7 +2862,7 @@ final class WindowModel: ObservableObject {
             relativePath: note.relativePath,
             stableNoteID: stableNoteID.uuidString.lowercased()
         )
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             try self.activateWorkspaceReference(
                 reference,
@@ -2872,7 +2881,7 @@ final class WindowModel: ObservableObject {
         sourceLine: Int,
         mode: NotePresentationMode = .source
     ) {
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             self.pendingSourceLine = max(1, sourceLine)
             self.openNote(path)
@@ -2916,7 +2925,7 @@ final class WindowModel: ObservableObject {
 
     func requestLifecycleNote(_ path: String, in scope: NoteLocationScope) {
         guard scope == .setAside || scope == .trash else { return }
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             await self.selectNoteLocationScope(scope)
             self.openNote(path)
@@ -2959,13 +2968,7 @@ final class WindowModel: ObservableObject {
             showToast(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
-        if mode == .read {
-            enqueueDocumentTransition { [weak self] in
-                self?.requestPresentationMode = .read
-            }
-        } else {
-            requestPresentationMode = mode
-        }
+        requestPresentationMode = mode
     }
 
     #if DEBUG
@@ -4587,7 +4590,7 @@ final class WindowModel: ObservableObject {
     func requestUntitledNoteCreation(in folderRelativePath: String?) {
         guard !isCreatingNote else { return }
         isCreatingNote = true
-        enqueueDocumentTransition({ [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false, { [weak self] in
             guard let self else { return }
             guard noteLocationScope == .workspace,
                   let vault = currentRegisteredVault else {
@@ -5516,7 +5519,7 @@ final class WindowModel: ObservableObject {
         line: Int? = nil,
         mode: NotePresentationMode = .source
     ) async {
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             try self.activateWorkspaceReference(
                 reference,
@@ -5535,7 +5538,7 @@ final class WindowModel: ObservableObject {
         sourceRange: SearchSourceRange?,
         fallbackLine: Int
     ) {
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             try self.activateWorkspaceReference(
                 reference,

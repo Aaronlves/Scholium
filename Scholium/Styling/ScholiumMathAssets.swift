@@ -39,7 +39,7 @@ enum ScholiumMathAssets {
     }
     .scholium-math-display {
       display: grid;
-      grid-template-columns: minmax(2.5em, 1fr) minmax(0, auto) minmax(2.5em, 1fr);
+      grid-template-columns: minmax(2.5em, 1fr) max-content minmax(2.5em, 1fr);
       align-items: baseline;
       overflow-x: auto;
       overflow-y: hidden;
@@ -50,7 +50,12 @@ enum ScholiumMathAssets {
       scrollbar-width: thin;
     }
     .scholium-math-display > .scholium-math-output,
-    .scholium-math-display > .katex-display,
+    .scholium-math-display > .katex-display {
+      grid-column: 2;
+      min-inline-size: max-content;
+      margin: 0;
+      justify-self: center;
+    }
     .scholium-math-display > .scholium-math-source {
       grid-column: 2;
       min-inline-size: 0;

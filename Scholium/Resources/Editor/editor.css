@@ -222,19 +222,45 @@ body,
   border-radius: 5px;
 }
 
-.cm-live-list { padding-inline-start: 0.5em; }
+.cm-line.cm-live-list {
+  padding-inline-start: 0.5em;
+}
+.cm-live-list-gap {
+  block-size: calc(var(--scholium-rhythm-paragraph-gap) * 2);
+  pointer-events: none;
+}
 .cm-live-list-marker {
   display: inline-block;
   min-width: 1.35em;
-  color: color-mix(in srgb, var(--scholium-color-accent) 78%, var(--scholium-color-primary-text));
-  font-family: system-ui, sans-serif;
-  font-weight: 650;
+  color: var(--scholium-color-primary-text);
+  font-family: inherit;
+  font-weight: 400;
+}
+.cm-live-list-marker-nested {
+  font-size: 1.05em;
 }
 
 .cm-live-codeblock {
   font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   background: color-mix(in srgb, var(--scholium-color-primary-text) 6%, transparent);
   padding-inline: var(--scholium-rhythm-live-code-inline-inset);
+}
+
+.cm-line.cm-live-code-fence-line {
+  block-size: 0;
+  min-block-size: 0;
+  line-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.cm-line.cm-live-blank-line {
+  block-size: 0;
+  min-block-size: 0;
+  line-height: 0;
+  padding-block: 0;
+  overflow: hidden;
 }
 
 .cm-live-table {
@@ -254,10 +280,10 @@ body,
 .cm-live-relation-predicate { color: color-mix(in srgb, var(--scholium-color-accent) 80%, var(--scholium-color-primary-text)); font-weight: 700; }
 .cm-live-relation-arrow { color: var(--scholium-color-muted-text); }
 
-.cm-live-quote {
-  box-shadow: inset 3px 0 color-mix(in srgb, var(--scholium-color-accent) 55%, transparent);
+.cm-line.cm-live-quote {
+  box-shadow: inset 3px 0 var(--scholium-color-accent);
   color: var(--scholium-color-secondary-text);
-  padding-left: var(--scholium-rhythm-live-quote-inline-inset);
+  padding-left: var(--scholium-rhythm-quote-inset);
 }
 
 /* Protected Callout presentation is injected from callouts.css by the app. */

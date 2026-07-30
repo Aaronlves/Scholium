@@ -184,6 +184,37 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review selection remains exact after a semantic table")
+    func reviewSelectionAfterTableRemainsExact() async throws {
+        let source = """
+        | Claim | Status |
+        |:---|:---:|
+        | Fittingness | Open |
+
+        After the table remains selectable.
+
+        A final paragraph follows.
+        """
+        let document = NoteDocument(relativePath: "Selection.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let selection = try await harness.selectVisibleText(
+            "After the table remains selectable."
+        )
+        #expect(selection.excerpt == "After the table remains selectable.")
+        #expect(selection.startLine == 5)
+        #expect(selection.endLine == 5)
+        await harness.closeAndDrain()
+    }
+
     private struct FootnoteInteractionSnapshot: Decodable {
         let previewTitle: String
         let originID: String
@@ -267,6 +298,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         .init(name: "narrow", width: 520, configuration: .init(textScale: 1), appearanceName: .aqua),
         .init(name: "compact-boundary", width: 704, configuration: .init(textScale: 1), appearanceName: .aqua),
         .init(name: "two-hundred-percent", width: 900, configuration: .init(textScale: 2), appearanceName: .aqua),
+        .init(name: "narrow-two-hundred-percent", width: 520, configuration: .init(textScale: 2), appearanceName: .aqua),
         .init(name: "dark", width: 720, configuration: .init(textScale: 1), appearanceName: .darkAqua),
         .init(
             name: "increased-contrast-dark",
@@ -352,6 +384,15 @@ extension MarkdownEditorWebViewIntegrationTests {
             }
             #expect(readSnapshot.pageHorizontalOverflow <= 1)
         }
+        let narrowTwoHundred = try #require(
+            readScenarios.first { $0.0.name == "narrow-two-hundred-percent" }?.1
+        )
+        #expect(narrowTwoHundred.mathScrollExtent > 0)
+        #expect(narrowTwoHundred.mathOutputInternalOverflow <= 1)
+        #expect(narrowTwoHundred.mathStartClipping <= 1)
+        #expect(narrowTwoHundred.mathEndClipping <= 1)
+        #expect(narrowTwoHundred.mathMiddleTrackWidth + 1 >= narrowTwoHundred.mathOutputWidth)
+        #expect(narrowTwoHundred.mathRightTrackWidth > 0)
         let wide = try #require(readScenarios.first { $0.0.name == "wide" }?.1)
         let custom = try #require(readScenarios.first { $0.0.name == "custom-line-width" }?.1)
         let wideInset = try #require(cssPixels(wide.documentPaddingInlineStart))
@@ -459,7 +500,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         | Fittingness | Open |
 
         $$
-        x^2 + y^2
+        \\sum_{i=1}^{n} \\frac{w_i(v_i + c_i)}{1 + \\exp(-\\lambda_i t)} = \\operatorname*{arg\\,max}_{o \\in O} F(o, r, e, c)
         $$
 
         Claim[^parity].
@@ -575,6 +616,16 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(live.mathMarginBlockStart == read.mathMarginBlockStart)
         #expect(live.mathPaddingBlockStart == read.mathPaddingBlockStart)
         #expect(abs(live.mathWidth - read.mathWidth) <= 1)
+        #expect(abs(live.mathScrollExtent - read.mathScrollExtent) <= 1)
+        #expect(abs(live.mathOutputWidth - read.mathOutputWidth) <= 1)
+        #expect(live.mathOutputInternalOverflow <= 1)
+        #expect(read.mathOutputInternalOverflow <= 1)
+        #expect(live.mathStartClipping <= 1)
+        #expect(read.mathStartClipping <= 1)
+        #expect(live.mathEndClipping <= 1)
+        #expect(read.mathEndClipping <= 1)
+        #expect(abs(live.mathMiddleTrackWidth - read.mathMiddleTrackWidth) <= 1)
+        #expect(abs(live.mathRightTrackWidth - read.mathRightTrackWidth) <= 1)
     }
 
     @MainActor
@@ -594,6 +645,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var surfaceIdentity = 0
         @Published var targetSourceLine: Int?
         @Published var reachedSourceLine: Int?
+        var selection: MarkdownReviewSelection?
         #if DEBUG
         @Published var testingForcesFinalizationFailure = false
         let testingScrollRestoreDelayMilliseconds: Int
@@ -1010,6 +1062,48 @@ extension MarkdownEditorWebViewIntegrationTests {
             return try JSONDecoder().decode(FootnoteInteractionSnapshot.self, from: data)
         }
 
+        func selectVisibleText(_ requestedText: String) async throws -> MarkdownReviewSelection {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            sourceBox.selection = nil
+            let selected = try await webView.callAsyncJavaScript(
+                """
+                const root = document.getElementById('scholium-document');
+                if (!root) return false;
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                  const index = (node.textContent || '').indexOf(requestedText);
+                  if (index < 0) continue;
+                  const range = document.createRange();
+                  range.setStart(node, index);
+                  range.setEnd(node, index + requestedText.length);
+                  const selection = window.getSelection();
+                  selection.removeAllRanges();
+                  selection.addRange(range);
+                  document.dispatchEvent(new Event('selectionchange'));
+                  return true;
+                }
+                return false;
+                """,
+                arguments: ["requestedText": requestedText],
+                in: nil,
+                contentWorld: .page
+            )
+            guard selected as? Bool == true else {
+                throw ReadHarnessError.invalidSnapshot
+            }
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while sourceBox.selection == nil {
+                if clock.now >= deadline { throw ReadHarnessError.timedOut }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            return try #require(sourceBox.selection)
+        }
+
         func scrollRegistrySnapshot() async throws -> (
             count: Int,
             visualOrderIsMonotonic: Bool
@@ -1112,6 +1206,39 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const footnoteStyle = style('.scholium-document > .footnotes');
                 const footnoteListStyle = style('.scholium-document > .footnotes > ol');
                 const mathStyle = style('.scholium-document > .scholium-math-display');
+                const mathGeometry = (() => {
+                    const display = document.querySelector('.scholium-document > .scholium-math-display');
+                    const output = display?.querySelector(':scope > .scholium-math-output, :scope > .katex-display');
+                    if (!display || !output) return {
+                        scrollExtent: 0,
+                        outputWidth: 0,
+                        outputInternalOverflow: 0,
+                        startClipping: 0,
+                        endClipping: 0,
+                        middleTrackWidth: 0,
+                        rightTrackWidth: 0,
+                    };
+                    const originalScrollLeft = display.scrollLeft;
+                    const displayBounds = display.getBoundingClientRect();
+                    display.scrollLeft = 0;
+                    const startBounds = output.getBoundingClientRect();
+                    display.scrollLeft = display.scrollWidth;
+                    const endBounds = output.getBoundingClientRect();
+                    display.scrollLeft = originalScrollLeft;
+                    const tracks = getComputedStyle(display).gridTemplateColumns
+                        .split(/\\s+/)
+                        .map(value => Number.parseFloat(value))
+                        .filter(value => Number.isFinite(value));
+                    return {
+                        scrollExtent: Math.max(0, display.scrollWidth - display.clientWidth),
+                        outputWidth: output.getBoundingClientRect().width,
+                        outputInternalOverflow: Math.max(0, output.scrollWidth - output.clientWidth),
+                        startClipping: Math.max(0, displayBounds.left - startBounds.left),
+                        endClipping: Math.max(0, endBounds.right - displayBounds.right),
+                        middleTrackWidth: tracks[1] || 0,
+                        rightTrackWidth: tracks[2] || 0,
+                    };
+                })();
                 return {
                     rootContentTopInset: rootStyle.getPropertyValue('--scholium-document-content-top-inset').trim(),
                     rootTextScale: rootStyle.getPropertyValue('--scholium-document-text-scale').trim(),
@@ -1194,7 +1321,14 @@ extension MarkdownEditorWebViewIntegrationTests {
                     mathLineHeight: mathStyle?.lineHeight || '',
                     mathMarginBlockStart: mathStyle?.marginBlockStart || '',
                     mathPaddingBlockStart: mathStyle?.paddingBlockStart || '',
-                    mathWidth: width('.scholium-document > .scholium-math-display')
+                    mathWidth: width('.scholium-document > .scholium-math-display'),
+                    mathScrollExtent: mathGeometry.scrollExtent,
+                    mathOutputWidth: mathGeometry.outputWidth,
+                    mathOutputInternalOverflow: mathGeometry.outputInternalOverflow,
+                    mathStartClipping: mathGeometry.startClipping,
+                    mathEndClipping: mathGeometry.endClipping,
+                    mathMiddleTrackWidth: mathGeometry.middleTrackWidth,
+                    mathRightTrackWidth: mathGeometry.rightTrackWidth
                 };
                 """,
                 arguments: [:],
@@ -1297,6 +1431,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onLinkClick: { _ in },
                 onOpenExternalURL: { _ in },
                 onCommentSelection: nil,
+                onSelectionChange: { sourceBox.selection = $0 },
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },

@@ -104,10 +104,18 @@ final class ScholiumUITests: XCTestCase {
             || name.contains("testInspectorToolbarItemOpensAndClosesInspector")
             || name.contains("testVisiblePeripheralTitlebarControlsCloseWithPointerCoordinates")
             || name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl")
+            || name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm")
             || name.contains("testLibraryRemainsReadableAtItsNativeMinimum") {
             return Int(QAWorkspaceMetricContract.preferredWidth)
         }
         return 1_380
+    }
+
+    private var initialOpenNoteForCurrentTest: String {
+        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
+            return "QA Document Heading Study.md"
+        }
+        return "QA Autosave A.md"
     }
 
     private var initialWorkspaceReadyTimeout: TimeInterval {
@@ -143,7 +151,8 @@ final class ScholiumUITests: XCTestCase {
             initialWorkspaceWidth: initialWorkspaceWidthForCurrentTest,
             autosaveDelayMS: name.contains(
                 "testDirtyLivePreviewSearchesThisNoteWithoutSaving"
-            ) ? 300_000 : 5_000
+            ) ? 300_000 : 5_000,
+            openNote: initialOpenNoteForCurrentTest
         )
         app.launch()
         XCTAssertTrue(
@@ -2715,6 +2724,180 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm() throws {
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        XCTAssertTrue(workspace.waitForExistence(timeout: 10))
+        let workspaceIdentity = workspace.identifier
+        XCTAssertFalse(workspaceIdentity.isEmpty)
+        XCTAssertEqual(
+            workspace.frame.width,
+            QAWorkspaceMetricContract.preferredWidth,
+            accuracy: QAWorkspaceMetricContract.frameTolerance
+        )
+        XCTAssertGreaterThanOrEqual(
+            workspace.frame.height,
+            760,
+            "XCU includes the native titlebar outside the configured Workspace content height."
+        )
+        XCTAssertLessThanOrEqual(
+            workspace.frame.height,
+            800,
+            "The native titlebar must not turn the configured 760pt Workspace into a materially taller proof."
+        )
+        XCTAssertFalse(
+            app.scrollViews["scholium.researchInspector"].exists,
+            "The first Document-heading proof keeps the Inspector hidden."
+        )
+
+        let noteURL = triptychDirectory
+            .appendingPathComponent("01-analyses", isDirectory: true)
+            .appendingPathComponent("QA Document Heading Study.md")
+        let sourceBefore = try Data(contentsOf: noteURL)
+        let noteIdentity = app.descendants(matching: .any)["scholium.documentNoteName"]
+        XCTAssertTrue(noteIdentity.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            noteIdentity.value as? String == "Heading Wrap Fixture"
+        })
+
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        XCTAssertEqual(mode.value as? String, "Review")
+        let renderedDocument = workspace.descendants(matching: .any)["Rendered Markdown"]
+        XCTAssertTrue(renderedDocument.waitForExistence(timeout: 10))
+        let anchorParagraph = renderedDocument.staticTexts.matching(
+            NSPredicate(
+                format: "value BEGINSWITH %@",
+                "A sustained philosophical argument asks the reader"
+            )
+        ).firstMatch
+        XCTAssertTrue(anchorParagraph.waitForExistence(timeout: 10))
+
+        func setBodyRhythm(
+            lineHeight: Double,
+            paragraphSpacing: Double,
+            letterSpacing: Double
+        ) {
+            let appMenu = app.menuBars.menuBarItems["Scholium QA"]
+            XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
+            appMenu.click()
+            let settings = app.menuItems["Settings…"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 3))
+            settings.click()
+            let appearance = app.descendants(matching: .any)["Appearance"].firstMatch
+            XCTAssertTrue(appearance.waitForExistence(timeout: 8))
+            appearance.click()
+
+            let form = app.descendants(matching: .any)["scholium.appearance.form"]
+            XCTAssertTrue(form.waitForExistence(timeout: 5))
+            let lineWidth = app.sliders["Line width"]
+            XCTAssertTrue(lineWidth.waitForExistence(timeout: 8))
+            XCTAssertEqual(sliderNumericValue(lineWidth), 72)
+
+            func setSlider(_ label: String, target: Double, step: Double) {
+                let slider = app.sliders.matching(
+                    NSPredicate(format: "label == %@", label)
+                ).firstMatch
+                XCTAssertTrue(slider.waitForExistence(timeout: 5))
+                scrollUntilHittable(slider, in: form)
+                let currentValue = sliderNumericValue(slider)
+                XCTAssertNotNil(currentValue)
+                guard let currentValue else { return }
+                if abs(currentValue - target) <= step / 10 {
+                    return
+                }
+                slider.click()
+                for _ in 0..<64 {
+                    guard let current = sliderNumericValue(slider) else { break }
+                    if abs(current - target) <= step / 10 {
+                        break
+                    }
+                    let key: XCUIKeyboardKey = current > target ? .leftArrow : .rightArrow
+                    slider.typeKey(key, modifierFlags: [])
+                    _ = waitUntil(timeout: 1) {
+                        guard let updated = self.sliderNumericValue(slider) else { return false }
+                        return abs(updated - current) >= step / 2
+                    }
+                }
+                XCTAssertTrue(waitUntil(timeout: 5) {
+                    guard let value = self.sliderNumericValue(slider) else { return false }
+                    return abs(value - target) <= step / 10
+                })
+            }
+
+            setSlider("Line spacing", target: lineHeight, step: 0.05)
+            setSlider("Paragraph spacing", target: paragraphSpacing, step: 0.05)
+            setSlider("Letter spacing", target: letterSpacing, step: 0.005)
+
+            let save = app.buttons["Save Appearance"]
+            XCTAssertTrue(save.waitForExistence(timeout: 5))
+            if save.isEnabled {
+                scrollUntilHittable(save, in: form)
+                save.click()
+                XCTAssertTrue(waitUntil(timeout: 5) { !save.isEnabled })
+            }
+
+            let settingsWindow = app.windows["Appearance"]
+            XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+            settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !settingsWindow.exists })
+            focusWorkspaceWindow(workspace)
+            XCTAssertTrue(renderedDocument.waitForExistence(timeout: 8))
+            XCTAssertTrue(anchorParagraph.waitForExistence(timeout: 8))
+            XCTAssertEqual(mode.value as? String, "Review")
+            XCTAssertEqual(
+                noteIdentity.value as? String,
+                "Heading Wrap Fixture"
+            )
+        }
+
+        setBodyRhythm(
+            lineHeight: 2.00,
+            paragraphSpacing: 1.00,
+            letterSpacing: 0.020
+        )
+        XCTAssertTrue(
+            anchorParagraph.isHittable,
+            "The accepted ordinary first paragraph must remain visible beneath the long title."
+        )
+        let documentTitle = renderedDocument.staticTexts.matching(
+            NSPredicate(
+                format: "value == %@",
+                "在长期论证中保持证据边界：Reasons, Values, and the Practical Option Space Across Competing Interpretations"
+            )
+        ).firstMatch
+        XCTAssertTrue(documentTitle.waitForExistence(timeout: 8))
+        XCTAssertGreaterThan(
+            documentTitle.frame.height,
+            40,
+            "The long mixed-script H1 must wrap instead of truncating to one line."
+        )
+        let ordinaryScreenshot = XCTAttachment(screenshot: workspace.screenshot())
+        ordinaryScreenshot.name = "Heading Study — accepted A — long mixed H1 — 1180×760 — Review — static secondary toolbar identity"
+        ordinaryScreenshot.lifetime = .keepAlways
+        add(ordinaryScreenshot)
+
+        resizeProofWindow(workspace, toWidth: 900)
+        XCTAssertTrue(documentTitle.waitForExistence(timeout: 8))
+        XCTAssertGreaterThan(
+            documentTitle.frame.height,
+            40,
+            "The long mixed-script H1 must remain wrapped after the Workspace narrows."
+        )
+        XCTAssertGreaterThanOrEqual(documentTitle.frame.minX, renderedDocument.frame.minX)
+        XCTAssertLessThanOrEqual(documentTitle.frame.maxX, renderedDocument.frame.maxX)
+        let narrowScreenshot = XCTAttachment(screenshot: workspace.screenshot())
+        narrowScreenshot.name = "Heading Study — accepted A — long mixed H1 — 900×760 — Review — static secondary toolbar identity"
+        narrowScreenshot.lifetime = .keepAlways
+        add(narrowScreenshot)
+
+        XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
+        XCTAssertEqual(workspace.identifier, workspaceIdentity)
+        XCTAssertEqual(mode.value as? String, "Review")
+    }
+
+    @MainActor
     func testTwoHundredPercentDocumentTextPersistsAcrossEveryMode() throws {
         app.terminate()
         app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: 900)
@@ -4270,6 +4453,111 @@ final class ScholiumUITests: XCTestCase {
     }
 
     @MainActor
+    func testDocumentModeAndLibrarySwitchHandoffsStayBoundedWithoutSourceExposure() throws {
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let rendered = app.descendants(matching: .any)["Rendered Markdown"]
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
+        let title = app.staticTexts["scholium.documentNoteName"]
+        let firstURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/QA Autosave A.md"
+        )
+        let secondURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/QA Autosave B.md"
+        )
+        let firstSource = try Data(contentsOf: firstURL)
+        let secondSource = try Data(contentsOf: secondURL)
+
+        func selectMode(_ title: String) {
+            mode.click()
+            let item = app.menuItems[title].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 3))
+            item.click()
+        }
+
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        selectMode("Source")
+        XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
+        selectMode("Review")
+        XCTAssertTrue(rendered.waitForExistence(timeout: 8))
+        XCTAssertFalse(sourceEditor.exists)
+
+        let reviewToEditStart = DispatchTime.now().uptimeNanoseconds
+        selectMode("Edit")
+        let editDeadline = Date().addingTimeInterval(8)
+        var sourceExposureSamples = 0
+        while Date() < editDeadline, !(editor.exists && editor.isHittable) {
+            if sourceEditor.exists && sourceEditor.isHittable {
+                sourceExposureSamples += 1
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        let reviewToEditMilliseconds = Double(
+            DispatchTime.now().uptimeNanoseconds - reviewToEditStart
+        ) / 1_000_000
+        XCTAssertTrue(editor.exists && editor.isHittable)
+        XCTAssertEqual(
+            sourceExposureSamples,
+            0,
+            "Review must remain the visible handoff surface until Edit is bridge-acknowledged."
+        )
+        XCTAssertFalse(sourceEditor.exists)
+
+        let editToReviewStart = DispatchTime.now().uptimeNanoseconds
+        selectMode("Review")
+        XCTAssertTrue(rendered.waitForExistence(timeout: 8))
+        let editToReviewMilliseconds = Double(
+            DispatchTime.now().uptimeNanoseconds - editToReviewStart
+        ) / 1_000_000
+
+        selectMode("Edit")
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        let secondRow = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave B.md"
+        ]
+        XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
+        let firstToSecondStart = DispatchTime.now().uptimeNanoseconds
+        secondRow.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            title.value as? String == "QA Autosave B"
+                && self.app.descendants(matching: .any)[
+                    "scholium.renderedDocument.QA Autosave B.md"
+                ].exists
+        })
+        let firstToSecondMilliseconds = Double(
+            DispatchTime.now().uptimeNanoseconds - firstToSecondStart
+        ) / 1_000_000
+
+        let firstRow = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave A.md"
+        ]
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
+        let secondToFirstStart = DispatchTime.now().uptimeNanoseconds
+        firstRow.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            title.value as? String == "QA Autosave A"
+                && editor.exists
+        })
+        let secondToFirstMilliseconds = Double(
+            DispatchTime.now().uptimeNanoseconds - secondToFirstStart
+        ) / 1_000_000
+
+        XCTAssertEqual(try Data(contentsOf: firstURL), firstSource)
+        XCTAssertEqual(try Data(contentsOf: secondURL), secondSource)
+        let evidence = XCTAttachment(string: """
+        Debug/QA scenario observation (not the packaged Release performance gate):
+        Review to Edit: \(reviewToEditMilliseconds) ms
+        Edit to Review: \(editToReviewMilliseconds) ms
+        Edit A to Review B through Library: \(firstToSecondMilliseconds) ms
+        Review B to restored Edit A through Library: \(secondToFirstMilliseconds) ms
+        Hittable Source samples during Review to Edit: \(sourceExposureSamples)
+        """)
+        evidence.name = "Document mode and Library handoff timings"
+        evidence.lifetime = .keepAlways
+        add(evidence)
+    }
+
+    @MainActor
     func testCleanExternalEditRefreshesTheOpenNote() throws {
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let title = "QA External \(UUID().uuidString.prefix(8))"
@@ -5109,6 +5397,9 @@ final class ScholiumUITests: XCTestCase {
         ]
         if name.contains("testResearchWorkflowInterfaceProofs") {
             application.launchArguments += ["--scholium-research-workflow-proofs"]
+        }
+        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
+            application.launchArguments += ["--scholium-document-heading-proof"]
         }
         if name.contains("testAgentNoteChangeRequestSheet") {
             application.launchArguments += ["--scholium-agent-change-request-fixture"]
@@ -6047,6 +6338,21 @@ final class ScholiumUITests: XCTestCase {
                 to: visualNoteURL
             )
         }
+        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
+            let studyURL = analyses.appendingPathComponent("QA Document Heading Study.md")
+            let revisedURL = analyses.appendingPathComponent(
+                "QA Document Heading Study — Revised.md"
+            )
+            let study = documentHeadingStudySource()
+            try write(study, to: studyURL)
+            try write(
+                study.replacingOccurrences(
+                    of: "The comparison revision keeps every other line fixed.",
+                    with: "The comparison revision changes only this synthetic sentence."
+                ),
+                to: revisedURL
+            )
+        }
         if name.contains("testReviewOwnsFootnoteNavigationAndEditKeepsItPassive") {
             let footnoteNoteURL = analyses.appendingPathComponent("QA Autosave A.md")
             let existingFootnoteFixture = try String(
@@ -6132,6 +6438,122 @@ final class ScholiumUITests: XCTestCase {
 
     private func write(_ string: String, to url: URL) throws {
         try Data(string.utf8).write(to: url, options: .atomic)
+    }
+
+    private func documentHeadingStudySource() -> String {
+        #"""
+        ---
+        title: "Heading Wrap Fixture"
+        fixture: synthetic-nonprivate
+        ---
+        # 在长期论证中保持证据边界：Reasons, Values, and the Practical Option Space Across Competing Interpretations
+
+        A sustained philosophical argument asks the reader to retain one distinction while testing several objections. The line should turn without breaking the conceptual thread.
+
+        A second paragraph asks whether evidence supports a premise or merely motivates further inquiry. Its role should remain visible without decorative emphasis.
+
+        A third paragraph separates an author's claim from the researcher's reconstruction. Spacing should keep that evidential boundary calm and legible.
+
+        A fourth paragraph states an objection before considering any reply. The reader should not mistake visual proximity for argumentative support.
+
+        A fifth paragraph introduces a qualification that narrows the conclusion. The transition should remain easy to recover after moving between lines.
+
+        A sixth paragraph compares two practical options without assigning either one authority. Repeated terms should remain trackable through the page.
+
+        A seventh paragraph distinguishes an apparent reason from its normative force. This fixture makes no philosophical claim about that distinction.
+
+        An eighth paragraph returns to the main inference after a short detour. Paragraph boundaries should guide reading without fragmenting the argument.
+
+        A ninth paragraph records a provisional consequence and leaves its source status explicit. Density should remain suitable for sustained inspection.
+
+        A tenth paragraph closes the sequence without becoming a visual conclusion card. It belongs to the same ordinary body rhythm as every prior paragraph.
+
+        The comparison revision keeps every other line fixed.
+
+        ## Mixed writing systems
+
+        中文长段落用于检验混合文字下的换行与两端对齐。论证、反对意见、回应、限定条件与结论应当保持清楚的层级；窗口变窄或文档文字放大时，普通正文必须自然回流，而不是产生整页横向阅读滚动。
+
+        This mixed paragraph asks whether 理由、价值与可行选项 remain legible beside Latin punctuation, *emphasis*, a [local link](QA%20Autosave%20A.md), a footnote marker[^measure], and inline code such as `sourceUTF16Offset`.
+
+        هذه فقرة عربية اصطناعية لا تنسب رأيا إلى مصدر حقيقي، وهي تختبر اتجاه الفقرة وعلامات الترقيم مع `inline code` والأرقام 12345. זהו טקסט עברי סינתטי לבדיקת כיווניות וסימני פיסוק.
+
+        The unbroken token scholium_document_rhythm_fixture_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 and the URL https://example.invalid/a/very/long/synthetic/path/that/contains/no/research/data test local break and overflow behavior.
+
+        ### Heading Level Three
+
+        #### Heading Level Four
+
+        ##### Heading Level Five
+
+        ###### Heading Level Six
+
+        > [!orient] Reading Route
+        > Begin with the ordinary prose, then inspect exact objects without treating this note as a source.
+
+        > [!connect]
+        > A neutral connection list can remain untitled and still belong to the same document grammar.
+
+        > [!state] Provisional Claim
+        > A displayed distinction should remain visibly subordinate to the surrounding research document.
+        >
+        > A second paragraph checks internal callout rhythm.
+
+        > [!illustrate] Synthetic Case
+        > Imagine two options that differ only in the information available to the researcher.
+
+        > [!flag] Limitation
+        > No sentence in this fixture is evidence for a philosophical conclusion.
+
+        > [!quote] Synthetic Wording
+        > This is invented wording, not a quotation from any author.
+
+        > [!cite] Fixture Source Boundary
+        > Synthetic UI material; no bibliography item is being attributed.
+
+        > [!neutral]- Folded Synthetic Note
+        > This neutral fallback tests the source-controlled collapsed state.
+
+        | Claim | Status | Count |
+        |:---|:---:|---:|
+        | Ordinary prose reflows | Open | 12 |
+        | Exact objects stay local | Required | 3 |
+        | 超宽表格单元格包含中英混排与一段很长的综合说明 | Synthetic | 987654 |
+
+        Table note: counts are arbitrary fixture values and carry no evidential meaning.
+
+        A named footnote appears here[^measure], and the same reference appears again[^measure]. An inline note follows.^[This inline note is also synthetic.]
+
+        [^measure]: The named footnote tests a long continuation, source return, and hanging rhythm without citing a real work.
+          Its continuation includes **emphasis**, mixed text 与中文, and a second sentence.
+
+        ## References
+
+        Synthetic, A. (2026). *A deliberately long un-attributed title used only to test bibliography indentation and continuation rhythm*. Fixture Press.
+
+        Example, B., & Sample, C. (2025). A second invented entry with mixed-script metadata: 排版比较条目. *Nonexistent Journal, 12*(3), 100–128.
+
+        Inline mathematics $r = f(o, c)$ remains part of the sentence.
+
+        $$
+        \int_0^1 x^2\,dx = \frac{1}{3}
+        $$
+
+        ```swift
+        let exactSource = "Synthetic fixture only"
+        let retainedIdentity = true
+        ```
+
+        > Ordinary quotation syntax remains distinct from semantic Callouts and should preserve selectable prose.
+
+        1. First ordered item with a continuation that wraps across the selected measure.
+        2. Second ordered item with **emphasis**, `code`, and mixed text 理由.
+
+        - Unordered evidence placeholder
+          - Nested qualification placeholder
+
+        Final ordinary prose returns after every exact object. It should still look like the same document, retain the same source authority, and leave tables, code, mathematics, and the synthetic diff pair inside their own bounded responsibilities.
+        """# + "\n"
     }
 }
 

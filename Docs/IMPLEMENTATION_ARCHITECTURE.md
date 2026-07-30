@@ -1379,11 +1379,20 @@ document session. Review is mounted continuously; after first editor allocation,
 the retained CodeMirror surface is also mounted continuously. Review, Edit,
 and Source transitions change opacity, stacking, hit testing,
 accessibility exposure, and first-responder focus rather than view identity.
+`MarkdownEditorSession.presentedMode` advances only after the typed bridge
+acknowledges initialization or a mode request. The Host therefore keeps Review
+visible until the acknowledged mode equals the requested Edit or Source mode;
+an earlier retained Source frame cannot satisfy Edit readiness merely because
+the WebView was loaded previously.
 `NoteContentView` observes that exact `DocumentSessionModel` directly; it does
 not depend on an ancestor's forwarded change notification to reveal a new
 mode. This ensures the editor surface is invalidated as soon as the persistent
 session changes instead of waiting for an unrelated pointer or layout event.
 The hidden surface cannot receive pointer, keyboard, or accessibility input.
+The fingerprint-bound Review HTML is prepared and loaded when the committed
+revision changes even while Edit or Source is visible. Hidden Review scroll
+reports cannot mutate the shared scroll anchor, and a newly committed revision
+invalidates older Review readiness before the handoff becomes visible.
 Clean external revisions synchronize the retained editor through the same
 generation-checked path; dirty buffers still enter Conflict. Window resizing,
 split changes, theme, text scale, document measure, and ordinary SwiftUI
@@ -1487,6 +1496,13 @@ Outbound bridge requests cross WebKit as encoded JSON text and are parsed in
 JavaScript. They do not pass source strings through Foundation's
 `JSONSerialization.jsonObject`, because that conversion removes a leading
 U+FEFF from a string value and would violate the exact-source contract.
+
+Document-replacement navigation performs that exact full-buffer flush once,
+then discards selection, scroll, recovery, and Undo serialization belonging to
+the replaced tab. Transitions that preserve tab membership capture retained
+editor state once before reconstruction. The transition coordinator does not
+run a second capture after the flush path has already applied the selected
+policy.
 
 After WebKit content-process termination, the retained session reloads its
 controlled document and restores a matching bounded CodeMirror snapshot. If

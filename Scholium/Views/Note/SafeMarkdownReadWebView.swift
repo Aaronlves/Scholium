@@ -1861,7 +1861,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         code { font-size: .82em; padding: .08em .25em; border-radius: 4px; background: color-mix(in srgb, CanvasText 8%, transparent); }
         pre { box-sizing: border-box; max-width: 100%; padding: var(--scholium-rhythm-code-inset); overflow: auto; border-radius: 10px; background: color-mix(in srgb, CanvasText 7%, transparent); }
         img, video, svg { max-width: 100%; height: auto; }
-        blockquote { margin: 1em 0; padding-left: var(--scholium-rhythm-quote-inset); border-left: 3px solid color-mix(in srgb, AccentColor 50%, transparent); color: color-mix(in srgb, CanvasText 78%, transparent); }
+        blockquote { margin: 1em 0; padding-left: var(--scholium-rhythm-quote-inset); border-left: 3px solid var(--scholium-color-accent); color: color-mix(in srgb, CanvasText 78%, transparent); }
         \(ScholiumCalloutStyles.css)
         #comment-composer { display: grid; gap: 4px; width: min(320px, calc(100vw - 32px)); }
         #comment-composer[hidden], #selection-toolbar[hidden] { display: none; }

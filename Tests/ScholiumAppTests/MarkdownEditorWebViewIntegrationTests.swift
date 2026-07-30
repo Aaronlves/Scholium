@@ -8,6 +8,27 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("The published editor mode changes only after the Web bridge acknowledges it")
+    func presentedModeWaitsForBridgeAcknowledgement() async throws {
+        let dispatcher = SuspendingModeBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "# Mode handoff\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        #expect(harness.session.presentedMode == .livePreview)
+
+        harness.session.setMode(.source)
+        try await dispatcher.waitUntilSuspended()
+        #expect(harness.session.presentedMode == .livePreview)
+
+        dispatcher.resume()
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(harness.session.presentedMode == .source)
+        await harness.closeAndDrain()
+    }
+
     @Test("A delayed bridge success cannot mutate or block a replacement document")
     func delayedBridgeSuccessIsRejectedAfterReplacement() async throws {
         let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
@@ -126,7 +147,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         let source = "---\ntitle: WK 100k CJK\n---\n# CJK Stress\n\n\(cjkCharacters)\n"
         let token = "QA-CJK-END-\(UUID().uuidString)"
-        let harness = EditorHarness(source: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
 
         try await harness.waitUntilReady()
@@ -208,6 +229,297 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(sourcePresentation.footnoteItemCount == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit footnote definitions reveal their exact Markdown content for editing")
+    func editFootnoteDefinitionActivatesEditableSource() async throws {
+        let source = "Claim[^note].\n\n[^note]: Basis for revision.\n"
+        let prefix = "Preface added before projected content.\n\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        harness.resize(width: 700)
+        try await harness.waitUntilReady()
+        harness.setPresentationCSS(ScholiumDocumentPresentationConfiguration(textScale: 2).css)
+        _ = try await harness.waitUntilPresentation(stage: "two-hundred-percent footnote") {
+            $0.presentation.rootTextScale == "2.000000em"
+                && $0.footnoteItemCount == 1
+                && $0.footnoteDefinitionSourceCount == 0
+        }
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.perform(.pastePlain, argument: prefix)
+        let shiftedSource = prefix + source
+        let contentFrom = try #require(shiftedSource.range(of: "Basis"))
+            .lowerBound.utf16Offset(in: shiftedSource)
+        _ = try await harness.waitUntilPresentation(stage: "shifted projected footnote") {
+            $0.footnoteItemCount == 1 && $0.footnoteDefinitionSourceCount == 0
+        }
+
+        try await harness.session.testingClickFirstFootnoteDefinition()
+        try await harness.waitUntilSelection(head: contentFrom)
+        let revealed = try await harness.waitUntilPresentation(
+            stage: "pointer-revealed footnote definition source"
+        ) {
+            $0.footnoteDefinitionSourceCount > 0 && $0.footnoteItemCount == 0
+        }
+        #expect(revealed.footnoteSectionCount == 0)
+
+        try await harness.session.perform(.pastePlain, argument: "Revised ")
+        let expected = shiftedSource.replacingOccurrences(
+            of: "Basis for revision.",
+            with: "Revised Basis for revision."
+        )
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        #expect(harness.latestSource == expected)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Two-hundred-percent Edit projections remain measured and pointer-addressable")
+    func enlargedEditProjectionRemainsStableAcrossFocusAndBlockActivation() async throws {
+        let source = """
+        ---
+        title: Projection stability
+        ---
+        # Centered document title
+
+        ## Stable second-level heading
+
+        > Ordinary quotation keeps the Review inset.
+
+        ```swift
+        let deliberatelyLongLine = "code remains one semantic block"
+        ```
+
+        | Claim | Status |
+        |:---|:---:|
+        | Fittingness | Open |
+
+        AFTER_TABLE_TARGET remains pointer-addressable.
+
+        1. First ordered item.
+        2. SECOND_LIST_TARGET remains pointer-addressable.
+        """
+        let targetRange = try #require(source.range(of: "AFTER_TABLE_TARGET"))
+        let targetFrom = targetRange.lowerBound.utf16Offset(in: source)
+        let targetTo = targetRange.upperBound.utf16Offset(in: source)
+        let listMarkerRange = try #require(source.range(of: "2. SECOND_LIST_TARGET"))
+        let listMarkerFrom = listMarkerRange.lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        harness.resize(width: 700)
+        try await harness.waitUntilReady()
+        let profile = DocumentAppearanceProfile(name: "Default")
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(textScale: 2).css
+                + "\n"
+                + DocumentAppearanceStyles.css(for: profile)
+        )
+
+        let initial = try await harness.waitUntilPresentation(stage: "stable enlarged Edit projection") {
+            $0.presentation.rootTextScale == "2.000000em"
+                && $0.liveTitleCount == 1
+                && $0.liveH1Count == 1
+                && $0.liveH2Count == 1
+                && $0.collapsedCodeFenceLineCount == 2
+                && $0.liveListMarkerCount == 2
+                && $0.semanticTableCount == 1
+        }
+        #expect(initial.titleTextAlign == "center")
+        #expect(initial.h2TextAlign == "start")
+        #expect(initial.h1FontSize == "64px")
+        #expect(initial.h2FontSize == "48px")
+        #expect(initial.collapsedCodeFenceVisibleHeight <= 0.5)
+        let quoteInset = Double(initial.quotePaddingInlineStart.replacingOccurrences(of: "px", with: ""))
+        #expect(quoteInset == Double(ScholiumDocumentRhythm.quoteInlineInset))
+
+        harness.session.goToLine(4)
+        let titleFrom = try #require(source.range(of: "# Centered document title"))
+            .lowerBound.utf16Offset(in: source)
+        try await harness.waitUntilSelection(head: titleFrom)
+        let activeTitle = try await harness.waitUntilPresentation(stage: "active document title") {
+            $0.liveTitleCount == 1 && $0.liveH1Count == 1
+        }
+        #expect(activeTitle.titleTextAlign == "center")
+
+        harness.session.resignFocus()
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!(try await harness.session.testingAccessibilitySnapshot()).isFocused)
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        let refocused = try await harness.waitUntilPresentation(stage: "refocused heading projection") {
+            $0.liveTitleCount == 1 && $0.liveH1Count == 1 && $0.liveH2Count == 1
+        }
+        #expect(refocused.titleTextAlign == "center")
+
+        try await harness.session.testingClickFirstTableCell()
+        _ = try await harness.waitUntilPresentation(stage: "pointer-activated table source") {
+            $0.semanticTableCount == 0 && $0.liveTableSourceLineCount > 0
+        }
+        try await harness.session.testingClickVisibleText("AFTER_TABLE_TARGET")
+        _ = try await harness.waitUntilSelection(in: targetFrom..<(targetTo + 1))
+        _ = try await harness.waitUntilPresentation(stage: "remeasured table projection") {
+            $0.semanticTableCount == 1 && $0.liveTableSourceLineCount == 0
+        }
+
+        try await harness.session.testingClickVisibleText("2.")
+        _ = try await harness.waitUntilSelection(in: listMarkerFrom..<(listMarkerFrom + 3))
+        let final = try await harness.waitUntilPresentation(stage: "ordered-list pointer placement") {
+            $0.liveListMarkerCount == 1
+        }
+        #expect(final.liveTitleCount == 1)
+        #expect(final.liveH2Count == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Fresh Edit and Source-to-Edit publish the same semantic projection before acknowledgement")
+    func freshAndRetainedEditEntryHaveProjectionParity() async throws {
+        let source = """
+        # QA Autosave A
+
+        ## Fixture boundary
+
+        First paragraph remains independently editable.
+
+        > [!orient] Reading route
+        > This synthetic note exercises the complete Scholium editing dialect.
+
+        > [!cite]- Synthetic source boundary
+        > No real publication or quotation is represented here.
+        """
+        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
+            + "\n"
+            + DocumentAppearanceStyles.css(for: DocumentAppearanceProfile(name: "Default"))
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: presentationCSS,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        // `isLoaded` is the product visibility boundary. It must never expose
+        // the partial projection that previously appeared after Review -> Edit.
+        let fresh = try await harness.session.testingAccessibilitySnapshot()
+        #expect(fresh.liveTitleCount == 1)
+        #expect(fresh.liveH1Count == 1)
+        #expect(fresh.liveH2Count == 1)
+        #expect(fresh.liveCalloutWidgetCount == 2)
+        #expect(fresh.h1FontSize == "32px")
+        #expect(fresh.h2FontSize == "24px")
+        #expect(fresh.titleTextAlign == "center")
+        #expect(fresh.h2TextAlign == "start")
+        #expect(fresh.collapsedBlankLineCount > 0)
+        #expect(fresh.collapsedBlankLineVisibleHeight <= 0.5)
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        _ = try await harness.waitUntilPresentation(stage: "parity Source mode") {
+            $0.gutterCount > 0 && $0.lineNumberCount > 0
+        }
+        harness.session.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let retained = try await harness.session.testingAccessibilitySnapshot()
+
+        #expect(retained.liveTitleCount == fresh.liveTitleCount)
+        #expect(retained.liveH1Count == fresh.liveH1Count)
+        #expect(retained.liveH2Count == fresh.liveH2Count)
+        #expect(retained.liveCalloutWidgetCount == fresh.liveCalloutWidgetCount)
+        #expect(retained.h1FontSize == fresh.h1FontSize)
+        #expect(retained.h2FontSize == fresh.h2FontSize)
+        #expect(retained.titleTextAlign == fresh.titleTextAlign)
+        #expect(retained.h2TextAlign == fresh.h2TextAlign)
+        #expect(retained.collapsedBlankLineCount == fresh.collapsedBlankLineCount)
+        #expect(retained.collapsedBlankLineVisibleHeight <= 0.5)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inactive Edit lists mirror Review rhythm, markers, and task projection")
+    func inactiveEditListsMirrorReviewPresentation() async throws {
+        let source = """
+        # List parity
+
+        - Unordered item one
+        - Unordered item two
+          - Nested unordered item
+
+        1. Ordered item one
+        2. Ordered item two
+           1. Nested ordered item
+
+        - [ ] Open task fixture
+        - [x] Completed task fixture
+
+        Following paragraph.
+        """
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let inactive = try await harness.waitUntilPresentation(stage: "inactive Review-parity lists") {
+            $0.liveListMarkerCount == 8
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(inactive.liveListMarkerUsesPrimaryText)
+        #expect(inactive.liveListMarkerText == "•|•|◦|1.|2.|1.|•|•")
+        #expect(inactive.liveListGapCount == 8)
+        #expect(inactive.liveListGapHeight == 24)
+
+        let taskSourceFrom = try #require(source.range(of: "- [ ] Open task fixture"))
+            .lowerBound.utf16Offset(in: source)
+        harness.session.goToLine(11)
+        try await harness.waitUntilSelection(head: taskSourceFrom)
+        let active = try await harness.waitUntilPresentation(stage: "active exact task source") {
+            $0.liveListMarkerCount == 7 && $0.liveTaskSourceTokenCount == 1
+        }
+        #expect(active.liveListMarkerUsesPrimaryText)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A projected Callout enters its half-open source range before Backspace")
+    func calloutPointerBackspaceCannotDeleteThePrecedingBlock() async throws {
+        let source = """
+        # Interaction boundary
+
+        > [!orient] Reading route
+        > This synthetic note exercises the complete Scholium editing dialect.
+
+        > [!cite]- Synthetic source boundary
+        > No real publication or quotation is represented here.
+        """
+        let firstCalloutSource = """
+        > [!orient] Reading route
+        > This synthetic note exercises the complete Scholium editing dialect.
+        """
+        let calloutRange = try #require(source.range(of: firstCalloutSource))
+        let calloutFrom = calloutRange.lowerBound.utf16Offset(in: source)
+        let calloutTo = calloutRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.waitUntilPresentation(stage: "passive Callout before Backspace") {
+            $0.liveCalloutWidgetCount == 2 && $0.collapsedBlankLineVisibleHeight <= 0.5
+        }
+
+        try await harness.session.testingClickFirstCalloutText("synthetic note")
+        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
+        try await harness.session.testingPressBackspace()
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        var edited = source
+        while clock.now < deadline {
+            edited = try await harness.session.currentText(for: harness.documentID)
+            if edited != source { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(edited.utf16.count == source.utf16.count - 1)
+        #expect(edited.contains("> [!orient] Reading route"))
+        #expect(edited.contains("> [!cite]- Synthetic source boundary"))
         await harness.closeAndDrain()
     }
 
@@ -355,9 +667,9 @@ struct MarkdownEditorWebViewIntegrationTests {
             .utf16Offset(in: normalizedOriginal)
         try await harness.session.testingClickFirstCalloutText("same callout")
         let pointerDeadline = ContinuousClock().now.advanced(by: .seconds(3))
-        while harness.session.context?.selections.first?.head != calloutTo {
+        while harness.session.context?.selections.first?.head != calloutTo - 1 {
             if ContinuousClock().now >= pointerDeadline {
-                Issue.record("The projected Callout click did not enter at its logical end; head=\(harness.session.context?.selections.first?.head ?? -1), expected=\(calloutTo).")
+                Issue.record("The projected Callout click did not enter its half-open source range; head=\(harness.session.context?.selections.first?.head ?? -1), expected=\(calloutTo - 1).")
                 throw MarkdownEditorSession.SessionError.unavailable
             }
             try await Task.sleep(for: .milliseconds(20))
@@ -384,7 +696,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.liveCalloutWidgetCount == 1
         }
         try await harness.session.testingPressArrow("ArrowUp")
-        try await harness.waitUntilSelection(head: calloutTo)
+        try await harness.waitUntilSelection(head: calloutTo - 1)
         _ = try await harness.waitUntilPresentation(stage: "up-arrow-revealed callout source") {
             $0.liveCalloutWidgetCount == 0 && $0.exactCalloutSourceCount > 0
         }
@@ -814,6 +1126,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
+            initialPresentationCSS: String = "",
             laysOutForPointerTesting: Bool = false
         ) {
             _ = NSApplication.shared
@@ -825,6 +1138,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             } ?? MarkdownEditorSession()
             self.documentID = documentID
             sourceBox = SourceBox(source)
+            sourceBox.presentationCSS = initialPresentationCSS
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
                 styleMask: [.titled, .closable, .resizable],
@@ -866,6 +1180,18 @@ struct MarkdownEditorWebViewIntegrationTests {
             while session.documentID != documentID || !session.isLoaded {
                 if clock.now >= deadline {
                     Issue.record("The replacement editor document did not finish loading.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilPresentedMode(_ mode: NotePresentationMode) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while session.presentedMode != mode {
+                if clock.now >= deadline {
+                    Issue.record("The editor did not publish the acknowledged \(mode.rawValue) mode.")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -985,7 +1311,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let snapshot = try await session.testingAccessibilitySnapshot()
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
-                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnotes=\(snapshot.footnoteItemCount), callouts=\(snapshot.footnoteCalloutCount).")
+                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnotes=\(snapshot.footnoteItemCount), callouts=\(snapshot.footnoteCalloutCount), title=\(snapshot.liveTitleCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -1128,6 +1454,46 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         func resumeWithTransportError() {
             outcome = .failure
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    @MainActor
+    private final class SuspendingModeBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var didSuspend = false
+        private var continuation: CheckedContinuation<Void, Never>?
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if !didSuspend,
+               case .setMode = request.operation {
+                didSuspend = true
+                await withCheckedContinuation { continuation = $0 }
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+
+        func waitUntilSuspended() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while continuation == nil {
+                if clock.now >= deadline {
+                    Issue.record("The mode bridge request did not reach its acknowledgement boundary.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func resume() {
             continuation?.resume()
             continuation = nil
         }

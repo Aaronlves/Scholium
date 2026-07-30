@@ -534,7 +534,9 @@ final class DocumentController: ObservableObject {
     /// Flushes every session that is still reachable from a tab or protected
     /// by a safety pin. Ordering is stable to make close/quit diagnostics and
     /// tests deterministic.
-    func flushLeasedOrPinnedSessions() async throws {
+    func flushLeasedOrPinnedSessions(
+        capturingEditorState: Bool = true
+    ) async throws {
         var candidatesByTarget = Dictionary(
             uniqueKeysWithValues: sessions.leasedOrPinnedSessions.map {
                 ($0.0, $0.1)
@@ -555,7 +557,8 @@ final class DocumentController: ObservableObject {
             relativePath(for: $0.0) < relativePath(for: $1.0)
         }
         for (target, session) in candidates {
-            if session.editorSession.hasAttachedWebView {
+            if capturingEditorState,
+               session.editorSession.hasAttachedWebView {
                 try await session.editorSession.captureStateForViewReconstruction()
             }
             // An attached CodeMirror surface can contain input whose bridge

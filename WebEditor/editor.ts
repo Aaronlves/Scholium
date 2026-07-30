@@ -31,6 +31,7 @@ import {
   foldGutter,
   HighlightStyle,
   foldKeymap,
+  forceParsing,
   indentOnInput,
   syntaxTree,
   syntaxHighlighting,
@@ -165,7 +166,6 @@ interface LiveProjectionIndex {
   readonly footnoteRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly tablePositionRanges: readonly Readonly<IndexedTablePositionRange>[];
   readonly hasUnclosedFrontmatter: boolean;
-  readonly firstBodyLineFrom: number;
 }
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
@@ -283,16 +283,51 @@ function calloutHeader(text: string): RegExpExecArray | null {
 
 class ListMarkerWidget extends WidgetType {
   readonly marker: string;
-  constructor(marker: string) { super(); this.marker = marker; }
-  eq(other: ListMarkerWidget) { return other.marker === this.marker; }
+  readonly nested: boolean;
+  readonly task: boolean;
+  constructor(marker: string, nested: boolean, task: boolean) {
+    super();
+    this.marker = marker;
+    this.nested = nested;
+    this.task = task;
+  }
+  eq(other: ListMarkerWidget) {
+    return other.marker === this.marker
+      && other.nested === this.nested
+      && other.task === this.task;
+  }
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-live-list-marker";
-    span.textContent = /^\d/.test(this.marker) ? this.marker : "•";
+    const ordered = /^\d/.test(this.marker);
+    span.className = [
+      "cm-live-list-marker",
+      ordered ? "cm-live-list-marker-ordered" : "cm-live-list-marker-unordered",
+      this.nested ? "cm-live-list-marker-nested" : "",
+      this.task ? "cm-live-list-marker-task" : "",
+    ].filter(Boolean).join(" ");
+    span.textContent = ordered ? this.marker : this.nested ? "◦" : "•";
     span.setAttribute("aria-hidden", "true");
     return span;
   }
+  // Let CodeMirror own pointer placement at the exact source marker. If the
+  // browser handles selection inside this replacement widget, a single click
+  // can start a native DOM selection that spans unrelated projected prose.
+  ignoreEvent() { return false; }
+}
+
+class ListItemGapWidget extends WidgetType {
+  eq(other: ListItemGapWidget) { return other instanceof ListItemGapWidget; }
+  toDOM() {
+    const gap = document.createElement("div");
+    gap.className = "cm-live-list-gap";
+    gap.setAttribute("aria-hidden", "true");
+    return gap;
+  }
   ignoreEvent() { return true; }
+}
+
+function listPrefix(text: string) {
+  return /^(\s*)([-+*]|\d+[.)])(\s+)(?:\[([ xX])\](\s+))?/.exec(text);
 }
 
 const vectorLinkSemantics: Record<VectorLinkKind, {label: string; symbol: string}> = {
@@ -511,7 +546,6 @@ function finalizedLiveProjectionIndex(
   callouts: readonly CalloutPresentation[],
   frontmatterRange: ProjectionSourceRange | null,
   hasUnclosedFrontmatter: boolean,
-  firstBodyLineFrom: number,
 ): LiveProjectionIndex {
   const immutableExcluded = immutableProjectionRanges(excluded);
   const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
@@ -552,7 +586,6 @@ function finalizedLiveProjectionIndex(
     footnoteRanges,
     tablePositionRanges: indexedTablePositionRanges(doc, immutableTables),
     hasUnclosedFrontmatter,
-    firstBodyLineFrom,
   });
 }
 
@@ -644,7 +677,6 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
     callouts,
     frontmatterRange,
     yamlBoundary.unclosed,
-    firstSemanticBodyLineFrom(state.doc, yamlBodyFrom),
   );
   recordEditorMetric("projection-index", startedAt, {
     documentLength: state.doc.length,
@@ -658,15 +690,12 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
 
 function mapLiveProjectionIndex(index: LiveProjectionIndex, transaction: Transaction): LiveProjectionIndex {
   const map = (position: number) => transaction.changes.mapPos(position);
-  let recomputeFirstBody = false;
-  transaction.changes.iterChanges((fromA) => {
-    if (fromA <= index.firstBodyLineFrom) recomputeFirstBody = true;
-  });
   const footnotes: FootnotePresentation = {
-      definitions: index.footnotes.definitions.map((definition) => ({
+    definitions: index.footnotes.definitions.map((definition) => ({
         ...definition,
         from: map(definition.from),
         to: map(definition.to),
+        contentFrom: map(definition.contentFrom),
       })),
       references: index.footnotes.references.map((reference) => ({
         ...reference,
@@ -705,9 +734,6 @@ function mapLiveProjectionIndex(index: LiveProjectionIndex, transaction: Transac
     callouts,
     frontmatterRange,
     index.hasUnclosedFrontmatter,
-    recomputeFirstBody
-      ? firstSemanticBodyLineFrom(transaction.state.doc, frontmatterRange?.to ?? 0)
-      : map(index.firstBodyLineFrom),
   );
 }
 
@@ -800,15 +826,6 @@ function visibleMathExpressions(
   return expressions;
 }
 
-function firstSemanticBodyLineFrom(doc: Text, knownBodyFrom?: number) {
-  const bodyFrom = knownBodyFrom ?? frontmatterBodyOffset(doc);
-  let line = doc.lineAt(bodyFrom);
-  while (line.text.trim().length === 0 && line.number < doc.lines) {
-    line = doc.line(line.number + 1);
-  }
-  return line.from;
-}
-
 interface LiveBlockProjectionState {
   decorations: DecorationSet;
   hasConstructs: boolean;
@@ -896,27 +913,38 @@ function beginProjectedPointerSelection(
   const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceOffset;
   view.dispatch({selection: {anchor, head: sourceOffset}, scrollIntoView: true});
   view.focus();
-  let frame: number | null = null;
-  let latest: MouseEvent | null = null;
-  const move = (moveEvent: MouseEvent) => {
-    latest = moveEvent;
-    if (frame !== null) return;
-    frame = window.requestAnimationFrame(() => {
-      frame = null;
-      const current = latest;
-      latest = null;
-      if (!current) return;
-      const head = view.posAtCoords({x: current.clientX, y: current.clientY});
-      if (head !== null) view.dispatch({selection: {anchor, head}});
+  let latestCoordinates: {x: number; y: number} | null = null;
+  let measurePending = false;
+  const measureLatestPosition = () => {
+    if (measurePending) return;
+    measurePending = true;
+    view.requestMeasure({
+      read: () => {
+        const coordinates = latestCoordinates;
+        latestCoordinates = null;
+        return coordinates ? view.posAtCoords(coordinates) : null;
+      },
+      write: (head) => {
+        measurePending = false;
+        if (head !== null) view.dispatch({selection: {anchor, head}});
+        if (latestCoordinates) measureLatestPosition();
+      },
     });
   };
+  const move = (moveEvent: MouseEvent) => {
+    latestCoordinates = {x: moveEvent.clientX, y: moveEvent.clientY};
+    measureLatestPosition();
+  };
   const finish = () => {
-    if (frame !== null) window.cancelAnimationFrame(frame);
+    latestCoordinates = null;
     window.removeEventListener("mousemove", move, true);
     window.removeEventListener("mouseup", finish, true);
   };
   window.addEventListener("mousemove", move, true);
   window.addEventListener("mouseup", finish, true);
+  // The dispatch above removes the block replacement that owned this event.
+  // Remeasure before any subsequent pointer coordinate is interpreted.
+  view.requestMeasure();
 }
 
 const tableWidgetPresentations = new WeakMap<HTMLElement, TablePresentation>();
@@ -930,10 +958,6 @@ class TableWidget extends WidgetType {
       && other.presentation.source === this.presentation.source;
     if (equal) liveWidgetReuseCounts.table += 1;
     return equal;
-  }
-
-  get estimatedHeight() {
-    return Math.max(44, (this.presentation.body.length + 1) * 34);
   }
 
   toDOM(view: EditorView) {
@@ -1075,10 +1099,6 @@ class CalloutWidget extends WidgetType {
     return equal;
   }
 
-  get estimatedHeight() {
-    return Math.max(72, this.presentation.source.split("\n").length * 30);
-  }
-
   toDOM(view: EditorView) {
     const slot = document.createElement("div");
     slot.className = "cm-live-callout-slot";
@@ -1136,7 +1156,12 @@ function beginCalloutPointerSelection(
   presentation: CalloutPresentation,
 ) {
   event.preventDefault();
-  const sourceHead = presentation.to;
+  // Projection ranges are half-open. `presentation.to` belongs to the
+  // following source boundary, where Backspace may otherwise treat the whole
+  // replaced Callout as the preceding atomic unit. Enter through the final
+  // source unit instead; a subsequent pointer drag is then measured against
+  // the revealed exact Markdown and clamped to the same safe range.
+  const sourceHead = Math.max(presentation.from, presentation.to - 1);
   const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceHead;
   view.dispatch({
     effects: setLiveBlockActivationEffect.of({
@@ -1163,7 +1188,13 @@ function beginCalloutPointerSelection(
       },
       write: (head) => {
         measurePending = false;
-        if (head !== null) view.dispatch({selection: {anchor, head}});
+        if (head !== null) {
+          const safeHead = Math.max(
+            presentation.from,
+            Math.min(Math.max(presentation.from, presentation.to - 1), head),
+          );
+          view.dispatch({selection: {anchor, head: safeHead}});
+        }
         if (latestCoordinates) measureLatestPosition();
       },
     });
@@ -1329,17 +1360,14 @@ class FootnoteSectionWidget extends WidgetType {
           && definition.ordinal === current.ordinal
           && definition.content === current.content
           && definition.from === current.from
-          && definition.to === current.to;
+          && definition.to === current.to
+          && definition.contentFrom === current.contentFrom;
       });
     if (equal) liveWidgetReuseCounts.footnote += 1;
     return equal;
   }
 
-  get estimatedHeight() {
-    return Math.max(72, this.definitions.length * 52);
-  }
-
-  toDOM() {
+  toDOM(view: EditorView) {
     const section = document.createElement("section");
     section.className = "footnotes cm-live-footnotes-widget";
     section.dataset.scholiumProtected = "footnotes";
@@ -1350,7 +1378,7 @@ class FootnoteSectionWidget extends WidgetType {
     for (const definition of this.definitions) {
       const item = document.createElement("li");
       item.dataset.footnote = String(definition.ordinal);
-      item.dataset.sourceOffset = String(definition.from);
+      item.dataset.sourceOffset = String(definition.contentFrom);
       const content = document.createElement("div");
       content.className = "footnote-content";
       appendMarkdownBlocks(definition.content, content, {
@@ -1361,6 +1389,16 @@ class FootnoteSectionWidget extends WidgetType {
       list.append(item);
     }
     section.append(list);
+    section.addEventListener("mousedown", (event) => {
+      const item = event.target instanceof Element
+        ? event.target.closest<HTMLElement>("li[data-footnote]")
+        : null;
+      const definitions = footnoteSectionPresentations.get(section);
+      if (!item || !definitions || !section.contains(item)) return;
+      const ordinal = Number(item.dataset.footnote);
+      const definition = definitions.find((candidate) => candidate.ordinal === ordinal);
+      if (definition) beginProjectedPointerSelection(view, event, definition.contentFrom);
+    });
     return section;
   }
 
@@ -1372,14 +1410,15 @@ class FootnoteSectionWidget extends WidgetType {
         return definition.identifier === prior.identifier
           && definition.ordinal === prior.ordinal
           && definition.content === prior.content
-          && definition.isInline === prior.isInline;
+          && definition.isInline === prior.isInline
+          && definition.contentFrom === prior.contentFrom;
       });
     if (!sameContent) return false;
     const items = [...dom.querySelectorAll<HTMLElement>("li[data-footnote]")];
     if (items.length !== this.definitions.length) return false;
     items.forEach((item, index) => {
       const definition = this.definitions[index];
-      item.dataset.sourceOffset = String(definition.from);
+      item.dataset.sourceOffset = String(definition.contentFrom);
     });
     footnoteSectionPresentations.set(dom, this.definitions);
     liveWidgetReuseCounts.footnote += 1;
@@ -1469,6 +1508,7 @@ function mapFootnotePresentation(
       ...definition,
       from: map(definition.from),
       to: map(definition.to),
+      contentFrom: map(definition.contentFrom),
     })),
     references: presentation.references.map((reference) => ({
       ...reference,
@@ -1570,8 +1610,6 @@ function buildLiveDecorations(
     });
     return {decorations: Decoration.none, atomicRanges: Decoration.none, coveredRanges};
   }
-  const selection = view.state.selection.main;
-  const firstBodyLineFrom = index.firstBodyLineFrom;
   const semanticLiterals = index.literals;
   const parsedProjection = semanticProjectionRanges(view.state, coveredRanges, 0);
   const visibleLiterals = new Map<string, ProjectionSourceRange>();
@@ -1661,10 +1699,12 @@ function buildLiveDecorations(
       const linePrefix = doc.sliceString(line.from, Math.min(line.to, line.from + 512));
       const lineFullyScanned = scanFrom === line.from && scanTo === line.to;
       const lineQueryTo = Math.min(doc.length, scanTo + 1);
-      const activeLine = selection.head >= line.from && selection.head <= line.to
-        || view.composing && view.state.selection.ranges.some(
-          (range) => range.from < lineQueryTo && range.to >= line.from,
-        );
+      const activeLine = view.state.selection.ranges.some((range) =>
+        range.head >= line.from && range.head <= line.to
+          || !range.empty && range.from < lineQueryTo && range.to >= line.from,
+      ) || view.composing && view.state.selection.ranges.some(
+        (range) => range.from < lineQueryTo && range.to >= line.from,
+      );
       const excluded = [...rangesIntersecting(literals, scanFrom, lineQueryTo)];
 
       if (index.frontmatterRange && line.from < index.frontmatterRange.to) {
@@ -1672,6 +1712,16 @@ function buildLiveDecorations(
         // Adding line/CSS decorations here would desynchronize CodeMirror's
         // height map from the visible DOM.
       } else {
+        // Markdown blank lines are structural separators, not a second visual
+        // paragraph gap. Live Preview gets its rhythm from semantic block
+        // spacing, so collapse inactive empty source rows. Moving the caret
+        // onto an exact blank line removes this class and restores an ordinary
+        // editable CodeMirror row without changing a single source byte.
+        if (lineFullyScanned && line.length === 0 && !activeLine) {
+          decorations.push(Decoration.line({
+            attributes: {class: "cm-live-blank-line"},
+          }).range(line.from));
+        }
         const semanticCodeBlock = rangesIntersecting(
           semanticLiterals.codeBlocks,
           scanFrom,
@@ -1682,17 +1732,32 @@ function buildLiveDecorations(
           const fenceLine = semanticCodeBlock
             ? isFencedDelimiterLine(doc, semanticCodeBlock, line.from)
             : false;
-          if (fenceLine && !activeLine) addHidden(line.from, line.to);
-          else if (!fenceLine) addMark(scanFrom, scanTo, "cm-live-code");
+          if (fenceLine && !activeLine) {
+            addHidden(line.from, line.to);
+            decorations.push(Decoration.line({
+              attributes: {class: "cm-live-code-fence-line"},
+            }).range(line.from));
+          } else if (!fenceLine) {
+            addMark(scanFrom, scanTo, "cm-live-code");
+          }
           if (line.to === doc.length) break;
           line = doc.line(line.number + 1);
           continue;
         }
 
-        const headingLevel = parsedProjection.headingLevelByLineFrom.get(line.from);
-        const heading = headingLevel ? /^(\uFEFF?)(#{1,6})\s+/.exec(linePrefix) : null;
+        const heading = /^(\uFEFF?)(#{1,6})\s+/.exec(linePrefix);
+        // A newly exposed first body line can precede CodeMirror's background
+        // publication of its ATX node even when later headings are already in
+        // the viewport tree. At this point frontmatter and literal blocks have
+        // already been excluded, so the strict legal marker is a bounded,
+        // source-faithful fallback rather than a second Markdown parser.
+        const headingLevel = parsedProjection.headingLevelByLineFrom.get(line.from)
+          ?? heading?.[2].length;
         if (heading && heading[2].length === headingLevel) {
-          const isDocumentTitle = headingLevel === 1 && line.from === firstBodyLineFrom;
+          // Scholium's accepted heading contract treats H1 as the document
+          // title tier. Do not make its alignment depend on a cached body-line
+          // boundary that can lag a retained production session load.
+          const isDocumentTitle = headingLevel === 1;
           decorations.push(
             Decoration.line({
               attributes: {
@@ -1744,16 +1809,29 @@ function buildLiveDecorations(
           );
         }
 
-        const list = /^(\s*)([-+*]|\d+[.)])(\s+)/.exec(linePrefix);
+        const list = listPrefix(linePrefix);
         if (list) {
-          decorations.push(Decoration.line({ attributes: { class: "cm-live-list" } }).range(line.from));
+          const nested = list[1].length > 0;
+          const task = !/^\d/.test(list[2]) && list[4] !== undefined;
+          const listClasses = [
+            "cm-live-list",
+            nested ? "cm-live-list-nested" : "",
+            task ? "cm-live-task-list" : "",
+          ].filter(Boolean).join(" ");
+          decorations.push(Decoration.line({ attributes: { class: listClasses } }).range(line.from));
           if (!activeLine) {
             const markerFrom = line.from + list[1].length;
             const markerTo = markerFrom + list[2].length;
+            // Review parses task brackets as ListItem metadata rather than
+            // prose. Replace the same exact prefix while this line is
+            // inactive; activating it restores every authoritative byte.
+            const replacementTo = task
+              ? markerTo + list[3].length + 3
+              : markerTo;
             addAtomicReplacement(
-              Decoration.replace({widget: new ListMarkerWidget(list[2])}),
+              Decoration.replace({widget: new ListMarkerWidget(list[2], nested, task)}),
               markerFrom,
-              markerTo,
+              replacementTo,
             );
           }
         }
@@ -1958,7 +2036,8 @@ class LivePreviewPlugin {
     const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
     const viewportNeedsProjection = update.viewportChanged
       && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
-    if (update.docChanged || viewportNeedsProjection || explicitlyRefreshed || syntaxTreeChanged) {
+    if (update.docChanged || update.focusChanged || viewportNeedsProjection
+        || explicitlyRefreshed || syntaxTreeChanged) {
       const projection = buildLiveDecorations(update.view);
       this.decorations = projection.decorations;
       this.atomicRanges = projection.atomicRanges;
@@ -2039,10 +2118,18 @@ function buildLiveFrontmatterProjection(state: EditorState): LiveFrontmatterProj
   if (bodyFrom === 0) {
     return {decorations: Decoration.none, atomicRanges: Decoration.none};
   }
+  // End before the line break that introduces the first body line. A block
+  // replacement ending exactly at that line's start suppresses CodeMirror's
+  // line and inline decorations at the shared boundary, leaving the H1 as
+  // raw source even though its semantic node is present.
+  const hiddenTo = state.doc.lineAt(Math.max(0, bodyFrom - 1)).to;
   const hiddenFrontmatter = Decoration.set([
+    Decoration.replace({block: true}).range(0, hiddenTo),
+  ]);
+  const atomicFrontmatter = Decoration.set([
     Decoration.replace({block: true}).range(0, bodyFrom),
   ]);
-  return {decorations: hiddenFrontmatter, atomicRanges: hiddenFrontmatter};
+  return {decorations: hiddenFrontmatter, atomicRanges: atomicFrontmatter};
 }
 
 const liveFrontmatterGuardField = StateField.define<LiveFrontmatterProjectionState>({
@@ -2056,9 +2143,89 @@ const liveFrontmatterGuardField = StateField.define<LiveFrontmatterProjectionSta
   ],
 });
 
+type LiveListRhythmState = {
+  decorations: DecorationSet;
+  bodyFrom: number;
+};
+
+function liveListGapRanges(
+  state: EditorState,
+  from = 0,
+  to = state.doc.length,
+): Range<Decoration>[] {
+  const ranges: Range<Decoration>[] = [];
+  const bodyFrom = frontmatterBodyOffset(state.doc);
+  const scanFrom = Math.max(bodyFrom, Math.max(0, Math.min(from, state.doc.length)));
+  const scanTo = Math.max(scanFrom, Math.min(to, state.doc.length));
+  let line = state.doc.lineAt(scanFrom);
+  while (line.from <= scanTo) {
+    if (line.from >= bodyFrom && listPrefix(line.text.slice(0, 512))) {
+      ranges.push(Decoration.widget({
+        widget: new ListItemGapWidget(),
+        block: true,
+        side: 1,
+      }).range(line.to));
+    }
+    if (line.number >= state.doc.lines) break;
+    line = state.doc.line(line.number + 1);
+  }
+  return ranges;
+}
+
+function mergedChangedLineRanges(transaction: Transaction) {
+  const ranges: ProjectionSourceRange[] = [];
+  transaction.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+    const startLine = transaction.state.doc.lineAt(Math.min(fromB, transaction.state.doc.length));
+    const endLine = transaction.state.doc.lineAt(Math.min(toB, transaction.state.doc.length));
+    const expandedStart = transaction.state.doc.line(Math.max(1, startLine.number - 1)).from;
+    const expandedEnd = transaction.state.doc.line(
+      Math.min(transaction.state.doc.lines, endLine.number + 1),
+    ).to;
+    const previous = ranges.at(-1);
+    if (previous && expandedStart <= previous.to) {
+      previous.to = Math.max(previous.to, expandedEnd);
+    } else {
+      ranges.push({from: expandedStart, to: expandedEnd});
+    }
+  });
+  return ranges;
+}
+
+function buildLiveListRhythm(state: EditorState): LiveListRhythmState {
+  return {
+    decorations: Decoration.set(liveListGapRanges(state), true),
+    bodyFrom: frontmatterBodyOffset(state.doc),
+  };
+}
+
+const liveListRhythmField = StateField.define<LiveListRhythmState>({
+  create: buildLiveListRhythm,
+  update(previous, transaction) {
+    if (!transaction.docChanged) return previous;
+    const bodyFrom = frontmatterBodyOffset(transaction.state.doc);
+    if (bodyFrom !== previous.bodyFrom) return buildLiveListRhythm(transaction.state);
+
+    let decorations = previous.decorations.map(transaction.changes);
+    for (const affected of mergedChangedLineRanges(transaction)) {
+      decorations = decorations.update({
+        filter: (from, to) => !(
+          from === to
+            ? from >= affected.from && from <= affected.to
+            : from < affected.to && to > affected.from
+        ),
+        add: liveListGapRanges(transaction.state, affected.from, affected.to),
+        sort: true,
+      });
+    }
+    return {decorations, bodyFrom};
+  },
+  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+});
+
 const livePreviewMode = [
   syntaxHighlighting(livePreviewHighlightStyle),
   liveFrontmatterGuardField,
+  liveListRhythmField,
   liveBlockActivationField,
   liveTableField,
   liveCalloutField,
@@ -2252,7 +2419,7 @@ function revealProjectedBlockForVerticalMove(
   const sourceHead = forward
     ? projection.from
     : isCallout
-      ? projection.to
+      ? Math.max(projection.from, projection.to - 1)
       : Math.max(projection.from, projection.to - 1);
   const originalCoords = view.coordsAtPos(selection.head);
   const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
@@ -2891,7 +3058,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     editorOperations.setDocument(
       operation.text, request.sessionID, request.documentID, request.startingFingerprint,
     );
-    editorOperations.setMode(operation.mode);
+    await editorOperations.setMode(operation.mode);
     recordEditorMetric("document-load", loadStartedAt, {documentLength: editor.state.doc.length});
     sampleEditorMemory(editor.state.doc.length);
     return successfulResult(request.requestID);
@@ -2905,7 +3072,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   }
 
   switch (operation.type) {
-  case "setMode": editorOperations.setMode(operation.mode); break;
+  case "setMode": await editorOperations.setMode(operation.mode); break;
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
@@ -3003,7 +3170,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // stateJSON or selection validation path.
     editor.setState(recoveredState);
     exactSource = snapshot.source;
-    editorOperations.setMode(currentMode);
+    await editorOperations.setMode(currentMode);
     dirty = snapshot.dirty;
     documentVersion = snapshot.generation;
     return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory}};
@@ -3152,6 +3319,49 @@ function setDynamicStyle(id: string, css: string) {
   void document.fonts.ready.then(scheduleDynamicStyleMeasure);
 }
 
+function flushPresentationStyleAndGeometry() {
+  // Native keeps a newly created editor hidden until the final presentation
+  // request is acknowledged. WebKit can otherwise defer style invalidation on
+  // that hidden page and briefly expose body-sized headings when SwiftUI makes
+  // the surface visible. Resolve the cascade and representative geometry in
+  // this final bridge turn; no animation frame or second state owner is needed.
+  for (const selector of [
+    ".cm-content",
+    ".cm-live-h1",
+    ".cm-live-h2",
+    ".cm-live-callout-widget",
+    ".cm-live-list-gap",
+  ]) {
+    const element = document.querySelector<HTMLElement>(selector);
+    if (!element) continue;
+    void getComputedStyle(element).fontSize;
+    void element.getBoundingClientRect().width;
+  }
+}
+
+/**
+ * A native mode acknowledgement is also the presentation readiness boundary.
+ * On a newly constructed Review -> Edit surface, the document transaction can
+ * precede CodeMirror's first real viewport and background syntax publication.
+ * Source -> Edit happened to mask that race because reconfiguration occurred
+ * after layout. Advance a bounded leading/visible parse window and explicitly
+ * refresh the projection before acknowledging the command. Native style and
+ * scroll convergence then provide additional bridge turns before Swift reveals
+ * a freshly constructed editor, without making the bridge depend on animation
+ * frames that WebKit is allowed to suspend while the view is hidden.
+ */
+async function convergeLivePreviewProjection() {
+  if (currentMode !== "livePreview") return;
+  const visibleTo = editor.visibleRanges.reduce(
+    (maximum, range) => Math.max(maximum, range.to),
+    editor.viewport.to,
+  );
+  const leadingWindowTo = Math.min(editor.state.doc.length, 8_000);
+  const parseTo = Math.min(editor.state.doc.length, Math.max(leadingWindowTo, visibleTo + 2_000));
+  forceParsing(editor, parseTo, 12);
+  editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+}
+
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
@@ -3182,7 +3392,7 @@ const editorOperations = {
   },
 
   /** @param {string} mode */
-  setMode(mode: string) {
+  async setMode(mode: string) {
     const startedAt = performance.now();
     hidePreview();
     const scrollSnapshot = editor.scrollSnapshot();
@@ -3231,6 +3441,9 @@ const editorOperations = {
       )),
     });
     window.setTimeout(postCurrentScrollPosition, 0);
+    if (nextMode === "livePreview") {
+      await convergeLivePreviewProjection();
+    }
   },
 
   /** @param {string} css */
@@ -3276,6 +3489,10 @@ const editorOperations = {
   },
 
   setScrollFraction(requestedFraction: number) {
+    // Scroll restoration is the final independent bridge turn before native
+    // reveals a newly created editor. Resolve presentation CSS and projected
+    // line geometry here so its acknowledgement is a real visibility barrier.
+    flushPresentationStyleAndGeometry();
     const fraction = Number.isFinite(requestedFraction)
       ? Math.max(0, Math.min(1, requestedFraction))
       : 0;
@@ -3284,6 +3501,7 @@ const editorOperations = {
   },
 
   setScrollAnchor(anchor: EditorScrollAnchor) {
+    flushPresentationStyleAndGeometry();
     const documentLength = editor.state.doc.length;
     const valid = Number.isSafeInteger(anchor.sourceUTF16Offset)
       && anchor.sourceUTF16Offset >= 0

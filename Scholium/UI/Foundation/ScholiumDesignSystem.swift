@@ -614,6 +614,7 @@ enum ScholiumWebDesignTokens {
       font-family: Alegreya, Georgia, serif;
       font-weight: 700;
       line-height: var(--scholium-rhythm-heading-line-height);
+      text-align: start;
       text-decoration-line: none;
       text-decoration: none;
       text-wrap: balance;
@@ -662,11 +663,13 @@ enum ScholiumWebDesignTokens {
       text-decoration: underline;
     }
     .scholium-document > h1:first-child,
-    .scholium-live-mode .cm-live-document-title {
+    .scholium-live-mode .cm-live-document-title,
+    .scholium-live-mode .cm-live-h1 {
       margin-top: 0;
       margin-bottom: var(--scholium-rhythm-heading-before);
       padding-top: 0;
       padding-bottom: var(--scholium-rhythm-heading-after);
+      text-align: center;
       border-bottom: 1px solid var(--scholium-color-separator);
     }
     .scholium-document .scholium-embed {
