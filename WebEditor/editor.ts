@@ -3,6 +3,8 @@ import {
   Compartment,
   EditorSelection,
   EditorState,
+  Facet,
+  Prec,
   Range,
   StateEffect,
   StateField,
@@ -27,14 +29,11 @@ import {
 } from "@codemirror/view";
 import {
   bracketMatching,
-  defaultHighlightStyle,
   foldGutter,
-  HighlightStyle,
   foldKeymap,
   forceParsing,
   indentOnInput,
   syntaxTree,
-  syntaxHighlighting,
 } from "@codemirror/language";
 import {
   defaultKeymap,
@@ -51,13 +50,13 @@ import {
   closeBracketsKeymap,
   completionKeymap,
 } from "@codemirror/autocomplete";
-import {highlightSelectionMatches} from "@codemirror/search";
 import {
   EDITOR_PROTOCOL_VERSION,
   MAX_INBOUND_BYTES,
   MAX_SOURCE_UTF8_BYTES,
   type EditorCommandResult,
   type EditorContext,
+  type EditorMode,
   type EditorRequest,
   type EditorScrollAnchor,
   type MarkdownEditingDialect,
@@ -93,6 +92,7 @@ import {
   activeProjectionSignature,
   selectionAffectedProjectionRanges,
   selectionIntersectsProjection,
+  selectionProjectionSignature,
   transactionCanMapProjection,
   transactionChangedSyntaxTree,
   transactionMayCreateProjection,
@@ -162,6 +162,7 @@ interface IndexedTablePositionRange extends ProjectionSourceRange {
 }
 interface LiveProjectionIndex {
   readonly literals: SemanticLiteralRanges;
+  readonly inlineRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly footnotes: FootnotePresentation;
   readonly tables: readonly TablePresentation[];
   readonly callouts: readonly CalloutPresentation[];
@@ -193,11 +194,12 @@ const pendingLinkCompletionQueries = new Map<
 let linkPreviews: LinkPreview[] = [];
 let linkPreviewIndexByRange = new Map<string, number>();
 let editingDialect: MarkdownEditingDialect | null = null;
-let currentMode: "livePreview" | "source" = "livePreview";
 let hiddenFrontmatterSourceSelection: {
   documentVersion: number;
-  selection: EditorSelection;
+  sourceSelection: EditorSelection;
+  clampedLiveSelection: EditorSelection;
 } | null = null;
+let modeTransitionSequence = 0;
 const liveWidgetReuseCounts = {table: 0, callout: 0, footnote: 0};
 let lastUndoLabel: string | undefined;
 let lastRedoLabel: string | undefined;
@@ -216,9 +218,18 @@ function exactEditorSource() {
 
 const modeCompartment = new Compartment();
 const lineSeparatorCompartment = new Compartment();
+const editorModeFacet = Facet.define<EditorMode, EditorMode>({
+  // Mode absence must fail closed to exact Source. Live Preview is installed
+  // only by the mode compartment and can never be inferred from a missing
+  // configuration input.
+  combine: (modes) => modes[0] ?? "source",
+});
 const programmaticDocumentChange = Annotation.define<boolean>();
 const refreshLivePreviewEffect = StateEffect.define<null>();
-const livePreviewHighlightStyle = HighlightStyle.define([]);
+
+function configuredEditorMode(state: EditorState): EditorMode {
+  return state.facet(editorModeFacet);
+}
 
 type LiveBlockEntryEdge = "start" | "end";
 interface LiveBlockActivation {
@@ -547,6 +558,7 @@ function finalizedLiveProjectionIndex(
   doc: Text,
   excluded: readonly ProjectionSourceRange[],
   codeBlocks: readonly SemanticCodeBlockRange[],
+  inlineRanges: readonly ProjectionSourceRange[],
   footnotes: FootnotePresentation,
   tables: readonly TablePresentation[],
   callouts: readonly CalloutPresentation[],
@@ -569,6 +581,7 @@ function finalizedLiveProjectionIndex(
       excluded: immutableExcluded,
       codeBlocks: immutableCodeBlocks,
     }),
+    inlineRanges: immutableProjectionRanges(inlineRanges),
     footnotes,
     tables: immutableTables,
     callouts: immutableCallouts,
@@ -599,6 +612,7 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
   const startedAt = performance.now();
   const excluded: {from: number; to: number}[] = [];
   const codeBlocks: SemanticCodeBlockRange[] = [];
+  const inlineRanges: ProjectionSourceRange[] = [];
   const definitionRanges = new Set<string>();
   const referenceRanges = new Set<string>();
   const tableRanges: ProjectionSourceRange[] = [];
@@ -606,6 +620,12 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
   syntaxTree(state).iterate({
     enter(node) {
       const key = rangeKey(node.from, node.to);
+      if ([
+        "StrongEmphasis", "Emphasis", "Strikethrough", "Highlight",
+        "InlineCode", "Link", "WikiLink", "VectorLink", "InlineMath", "BlockMath",
+      ].includes(node.name)) {
+        inlineRanges.push({from: node.from, to: node.to});
+      }
       if (node.name === "FootnoteDefinition") definitionRanges.add(key);
       if (node.name === "FootnoteReference") referenceRanges.add(key);
       if (node.name === "InlineFootnote") {
@@ -678,6 +698,7 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
     state.doc,
     excluded,
     codeBlocks,
+    inlineRanges,
     footnotes,
     tables,
     callouts,
@@ -735,6 +756,7 @@ function mapLiveProjectionIndex(index: LiveProjectionIndex, transaction: Transac
       to: map(range.to),
       fenced: range.fenced,
     })),
+    index.inlineRanges.map((range) => ({from: map(range.from), to: map(range.to)})),
     footnotes,
     tables,
     callouts,
@@ -1711,6 +1733,17 @@ function buildLiveDecorations(
       ) || view.composing && view.state.selection.ranges.some(
         (range) => range.from < lineQueryTo && range.to >= line.from,
       );
+      const activeProtectedBlockLine = activeLine && rangesIntersecting(
+        index.blockRanges,
+        line.from,
+        lineQueryTo,
+      ).some((block) => view.state.selection.ranges.some((range) =>
+        selectionIntersectsProjection(range, block),
+      ));
+      const inlineConstructIsActive = (from: number, to: number) =>
+        activeProtectedBlockLine || view.state.selection.ranges.some((range) =>
+          selectionIntersectsProjection(range, {from, to}),
+        );
       const excluded = [...rangesIntersecting(literals, scanFrom, lineQueryTo)];
 
       if (index.frontmatterRange && line.from < index.frontmatterRange.to) {
@@ -1875,8 +1908,10 @@ function buildLiveDecorations(
           const from = scanFrom + match.index;
           const to = from + match[0].length;
           excluded.push({ from, to });
-          if (!activeLine) {
-            const markerLength = match[1].length;
+          const markerLength = match[1].length;
+          if (inlineConstructIsActive(from, to)) {
+            addMark(from, to, "cm-live-code");
+          } else {
             addHidden(from, from + markerLength);
             addMark(from + markerLength, to - markerLength, "cm-live-code");
             addHidden(to - markerLength, to);
@@ -1937,47 +1972,65 @@ function buildLiveDecorations(
           addHidden(to - 2, to);
         }
 
-        if (!activeLine) {
-          for (const match of text.matchAll(/\[([^\]\n]+)\]\(([^)\n]+)\)/g)) {
-            const from = scanFrom + match.index;
-            const to = from + match[0].length;
-            if (overlaps(excluded, from, to) || !parsedProjection.links.has(rangeKey(from, to))) continue;
+        for (const match of text.matchAll(/\[([^\]\n]+)\]\(([^)\n]+)\)/g)) {
+          const from = scanFrom + match.index;
+          const to = from + match[0].length;
+          if (overlaps(excluded, from, to) || !parsedProjection.links.has(rangeKey(from, to))) continue;
+          if (inlineConstructIsActive(from, to)) {
+            addMark(from, to, "cm-live-link");
+          } else {
             addHidden(from, from + 1);
             addMark(from + 1, from + 1 + match[1].length, "cm-live-link");
             addHidden(from + 1 + match[1].length, to);
           }
+        }
 
-          for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
-            const from = scanFrom + match.index;
-            const to = from + match[0].length;
-            if (overlaps(excluded, from, to) || !parsedProjection.strong.has(rangeKey(from, to))) continue;
+        for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+          const from = scanFrom + match.index;
+          const to = from + match[0].length;
+          if (overlaps(excluded, from, to) || !parsedProjection.strong.has(rangeKey(from, to))) continue;
+          if (inlineConstructIsActive(from, to)) {
+            addMark(from, to, "cm-live-strong");
+          } else {
             addHidden(from, from + 2);
             addMark(from + 2, to - 2, "cm-live-strong");
             addHidden(to - 2, to);
           }
+        }
 
-          for (const match of text.matchAll(/~~([^~\n]+)~~/g)) {
-            const from = scanFrom + match.index;
-            const to = from + match[0].length;
-            if (overlaps(excluded, from, to) || !parsedProjection.strikethrough.has(rangeKey(from, to))) continue;
+        for (const match of text.matchAll(/~~([^~\n]+)~~/g)) {
+          const from = scanFrom + match.index;
+          const to = from + match[0].length;
+          if (overlaps(excluded, from, to) || !parsedProjection.strikethrough.has(rangeKey(from, to))) continue;
+          if (inlineConstructIsActive(from, to)) {
+            addMark(from, to, "cm-live-strike");
+          } else {
             addHidden(from, from + 2);
             addMark(from + 2, to - 2, "cm-live-strike");
             addHidden(to - 2, to);
           }
+        }
 
-          for (const match of text.matchAll(/==([^=\n]+)==/g)) {
-            const from = scanFrom + match.index;
-            const to = from + match[0].length;
-            if (overlaps(excluded, from, to) || !parsedProjection.highlights.has(rangeKey(from, to))) continue;
+        for (const match of text.matchAll(/==([^=\n]+)==/g)) {
+          const from = scanFrom + match.index;
+          const to = from + match[0].length;
+          if (overlaps(excluded, from, to) || !parsedProjection.highlights.has(rangeKey(from, to))) continue;
+          if (inlineConstructIsActive(from, to)) {
+            addMark(from, to, "cm-live-highlight");
+          } else {
             addHidden(from, from + 2);
             addMark(from + 2, to - 2, "cm-live-highlight");
             addHidden(to - 2, to);
           }
+        }
 
-          for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
-            const from = scanFrom + match.index;
-            const to = from + match[0].length;
-            if (overlaps(excluded, from, to) || !parsedProjection.emphasis.has(rangeKey(from, to))) continue;
+        for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
+          const from = scanFrom + match.index;
+          const to = from + match[0].length;
+          if (overlaps(excluded, from, to) || !parsedProjection.emphasis.has(rangeKey(from, to))) continue;
+          if (inlineConstructIsActive(from, to)) {
+            addMark(from, to, "cm-live-emphasis");
+          } else {
             addHidden(from, from + 1);
             addMark(from + 1, to - 1, "cm-live-emphasis");
             addHidden(to - 1, to);
@@ -2042,7 +2095,11 @@ class LivePreviewPlugin {
     const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
     const viewportNeedsProjection = update.viewportChanged
       && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
-    if (update.docChanged || update.focusChanged || viewportNeedsProjection
+    // Projection depends on document, selection, composition, syntax, and the
+    // visible range—not on window focus. Rebuilding on focus loss can observe
+    // an inactive WebKit page with temporarily empty visible ranges and erase
+    // otherwise valid heading/block decorations until another transaction.
+    if (update.docChanged || viewportNeedsProjection
         || explicitlyRefreshed || syntaxTreeChanged) {
       const projection = buildLiveDecorations(update.view);
       this.decorations = projection.decorations;
@@ -2050,6 +2107,19 @@ class LivePreviewPlugin {
       this.coveredRanges = projection.coveredRanges;
     } else if (update.selectionSet
         && !update.startState.selection.eq(update.state.selection)) {
+      const inlineRanges = liveProjectionIndexForState(update.state).inlineRanges;
+      if (!update.view.composing
+          && selectionProjectionSignature(
+            update.startState.doc,
+            update.startState.selection.ranges,
+            inlineRanges,
+          ) === selectionProjectionSignature(
+            update.state.doc,
+            update.state.selection.ranges,
+            inlineRanges,
+          )) {
+        return;
+      }
       const affected = selectionAffectedProjectionRanges(
         update.state.doc.length,
         update.startState.selection.ranges,
@@ -2228,26 +2298,6 @@ const liveListRhythmField = StateField.define<LiveListRhythmState>({
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
 });
 
-const livePreviewMode = [
-  syntaxHighlighting(livePreviewHighlightStyle),
-  liveFrontmatterGuardField,
-  liveListRhythmField,
-  liveBlockActivationField,
-  liveTableField,
-  liveCalloutField,
-  liveFootnoteField,
-  livePreview,
-  EditorView.lineWrapping,
-];
-const sourceMode = [
-  syntaxHighlighting(defaultHighlightStyle, {fallback: true}),
-  lineNumbers(),
-  highlightActiveLineGutter(),
-  foldGutter(),
-  highlightActiveLine(),
-  EditorView.lineWrapping,
-];
-
 let dirty = false;
 let pendingKeyStartedAt: number | null = null;
 let forceNextInteractionContext = true;
@@ -2266,6 +2316,13 @@ const stateReporter = EditorView.updateListener.of((update) => {
     (transaction) => transaction.annotation(programmaticDocumentChange) === true,
   );
   if (isProgrammatic) return;
+  if (update.selectionSet && hiddenFrontmatterSourceSelection
+      && !update.state.selection.eq(hiddenFrontmatterSourceSelection.clampedLiveSelection)) {
+    // The hidden Source selection is a one-transition restoration aid, not a
+    // second selection owner. Any subsequent researcher or command movement
+    // in Edit invalidates it.
+    hiddenFrontmatterSourceSelection = null;
+  }
   if (update.docChanged) dirty = true;
   if (!update.docChanged && !update.selectionSet) return;
 
@@ -2402,7 +2459,7 @@ function revealProjectedBlockForVerticalMove(
   forward: boolean,
   extend: boolean,
 ) {
-  if (currentMode !== "livePreview" || view.composing) return false;
+  if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
   const selection = view.state.selection.main;
   const moved = view.moveVertically(selection, forward);
   const index = liveProjectionIndexForState(view.state);
@@ -2473,7 +2530,7 @@ function revealProjectedBlockForHorizontalMove(
   forward: boolean,
   extend: boolean,
 ) {
-  if (currentMode !== "livePreview" || view.composing) return false;
+  if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
   const selection = view.state.selection.main;
   const projection = rangesIntersecting(
     liveProjectionIndexForState(view.state).blockRanges,
@@ -2598,9 +2655,43 @@ function applySelectionAction(view: EditorView, command: SelectionActionCommand)
 }
 
 const selectionActions = createSelectionActionsController({
-  mode: () => currentMode,
   applyCommand: applySelectionAction,
 });
+
+const previewPopover = createPreviewPopoverController({
+  previews: () => linkPreviews,
+});
+
+// One CodeMirror compartment is the complete presentation-mode boundary.
+// Source contains no Live Preview state field, view plugin, widget provider,
+// navigation keymap, formatting overlay, preview overlay, or semantic class.
+const livePreviewMode = [
+  editorModeFacet.of("livePreview"),
+  EditorView.editorAttributes.of({class: "scholium-live-mode"}),
+  EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
+  liveProjectionIndexField,
+  liveFrontmatterGuardField,
+  liveListRhythmField,
+  liveBlockActivationField,
+  liveTableField,
+  liveCalloutField,
+  liveFootnoteField,
+  livePreview,
+  Prec.high(liveProjectionNavigationKeymap),
+  selectionActions.extension,
+  previewPopover.extension,
+  EditorView.lineWrapping,
+];
+const sourceMode = [
+  editorModeFacet.of("source"),
+  EditorView.editorAttributes.of({class: "scholium-source-mode"}),
+  EditorView.contentAttributes.of(editorAccessibilityAttributes("source")),
+  lineNumbers(),
+  highlightActiveLineGutter(),
+  foldGutter(),
+  highlightActiveLine(),
+  EditorView.lineWrapping,
+];
 
 const editorExtensions = [
       highlightSpecialChars(),
@@ -2613,9 +2704,7 @@ const editorExtensions = [
       closeBrackets(),
       autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
       rectangularSelection(),
-      highlightSelectionMatches(),
       scholiumNoteLanguage,
-      liveProjectionNavigationKeymap,
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -2626,29 +2715,16 @@ const editorExtensions = [
       structuralInteractionKeymap,
       saveKeymap,
       stateReporter,
-      selectionActions.extension,
       linkActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
-      liveProjectionIndexField,
-      modeCompartment.of(livePreviewMode),
-      EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
+      modeCompartment.of(sourceMode),
       EditorView.theme({
         "&": { height: "100%" },
         ".cm-scroller": { overflow: "auto" },
       }),
 ];
 const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
-// The first document request may arrive on a later native bridge turn. Give
-// the empty editor its canonical initial mode immediately so an accidentally
-// exposed startup frame can never resemble Source mode.
-editor.dom.classList.add("scholium-live-mode");
-editor.scrollDOM.classList.add("scholium-live-scroller");
 editor.contentDOM.addEventListener("keydown", () => { pendingKeyStartedAt = performance.now(); }, {capture: true});
-
-const previewPopover = createPreviewPopoverController(editor, {
-  mode: () => currentMode,
-  previews: () => linkPreviews,
-});
 const scrollCoordinator = createEditorScrollCoordinator(editor, {
   post: (scrollAnchor) => post({
     type: "scrollChanged",
@@ -2741,7 +2817,7 @@ function scheduleEditorInteractionReport(forceContext = false) {
       || availabilitySignature !== lastInteractionAvailabilitySignature;
     forceNextInteractionContext = false;
     lastInteractionAvailabilitySignature = availabilitySignature;
-    updateEditorAccessibility(editor.contentDOM, currentMode, context);
+    updateEditorAccessibility(editor.contentDOM, configuredEditorMode(editor.state), context);
     post({
       type: "interactionChanged",
       selections: context.selections,
@@ -2895,9 +2971,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // Source, history, line separator, and the latest exact selection become
     // visible together. No partially restored state can escape a failed
     // stateJSON or selection validation path.
+    const restoredMode = configuredEditorMode(editor.state);
     editor.setState(recoveredState);
     exactSource = snapshot.source;
-    await editorOperations.setMode(currentMode);
+    await editorOperations.setMode(restoredMode);
     dirty = snapshot.dirty;
     documentVersion = snapshot.generation;
     return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory}};
@@ -3061,8 +3138,8 @@ function flushPresentationStyleAndGeometry() {
  * a freshly constructed editor, without making the bridge depend on animation
  * frames that WebKit is allowed to suspend while the view is hidden.
  */
-async function convergeLivePreviewProjection() {
-  if (currentMode !== "livePreview") return;
+function convergeLivePreviewProjection() {
+  if (configuredEditorMode(editor.state) !== "livePreview") return;
   const visibleTo = editor.visibleRanges.reduce(
     (maximum, range) => Math.max(maximum, range.to),
     editor.viewport.to,
@@ -3105,24 +3182,32 @@ const editorOperations = {
   /** @param {string} mode */
   async setMode(mode: string) {
     const startedAt = performance.now();
+    const transitionSequence = ++modeTransitionSequence;
     previewPopover.hide();
     const scrollSnapshot = editor.scrollSnapshot();
     const nextMode = mode === "livePreview" ? "livePreview" : "source";
+    const previousMode = configuredEditorMode(editor.state);
     let selection: EditorSelection | undefined;
     if (nextMode === "livePreview") {
       const bodyFrom = frontmatterBodyOffset(editor.state.doc);
       if (bodyFrom > 0 && editor.state.selection.ranges.some((range) => range.from < bodyFrom)) {
-        if (currentMode === "source") {
+        if (previousMode === "source") {
+          const clampedLiveSelection = EditorSelection.create([
+            EditorSelection.cursor(bodyFrom),
+          ]);
           hiddenFrontmatterSourceSelection = {
             documentVersion,
-            selection: editor.state.selection,
+            sourceSelection: editor.state.selection,
+            clampedLiveSelection,
           };
+          selection = clampedLiveSelection;
+        } else {
+          selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
         }
-        selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
       }
-    } else if (nextMode === "source" && currentMode === "livePreview"
+    } else if (nextMode === "source" && previousMode === "livePreview"
         && hiddenFrontmatterSourceSelection?.documentVersion === documentVersion) {
-      selection = hiddenFrontmatterSourceSelection.selection;
+      selection = hiddenFrontmatterSourceSelection.sourceSelection;
       hiddenFrontmatterSourceSelection = null;
     }
     editor.dispatch({
@@ -3132,29 +3217,28 @@ const editorOperations = {
         scrollSnapshot,
       ],
     });
-    editor.dom.classList.toggle("scholium-live-mode", nextMode === "livePreview");
-    editor.dom.classList.toggle("scholium-source-mode", nextMode !== "livePreview");
-    editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
-    editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
-    currentMode = nextMode;
+    const appliedMode = configuredEditorMode(editor.state);
     selectionActions.update(editor);
-    updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
+    updateEditorAccessibility(editor.contentDOM, appliedMode, currentEditorContext());
     scheduleEditorInteractionReport(true);
     recordEditorMetric("mode-toggle-work", startedAt, {
       documentLength: editor.state.doc.length,
+      transitionSequence,
     });
     editor.requestMeasure({
       read: () => editor.state.doc.length,
       write: (documentLength) => window.requestAnimationFrame(() => recordEditorMetric(
         "mode-toggle",
         startedAt,
-        {documentLength},
+        {documentLength, transitionSequence},
       )),
     });
     window.setTimeout(scrollCoordinator.postCurrent, 0);
-    if (nextMode === "livePreview") {
-      await convergeLivePreviewProjection();
-    }
+    if (appliedMode === "livePreview") convergeLivePreviewProjection();
+    // The typed response is the native visibility boundary. Ensure the
+    // compartment, semantic projection, cascade, and representative geometry
+    // belong to the same completed configuration before acknowledging it.
+    flushPresentationStyleAndGeometry();
   },
 
   /** @param {string} css */
@@ -3172,7 +3256,9 @@ const editorOperations = {
     linkPreviewIndexByRange = new Map(
       linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]),
     );
-    editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+    if (configuredEditorMode(editor.state) === "livePreview") {
+      editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+    }
   },
 
   /** @param {number} requestedLine */

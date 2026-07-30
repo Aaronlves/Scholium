@@ -1,4 +1,5 @@
-import type {EditorView} from "@codemirror/view";
+import type {Extension} from "@codemirror/state";
+import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
 import {recordEditorMetric} from "./performance";
 import type {LinkPreview, VectorLinkKind} from "./previews";
@@ -13,6 +14,7 @@ const relationshipLabels: Record<VectorLinkKind, string> = {
 };
 
 export interface PreviewPopoverController {
+  readonly extension: Extension;
   hide(): void;
   showAtSelection(): boolean;
   showAtPoint(x: number, y: number): boolean;
@@ -20,31 +22,15 @@ export interface PreviewPopoverController {
 
 /** Owns cached-link preview presentation without owning preview data or source. */
 export function createPreviewPopoverController(
-  editor: EditorView,
   options: {
-    mode(): "livePreview" | "source";
     previews(): readonly LinkPreview[];
   },
 ): PreviewPopoverController {
-  const root = document.createElement("aside");
-  root.id = "scholium-preview-popover";
-  root.className = "scholium-preview-popover";
-  root.dataset.scholiumProtected = "preview-popover";
-  root.setAttribute("role", "tooltip");
-  root.setAttribute("aria-live", "polite");
-  root.hidden = true;
-
-  const title = document.createElement("h2");
-  title.className = "scholium-preview-title";
-  const metadata = document.createElement("p");
-  metadata.className = "scholium-preview-metadata";
-  const body = document.createElement("div");
-  body.className = "scholium-preview-body";
-  body.setAttribute("role", "group");
-  body.setAttribute("aria-label", "Preview content");
-  root.append(title, metadata, body);
-  document.body.append(root);
-
+  let editor: EditorView | null = null;
+  let root: HTMLElement | null = null;
+  let title: HTMLElement | null = null;
+  let metadata: HTMLElement | null = null;
+  let body: HTMLElement | null = null;
   let timer: number | undefined;
   let pendingAnchor: HTMLElement | null = null;
 
@@ -52,42 +38,48 @@ export function createPreviewPopoverController(
     window.clearTimeout(timer);
     timer = undefined;
     pendingAnchor = null;
-    root.hidden = true;
-    root.style.visibility = "";
-    title.textContent = "";
-    metadata.textContent = "";
-    body.replaceChildren();
+    if (root) {
+      root.hidden = true;
+      root.style.visibility = "";
+    }
+    if (title) title.textContent = "";
+    if (metadata) metadata.textContent = "";
+    body?.replaceChildren();
   }
 
   function position(anchor: PreviewAnchorRect, startedAt: number) {
-    root.style.visibility = "hidden";
-    root.hidden = false;
+    if (!editor || !root) return;
+    const activeEditor = editor;
+    const activeRoot = root;
+    activeRoot.style.visibility = "hidden";
+    activeRoot.hidden = false;
     const inset = 12;
     const gap = 8;
-    editor.requestMeasure({
+    activeEditor.requestMeasure({
       read: () => ({
-        measured: root.getBoundingClientRect(),
+        measured: activeRoot.getBoundingClientRect(),
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
       }),
       write: ({measured, viewportWidth, viewportHeight}) => {
-        if (root.hidden) return;
+        if (activeRoot.hidden || editor !== activeEditor || root !== activeRoot) return;
         const left = Math.max(inset, Math.min(anchor.left, viewportWidth - measured.width - inset));
         const below = anchor.bottom + gap;
         const top = below + measured.height <= viewportHeight - inset
           ? below
           : Math.max(inset, anchor.top - measured.height - gap);
-        root.style.left = `${left}px`;
-        root.style.top = `${top}px`;
-        root.style.visibility = "visible";
+        activeRoot.style.left = `${left}px`;
+        activeRoot.style.top = `${top}px`;
+        activeRoot.style.visibility = "visible";
         window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
-          documentLength: editor.state.doc.length,
+          documentLength: activeEditor.state.doc.length,
         }));
       },
     });
   }
 
   function removeInteractiveContent() {
+    if (!body) return;
     body.querySelectorAll("script, style, iframe, object, embed, form, input, button")
       .forEach((node) => node.remove());
     body.querySelectorAll<HTMLElement>("*").forEach((node) => {
@@ -101,6 +93,7 @@ export function createPreviewPopoverController(
   }
 
   function show(preview: LinkPreview, anchor: PreviewAnchorRect, startedAt: number) {
+    if (!editor || !root || !title || !metadata || !body) return;
     title.textContent = preview.title;
     const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
     metadata.textContent = preview.fragment ? `${relationship}\n${preview.fragment}` : relationship;
@@ -114,7 +107,7 @@ export function createPreviewPopoverController(
 
   function showAtSelection() {
     const startedAt = performance.now();
-    if (options.mode() !== "livePreview") return false;
+    if (!editor) return false;
     const head = editor.state.selection.main.head;
     const coords = editor.coordsAtPos(head);
     if (!coords) return false;
@@ -129,7 +122,7 @@ export function createPreviewPopoverController(
 
   function showAtPoint(x: number, y: number) {
     const startedAt = performance.now();
-    if (options.mode() !== "livePreview") return false;
+    if (!editor) return false;
     const anchor = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-link-preview-index]");
     if (!anchor) return showAtSelection();
     const previewIndex = Number(anchor.dataset.linkPreviewIndex);
@@ -142,16 +135,16 @@ export function createPreviewPopoverController(
   }
 
   function anchorAtEvent(event: PointerEvent) {
-    if (!event.metaKey || options.mode() !== "livePreview" || !(event.target instanceof Element)) {
+    if (!event.metaKey || !(event.target instanceof Element)) {
       return null;
     }
     return event.target.closest<HTMLElement>("[data-link-preview-index]");
   }
 
-  document.addEventListener("pointermove", (event) => {
+  const handlePointerMove = (event: PointerEvent) => {
     const anchor = anchorAtEvent(event);
     if (!anchor) {
-      if (pendingAnchor || !root.hidden) hide();
+      if (pendingAnchor || (root && !root.hidden)) hide();
       return;
     }
     if (anchor === pendingAnchor) return;
@@ -165,13 +158,58 @@ export function createPreviewPopoverController(
         show(preview, anchor.getBoundingClientRect(), performance.now());
       }
     }, 300);
-  }, {passive: true});
-  document.addEventListener("keyup", (event) => {
+  };
+  const handleKeyUp = (event: KeyboardEvent) => {
     if (event.key === "Meta") hide();
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !root.hidden) hide();
+  };
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && root && !root.hidden) hide();
+  };
+
+  function mount(view: EditorView) {
+    if (editor) return;
+    editor = view;
+    root = document.createElement("aside");
+    root.id = "scholium-preview-popover";
+    root.className = "scholium-preview-popover";
+    root.dataset.scholiumProtected = "preview-popover";
+    root.setAttribute("role", "tooltip");
+    root.setAttribute("aria-live", "polite");
+    root.hidden = true;
+
+    title = document.createElement("h2");
+    title.className = "scholium-preview-title";
+    metadata = document.createElement("p");
+    metadata.className = "scholium-preview-metadata";
+    body = document.createElement("div");
+    body.className = "scholium-preview-body";
+    body.setAttribute("role", "group");
+    body.setAttribute("aria-label", "Preview content");
+    root.append(title, metadata, body);
+    document.body.append(root);
+    document.addEventListener("pointermove", handlePointerMove, {passive: true});
+    document.addEventListener("keyup", handleKeyUp);
+    document.addEventListener("keydown", handleKeyDown);
+  }
+
+  function unmount(view: EditorView) {
+    if (editor !== view) return;
+    hide();
+    document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("keyup", handleKeyUp);
+    document.removeEventListener("keydown", handleKeyDown);
+    root?.remove();
+    root = null;
+    title = null;
+    metadata = null;
+    body = null;
+    editor = null;
+  }
+
+  const extension = ViewPlugin.define((view) => {
+    mount(view);
+    return {destroy: () => unmount(view)};
   });
 
-  return {hide, showAtSelection, showAtPoint};
+  return {extension, hide, showAtSelection, showAtPoint};
 }

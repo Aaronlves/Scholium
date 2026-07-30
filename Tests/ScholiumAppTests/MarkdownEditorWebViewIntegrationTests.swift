@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ScholiumContracts
 import SwiftUI
 import Testing
@@ -18,14 +19,125 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         #expect(harness.session.presentedMode == .livePreview)
+        var presentationPublications: [MarkdownEditorPresentationState] = []
+        let observation = harness.session.$presentation.dropFirst().sink {
+            presentationPublications.append($0)
+        }
 
         harness.session.setMode(.source)
         try await dispatcher.waitUntilSuspended()
         #expect(harness.session.presentedMode == .livePreview)
+        #expect(presentationPublications.isEmpty)
 
         dispatcher.resume()
         try await harness.waitUntilPresentedMode(.source)
         #expect(harness.session.presentedMode == .source)
+        #expect(presentationPublications.map(\.documentPhase) == [.ready(.source)])
+        _ = observation
+        await harness.closeAndDrain()
+    }
+
+    @Test("A newer editor-mode request converges after an in-flight acknowledgement")
+    func newerModeRequestConvergesAfterInflightAcknowledgement() async throws {
+        let dispatcher = SuspendingModeBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "# Mode convergence\n\nExact **Markdown**.\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.setMode(.source)
+        try await dispatcher.waitUntilSuspended()
+        harness.session.setMode(.livePreview)
+        dispatcher.resume()
+
+        try await dispatcher.waitUntilModeRequestCount(2)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let final = try await harness.waitUntilPresentation(stage: "latest retained editor mode") {
+            $0.liveModeClassCount == 1
+                && $0.sourceModeClassCount == 0
+                && $0.gutterCount == 0
+        }
+        #expect(final.label == "Markdown editor, Edit mode")
+        #expect(dispatcher.requestedModes == [.source, .livePreview])
+        await harness.closeAndDrain()
+    }
+
+    @Test("A transient mode transport failure retries idempotently before publication")
+    func transientModeFailureRetriesBeforePublication() async throws {
+        let dispatcher = FailingOnceModeBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "# Retried mode\n\nExact **Markdown**.\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        var presentationPublications: [MarkdownEditorPresentationState] = []
+        let observation = harness.session.$presentation.dropFirst().sink {
+            presentationPublications.append($0)
+        }
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let source = try await harness.waitUntilPresentation(stage: "retried Source mode") {
+            $0.sourceModeClassCount == 1
+                && $0.liveProjectionDOMCount == 0
+        }
+
+        #expect(source.label == "Markdown source editor")
+        #expect(dispatcher.requestedModes == [.source, .source])
+        #expect(presentationPublications.map(\.documentPhase) == [.ready(.source)])
+        _ = observation
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source mode preserves exact Markdown without semantic typography")
+    func sourceModeUsesExactSourceTypography() async throws {
+        let source = """
+        # Exact heading
+
+        **Bold source** and *italic source* and ~~struck source~~ and [linked source](https://example.test).
+        """
+        let harness = EditorHarness(source: source, initialMode: .source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.setMode(.source)
+        let snapshot = try await harness.waitUntilPresentation(stage: "plain exact Source typography") {
+            $0.sourceModeClassCount == 1
+                && $0.liveModeClassCount == 0
+                && $0.gutterCount > 0
+                && $0.lineNumberCount > 0
+        }
+        #expect(snapshot.liveTitleCount == 0)
+        #expect(snapshot.liveH1Count == 0)
+        #expect(snapshot.sourceSemanticTypographyCount == 0)
+        #expect(snapshot.liveProjectionDOMCount == 0)
+        #expect(snapshot.selectionActionsCount == 0)
+        #expect(snapshot.previewPopoverCount == 0)
+        #expect(snapshot.visibleLineClassSummary.contains("**Bold source**"))
+        #expect(snapshot.visibleLineClassSummary.contains("*italic source*"))
+        #expect(snapshot.visibleLineClassSummary.contains("~~struck source~~"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Selecting text does not highlight matching text elsewhere")
+    func selectionDoesNotHighlightDocumentMatches() async throws {
+        let source = "Repeated z appears beside z and another z.\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let selected = try #require(source.range(of: "z"))
+        let from = selected.lowerBound.utf16Offset(in: source)
+        let to = selected.upperBound.utf16Offset(in: source)
+
+        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        _ = try await harness.waitUntilSelection(in: from..<(to + 1))
+        let snapshot = try await harness.session.testingAccessibilitySnapshot()
+        #expect(snapshot.selectionMatchCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 
@@ -194,6 +306,88 @@ struct MarkdownEditorWebViewIntegrationTests {
             in: source
         ))
         #expect(selection.excerpt == "autonomy")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit reveals only the selected inline construct and preserves its semantic style")
+    func editInlineSyntaxActivationIsConstructScoped() async throws {
+        let probe = "INLINE_SYNTAX_PROBE"
+        let source = """
+        # Inline projection
+
+        \(probe) before **First** between **Second**, *Third* or *Fourth*, ~~Fifth~~, ==Sixth==, `Seventh`, and [Eighth](https://example.test).
+        """
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let generation = harness.session.generation
+        let undoLabel = harness.session.context?.undoLabel
+        let caret = { (sourceToken: String, leadingMarkerLength: Int) throws -> Int in
+            let range = try #require(source.range(of: sourceToken))
+            return range.lowerBound.utf16Offset(in: source) + leadingMarkerLength + 1
+        }
+        let moveCaret = { (offset: Int) async throws in
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset)
+        }
+
+        try await moveCaret(try caret("before", 0))
+        let inactive = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(inactive.lineText == "\(probe) before First between Second, Third or Fourth, Fifth, Sixth, Seventh, and Eighth.")
+        #expect(inactive.strongTexts == ["First", "Second"])
+        #expect(inactive.emphasisTexts == ["Third", "Fourth"])
+        #expect(inactive.strikethroughTexts == ["Fifth"])
+        #expect(inactive.highlightTexts == ["Sixth"])
+        #expect(inactive.codeTexts == ["Seventh"])
+        #expect(inactive.linkTexts == ["Eighth"])
+
+        let firstCaret = try caret("**First**", 2)
+        try await moveCaret(firstCaret)
+        let activeStrong = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeStrong.lineText == "\(probe) before **First** between Second, Third or Fourth, Fifth, Sixth, Seventh, and Eighth.")
+        #expect(activeStrong.strongTexts == ["**First**", "Second"])
+        #expect(activeStrong.strongWeights.allSatisfy { $0 == "700" })
+
+        let scopedProjectionCount = try await harness.session.queryPerformanceSamples().filter {
+            $0.name == "projection" && $0.observed["selectionScoped"] == 1
+        }.count
+        try await moveCaret(firstCaret + 1)
+        let sameConstructProjectionCount = try await harness.session.queryPerformanceSamples().filter {
+            $0.name == "projection" && $0.observed["selectionScoped"] == 1
+        }.count
+        #expect(sameConstructProjectionCount == scopedProjectionCount)
+
+        try await moveCaret(try caret("*Third*", 1))
+        let activeEmphasis = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeEmphasis.lineText == "\(probe) before First between Second, *Third* or Fourth, Fifth, Sixth, Seventh, and Eighth.")
+        #expect(activeEmphasis.emphasisTexts == ["*Third*", "Fourth"])
+        #expect(activeEmphasis.emphasisStyles.allSatisfy { $0 == "italic" })
+
+        try await moveCaret(try caret("~~Fifth~~", 2))
+        let activeStrike = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeStrike.strikethroughTexts == ["~~Fifth~~"])
+        #expect(!activeStrike.lineText.contains("*Third*"))
+
+        try await moveCaret(try caret("==Sixth==", 2))
+        let activeHighlight = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeHighlight.highlightTexts == ["==Sixth=="])
+        #expect(!activeHighlight.lineText.contains("~~Fifth~~"))
+
+        try await moveCaret(try caret("`Seventh`", 1))
+        let activeCode = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeCode.codeTexts == ["`Seventh`"])
+        #expect(!activeCode.lineText.contains("==Sixth=="))
+
+        try await moveCaret(try caret("[Eighth](https://example.test)", 1))
+        let activeLink = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeLink.linkTexts == ["[Eighth](https://example.test)"])
+        #expect(!activeLink.lineText.contains("`Seventh`"))
+
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(harness.session.generation == generation)
         #expect(harness.session.context?.undoLabel == undoLabel)
@@ -433,6 +627,45 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(retained.h2TextAlign == fresh.h2TextAlign)
         #expect(retained.collapsedBlankLineCount == fresh.collapsedBlankLineCount)
         #expect(retained.collapsedBlankLineVisibleHeight <= 0.5)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Losing editor focus preserves the complete heading projection")
+    func focusLossPreservesHeadingProjection() async throws {
+        let source = """
+        # Focus-stable document title
+
+        ## Focus-stable section heading
+
+        Ordinary paragraph.
+        """
+        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 2).css
+            + "\n"
+            + DocumentAppearanceStyles.css(for: DocumentAppearanceProfile(name: "Default"))
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: presentationCSS
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.waitUntilPresentation(stage: "focused heading projection") {
+            $0.isFocused
+                && $0.liveTitleCount == 1
+                && $0.liveH1Count == 1
+                && $0.liveH2Count == 1
+        }
+
+        try await harness.session.resignFocusAndWait()
+        let blurred = try await harness.waitUntilPresentation(stage: "unfocused heading projection") {
+            !$0.isFocused
+                && $0.liveTitleCount == 1
+                && $0.liveH1Count == 1
+                && $0.liveH2Count == 1
+        }
+        #expect(blurred.h1FontSize == "64px")
+        #expect(blurred.h2FontSize == "48px")
+        #expect(blurred.titleTextAlign == "center")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -687,7 +920,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.liveCalloutWidgetCount == 1
         }
         try await harness.session.testingPressArrow("ArrowDown")
-        try await harness.waitUntilSelection(head: calloutFrom)
+        try await harness.waitUntilSelection(head: calloutFrom, stage: "down-arrow callout entry")
         _ = try await harness.waitUntilPresentation(stage: "arrow-revealed callout source") {
             $0.liveCalloutWidgetCount == 0 && $0.exactCalloutSourceCount > 0
         }
@@ -696,7 +929,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.liveCalloutWidgetCount == 1
         }
         try await harness.session.testingPressArrow("ArrowUp")
-        try await harness.waitUntilSelection(head: calloutTo - 1)
+        try await harness.waitUntilSelection(head: calloutTo - 1, stage: "up-arrow callout entry")
         _ = try await harness.waitUntilPresentation(stage: "up-arrow-revealed callout source") {
             $0.liveCalloutWidgetCount == 0 && $0.exactCalloutSourceCount > 0
         }
@@ -718,7 +951,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.goToLine(namedDefinitionLine)
         let namedDefinitionOffset = try #require(normalizedOriginal.range(of: "[^note]:")?.lowerBound)
             .utf16Offset(in: normalizedOriginal)
-        try await harness.waitUntilSelection(head: namedDefinitionOffset)
+        try await harness.waitUntilSelection(
+            head: namedDefinitionOffset,
+            stage: "named footnote definition"
+        )
         let revealedFootnote = try await harness.waitUntilPresentation(stage: "revealed footnote source") {
             $0.footnoteItemCount == 1 && $0.footnoteDefinitionSourceCount > 0
         }
@@ -752,6 +988,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(live.gutterCount == 0)
         #expect(live.lineNumberCount == 0)
         #expect(live.activeLineCount == 0)
+        #expect(live.liveProjectionDOMCount > 0)
+        #expect(live.selectionActionsCount == 1)
+        #expect(live.previewPopoverCount == 1)
         #expect(live.contentPaddingInlineStart == "20px")
         #expect(live.isFocused)
 
@@ -760,6 +999,9 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.label == "Markdown source editor"
                 && $0.gutterCount > 0
                 && $0.lineNumberCount > 0
+                && $0.liveProjectionDOMCount == 0
+                && $0.selectionActionsCount == 0
+                && $0.previewPopoverCount == 0
         }
         #expect(sourceMode.activeLineCount > 0)
         #expect(sourceMode.renderedMathCount == 0)
@@ -773,21 +1015,24 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.context?.selections == initialSelection)
         let bodyStartEditorOffset = frontmatter.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
         harness.session.goToLine(2)
-        try await harness.waitUntilSelection(head: 4)
+        try await harness.waitUntilSelection(head: 4, stage: "Source frontmatter line")
         harness.session.setMode(.livePreview)
         _ = try await harness.waitUntilPresentation(stage: "frontmatter-clamped Live Preview") {
             $0.label == "Markdown editor, Edit mode" && $0.frontmatterLineCount == 0
         }
-        try await harness.waitUntilSelection(head: bodyStartEditorOffset)
+        try await harness.waitUntilSelection(
+            head: bodyStartEditorOffset,
+            stage: "Edit body clamp"
+        )
         harness.session.setMode(.source)
         _ = try await harness.waitUntilPresentation(stage: "frontmatter selection restored Source") {
             $0.label == "Markdown source editor" && $0.lineNumberCount > 0
         }
-        try await harness.waitUntilSelection(head: 4)
+        try await harness.waitUntilSelection(head: 4, stage: "restored Source frontmatter")
         let bodyEditorOffset = (frontmatter.replacingOccurrences(of: "\r\n", with: "\n") + "[[Target]]\n").utf16.count
         let bodySourceOffset = (frontmatter + "[[Target]]\r\n").utf16.count
         harness.session.goToLine(5)
-        try await harness.waitUntilSelection(head: bodyEditorOffset)
+        try await harness.waitUntilSelection(head: bodyEditorOffset, stage: "Source body line")
 
         harness.session.setMode(.livePreview)
         let restoredLive = try await harness.waitUntilPresentation(stage: "restored Live Preview") {
@@ -829,6 +1074,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 $0.label == "Markdown source editor"
                     && $0.gutterCount > 0
                     && $0.lineNumberCount > 0
+                    && $0.liveProjectionDOMCount == 0
+                    && $0.selectionActionsCount == 0
+                    && $0.previewPopoverCount == 0
             }
             harness.session.setMode(.livePreview)
             _ = try await harness.waitUntilPresentation(stage: "stress Live Preview") {
@@ -841,7 +1089,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.isDirty)
         #expect(harness.session.hasAttachedWebView)
         let modeStressSamples = try await harness.session.queryPerformanceSamples()
-        #expect(modeStressSamples.filter { $0.name == "mode-toggle-work" }.count >= 50)
+        let latestModeTransition = try #require(
+            modeStressSamples.last { $0.name == "mode-toggle-work" }
+        )
+        #expect((latestModeTransition.observed["transitionSequence"] ?? 0) >= 50)
 
         let pastePayload = #"{"plainText":"Reason","html":"<strong>Reason</strong>"}"#
         try await harness.session.perform(.pasteMarkdown, argument: pastePayload)
@@ -1126,6 +1377,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
+            initialMode: MarkdownEditorMode = .livePreview,
             initialPresentationCSS: String = "",
             laysOutForPointerTesting: Bool = false
         ) {
@@ -1137,7 +1389,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 )
             } ?? MarkdownEditorSession()
             self.documentID = documentID
-            sourceBox = SourceBox(source)
+            sourceBox = SourceBox(source, mode: initialMode)
             sourceBox.presentationCSS = initialPresentationCSS
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
@@ -1186,7 +1438,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         }
 
-        func waitUntilPresentedMode(_ mode: NotePresentationMode) async throws {
+        func waitUntilPresentedMode(_ mode: MarkdownEditorMode) async throws {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(5))
             while session.presentedMode != mode {
@@ -1246,12 +1498,14 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         }
 
-        func waitUntilSelection(head: Int) async throws {
+        func waitUntilSelection(head: Int, stage: String = "requested selection") async throws {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(3))
             while session.context?.selections.first?.head != head {
                 if clock.now >= deadline {
-                    Issue.record("The editor did not publish the requested insertion point.")
+                    Issue.record(
+                        "The editor did not publish \(stage); expected \(head), latest \(String(describing: session.context?.selections.first?.head))."
+                    )
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -1464,6 +1718,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
         private var didSuspend = false
         private var continuation: CheckedContinuation<Void, Never>?
+        private(set) var requestedModes: [MarkdownEditorMode] = []
 
         func dispatch(
             requestJSON: String,
@@ -1473,10 +1728,12 @@ struct MarkdownEditorWebViewIntegrationTests {
                 MarkdownEditorRequest.self,
                 from: Data(requestJSON.utf8)
             )
-            if !didSuspend,
-               case .setMode = request.operation {
-                didSuspend = true
-                await withCheckedContinuation { continuation = $0 }
+            if case .setMode(let mode) = request.operation {
+                requestedModes.append(mode)
+                if !didSuspend {
+                    didSuspend = true
+                    await withCheckedContinuation { continuation = $0 }
+                }
             }
             return try await production.dispatch(requestJSON: requestJSON, in: webView)
         }
@@ -1497,6 +1754,47 @@ struct MarkdownEditorWebViewIntegrationTests {
             continuation?.resume()
             continuation = nil
         }
+
+        func waitUntilModeRequestCount(_ expectedCount: Int) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while requestedModes.count < expectedCount {
+                if clock.now >= deadline {
+                    Issue.record("The editor did not converge the latest requested mode.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+    }
+
+    @MainActor
+    private final class FailingOnceModeBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private enum ProbeError: Error {
+            case transientTransportFailure
+        }
+
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var hasFailed = false
+        private(set) var requestedModes: [MarkdownEditorMode] = []
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if case .setMode(let mode) = request.operation {
+                requestedModes.append(mode)
+                if !hasFailed {
+                    hasFailed = true
+                    throw ProbeError.transientTransportFailure
+                }
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
     }
 
     @MainActor
@@ -1506,7 +1804,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var scrollAnchor: EditorScrollAnchor?
         @Published var presentationCSS = ""
         @Published var userCSS = ""
-        init(_ source: String) { self.source = source }
+        let mode: MarkdownEditorMode
+        init(_ source: String, mode: MarkdownEditorMode) {
+            self.source = source
+            self.mode = mode
+        }
     }
 
     private struct EditorHarnessRoot: View {
@@ -1546,7 +1848,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     session: session,
                     documentID: documentID,
                     source: sourceBox.source,
-                    mode: .livePreview,
+                    mode: sourceBox.mode,
                     presentationCSS: sourceBox.presentationCSS,
                     userCSS: sourceBox.userCSS,
                     linkCompletionQuery: { _ in [] },

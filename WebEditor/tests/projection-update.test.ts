@@ -5,6 +5,7 @@ import {
   activeProjectionSignature,
   selectionAffectedProjectionRanges,
   selectionIntersectsProjection,
+  selectionProjectionSignature,
   transactionCanMapProjection,
   transactionChangedSyntaxTree,
   transactionMayCreateProjection,
@@ -175,5 +176,27 @@ describe("projection activation boundaries", () => {
     expect(activeProjectionSignature([caret(5)], [projection])).toBe("4:12");
     expect(activeProjectionSignature([caret(10)], [projection])).toBe("4:12");
     expect(activeProjectionSignature([caret(12)], [projection])).toBe("");
+  });
+
+  it("invalidates presentation only across physical-line or inline-construct boundaries", () => {
+    const source = "plain **first** between **second**\nnext";
+    const state = EditorState.create({doc: source});
+    const firstFrom = source.indexOf("**first**");
+    const secondFrom = source.indexOf("**second**");
+    const projections = [
+      {from: firstFrom, to: firstFrom + "**first**".length},
+      {from: secondFrom, to: secondFrom + "**second**".length},
+    ];
+    const signature = (head: number) => selectionProjectionSignature(
+      state.doc,
+      [caret(head)],
+      projections,
+    );
+
+    expect(signature(1)).toBe(signature(3));
+    expect(signature(firstFrom + 2)).toBe(signature(firstFrom + 5));
+    expect(signature(1)).not.toBe(signature(firstFrom + 2));
+    expect(signature(firstFrom + 2)).not.toBe(signature(secondFrom + 2));
+    expect(signature(1)).not.toBe(signature(source.indexOf("next")));
   });
 });

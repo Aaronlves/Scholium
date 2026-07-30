@@ -2710,8 +2710,8 @@ final class WindowModel: ObservableObject {
         }
         guard session.editorSession.context?.composing != true else { return }
 
-        session.presentationMode = mode
-        session.retainedEditorMode = mode
+        guard let editorMode = mode.editorMode else { return }
+        session.switchEditorMode(to: editorMode)
     }
     #endif
 

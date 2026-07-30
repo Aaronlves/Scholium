@@ -104,6 +104,19 @@ struct MarkdownEditorProtocolTests {
         #expect(decoded == request)
     }
 
+    @Test("The CodeMirror protocol cannot represent Review as an editor mode")
+    func reviewIsNotAnEditorMode() throws {
+        let invalid = try #require(
+            #"{"type":"setMode","mode":"read"}"#.data(using: .utf8)
+        )
+        do {
+            _ = try JSONDecoder().decode(MarkdownEditorOperation.self, from: invalid)
+            Issue.record("Review crossed the editor-only mode boundary.")
+        } catch {
+            #expect(error is DecodingError)
+        }
+    }
+
     @Test("Comment commands require a nonempty editor selection")
     func commentSelectionRequiresNonemptyRange() {
         #expect(!MarkdownEditorSelectionRange(anchor: 4, head: 4).isNonempty)

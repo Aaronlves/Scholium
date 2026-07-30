@@ -57,19 +57,12 @@ final class DocumentSessionModel: ObservableObject {
     let key: DocumentSessionKey?
     let editorSession = MarkdownEditorSession()
 
-    @Published var isEditing = false
-    /// Once created for the selected document, the editor surface remains
-    /// attached while Read is presented. This preserves CodeMirror state
-    /// across ordinary mode switches without eagerly allocating a WebKit
-    /// editor for every document that is only read.
-    @Published var retainsEditorSurface = false
-    @Published var retainedEditorMode: NotePresentationMode = .livePreview
+    @Published private(set) var presentation = DocumentPresentationState()
     @Published var editingSource = ""
     @Published var originalEditingSource = ""
     @Published var editingRevision: DocumentFingerprint?
     @Published var editError: String?
     @Published var isSavingEdit = false
-    @Published var presentationMode: NotePresentationMode = .read
     /// Ordinary WebView scroll reports update this non-published observation.
     /// They must not invalidate the document tree or become restoration input.
     private(set) var observedScrollPosition = ObservedScrollPosition()
@@ -99,6 +92,43 @@ final class DocumentSessionModel: ObservableObject {
         editorCancellable = editorSession.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }
+    }
+
+    var isEditing: Bool { presentation.isEditing }
+    var presentationMode: NotePresentationMode { presentation.activeMode }
+    var selectedPresentationMode: NotePresentationMode { presentation.selectedMode }
+    var retainedEditorMode: MarkdownEditorMode { presentation.retainedEditorMode }
+    var activeEditorMode: MarkdownEditorMode? { presentation.activeEditorMode }
+    var restorationEditorMode: MarkdownEditorMode? { presentation.restorationMode }
+    var retainsEditorSurface: Bool { presentation.retainsEditorSurface }
+
+    func restorePresentationMode(_ mode: NotePresentationMode) {
+        updatePresentation { $0.restore(mode) }
+    }
+
+    func beginEditing(in mode: MarkdownEditorMode) {
+        updatePresentation { $0.beginEditing(mode) }
+    }
+
+    func switchEditorMode(to mode: MarkdownEditorMode) {
+        updatePresentation { $0.switchEditorMode(to: mode) }
+    }
+
+    func finishEditing() {
+        updatePresentation { $0.finishEditing() }
+    }
+
+    func resetPresentation() {
+        updatePresentation { $0.reset() }
+    }
+
+    private func updatePresentation(
+        _ update: (inout DocumentPresentationState) -> Void
+    ) {
+        var next = presentation
+        update(&next)
+        guard next != presentation else { return }
+        presentation = next
     }
 
     func cancelScheduledWork() {
@@ -287,7 +317,7 @@ final class DocumentSessionStore {
                   !entry.session.editorSession.hasAttachedWebView else { return nil }
             return ReapedPresentation(
                 target: target,
-                mode: entry.session.presentationMode,
+                mode: entry.session.selectedPresentationMode,
                 scrollPosition: entry.session.observedScrollPosition
             )
         }

@@ -82,7 +82,7 @@ struct DocumentControllerConvergenceTests {
         )
         let descriptor = try #require(controller.activeDocument)
         let session = controller.session(for: descriptor)
-        session.presentationMode = .source
+        session.restorePresentationMode(.source)
 
         controller.installOpenedDocument(
             note(
@@ -98,7 +98,8 @@ struct DocumentControllerConvergenceTests {
         let renamed = try #require(controller.activeDocument)
         #expect(renamed.reference.relativePath == "Chapters/Renamed Draft.md")
         #expect(controller.session(for: renamed) === session)
-        #expect(session.presentationMode == .source)
+        #expect(session.presentationMode == .read)
+        #expect(session.selectedPresentationMode == .source)
     }
 
     @Test("The note view delegates editor persistence and conflicts to one controller")

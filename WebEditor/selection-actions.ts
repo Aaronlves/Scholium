@@ -1,5 +1,5 @@
 import type {Extension} from "@codemirror/state";
-import {EditorView} from "@codemirror/view";
+import {EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
 
 export type SelectionActionCommand = "bold" | "emphasis" | "inlineCode" | "standardLink";
 
@@ -14,25 +14,17 @@ export interface SelectionActionsController {
  * mutation remains with the editor composition root through `applyCommand`.
  */
 export function createSelectionActionsController(options: {
-  mode(): "livePreview" | "source";
   applyCommand(view: EditorView, command: SelectionActionCommand): void;
 }): SelectionActionsController {
-  const root = document.createElement("div");
-  root.id = "scholium-selection-actions";
-  root.className = "scholium-selection-actions";
-  root.hidden = true;
-  root.dataset.scholiumProtected = "selection-actions";
-
-  const commandBar = document.createElement("div");
-  commandBar.className = "scholium-selection-toolbar";
-  commandBar.setAttribute("role", "toolbar");
-  commandBar.setAttribute("aria-label", "Formatting actions");
-  root.append(commandBar);
-  document.body.append(root);
-
+  let root: HTMLDivElement | null = null;
   let activeView: EditorView | null = null;
 
-  function addButton(title: string, label: string, command: SelectionActionCommand) {
+  function addButton(
+    commandBar: HTMLDivElement,
+    title: string,
+    label: string,
+    command: SelectionActionCommand,
+  ) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = title;
@@ -45,21 +37,43 @@ export function createSelectionActionsController(options: {
     commandBar.append(button);
   }
 
-  addButton("B", "Bold", "bold");
-  addButton("I", "Italic", "emphasis");
-  addButton("</>", "Inline Code", "inlineCode");
-  addButton("↗", "Link", "standardLink");
+  function mount(view: EditorView) {
+    if (root) return;
+    root = document.createElement("div");
+    root.id = "scholium-selection-actions";
+    root.className = "scholium-selection-actions";
+    root.hidden = true;
+    root.dataset.scholiumProtected = "selection-actions";
+
+    const commandBar = document.createElement("div");
+    commandBar.className = "scholium-selection-toolbar";
+    commandBar.setAttribute("role", "toolbar");
+    commandBar.setAttribute("aria-label", "Formatting actions");
+    root.append(commandBar);
+    addButton(commandBar, "B", "Bold", "bold");
+    addButton(commandBar, "I", "Italic", "emphasis");
+    addButton(commandBar, "</>", "Inline Code", "inlineCode");
+    addButton(commandBar, "↗", "Link", "standardLink");
+    document.body.append(root);
+    update(view);
+  }
+
+  function unmount(view: EditorView) {
+    if (activeView === view) activeView = null;
+    root?.remove();
+    root = null;
+  }
 
   function hide() {
-    root.hidden = true;
+    if (root) root.hidden = true;
     activeView = null;
   }
 
   function update(view: EditorView) {
+    if (!root) return;
     const selection = view.state.selection;
     const main = selection.main;
-    if (options.mode() !== "livePreview" || view.composing || !view.hasFocus
-        || selection.ranges.length !== 1 || main.empty) {
+    if (view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
       hide();
       return;
     }
@@ -80,12 +94,22 @@ export function createSelectionActionsController(options: {
     root.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
   }
 
+  const extension = ViewPlugin.define((view) => {
+    mount(view);
+    return {
+      update(updateEvent: ViewUpdate) {
+        if (updateEvent.docChanged || updateEvent.selectionSet || updateEvent.focusChanged) {
+          update(updateEvent.view);
+        }
+      },
+      destroy() {
+        unmount(view);
+      },
+    };
+  });
+
   return {
-    extension: EditorView.updateListener.of((updateEvent) => {
-      if (updateEvent.docChanged || updateEvent.selectionSet || updateEvent.focusChanged) {
-        update(updateEvent.view);
-      }
-    }),
+    extension,
     hide,
     update,
   };

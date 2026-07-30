@@ -184,8 +184,8 @@ struct MarkdownEditorPerformanceSample: Codable, Hashable, Sendable {
 }
 
 enum MarkdownEditorOperation: Codable, Hashable, Sendable {
-    case initialize(text: String, mode: NotePresentationMode, dialect: MarkdownEditingDialect)
-    case setMode(NotePresentationMode)
+    case initialize(text: String, mode: MarkdownEditorMode, dialect: MarkdownEditingDialect)
+    case setMode(MarkdownEditorMode)
     case setPresentationCSS(String)
     case setUserCSS(String)
     case setLinkPreviews([MarkdownEditorLinkPreview])
@@ -218,10 +218,10 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .initialize:
             self = try .initialize(
                 text: container.decode(String.self, forKey: .text),
-                mode: container.decode(NotePresentationMode.self, forKey: .mode),
+                mode: container.decode(MarkdownEditorMode.self, forKey: .mode),
                 dialect: container.decode(MarkdownEditingDialect.self, forKey: .dialect)
             )
-        case .setMode: self = try .setMode(container.decode(NotePresentationMode.self, forKey: .mode))
+        case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
         case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))

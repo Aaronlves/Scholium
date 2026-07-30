@@ -1,0 +1,87 @@
+{
+  "authority": "Docs/SCHOLIUM_SPEC.md section 5.1",
+  "referenceMode": "Review",
+  "comparisons": [
+    {
+      "surface": "Inactive Edit",
+      "classification": "mustMatchReview",
+      "properties": [
+        "document measure",
+        "body and heading typography",
+        "line wrapping",
+        "block spacing and accumulated vertical rhythm",
+        "semantic roles and components",
+        "colors"
+      ]
+    },
+    {
+      "surface": "Active Edit",
+      "classification": "permittedEditingDifference",
+      "properties": [
+        "caret",
+        "explicit selection",
+        "marked-text composition",
+        "exact markers of only the active syntax construct"
+      ]
+    },
+    {
+      "surface": "Source",
+      "classification": "requiredSourceDifference",
+      "properties": [
+        "Victor Mono exact-source typography",
+        "logical source-line numbers",
+        "visible YAML",
+        "visible exact Markdown markers"
+      ]
+    },
+    {
+      "surface": "Source",
+      "classification": "forbiddenSourceLeak",
+      "properties": [
+        "Live Preview StateFields or ViewPlugins",
+        "semantic widgets or cm-live classes",
+        "semantic typography",
+        "Edit formatting or cached-preview overlays",
+        "Review or previous-mode intermediate frame"
+      ]
+    },
+    {
+      "surface": "All modes",
+      "classification": "mustPreserve",
+      "properties": [
+        "exact Markdown bytes",
+        "selection",
+        "undo and redo history",
+        "IME composition integrity",
+        "semantic scroll anchor",
+        "document and editor session identity"
+      ]
+    }
+  ],
+  "requiredSourceTokens": [
+    "# Three-mode editor contract",
+    "**strong evidence**",
+    "*Neocaridina denticulata*",
+    "~~withdrawn wording~~",
+    "==provisional emphasis==",
+    "`exact_code()`",
+    "[[Synthetic Note|a wikilink]]",
+    "$x^2 + y^2$",
+    "中文论证",
+    "dir=\"rtl\"",
+    "- [ ] Open synthetic task.",
+    "> Ordinary quotation",
+    "```swift",
+    "| Construct | State | Count |",
+    "> [!orient]",
+    "> [!state]",
+    "> [!quote]",
+    "\\int_0^1",
+    "[^contract]",
+    "^[Synthetic inline note.]",
+    "*unfinished emphasis.",
+    "[unfinished destination](",
+    "%% Obsidian comment syntax",
+    "<section data-fixture=\"raw-html\">"
+  ]
+}

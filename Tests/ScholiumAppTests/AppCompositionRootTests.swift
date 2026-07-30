@@ -821,7 +821,7 @@ struct AppCompositionRootTests {
         #expect(firstSession.editingSource == originalSource)
         #expect(secondSession.editingSource == originalSource)
 
-        firstSession.presentationMode = .livePreview
+        firstSession.restorePresentationMode(.livePreview)
         firstSession.scrollFraction = 0.42
         firstWindow!.requestWorkspaceVault(.topicKnowledge)
         try await waitUntil("the first Library browsed Topics without replacing its document") {
@@ -836,7 +836,8 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.documentRevisions["Shared.md"] != original.fingerprint)
         #expect(firstWindow!.currentDocumentRevisions["Shared.md"] == original.fingerprint)
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
-        #expect(firstSession.presentationMode == .livePreview)
+        #expect(firstSession.presentationMode == .read)
+        #expect(firstSession.selectedPresentationMode == .livePreview)
         #expect(firstSession.scrollFraction == 0.42)
 
         let visibleReference = try #require(firstWindow!.currentDocumentDescriptor?.reference)
@@ -889,7 +890,7 @@ struct AppCompositionRootTests {
         #expect(secondSession.conflict == nil)
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact editor bytes.\r\n"
         firstSession.suppressAutosave = true
-        firstSession.isEditing = true
+        firstSession.beginEditing(in: .livePreview)
         firstSession.editingSource = exactDirtyBuffer
         firstSession.suppressAutosave = false
         let externalSource = "# Shared\n\nCommitted from the clean peer.\n"
@@ -913,7 +914,7 @@ struct AppCompositionRootTests {
         // testing path migration. This changes only the first window's local
         // editor state; both windows continue borrowing the same capability.
         firstSession.suppressAutosave = true
-        firstSession.isEditing = false
+        firstSession.finishEditing()
         firstSession.editingSource = externalSource
         firstSession.originalEditingSource = externalSource
         firstSession.editingRevision = externalCommit.document.fingerprint

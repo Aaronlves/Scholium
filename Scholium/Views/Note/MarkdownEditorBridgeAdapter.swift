@@ -1,30 +1,6 @@
 import Foundation
 import WebKit
 
-enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
-    case read
-    case livePreview
-    case source
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .read: ScholiumL10n.string("Review")
-        case .livePreview: ScholiumL10n.string("Edit")
-        case .source: ScholiumL10n.string("Source")
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .read: "book"
-        case .livePreview: "text.page.badge.magnifyingglass"
-        case .source: "chevron.left.forwardslash.chevron.right"
-        }
-    }
-}
-
 struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let label: String
     let insertion: String

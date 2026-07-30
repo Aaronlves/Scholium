@@ -700,7 +700,7 @@ final class DocumentController: ObservableObject {
     }
 
     func presentationMode(for path: String, vaultID: UUID?) -> NotePresentationMode {
-        presentationSession(for: path, vaultID: vaultID)?.presentationMode
+        presentationSession(for: path, vaultID: vaultID)?.selectedPresentationMode
             ?? restoredModes[path].flatMap(NotePresentationMode.init(rawValue:))
             ?? .read
     }
@@ -711,7 +711,9 @@ final class DocumentController: ObservableObject {
         vaultID: UUID?
     ) {
         if let session = presentationSession(for: path, vaultID: vaultID) {
-            session.presentationMode = mode
+            if session.selectedPresentationMode != mode {
+                session.restorePresentationMode(mode)
+            }
         } else {
             restoredPresentationVaultID = vaultID
             restoredModes[path] = mode.rawValue
@@ -763,12 +765,12 @@ final class DocumentController: ObservableObject {
 
         for (key, reference) in retainedReferences where reference.vaultID == vaultID {
             guard let session = sessions.retainedSession(for: .workspace(key)) else { continue }
-            modes[reference.relativePath] = session.presentationMode.rawValue
+            modes[reference.relativePath] = session.selectedPresentationMode.rawValue
             scrollPositions[reference.relativePath] = min(1, max(0, session.scrollFraction))
         }
         for (target, session) in sessions.retainedSessions where target.isFallback {
             let path = relativePath(for: target)
-            modes[path] = session.presentationMode.rawValue
+            modes[path] = session.selectedPresentationMode.rawValue
             scrollPositions[path] = min(1, max(0, session.scrollFraction))
         }
         for (target, entry) in closedPresentations where target.vaultID == vaultID {
@@ -824,7 +826,7 @@ final class DocumentController: ObservableObject {
         restoredScrollPositions = [:]
         restoredPresentationVaultID = nil
         for session in sessions.retainedSessions.values {
-            session.presentationMode = .read
+            session.resetPresentation()
             session.resetScrollPosition()
         }
         closedPresentations.removeAll(keepingCapacity: false)
@@ -935,13 +937,13 @@ final class DocumentController: ObservableObject {
         path: String
     ) {
         if let retained = closedPresentations.removeValue(forKey: target) {
-            session.presentationMode = retained.mode
+            session.restorePresentationMode(retained.mode)
             session.scrollFraction = retained.scrollPosition.fraction
             session.scrollAnchor = retained.scrollPosition.anchor
         }
         if let rawMode = restoredModes.removeValue(forKey: path),
            let mode = NotePresentationMode(rawValue: rawMode) {
-            session.presentationMode = mode
+            session.restorePresentationMode(mode)
         }
         if let restoredScroll = restoredScrollPositions.removeValue(forKey: path),
            restoredScroll.isFinite {
@@ -999,18 +1001,15 @@ final class DocumentController: ObservableObject {
         target: DocumentEditingTarget,
         source: String,
         revision: DocumentFingerprint?,
-        mode: NotePresentationMode
+        mode: MarkdownEditorMode
     ) {
-        guard !session.isEditing, mode != .read else { return }
+        guard !session.isEditing else { return }
         observe(session)
         session.suppressAutosave = true
         session.originalEditingSource = source
         session.editingSource = source
         session.editingRevision = revision
-        session.presentationMode = mode
-        session.retainedEditorMode = mode
-        session.retainsEditorSurface = true
-        session.isEditing = true
+        session.beginEditing(in: mode)
         editingDocumentPath = relativePath(for: target)
         Task { @MainActor [weak session] in
             await Task.yield()
@@ -1023,8 +1022,7 @@ final class DocumentController: ObservableObject {
         target: DocumentEditingTarget
     ) {
         session.cancelScheduledWork()
-        session.isEditing = false
-        session.presentationMode = .read
+        session.finishEditing()
         session.returnToReadAfterSave = false
         session.suppressAutosave = false
         session.conflict = nil

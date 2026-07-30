@@ -105,6 +105,13 @@ extension MarkdownEditorSession {
         let hasValueText: Bool
         let spellcheck: String
         let isFocused: Bool
+        let liveModeClassCount: Int
+        let sourceModeClassCount: Int
+        let selectionMatchCount: Int
+        let sourceSemanticTypographyCount: Int
+        let liveProjectionDOMCount: Int
+        let selectionActionsCount: Int
+        let previewPopoverCount: Int
         let gutterCount: Int
         let lineNumberCount: Int
         let activeLineCount: Int
@@ -173,6 +180,18 @@ extension MarkdownEditorSession {
         let incompleteWikilinkSourceCount: Int
         let exactCalloutSourceCount: Int
         let presentation: TestingPresentationSnapshot
+    }
+
+    struct TestingInlineProjectionSnapshot: Decodable, Sendable {
+        let lineText: String
+        let strongTexts: [String]
+        let strongWeights: [String]
+        let emphasisTexts: [String]
+        let emphasisStyles: [String]
+        let strikethroughTexts: [String]
+        let highlightTexts: [String]
+        let codeTexts: [String]
+        let linkTexts: [String]
     }
 
     @discardableResult
@@ -306,6 +325,22 @@ extension MarkdownEditorSession {
                 hasValueText: content?.hasAttribute('aria-valuetext') || false,
                 spellcheck: content?.getAttribute('spellcheck') || '',
                 isFocused: document.activeElement === content,
+                liveModeClassCount: document.querySelectorAll('.cm-editor.scholium-live-mode').length,
+                sourceModeClassCount: document.querySelectorAll('.cm-editor.scholium-source-mode').length,
+                selectionMatchCount: document.querySelectorAll('.cm-selectionMatch, .cm-selectionMatch-main').length,
+                sourceSemanticTypographyCount: Array.from(
+                    document.querySelectorAll('.cm-editor.scholium-source-mode .cm-content span')
+                ).filter(element => {
+                    const computed = getComputedStyle(element);
+                    const weight = Number.parseInt(computed.fontWeight, 10) || 400;
+                    return weight >= 600
+                        || computed.fontStyle === 'italic'
+                        || computed.textDecorationLine.includes('line-through')
+                        || computed.textDecorationLine.includes('underline');
+                }).length,
+                liveProjectionDOMCount: document.querySelectorAll('[class*="cm-live-"]').length,
+                selectionActionsCount: document.querySelectorAll('#scholium-selection-actions').length,
+                previewPopoverCount: document.querySelectorAll('#scholium-preview-popover').length,
                 gutterCount: document.querySelectorAll('.cm-gutters').length,
                 lineNumberCount: document.querySelectorAll('.cm-lineNumbers .cm-gutterElement').length,
                 activeLineCount: document.querySelectorAll('.cm-activeLine').length,
@@ -513,6 +548,42 @@ extension MarkdownEditorSession {
             throw SessionError.invalidResult
         }
         return try JSONDecoder().decode(TestingAccessibilitySnapshot.self, from: data)
+    }
+
+    func testingInlineProjectionSnapshot(
+        containing requestedText: String
+    ) async throws -> TestingInlineProjectionSnapshot {
+        guard let webView else { throw SessionError.unavailable }
+        let rawResult = try await webView.callAsyncJavaScript(
+            """
+            const line = Array.from(document.querySelectorAll('.cm-line'))
+                .find(candidate => candidate.textContent?.includes(requestedText));
+            if (!line) return null;
+            const texts = selector => Array.from(line.querySelectorAll(selector))
+                .map(element => element.textContent || '');
+            const styles = (selector, property) => Array.from(line.querySelectorAll(selector))
+                .map(element => getComputedStyle(element)[property] || '');
+            return {
+                lineText: line.textContent || '',
+                strongTexts: texts('.cm-live-strong'),
+                strongWeights: styles('.cm-live-strong', 'fontWeight'),
+                emphasisTexts: texts('.cm-live-emphasis'),
+                emphasisStyles: styles('.cm-live-emphasis', 'fontStyle'),
+                strikethroughTexts: texts('.cm-live-strike'),
+                highlightTexts: texts('.cm-live-highlight'),
+                codeTexts: texts('.cm-live-code'),
+                linkTexts: texts('.cm-live-link')
+            };
+            """,
+            arguments: ["requestedText": requestedText],
+            in: nil,
+            contentWorld: .page
+        )
+        guard JSONSerialization.isValidJSONObject(rawResult as Any),
+              let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
+            throw SessionError.invalidResult
+        }
+        return try JSONDecoder().decode(TestingInlineProjectionSnapshot.self, from: data)
     }
 
     func testingClickFirstCalloutText(_ requestedText: String) async throws {

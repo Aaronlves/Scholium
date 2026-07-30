@@ -4,6 +4,63 @@ import ScholiumContracts
 import SwiftUI
 import WebKit
 
+struct MarkdownEditorPresentationState: Equatable, Sendable {
+    enum DocumentPhase: Equatable, Sendable {
+        case unavailable
+        case loading
+        case ready(MarkdownEditorMode)
+    }
+
+    private(set) var webContentReady = false
+    private(set) var documentPhase: DocumentPhase = .unavailable
+    private(set) var errorMessage: String?
+
+    var isLoaded: Bool {
+        guard case .ready = documentPhase else { return false }
+        return true
+    }
+
+    var presentedMode: MarkdownEditorMode? {
+        guard case .ready(let mode) = documentPhase else { return nil }
+        return mode
+    }
+
+    mutating func reset() {
+        self = MarkdownEditorPresentationState()
+    }
+
+    mutating func webContentBecameReady(hasPendingDocument: Bool) {
+        webContentReady = true
+        if hasPendingDocument {
+            documentPhase = .loading
+            errorMessage = nil
+        }
+    }
+
+    mutating func beginLoading() {
+        documentPhase = .loading
+        errorMessage = nil
+    }
+
+    mutating func complete(_ mode: MarkdownEditorMode) {
+        documentPhase = .ready(mode)
+    }
+
+    mutating func fail(_ message: String) {
+        documentPhase = .unavailable
+        errorMessage = message
+    }
+
+    mutating func report(_ message: String) {
+        errorMessage = message
+    }
+
+    mutating func webContentTerminated() {
+        webContentReady = false
+        documentPhase = .loading
+    }
+}
+
 @MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
     private struct BridgeRequestContext {
@@ -38,14 +95,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
-    @Published private(set) var isReady = false
-    @Published private(set) var isLoaded = false
-    @Published private(set) var presentedMode: NotePresentationMode?
+    @Published private(set) var presentation = MarkdownEditorPresentationState()
     @Published private(set) var isDirty = false
     private(set) var line = 1
     private(set) var column = 1
     private(set) var lineCount = 1
-    @Published private(set) var errorMessage: String?
     @Published private(set) var interactionAvailability: EditorInteractionAvailability?
     private(set) var context: MarkdownEditorContext?
     private(set) var sessionID = UUID()
@@ -61,7 +115,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     var webView: WKWebView?
     private var pendingSource: String?
     private var pendingDocumentID = ""
-    private var pendingMode: NotePresentationMode = .livePreview
+    private var pendingMode: MarkdownEditorMode = .livePreview
     private var pendingPresentationCSS = ""
     private var pendingUserCSS = ""
     private var pendingLine: Int?
@@ -77,8 +131,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var requestBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
     private var requestEpoch: UInt64 = 0
-    private var modeRequestEpoch: UInt64 = 0
-    private var modeBeingApplied: NotePresentationMode?
+    private var modeTransitionEpoch: UInt64 = 0
+    private var modeTransitionTask: Task<Void, Never>?
+    private var modeTransitionID: UUID?
     private let bridgeDispatcher: any MarkdownEditorBridgeDispatching
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private var committedTextSynchronizer: ((String, String) -> Void)?
@@ -95,6 +150,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var qaTerminationObserverInstalled = false
     #endif
     var hasAttachedWebView: Bool { webView != nil }
+    var isReady: Bool { presentation.webContentReady }
+    var isLoaded: Bool { presentation.isLoaded }
+    var presentedMode: MarkdownEditorMode? { presentation.presentedMode }
+    var errorMessage: String? { presentation.errorMessage }
     var hasRecoverableBuffer: Bool {
         isDirty || recoverySnapshot?.dirty == true
     }
@@ -134,14 +193,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func attach(_ webView: WKWebView) {
         invalidateRequestQueue()
+        cancelModeTransition()
         self.webView = webView
         sessionID = UUID()
-        modeRequestEpoch &+= 1
-        modeBeingApplied = nil
-        updatePublished(\.isReady, to: false)
-        updatePublished(\.isLoaded, to: false)
-        updatePublished(\.presentedMode, to: nil)
-        updatePublished(\.errorMessage, to: nil)
+        updatePresentation { $0.reset() }
         installQATerminationObserverIfEnabled()
         startupTask?.cancel()
         startupTask = Task { [weak self] in
@@ -154,14 +209,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func detach(_ webView: WKWebView) {
         guard self.webView === webView else { return }
         invalidateRequestQueue()
+        cancelModeTransition()
         startupTask?.cancel()
         cancelScheduledRecoveryCapture()
         self.webView = nil
-        modeRequestEpoch &+= 1
-        modeBeingApplied = nil
-        updatePublished(\.isReady, to: false)
-        updatePublished(\.isLoaded, to: false)
-        updatePublished(\.presentedMode, to: nil)
+        updatePresentation { $0.reset() }
         removeQATerminationObserver()
     }
 
@@ -187,17 +239,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: "")
         recoverySnapshot = nil
         lastKnownSelectionSnapshot = nil
-        modeRequestEpoch &+= 1
-        modeBeingApplied = nil
-        updatePublished(\.isReady, to: false)
-        updatePublished(\.isLoaded, to: false)
-        updatePublished(\.presentedMode, to: nil)
+        cancelModeTransition()
+        updatePresentation { $0.reset() }
         updatePublished(\.isDirty, to: false)
     }
 
     func editorBecameReady() {
         startupTask?.cancel()
-        updatePublished(\.isReady, to: true)
+        updatePresentation {
+            $0.webContentBecameReady(hasPendingDocument: pendingSource != nil)
+        }
         flushPendingState()
     }
 
@@ -244,21 +295,26 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func reportError(_ message: String) {
         startupTask?.cancel()
-        updatePublished(\.errorMessage, to: message)
-        updatePublished(\.isLoaded, to: false)
-        updatePublished(\.presentedMode, to: nil)
+        cancelModeTransition()
+        updatePresentation { $0.fail(message) }
     }
 
     func loadDocument(
         _ source: String,
         documentID: String,
-        mode: NotePresentationMode,
-        preservingRecovery: Bool = false
+        mode: MarkdownEditorMode
     ) {
+        let publishesLoadingState = isReady
         invalidateRequestQueue()
         cancelScheduledRecoveryCapture()
-        let retainedStartingFingerprint = preservingRecovery ? startingFingerprint : nil
-        if !preservingRecovery {
+        let nextFingerprint = DocumentFingerprint(content: source).sha256
+        let preservesRecovery = recoverySnapshot.map {
+            $0.documentID == documentID
+                && $0.fingerprint == startingFingerprint
+                && $0.source == source
+        } ?? false
+        let retainedStartingFingerprint = preservesRecovery ? startingFingerprint : nil
+        if !preservesRecovery {
             recoverySnapshot = nil
             lastKnownSelectionSnapshot = nil
             reconstructionScrollAnchor = nil
@@ -269,51 +325,98 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingDocumentID = documentID
         self.documentID = documentID
         startingFingerprint = retainedStartingFingerprint
-            ?? DocumentFingerprint(content: source).sha256
+            ?? nextFingerprint
         checkedSource = source
         sourceOffsetMap = EditorSourceOffsetMap(source: source)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
         pendingMode = mode
-        modeRequestEpoch &+= 1
-        modeBeingApplied = nil
-        updatePublished(\.isLoaded, to: false)
-        updatePublished(\.presentedMode, to: nil)
-        updatePublished(\.isDirty, to: false)
-        updatePublished(\.errorMessage, to: nil)
+        cancelModeTransition()
+        if publishesLoadingState {
+            updatePresentation {
+                $0.beginLoading()
+            }
+            updatePublished(\.isDirty, to: false)
+        }
         flushPendingState()
     }
 
-    func setMode(_ mode: NotePresentationMode) {
-        guard mode != .read else { return }
+    func setMode(_ mode: MarkdownEditorMode) {
+        let requiresConvergence = pendingMode != mode || presentedMode != mode
         pendingMode = mode
+        guard requiresConvergence else { return }
         guard isReady, isLoaded, let webView else { return }
-        guard presentedMode != mode,
-              modeBeingApplied != mode else { return }
-        modeRequestEpoch &+= 1
-        let intendedModeRequestEpoch = modeRequestEpoch
-        modeBeingApplied = mode
-        Task { [weak self] in
-            guard let self else { return }
+        startModeConvergence(in: webView)
+    }
+
+    /// Serially converges the retained CodeMirror configuration on the latest
+    /// requested editor mode. A newer request never starts a competing bridge
+    /// task and never gets discarded merely because the previously published
+    /// mode still matches it while another mode is in flight.
+    private func startModeConvergence(in webView: WKWebView) {
+        guard modeTransitionTask == nil else { return }
+        let transitionID = UUID()
+        let intendedModeTransitionEpoch = modeTransitionEpoch
+        modeTransitionID = transitionID
+        modeTransitionTask = Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            defer {
+                if self.modeTransitionID == transitionID {
+                    self.modeTransitionTask = nil
+                    self.modeTransitionID = nil
+                }
+            }
             do {
-                _ = try await send(.setMode(mode), in: webView)
-                guard intendedModeRequestEpoch == modeRequestEpoch,
-                      pendingMode == mode,
-                      self.webView === webView else { return }
-                modeBeingApplied = nil
-                updatePublished(\.presentedMode, to: mode)
-                PerformanceProbe.shared.markEditorModeReady(
-                    documentID: documentID,
-                    mode: mode
-                )
+                while true {
+                    try Task.checkCancellation()
+                    guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
+                          self.isReady,
+                          self.isLoaded,
+                          self.webView === webView else { return }
+                    let targetMode = self.pendingMode
+                    guard self.presentedMode != targetMode else { return }
+                    // A mode request is idempotent and source-preserving. One
+                    // bounded retry safely resolves a transient transport
+                    // failure or an acknowledgement lost after the Web side
+                    // already applied the compartment, without creating a
+                    // second mode owner or an unbounded retry loop.
+                    do {
+                        _ = try await self.send(.setMode(targetMode), in: webView)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch SessionError.staleRequest {
+                        throw SessionError.staleRequest
+                    } catch {
+                        _ = try await self.send(.setMode(targetMode), in: webView)
+                    }
+                    guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
+                          self.webView === webView else { return }
+                    self.updatePresentation { $0.complete(targetMode) }
+                    PerformanceProbe.shared.markEditorModeReady(
+                        documentID: self.documentID,
+                        mode: targetMode
+                    )
+                    if self.pendingMode == targetMode { return }
+                }
+            } catch is CancellationError {
+                return
+            } catch SessionError.staleRequest {
+                return
             } catch {
-                guard intendedModeRequestEpoch == modeRequestEpoch else { return }
-                modeBeingApplied = nil
+                guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
+                      self.webView === webView else { return }
                 let message = "The document mode change was not applied because the editor changed during text composition."
-                updatePublished(\.errorMessage, to: message)
-                _ = try? await send(.announceStatus(message), in: webView)
+                self.updatePresentation { $0.report(message) }
+                _ = try? await self.send(.announceStatus(message), in: webView)
             }
         }
+    }
+
+    private func cancelModeTransition() {
+        modeTransitionEpoch &+= 1
+        modeTransitionTask?.cancel()
+        modeTransitionTask = nil
+        modeTransitionID = nil
     }
 
     func setUserCSS(_ css: String) {
@@ -726,25 +829,33 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func focus() {
-        guard isReady, let webView else { return }
         Task {
-            _ = try? await send(.focus, in: webView)
+            try? await focusAndWait()
         }
+    }
+
+    func focusAndWait() async throws {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        _ = try await send(.focus, in: webView)
     }
 
     /// Removes keyboard focus before the retained editor is hidden by Read.
     /// The WebView remains attached so selection, undo, and CodeMirror state
     /// survive, but it must not continue accepting invisible input.
     func resignFocus() {
-        guard isReady, let webView else { return }
+        Task {
+            try? await resignFocusAndWait()
+        }
+    }
+
+    func resignFocusAndWait() async throws {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
         if let window = webView.window,
            let firstResponder = window.firstResponder as? NSView,
            firstResponder === webView || firstResponder.isDescendant(of: webView) {
             window.makeFirstResponder(nil)
         }
-        Task {
-            _ = try? await send(.blur, in: webView)
-        }
+        _ = try await send(.blur, in: webView)
     }
 
     func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
@@ -804,6 +915,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func webContentProcessTerminated() {
         invalidateRequestQueue()
+        cancelModeTransition()
         cancelScheduledRecoveryCapture()
         let recoveryRanges = currentValidSelectionRanges()
         if let snapshot = recoverySnapshot,
@@ -840,10 +952,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 dirty: isDirty
             )
         }
-        pendingSource = checkedSource
-        pendingDocumentID = documentID
-        updatePublished(\.isReady, to: false)
-        updatePublished(\.isLoaded, to: false)
+        let recoverySource = checkedSource
+        let recoveryDocumentID = documentID
+        let recoveryMode = pendingMode
+        updatePresentation { $0.webContentTerminated() }
+        loadDocument(
+            recoverySource,
+            documentID: recoveryDocumentID,
+            mode: recoveryMode
+        )
     }
 
     private func scheduleRecoveryCapture(for generation: Int) {
@@ -920,10 +1037,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     generation = recovered.resultingGeneration
                     updatePublished(\.isDirty, to: snapshot.dirty)
                     if recovered.recovery?.undoHistoryPreserved == false {
-                        updatePublished(
-                            \.errorMessage,
-                            to: String(localized: "The exact editor buffer was recovered, but its pre-crash undo history was unavailable.", table: "Localizable", bundle: .module)
-                        )
+                        updatePresentation {
+                            $0.report(String(localized: "The exact editor buffer was recovered, but its pre-crash undo history was unavailable.", table: "Localizable", bundle: .module))
+                        }
                         _ = try await send(
                             .announceStatus(
                                 "The exact editor buffer was recovered. Pre-crash undo history is unavailable."
@@ -984,9 +1100,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     )
                     appliedMode = requestedMode
                 }
-                modeBeingApplied = nil
-                updatePublished(\.presentedMode, to: appliedMode)
-                updatePublished(\.isLoaded, to: true)
+                updatePresentation { $0.complete(appliedMode) }
                 PerformanceProbe.shared.markEditorModeReady(
                     documentID: documentID,
                     mode: appliedMode
@@ -998,9 +1112,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 guard intendedRequestEpoch == requestEpoch,
                       self.documentID == documentID,
                       self.webView === webView else { return }
-                updatePublished(\.isLoaded, to: false)
-                updatePublished(\.presentedMode, to: nil)
-                updatePublished(\.errorMessage, to: error.localizedDescription)
+                updatePresentation { $0.fail(error.localizedDescription) }
             }
         }
     }
@@ -1302,6 +1414,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             return snapshot.ranges
         }
         return fallbackSelectionSnapshot().ranges
+    }
+
+    private func updatePresentation(
+        _ update: (inout MarkdownEditorPresentationState) -> Void
+    ) {
+        var next = presentation
+        update(&next)
+        guard next != presentation else { return }
+        presentation = next
     }
 
     private func updatePublished<Value: Equatable>(

@@ -465,7 +465,8 @@ struct WindowControllerArchitectureTests {
 
         controller.installOpenedDocument(descriptor)
         let session = controller.session(for: descriptor)
-        #expect(session.presentationMode == .source)
+        #expect(session.presentationMode == .read)
+        #expect(session.selectedPresentationMode == .source)
         #expect(session.scrollFraction == 0.64)
         let semanticAnchor = EditorScrollAnchor(
             sourceFingerprint: "revision-bound-fingerprint",
@@ -491,7 +492,8 @@ struct WindowControllerArchitectureTests {
         controller.installOpenedDocument(descriptor)
 
         #expect(controller.session(for: descriptor) === session)
-        #expect(session.presentationMode == .livePreview)
+        #expect(session.presentationMode == .read)
+        #expect(session.selectedPresentationMode == .livePreview)
         #expect(session.scrollFraction == 0.31)
         #expect(session.scrollAnchor == semanticAnchor)
         #expect(controller.presentationSnapshot(vaultID: reference.vaultID) ==
@@ -591,7 +593,8 @@ struct WindowControllerArchitectureTests {
         controller.selectUnavailableDocument(vaultID: vaultID, relativePath: path)
 
         let session = controller.session(for: target)
-        #expect(session.presentationMode == .source)
+        #expect(session.presentationMode == .read)
+        #expect(session.selectedPresentationMode == .source)
         #expect(session.scrollFraction == 0.42)
         controller.clearSelection(forRemovedPaths: [path])
         controller.selectUnavailableDocument(vaultID: vaultID, relativePath: path)

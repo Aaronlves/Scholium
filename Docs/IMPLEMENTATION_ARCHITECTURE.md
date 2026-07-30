@@ -1463,8 +1463,9 @@ Each retained `DocumentSessionModel` owns:
 
 - its persistent `MarkdownEditorSession` and flush token;
 - the exact editor mirror and committed revision;
-- user-facing Review, Edit, or Source mode, backed by the stable internal
-  `read`, `livePreview`, and `source` identifiers;
+- one atomic `DocumentPresentationState`: active Review/Edit/Source,
+  restoration-only editor intent, retained editor configuration, and whether
+  the editor surface has ever been allocated;
 - a revision-bound semantic source scroll anchor plus normalized fallback;
 - autosave and in-flight save tasks with stale tokens;
 - rendered Review projection state; and
@@ -1482,10 +1483,21 @@ the retained CodeMirror surface is also mounted continuously. Review, Edit,
 and Source transitions change opacity, stacking, hit testing,
 accessibility exposure, and first-responder focus rather than view identity.
 `MarkdownEditorSession.presentedMode` advances only after the typed bridge
-acknowledges initialization or a mode request. The Host therefore keeps Review
-visible until the acknowledged mode equals the requested Edit or Source mode;
-an earlier retained Source frame cannot satisfy Edit readiness merely because
-the WebView was loaded previously.
+acknowledges initialization or a mode request. Initial Review-to-editor entry
+therefore keeps Review visible until the acknowledged mode equals the requested
+Edit or Source mode; an earlier retained Source frame cannot satisfy Edit
+readiness merely because the WebView was loaded previously. After that editor
+surface has been presented for the current editing run, Edit/Source
+reconfiguration keeps the same CodeMirror surface visible while the bridge
+converges instead of routing through Review. Native focus follows the
+acknowledged mode, never an unconfirmed request.
+Restoration is not an active mode. A restored Edit or Source preference remains
+inside the Review phase until `DocumentController` begins the editing
+lifecycle; only that atomic transition allocates the retained surface and makes
+the session writable. Conversely, finishing editing commits one transition to
+Review while retaining the hidden editor's last Edit/Source configuration.
+The session therefore publishes no separately mutable `isEditing`, mode,
+retained-mode, or surface-allocation flags.
 `NoteContentView` observes that exact `DocumentSessionModel` directly; it does
 not depend on an ancestor's forwarded change notification to reveal a new
 mode. This ensures the editor surface is invalidated as soon as the persistent
@@ -1524,6 +1536,43 @@ builds. On the Web side, `editor.ts` remains the sole composition root and
 source/identity owner, while selection actions, cached preview presentation,
 and scroll observation/restoration are bounded components around the same
 `EditorView`. None may persist Markdown or create another `EditorState`.
+
+Edit and Source are one atomic CodeMirror configuration boundary. One
+`Compartment` owns the mode facet, root/content accessibility attributes,
+wrapping and gutters, and every Live Preview projection field, plugin, widget
+provider, navigation keymap, formatting overlay, and cached-preview overlay.
+The editor initializes in fail-closed Source configuration, and an absent mode
+facet also resolves to Source; exact document bytes are therefore never loaded
+through Live Preview merely because an Edit request has not arrived yet.
+Overlay DOM and document-level listeners are created and destroyed with their
+Live Preview `ViewPlugin` lifecycle rather than remaining hidden across Source.
+Swift publishes
+one coherent requested mode; `MarkdownEditorSession` serializes bridge work,
+publishes the acknowledged mode as fact, and continues toward the newest
+request if an older request completes in flight. No imperative DOM class or
+second native mode flag may separately reconstruct presentation. Source keeps
+the common parser for exact-source navigation and editing commands but installs
+no Live Preview state field, semantic widget, projection keymap, overlay, or
+semantic typography highlighter. Selection-match highlighting is absent;
+selection belongs only to the researcher's explicit range. Live Preview
+decoration invalidation follows document, viewport, selection, and presentation
+inputs, not window focus, so an inactive WebView cannot erase its semantic
+projection merely because WebKit has no visible range to report.
+
+The bridge type itself is editor-only: `MarkdownEditorMode` contains Edit and
+Source, while the researcher-facing `NotePresentationMode` additionally owns
+Review. `MarkdownEditorSession` publishes one
+`MarkdownEditorPresentationState` snapshot containing Web-content readiness,
+document loading/ready phase, acknowledged editor mode, and error. Pending mode
+and exact document input remain private session state. The SwiftUI adapter's
+`lastModeInput` is only a one-way diff cache that prevents an unchanged view
+input from being resent after a session publication; it never initializes or
+recovers a session and never converts a bridge acknowledgement into Document
+state. Initial exact input is staged without publishing during `makeNSView`;
+the page-ready boundary publishes loading once and starts initialization. A
+matching recovery snapshot is selected by the session's exact document,
+starting-fingerprint, and source identity, including after Web-content process
+termination or SwiftUI view reconstruction.
 
 Every bridge request is bounded and carries protocol, request, session,
 document, fingerprint, and generation identity. Mutating requests are

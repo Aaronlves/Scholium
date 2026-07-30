@@ -47,13 +47,13 @@ body,
   line-height: var(--scholium-rhythm-prose-line-height);
 }
 
-#editor .cm-scroller.scholium-live-scroller {
+#editor .cm-editor.scholium-live-mode .cm-scroller {
   font-family: "Alegreya", Georgia, serif;
   font-size: var(--scholium-document-prose-font-size);
   line-height: var(--scholium-rhythm-prose-line-height);
 }
 
-#editor .cm-scroller.scholium-source-scroller {
+#editor .cm-editor.scholium-source-mode .cm-scroller {
   font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: var(--scholium-document-source-font-size);
   line-height: var(--scholium-rhythm-source-line-height);

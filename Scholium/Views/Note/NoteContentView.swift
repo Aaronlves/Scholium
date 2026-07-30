@@ -841,8 +841,7 @@ struct NoteContentView: View {
         documentSession.isSavingEdit
     }
     private var presentationMode: NotePresentationMode {
-        get { documentSession.presentationMode }
-        nonmutating set { documentSession.presentationMode = newValue }
+        documentSession.presentationMode
     }
     private var returnToReadAfterSave: Bool {
         get { documentSession.returnToReadAfterSave }
@@ -1034,10 +1033,14 @@ struct NoteContentView: View {
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
+            focusEditorIfPresented()
             if !isEditing,
                documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256 {
                 PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
             }
+        }
+        .onChange(of: editorSession.presentedMode) { _, _ in
+            focusEditorIfPresented()
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
@@ -1225,7 +1228,7 @@ struct NoteContentView: View {
             presentsEditor: isEditing,
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
-                && editorSession.presentedMode == presentationMode
+                && editorSession.presentedMode == documentSession.activeEditorMode
         ) {
             readSurface
         } editor: {
@@ -1409,7 +1412,7 @@ struct NoteContentView: View {
         }
         if mode == .read {
             guard isEditing else {
-                presentationMode = .read
+                documentSession.resetPresentation()
                 actions.rememberPresentationMode(.read)
                 return
             }
@@ -1449,21 +1452,20 @@ struct NoteContentView: View {
             actions.notify("This note is read-only in Scholium.", .information)
             return
         }
-        actions.rememberPresentationMode(mode)
-
+        guard let editorMode = mode.editorMode else { return }
         if isEditing {
-            presentationMode = mode
-            documentSession.retainedEditorMode = mode
+            documentSession.switchEditorMode(to: editorMode)
         } else {
-            beginEditing(mode: mode)
+            beginEditing(mode: editorMode)
         }
+        actions.rememberPresentationMode(mode)
     }
 
     private func restorePresentationModeIfAvailable() {
         guard !isEditing,
-              presentationMode != .read,
+              let restorationMode = documentSession.restorationEditorMode,
               editingIsAvailable else { return }
-        beginEditing(mode: presentationMode)
+        beginEditing(mode: restorationMode)
     }
 
     private func consumePendingPresentationRequest() {
@@ -1487,7 +1489,7 @@ struct NoteContentView: View {
         }
     }
 
-    private func beginEditing(mode: NotePresentationMode = .livePreview) {
+    private func beginEditing(mode: MarkdownEditorMode = .livePreview) {
         controller.beginEditing(
             session: documentSession,
             target: target,
@@ -1495,10 +1497,17 @@ struct NoteContentView: View {
             revision: state.documentRevisions[note.relativePath],
             mode: mode
         )
-        Task { @MainActor in
-            await Task.yield()
-            editorSession.focus()
-        }
+    }
+
+    /// Focus belongs to the mode that the Web editor has acknowledged, not
+    /// merely to the mode most recently requested by native UI. This keeps a
+    /// retained Source surface from receiving focus during Review -> Edit and
+    /// prevents rapid Edit/Source requests from racing the bridge handshake.
+    private func focusEditorIfPresented() {
+        guard isEditing,
+              editorSession.isLoaded,
+              editorSession.presentedMode == documentSession.activeEditorMode else { return }
+        editorSession.focus()
     }
 
     private func finishEditing() {

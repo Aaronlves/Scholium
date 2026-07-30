@@ -15914,106 +15914,6 @@
       scope
     };
   }
-  function highlightTags(highlighters, tags3) {
-    let result = null;
-    for (let highlighter of highlighters) {
-      let value = highlighter.style(tags3);
-      if (value)
-        result = result ? result + " " + value : value;
-    }
-    return result;
-  }
-  function highlightTree(tree, highlighter, putStyle, from = 0, to = tree.length) {
-    let builder = new HighlightBuilder(from, Array.isArray(highlighter) ? highlighter : [highlighter], putStyle);
-    builder.highlightRange(tree.cursor(), from, to, "", builder.highlighters);
-    builder.flush(to);
-  }
-  var HighlightBuilder = class {
-    constructor(at, highlighters, span) {
-      this.at = at;
-      this.highlighters = highlighters;
-      this.span = span;
-      this.class = "";
-    }
-    startSpan(at, cls) {
-      if (cls != this.class) {
-        this.flush(at);
-        if (at > this.at)
-          this.at = at;
-        this.class = cls;
-      }
-    }
-    flush(to) {
-      if (to > this.at && this.class)
-        this.span(this.at, to, this.class);
-    }
-    highlightRange(cursor, from, to, inheritedClass, highlighters) {
-      let { type, from: start, to: end } = cursor;
-      if (start >= to || end <= from)
-        return;
-      if (type.isTop)
-        highlighters = this.highlighters.filter((h) => !h.scope || h.scope(type));
-      let cls = inheritedClass;
-      let rule = getStyleTags(cursor) || Rule.empty;
-      let tagCls = highlightTags(highlighters, rule.tags);
-      if (tagCls) {
-        if (cls)
-          cls += " ";
-        cls += tagCls;
-        if (rule.mode == 1)
-          inheritedClass += (inheritedClass ? " " : "") + tagCls;
-      }
-      this.startSpan(Math.max(from, start), cls);
-      if (rule.opaque)
-        return;
-      let mounted = cursor.tree && cursor.tree.prop(NodeProp.mounted);
-      if (mounted && mounted.overlay) {
-        let inner = cursor.node.enter(mounted.overlay[0].from + start, 1);
-        let innerHighlighters = this.highlighters.filter((h) => !h.scope || h.scope(mounted.tree.type));
-        let hasChild2 = cursor.firstChild();
-        for (let i2 = 0, pos = start; ; i2++) {
-          let next = i2 < mounted.overlay.length ? mounted.overlay[i2] : null;
-          let nextPos = next ? next.from + start : end;
-          let rangeFrom2 = Math.max(from, pos), rangeTo2 = Math.min(to, nextPos);
-          if (rangeFrom2 < rangeTo2 && hasChild2) {
-            while (cursor.from < rangeTo2) {
-              this.highlightRange(cursor, rangeFrom2, rangeTo2, inheritedClass, highlighters);
-              this.startSpan(Math.min(rangeTo2, cursor.to), cls);
-              if (cursor.to >= nextPos || !cursor.nextSibling())
-                break;
-            }
-          }
-          if (!next || nextPos > to)
-            break;
-          pos = next.to + start;
-          if (pos > from) {
-            this.highlightRange(inner.cursor(), Math.max(from, next.from + start), Math.min(to, pos), "", innerHighlighters);
-            this.startSpan(Math.min(to, pos), cls);
-          }
-        }
-        if (hasChild2)
-          cursor.parent();
-      } else if (cursor.firstChild()) {
-        if (mounted)
-          inheritedClass = "";
-        do {
-          if (cursor.to <= from)
-            continue;
-          if (cursor.from >= to)
-            break;
-          this.highlightRange(cursor, from, to, inheritedClass, highlighters);
-          this.startSpan(Math.min(to, cursor.to), cls);
-        } while (cursor.nextSibling());
-        cursor.parent();
-      }
-    }
-  };
-  function getStyleTags(node) {
-    let rule = node.type.prop(ruleNodeProp);
-    while (rule && rule.context && !node.matchContext(rule.context))
-      rule = rule.next;
-    return rule || null;
-  }
   var t = Tag.define;
   var comment = t();
   var name = t();
@@ -17734,68 +17634,6 @@
       return new _HighlightStyle(specs, options || {});
     }
   };
-  var highlighterFacet = /* @__PURE__ */ Facet.define();
-  var fallbackHighlighter = /* @__PURE__ */ Facet.define({
-    combine(values2) {
-      return values2.length ? [values2[0]] : null;
-    }
-  });
-  function getHighlighters(state) {
-    let main = state.facet(highlighterFacet);
-    return main.length ? main : state.facet(fallbackHighlighter);
-  }
-  function syntaxHighlighting(highlighter, options) {
-    let ext = [treeHighlighter], themeType;
-    if (highlighter instanceof HighlightStyle) {
-      if (highlighter.module)
-        ext.push(EditorView.styleModule.of(highlighter.module));
-      themeType = highlighter.themeType;
-    }
-    if (options === null || options === void 0 ? void 0 : options.fallback)
-      ext.push(fallbackHighlighter.of(highlighter));
-    else if (themeType)
-      ext.push(highlighterFacet.computeN([EditorView.darkTheme], (state) => {
-        return state.facet(EditorView.darkTheme) == (themeType == "dark") ? [highlighter] : [];
-      }));
-    else
-      ext.push(highlighterFacet.of(highlighter));
-    return ext;
-  }
-  var TreeHighlighter = class {
-    constructor(view) {
-      this.markCache = /* @__PURE__ */ Object.create(null);
-      this.tree = syntaxTree(view.state);
-      this.decorations = this.buildDeco(view, getHighlighters(view.state));
-      this.decoratedTo = view.viewport.to;
-    }
-    update(update) {
-      let tree = syntaxTree(update.state), highlighters = getHighlighters(update.state);
-      let styleChange = highlighters != getHighlighters(update.startState);
-      let { viewport } = update.view, decoratedToMapped = update.changes.mapPos(this.decoratedTo, 1);
-      if (tree.length < viewport.to && !styleChange && tree.type == this.tree.type && decoratedToMapped >= viewport.to) {
-        this.decorations = this.decorations.map(update.changes);
-        this.decoratedTo = decoratedToMapped;
-      } else if (tree != this.tree || update.viewportChanged || styleChange) {
-        this.tree = tree;
-        this.decorations = this.buildDeco(update.view, highlighters);
-        this.decoratedTo = viewport.to;
-      }
-    }
-    buildDeco(view, highlighters) {
-      if (!highlighters || !this.tree.length)
-        return Decoration.none;
-      let builder = new RangeSetBuilder();
-      for (let { from, to } of view.visibleRanges) {
-        highlightTree(this.tree, highlighters, (from2, to2, style) => {
-          builder.add(from2, to2, this.markCache[style] || (this.markCache[style] = Decoration.mark({ class: style })));
-        }, from, to);
-      }
-      return builder.finish();
-    }
-  };
-  var treeHighlighter = /* @__PURE__ */ Prec.high(/* @__PURE__ */ ViewPlugin.fromClass(TreeHighlighter, {
-    decorations: (v) => v.decorations
-  }));
   var defaultHighlightStyle = /* @__PURE__ */ HighlightStyle.define([
     {
       tag: tags.meta,
@@ -18216,11 +18054,11 @@
         if (line.from > prevLine && (from == to || to > line.from)) {
           prevLine = line.from;
           let indent = /^\s*/.exec(line.text)[0].length;
-          let empty2 = indent == line.length;
+          let empty = indent == line.length;
           let comment2 = line.text.slice(indent, indent + token.length) == token ? indent : -1;
           if (indent < line.text.length && indent < minIndent)
             minIndent = indent;
-          lines.push({ line, comment: comment2, token, indent, empty: empty2, single: false });
+          lines.push({ line, comment: comment2, token, indent, empty, single: false });
         }
         pos = line.to + 1;
       }
@@ -18234,8 +18072,8 @@
     }
     if (option != 2 && lines.some((l) => l.comment < 0 && (!l.empty || l.single))) {
       let changes = [];
-      for (let { line, token, indent, empty: empty2, single } of lines)
-        if (single || !empty2)
+      for (let { line, token, indent, empty, single } of lines)
+        if (single || !empty)
           changes.push({ from: line.from + indent, insert: token + " " });
       let changeSet = state.changes(changes);
       return { changes: changeSet, selection: state.selection.map(changeSet, 1) };
@@ -21023,363 +20861,6 @@
   ];
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
-  // node_modules/@codemirror/search/dist/index.js
-  var basicNormalize = typeof String.prototype.normalize == "function" ? (x) => x.normalize("NFKD") : (x) => x;
-  var SearchCursor = class {
-    /**
-    Create a text cursor. The query is the search string, `from` to
-    `to` provides the region to search.
-    
-    When `normalize` is given, it will be called, on both the query
-    string and the content it is matched against, before comparing.
-    You can, for example, create a case-insensitive search by
-    passing `s => s.toLowerCase()`.
-    
-    Text is always normalized with
-    [`.normalize("NFKD")`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/normalize)
-    (when supported).
-    */
-    constructor(text, query, from = 0, to = text.length, normalize, test) {
-      this.test = test;
-      this.value = { from: 0, to: 0, precise: false };
-      this.done = false;
-      this.matches = [];
-      this.buffer = "";
-      this.bufferPos = 0;
-      this.iter = text.iterRange(from, to);
-      this.bufferStart = from;
-      this.normalize = normalize ? (x) => normalize(basicNormalize(x)) : basicNormalize;
-      this.query = this.normalize(query);
-    }
-    peek() {
-      if (this.bufferPos == this.buffer.length) {
-        this.bufferStart += this.buffer.length;
-        this.iter.next();
-        if (this.iter.done)
-          return -1;
-        this.bufferPos = 0;
-        this.buffer = this.iter.value;
-      }
-      return codePointAt2(this.buffer, this.bufferPos);
-    }
-    /**
-    Look for the next match. Updates the iterator's
-    [`value`](https://codemirror.net/6/docs/ref/#search.SearchCursor.value) and
-    [`done`](https://codemirror.net/6/docs/ref/#search.SearchCursor.done) properties. Should be called
-    at least once before using the cursor.
-    */
-    next() {
-      while (this.matches.length)
-        this.matches.pop();
-      return this.nextOverlapping();
-    }
-    /**
-    The `next` method will ignore matches that partially overlap a
-    previous match. This method behaves like `next`, but includes
-    such matches.
-    */
-    nextOverlapping() {
-      for (; ; ) {
-        let next = this.peek();
-        if (next < 0) {
-          this.done = true;
-          return this;
-        }
-        let str = fromCodePoint(next), start = this.bufferStart + this.bufferPos;
-        this.bufferPos += codePointSize2(next);
-        let norm = this.normalize(str);
-        if (norm.length)
-          for (let i2 = 0, pos = start, posPrecise = true; ; i2++) {
-            let code2 = norm.charCodeAt(i2);
-            let match = this.match(code2, pos, posPrecise, this.bufferPos + this.bufferStart, i2 == norm.length - 1);
-            if (match) {
-              this.value = match;
-              return this;
-            }
-            if (i2 == norm.length - 1)
-              break;
-            if (posPrecise && i2 < str.length && str.charCodeAt(i2) == code2)
-              pos++;
-            else
-              posPrecise = false;
-          }
-      }
-    }
-    match(code2, pos, posPrecise, end, endPrecise) {
-      let match = null;
-      for (let i2 = 0; i2 < this.matches.length; ) {
-        let partial = this.matches[i2], keep = false;
-        if (this.query.charCodeAt(partial.index) == code2) {
-          if (partial.index == this.query.length - 1) {
-            match = { from: partial.from, to: end, precise: endPrecise && partial.precise };
-          } else {
-            partial.index++;
-            keep = true;
-          }
-        }
-        if (keep)
-          i2++;
-        else
-          this.matches.splice(i2, 1);
-      }
-      if (this.query.charCodeAt(0) == code2) {
-        if (this.query.length == 1)
-          match = { from: pos, to: end, precise: posPrecise && endPrecise };
-        else
-          this.matches.push({ from: pos, index: 1, precise: posPrecise });
-      }
-      if (match && this.test && !this.test(match.from, match.to, this.buffer, this.bufferStart))
-        match = null;
-      return match;
-    }
-  };
-  if (typeof Symbol != "undefined")
-    SearchCursor.prototype[Symbol.iterator] = function() {
-      return this;
-    };
-  var empty = { from: -1, to: -1, match: /* @__PURE__ */ /.*/.exec(""), precise: true };
-  var baseFlags = "gm" + (/x/.unicode == null ? "" : "u");
-  var RegExpCursor = class {
-    /**
-    Create a cursor that will search the given range in the given
-    document. `query` should be the raw pattern (as you'd pass it to
-    `new RegExp`).
-    */
-    constructor(text, query, options, from = 0, to = text.length) {
-      this.text = text;
-      this.to = to;
-      this.curLine = "";
-      this.done = false;
-      this.value = empty;
-      if (/\\[sWDnr]|\n|\r|\[\^/.test(query))
-        return new MultilineRegExpCursor(text, query, options, from, to);
-      this.re = new RegExp(query, baseFlags + ((options === null || options === void 0 ? void 0 : options.ignoreCase) ? "i" : ""));
-      this.test = options === null || options === void 0 ? void 0 : options.test;
-      this.iter = text.iter();
-      let startLine = text.lineAt(from);
-      this.curLineStart = startLine.from;
-      this.matchPos = toCharEnd(text, from);
-      this.getLine(this.curLineStart);
-    }
-    getLine(skip) {
-      this.iter.next(skip);
-      if (this.iter.lineBreak) {
-        this.curLine = "";
-      } else {
-        this.curLine = this.iter.value;
-        if (this.curLineStart + this.curLine.length > this.to)
-          this.curLine = this.curLine.slice(0, this.to - this.curLineStart);
-        this.iter.next();
-      }
-    }
-    nextLine() {
-      this.curLineStart = this.curLineStart + this.curLine.length + 1;
-      if (this.curLineStart > this.to)
-        this.curLine = "";
-      else
-        this.getLine(0);
-    }
-    /**
-    Move to the next match, if there is one.
-    */
-    next() {
-      for (let off = this.matchPos - this.curLineStart; ; ) {
-        this.re.lastIndex = off;
-        let match = this.matchPos <= this.to && this.re.exec(this.curLine);
-        if (match) {
-          let from = this.curLineStart + match.index, to = from + match[0].length;
-          this.matchPos = toCharEnd(this.text, to + (from == to ? 1 : 0));
-          if (from == this.curLineStart + this.curLine.length)
-            this.nextLine();
-          if ((from < to || from > this.value.to) && (!this.test || this.test(from, to, match))) {
-            this.value = { from, to, precise: true, match };
-            return this;
-          }
-          off = this.matchPos - this.curLineStart;
-        } else if (this.curLineStart + this.curLine.length < this.to) {
-          this.nextLine();
-          off = 0;
-        } else {
-          this.done = true;
-          return this;
-        }
-      }
-    }
-  };
-  var flattened = /* @__PURE__ */ new WeakMap();
-  var FlattenedDoc = class _FlattenedDoc {
-    constructor(from, text) {
-      this.from = from;
-      this.text = text;
-    }
-    get to() {
-      return this.from + this.text.length;
-    }
-    static get(doc2, from, to) {
-      let cached = flattened.get(doc2);
-      if (!cached || cached.from >= to || cached.to <= from) {
-        let flat = new _FlattenedDoc(from, doc2.sliceString(from, to));
-        flattened.set(doc2, flat);
-        return flat;
-      }
-      if (cached.from == from && cached.to == to)
-        return cached;
-      let { text, from: cachedFrom } = cached;
-      if (cachedFrom > from) {
-        text = doc2.sliceString(from, cachedFrom) + text;
-        cachedFrom = from;
-      }
-      if (cached.to < to)
-        text += doc2.sliceString(cached.to, to);
-      flattened.set(doc2, new _FlattenedDoc(cachedFrom, text));
-      return new _FlattenedDoc(from, text.slice(from - cachedFrom, to - cachedFrom));
-    }
-  };
-  var MultilineRegExpCursor = class {
-    constructor(text, query, options, from, to) {
-      this.text = text;
-      this.to = to;
-      this.done = false;
-      this.value = empty;
-      this.matchPos = toCharEnd(text, from);
-      this.re = new RegExp(query, baseFlags + ((options === null || options === void 0 ? void 0 : options.ignoreCase) ? "i" : ""));
-      this.test = options === null || options === void 0 ? void 0 : options.test;
-      this.flat = FlattenedDoc.get(text, from, this.chunkEnd(
-        from + 5e3
-        /* Chunk.Base */
-      ));
-    }
-    chunkEnd(pos) {
-      return pos >= this.to ? this.to : this.text.lineAt(pos).to;
-    }
-    next() {
-      for (; ; ) {
-        let off = this.re.lastIndex = this.matchPos - this.flat.from;
-        let match = this.re.exec(this.flat.text);
-        if (match && !match[0] && match.index == off) {
-          this.re.lastIndex = off + 1;
-          match = this.re.exec(this.flat.text);
-        }
-        if (match) {
-          let from = this.flat.from + match.index, to = from + match[0].length;
-          if ((this.flat.to >= this.to || match.index + match[0].length <= this.flat.text.length - 10) && (!this.test || this.test(from, to, match))) {
-            this.value = { from, to, precise: true, match };
-            this.matchPos = toCharEnd(this.text, to + (from == to ? 1 : 0));
-            return this;
-          }
-        }
-        if (this.flat.to == this.to) {
-          this.done = true;
-          return this;
-        }
-        this.flat = FlattenedDoc.get(this.text, this.flat.from, this.chunkEnd(this.flat.from + this.flat.text.length * 2));
-      }
-    }
-  };
-  if (typeof Symbol != "undefined") {
-    RegExpCursor.prototype[Symbol.iterator] = MultilineRegExpCursor.prototype[Symbol.iterator] = function() {
-      return this;
-    };
-  }
-  function toCharEnd(text, pos) {
-    if (pos >= text.length)
-      return pos;
-    let line = text.lineAt(pos), next;
-    while (pos < line.to && (next = line.text.charCodeAt(pos - line.from)) >= 56320 && next < 57344)
-      pos++;
-    return pos;
-  }
-  var defaultHighlightOptions = {
-    highlightWordAroundCursor: false,
-    minSelectionLength: 1,
-    maxMatches: 100,
-    wholeWords: false
-  };
-  var highlightConfig = /* @__PURE__ */ Facet.define({
-    combine(options) {
-      return combineConfig(options, defaultHighlightOptions, {
-        highlightWordAroundCursor: (a, b) => a || b,
-        minSelectionLength: Math.min,
-        maxMatches: Math.min
-      });
-    }
-  });
-  function highlightSelectionMatches(options) {
-    let ext = [defaultTheme, matchHighlighter];
-    if (options)
-      ext.push(highlightConfig.of(options));
-    return ext;
-  }
-  var matchDeco = /* @__PURE__ */ Decoration.mark({ class: "cm-selectionMatch" });
-  var mainMatchDeco = /* @__PURE__ */ Decoration.mark({ class: "cm-selectionMatch cm-selectionMatch-main" });
-  function insideWordBoundaries(check, state, from, to) {
-    return (from == 0 || check(state.sliceDoc(from - 1, from)) != CharCategory.Word) && (to == state.doc.length || check(state.sliceDoc(to, to + 1)) != CharCategory.Word);
-  }
-  function insideWord(check, state, from, to) {
-    return check(state.sliceDoc(from, from + 1)) == CharCategory.Word && check(state.sliceDoc(to - 1, to)) == CharCategory.Word;
-  }
-  var matchHighlighter = /* @__PURE__ */ ViewPlugin.fromClass(class {
-    constructor(view) {
-      this.decorations = this.getDeco(view);
-    }
-    update(update) {
-      if (update.selectionSet || update.docChanged || update.viewportChanged)
-        this.decorations = this.getDeco(update.view);
-    }
-    getDeco(view) {
-      let conf = view.state.facet(highlightConfig);
-      let { state } = view, sel = state.selection;
-      if (sel.ranges.length > 1)
-        return Decoration.none;
-      let range = sel.main, query, check = null;
-      if (range.empty) {
-        if (!conf.highlightWordAroundCursor)
-          return Decoration.none;
-        let word = state.wordAt(range.head);
-        if (!word)
-          return Decoration.none;
-        check = state.charCategorizer(range.head);
-        query = state.sliceDoc(word.from, word.to);
-      } else {
-        let len = range.to - range.from;
-        if (len < conf.minSelectionLength || len > 200)
-          return Decoration.none;
-        if (conf.wholeWords) {
-          query = state.sliceDoc(range.from, range.to);
-          check = state.charCategorizer(range.head);
-          if (!(insideWordBoundaries(check, state, range.from, range.to) && insideWord(check, state, range.from, range.to)))
-            return Decoration.none;
-        } else {
-          query = state.sliceDoc(range.from, range.to);
-          if (!query)
-            return Decoration.none;
-        }
-      }
-      let deco = [];
-      for (let part of view.visibleRanges) {
-        let cursor = new SearchCursor(state.doc, query, part.from, part.to);
-        while (!cursor.next().done) {
-          let { from, to } = cursor.value;
-          if (!check || insideWordBoundaries(check, state, from, to)) {
-            if (range.empty && from <= range.from && to >= range.to)
-              deco.push(mainMatchDeco.range(from, to));
-            else if (from >= range.to || to <= range.from)
-              deco.push(matchDeco.range(from, to));
-            if (deco.length > conf.maxMatches)
-              return Decoration.none;
-          }
-        }
-      }
-      return Decoration.set(deco);
-    }
-  }, {
-    decorations: (v) => v.decorations
-  });
-  var defaultTheme = /* @__PURE__ */ EditorView.baseTheme({
-    ".cm-selectionMatch": { backgroundColor: "#99ff7780" },
-    ".cm-searchMatch .cm-selectionMatch": { backgroundColor: "transparent" }
-  });
-
   // protocol.ts
   var EDITOR_PROTOCOL_VERSION = 7;
   var MAX_INBOUND_BYTES = 25e5;
@@ -22932,7 +22413,7 @@ ${fence}
       let marks2 = [elt(Type.CodeMark, from, from + len)];
       if (infoFrom < infoTo)
         marks2.push(elt(Type.CodeInfo, cx.lineStart + infoFrom, cx.lineStart + infoTo));
-      for (let first = true, empty2 = true, hasLine = false; cx.nextLine() && line.depth >= cx.stack.length; first = false) {
+      for (let first = true, empty = true, hasLine = false; cx.nextLine() && line.depth >= cx.stack.length; first = false) {
         let i2 = line.pos;
         if (line.indent - line.baseIndent < 4)
           while (i2 < line.text.length && line.text.charCodeAt(i2) == ch)
@@ -22940,7 +22421,7 @@ ${fence}
         if (i2 - line.pos >= len && line.skipSpace(i2) == line.text.length) {
           for (let m of line.markers)
             marks2.push(m);
-          if (empty2 && hasLine)
+          if (empty && hasLine)
             addCodeText(marks2, cx.lineStart - 1, cx.lineStart);
           marks2.push(elt(Type.CodeMark, cx.lineStart + line.pos, cx.lineStart + i2));
           cx.nextLine();
@@ -22949,14 +22430,14 @@ ${fence}
           hasLine = true;
           if (!first) {
             addCodeText(marks2, cx.lineStart - 1, cx.lineStart);
-            empty2 = false;
+            empty = false;
           }
           for (let m of line.markers)
             marks2.push(m);
           let textStart = cx.lineStart + line.basePos, textEnd = cx.lineStart + line.text.length;
           if (textStart < textEnd) {
             addCodeText(marks2, textStart, textEnd);
-            empty2 = false;
+            empty = false;
           }
         }
       }
@@ -28241,8 +27722,8 @@ ${fence}
       else if (text == ">" && around.name == "JSXFragmentTag") {
         return { range, changes: { from: head, insert: `</>` } };
       } else if (text == "/" && around.name == "JSXStartCloseTag") {
-        let empty2 = around.parent, base3 = empty2.parent;
-        if (base3 && empty2.from == head - 2 && ((name2 = elementName(state.doc, base3.firstChild, head)) || ((_a2 = base3.firstChild) === null || _a2 === void 0 ? void 0 : _a2.name) == "JSXFragmentTag")) {
+        let empty = around.parent, base3 = empty.parent;
+        if (base3 && empty.from == head - 2 && ((name2 = elementName(state.doc, base3.firstChild, head)) || ((_a2 = base3.firstChild) === null || _a2 === void 0 ? void 0 : _a2.name) == "JSXFragmentTag")) {
           let insert2 = `${name2}>`;
           return { range: EditorSelection.cursor(head + insert2.length, -1), changes: { from: head, insert: insert2 } };
         }
@@ -29251,8 +28732,8 @@ ${fence}
     if (!second)
       return false;
     let line1 = doc2.lineAt(first.to), line2 = doc2.lineAt(second.from);
-    let empty2 = /^[\s>]*$/.test(line1.text);
-    return line1.number + (empty2 ? 0 : 1) < line2.number;
+    let empty = /^[\s>]*$/.test(line1.text);
+    return line1.number + (empty ? 0 : 1) < line2.number;
   }
   function blankLine(context, state, line) {
     let insert2 = "";
@@ -30294,6 +29775,14 @@ ${fence}
     }
     return [...active.values()].sort((left, right) => left.from - right.from || left.to - right.to).map((projection) => `${projection.from}:${projection.to}`).join("|");
   }
+  function selectionProjectionSignature(doc2, selections, inlineProjections) {
+    const activeLines = selections.map((selection) => {
+      const fromLine = doc2.lineAt(Math.max(0, Math.min(selection.from, doc2.length))).from;
+      const toLine = doc2.lineAt(Math.max(0, Math.min(selection.to, doc2.length))).from;
+      return `${fromLine}:${toLine}`;
+    }).join("|");
+    return `${activeLines}#${activeProjectionSignature(selections, inlineProjections)}`;
+  }
   function selectionAffectedProjectionRanges(documentLength, previousSelections, nextSelections, margin = 2e3) {
     return immutableProjectionRanges(boundedProjectionRanges(
       documentLength,
@@ -30560,62 +30049,56 @@ ${fence}
     opposes: "Opposes",
     incompatible: "Incompatible"
   };
-  function createPreviewPopoverController(editor2, options) {
-    const root = document.createElement("aside");
-    root.id = "scholium-preview-popover";
-    root.className = "scholium-preview-popover";
-    root.dataset.scholiumProtected = "preview-popover";
-    root.setAttribute("role", "tooltip");
-    root.setAttribute("aria-live", "polite");
-    root.hidden = true;
-    const title = document.createElement("h2");
-    title.className = "scholium-preview-title";
-    const metadata = document.createElement("p");
-    metadata.className = "scholium-preview-metadata";
-    const body = document.createElement("div");
-    body.className = "scholium-preview-body";
-    body.setAttribute("role", "group");
-    body.setAttribute("aria-label", "Preview content");
-    root.append(title, metadata, body);
-    document.body.append(root);
+  function createPreviewPopoverController(options) {
+    let editor2 = null;
+    let root = null;
+    let title = null;
+    let metadata = null;
+    let body = null;
     let timer;
     let pendingAnchor = null;
     function hide() {
       window.clearTimeout(timer);
       timer = void 0;
       pendingAnchor = null;
-      root.hidden = true;
-      root.style.visibility = "";
-      title.textContent = "";
-      metadata.textContent = "";
-      body.replaceChildren();
+      if (root) {
+        root.hidden = true;
+        root.style.visibility = "";
+      }
+      if (title) title.textContent = "";
+      if (metadata) metadata.textContent = "";
+      body?.replaceChildren();
     }
     function position(anchor, startedAt) {
-      root.style.visibility = "hidden";
-      root.hidden = false;
+      if (!editor2 || !root) return;
+      const activeEditor = editor2;
+      const activeRoot = root;
+      activeRoot.style.visibility = "hidden";
+      activeRoot.hidden = false;
       const inset = 12;
       const gap = 8;
-      editor2.requestMeasure({
+      activeEditor.requestMeasure({
         read: () => ({
-          measured: root.getBoundingClientRect(),
+          measured: activeRoot.getBoundingClientRect(),
           viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight
         }),
         write: ({ measured, viewportWidth, viewportHeight }) => {
-          if (root.hidden) return;
+          if (activeRoot.hidden || editor2 !== activeEditor || root !== activeRoot) return;
           const left = Math.max(inset, Math.min(anchor.left, viewportWidth - measured.width - inset));
           const below = anchor.bottom + gap;
           const top2 = below + measured.height <= viewportHeight - inset ? below : Math.max(inset, anchor.top - measured.height - gap);
-          root.style.left = `${left}px`;
-          root.style.top = `${top2}px`;
-          root.style.visibility = "visible";
+          activeRoot.style.left = `${left}px`;
+          activeRoot.style.top = `${top2}px`;
+          activeRoot.style.visibility = "visible";
           window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
-            documentLength: editor2.state.doc.length
+            documentLength: activeEditor.state.doc.length
           }));
         }
       });
     }
     function removeInteractiveContent() {
+      if (!body) return;
       body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
       body.querySelectorAll("*").forEach((node) => {
         for (const attribute of Array.from(node.attributes)) {
@@ -30627,6 +30110,7 @@ ${fence}
       });
     }
     function show(preview, anchor, startedAt) {
+      if (!editor2 || !root || !title || !metadata || !body) return;
       title.textContent = preview.title;
       const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
       metadata.textContent = preview.fragment ? `${relationship}
@@ -30640,7 +30124,7 @@ ${preview.fragment}` : relationship;
     }
     function showAtSelection() {
       const startedAt = performance.now();
-      if (options.mode() !== "livePreview") return false;
+      if (!editor2) return false;
       const head = editor2.state.selection.main.head;
       const coords = editor2.coordsAtPos(head);
       if (!coords) return false;
@@ -30654,7 +30138,7 @@ ${preview.fragment}` : relationship;
     }
     function showAtPoint(x, y) {
       const startedAt = performance.now();
-      if (options.mode() !== "livePreview") return false;
+      if (!editor2) return false;
       const anchor = document.elementFromPoint(x, y)?.closest("[data-link-preview-index]");
       if (!anchor) return showAtSelection();
       const previewIndex = Number(anchor.dataset.linkPreviewIndex);
@@ -30666,15 +30150,15 @@ ${preview.fragment}` : relationship;
       return showAtSelection();
     }
     function anchorAtEvent(event) {
-      if (!event.metaKey || options.mode() !== "livePreview" || !(event.target instanceof Element)) {
+      if (!event.metaKey || !(event.target instanceof Element)) {
         return null;
       }
       return event.target.closest("[data-link-preview-index]");
     }
-    document.addEventListener("pointermove", (event) => {
+    const handlePointerMove = (event) => {
       const anchor = anchorAtEvent(event);
       if (!anchor) {
-        if (pendingAnchor || !root.hidden) hide();
+        if (pendingAnchor || root && !root.hidden) hide();
         return;
       }
       if (anchor === pendingAnchor) return;
@@ -30688,14 +30172,55 @@ ${preview.fragment}` : relationship;
           show(preview, anchor.getBoundingClientRect(), performance.now());
         }
       }, 300);
-    }, { passive: true });
-    document.addEventListener("keyup", (event) => {
+    };
+    const handleKeyUp = (event) => {
       if (event.key === "Meta") hide();
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && root && !root.hidden) hide();
+    };
+    function mount(view) {
+      if (editor2) return;
+      editor2 = view;
+      root = document.createElement("aside");
+      root.id = "scholium-preview-popover";
+      root.className = "scholium-preview-popover";
+      root.dataset.scholiumProtected = "preview-popover";
+      root.setAttribute("role", "tooltip");
+      root.setAttribute("aria-live", "polite");
+      root.hidden = true;
+      title = document.createElement("h2");
+      title.className = "scholium-preview-title";
+      metadata = document.createElement("p");
+      metadata.className = "scholium-preview-metadata";
+      body = document.createElement("div");
+      body.className = "scholium-preview-body";
+      body.setAttribute("role", "group");
+      body.setAttribute("aria-label", "Preview content");
+      root.append(title, metadata, body);
+      document.body.append(root);
+      document.addEventListener("pointermove", handlePointerMove, { passive: true });
+      document.addEventListener("keyup", handleKeyUp);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    function unmount(view) {
+      if (editor2 !== view) return;
+      hide();
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("keyup", handleKeyUp);
+      document.removeEventListener("keydown", handleKeyDown);
+      root?.remove();
+      root = null;
+      title = null;
+      metadata = null;
+      body = null;
+      editor2 = null;
+    }
+    const extension = ViewPlugin.define((view) => {
+      mount(view);
+      return { destroy: () => unmount(view) };
     });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !root.hidden) hide();
-    });
-    return { hide, showAtSelection, showAtPoint };
+    return { extension, hide, showAtSelection, showAtPoint };
   }
 
   // scroll-coordinator.ts
@@ -30827,19 +30352,9 @@ ${preview.fragment}` : relationship;
 
   // selection-actions.ts
   function createSelectionActionsController(options) {
-    const root = document.createElement("div");
-    root.id = "scholium-selection-actions";
-    root.className = "scholium-selection-actions";
-    root.hidden = true;
-    root.dataset.scholiumProtected = "selection-actions";
-    const commandBar = document.createElement("div");
-    commandBar.className = "scholium-selection-toolbar";
-    commandBar.setAttribute("role", "toolbar");
-    commandBar.setAttribute("aria-label", "Formatting actions");
-    root.append(commandBar);
-    document.body.append(root);
+    let root = null;
     let activeView = null;
-    function addButton(title, label, command2) {
+    function addButton(commandBar, title, label, command2) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = title;
@@ -30851,18 +30366,39 @@ ${preview.fragment}` : relationship;
       });
       commandBar.append(button);
     }
-    addButton("B", "Bold", "bold");
-    addButton("I", "Italic", "emphasis");
-    addButton("</>", "Inline Code", "inlineCode");
-    addButton("\u2197", "Link", "standardLink");
-    function hide() {
+    function mount(view) {
+      if (root) return;
+      root = document.createElement("div");
+      root.id = "scholium-selection-actions";
+      root.className = "scholium-selection-actions";
       root.hidden = true;
+      root.dataset.scholiumProtected = "selection-actions";
+      const commandBar = document.createElement("div");
+      commandBar.className = "scholium-selection-toolbar";
+      commandBar.setAttribute("role", "toolbar");
+      commandBar.setAttribute("aria-label", "Formatting actions");
+      root.append(commandBar);
+      addButton(commandBar, "B", "Bold", "bold");
+      addButton(commandBar, "I", "Italic", "emphasis");
+      addButton(commandBar, "</>", "Inline Code", "inlineCode");
+      addButton(commandBar, "\u2197", "Link", "standardLink");
+      document.body.append(root);
+      update(view);
+    }
+    function unmount(view) {
+      if (activeView === view) activeView = null;
+      root?.remove();
+      root = null;
+    }
+    function hide() {
+      if (root) root.hidden = true;
       activeView = null;
     }
     function update(view) {
+      if (!root) return;
       const selection = view.state.selection;
       const main = selection.main;
-      if (options.mode() !== "livePreview" || view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
+      if (view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
         hide();
         return;
       }
@@ -30883,12 +30419,21 @@ ${preview.fragment}` : relationship;
       ))}px`;
       root.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
     }
-    return {
-      extension: EditorView.updateListener.of((updateEvent) => {
-        if (updateEvent.docChanged || updateEvent.selectionSet || updateEvent.focusChanged) {
-          update(updateEvent.view);
+    const extension = ViewPlugin.define((view) => {
+      mount(view);
+      return {
+        update(updateEvent) {
+          if (updateEvent.docChanged || updateEvent.selectionSet || updateEvent.focusChanged) {
+            update(updateEvent.view);
+          }
+        },
+        destroy() {
+          unmount(view);
         }
-      }),
+      };
+    });
+    return {
+      extension,
       hide,
       update
     };
@@ -31314,8 +30859,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var linkPreviews = [];
   var linkPreviewIndexByRange = /* @__PURE__ */ new Map();
   var editingDialect = null;
-  var currentMode = "livePreview";
   var hiddenFrontmatterSourceSelection = null;
+  var modeTransitionSequence = 0;
   var liveWidgetReuseCounts = { table: 0, callout: 0, footnote: 0 };
   var lastUndoLabel;
   var lastRedoLabel;
@@ -31332,9 +30877,17 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
   var modeCompartment = new Compartment();
   var lineSeparatorCompartment = new Compartment();
+  var editorModeFacet = Facet.define({
+    // Mode absence must fail closed to exact Source. Live Preview is installed
+    // only by the mode compartment and can never be inferred from a missing
+    // configuration input.
+    combine: (modes) => modes[0] ?? "source"
+  });
   var programmaticDocumentChange = Annotation.define();
   var refreshLivePreviewEffect = StateEffect.define();
-  var livePreviewHighlightStyle = HighlightStyle.define([]);
+  function configuredEditorMode(state) {
+    return state.facet(editorModeFacet);
+  }
   var setLiveBlockActivationEffect = StateEffect.define({
     map(value, changes) {
       if (value === null) return null;
@@ -31654,7 +31207,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     return immutableProjectionRanges(ranges);
   }
-  function finalizedLiveProjectionIndex(doc2, excluded, codeBlocks, footnotes, tables, callouts, frontmatterRange, hasUnclosedFrontmatter) {
+  function finalizedLiveProjectionIndex(doc2, excluded, codeBlocks, inlineRanges, footnotes, tables, callouts, frontmatterRange, hasUnclosedFrontmatter) {
     const immutableExcluded = immutableProjectionRanges(excluded);
     const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
     const immutableFrontmatter = frontmatterRange === null ? null : Object.freeze({ ...frontmatterRange });
@@ -31669,6 +31222,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         excluded: immutableExcluded,
         codeBlocks: immutableCodeBlocks
       }),
+      inlineRanges: immutableProjectionRanges(inlineRanges),
       footnotes,
       tables: immutableTables,
       callouts: immutableCallouts,
@@ -31697,6 +31251,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const startedAt = performance.now();
     const excluded = [];
     const codeBlocks = [];
+    const inlineRanges = [];
     const definitionRanges = /* @__PURE__ */ new Set();
     const referenceRanges = /* @__PURE__ */ new Set();
     const tableRanges = [];
@@ -31704,6 +31259,20 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     syntaxTree(state).iterate({
       enter(node) {
         const key = rangeKey(node.from, node.to);
+        if ([
+          "StrongEmphasis",
+          "Emphasis",
+          "Strikethrough",
+          "Highlight",
+          "InlineCode",
+          "Link",
+          "WikiLink",
+          "VectorLink",
+          "InlineMath",
+          "BlockMath"
+        ].includes(node.name)) {
+          inlineRanges.push({ from: node.from, to: node.to });
+        }
         if (node.name === "FootnoteDefinition") definitionRanges.add(key);
         if (node.name === "FootnoteReference") referenceRanges.add(key);
         if (node.name === "InlineFootnote") {
@@ -31772,6 +31341,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       state.doc,
       excluded,
       codeBlocks,
+      inlineRanges,
       footnotes,
       tables,
       callouts,
@@ -31827,6 +31397,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         to: map(range.to),
         fenced: range.fenced
       })),
+      index.inlineRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
       footnotes,
       tables,
       callouts,
@@ -32638,6 +32209,16 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ) || view.composing && view.state.selection.ranges.some(
           (range) => range.from < lineQueryTo && range.to >= line.from
         );
+        const activeProtectedBlockLine = activeLine && projectionRangesIntersecting(
+          index.blockRanges,
+          line.from,
+          lineQueryTo
+        ).some((block) => view.state.selection.ranges.some(
+          (range) => selectionIntersectsProjection(range, block)
+        ));
+        const inlineConstructIsActive = (from, to) => activeProtectedBlockLine || view.state.selection.ranges.some(
+          (range) => selectionIntersectsProjection(range, { from, to })
+        );
         const excluded = [...projectionRangesIntersecting(literals2, scanFrom, lineQueryTo)];
         if (index.frontmatterRange && line.from < index.frontmatterRange.to) {
         } else {
@@ -32765,8 +32346,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             const from = scanFrom + match.index;
             const to = from + match[0].length;
             excluded.push({ from, to });
-            if (!activeLine) {
-              const markerLength = match[1].length;
+            const markerLength = match[1].length;
+            if (inlineConstructIsActive(from, to)) {
+              addMark(from, to, "cm-live-code");
+            } else {
               addHidden(from, from + markerLength);
               addMark(from + markerLength, to - markerLength, "cm-live-code");
               addHidden(to - markerLength, to);
@@ -32812,43 +32395,61 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             addHidden(presentation.displayEnd, to - 2);
             addHidden(to - 2, to);
           }
-          if (!activeLine) {
-            for (const match of text.matchAll(/\[([^\]\n]+)\]\(([^)\n]+)\)/g)) {
-              const from = scanFrom + match.index;
-              const to = from + match[0].length;
-              if (overlaps3(excluded, from, to) || !parsedProjection.links.has(rangeKey(from, to))) continue;
+          for (const match of text.matchAll(/\[([^\]\n]+)\]\(([^)\n]+)\)/g)) {
+            const from = scanFrom + match.index;
+            const to = from + match[0].length;
+            if (overlaps3(excluded, from, to) || !parsedProjection.links.has(rangeKey(from, to))) continue;
+            if (inlineConstructIsActive(from, to)) {
+              addMark(from, to, "cm-live-link");
+            } else {
               addHidden(from, from + 1);
               addMark(from + 1, from + 1 + match[1].length, "cm-live-link");
               addHidden(from + 1 + match[1].length, to);
             }
-            for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
-              const from = scanFrom + match.index;
-              const to = from + match[0].length;
-              if (overlaps3(excluded, from, to) || !parsedProjection.strong.has(rangeKey(from, to))) continue;
+          }
+          for (const match of text.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+            const from = scanFrom + match.index;
+            const to = from + match[0].length;
+            if (overlaps3(excluded, from, to) || !parsedProjection.strong.has(rangeKey(from, to))) continue;
+            if (inlineConstructIsActive(from, to)) {
+              addMark(from, to, "cm-live-strong");
+            } else {
               addHidden(from, from + 2);
               addMark(from + 2, to - 2, "cm-live-strong");
               addHidden(to - 2, to);
             }
-            for (const match of text.matchAll(/~~([^~\n]+)~~/g)) {
-              const from = scanFrom + match.index;
-              const to = from + match[0].length;
-              if (overlaps3(excluded, from, to) || !parsedProjection.strikethrough.has(rangeKey(from, to))) continue;
+          }
+          for (const match of text.matchAll(/~~([^~\n]+)~~/g)) {
+            const from = scanFrom + match.index;
+            const to = from + match[0].length;
+            if (overlaps3(excluded, from, to) || !parsedProjection.strikethrough.has(rangeKey(from, to))) continue;
+            if (inlineConstructIsActive(from, to)) {
+              addMark(from, to, "cm-live-strike");
+            } else {
               addHidden(from, from + 2);
               addMark(from + 2, to - 2, "cm-live-strike");
               addHidden(to - 2, to);
             }
-            for (const match of text.matchAll(/==([^=\n]+)==/g)) {
-              const from = scanFrom + match.index;
-              const to = from + match[0].length;
-              if (overlaps3(excluded, from, to) || !parsedProjection.highlights.has(rangeKey(from, to))) continue;
+          }
+          for (const match of text.matchAll(/==([^=\n]+)==/g)) {
+            const from = scanFrom + match.index;
+            const to = from + match[0].length;
+            if (overlaps3(excluded, from, to) || !parsedProjection.highlights.has(rangeKey(from, to))) continue;
+            if (inlineConstructIsActive(from, to)) {
+              addMark(from, to, "cm-live-highlight");
+            } else {
               addHidden(from, from + 2);
               addMark(from + 2, to - 2, "cm-live-highlight");
               addHidden(to - 2, to);
             }
-            for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
-              const from = scanFrom + match.index;
-              const to = from + match[0].length;
-              if (overlaps3(excluded, from, to) || !parsedProjection.emphasis.has(rangeKey(from, to))) continue;
+          }
+          for (const match of text.matchAll(/(?<!\*)\*([^*\n]+)\*(?!\*)/g)) {
+            const from = scanFrom + match.index;
+            const to = from + match[0].length;
+            if (overlaps3(excluded, from, to) || !parsedProjection.emphasis.has(rangeKey(from, to))) continue;
+            if (inlineConstructIsActive(from, to)) {
+              addMark(from, to, "cm-live-emphasis");
+            } else {
               addHidden(from, from + 1);
               addMark(from + 1, to - 1, "cm-live-emphasis");
               addHidden(to - 1, to);
@@ -32899,12 +32500,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       );
       const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
       const viewportNeedsProjection = update.viewportChanged && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
-      if (update.docChanged || update.focusChanged || viewportNeedsProjection || explicitlyRefreshed || syntaxTreeChanged) {
+      if (update.docChanged || viewportNeedsProjection || explicitlyRefreshed || syntaxTreeChanged) {
         const projection = buildLiveDecorations(update.view);
         this.decorations = projection.decorations;
         this.atomicRanges = projection.atomicRanges;
         this.coveredRanges = projection.coveredRanges;
       } else if (update.selectionSet && !update.startState.selection.eq(update.state.selection)) {
+        const inlineRanges = liveProjectionIndexForState(update.state).inlineRanges;
+        if (!update.view.composing && selectionProjectionSignature(
+          update.startState.doc,
+          update.startState.selection.ranges,
+          inlineRanges
+        ) === selectionProjectionSignature(
+          update.state.doc,
+          update.state.selection.ranges,
+          inlineRanges
+        )) {
+          return;
+        }
         const affected = selectionAffectedProjectionRanges(
           update.state.doc.length,
           update.startState.selection.ranges,
@@ -33053,25 +32666,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     },
     provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
   });
-  var livePreviewMode = [
-    syntaxHighlighting(livePreviewHighlightStyle),
-    liveFrontmatterGuardField,
-    liveListRhythmField,
-    liveBlockActivationField,
-    liveTableField,
-    liveCalloutField,
-    liveFootnoteField,
-    livePreview,
-    EditorView.lineWrapping
-  ];
-  var sourceMode = [
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    lineNumbers(),
-    highlightActiveLineGutter(),
-    foldGutter(),
-    highlightActiveLine(),
-    EditorView.lineWrapping
-  ];
   var dirty = false;
   var pendingKeyStartedAt = null;
   var forceNextInteractionContext = true;
@@ -33088,6 +32682,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       (transaction) => transaction.annotation(programmaticDocumentChange) === true
     );
     if (isProgrammatic) return;
+    if (update.selectionSet && hiddenFrontmatterSourceSelection && !update.state.selection.eq(hiddenFrontmatterSourceSelection.clampedLiveSelection)) {
+      hiddenFrontmatterSourceSelection = null;
+    }
     if (update.docChanged) dirty = true;
     if (!update.docChanged && !update.selectionSet) return;
     if (update.docChanged) {
@@ -33204,7 +32801,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
   ]);
   function revealProjectedBlockForVerticalMove(view, forward, extend) {
-    if (currentMode !== "livePreview" || view.composing) return false;
+    if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
     const selection = view.state.selection.main;
     const moved = view.moveVertically(selection, forward);
     const index = liveProjectionIndexForState(view.state);
@@ -33261,7 +32858,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return true;
   }
   function revealProjectedBlockForHorizontalMove(view, forward, extend) {
-    if (currentMode !== "livePreview" || view.composing) return false;
+    if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
     const selection = view.state.selection.main;
     const projection = projectionRangesIntersecting(
       liveProjectionIndexForState(view.state).blockRanges,
@@ -33363,9 +32960,38 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     view.focus();
   }
   var selectionActions = createSelectionActionsController({
-    mode: () => currentMode,
     applyCommand: applySelectionAction
   });
+  var previewPopover = createPreviewPopoverController({
+    previews: () => linkPreviews
+  });
+  var livePreviewMode = [
+    editorModeFacet.of("livePreview"),
+    EditorView.editorAttributes.of({ class: "scholium-live-mode" }),
+    EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
+    liveProjectionIndexField,
+    liveFrontmatterGuardField,
+    liveListRhythmField,
+    liveBlockActivationField,
+    liveTableField,
+    liveCalloutField,
+    liveFootnoteField,
+    livePreview,
+    Prec.high(liveProjectionNavigationKeymap),
+    selectionActions.extension,
+    previewPopover.extension,
+    EditorView.lineWrapping
+  ];
+  var sourceMode = [
+    editorModeFacet.of("source"),
+    EditorView.editorAttributes.of({ class: "scholium-source-mode" }),
+    EditorView.contentAttributes.of(editorAccessibilityAttributes("source")),
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    foldGutter(),
+    highlightActiveLine(),
+    EditorView.lineWrapping
+  ];
   var editorExtensions = [
     highlightSpecialChars(),
     history(),
@@ -33377,9 +33003,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     closeBrackets(),
     autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
     rectangularSelection(),
-    highlightSelectionMatches(),
     scholiumNoteLanguage,
-    liveProjectionNavigationKeymap,
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,
@@ -33390,27 +33014,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     structuralInteractionKeymap,
     saveKeymap,
     stateReporter,
-    selectionActions.extension,
     linkActivation,
     lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
-    liveProjectionIndexField,
-    modeCompartment.of(livePreviewMode),
-    EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
+    modeCompartment.of(sourceMode),
     EditorView.theme({
       "&": { height: "100%" },
       ".cm-scroller": { overflow: "auto" }
     })
   ];
   var editor = createMarkdownEditor(document.getElementById("editor"), editorExtensions);
-  editor.dom.classList.add("scholium-live-mode");
-  editor.scrollDOM.classList.add("scholium-live-scroller");
   editor.contentDOM.addEventListener("keydown", () => {
     pendingKeyStartedAt = performance.now();
   }, { capture: true });
-  var previewPopover = createPreviewPopoverController(editor, {
-    mode: () => currentMode,
-    previews: () => linkPreviews
-  });
   var scrollCoordinator = createEditorScrollCoordinator(editor, {
     post: (scrollAnchor) => post({
       type: "scrollChanged",
@@ -33536,7 +33151,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       const includeContext = forceNextInteractionContext || availabilitySignature !== lastInteractionAvailabilitySignature;
       forceNextInteractionContext = false;
       lastInteractionAvailabilitySignature = availabilitySignature;
-      updateEditorAccessibility(editor.contentDOM, currentMode, context);
+      updateEditorAccessibility(editor.contentDOM, configuredEditorMode(editor.state), context);
       post({
         type: "interactionChanged",
         selections: context.selections,
@@ -33706,9 +33321,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             return rejected(request.requestID, documentVersion, "invalid recovery snapshot");
           }
         }
+        const restoredMode = configuredEditorMode(editor.state);
         editor.setState(recoveredState);
         exactSource = snapshot.source;
-        await editorOperations.setMode(currentMode);
+        await editorOperations.setMode(restoredMode);
         dirty = snapshot.dirty;
         documentVersion = snapshot.generation;
         return { ...successfulResult(request.requestID), recovery: { ...snapshot, undoHistoryPreserved: restoredHistory } };
@@ -33856,8 +33472,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       void element.getBoundingClientRect().width;
     }
   }
-  async function convergeLivePreviewProjection() {
-    if (currentMode !== "livePreview") return;
+  function convergeLivePreviewProjection() {
+    if (configuredEditorMode(editor.state) !== "livePreview") return;
     const visibleTo = editor.visibleRanges.reduce(
       (maximum, range) => Math.max(maximum, range.to),
       editor.viewport.to
@@ -33898,23 +33514,31 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     /** @param {string} mode */
     async setMode(mode) {
       const startedAt = performance.now();
+      const transitionSequence = ++modeTransitionSequence;
       previewPopover.hide();
       const scrollSnapshot = editor.scrollSnapshot();
       const nextMode = mode === "livePreview" ? "livePreview" : "source";
+      const previousMode = configuredEditorMode(editor.state);
       let selection;
       if (nextMode === "livePreview") {
         const bodyFrom = frontmatterBodyOffset(editor.state.doc);
         if (bodyFrom > 0 && editor.state.selection.ranges.some((range) => range.from < bodyFrom)) {
-          if (currentMode === "source") {
+          if (previousMode === "source") {
+            const clampedLiveSelection = EditorSelection.create([
+              EditorSelection.cursor(bodyFrom)
+            ]);
             hiddenFrontmatterSourceSelection = {
               documentVersion,
-              selection: editor.state.selection
+              sourceSelection: editor.state.selection,
+              clampedLiveSelection
             };
+            selection = clampedLiveSelection;
+          } else {
+            selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
           }
-          selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
         }
-      } else if (nextMode === "source" && currentMode === "livePreview" && hiddenFrontmatterSourceSelection?.documentVersion === documentVersion) {
-        selection = hiddenFrontmatterSourceSelection.selection;
+      } else if (nextMode === "source" && previousMode === "livePreview" && hiddenFrontmatterSourceSelection?.documentVersion === documentVersion) {
+        selection = hiddenFrontmatterSourceSelection.sourceSelection;
         hiddenFrontmatterSourceSelection = null;
       }
       editor.dispatch({
@@ -33924,29 +33548,25 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           scrollSnapshot
         ]
       });
-      editor.dom.classList.toggle("scholium-live-mode", nextMode === "livePreview");
-      editor.dom.classList.toggle("scholium-source-mode", nextMode !== "livePreview");
-      editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
-      editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
-      currentMode = nextMode;
+      const appliedMode = configuredEditorMode(editor.state);
       selectionActions.update(editor);
-      updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
+      updateEditorAccessibility(editor.contentDOM, appliedMode, currentEditorContext());
       scheduleEditorInteractionReport(true);
       recordEditorMetric("mode-toggle-work", startedAt, {
-        documentLength: editor.state.doc.length
+        documentLength: editor.state.doc.length,
+        transitionSequence
       });
       editor.requestMeasure({
         read: () => editor.state.doc.length,
         write: (documentLength) => window.requestAnimationFrame(() => recordEditorMetric(
           "mode-toggle",
           startedAt,
-          { documentLength }
+          { documentLength, transitionSequence }
         ))
       });
       window.setTimeout(scrollCoordinator.postCurrent, 0);
-      if (nextMode === "livePreview") {
-        await convergeLivePreviewProjection();
-      }
+      if (appliedMode === "livePreview") convergeLivePreviewProjection();
+      flushPresentationStyleAndGeometry();
     },
     /** @param {string} css */
     setPresentationCSS(css2) {
@@ -33961,7 +33581,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       linkPreviewIndexByRange = new Map(
         linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index])
       );
-      editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
+      if (configuredEditorMode(editor.state) === "livePreview") {
+        editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
+      }
     },
     /** @param {number} requestedLine */
     goToLine(requestedLine) {

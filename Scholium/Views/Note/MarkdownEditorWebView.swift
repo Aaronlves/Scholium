@@ -7,7 +7,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     @ObservedObject var session: MarkdownEditorSession
     let documentID: String
     let source: String
-    let mode: NotePresentationMode
+    let mode: MarkdownEditorMode
     let presentationCSS: String
     let userCSS: String
     let linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
@@ -86,7 +86,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.documentID = documentID
         context.coordinator.source = source
         context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
-        context.coordinator.mode = mode
+        context.coordinator.lastModeInput = mode
         context.coordinator.presentationCSS = presentationCSS
         context.coordinator.userCSS = userCSS
         context.coordinator.linkPreviews = linkPreviews
@@ -95,6 +95,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setPresentationCSS(presentationCSS)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
+        session.loadDocument(source, documentID: documentID, mode: mode)
 
         guard let editorHTML = Self.editorHTML,
               Self.editorScript != nil else {
@@ -148,8 +149,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.loadDocument(source, documentID: documentID, mode: mode)
             session.setLinkPreviews(linkPreviews, in: source)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
-        } else if context.coordinator.mode != mode {
-            context.coordinator.mode = mode
+        } else if context.coordinator.lastModeInput != mode {
+            context.coordinator.lastModeInput = mode
             session.setMode(mode)
         }
     }
@@ -223,12 +224,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
         var documentID = ""
         var source = ""
-        var mode: NotePresentationMode = .livePreview
+        /// Diff cache for the last SwiftUI input delivered to the session.
+        /// It never supplies initialization or recovery state and never writes
+        /// a bridge acknowledgement back into the Document model.
+        var lastModeInput: MarkdownEditorMode = .livePreview
         var presentationCSS = ""
         var userCSS = ""
         var linkPreviews: [DocumentLinkPreview] = []
         var awaitingEditorLoad = false
-        var recoveringAfterTermination = false
         var startingFingerprint = ""
         var lastDocumentVersion = 0
         var initialScrollFraction: Double = 0
@@ -387,7 +390,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             session.webContentProcessTerminated()
-            recoveringAfterTermination = true
             hasSignaledReady = false
             awaitingEditorLoad = true
             guard let editorHTML = MarkdownEditorWebView.editorHTML else {
@@ -422,15 +424,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private func signalReady() {
             guard !hasSignaledReady else { return }
             hasSignaledReady = true
-            let preservesRetainedSession = recoveringAfterTermination
-                || session.hasRecoverySnapshot(documentID: documentID, source: source)
-            session.loadDocument(
-                source,
-                documentID: documentID,
-                mode: mode,
-                preservingRecovery: preservesRetainedSession
-            )
-            recoveringAfterTermination = false
             session.editorBecameReady()
             session.setPresentationCSS(presentationCSS)
             session.setUserCSS(userCSS)

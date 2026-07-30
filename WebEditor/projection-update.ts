@@ -1,4 +1,4 @@
-import type {Transaction} from "@codemirror/state";
+import type {Text, Transaction} from "@codemirror/state";
 import {syntaxTree} from "@codemirror/language";
 import {boundedProjectionRanges} from "./semantic-projection";
 import {immutableProjectionRanges, projectionRangesIntersecting} from "./projection-index";
@@ -46,6 +46,26 @@ export function activeProjectionSignature(
     .sort((left, right) => left.from - right.from || left.to - right.to)
     .map((projection) => `${projection.from}:${projection.to}`)
     .join("|");
+}
+
+/**
+ * Captures only selection changes that can alter Live Preview presentation.
+ * Moving within one physical line and one already-active inline construct does
+ * not require another decoration pass; crossing a line or construct boundary
+ * does. Selection direction is intentionally absent because it does not alter
+ * the projected Markdown surface.
+ */
+export function selectionProjectionSignature(
+  doc: Text,
+  selections: readonly ProjectionSelectionRange[],
+  inlineProjections: readonly ProjectionSourceRange[],
+) {
+  const activeLines = selections.map((selection) => {
+    const fromLine = doc.lineAt(Math.max(0, Math.min(selection.from, doc.length))).from;
+    const toLine = doc.lineAt(Math.max(0, Math.min(selection.to, doc.length))).from;
+    return `${fromLine}:${toLine}`;
+  }).join("|");
+  return `${activeLines}#${activeProjectionSignature(selections, inlineProjections)}`;
 }
 
 /**

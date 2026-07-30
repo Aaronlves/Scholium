@@ -1,18 +1,58 @@
 import Foundation
 import ScholiumContracts
 import Testing
+import Combine
 @testable import ScholiumApp
 
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
+    @Test("Document presentation commits only valid lifecycle states")
+    func documentPresentationStateMachine() {
+        let session = DocumentSessionModel(key: nil)
+        var publications: [DocumentPresentationState] = []
+        let observation = session.$presentation.dropFirst().sink {
+            publications.append($0)
+        }
+
+        session.restorePresentationMode(.source)
+        #expect(session.presentationMode == .read)
+        #expect(session.selectedPresentationMode == .source)
+        #expect(session.restorationEditorMode == .source)
+        #expect(!session.isEditing)
+        #expect(!session.retainsEditorSurface)
+
+        session.beginEditing(in: .source)
+        #expect(session.presentationMode == .source)
+        #expect(session.selectedPresentationMode == .source)
+        #expect(session.activeEditorMode == .source)
+        #expect(session.restorationEditorMode == nil)
+        #expect(session.isEditing)
+        #expect(session.retainsEditorSurface)
+
+        session.switchEditorMode(to: .livePreview)
+        #expect(session.presentationMode == .livePreview)
+        #expect(session.activeEditorMode == .livePreview)
+        #expect(session.retainedEditorMode == .livePreview)
+
+        session.finishEditing()
+        #expect(session.presentationMode == .read)
+        #expect(session.selectedPresentationMode == .read)
+        #expect(!session.isEditing)
+        #expect(session.retainsEditorSurface)
+        #expect(session.retainedEditorMode == .livePreview)
+
+        #expect(publications.count == 4)
+        _ = observation
+    }
+
     @Test("Lease reconciliation acquires the destination before reaping the source")
     func acquireBeforeRelease() {
         let store = DocumentSessionStore()
         let first = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
         let second = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
         let firstSession = store.session(for: first)
-        firstSession.presentationMode = .source
+        firstSession.restorePresentationMode(.source)
 
         _ = store.reconcileLeases(openTargets: [first], foregroundTarget: first)
         _ = store.reconcileLeases(openTargets: [second], foregroundTarget: second)
@@ -142,7 +182,7 @@ struct DocumentSessionLifecycleTests {
             )
             controller.selectDocument(.workspace(descriptor))
             let session = controller.session(for: key)
-            session.presentationMode = .source
+            session.restorePresentationMode(.source)
             session.scrollFraction = Double(index) / 100
             controller.reconcileSessionLeases(
                 leasedDocuments: [.workspace(descriptor)],
@@ -178,7 +218,7 @@ struct DocumentSessionLifecycleTests {
         let original = descriptor(path: "Before.md")
         controller.selectDocument(.workspace(original))
         let first = controller.session(for: key)
-        first.presentationMode = .source
+        first.restorePresentationMode(.source)
         first.scrollFraction = 0.6
         controller.reconcileSessionLeases(
             leasedDocuments: [.workspace(original)],
@@ -196,7 +236,8 @@ struct DocumentSessionLifecycleTests {
         let reopened = controller.session(for: key)
 
         #expect(reopened !== first)
-        #expect(reopened.presentationMode == .source)
+        #expect(reopened.presentationMode == .read)
+        #expect(reopened.selectedPresentationMode == .source)
         #expect(reopened.scrollFraction == 0.6)
         #expect(reopened.editingSource.isEmpty)
     }

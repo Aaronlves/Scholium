@@ -30,17 +30,77 @@ struct FrontendArchitectureTests {
         #expect(hostSource.contains("if retainsEditor"))
         #expect(!hostSource.contains("if presentsEditor"))
         #expect(hostSource.contains(".allowsHitTesting(!presentsEditor)"))
-        #expect(hostSource.contains("presentsEditor && editorIsReady"))
+        #expect(hostSource.contains("presentsEditor && (hasPresentedEditor || editorIsReady)"))
         #expect(hostSource.contains(".accessibilityHidden(!showsEditor)"))
         #expect(noteSource.contains("@ObservedObject private var documentSession: DocumentSessionModel"))
         #expect(noteSource.contains("retainsEditor: documentSession.retainsEditorSurface"))
         #expect(noteSource.contains("editorIsReady: editorSession.isLoaded"))
-        #expect(noteSource.contains("editorSession.presentedMode == presentationMode"))
+        #expect(noteSource.contains(
+            "editorSession.presentedMode == documentSession.activeEditorMode"
+        ))
         #expect(noteSource.contains("mode: documentSession.retainedEditorMode"))
         #expect(noteSource.contains("renderedReadReadyFingerprint"))
         #expect(noteSource.contains("private var readProjectionTaskIdentity: String"))
         #expect(noteSource.contains("noteFingerprint.sha256"))
         #expect(!noteSource.contains("guard presentationMode == .read else { return }"))
+
+        let sessionSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Features/Document/DocumentSessionStore.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(sessionSource.contains(
+            "@Published private(set) var presentation = DocumentPresentationState()"
+        ))
+        #expect(!sessionSource.contains("@Published var isEditing"))
+        #expect(!sessionSource.contains("@Published var retainsEditorSurface"))
+        #expect(!sessionSource.contains("@Published private(set) var presentationMode"))
+        let presentationSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Features/Document/DocumentPresentationState.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(presentationSource.contains("enum MarkdownEditorMode"))
+        #expect(presentationSource.contains("case review(restoration: MarkdownEditorMode?)"))
+        #expect(presentationSource.contains("case editing(MarkdownEditorMode)"))
+
+        let webViewSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(webViewSource.contains("var lastModeInput: MarkdownEditorMode"))
+        #expect(!webViewSource.contains("var mode: MarkdownEditorMode"))
+        let readyStart = try #require(webViewSource.range(of: "private func signalReady()"))
+        let readySuffix = webViewSource[readyStart.lowerBound...]
+        let readyEnd = try #require(readySuffix.range(of: "private func validEnvelope"))
+        let readyBody = readySuffix[..<readyEnd.lowerBound]
+        #expect(!readyBody.contains("loadDocument("))
+    }
+
+    @Test("EditorHost waits on initial entry but preserves an established editor during mode reconfiguration")
+    func editorHostPresentationGate() {
+        var gate = DocumentEditorPresentationGate()
+
+        gate.reconcile(presentsEditor: false, editorIsReady: false)
+        #expect(!gate.showsEditor(presentsEditor: false, editorIsReady: false))
+
+        gate.reconcile(presentsEditor: true, editorIsReady: false)
+        #expect(!gate.showsEditor(presentsEditor: true, editorIsReady: false))
+
+        gate.reconcile(presentsEditor: true, editorIsReady: true)
+        #expect(gate.showsEditor(presentsEditor: true, editorIsReady: true))
+
+        // A bridge-confirmed editor remains the visible surface while the
+        // retained CodeMirror state atomically changes Edit <-> Source.
+        gate.reconcile(presentsEditor: true, editorIsReady: false)
+        #expect(gate.showsEditor(presentsEditor: true, editorIsReady: false))
+
+        gate.reconcile(presentsEditor: false, editorIsReady: false)
+        #expect(!gate.showsEditor(presentsEditor: false, editorIsReady: false))
     }
 
     @Test("Autosave failure and conflict stay in the Document surface")
@@ -1237,12 +1297,13 @@ struct FrontendArchitectureTests {
         let store = DocumentSessionStore()
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
         let original = store.session(for: key)
-        original.presentationMode = .source
+        original.restorePresentationMode(.source)
         original.editingSource = "exact markdown bytes\n"
 
         let afterProjectionChange = store.session(for: key)
         #expect(afterProjectionChange === original)
-        #expect(afterProjectionChange.presentationMode == .source)
+        #expect(afterProjectionChange.presentationMode == .read)
+        #expect(afterProjectionChange.selectedPresentationMode == .source)
         #expect(afterProjectionChange.editingSource == "exact markdown bytes\n")
 
         let conflict = DocumentConflictSnapshot(
@@ -1818,18 +1879,48 @@ struct FrontendArchitectureTests {
         let sourceModeExtensions = editorSource[
             sourceModeStart.lowerBound..<sourceModeEnd.upperBound
         ]
+        let liveModeStart = try #require(editorSource.range(of: "const livePreviewMode = ["))
+        let liveModeSuffix = editorSource[liveModeStart.upperBound...]
+        let liveModeEnd = try #require(liveModeSuffix.range(of: "];"))
+        let liveModeExtensions = editorSource[
+            liveModeStart.lowerBound..<liveModeEnd.upperBound
+        ]
         #expect(sourceModeExtensions.contains("EditorView.lineWrapping"))
+        #expect(sourceModeExtensions.contains("editorModeFacet.of(\"source\")"))
+        #expect(sourceModeExtensions.contains("EditorView.editorAttributes.of"))
+        #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
+        for liveOnlyExtension in [
+            "liveProjectionIndexField",
+            "liveFrontmatterGuardField",
+            "liveListRhythmField",
+            "liveBlockActivationField",
+            "liveTableField",
+            "liveCalloutField",
+            "liveFootnoteField",
+            "livePreview",
+            "liveProjectionNavigationKeymap",
+            "selectionActions.extension",
+            "previewPopover.extension",
+        ] {
+            #expect(liveModeExtensions.contains(liveOnlyExtension))
+            #expect(!sourceModeExtensions.contains(liveOnlyExtension))
+            #expect(!staticExtensions.contains(liveOnlyExtension))
+        }
+        #expect(staticExtensions.contains("modeCompartment.of(sourceMode)"))
+        #expect(editorSource.contains(#"combine: (modes) => modes[0] ?? "source""#))
         #expect(editorSource.contains(
             "modeCompartment.reconfigure(nextMode === \"livePreview\" ? livePreviewMode : sourceMode)"
         ))
+        #expect(!editorSource.contains("highlightSelectionMatches()"))
+        #expect(!editorSource.contains("update.focusChanged"))
 
         #expect(editorStyles.contains(".scholium-live-mode .cm-lineNumbers"))
         #expect(editorStyles.contains(".scholium-source-mode .cm-activeLine"))
         #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
-        #expect(editorStyles.contains("#editor .cm-scroller.scholium-live-scroller"))
-        #expect(editorStyles.contains("#editor .cm-scroller.scholium-source-scroller"))
-        #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-live-scroller\""))
-        #expect(editorSource.contains("editor.scrollDOM.classList.toggle(\"scholium-source-scroller\""))
+        #expect(editorStyles.contains("#editor .cm-editor.scholium-live-mode .cm-scroller"))
+        #expect(editorStyles.contains("#editor .cm-editor.scholium-source-mode .cm-scroller"))
+        #expect(!editorSource.contains("editor.dom.classList.toggle"))
+        #expect(!editorSource.contains("editor.scrollDOM.classList.toggle"))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             "padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll)"
         ))
@@ -2553,6 +2644,14 @@ struct FrontendArchitectureTests {
 
     @Test("Read and Live Preview share the bounded preview presentation")
     func sharedPreviewPresentation() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let previewControllerSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/preview-popover.ts"),
+            encoding: .utf8
+        )
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let css = ScholiumPreviewStyles.css
         #expect(css.contains(".scholium-preview-popover"))
@@ -2591,6 +2690,10 @@ struct FrontendArchitectureTests {
         #expect(readHTML.contains("previewByRange"))
         #expect(readHTML.contains("showLinkPopover"))
         #expect(readHTML.contains("showFootnotePopover"))
+        #expect(previewControllerSource.contains("ViewPlugin.define"))
+        #expect(previewControllerSource.contains("document.removeEventListener"))
+        #expect(previewControllerSource.contains("root?.remove()"))
+        #expect(!previewControllerSource.contains("mode()"))
     }
 
     @Test("Review alone offers a direct line-only Comment composer")
@@ -2643,9 +2746,14 @@ struct FrontendArchitectureTests {
         #expect(readHTML.contains("endLine"))
         #expect(!readHTML.contains("quotation:"))
         #expect(!readHTML.contains("utf16Range"))
-        #expect(selectionActionsSource.contains(#"options.mode() !== "livePreview""#))
         #expect(selectionActionsSource.contains("view.composing || !view.hasFocus"))
-        #expect(selectionActionsSource.contains(#"addButton("B", "Bold", "bold")"#))
+        #expect(selectionActionsSource.contains("ViewPlugin.define"))
+        #expect(selectionActionsSource.contains("destroy()"))
+        #expect(selectionActionsSource.contains("root?.remove()"))
+        #expect(!selectionActionsSource.contains("mode()"))
+        #expect(selectionActionsSource.contains(
+            #"addButton(commandBar, "B", "Bold", "bold")"#
+        ))
         #expect(selectionActionsSource.contains(#"root.className = "scholium-selection-actions""#))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             ".scholium-selection-actions"

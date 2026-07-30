@@ -1,5 +1,25 @@
 import SwiftUI
 
+/// Owns only the native visibility handoff between two retained surfaces.
+/// Initial Review -> editor entry waits for the requested bridge mode, while
+/// an already presented CodeMirror surface stays visible during its atomic
+/// Edit <-> Source compartment reconfiguration.
+struct DocumentEditorPresentationGate: Equatable {
+    private(set) var hasPresentedEditor = false
+
+    mutating func reconcile(presentsEditor: Bool, editorIsReady: Bool) {
+        if !presentsEditor {
+            hasPresentedEditor = false
+        } else if editorIsReady {
+            hasPresentedEditor = true
+        }
+    }
+
+    func showsEditor(presentsEditor: Bool, editorIsReady: Bool) -> Bool {
+        presentsEditor && (hasPresentedEditor || editorIsReady)
+    }
+}
+
 /// Owns the presentation boundary between the committed Read projection and
 /// the exact-source editor. Once the editor has been created, ordinary mode
 /// switches change visibility and focus only; they do not remove either WebKit
@@ -10,6 +30,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     let editorIsReady: Bool
     private let readSurface: ReadSurface
     private let editorSurface: EditorSurface
+    @State private var presentationGate = DocumentEditorPresentationGate()
 
     init(
         presentsEditor: Bool,
@@ -26,7 +47,10 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     }
 
     private var showsEditor: Bool {
-        presentsEditor && editorIsReady
+        presentationGate.showsEditor(
+            presentsEditor: presentsEditor,
+            editorIsReady: editorIsReady
+        )
     }
 
     var body: some View {
@@ -46,5 +70,23 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            presentationGate.reconcile(
+                presentsEditor: presentsEditor,
+                editorIsReady: editorIsReady
+            )
+        }
+        .onChange(of: presentsEditor) { _, _ in
+            presentationGate.reconcile(
+                presentsEditor: presentsEditor,
+                editorIsReady: editorIsReady
+            )
+        }
+        .onChange(of: editorIsReady) { _, _ in
+            presentationGate.reconcile(
+                presentsEditor: presentsEditor,
+                editorIsReady: editorIsReady
+            )
+        }
     }
 }

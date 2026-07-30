@@ -129,12 +129,12 @@ final class PerformanceProbe {
     /// has acknowledged the requested mode. The UI-test driver can read the
     /// sampler acknowledgment, but it deliberately cannot write into the app
     /// container that owns this probe file.
-    func markEditorModeReady(documentID: String, mode: NotePresentationMode) {
+    func markEditorModeReady(documentID: String, mode: MarkdownEditorMode) {
         guard let configuration,
               configuration.metric == .editorRetainedMemory,
               documentID == configuration.expectedDocument,
               recordedSampleCount < configuration.sampleCount else { return }
-        let expectedMode: NotePresentationMode = recordedSampleCount.isMultiple(of: 2)
+        let expectedMode: MarkdownEditorMode = recordedSampleCount.isMultiple(of: 2)
             ? .livePreview
             : .source
         guard mode == expectedMode else { return }
