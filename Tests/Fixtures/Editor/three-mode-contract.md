@@ -21,8 +21,8 @@ Hebrew keeps its own direction: <span dir="rtl">זהו טקסט בדיקה סי�
 
 - First unordered item with **inline strength**.
   - Nested unordered item.
-    - [ ] Open synthetic task.
 - Second unordered item.
+- [ ] Open synthetic task.
 
 1. First ordered item.
    1. Nested ordered item.
@@ -43,7 +43,7 @@ print(mixed)
 ---
 
 | Construct | State | Count |
-|:--|:--:|--:|
+|:---|:---:|---:|
 | Paragraph | Ready | 2 |
 | Table | Ready | 1 |
 
@@ -64,9 +64,11 @@ $$
 \int_0^1 x^2 \, dx + \sum_{n=1}^{20} \frac{1}{n^2}
 $$
 
-Footnote reference[^contract] and inline note ^[Synthetic inline note.].
+Footnote reference[^parity].
 
-[^contract]: Synthetic footnote content with `exact source` and a nested list.
+Inline note ^[Synthetic inline note.].
+
+[^parity]: Synthetic footnote content with exact source and a nested list.
 
   - Nested footnote item.
 
@@ -81,3 +83,5 @@ An incomplete link remains exact source: [unfinished destination](
 %% Obsidian comment syntax remains excluded from rendered semantics. %%
 
 <section data-fixture="raw-html">Raw HTML remains a bounded literal region.</section>
+
+INACTIVE_EDIT_ANCHOR keeps every catalog construct outside the active editing position.

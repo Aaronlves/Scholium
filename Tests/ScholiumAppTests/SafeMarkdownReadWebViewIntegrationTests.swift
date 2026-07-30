@@ -215,7 +215,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    private struct FootnoteInteractionSnapshot: Decodable {
+    struct FootnoteInteractionSnapshot: Decodable {
         let previewTitle: String
         let originID: String
         let previewHiddenAfterHover: Bool
@@ -718,7 +718,7 @@ extension MarkdownEditorWebViewIntegrationTests {
     }
 
     @MainActor
-    private final class ReadHarness {
+    final class ReadHarness {
         private let source: String
         private let htmlBody: String
         private let fingerprint: String
@@ -782,6 +782,26 @@ extension MarkdownEditorWebViewIntegrationTests {
                 }
                 try await Task.sleep(for: .milliseconds(25))
             }
+        }
+
+        func resize(width: CGFloat, height: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: height))
+        }
+
+        func callPageJavaScript(
+            _ body: String,
+            arguments: [String: Any] = [:]
+        ) async throws -> Any? {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            return try await webView.callAsyncJavaScript(
+                body,
+                arguments: arguments,
+                in: nil,
+                contentWorld: .page
+            )
         }
 
         func waitUntilWebViewAvailable() async throws {

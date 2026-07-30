@@ -1361,7 +1361,7 @@ struct MarkdownEditorWebViewIntegrationTests {
     }
 
     @MainActor
-    private final class EditorHarness {
+    final class EditorHarness {
         let session: MarkdownEditorSession
         let documentID: String
         private let sourceBox: SourceBox
@@ -1452,6 +1452,25 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         func resize(width: CGFloat) {
             window.setContentSize(NSSize(width: width, height: 520))
+        }
+
+        func resize(width: CGFloat, height: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: height))
+        }
+
+        func callPageJavaScript(
+            _ body: String,
+            arguments: [String: Any] = [:]
+        ) async throws -> Any? {
+            guard let webView = session.webView else {
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            return try await webView.callAsyncJavaScript(
+                body,
+                arguments: arguments,
+                in: nil,
+                contentWorld: .page
+            )
         }
 
         func reconstructEditorView() async throws {

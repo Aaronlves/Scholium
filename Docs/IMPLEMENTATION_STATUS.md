@@ -103,6 +103,21 @@ RTL, semantic, and deliberately irregular Markdown. This is automated
 implementation evidence, not researcher visual, installed-IME, or assistive-
 technology acceptance.
 
+The 2026-07-31 Review/Edit comparison baseline extends that tracked catalog
+with 22 exact semantic probes spanning headings, ordinary and mixed-script
+prose, inline constructs, lists and tasks, quotation, code, rule, table,
+Callouts, display math, footnotes, irregular Markdown, and raw HTML. One real
+WKWebView test renders the same bytes at a fixed 900-point workspace, keeps the
+Edit caret at a final inactive anchor, materializes the complete document in a
+tall test viewport, and writes the ignored report to
+`.build/editor-presentation-comparison/baseline.json`. Review and inactive Edit
+currently retain the same 19-probe visual block order, but Edit is 16.875 points
+taller overall and all 22 `mustMatchReview` probes retain at least one measured
+style, geometry, wrapping, or accumulated-rhythm difference. Those values are
+pre-fix implementation evidence, not a product threshold or researcher visual
+acceptance; the following batches must reduce the differences through shared
+semantic presentation ownership rather than test-specific tolerances.
+
 ## Remaining implementation and release work
 
 | Workstream | Implemented boundary | Required next evidence or work |
@@ -141,8 +156,8 @@ The original batch-by-batch sequence and detailed proof notes remain in Git.
 
 | Evidence | Current passing result | Boundary of the claim |
 | --- | --- | --- |
-| Repository gate | `verify.sh` passed 15 protected Skill packages; 127 WebEditor tests and reproducible resources; deterministic RDF-1 v2 for 800 notes; 513 Core tests plus 3 isolated performance tests; 121 Contracts; 155 Application; 12 Local Agent bridge; 1 serialized architecture measurement; 342 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 148.36 seconds. | Automated source and disposable-fixture evidence, not a release artifact or human acceptance. |
-| Search performance gate | The fixed 2,056-note mixed-script fixture recorded 786.230 ms cold rebuild, 17.472 ms incremental-publication p95, 74.243 ms warm-query p95, 52,599,752 database bytes, and 150,945,792 peak RSS bytes. | One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does not establish causation or packaged GUI latency. |
+| Repository gate | `verify.sh` passed 15 protected Skill packages; 127 WebEditor tests and reproducible resources; deterministic RDF-1 v2 for 800 notes; 513 Core tests plus 3 isolated performance tests; 121 Contracts; 155 Application; 12 Local Agent bridge; 1 serialized architecture measurement; 343 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 147.02 seconds. | Automated source and disposable-fixture evidence, not a release artifact or human acceptance. |
+| Search performance gate | The fixed 2,056-note mixed-script fixture recorded 717.392 ms cold rebuild, 16.803 ms incremental-publication p95, 73.791 ms warm-query p95, 52,599,752 database bytes, and 150,798,336 peak RSS bytes. | One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does not establish causation or packaged GUI latency. |
 | Architecture-focused UI | Current isolated journeys passed the exact-window Agent sheet (16.808 s), two-window projection convergence (51.864 s), and pane-owned peripheral controls plus native-tab boundaries (59.817 s). | Representative Debug/QA paths only; headless tests own durable, authentication, and transaction claims. |
 | Complete UI baseline | The latest complete serial profile on 2026-07-28 enumerated all 74 then-current ordinary journeys. Three harness failures and the actionable compact-width skip passed focused revalidation; genuine VoiceOver speech remained conditionally skipped. | It predates the final architecture batches; affected boundaries received focused tests, builds, and the journeys above, but the complete UI profile was not rerun. |
 | Upgrade safety | A distinct-build disposable byte-hostile Triptych preserved path, size, SHA-256, permissions, and mtime for all 195 authoritative files; only allowlisted manifest/identity changes occurred. | QA-build evidence only; rerun for every release. |

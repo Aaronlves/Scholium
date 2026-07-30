@@ -1559,6 +1559,21 @@ decoration invalidation follows document, viewport, selection, and presentation
 inputs, not window focus, so an inactive WebView cannot erase its semantic
 projection merely because WebKit has no visible range to report.
 
+Review/Edit presentation comparison is a test-owned projection over the same
+tracked three-mode fixture, not a second renderer or source authority. Each
+catalog probe names its expected `MarkdownSemanticDocument` role; the harness
+resolves the visible Review and inactive-Edit elements back to that exact UTF-16
+semantic source span before measuring them. A fixed 900-point workspace and a
+tall test viewport materialize the complete catalog despite CodeMirror's normal
+viewport virtualization. The report records computed presentation properties,
+line rectangles, block bounds, total content height, and the independent visual
+block order of each surface. Inter-block gaps are compared only when both
+surfaces identify the same visual predecessor, so moved projections such as the
+end-of-document footnote section cannot create a false source-order delta. The
+generated baseline remains ignored evidence under `.build/`; the fixture and
+measurement contract are tracked, while production code cannot read or depend
+on either.
+
 The bridge type itself is editor-only: `MarkdownEditorMode` contains Edit and
 Source, while the researcher-facing `NotePresentationMode` additionally owns
 Review. `MarkdownEditorSession` publishes one

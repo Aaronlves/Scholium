@@ -77,11 +77,237 @@
     "> [!state]",
     "> [!quote]",
     "\\int_0^1",
-    "[^contract]",
+    "[^parity]",
     "^[Synthetic inline note.]",
     "*unfinished emphasis.",
     "[unfinished destination](",
     "%% Obsidian comment syntax",
-    "<section data-fixture=\"raw-html\">"
+    "<section data-fixture=\"raw-html\">",
+    "INACTIVE_EDIT_ANCHOR"
+  ],
+  "comparisonProbes": [
+    {
+      "id": "document-title",
+      "semanticRole": "heading",
+      "sourceToken": "# Three-mode editor contract 范围",
+      "visibleToken": "Three-mode editor contract 范围",
+      "level": "block",
+      "readSelector": ".scholium-document > h1",
+      "editSelector": ".cm-line.cm-live-h1",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "section-heading",
+      "semanticRole": "heading",
+      "sourceToken": "## Ordinary and mixed-script prose",
+      "visibleToken": "Ordinary and mixed-script prose",
+      "level": "block",
+      "readSelector": ".scholium-document > h2",
+      "editSelector": ".cm-line.cm-live-h2",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "ordinary-paragraph",
+      "semanticRole": "paragraph",
+      "sourceToken": "This long ordinary paragraph compares",
+      "visibleToken": "This long ordinary paragraph compares",
+      "level": "block",
+      "readSelector": ".scholium-document > p",
+      "editSelector": ".cm-line.cm-live-paragraph",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "cjk-paragraph",
+      "semanticRole": "paragraph",
+      "sourceToken": "中文段落检查混合排版",
+      "visibleToken": "中文段落检查混合排版",
+      "level": "block",
+      "readSelector": ".scholium-document > p",
+      "editSelector": ".cm-line.cm-live-paragraph",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "rtl-paragraph",
+      "semanticRole": "paragraph",
+      "sourceToken": "Arabic keeps its own direction",
+      "visibleToken": "Arabic keeps its own direction",
+      "level": "block",
+      "readSelector": ".scholium-document > p",
+      "editSelector": ".cm-line.cm-live-paragraph",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "strong-inline",
+      "semanticRole": "strong",
+      "sourceToken": "**strong evidence**",
+      "visibleToken": "strong evidence",
+      "level": "inline",
+      "readSelector": ".scholium-document strong",
+      "editSelector": ".cm-live-strong",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "emphasis-inline",
+      "semanticRole": "emphasis",
+      "sourceToken": "*Neocaridina denticulata*",
+      "visibleToken": "Neocaridina denticulata",
+      "level": "inline",
+      "readSelector": ".scholium-document em",
+      "editSelector": ".cm-live-emphasis",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "unordered-list-item",
+      "semanticRole": "listItem",
+      "sourceToken": "- First unordered item",
+      "visibleToken": "First unordered item",
+      "level": "block",
+      "readSelector": ".scholium-document li > p",
+      "editSelector": ".cm-line.cm-live-list",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "nested-list-item",
+      "semanticRole": "listItem",
+      "sourceToken": "- Nested unordered item",
+      "visibleToken": "Nested unordered item",
+      "level": "block",
+      "readSelector": ".scholium-document li > p",
+      "editSelector": ".cm-line.cm-live-list",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "task-list-item",
+      "semanticRole": "listItem",
+      "sourceToken": "- [ ] Open synthetic task.",
+      "visibleToken": "Open synthetic task",
+      "level": "block",
+      "readSelector": ".scholium-document li > p",
+      "editSelector": ".cm-line.cm-live-task-list",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "ordered-list-item",
+      "semanticRole": "listItem",
+      "sourceToken": "1. First ordered item.",
+      "visibleToken": "First ordered item",
+      "level": "block",
+      "readSelector": ".scholium-document li > p",
+      "editSelector": ".cm-line.cm-live-list",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "ordinary-quotation",
+      "semanticRole": "blockQuote",
+      "sourceToken": "> Ordinary quotation",
+      "visibleToken": "Ordinary quotation",
+      "visibleEndToken": "The second line keeps one semantic quotation block",
+      "level": "block",
+      "readSelector": ".scholium-document blockquote",
+      "editSelector": ".cm-line.cm-live-quote",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "inline-code",
+      "semanticRole": "inlineCode",
+      "sourceToken": "`exact_code()`",
+      "visibleToken": "exact_code()",
+      "level": "inline",
+      "readSelector": ".scholium-document :not(pre) > code",
+      "editSelector": ".cm-live-code",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "fenced-code",
+      "semanticRole": "codeBlock",
+      "sourceToken": "```swift\nlet mixed = \"范围 🧭\"",
+      "visibleToken": "let mixed =",
+      "visibleEndToken": "print(mixed)",
+      "level": "block",
+      "readSelector": ".scholium-document pre",
+      "editSelector": ".cm-line.cm-live-codeblock",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "thematic-break",
+      "semanticRole": "thematicBreak",
+      "sourceToken": "---",
+      "sourceOccurrence": 3,
+      "visibleToken": null,
+      "level": "block",
+      "readSelector": ".scholium-document hr",
+      "editSelector": ".cm-line.cm-live-rule",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "table",
+      "semanticRole": "table",
+      "sourceToken": "| Construct | State | Count |",
+      "visibleToken": "Construct",
+      "level": "block",
+      "readSelector": ".scholium-document table",
+      "editSelector": ".cm-live-table-widget table",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "orientation-callout",
+      "semanticRole": "callout",
+      "sourceToken": "> [!orient] Reading route",
+      "visibleToken": "Orientation has no visible",
+      "level": "block",
+      "readSelector": ".scholium-document > .scholium-callout-orient",
+      "editSelector": ".cm-live-callout-widget.scholium-callout-orient",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "statement-callout",
+      "semanticRole": "callout",
+      "sourceToken": "> [!state] Synthetic claim",
+      "visibleToken": "Synthetic claim",
+      "level": "block",
+      "readSelector": ".scholium-document > .scholium-callout-state",
+      "editSelector": ".cm-live-callout-widget.scholium-callout-state",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "display-math",
+      "semanticRole": "math",
+      "sourceToken": "$$\n\\int_0^1 x^2",
+      "visibleToken": null,
+      "level": "block",
+      "readSelector": ".scholium-document > .scholium-math-display",
+      "editSelector": ".cm-live-math.scholium-math-display",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "footnote-definition",
+      "semanticRole": "footnoteDefinition",
+      "sourceToken": "[^parity]: Synthetic footnote content",
+      "visibleToken": "Synthetic footnote content",
+      "level": "block",
+      "readSelector": ".scholium-document > .footnotes li",
+      "editSelector": ".cm-live-footnotes-widget li",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "irregular-markdown",
+      "semanticRole": "paragraph",
+      "sourceToken": "An unmatched marker remains exact source",
+      "visibleToken": "An unmatched marker remains exact source",
+      "level": "block",
+      "readSelector": ".scholium-document > p",
+      "editSelector": ".cm-line.cm-live-paragraph",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "raw-html",
+      "semanticRole": "html",
+      "sourceToken": "<section data-fixture=\"raw-html\">",
+      "visibleToken": "Raw HTML remains",
+      "level": "block",
+      "readSelector": ".scholium-document pre.raw-html",
+      "editSelector": ".cm-line",
+      "expectation": "mustMatchReview"
+    }
   ]
 }
