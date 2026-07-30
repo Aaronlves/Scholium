@@ -5,7 +5,7 @@ import ScholiumContracts
 /// workspace window. It owns presentation claims only; Application remains
 /// the owner of validation and durable decisions.
 @MainActor
-final class AgentNoteChangePresentationCoordinator {
+final class AgentNoteChangeClaimCoordinator {
     enum DeliveryIntent {
         case submit
         case showExisting

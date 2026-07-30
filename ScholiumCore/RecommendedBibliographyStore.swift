@@ -12,7 +12,7 @@ private struct RecommendedBibliographyStoredRecord: Codable, Hashable, Sendable 
 }
 
 private struct RecommendedBibliographyDocument: Codable, Hashable, Sendable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var schemaVersion = currentSchemaVersion
     var records: [RecommendedBibliographyStoredRecord] = []
@@ -41,11 +41,9 @@ public actor RecommendedBibliographyStore {
         self.fileManager = fileManager
     }
 
-    public func overview(
-        targetNoteID: UUID
-    ) throws -> RecommendedBibliographyOverview {
+    public func overview() throws -> RecommendedBibliographyOverview {
         try withStoreLock(.shared) {
-            let records = records(for: targetNoteID, in: try loadUnlocked())
+            let records = records(in: try loadUnlocked())
             let latest = records.first
             let result = records.first {
                 $0.projection.state == .complete
@@ -61,10 +59,8 @@ public actor RecommendedBibliographyStore {
         }
     }
 
-    public func latest(
-        targetNoteID: UUID
-    ) throws -> RecommendedBibliographyProjection? {
-        try overview(targetNoteID: targetNoteID).result
+    public func latest() throws -> RecommendedBibliographyProjection? {
+        try overview().result
     }
 
     public func preparation(id: UUID) throws -> RecommendedBibliographyPreparation {
@@ -92,7 +88,8 @@ public actor RecommendedBibliographyStore {
     public func save(
         preparation: RecommendedBibliographyPreparation
     ) throws -> RecommendedBibliographyProjection {
-        try withStoreLock(.exclusive) {
+        try preparation.request.validate()
+        return try withStoreLock(.exclusive) {
             var document = try loadUnlocked()
             if let existing = document.records.first(where: {
                 $0.preparation.id == preparation.id
@@ -103,8 +100,7 @@ public actor RecommendedBibliographyStore {
                 return existing.projection
             }
             if let active = document.records.first(where: {
-                $0.preparation.request.target.noteID == preparation.request.target.noteID
-                    && $0.projection.state == .prepared
+                $0.projection.state == .prepared
             }) {
                 throw RecommendedBibliographyError.activeRequestExists(active.preparation.id)
             }
@@ -151,7 +147,7 @@ public actor RecommendedBibliographyStore {
             case .cancelled:
                 throw RecommendedBibliographyError.cancelled(requestID)
             case .stale:
-                throw RecommendedBibliographyError.targetChanged
+                throw RecommendedBibliographyError.selectedNoteChanged
             case .prepared:
                 break
             }
@@ -303,11 +299,9 @@ public actor RecommendedBibliographyStore {
     }
 
     private func records(
-        for targetNoteID: UUID,
         in document: RecommendedBibliographyDocument
     ) -> [RecommendedBibliographyStoredRecord] {
         document.records
-            .filter { $0.projection.request.target.noteID == targetNoteID }
             .sorted { lhs, rhs in
                 if lhs.preparation.preparedAt != rhs.preparation.preparedAt {
                     return lhs.preparation.preparedAt > rhs.preparation.preparedAt

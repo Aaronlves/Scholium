@@ -273,14 +273,17 @@ public actor ResearchOperations: ResearchUseCases {
     public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
     let reference: WorkspaceHandleReference
+    private let functionCoordinator: ResearchFunctionCoordinator
     private let bibliographyCoordinator: RecommendedBibliographyCoordinator
 
     init(
         reference: WorkspaceHandleReference,
+        functionCoordinator: ResearchFunctionCoordinator,
         skillsURL: URL,
         recoveryRecordsURL: URL,
     ) {
         self.reference = reference
+        self.functionCoordinator = functionCoordinator
         bibliographyCoordinator = RecommendedBibliographyCoordinator(reference: reference)
         self.skillsURL = skillsURL
         self.recoveryRecordsURL = recoveryRecordsURL
@@ -291,7 +294,7 @@ public actor ResearchOperations: ResearchUseCases {
         source: String,
         origin: ResearchSkillOrigin
     ) -> ResearchSkillPackage {
-        ResearchSkillStore.inspectDraft(id: id, source: source, origin: origin)
+        ResearchSkillTransactionCoordinator.inspectDraft(id: id, source: source, origin: origin)
     }
 
     public func inspectSkillDraft(
@@ -322,7 +325,10 @@ public actor ResearchOperations: ResearchUseCases {
         for target: ResearchFunctionTarget
     ) async throws -> [ResearchFunctionAvailability] {
         let handle = try await reference.requireHandle()
-        return try await handle.researchFunctionAvailability(for: target)
+        return try await functionCoordinator.researchFunctionAvailability(
+            for: target,
+            host: handle
+        )
     }
 
     func protectedMaterialCandidates(
@@ -330,9 +336,10 @@ public actor ResearchOperations: ResearchUseCases {
         function: ResearchFunctionID
     ) async throws -> [ResearchFunctionMaterialCandidate] {
         let handle = try await reference.requireHandle()
-        return try await handle.researchFunctionMaterialCandidates(
+        return try await functionCoordinator.researchFunctionMaterialCandidates(
             for: target,
-            function: function
+            function: function,
+            host: handle
         )
     }
 
@@ -340,42 +347,61 @@ public actor ResearchOperations: ResearchUseCases {
         _ request: ResearchFunctionRequest
     ) async throws -> ResearchFunctionPreparation {
         let handle = try await reference.requireHandle()
-        let preparation = try await handle.prepareResearchFunction(request)
-        return try await handle.attachingAgentActions(to: preparation)
+        let preparation = try await functionCoordinator.prepareResearchFunction(
+            request,
+            host: handle
+        )
+        return try functionCoordinator.attachingAgentActions(to: preparation)
     }
 
     func protectedFunctionRun(id: UUID) async throws -> ResearchFunctionPreparation {
         let handle = try await reference.requireHandle()
-        let preparation = try await handle.researchFunctionRun(id: id)
-        return try await handle.attachingAgentActions(to: preparation)
+        let preparation = try await functionCoordinator.researchFunctionRun(
+            id: id,
+            host: handle
+        )
+        return try functionCoordinator.attachingAgentActions(to: preparation)
     }
 
     func prepareProtectedAutomaticFidelity(
         parentRunID: UUID
     ) async throws -> AutomaticFidelityPreparation {
         let handle = try await reference.requireHandle()
-        let preparation = try await handle.prepareAutomaticFidelity(
-            parentRunID: parentRunID
+        let preparation = try await functionCoordinator.prepareAutomaticFidelity(
+            parentRunID: parentRunID,
+            host: handle
         )
-        return try await handle.attachingAgentActions(to: preparation)
+        return try await functionCoordinator.attachingAgentActions(
+            to: preparation,
+            host: handle
+        )
     }
 
     func completeProtectedFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion {
         let handle = try await reference.requireHandle()
-        let completion = try await handle.completeResearchFunction(submission)
-        return await handle.attachingAgentActions(to: completion)
+        let completion = try await functionCoordinator.completeProtectedFunction(
+            submission,
+            host: handle
+        )
+        return functionCoordinator.attachingAgentActions(to: completion)
     }
 
     func cancelProtectedFunction(runID: UUID) async throws {
         let handle = try await reference.requireHandle()
-        try await handle.cancelResearchFunction(runID: runID)
+        try await functionCoordinator.cancelProtectedFunction(
+            runID: runID,
+            host: handle
+        )
     }
 
     func finishProtectedDiscussion(runID: UUID) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.finishResearchDiscussion(runID: runID)
+        return try await functionCoordinator.finishProtectedDiscussion(
+            runID: runID,
+            host: handle
+        )
     }
 
     public func sourceAccess(
@@ -399,16 +425,12 @@ public actor ResearchOperations: ResearchUseCases {
         try await handle.removeResearchSourceAccess(for: target)
     }
 
-    public func recommendations(
-        for target: RecommendedBibliographyTarget
-    ) async throws -> RecommendedBibliographyProjection? {
-        try await bibliographyCoordinator.recommendations(for: target)
+    public func recommendations() async throws -> RecommendedBibliographyProjection? {
+        try await bibliographyCoordinator.recommendations()
     }
 
-    public func recommendationOverview(
-        for target: RecommendedBibliographyTarget
-    ) async throws -> RecommendedBibliographyOverview {
-        try await bibliographyCoordinator.overview(for: target)
+    public func recommendationOverview() async throws -> RecommendedBibliographyOverview {
+        try await bibliographyCoordinator.overview()
     }
 
     public func prepareRecommendation(
@@ -884,7 +906,7 @@ public actor ResearchOperations: ResearchUseCases {
 
     public func cancelAction(runID: UUID) async throws {
         let handle = try await reference.requireHandle()
-        try await handle.cancelResearchAction(runID: runID)
+        try await functionCoordinator.cancelAction(runID: runID, host: handle)
     }
 
     public func prepareResynthesis(
@@ -1074,8 +1096,8 @@ extension WorkspaceHandle {
         _ preparation: ResearchSkillMaintenancePreparation,
         confirmationToken: ResearchSkillMaintenanceConfirmationToken
     ) async throws -> ResearchSkillMaintenanceApplyOutcome {
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         return try await services.researchSkillMaintenanceStore.apply(
             preparation,
             confirmationToken: confirmationToken
@@ -1086,8 +1108,8 @@ extension WorkspaceHandle {
         snapshotID: UUID,
         expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
     ) async throws -> ResearchSkillMaintenanceRestoreOutcome {
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         return try await services.researchSkillMaintenanceStore.restore(
             snapshotID: snapshotID,
             expectedCurrentState: expectedCurrentState
@@ -1099,9 +1121,9 @@ extension WorkspaceHandle {
 /// catalog. Its private control root has no Triptych-local packages, so these
 /// operations remain available before a workspace is configured.
 public actor ResearchGuidanceOperations {
-    private let store: ResearchSkillStore
+    private let store: ResearchSkillTransactionCoordinator
 
-    init(store: ResearchSkillStore) {
+    init(store: ResearchSkillTransactionCoordinator) {
         self.store = store
     }
 

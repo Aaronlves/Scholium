@@ -4,8 +4,8 @@ import Testing
 @testable import ScholiumApp
 
 @MainActor
-@Suite("Agent Note Change presentation coordination")
-struct AgentNoteChangePresentationCoordinatorTests {
+@Suite("Agent Note Change claim coordination")
+struct AgentNoteChangeClaimCoordinatorTests {
     private final class Availability {
         var background = false
         var key = false
@@ -13,7 +13,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
 
     @Test("One request is claimed by the key window in its exact Triptych")
     func exactTriptychKeyWindowClaim() throws {
-        let coordinator = AgentNoteChangePresentationCoordinator()
+        let coordinator = AgentNoteChangeClaimCoordinator()
         let triptychID = UUID()
         let otherTriptychID = UUID()
         let firstID = UUID()
@@ -40,7 +40,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
             onPresent: { presented.append($0) }
         ))
 
-        let record = try requestRecord(triptychID: triptychID)
+        let record = try AgentNoteChangeTestFixtures.record(triptychID: triptychID)
         coordinator.receive(record, intent: .submit)
 
         #expect(coordinator.claimedWindowID(for: record.id) == keyID)
@@ -49,7 +49,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
 
     @Test("Replay updates one claim and show focuses without another sheet")
     func replayAndShowDoNotDuplicate() throws {
-        let coordinator = AgentNoteChangePresentationCoordinator()
+        let coordinator = AgentNoteChangeClaimCoordinator()
         let triptychID = UUID()
         let windowID = UUID()
         var presented: [UUID] = []
@@ -65,7 +65,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
             dismiss: { _ in },
             focus: { _ in focused += 1 }
         ))
-        let record = try requestRecord(triptychID: triptychID)
+        let record = try AgentNoteChangeTestFixtures.record(triptychID: triptychID)
 
         coordinator.receive(record, intent: .submit)
         coordinator.receive(record, intent: .submit)
@@ -79,7 +79,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
 
     @Test("A newly available background window does not outrank the key window")
     func keyWindowOutranksPreferredAvailability() throws {
-        let coordinator = AgentNoteChangePresentationCoordinator()
+        let coordinator = AgentNoteChangeClaimCoordinator()
         let triptychID = UUID()
         let backgroundID = UUID()
         let keyID = UUID()
@@ -104,7 +104,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
             dismiss: { _ in },
             focus: { _ in }
         ))
-        let record = try requestRecord(triptychID: triptychID)
+        let record = try AgentNoteChangeTestFixtures.record(triptychID: triptychID)
         coordinator.receive(record, intent: .submit)
 
         availability.background = true
@@ -116,7 +116,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
 
     @Test("Closing a claimed window reroutes an unresolved request once")
     func closingWindowReroutesPendingRequest() throws {
-        let coordinator = AgentNoteChangePresentationCoordinator()
+        let coordinator = AgentNoteChangeClaimCoordinator()
         let triptychID = UUID()
         let firstID = UUID()
         let secondID = UUID()
@@ -133,7 +133,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
             isKey: true,
             onPresent: { presented.append($0) }
         ))
-        let record = try requestRecord(triptychID: triptychID)
+        let record = try AgentNoteChangeTestFixtures.record(triptychID: triptychID)
         coordinator.receive(record, intent: .submit)
 
         coordinator.unregister(windowID: firstID)
@@ -144,7 +144,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
 
     @Test("A cached request is never presented after its bounded lifetime")
     func expiredCachedRequestIsNotPresented() throws {
-        let coordinator = AgentNoteChangePresentationCoordinator()
+        let coordinator = AgentNoteChangeClaimCoordinator()
         let triptychID = UUID()
         let windowID = UUID()
         var didPresent = false
@@ -158,7 +158,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
             dismiss: { _ in },
             focus: { _ in }
         ))
-        let record = try requestRecord(
+        let record = try AgentNoteChangeTestFixtures.record(
             triptychID: triptychID,
             receivedAt: Date().addingTimeInterval(-121)
         )
@@ -171,7 +171,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
 
     @Test("A stale claimed request stays visible while an allowed decision dismisses")
     func terminalStatePresentation() throws {
-        let coordinator = AgentNoteChangePresentationCoordinator()
+        let coordinator = AgentNoteChangeClaimCoordinator()
         let triptychID = UUID()
         let windowID = UUID()
         var updates: [AgentNoteChangeDecisionState] = []
@@ -186,7 +186,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
             dismiss: { dismissals.append($0) },
             focus: { _ in }
         ))
-        let pending = try requestRecord(triptychID: triptychID)
+        let pending = try AgentNoteChangeTestFixtures.record(triptychID: triptychID)
         coordinator.receive(pending, intent: .submit)
         let stale = try pending.resolving(
             state: .stale,
@@ -198,7 +198,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
         #expect(dismissals.isEmpty)
         #expect(coordinator.claimedWindowID(for: pending.id) == windowID)
 
-        let second = try requestRecord(triptychID: triptychID)
+        let second = try AgentNoteChangeTestFixtures.record(triptychID: triptychID)
         coordinator.presentationDidDismiss(requestID: pending.id, windowID: windowID)
         coordinator.receive(second, intent: .submit)
         let allowed = try second.resolving(
@@ -225,7 +225,7 @@ struct AgentNoteChangePresentationCoordinatorTests {
         triptychID: UUID,
         isKey: Bool,
         onPresent: @escaping @MainActor (UUID) -> Void
-    ) -> AgentNoteChangePresentationCoordinator.WindowEndpoint {
+    ) -> AgentNoteChangeClaimCoordinator.WindowEndpoint {
         .init(
             id: id,
             triptychID: { triptychID },
@@ -238,57 +238,4 @@ struct AgentNoteChangePresentationCoordinatorTests {
         )
     }
 
-    private func requestRecord(
-        triptychID: UUID,
-        receivedAt: Date = Date()
-    ) throws -> AgentNoteChangeRequestRecord {
-        let requested = try actionRevision(
-            definition: .synthesize,
-            packageID: "scholium-synthesize"
-        )
-        let noteID = UUID()
-        let target = try AgentNoteChangeTarget(
-            noteID: noteID,
-            note: VaultQualifiedNoteID(
-                vaultID: UUID(),
-                relativePath: "Topics/Attention.md"
-            ),
-            role: .topic,
-            expectedFingerprint: fingerprint("topic")
-        )
-        return try AgentNoteChangeRequestRecord(
-            request: AgentNoteChangeRequest(
-                triptychID: triptychID,
-                parentRunID: UUID(),
-                parentAction: try actionRevision(
-                    definition: .analyze,
-                    packageID: "scholium-analyze"
-                ),
-                requestedAction: requested,
-                targets: [target],
-                operations: [.modifyMarkdown],
-                agentReason: "This Topic needs the source result."
-            ),
-            receivedAt: receivedAt,
-            validFor: 120
-        )
-    }
-
-    private func actionRevision(
-        definition: ResearchActionDefinition,
-        packageID: String
-    ) throws -> AgentNoteChangeActionRevision {
-        try AgentNoteChangeActionRevision(
-            definition: definition,
-            packageID: packageID,
-            skillRevision: fingerprint("skill-\(packageID)"),
-            profileOrigin: .applicationDefault,
-            profileRevision: fingerprint("profile-\(packageID)"),
-            profileDocumentRevision: nil
-        )
-    }
-
-    private func fingerprint(_ value: String) -> DocumentFingerprint {
-        DocumentFingerprint(data: Data(value.utf8))
-    }
 }

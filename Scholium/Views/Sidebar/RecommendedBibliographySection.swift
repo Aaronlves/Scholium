@@ -25,8 +25,8 @@ struct RecommendedBibliographySection: View {
                     Color.primary.opacity(0.035),
                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                 )
-            } else if controller.target == nil {
-                Text("Open an Analysis to prepare new recommendations for this Triptych.")
+            } else if controller.scope?.selectedNotes.isEmpty != false {
+                Text("Select an active Note to prepare new recommendations for this Triptych.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -36,7 +36,7 @@ struct RecommendedBibliographySection: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else if controller.phase == .ready {
-                Text("No reading leads have been requested for this Analysis.")
+                Text("No reading leads have been requested for this Triptych.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -156,7 +156,7 @@ struct RecommendedBibliographySection: View {
                 .controlSize(.small)
         case .stale:
             Label(
-                "Recommendations refer to an earlier Analysis revision.",
+                "Recommendations refer to an earlier selected-Note revision.",
                 systemImage: "clock.arrow.circlepath"
             )
             .font(.caption2)
@@ -329,8 +329,8 @@ struct SidebarRecommendedBibliographySection: View {
             ))
             .onHover { isHovering = $0 }
             .help(
-                controller.target == nil
-                    ? "Open an Analysis to prepare new recommendations; existing Triptych recommendations remain available"
+                controller.scope?.selectedNotes.isEmpty != false
+                    ? "Select an active Note to prepare new recommendations; existing Triptych recommendations remain available"
                     : "Open Recommended Bibliography"
             )
             .accessibilityLabel("Open Recommended Bibliography")

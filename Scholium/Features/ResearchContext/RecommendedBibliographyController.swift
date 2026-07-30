@@ -3,9 +3,7 @@ import Foundation
 import ScholiumContracts
 
 struct RecommendedBibliographyClient {
-    let overview: @MainActor (
-        RecommendedBibliographyTarget
-    ) async throws -> RecommendedBibliographyOverview
+    let overview: @MainActor () async throws -> RecommendedBibliographyOverview
     let prepare: @MainActor (
         RecommendedBibliographyRequest
     ) async throws -> RecommendedBibliographyPreparation
@@ -25,11 +23,11 @@ enum RecommendedBibliographyPanelPhase: Equatable {
     case failed
 }
 
-/// Per-window owner for the Analysis recommendation draft and projection.
+/// Per-window owner for the Triptych recommendation draft and projection.
 /// It owns no repository, skill package, YAML, or filesystem authority.
 @MainActor
 final class RecommendedBibliographyController: ObservableObject {
-    @Published private(set) var target: RecommendedBibliographyTarget?
+    @Published private(set) var scope: RecommendedBibliographyScope?
     @Published private(set) var projection: RecommendedBibliographyProjection?
     @Published private(set) var preparation: RecommendedBibliographyPreparation?
     @Published private(set) var phase: RecommendedBibliographyPanelPhase = .idle
@@ -47,7 +45,7 @@ final class RecommendedBibliographyController: ObservableObject {
     }
 
     var canPrepare: Bool {
-        target != nil
+        scope?.selectedNotes.isEmpty == false
             && preparation == nil
             && phase != .loading
             && phase != .preparing
@@ -64,37 +62,40 @@ final class RecommendedBibliographyController: ObservableObject {
         client = nil
     }
 
-    func refresh(for target: RecommendedBibliographyTarget?) async {
-        await load(target, force: false)
+    func refresh(for scope: RecommendedBibliographyScope?) async {
+        await load(scope, force: false)
     }
 
     private func load(
-        _ target: RecommendedBibliographyTarget?,
+        _ scope: RecommendedBibliographyScope?,
         force: Bool
     ) async {
-        let targetChanged = self.target != target
-        guard force || targetChanged || phase == .failed
-            || (projection == nil && preparation == nil) else { return }
+        let triptychChanged = self.scope?.triptychID != scope?.triptychID
+        let needsLoad = force || triptychChanged || phase == .failed
+            || (projection == nil && preparation == nil && self.scope == nil)
+        self.scope = scope
+        guard needsLoad else { return }
         generation &+= 1
         let token = generation
         task?.cancel()
-        if targetChanged, target != nil {
+        if triptychChanged, scope != nil {
             projection = nil
             selectedGoals = []
             purpose = ""
+            preparation = nil
         }
-        self.target = target
-        if targetChanged, target != nil { preparation = nil }
         errorMessage = nil
         needsMethodRepair = false
-        guard let target, let client else {
+        guard let scope, let client else {
             phase = projection == nil && preparation == nil ? .idle : .ready
             return
         }
         phase = .loading
         do {
-            let overview = try await client.overview(target)
-            guard token == generation, self.target == target else { return }
+            let overview = try await client.overview()
+            guard token == generation, self.scope?.triptychID == scope.triptychID else {
+                return
+            }
             apply(overview)
             needsMethodRepair = false
         } catch is CancellationError {
@@ -108,14 +109,14 @@ final class RecommendedBibliographyController: ObservableObject {
     }
 
     func prepare() {
-        guard let target, let client, canPrepare else { return }
+        guard let scope, let client, canPrepare else { return }
         generation &+= 1
         let token = generation
         phase = .preparing
         errorMessage = nil
         needsMethodRepair = false
         let request = RecommendedBibliographyRequest(
-            target: target,
+            scope: scope,
             goals: BibliographyRecommendationGoal.allCases.filter(selectedGoals.contains),
             purpose: purpose
         )
@@ -124,7 +125,8 @@ final class RecommendedBibliographyController: ObservableObject {
             guard let self else { return }
             do {
                 let preparation = try await client.prepare(request)
-                guard token == generation, self.target == target else { return }
+                guard token == generation,
+                      self.scope?.triptychID == scope.triptychID else { return }
                 self.preparation = preparation
                 phase = .awaitingAgent
             } catch is CancellationError {
@@ -163,7 +165,7 @@ final class RecommendedBibliographyController: ObservableObject {
     }
 
     func dismiss(candidateID: UUID) {
-        guard let client, let target, let requestID = projection?.id else { return }
+        guard let client, let scope, let requestID = projection?.id else { return }
         generation &+= 1
         let token = generation
         Task { [weak self] in
@@ -171,12 +173,13 @@ final class RecommendedBibliographyController: ObservableObject {
             do {
                 try await client.dismiss(requestID, candidateID)
                 await refreshAfterMutation(
-                    target: target,
+                    triptychID: scope.triptychID,
                     client: client,
                     token: token
                 )
             } catch {
-                guard token == generation, self.target == target else { return }
+                guard token == generation,
+                      self.scope?.triptychID == scope.triptychID else { return }
                 needsMethodRepair = methodRepairRequired(error)
                 errorMessage = error.localizedDescription
             }
@@ -184,22 +187,26 @@ final class RecommendedBibliographyController: ObservableObject {
     }
 
     func retry() async {
-        await load(target, force: true)
+        await load(scope, force: true)
     }
 
     private func refreshAfterMutation(
-        target: RecommendedBibliographyTarget,
+        triptychID: UUID,
         client: RecommendedBibliographyClient,
         token: UInt64
     ) async {
         do {
-            let refreshed = try await client.overview(target)
-            guard token == generation, self.target == target else { return }
+            let refreshed = try await client.overview()
+            guard token == generation, self.scope?.triptychID == triptychID else {
+                return
+            }
             apply(refreshed)
             errorMessage = nil
             needsMethodRepair = false
         } catch {
-            guard token == generation, self.target == target else { return }
+            guard token == generation, self.scope?.triptychID == triptychID else {
+                return
+            }
             needsMethodRepair = methodRepairRequired(error)
             errorMessage = error.localizedDescription
         }
@@ -229,7 +236,7 @@ final class RecommendedBibliographyController: ObservableObject {
         generation &+= 1
         task?.cancel()
         task = nil
-        target = nil
+        scope = nil
         projection = nil
         preparation = nil
         phase = .idle

@@ -16,7 +16,7 @@ struct WorkspaceServices: Sendable {
     let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
-    let researchSkillStore: ResearchSkillStore
+    let researchSkillStore: ResearchSkillTransactionCoordinator
     let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
     let researchPermissionPolicyStore: ResearchPermissionPolicyStore
     let agentNoteChangeRequestStore: AgentNoteChangeRequestStore
@@ -217,7 +217,7 @@ private struct WorkspaceRefreshPayload: Sendable {
 /// Per-Triptych application boundary shared by every consumer of a runtime.
 /// The actor borrows the runtime's identity-pooled vault authorities and owns
 /// only the Triptych-level composition, snapshots, and publication lifetime.
-public actor WorkspaceHandle {
+public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private nonisolated static let refreshLogger = Logger(
         subsystem: "com.scholium.app",
         category: "WorkspaceRefresh"
@@ -232,6 +232,7 @@ public actor WorkspaceHandle {
     public nonisolated let research: ResearchOperations
 
     let services: WorkspaceServices
+    let researchFunctionCoordinator: ResearchFunctionCoordinator
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
     private(set) var latestRefreshMeasurement: WorkspaceRefreshMeasurement
@@ -245,10 +246,8 @@ public actor WorkspaceHandle {
     private var liveWatcherTask: Task<Void, Never>?
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
-    private var activeSourceMutationID: UUID?
     private var researchRecoveryMutationIsActive = false
-    private var refreshCycleIsActive = false
-    private var sourceGateWaiters: [CheckedContinuation<Void, Never>] = []
+    var sourceOperationGate = WorkspaceSourceOperationGate()
     private var didCompleteActivationReconciliation = false
 
     func beginResearchRecoveryMutation() throws {
@@ -278,6 +277,7 @@ public actor WorkspaceHandle {
         initialRefreshMeasurement: WorkspaceRefreshMeasurement,
         initialWorkspaceGeneration: UInt64,
         reference: WorkspaceHandleReference,
+        researchFunctionCoordinator: ResearchFunctionCoordinator,
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
         research: ResearchOperations
@@ -290,6 +290,7 @@ public actor WorkspaceHandle {
         self.assignment = assignment
         self.mode = mode
         self.services = services
+        self.researchFunctionCoordinator = researchFunctionCoordinator
         self.leases = leases
         currentSnapshot = initialSnapshot
         latestRefreshMeasurement = initialRefreshMeasurement
@@ -380,7 +381,7 @@ public actor WorkspaceHandle {
                         isDirectory: true
                     )
             )
-            let researchSkillStore = ResearchSkillStore(
+            let researchSkillStore = ResearchSkillTransactionCoordinator(
                 controlURL: controlURL,
                 workingMethodRecoveryStore: workingMethodRecoveryStore
             )
@@ -524,8 +525,28 @@ public actor WorkspaceHandle {
             let reference = WorkspaceHandleReference(workspaceID: assignment.id)
             let documentOperations = DocumentOperations(reference: reference)
             let discoveryOperations = DiscoveryOperations(reference: reference)
+            let researchFunctionCoordinator = ResearchFunctionCoordinator(
+                workspaceID: assignment.id,
+                dependencies: ResearchFunctionCoordinatorDependencies(
+                    repositories: services.repositories,
+                    vaults: Dictionary(uniqueKeysWithValues: assignment.vaults.values.map {
+                        ($0.id, $0)
+                    }),
+                    roots: services.roots,
+                    controlStore: services.controlStore,
+                    researchSkillStore: services.researchSkillStore,
+                    sourceAccessStore: services.researchSourceAccessStore,
+                    agentNoteChangeRequestStore: services.agentNoteChangeRequestStore,
+                    portableResearchRecordStore: services.portableResearchRecordStore,
+                    localExecutionStore: services.localResearchExecutionStore,
+                    critiqueRegistry: services.critiqueRegistry,
+                    checkpointStore: services.checkpointStore,
+                    zotero: services.zotero
+                )
+            )
             let researchOperations = ResearchOperations(
                 reference: reference,
+                functionCoordinator: researchFunctionCoordinator,
                 skillsURL: services.researchSkillStore.skillsURL,
                 recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
@@ -538,6 +559,7 @@ public actor WorkspaceHandle {
                 initialRefreshMeasurement: initialBuild.measurement,
                 initialWorkspaceGeneration: initialWorkspaceGeneration,
                 reference: reference,
+                researchFunctionCoordinator: researchFunctionCoordinator,
                 documents: documentOperations,
                 discovery: discoveryOperations,
                 research: researchOperations
@@ -607,7 +629,7 @@ public actor WorkspaceHandle {
         liveWatcherTask = nil
         liveIndexRefreshTask = nil
         pendingLiveEvents.removeAll()
-        signalSourceGateChange()
+        shutDownWorkspaceSourceOperationGate()
         watcher?.cancel()
         refresh?.cancel()
         await watcher?.value
@@ -647,10 +669,10 @@ public actor WorkspaceHandle {
             throw DocumentImportError.unsupportedSource(sourceURL.path)
         }
 
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: vaultID)
         let document = try await repository.importMarkdown(
@@ -676,7 +698,7 @@ public actor WorkspaceHandle {
             )
             throw error
         }
-        endSourceMutation(mutationID)
+        endSourceMutation(mutationLease)
         ownsMutation = false
         do {
             _ = try await refresh(
@@ -703,10 +725,10 @@ public actor WorkspaceHandle {
         content: String
     ) async throws -> NoteDocument {
         try requireActive()
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
         let registeredVault = try vault(id: id.vaultID)
@@ -734,7 +756,7 @@ public actor WorkspaceHandle {
             )
             throw error
         }
-        endSourceMutation(mutationID)
+        endSourceMutation(mutationLease)
         ownsMutation = false
         do {
             _ = try await refresh(
@@ -817,10 +839,10 @@ public actor WorkspaceHandle {
         parentRelativePath: String?
     ) async throws -> VaultRelativeFolderPath {
         try requireActive()
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         let registeredVault = try vault(id: vaultID)
         if let parentRelativePath,
@@ -842,7 +864,7 @@ public actor WorkspaceHandle {
             }
             do {
                 let folder = try await repository.createFolder(relativePath: relativePath)
-                endSourceMutation(mutationID)
+                endSourceMutation(mutationLease)
                 ownsMutation = false
                 do {
                     _ = try await refreshFolderInventory(vaultID: vaultID)
@@ -892,10 +914,10 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> NoteDocument {
         try requireActive()
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
         let registeredVault = try vault(id: id.vaultID)
@@ -929,7 +951,7 @@ public actor WorkspaceHandle {
             )
             throw error
         }
-        endSourceMutation(mutationID)
+        endSourceMutation(mutationLease)
         ownsMutation = false
         do {
             _ = try await refresh(
@@ -960,10 +982,10 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> SaveResult {
         try requireActive()
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
         let result: SaveResult
@@ -1007,7 +1029,7 @@ public actor WorkspaceHandle {
             }
             throw TriptychTransactionError.recoveryRequired(record)
         }
-        endSourceMutation(mutationID)
+        endSourceMutation(mutationLease)
         ownsMutation = false
         do {
             _ = try await refresh(
@@ -1101,10 +1123,10 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> PermanentDeletionCommit {
         try requireActive()
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         guard id.relativePath.hasPrefix("Trash/") else {
             throw VaultRepositoryError.invalidRelativePath(id.relativePath)
@@ -1133,7 +1155,7 @@ public actor WorkspaceHandle {
             expectedRevision: expectedRevision,
             checkpointArea: try checkpointArea(vaultID: id.vaultID)
         )
-        endSourceMutation(mutationID)
+        endSourceMutation(mutationLease)
         ownsMutation = false
         do {
             _ = try await refresh(
@@ -1159,13 +1181,13 @@ public actor WorkspaceHandle {
         guard !isShutDown else {
             return [ScholiumApplicationError.workspaceShutDown(id).localizedDescription]
         }
-        let mutationID: UUID
+        let mutationLease: WorkspaceSourceOperationLease
         do {
-            mutationID = try await beginSourceMutation()
+            mutationLease = try await beginSourceMutation()
         } catch {
             return [error.localizedDescription]
         }
-        defer { endSourceMutation(mutationID) }
+        defer { endSourceMutation(mutationLease) }
         var issues: [String] = []
         for (vaultID, repository) in services.repositories.sorted(by: {
             $0.key.uuidString < $1.key.uuidString
@@ -1238,8 +1260,8 @@ public actor WorkspaceHandle {
         requestID: RefreshRequestID,
         payloads: [WorkspaceRefreshPayload]
     ) async throws -> WorkspaceSnapshot {
-        try await beginRefreshCycle()
-        defer { endRefreshCycle() }
+        let refreshLease = try await beginRefreshCycle()
+        defer { endRefreshCycle(refreshLease) }
         let payload = try WorkspaceRefreshPayload.merged(payloads)
         let snapshot: WorkspaceSnapshot
         let measurement: WorkspaceRefreshMeasurement
@@ -1581,15 +1603,21 @@ public actor WorkspaceHandle {
         startLiveIndexRefreshIfNeeded()
     }
 
-    private func beginSourceMutation() async throws -> UUID {
-        while activeSourceMutationID != nil || refreshCycleIsActive {
-            try requireActive()
-            await waitForSourceGateChange()
-        }
+    private func beginSourceMutation() async throws -> WorkspaceSourceOperationLease {
         try requireActive()
-        let id = UUID()
-        activeSourceMutationID = id
-        return id
+        do {
+            let lease = try await acquireWorkspaceSourceOperation(.sourceMutation)
+            do {
+                try Task.checkCancellation()
+                try requireActive()
+                return lease
+            } catch {
+                releaseWorkspaceSourceOperation(lease)
+                throw error
+            }
+        } catch WorkspaceSourceOperationGateError.shutDown {
+            throw ScholiumApplicationError.workspaceShutDown(id)
+        }
     }
 
     /// Agent change-request validation reads source-bound identities and local
@@ -1597,30 +1625,28 @@ public actor WorkspaceHandle {
     /// keeps those checks and their store write on one side of every source
     /// mutation instead of leaving an orphaned private request across actor
     /// reentrancy.
-    func beginAgentNoteChangeCoordination() async throws -> UUID {
+    func beginAgentNoteChangeCoordination() async throws -> WorkspaceSourceOperationLease {
         try await beginSourceMutation()
     }
 
     /// Research Method, Profile, Skill, and standing-policy writes share the
     /// Agent decision gate so an exact-current check and its non-authorizing
     /// durable decision cannot be separated by an in-App configuration edit.
-    func beginResearchConfigurationMutation() async throws -> UUID {
+    func beginResearchConfigurationMutation() async throws -> WorkspaceSourceOperationLease {
         try await beginSourceMutation()
     }
 
-    private func endSourceMutation(_ id: UUID) {
-        precondition(activeSourceMutationID == id)
-        activeSourceMutationID = nil
-        signalSourceGateChange()
+    private func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
+        releaseWorkspaceSourceOperation(lease)
         startLiveIndexRefreshIfNeeded()
     }
 
-    func endAgentNoteChangeCoordination(_ id: UUID) {
-        endSourceMutation(id)
+    func endAgentNoteChangeCoordination(_ lease: WorkspaceSourceOperationLease) {
+        endSourceMutation(lease)
     }
 
-    func endResearchConfigurationMutation(_ id: UUID) {
-        endSourceMutation(id)
+    func endResearchConfigurationMutation(_ lease: WorkspaceSourceOperationLease) {
+        endSourceMutation(lease)
         let snapshot = currentSnapshot
         let events = events
         Task {
@@ -1628,36 +1654,30 @@ public actor WorkspaceHandle {
         }
     }
 
-    private func beginRefreshCycle() async throws {
-        while activeSourceMutationID != nil || refreshCycleIsActive {
-            try requireActive()
-            await waitForSourceGateChange()
-        }
+    private func beginRefreshCycle() async throws -> WorkspaceSourceOperationLease {
         try requireActive()
-        refreshCycleIsActive = true
-    }
-
-    private func endRefreshCycle() {
-        precondition(refreshCycleIsActive)
-        refreshCycleIsActive = false
-        signalSourceGateChange()
-    }
-
-    private func waitForSourceGateChange() async {
-        await withCheckedContinuation { continuation in
-            sourceGateWaiters.append(continuation)
+        do {
+            let lease = try await acquireWorkspaceSourceOperation(.refreshCycle)
+            do {
+                try Task.checkCancellation()
+                try requireActive()
+                return lease
+            } catch {
+                releaseWorkspaceSourceOperation(lease)
+                throw error
+            }
+        } catch WorkspaceSourceOperationGateError.shutDown {
+            throw ScholiumApplicationError.workspaceShutDown(id)
         }
     }
 
-    private func signalSourceGateChange() {
-        let waiters = sourceGateWaiters
-        sourceGateWaiters.removeAll()
-        waiters.forEach { $0.resume() }
+    private func endRefreshCycle(_ lease: WorkspaceSourceOperationLease) {
+        releaseWorkspaceSourceOperation(lease)
     }
 
     private func startLiveIndexRefreshIfNeeded() {
         guard !isShutDown,
-              activeSourceMutationID == nil,
+              !sourceOperationGate.sourceMutationIsActive,
               !pendingLiveEvents.isEmpty,
               liveIndexRefreshTask == nil else { return }
 
@@ -1671,7 +1691,7 @@ public actor WorkspaceHandle {
 
     private func runLiveIndexRefresh(token: UUID) async {
         while !isShutDown, !pendingLiveEvents.isEmpty {
-            guard activeSourceMutationID == nil else { break }
+            guard !sourceOperationGate.sourceMutationIsActive else { break }
             let pending = pendingLiveEvents
             pendingLiveEvents.removeAll()
             var changedVaultIDs: Set<UUID> = []
@@ -1715,7 +1735,7 @@ public actor WorkspaceHandle {
                     )
                     guard !changedVaultIDs.isEmpty else { continue }
                 }
-                guard activeSourceMutationID == nil else {
+                guard !sourceOperationGate.sourceMutationIsActive else {
                     for vaultID in changedVaultIDs {
                         var journal = pendingLiveEvents[vaultID]
                             ?? VaultWatchEventJournal(capacity: 256)
@@ -1931,8 +1951,8 @@ public actor WorkspaceHandle {
 
     func createSkill(id: String, source: String) async throws -> ResearchSkillPackage {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         return try await services.researchSkillStore.create(id: id, source: source)
     }
 
@@ -1941,8 +1961,8 @@ public actor WorkspaceHandle {
         as newID: String
     ) async throws -> ResearchSkillPackage {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         return try await services.researchSkillStore.duplicateBundled(id: id, as: newID)
     }
 
@@ -1952,8 +1972,8 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchSkillPackage {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         return try await services.researchSkillStore.save(
             id: id,
             source: source,
@@ -1967,8 +1987,8 @@ public actor WorkspaceHandle {
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchSkillPackage {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         return try await services.researchSkillStore.rename(
             id: id,
             to: newID,
@@ -1978,8 +1998,8 @@ public actor WorkspaceHandle {
 
     func deleteSkill(id: String, expectedRevision: DocumentFingerprint) async throws {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         try await services.researchSkillStore.delete(
             id: id,
             expectedRevision: expectedRevision
@@ -2029,10 +2049,10 @@ public actor WorkspaceHandle {
         validatesCritiquePlacement: Bool
     ) async throws -> TriptychMoveCommit {
         try requireActive()
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         let destination = VaultQualifiedNoteID(
             vaultID: source.vaultID,
@@ -2098,7 +2118,7 @@ public actor WorkspaceHandle {
             identityFailure = error
         }
 
-        endSourceMutation(mutationID)
+        endSourceMutation(mutationLease)
         ownsMutation = false
         do {
             _ = try await refresh(
@@ -2129,10 +2149,10 @@ public actor WorkspaceHandle {
         movesToLifecycle: Bool
     ) async throws -> FolderMoveCommit {
         try requireActive()
-        let mutationID = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
-            if ownsMutation { endSourceMutation(mutationID) }
+            if ownsMutation { endSourceMutation(mutationLease) }
         }
         let sourceFolder: VaultRelativeFolderPath
         let destinationFolder: VaultRelativeFolderPath
@@ -2244,7 +2264,7 @@ public actor WorkspaceHandle {
 
         let affectedVaultIDs = Set(plan.rewrites.map { $0.source.vaultID })
             .union([vaultID])
-        endSourceMutation(mutationID)
+        endSourceMutation(mutationLease)
         ownsMutation = false
         do {
             if commit.noteMoves.isEmpty, plan.rewrites.isEmpty {

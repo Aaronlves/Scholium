@@ -185,7 +185,7 @@ Use `--from` for multiline responses. Never interpolate untrusted Markdown or re
 
 ## 6. Recommended Bibliography
 
-Recommended Bibliography is a separate Analysis-only lifecycle. Prefer its
+Recommended Bibliography is a separate Triptych-owned lifecycle. Prefer its
 typed `nextActions`; recover a prepared request with `bibliography show`. These
 commands transport structured reading leads only and never authorize note or
 Zotero mutation.

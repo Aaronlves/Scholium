@@ -1,28 +1,160 @@
 import Foundation
 
-/// An Analysis-only, immutable source target for bibliography screening.
-public struct RecommendedBibliographyTarget: Codable, Hashable, Sendable {
+/// One researcher-selected, fingerprint-bound Note used as read-only source
+/// context for a Triptych-owned bibliography request.
+public struct RecommendedBibliographySourceNote: Codable, Hashable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
+    public let role: VaultRole
     public let fingerprint: DocumentFingerprint
     public let title: String
 
     public init(
         noteID: UUID,
         note: VaultQualifiedNoteID,
+        role: VaultRole,
         fingerprint: DocumentFingerprint,
         title: String
     ) {
         self.noteID = noteID
         self.note = note
+        self.role = role
         self.fingerprint = fingerprint
         self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public func validate() throws {
         guard !title.isEmpty else {
-            throw RecommendedBibliographyError.invalidTarget("The Analysis title is empty.")
+            throw RecommendedBibliographyError.invalidScope("A selected Note title is empty.")
         }
+        guard role != .other else {
+            throw RecommendedBibliographyError.invalidScope(
+                "A selected Note must belong to Analyses, Topics, or Works."
+            )
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case noteID
+        case note
+        case role
+        case fingerprint
+        case title
+    }
+
+    public init(from decoder: Decoder) throws {
+        try RecommendedBibliographyContractValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            noteID: try container.decode(UUID.self, forKey: .noteID),
+            note: try container.decode(VaultQualifiedNoteID.self, forKey: .note),
+            role: try container.decode(VaultRole.self, forKey: .role),
+            fingerprint: try container.decode(DocumentFingerprint.self, forKey: .fingerprint),
+            title: try container.decode(String.self, forKey: .title)
+        )
+    }
+}
+
+/// The immutable Triptych and focal Note set visible to one window. Durable
+/// recommendations belong to the Triptych; selected Notes only bind the exact
+/// source revisions for a new request.
+public struct RecommendedBibliographyScope: Codable, Hashable, Sendable {
+    public static let maximumSelectedNoteCount = 64
+
+    public let triptychID: UUID
+    public let selectedNotes: [RecommendedBibliographySourceNote]
+
+    public init(
+        triptychID: UUID,
+        selectedNotes: [RecommendedBibliographySourceNote] = []
+    ) {
+        self.triptychID = triptychID
+        self.selectedNotes = selectedNotes.sorted {
+            $0.noteID.uuidString < $1.noteID.uuidString
+        }
+    }
+
+    public var sourceRevisions: [RecommendedBibliographySourceRevision] {
+        selectedNotes.map {
+            RecommendedBibliographySourceRevision(
+                noteID: $0.noteID,
+                fingerprint: $0.fingerprint
+            )
+        }.sorted {
+            $0.noteID.uuidString < $1.noteID.uuidString
+        }
+    }
+
+    public func validateForPreparation() throws {
+        guard !selectedNotes.isEmpty else {
+            throw RecommendedBibliographyError.invalidScope(
+                "Select at least one active Note as source context."
+            )
+        }
+        guard selectedNotes.count <= Self.maximumSelectedNoteCount else {
+            throw RecommendedBibliographyError.invalidScope(
+                "A bibliography request can select at most \(Self.maximumSelectedNoteCount) Notes."
+            )
+        }
+        guard Set(selectedNotes.map(\.noteID)).count == selectedNotes.count,
+              Set(selectedNotes.map(\.note)).count == selectedNotes.count else {
+            throw RecommendedBibliographyError.invalidScope(
+                "Selected Notes must have unique identities."
+            )
+        }
+        for note in selectedNotes { try note.validate() }
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case triptychID
+        case selectedNotes
+    }
+
+    public init(from decoder: Decoder) throws {
+        try RecommendedBibliographyContractValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            triptychID: try container.decode(UUID.self, forKey: .triptychID),
+            selectedNotes: try container.decode(
+                [RecommendedBibliographySourceNote].self,
+                forKey: .selectedNotes
+            )
+        )
+    }
+}
+
+/// The exact Note revisions echoed by an agent completion. Paths and titles
+/// are omitted because the stored request remains authoritative.
+public struct RecommendedBibliographySourceRevision: Codable, Hashable, Sendable {
+    public let noteID: UUID
+    public let fingerprint: DocumentFingerprint
+
+    public init(noteID: UUID, fingerprint: DocumentFingerprint) {
+        self.noteID = noteID
+        self.fingerprint = fingerprint
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case noteID
+        case fingerprint
+    }
+
+    public init(from decoder: Decoder) throws {
+        try RecommendedBibliographyContractValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            noteID: try container.decode(UUID.self, forKey: .noteID),
+            fingerprint: try container.decode(DocumentFingerprint.self, forKey: .fingerprint)
+        )
     }
 }
 
@@ -40,16 +172,16 @@ public enum BibliographyRecommendationGoal: String, Codable, CaseIterable, Hasha
 }
 
 public struct RecommendedBibliographyRequest: Codable, Hashable, Sendable {
-    public let target: RecommendedBibliographyTarget
+    public let scope: RecommendedBibliographyScope
     public let goals: [BibliographyRecommendationGoal]
     public let purpose: String?
 
     public init(
-        target: RecommendedBibliographyTarget,
+        scope: RecommendedBibliographyScope,
         goals: [BibliographyRecommendationGoal] = [],
         purpose: String? = nil
     ) {
-        self.target = target
+        self.scope = scope
         let unique = Set(goals)
         self.goals = BibliographyRecommendationGoal.allCases.filter(unique.contains)
         let normalized = purpose?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -57,7 +189,29 @@ public struct RecommendedBibliographyRequest: Codable, Hashable, Sendable {
     }
 
     public func validate() throws {
-        try target.validate()
+        try scope.validateForPreparation()
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case scope
+        case goals
+        case purpose
+    }
+
+    public init(from decoder: Decoder) throws {
+        try RecommendedBibliographyContractValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            scope: try container.decode(RecommendedBibliographyScope.self, forKey: .scope),
+            goals: try container.decodeIfPresent(
+                [BibliographyRecommendationGoal].self,
+                forKey: .goals
+            ) ?? [],
+            purpose: try container.decodeIfPresent(String.self, forKey: .purpose)
+        )
     }
 }
 
@@ -406,20 +560,22 @@ public struct RecommendedBibliographyCandidate: Codable, Hashable, Identifiable,
 public struct RecommendedBibliographyCompletionSubmission: Codable, Hashable, Sendable {
     public let requestID: UUID
     public let confirmationToken: UUID
-    public let targetFingerprint: DocumentFingerprint
+    public let sourceRevisions: [RecommendedBibliographySourceRevision]
     public let sourceScope: String
     public let candidates: [RecommendedBibliographyCandidate]
 
     public init(
         requestID: UUID,
         confirmationToken: UUID,
-        targetFingerprint: DocumentFingerprint,
+        sourceRevisions: [RecommendedBibliographySourceRevision],
         sourceScope: String,
         candidates: [RecommendedBibliographyCandidate]
     ) {
         self.requestID = requestID
         self.confirmationToken = confirmationToken
-        self.targetFingerprint = targetFingerprint
+        self.sourceRevisions = sourceRevisions.sorted {
+            $0.noteID.uuidString < $1.noteID.uuidString
+        }
         self.sourceScope = sourceScope.trimmingCharacters(in: .whitespacesAndNewlines)
         self.candidates = candidates
     }
@@ -428,10 +584,46 @@ public struct RecommendedBibliographyCompletionSubmission: Codable, Hashable, Se
         guard !sourceScope.isEmpty else {
             throw RecommendedBibliographyError.invalidCompletion("The inspected source scope is required.")
         }
+        guard !sourceRevisions.isEmpty,
+              sourceRevisions.count <= RecommendedBibliographyScope.maximumSelectedNoteCount,
+              Set(sourceRevisions.map(\.noteID)).count == sourceRevisions.count else {
+            throw RecommendedBibliographyError.invalidCompletion(
+                "Completion must echo each selected Note revision exactly once."
+            )
+        }
         guard Set(candidates.map(\.id)).count == candidates.count else {
             throw RecommendedBibliographyError.invalidCompletion("Candidate identifiers must be unique.")
         }
         for candidate in candidates { _ = try candidate.validatedForSubmission() }
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case requestID
+        case confirmationToken
+        case sourceRevisions
+        case sourceScope
+        case candidates
+    }
+
+    public init(from decoder: Decoder) throws {
+        try RecommendedBibliographyContractValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            requestID: try container.decode(UUID.self, forKey: .requestID),
+            confirmationToken: try container.decode(UUID.self, forKey: .confirmationToken),
+            sourceRevisions: try container.decode(
+                [RecommendedBibliographySourceRevision].self,
+                forKey: .sourceRevisions
+            ),
+            sourceScope: try container.decode(String.self, forKey: .sourceScope),
+            candidates: try container.decode(
+                [RecommendedBibliographyCandidate].self,
+                forKey: .candidates
+            )
+        )
     }
 }
 
@@ -466,9 +658,9 @@ public struct RecommendedBibliographyProjection: Codable, Hashable, Identifiable
     }
 }
 
-/// The durable state needed by one Analysis inspector. A completed or stale
-/// result and a newer prepared request are intentionally represented
-/// separately so refreshing never hides prior reading leads.
+/// The Triptych-owned durable state. A completed or stale result and a newer
+/// prepared request are intentionally represented separately so refreshing
+/// never hides prior reading leads.
 public struct RecommendedBibliographyOverview: Codable, Hashable, Sendable {
     public let result: RecommendedBibliographyProjection?
     public let activePreparation: RecommendedBibliographyPreparation?
@@ -527,13 +719,9 @@ public struct RecommendedBibliographyMethodStatus: Codable, Hashable, Sendable {
 }
 
 public protocol RecommendedBibliographyUseCases: Sendable {
-    func recommendationOverview(
-        for target: RecommendedBibliographyTarget
-    ) async throws -> RecommendedBibliographyOverview
+    func recommendationOverview() async throws -> RecommendedBibliographyOverview
 
-    func recommendations(
-        for target: RecommendedBibliographyTarget
-    ) async throws -> RecommendedBibliographyProjection?
+    func recommendations() async throws -> RecommendedBibliographyProjection?
 
     func prepareRecommendation(
         _ request: RecommendedBibliographyRequest
@@ -558,15 +746,16 @@ public protocol RecommendedBibliographyUseCases: Sendable {
 }
 
 public enum RecommendedBibliographyError: LocalizedError, Sendable {
-    case invalidTarget(String)
+    case invalidScope(String)
     case invalidCandidate(String)
     case invalidCompletion(String)
-    case analysisTargetRequired
+    case triptychMismatch
+    case selectedNoteUnavailable
+    case selectedNoteChanged
     case requestNotFound(UUID)
     case candidateNotFound(UUID)
     case activeRequestExists(UUID)
     case confirmationMismatch
-    case targetChanged
     case methodChanged
     case methodRequiresRepair
     case alreadyCompleted(UUID)
@@ -575,11 +764,15 @@ public enum RecommendedBibliographyError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidTarget(let message), .invalidCandidate(let message),
+        case .invalidScope(let message), .invalidCandidate(let message),
              .invalidCompletion(let message), .storeUnavailable(let message):
             message
-        case .analysisTargetRequired:
-            "Recommended Bibliography is available only for an Analysis."
+        case .triptychMismatch:
+            "The bibliography request belongs to a different Triptych."
+        case .selectedNoteUnavailable:
+            "A selected Note is no longer active in this Triptych."
+        case .selectedNoteChanged:
+            "A selected Note changed after this recommendation request was prepared."
         case .requestNotFound(let id):
             "Recommended Bibliography request was not found: \(id.uuidString)"
         case .candidateNotFound(let id):
@@ -588,8 +781,6 @@ public enum RecommendedBibliographyError: LocalizedError, Sendable {
             "Recommended Bibliography request is already awaiting completion: \(id.uuidString)"
         case .confirmationMismatch:
             "The Recommended Bibliography confirmation token does not match."
-        case .targetChanged:
-            "The Analysis changed after this recommendation request was prepared."
         case .methodChanged:
             "The selected bibliography method changed after preparation."
         case .methodRequiresRepair:
@@ -599,5 +790,40 @@ public enum RecommendedBibliographyError: LocalizedError, Sendable {
         case .cancelled(let id):
             "Recommended Bibliography request was cancelled: \(id.uuidString)"
         }
+    }
+}
+
+private enum RecommendedBibliographyContractValidation {
+    static func rejectUnknownFields(
+        in decoder: Decoder,
+        allowed: some Sequence<String>
+    ) throws {
+        let container = try decoder.container(
+            keyedBy: RecommendedBibliographyAnyCodingKey.self
+        )
+        let permitted = Set(allowed)
+        guard let unknown = container.allKeys.map(\.stringValue).sorted()
+            .first(where: { !permitted.contains($0) }) else { return }
+        throw DecodingError.dataCorrupted(.init(
+            codingPath: decoder.codingPath + [RecommendedBibliographyAnyCodingKey(
+                stringValue: unknown
+            )!],
+            debugDescription: "Unsupported Recommended Bibliography field: \(unknown)"
+        ))
+    }
+}
+
+private struct RecommendedBibliographyAnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
     }
 }

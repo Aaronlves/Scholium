@@ -28,8 +28,8 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint?
     ) async throws -> ResearchPermissionSettingsSnapshot {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         let saved = try await services.researchPermissionPolicyStore
             .saveTriptychDefault(policy, expectedRevision: expectedRevision)
         return try await permissionSettings(policy: saved)
@@ -42,8 +42,8 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint?
     ) async throws -> ResearchPermissionSettingsSnapshot {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         guard let subject = try await researchPermissionSubjects()
             .first(where: { $0.packageID == packageID }) else {
             throw ResearchPermissionOperationError.subjectUnavailable(packageID)
@@ -65,8 +65,8 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint?
     ) async throws -> ResearchPermissionSettingsSnapshot {
         try requireActive()
-        let mutationID = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationID) }
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
         let saved = try await services.researchPermissionPolicyStore.removeOverride(
             packageID: packageID,
             expectedRevision: expectedRevision

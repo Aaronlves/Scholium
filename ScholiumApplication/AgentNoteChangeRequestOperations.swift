@@ -41,8 +41,8 @@ extension WorkspaceHandle {
         validFor: TimeInterval = 10 * 60
     ) async throws -> AgentNoteChangeRequestRecord {
         try requireActive()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
         let record = try await submitAgentNoteChangeRequestWithinCoordination(
             request,
             receivedAt: receivedAt,
@@ -59,8 +59,8 @@ extension WorkspaceHandle {
         decidedAt: Date = Date()
     ) async throws -> AgentNoteChangeRequestRecord {
         try requireActive()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
         let record = try await currentAgentNoteChangeRequest(
             id: id,
             now: decidedAt
@@ -111,8 +111,8 @@ extension WorkspaceHandle {
         now: Date = Date()
     ) async throws -> AgentNoteChangeRequestRecord {
         try requireActive()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
         return try await currentAgentNoteChangeRequest(id: id, now: now)
     }
 
@@ -139,8 +139,8 @@ extension WorkspaceHandle {
         now: Date = Date()
     ) async throws -> [AgentNoteChangeRequestRecord] {
         try requireActive()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
         let pending = try await services.agentNoteChangeRequestStore.pending(now: now)
         var current: [AgentNoteChangeRequestRecord] = []
         for record in pending {
@@ -165,8 +165,8 @@ extension WorkspaceHandle {
     ) async throws -> AgentNoteChangeRequestRecord {
         try requireActive()
         try Task.checkCancellation()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
         let execution = try await authenticateCoordinationKey(
             coordinationKey,
             parentRunID: request.parentRunID,
@@ -205,8 +205,8 @@ extension WorkspaceHandle {
                 || state == .cancelled else {
             throw AgentNoteChangeContractError.invalidDecision
         }
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
 
         let current: AgentNoteChangeRequestRecord
         if state == .cancelled {
@@ -239,7 +239,10 @@ extension WorkspaceHandle {
                 id: current.request.parentRunID
             )
             if parent.completion == nil {
-                try await cancelResearchFunction(runID: current.request.parentRunID)
+                try await researchFunctionCoordinator.cancelProtectedFunction(
+                    runID: current.request.parentRunID,
+                    host: self
+                )
             }
         }
         let continuationPlan = state == .allowedSubset
@@ -338,8 +341,8 @@ extension WorkspaceHandle {
     ) async throws -> AgentNoteChangeRequestRecord {
         try requireActive()
         try Task.checkCancellation()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
         let stored = try await services.agentNoteChangeRequestStore
             .recordForAuthentication(id: id)
         _ = try await authenticateCoordinationKey(
@@ -360,8 +363,8 @@ extension WorkspaceHandle {
     ) async throws -> AgentNoteChangeRequestRecord {
         try requireActive()
         try Task.checkCancellation()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
         let stored = try await services.agentNoteChangeRequestStore
             .recordForAuthentication(id: id)
         _ = try await authenticateCoordinationKey(
@@ -636,8 +639,8 @@ extension WorkspaceHandle {
         now: Date = Date()
     ) async throws -> AgentNoteChangeContinuationResult {
         try requireActive()
-        let coordinationID = try await beginAgentNoteChangeCoordination()
-        defer { endAgentNoteChangeCoordination(coordinationID) }
+        let coordinationLease = try await beginAgentNoteChangeCoordination()
+        defer { endAgentNoteChangeCoordination(coordinationLease) }
 
         let record = try await services.agentNoteChangeRequestStore.record(
             id: id,
@@ -686,9 +689,10 @@ extension WorkspaceHandle {
                 }
             }
             for existing in existingChildren.values {
-                try await discardFailedAgentContinuation(
+                try await researchFunctionCoordinator.discardFailedAgentContinuation(
                     existing,
-                    lineage: lineage
+                    expectedLineage: lineage,
+                    host: self
                 )
             }
             existingChildren.removeAll()
@@ -726,7 +730,8 @@ extension WorkspaceHandle {
                         target: requestedTarget,
                         lineage: lineage
                     )
-                    preparation = try await researchFunctionRun(id: phase.runID)
+                    preparation = try await researchFunctionCoordinator
+                        .researchFunctionRun(id: phase.runID, host: self)
                 } else {
                     guard let target = try await currentAgentChangeTarget(
                         requestedTarget
@@ -770,13 +775,15 @@ extension WorkspaceHandle {
                             .isSubset(of: Set(record.request.operations)) else {
                         throw AgentNoteChangeOperationError.continuationUnavailable(id)
                     }
-                    preparation = try await prepareResearchFunction(
+                    preparation = try await researchFunctionCoordinator
+                        .prepareResearchFunction(
                         execution.request,
                         actionContext: execution.context,
                         runIDOverride: phase.runID,
                         continuationLineage: lineage,
                         requiresAutomaticCheckpoint: true,
-                        suppressRefresh: true
+                        suppressRefresh: true,
+                        host: self
                     )
                     createdRunIDs.append(phase.runID)
                 }
@@ -805,39 +812,23 @@ extension WorkspaceHandle {
                     .record(id: runID),
                    let lineage = existing.snapshot.continuationLineage {
                     do {
-                        try await discardFailedAgentContinuation(
-                            existing,
-                            lineage: lineage
-                        )
+                        try await researchFunctionCoordinator
+                            .discardFailedAgentContinuation(
+                                existing,
+                                expectedLineage: lineage,
+                                host: self
+                            )
                     } catch {
-                        try? await cancelResearchFunction(runID: runID)
+                        try? await researchFunctionCoordinator.cancelProtectedFunction(
+                            runID: runID,
+                            host: self
+                        )
                     }
                 }
             }
             scheduleAgentContinuationCleanupRefresh()
             throw error
         }
-    }
-
-    private func discardFailedAgentContinuation(
-        _ child: LocalResearchExecutionRecord,
-        lineage: ResearchContinuationLineage
-    ) async throws {
-        guard child.snapshot.continuationLineage == lineage,
-              let checkpointID = child.snapshot.checkpointID else {
-            throw AgentNoteChangeOperationError.continuationUnavailable(
-                lineage.requestID
-            )
-        }
-        try await services.localResearchExecutionStore.discardFailedContinuation(
-            runID: child.id,
-            expectedLineage: lineage
-        )
-        activeResearchActivityKeys[child.id] = nil
-        activeAgentCoordinationKeys[child.id] = nil
-        _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
-            id: checkpointID
-        )
     }
 
     private func scheduleAgentContinuationCleanupRefresh() {

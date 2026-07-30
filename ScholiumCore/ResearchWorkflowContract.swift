@@ -18,7 +18,7 @@ public enum ResearchWorkflowAssembler {
         conditionalResourcePaths: [String: Set<String>] = [:],
         actionProfileBinding: ResearchActionProfileBinding? = nil,
         expectedActionProfileDocumentRevision: DocumentFingerprint? = nil,
-        store: ResearchSkillStore
+        store: ResearchSkillTransactionCoordinator
     ) async throws -> ResolvedResearchWorkflowEnvelope {
         try contract.validate()
         let primaryResolution: ResearchSkillBindingResolution
@@ -213,7 +213,7 @@ public enum ResearchWorkflowAssembler {
 
     public static func resolve(
         _ contract: ResearchWorkflowContract,
-        store: ResearchSkillStore
+        store: ResearchSkillTransactionCoordinator
     ) async throws -> ResolvedResearchWorkflowEnvelope {
         try contract.validate()
         var resolvedPhases: [ResolvedResearchWorkflowPhase] = []

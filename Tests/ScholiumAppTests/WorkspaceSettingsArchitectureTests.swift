@@ -137,7 +137,23 @@ struct WorkspaceSettingsArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
+        let guidanceFiles = [
+            "ResearchGuidanceSettingsView.swift",
+            "ResearchMethodsSettingsView.swift",
+            "ResearcherSkillsSettingsView.swift",
+            "ResearchPermissionSettingsView.swift",
+            "ResearchSourcesSettingsView.swift",
+            "ResearchRecoverySettingsView.swift",
+        ]
+        let source = try guidanceFiles.map { fileName in
+            try String(
+                contentsOf: repositoryRoot.appendingPathComponent(
+                    "Scholium/Views/\(fileName)"
+                ),
+                encoding: .utf8
+            )
+        }.joined(separator: "\n")
+        let rootSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Views/ResearchGuidanceSettingsView.swift"
             ),
@@ -158,6 +174,10 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("scholium.researchGuidance.categoryList"))
         #expect(!source.contains("Prompt Templates"))
         #expect(!source.contains("card grid"))
+        #expect(rootSource.contains("ResearchMethodsSettingsView()"))
+        #expect(rootSource.contains("ResearcherSkillsSettingsView(draftStore: draftStore)"))
+        #expect(!rootSource.contains("private struct WorkingMethodEditorContext"))
+        #expect(!rootSource.contains("private struct ResearchActionProfileEditorView"))
     }
 
     @Test("Production Skills Settings reaches bounded editing and installation")
@@ -166,12 +186,21 @@ struct WorkspaceSettingsArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchGuidanceSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
+        let source = try [
+            "ResearchGuidanceSettingsView.swift",
+            "ResearchMethodsSettingsView.swift",
+            "ResearcherSkillsSettingsView.swift",
+            "ResearchPermissionSettingsView.swift",
+            "ResearchSourcesSettingsView.swift",
+            "ResearchRecoverySettingsView.swift",
+        ].map { fileName in
+            try String(
+                contentsOf: repositoryRoot.appendingPathComponent(
+                    "Scholium/Views/\(fileName)"
+                ),
+                encoding: .utf8
+            )
+        }.joined(separator: "\n")
         let settingsRootSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Views/WorkspaceSettingsView.swift"
@@ -281,7 +310,7 @@ struct WorkspaceSettingsArchitectureTests {
         for prohibited in [
             "SharedTriptychRuntime",
             "TriptychControlStore",
-            "ResearchSkillStore",
+            "ResearchSkillTransactionCoordinator",
             "workspaceRegistry",
             "identityRegistry",
             "portableControlAccessRegistry",

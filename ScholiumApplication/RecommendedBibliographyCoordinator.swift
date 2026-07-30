@@ -9,14 +9,10 @@ actor RecommendedBibliographyCoordinator {
         self.reference = reference
     }
 
-    func overview(
-        for target: RecommendedBibliographyTarget
-    ) async throws -> RecommendedBibliographyOverview {
+    func overview() async throws -> RecommendedBibliographyOverview {
         let handle = try await reference.requireHandle()
-        _ = try await handle.validateBibliographyTarget(target, requiresFingerprint: false)
-        var overview = try await handle.services.recommendedBibliographyStore.overview(
-            targetNoteID: target.noteID
-        )
+        try await handle.requireActive()
+        var overview = try await handle.services.recommendedBibliographyStore.overview()
         let potentiallyStale = [overview.result, overview.latestRun]
             .compactMap { $0 }
             .reduce(into: [UUID: RecommendedBibliographyProjection]()) { result, projection in
@@ -24,21 +20,26 @@ actor RecommendedBibliographyCoordinator {
             }
             .values
         for projection in potentiallyStale
-        where projection.request.target.fingerprint != target.fingerprint
-            && projection.state != .cancelled
-            && projection.state != .stale {
-            try await handle.services.recommendedBibliographyStore.markStale(id: projection.id)
+        where projection.state != .cancelled && projection.state != .stale {
+            do {
+                _ = try await handle.validateBibliographyScope(projection.request.scope)
+            } catch let error as RecommendedBibliographyError {
+                switch error {
+                case .selectedNoteUnavailable, .selectedNoteChanged:
+                    try await handle.services.recommendedBibliographyStore.markStale(
+                        id: projection.id
+                    )
+                default:
+                    throw error
+                }
+            }
         }
-        overview = try await handle.services.recommendedBibliographyStore.overview(
-            targetNoteID: target.noteID
-        )
+        overview = try await handle.services.recommendedBibliographyStore.overview()
         return overview
     }
 
-    func recommendations(
-        for target: RecommendedBibliographyTarget
-    ) async throws -> RecommendedBibliographyProjection? {
-        try await overview(for: target).result
+    func recommendations() async throws -> RecommendedBibliographyProjection? {
+        try await overview().result
     }
 
     func prepare(
@@ -46,10 +47,7 @@ actor RecommendedBibliographyCoordinator {
     ) async throws -> RecommendedBibliographyPreparation {
         let handle = try await reference.requireHandle()
         try request.validate()
-        _ = try await handle.validateBibliographyTarget(
-            request.target,
-            requiresFingerprint: true
-        )
+        _ = try await handle.validateBibliographyScope(request.scope)
         let method = try await handle.resolveBibliographyMethod()
         let id = UUID()
         let token = UUID()
@@ -57,8 +55,7 @@ actor RecommendedBibliographyCoordinator {
             request: request,
             requestID: id,
             confirmationToken: token,
-            method: method,
-            triptychID: handle.services.manifest.id
+            method: method
         )
         let preparation = RecommendedBibliographyPreparation(
             id: id,
@@ -72,10 +69,7 @@ actor RecommendedBibliographyCoordinator {
                 triptychID: handle.services.manifest.id
             )
         )
-        _ = try await handle.validateBibliographyTarget(
-            request.target,
-            requiresFingerprint: true
-        )
+        _ = try await handle.validateBibliographyScope(request.scope)
         _ = try await handle.services.recommendedBibliographyStore.save(
             preparation: preparation
         )
@@ -118,15 +112,12 @@ actor RecommendedBibliographyCoordinator {
             throw RecommendedBibliographyError.cancelled(submission.requestID)
         }
         guard preparedProjection.state != .stale else {
-            throw RecommendedBibliographyError.targetChanged
+            throw RecommendedBibliographyError.selectedNoteChanged
         }
-        guard submission.targetFingerprint == preparation.request.target.fingerprint else {
-            throw RecommendedBibliographyError.targetChanged
+        guard submission.sourceRevisions == preparation.request.scope.sourceRevisions else {
+            throw RecommendedBibliographyError.selectedNoteChanged
         }
-        _ = try await handle.validateBibliographyTarget(
-            preparation.request.target,
-            requiresFingerprint: true
-        )
+        _ = try await handle.validateBibliographyScope(preparation.request.scope)
         let currentMethod = try await handle.resolveBibliographyMethod()
         guard currentMethod.packageID == preparation.method.packageID,
               currentMethod.origin == preparation.method.origin,
@@ -134,9 +125,8 @@ actor RecommendedBibliographyCoordinator {
             throw RecommendedBibliographyError.methodChanged
         }
 
-        let priorCandidates = try await handle.services.recommendedBibliographyStore.overview(
-            targetNoteID: preparation.request.target.noteID
-        ).result?.candidates ?? []
+        let priorCandidates = try await handle.services.recommendedBibliographyStore
+            .overview().result?.candidates ?? []
         var candidates: [RecommendedBibliographyCandidate] = []
         for candidate in submission.candidates {
             _ = try candidate.validatedForSubmission()
@@ -146,10 +136,7 @@ actor RecommendedBibliographyCoordinator {
             candidates,
             against: priorCandidates
         )
-        _ = try await handle.validateBibliographyTarget(
-            preparation.request.target,
-            requiresFingerprint: true
-        )
+        _ = try await handle.validateBibliographyScope(preparation.request.scope)
         return try await handle.services.recommendedBibliographyStore.complete(
             requestID: submission.requestID,
             sourceScope: submission.sourceScope,
@@ -223,25 +210,39 @@ private func bibliographyAgentActions(
 }
 
 extension WorkspaceHandle {
-    func validateBibliographyTarget(
-        _ target: RecommendedBibliographyTarget,
-        requiresFingerprint: Bool
-    ) throws -> WorkspaceNoteSnapshot {
+    func validateBibliographyScope(
+        _ scope: RecommendedBibliographyScope
+    ) async throws -> [WorkspaceNoteSnapshot] {
         try requireActive()
-        guard let note = currentSnapshot.vaults
-            .flatMap(\.documents)
-            .first(where: {
-                $0.stableIdentity.resolvedID == target.noteID
+        guard scope.triptychID == services.manifest.id else {
+            throw RecommendedBibliographyError.triptychMismatch
+        }
+        try scope.validateForPreparation()
+        let documents = currentSnapshot.vaults.flatMap(\.documents)
+        var validated: [WorkspaceNoteSnapshot] = []
+        validated.reserveCapacity(scope.selectedNotes.count)
+        for source in scope.selectedNotes {
+            guard let note = documents.first(where: {
+                $0.stableIdentity.resolvedID == source.noteID
             }),
-              note.id == target.note,
-              note.vaultRole == .sourceCorpus,
-              note.lifecycle == .active else {
-            throw RecommendedBibliographyError.analysisTargetRequired
+                  note.id == source.note,
+                  note.vaultRole == source.role,
+                  note.lifecycle == .active else {
+                throw RecommendedBibliographyError.selectedNoteUnavailable
+            }
+            let current: NoteDocument
+            do {
+                current = try await loadDocument(source.note)
+            } catch {
+                throw RecommendedBibliographyError.selectedNoteUnavailable
+            }
+            guard note.fingerprint == source.fingerprint,
+                  current.fingerprint == source.fingerprint else {
+                throw RecommendedBibliographyError.selectedNoteChanged
+            }
+            validated.append(note)
         }
-        if requiresFingerprint, note.fingerprint != target.fingerprint {
-            throw RecommendedBibliographyError.targetChanged
-        }
-        return note
+        return validated
     }
 
     func resolveBibliographyMethod() async throws -> RecommendedBibliographyMethodSnapshot {
@@ -496,8 +497,7 @@ private func bibliographyInstructions(
     request: RecommendedBibliographyRequest,
     requestID: UUID,
     confirmationToken: UUID,
-    method: RecommendedBibliographyMethodSnapshot,
-    triptychID: UUID
+    method: RecommendedBibliographyMethodSnapshot
 ) throws -> String {
     let exampleGoal = request.goals.first ?? .backgroundReading
     let exampleCandidate = RecommendedBibliographyCandidate(
@@ -534,7 +534,7 @@ private func bibliographyInstructions(
     let completion = RecommendedBibliographyCompletionSubmission(
         requestID: requestID,
         confirmationToken: confirmationToken,
-        targetFingerprint: request.target.fingerprint,
+        sourceRevisions: request.scope.sourceRevisions,
         sourceScope: "REPLACE with the exact source unit inspected",
         candidates: [exampleCandidate]
     )
@@ -551,6 +551,12 @@ private func bibliographyInstructions(
         </scholium-method-resource>
         """
     }.joined(separator: "\n\n")
+    let selectedNotes = request.scope.selectedNotes.map { note in
+        "- \(note.role.displayName): \(note.title) [\(note.note.relativePath)]\n"
+            + "  Note ID: \(note.noteID.uuidString.lowercased())\n"
+            + "  Revision: \(note.fingerprint.sha256) (\(note.fingerprint.byteCount) bytes)"
+    }.joined(separator: "\n")
+    let triptychID = request.scope.triptychID
     return """
     # Scholium Recommended Bibliography
 
@@ -559,14 +565,13 @@ private func bibliographyInstructions(
     Triptych ID: \(triptychID.uuidString.lowercased())
     Request ID: \(requestID.uuidString.lowercased())
     Confirmation token: \(confirmationToken.uuidString.lowercased())
-    Analysis: \(request.target.title) [\(request.target.note.relativePath)]
-    Analysis note ID: \(request.target.noteID.uuidString.lowercased())
-    Analysis revision: \(request.target.fingerprint.sha256) (\(request.target.fingerprint.byteCount) bytes)
+    Selected source Notes:
+    \(selectedNotes)
     Goals: \(goals)
     Purpose: \(request.purpose ?? "No researcher position supplied; remain neutral.")
     Method: \(method.packageID) @ \(method.packageRevision.sha256)
 
-    Read the exact Analysis and only the source material actually available. Apply the immutable Source Analyzer resources below. Distinguish a reference-list occurrence, in-text citation, substantive discussion, authorial appraisal, metadata verification, and independent source inspection. Do not rate unread candidates or infer project relevance. Zero recommendations is a valid result.
+    Read the exact selected Notes and only the source material actually available. Apply the immutable Source Analyzer resources below. Distinguish a reference-list occurrence, in-text citation, substantive discussion, authorial appraisal, metadata verification, and independent source inspection. Do not rate unread candidates or infer project relevance. Zero recommendations is a valid result.
 
     The JSON example below contains one illustrative candidate only to expose the complete wire schema. Replace every `REPLACE` value, remove fields whose evidence is unavailable, and use `"candidates": []` when no recommendation is warranted. Keep `matchState` as `unmatched`, `isDismissed` as `false`, and omit all other Scholium-owned matching fields.
 

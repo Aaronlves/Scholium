@@ -2,8 +2,8 @@ import Foundation
 import ScholiumContracts
 import Testing
 
-@Suite("Research Function Skill binding contracts")
-struct ResearchFunctionSkillBindingContractsTests {
+@Suite("Research Guidance storage contracts")
+struct ResearchGuidanceStorageContractsTests {
     @Test("Working Method binding v2 round-trips explicit ownership states")
     func workingMethodBindingRoundTrip() throws {
         let document = try ResearchWorkingMethodBindingDocument(actionBindings: [
@@ -75,61 +75,6 @@ struct ResearchFunctionSkillBindingContractsTests {
                 from: unknownField
             )
         }
-    }
-
-    @Test("A Settings selection round-trips without adding interface presentation data")
-    func selectionRoundTrip() throws {
-        let selection = ResearchFunctionSkillSelection(
-            function: .revise,
-            supplementalPackageIDs: ["prose-method", "prose-method"],
-            selectedPractices: [
-                ResearchPracticeSelection(
-                    packageID: "my-practices",
-                    practiceID: "philosophical-expositor"
-                ),
-                ResearchPracticeSelection(
-                    packageID: "my-practices",
-                    practiceID: "philosophical-expositor"
-                ),
-            ]
-        )
-        #expect(selection.supplementalPackageIDs == ["prose-method"])
-        #expect(selection.selectedPractices.map(\.selectionID) == [
-            "my-practices:philosophical-expositor"
-        ])
-
-        let data = try JSONEncoder().encode(selection)
-        #expect(try JSONDecoder().decode(
-            ResearchFunctionSkillSelection.self,
-            from: data
-        ) == selection)
-    }
-
-    @Test("Status presents friendly candidate metadata while retaining opaque selection IDs")
-    func settingsStatusMetadata() {
-        let candidate = ResearchFunctionSkillCandidate(
-            packageID: "my-prose-method",
-            name: "My Prose Method",
-            description: "Preserve philosophical commitments while improving expression.",
-            version: "local",
-            supportedFunctions: [.revise],
-            availableRoles: [.supplemental]
-        )
-        let selection = ResearchFunctionSkillSelection(
-            function: .revise,
-            supplementalPackageIDs: [candidate.packageID]
-        )
-        let status = ResearchFunctionSkillBindingStatus(
-            function: .revise,
-            candidates: [candidate],
-            selection: selection,
-            bindingRevision: DocumentFingerprint(content: "binding"),
-            issue: nil
-        )
-
-        #expect(status.candidates.first?.name == "My Prose Method")
-        #expect(status.selection.supplementalPackageIDs == ["my-prose-method"])
-        #expect(status.issue == nil)
     }
 
     @Test("Maintenance recovery preserves expected state, undo metadata, and partial listing issues")

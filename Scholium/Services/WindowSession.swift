@@ -144,15 +144,11 @@ final class WorkspaceStore: ObservableObject {
     let zoteroBridge: ZoteroBridge
     let commandLineToolInstaller: CommandLineToolInstaller
     let agentApplicationHandoff: AgentApplicationHandoffController
-    let agentNoteChangePresentations: AgentNoteChangePresentationCoordinator
+    let agentNoteChangeClaims: AgentNoteChangeClaimCoordinator
     private(set) var localAgentBridge: LocalAgentBridgeServer?
     private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
-    @Published private(set) var workspaceEventGenerations: [UUID: UInt64] = [:]
-    @Published private(set) var workspaceDerivedRefreshStatuses: [
-        UUID: WorkspaceDerivedRefreshStatus
-    ] = [:]
     /// Latest accepted typed Application event per active Triptych. This is
     /// the narrow delivery adapter for event-specific projections such as a
     /// stable-identity move; WorkspaceStore remains the only stream consumer.
@@ -185,8 +181,8 @@ final class WorkspaceStore: ObservableObject {
         agentApplicationHandoff = AgentApplicationHandoffController(
             applicationSupportURL: applicationSupportURL
         )
-        let agentNoteChangePresentations = AgentNoteChangePresentationCoordinator()
-        self.agentNoteChangePresentations = agentNoteChangePresentations
+        let agentNoteChangeClaims = AgentNoteChangeClaimCoordinator()
+        self.agentNoteChangeClaims = agentNoteChangeClaims
         do {
             localAgentBridge = try LocalAgentBridgeServer(
                 applicationSupportURL: applicationSupportURL
@@ -213,7 +209,7 @@ final class WorkspaceStore: ObservableObject {
                                 id: record.id
                             )
                     }
-                    await agentNoteChangePresentations.receive(
+                    await agentNoteChangeClaims.receive(
                         record,
                         intent: .submit
                     )
@@ -230,7 +226,7 @@ final class WorkspaceStore: ObservableObject {
                         id: requestID,
                         coordinationKey: request.coordinationKey
                     )
-                    await agentNoteChangePresentations.receive(
+                    await agentNoteChangeClaims.receive(
                         record,
                         intent: .showExisting
                     )
@@ -248,7 +244,7 @@ final class WorkspaceStore: ObservableObject {
                             id: requestID,
                             coordinationKey: request.coordinationKey
                         )
-                    await agentNoteChangePresentations.receive(
+                    await agentNoteChangeClaims.receive(
                         record,
                         intent: .cancel
                     )
@@ -328,8 +324,6 @@ final class WorkspaceStore: ObservableObject {
         handles.removeAll()
         eventGates.removeAll()
         workspaceSnapshots.removeAll()
-        workspaceEventGenerations.removeAll()
-        workspaceDerivedRefreshStatuses.removeAll()
         workspaceEvents.removeAll()
         workspaceActivations.removeAll()
         latestWorkspaceActivation = nil
@@ -872,7 +866,7 @@ final class WorkspaceStore: ObservableObject {
               let records = try? await handle.research.pendingAgentNoteChangeRequests()
         else { return }
         for record in records {
-            agentNoteChangePresentations.receive(record, intent: .refresh)
+            agentNoteChangeClaims.receive(record, intent: .refresh)
         }
     }
 
@@ -927,7 +921,7 @@ final class WorkspaceStore: ObservableObject {
     ) async throws {
         let handle = try await workspaceHandle(id: triptychID)
         let record = try await handle.research.agentNoteChangeRequest(id: id)
-        agentNoteChangePresentations.receive(record, intent: .refresh)
+        agentNoteChangeClaims.receive(record, intent: .refresh)
     }
 
     func resolveAgentNoteChangeRequest(
@@ -943,7 +937,7 @@ final class WorkspaceStore: ObservableObject {
                 state: state,
                 allowedNoteIDs: allowedNoteIDs
             )
-        agentNoteChangePresentations.receive(record, intent: .decision)
+        agentNoteChangeClaims.receive(record, intent: .decision)
         return record
     }
 
@@ -1021,8 +1015,6 @@ final class WorkspaceStore: ObservableObject {
             handles[previousIdentity.triptychID] = nil
             eventGates[previousIdentity.triptychID] = nil
             workspaceSnapshots[previousIdentity.triptychID] = nil
-            workspaceEventGenerations[previousIdentity.triptychID] = nil
-            workspaceDerivedRefreshStatuses[previousIdentity.triptychID] = nil
             workspaceEvents[previousIdentity.triptychID] = nil
             workspaceActivations[previousIdentity.triptychID] = nil
         }
@@ -1030,10 +1022,6 @@ final class WorkspaceStore: ObservableObject {
         handles[handle.id] = handle
         workspaceSnapshots[handle.id] = snapshot
         eventGates[handle.id] = WorkspaceEventGenerationGate()
-        workspaceEventGenerations[handle.id] = 0
-        workspaceDerivedRefreshStatuses[handle.id] = .current(
-            WorkspaceDerivedRefreshEvidence(snapshot: snapshot)
-        )
         workspaceEvents[handle.id] = .snapshot(WorkspaceSnapshotEvent(
             generation: 0,
             snapshot: snapshot
@@ -1119,7 +1107,6 @@ final class WorkspaceStore: ObservableObject {
         let publicationStart = ContinuousClock().now
         eventGates[triptychID] = gate
         workspaceEvents[triptychID] = event
-        workspaceEventGenerations[triptychID] = event.generation
         // Research Guidance changes invalidate Action resolution but do not
         // rebuild or supersede the current workspace snapshot. Publishing the
         // typed event must therefore not clear an existing stale/failed
@@ -1129,7 +1116,6 @@ final class WorkspaceStore: ObservableObject {
             return
         }
         workspaceSnapshots[triptychID] = event.snapshot
-        workspaceDerivedRefreshStatuses[triptychID] = event.derivedRefreshStatus
         let publicationDuration = publicationStart.duration(to: ContinuousClock().now)
         Self.publicationLogger.info(
             "generation=\(event.generation, privacy: .public) notes=\(event.snapshot.vaults.flatMap(\.documents).count, privacy: .public) mainActorPublish=\(String(describing: publicationDuration), privacy: .public)"

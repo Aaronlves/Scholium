@@ -42,9 +42,14 @@
   ],
   "confirmationToken": "REPLACE-WITH-PREPARATION-TOKEN",
   "requestID": "REPLACE-WITH-REQUEST-ID",
-  "sourceScope": "REPLACE-WITH-EXACT-INSPECTED-SOURCE-UNIT",
-  "targetFingerprint": {
-    "byteCount": 0,
-    "sha256": "REPLACE-WITH-PREPARED-TARGET-SHA256"
-  }
+  "sourceRevisions": [
+    {
+      "fingerprint": {
+        "byteCount": 0,
+        "sha256": "REPLACE-WITH-PREPARED-NOTE-SHA256"
+      },
+      "noteID": "REPLACE-WITH-PREPARED-NOTE-ID"
+    }
+  ],
+  "sourceScope": "REPLACE-WITH-EXACT-INSPECTED-SOURCE-UNIT"
 }

@@ -7,7 +7,7 @@ struct RecommendedBibliographyContractsTests {
     @Test("Goals are canonical and an empty goal set remains neutral")
     func canonicalGoals() throws {
         let request = RecommendedBibliographyRequest(
-            target: target(),
+            scope: scope(),
             goals: [.classicWorks, .objections, .classicWorks, .backgroundReading],
             purpose: "  map the objection literature  "
         )
@@ -15,7 +15,7 @@ struct RecommendedBibliographyContractsTests {
         #expect(request.purpose == "map the objection literature")
         try request.validate()
 
-        let neutral = RecommendedBibliographyRequest(target: target(), purpose: "  ")
+        let neutral = RecommendedBibliographyRequest(scope: scope(), purpose: "  ")
         #expect(neutral.goals.isEmpty)
         #expect(neutral.purpose == nil)
     }
@@ -25,7 +25,7 @@ struct RecommendedBibliographyContractsTests {
         let submission = RecommendedBibliographyCompletionSubmission(
             requestID: UUID(),
             confirmationToken: UUID(),
-            targetFingerprint: target().fingerprint,
+            sourceRevisions: scope().sourceRevisions,
             sourceScope: "Paper bibliography and in-text citations",
             candidates: []
         )
@@ -97,7 +97,7 @@ struct RecommendedBibliographyContractsTests {
             try RecommendedBibliographyCompletionSubmission(
                 requestID: UUID(),
                 confirmationToken: UUID(),
-                targetFingerprint: target().fingerprint,
+                sourceRevisions: scope().sourceRevisions,
                 sourceScope: " ",
                 candidates: []
             ).validate()
@@ -143,15 +143,56 @@ struct RecommendedBibliographyContractsTests {
         }
     }
 
-    private func target() -> RecommendedBibliographyTarget {
-        RecommendedBibliographyTarget(
-            noteID: UUID(),
+    @Test("Retired Analysis-target fields fail closed")
+    func retiredTargetFieldsFailClosed() throws {
+        let request = RecommendedBibliographyRequest(scope: scope())
+        var requestObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(request))
+                as? [String: Any]
+        )
+        requestObject["target"] = ["legacy": true]
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                RecommendedBibliographyRequest.self,
+                from: JSONSerialization.data(withJSONObject: requestObject)
+            )
+        }
+
+        let completion = RecommendedBibliographyCompletionSubmission(
+            requestID: UUID(),
+            confirmationToken: UUID(),
+            sourceRevisions: scope().sourceRevisions,
+            sourceScope: "Selected Notes",
+            candidates: []
+        )
+        var completionObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(completion))
+                as? [String: Any]
+        )
+        completionObject["targetFingerprint"] = [
+            "sha256": String(repeating: "0", count: 64),
+            "byteCount": 0,
+        ]
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                RecommendedBibliographyCompletionSubmission.self,
+                from: JSONSerialization.data(withJSONObject: completionObject)
+            )
+        }
+    }
+
+    private func scope() -> RecommendedBibliographyScope {
+        RecommendedBibliographyScope(
+            triptychID: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
+            selectedNotes: [RecommendedBibliographySourceNote(
+            noteID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
             note: VaultQualifiedNoteID(
-                vaultID: UUID(),
+                vaultID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
                 relativePath: "Analyses/Source.md"
             ),
+            role: .sourceCorpus,
             fingerprint: DocumentFingerprint(content: "analysis"),
             title: "Source Analysis"
-        )
+        )])
     }
 }

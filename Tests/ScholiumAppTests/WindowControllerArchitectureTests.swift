@@ -7,6 +7,193 @@ import Testing
 @Suite("Window controller architecture")
 @MainActor
 struct WindowControllerArchitectureTests {
+    @Test("Search execution and Saved Search persistence have one window owner")
+    func windowSearchOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let app = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let controller = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowSearchController.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(app.contains("lazy var searchController = WindowSearchController("))
+        #expect(app.contains("searchController.objectWillChange"))
+        for retiredRootOwner in [
+            "@Published var savedSearches",
+            "savedSearchMutationTail",
+            "advancedSearchExecutionTask",
+            "advancedSearchExecutionID",
+            "func refreshAdvancedSearch(",
+            "func saveCurrentSearch(",
+            "func runSavedSearch(",
+        ] {
+            #expect(!app.contains(retiredRootOwner))
+        }
+        #expect(controller.contains(
+            "final class WindowSearchController: ObservableObject"
+        ))
+        #expect(controller.contains("@Published private(set) var savedSearches"))
+        #expect(controller.contains("private var executionTask"))
+        #expect(controller.contains("private var savedSearchMutationTail"))
+        #expect(controller.contains("func searchGenerationDidChange()"))
+    }
+
+    @Test("Workspace events have one exact-window projection owner")
+    func workspaceProjectionOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let app = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let controller = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowWorkspaceProjectionController.swift"
+            ),
+            encoding: .utf8
+        )
+        let store = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Services/WindowSession.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(app.contains(
+            "lazy var workspaceProjectionController = WindowWorkspaceProjectionController("
+        ))
+        #expect(app.contains("workspaceProjectionController.objectWillChange"))
+        #expect(app.contains("workspaceStore.$workspaceEvents"))
+        for retiredRootOwner in [
+            "@Published var notes:",
+            "@Published var allTags:",
+            "@Published var documentRevisions:",
+            "@Published var workspaceCatalog:",
+            "@Published var relationshipGraph:",
+            "workspaceVaultSnapshotsByID",
+            "workspaceProjectionTail",
+            "receiveWorkspaceSnapshots(",
+            "receiveWorkspaceDerivedRefreshStatuses(",
+            "applyWorkspaceSnapshot(",
+            "refreshDocumentRevisions(",
+            "workspaceStore.$workspaceSnapshots",
+            "workspaceStore.$workspaceDerivedRefreshStatuses",
+        ] {
+            #expect(!app.contains(retiredRootOwner))
+        }
+        #expect(controller.contains(
+            "final class WindowWorkspaceProjectionController: ObservableObject"
+        ))
+        #expect(controller.contains("@Published private(set) var state = State()"))
+        #expect(controller.contains("private var runtimeIdentity"))
+        #expect(controller.contains("private var acceptedGeneration"))
+        #expect(controller.contains("event.generation > $0"))
+        #expect(controller.contains("func recordCommittedNote("))
+        #expect(controller.contains("private func installVisibleNotes("))
+        #expect(!store.contains("workspaceEventGenerations"))
+        #expect(!store.contains("workspaceDerivedRefreshStatuses"))
+    }
+
+    @Test("Agent request claims and exact-window presentation have distinct owners")
+    func agentRequestWindowOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let app = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let controller = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/ResearchContext/AgentNoteChangeWindowController.swift"
+            ),
+            encoding: .utf8
+        )
+        let claims = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/ResearchContext/AgentNoteChangeClaimCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        let windowManagement = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
+            ),
+            encoding: .utf8
+        )
+        let content = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let sheet = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchActions/AgentNoteChangeRequestView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(app.contains(
+            "lazy var agentNoteChangeWindowController = AgentNoteChangeWindowController("
+        ))
+        #expect(app.contains("agentNoteChangeWindowController.objectWillChange"))
+        for retiredWindowModelOwner in [
+            "@Published private(set) var presentedAgentNoteChangeRequest",
+            "@Published private(set) var presentedAgentNoteChangeIdentity",
+            "agentNoteChangeIdentityTask",
+            "agentNoteChangeExpiryTask",
+            "func resolvePresentedAgentNoteChangeRequest",
+            "func finishAgentNoteChangeRequestDismissal",
+            "func displayTargets(\n        for record: AgentNoteChangeRequestRecord",
+        ] {
+            #expect(!app.contains(retiredWindowModelOwner))
+        }
+        #expect(controller.contains(
+            "final class AgentNoteChangeWindowController: ObservableObject"
+        ))
+        #expect(controller.contains("@Published private(set) var record"))
+        #expect(controller.contains("struct AgentNoteChangeDisplayTarget"))
+        #expect(controller.contains("struct AgentNoteChangePresentationIdentity"))
+        #expect(controller.contains("private var decisionTask"))
+        #expect(controller.contains("func registerWindowEndpoint"))
+        #expect(controller.contains("func finishDismissal"))
+        #expect(controller.contains("private func resetPresentationState"))
+        #expect(claims.contains("final class AgentNoteChangeClaimCoordinator"))
+        #expect(claims.contains("private var claims: [UUID: UUID]"))
+        #expect(windowManagement.contains(
+            "agentNoteChangeWindowController.registerWindowEndpoint("
+        ))
+        #expect(windowManagement.contains("func windowWillClose("))
+        #expect(windowManagement.contains("unregisterAgentNoteChangeWindow()"))
+        #expect(windowManagement.contains("agentRequestPriorResponder"))
+        #expect(windowManagement.contains("restoreAgentNoteChangeFocus"))
+        #expect(content.contains("appState.agentNoteChangeWindowController"))
+        #expect(!sheet.contains("struct AgentNoteChangeDisplayTarget"))
+        #expect(!sheet.contains("struct AgentNoteChangePresentationIdentity"))
+        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
+            .appendingPathComponent(
+                "Scholium/Features/ResearchContext/AgentNoteChangePresentationCoordinator.swift"
+            ).path))
+    }
+
     @Test("Workspace activation distinguishes a popover key transition from a window switch")
     func attentionWorkspaceSwitchDetection() {
         let registry = ScholiumWindowLifecycleRegistry()
@@ -620,7 +807,9 @@ struct WindowControllerArchitectureTests {
             source.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 2
         )
         #expect(source.contains("private func currentWorkspaceVaultSnapshot("))
-        #expect(source.contains("workspaceVaultSnapshotsByID[vaultID]"))
+        #expect(source.contains(
+            "workspaceProjectionController.vaultSnapshot(id: vaultID)"
+        ))
     }
 
     @Test("Changing Scope or Location rejects the previous request")
@@ -902,6 +1091,12 @@ struct WindowControllerArchitectureTests {
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
             encoding: .utf8
         )
+        let searchControllerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowSearchController.swift"
+            ),
+            encoding: .utf8
+        )
         let start = try #require(source.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(source.range(
             of: "private enum ClipboardWorkflowError",
@@ -932,7 +1127,8 @@ struct WindowControllerArchitectureTests {
             )
         }
         #expect(windowModelSource.contains("documentController.createUntitledNote("))
-        #expect(windowModelSource.contains("discoveryController.executeSearch("))
+        #expect(windowModelSource.contains("searchController.open("))
+        #expect(searchControllerSource.contains("discoveryController.executeSearch("))
         #expect(windowModelSource.contains("researchController.actions"))
     }
 

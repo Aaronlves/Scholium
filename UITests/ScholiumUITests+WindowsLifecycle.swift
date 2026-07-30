@@ -1,0 +1,1062 @@
+@preconcurrency import XCTest
+import AppKit
+import CryptoKit
+import notify
+
+extension ScholiumUITests {
+    @MainActor
+    func testLivePreviewHidesYAMLAndSourceShortcutIsUnavailable() throws {
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        mode.click()
+        let livePreview = app.menuItems
+            .matching(identifier: "text.page.badge.magnifyingglass")
+            .firstMatch
+        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
+        livePreview.click()
+
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        XCTAssertFalse((editor.value as? String ?? "").isEmpty)
+
+        app.typeKey("e", modifierFlags: [.command, .shift])
+        XCTAssertEqual(mode.value as? String, "Edit", "Source must be entered through the document-mode menu")
+
+        mode.click()
+        let source = app.menuItems
+            .matching(identifier: "chevron.left.forwardslash.chevron.right")
+            .firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 3))
+        source.click()
+        XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
+        XCTAssertEqual(mode.value as? String, "Source")
+    }
+
+    @MainActor
+    func testNewWindowCreatesIndependentDocumentSurface() throws {
+        app.typeKey("n", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count >= 2 })
+        closeFrontmostWindow()
+        XCTAssertTrue(waitUntil(timeout: 5) { self.app.windows.count == 1 })
+    }
+
+    @MainActor
+    func testCommittedEditConvergesAcrossIndependentWindows() throws {
+        // A fixed session override is appropriate for deterministic relaunch
+        // tests, but two live windows must own distinct session identities.
+        app.terminate()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: 1380,
+            usesFixedSessionID: false
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        let observingWindowID = app.windows.firstMatch.identifier
+
+        app.typeKey("n", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 2 })
+        let editingWindow = try XCTUnwrap(
+            app.windows.allElementsBoundByIndex.first(where: {
+                $0.identifier != observingWindowID
+            })
+        )
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: editingWindow)
+        let editingMetadata = editingWindow.descendants(matching: .any)["scholium.documentNoteName"]
+        XCTAssertTrue(waitUntil(timeout: 10) { editingMetadata.value as? String == "QA Autosave A" })
+
+        let token = " SHARED-\(UUID().uuidString)"
+        let firstURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        try enterLivePreviewAndAppend(token, in: editingWindow)
+        XCTAssertFalse(try source(at: firstURL).contains(token))
+
+        let secondRow = editingWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
+        secondRow.click()
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            editingWindow.staticTexts["scholium.documentNoteName"].value as? String
+                == "QA Autosave B"
+        })
+        XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: firstURL).contains(token)) == true })
+
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                let titles = self.app.windows.allElementsBoundByIndex.compactMap { window -> String? in
+                    let metadata = window.descendants(matching: .any)[
+                        "scholium.documentNoteName"
+                    ].firstMatch
+                    guard metadata.exists else { return nil }
+                    return metadata.value as? String
+                }
+                return Set(titles) == Set(["QA Autosave A", "QA Autosave B"])
+            },
+            "The observing window must retain its own selection after the peer window navigates."
+        )
+        let observingWindow = try XCTUnwrap(app.windows.allElementsBoundByIndex.first { window in
+            window.descendants(matching: .any)["scholium.documentNoteName"].value as? String
+                == "QA Autosave A"
+        })
+
+        let committedToken = token.trimmingCharacters(in: .whitespaces)
+        let peerProjection = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS %@ OR value CONTAINS %@",
+                committedToken,
+                committedToken
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            peerProjection.waitForExistence(timeout: 20),
+            "A clean peer window must converge to the committed shared-runtime revision."
+        )
+        XCTAssertFalse(observingWindow.buttons["Compare Changes"].exists)
+    }
+
+    @MainActor
+    func testExternalRenameConvergesAcrossIndependentWindows() throws {
+        app.terminate()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: 1380,
+            usesFixedSessionID: false
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        let originalWindowID = app.windows.firstMatch.identifier
+
+        app.typeKey("n", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 2 })
+        let windows = app.windows.allElementsBoundByIndex
+        XCTAssertEqual(windows.count, 2)
+        if let newWindow = windows.first(where: { $0.identifier != originalWindowID }) {
+            openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: newWindow)
+        } else {
+            XCTFail("New Window must create a distinct window identity.")
+        }
+        for window in windows {
+            let metadata = window.descendants(matching: .any)["scholium.documentNoteName"]
+            XCTAssertTrue(waitUntil(timeout: 10) { metadata.value as? String == "QA Autosave A" })
+        }
+
+        let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
+        let originalURL = analyses.appendingPathComponent("QA Autosave A.md")
+        let renamedPath = "QA Shared Rename.md"
+        let renamedURL = analyses.appendingPathComponent(renamedPath)
+        let originalSource = try source(at: originalURL)
+        try FileManager.default.moveItem(at: originalURL, to: renamedURL)
+
+        for window in windows {
+            let renamedRow = window.descendants(matching: .any)["scholium.noteRow.\(renamedPath)"]
+            let originalRow = window.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
+            let metadata = window.descendants(matching: .any)["scholium.documentNoteName"]
+            XCTAssertTrue(
+                renamedRow.waitForExistence(timeout: 12),
+                "Every independent window must receive the shared runtime rename."
+            )
+            XCTAssertTrue(waitUntil(timeout: 12) { !originalRow.exists })
+            XCTAssertTrue(
+                waitUntil(timeout: 12) { metadata.value as? String == "QA Autosave A" },
+                "Each window must migrate its own selected document session to the rebound path."
+            )
+            XCTAssertFalse(window.staticTexts["Confirm Note Identity"].exists)
+        }
+        XCTAssertEqual(try source(at: renamedURL), originalSource)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
+    }
+
+    @MainActor
+    func testDirtyWindowRejectsAPeerCommitAndPreservesItsOwnBuffer() throws {
+        app.terminate()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: 1380,
+            usesFixedSessionID: false,
+            autosaveDelayMS: 20_000
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        let dirtyWindowID = app.windows.firstMatch.identifier
+
+        app.typeKey("n", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 2 })
+        let openedWindows = app.windows.allElementsBoundByIndex
+        let peerWindowID = try XCTUnwrap(
+            openedWindows.first(where: { $0.identifier != dirtyWindowID })?.identifier
+        )
+        XCTAssertNotEqual(dirtyWindowID, peerWindowID)
+        let dirtyWindow = app.windows[dirtyWindowID]
+        let peerWindow = app.windows[peerWindowID]
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: peerWindow)
+
+        let localToken = " LOCAL-WINDOW-\(UUID().uuidString)"
+        let peerToken = " PEER-WINDOW-\(UUID().uuidString)"
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        try enterLivePreviewAndAppend(localToken, in: dirtyWindow)
+        XCTAssertFalse(try source(at: noteURL).contains(localToken))
+
+        peerWindow.click()
+        try enterLivePreviewAndAppend(peerToken, in: peerWindow)
+        let peerSecondRow = peerWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(peerSecondRow.waitForExistence(timeout: 5))
+        peerSecondRow.click()
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            peerWindow.staticTexts["scholium.documentNoteName"].value as? String
+                == "QA Autosave B"
+        })
+        XCTAssertTrue(waitUntil(timeout: 20) {
+            (try? self.source(at: noteURL).contains(peerToken)) == true
+        })
+        XCTAssertFalse(try source(at: noteURL).contains(localToken))
+
+        let compare = dirtyWindow.buttons["Compare Changes"]
+        XCTAssertTrue(
+            compare.waitForExistence(timeout: 12),
+            "A peer commit must become a persistent conflict in a dirty independent window."
+        )
+        let dirtyEditor = dirtyWindow.descendants(matching: .any)["Markdown editor, Edit mode"]
+        XCTAssertTrue(dirtyEditor.waitForExistence(timeout: 5))
+        XCTAssertTrue((dirtyEditor.value as? String ?? "").contains(localToken))
+        XCTAssertFalse((dirtyEditor.value as? String ?? "").contains(peerToken))
+
+        compare.click()
+        XCTAssertTrue(
+            dirtyWindow.descendants(matching: .any)["scholium.conflictComparison"].waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(dirtyWindow.buttons["Return to Editing"].exists)
+        XCTAssertTrue(dirtyWindow.buttons["Reload from Disk"].exists)
+        XCTAssertTrue(try source(at: noteURL).contains(peerToken))
+        XCTAssertFalse(try source(at: noteURL).contains(localToken))
+    }
+
+    @MainActor
+    func testFocusedCommandsStayInTheActiveIndependentWindow() throws {
+        app.terminate()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: 1380,
+            usesFixedSessionID: false
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        let firstWindowID = app.windows.firstMatch.identifier
+
+        app.typeKey("n", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 2 })
+        let openedWindows = app.windows.allElementsBoundByIndex
+        let secondWindowID = try XCTUnwrap(
+            openedWindows.first(where: { $0.identifier != firstWindowID })?.identifier
+        )
+        let firstWindow = app.windows[firstWindowID]
+        let secondWindow = app.windows[secondWindowID]
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: secondWindow)
+        focusWorkspaceWindow(firstWindow)
+        app.typeKey("f", modifierFlags: [.command])
+        let firstSearch = firstWindow.descendants(matching: .any)["scholium.searchWorkspace"]
+        let secondSearch = secondWindow.descendants(matching: .any)["scholium.searchWorkspace"]
+        XCTAssertTrue(firstSearch.waitForExistence(timeout: 5))
+        XCTAssertFalse(secondSearch.exists)
+        firstWindow.descendants(matching: .any)["scholium.closeSearchButton"].click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !firstSearch.exists })
+
+        focusWorkspaceWindow(secondWindow)
+        app.typeKey("f", modifierFlags: [.command])
+        XCTAssertTrue(secondSearch.waitForExistence(timeout: 5))
+        XCTAssertFalse(firstSearch.exists)
+        secondWindow.descendants(matching: .any)["scholium.closeSearchButton"].click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !secondSearch.exists })
+    }
+
+    @MainActor
+    func testIndependentWindowSessionsRestoreTogetherAfterRelaunch() throws {
+        app.terminate()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: 1380,
+            usesFixedSessionID: false,
+            ignoresSystemWindowRestoration: false
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+
+        while app.windows.count > 1 {
+            closeFrontmostWindow()
+            XCTAssertTrue(waitUntil(timeout: 5) { self.app.windows.count >= 1 })
+        }
+
+        let originalWindow = app.windows.firstMatch
+        let originalMetadata = originalWindow.descendants(matching: .any)["scholium.documentNoteName"]
+        XCTAssertTrue(waitUntil(timeout: 10) { originalMetadata.value as? String == "QA Autosave A" })
+        let originalWindowID = originalWindow.identifier
+
+        app.typeKey("n", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 2 })
+        let openedWindows = app.windows.allElementsBoundByIndex
+        let secondWindow = try XCTUnwrap(
+            openedWindows.first(where: { $0.identifier != originalWindowID })
+        )
+        let secondRow = secondWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(secondRow.waitForExistence(timeout: 8))
+        secondRow.click()
+        let secondMetadata = secondWindow.descendants(matching: .any)["scholium.documentNoteName"]
+        XCTAssertTrue(waitUntil(timeout: 8) { secondMetadata.value as? String == "QA Autosave B" })
+
+        let secondMode = secondWindow.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(secondMode.waitForExistence(timeout: 5))
+        secondMode.click()
+        let livePreview = app.menuItems
+            .matching(identifier: "text.page.badge.magnifyingglass")
+            .firstMatch
+        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
+        livePreview.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { secondMode.value as? String == "Edit" })
+
+        let sessionsDirectory = homeDirectory
+            .appendingPathComponent("ApplicationSupport/Window Sessions", isDirectory: true)
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: sessionsDirectory,
+                includingPropertiesForKeys: nil
+            ) else { return false }
+            let snapshots = files.compactMap { try? Data(contentsOf: $0) }
+            let sources = snapshots.compactMap { String(data: $0, encoding: .utf8) }
+            return sources.contains { $0.contains("QA Autosave A.md") }
+                && sources.contains { $0.contains("QA Autosave B.md") && $0.contains("livePreview") }
+        })
+
+        app.typeKey("q", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 10) { self.app.state == .notRunning })
+
+        app.launch()
+        XCTAssertTrue(waitUntil(timeout: 20) { self.app.windows.count == 2 })
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            let titles = self.app.windows.allElementsBoundByIndex.compactMap { window -> String? in
+                let metadata = window.descendants(matching: .any)[
+                    "scholium.documentNoteName"
+                ].firstMatch
+                guard metadata.exists else { return nil }
+                return metadata.value as? String
+            }
+            return Set(titles) == Set(["QA Autosave A", "QA Autosave B"])
+        })
+
+        let restoredWindows = app.windows.allElementsBoundByIndex
+        let restoredA = try XCTUnwrap(restoredWindows.first { window in
+            window.descendants(matching: .any)["scholium.documentNoteName"].value as? String
+                == "QA Autosave A"
+        })
+        let restoredB = try XCTUnwrap(restoredWindows.first { window in
+            window.descendants(matching: .any)["scholium.documentNoteName"].value as? String
+                == "QA Autosave B"
+        })
+        XCTAssertEqual(
+            restoredA.descendants(matching: .any)["scholium.documentModeMenu"].value as? String,
+            "Review"
+        )
+        let restoredBMode = restoredB.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(waitUntil(timeout: 10) { restoredBMode.value as? String == "Edit" })
+
+        XCTAssertEqual(app.windows.count, 2)
+        XCTAssertFalse(restoredA.descendants(matching: .any)["scholium.documentTabs"].exists)
+        XCTAssertFalse(restoredB.descendants(matching: .any)["scholium.documentTabs"].exists)
+    }
+
+    @MainActor
+    func testSidebarCleanCutoverScopeLocationStickyPutBackAndAttentionWindowJourney() throws {
+        app.terminate()
+        synthesisAttentionFixture = try seedSynthesisAttentionFixture()
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth),
+            usesFixtureWorkspace: false,
+            appearance: .light
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+        let documentTitle = app.descendants(matching: .any)[
+            "scholium.documentNoteName"
+        ].firstMatch
+        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+
+        let topics = app.buttons["scholium.vault.topic_knowledge"].firstMatch
+        let analyses = app.buttons["scholium.vault.paper_analysis"].firstMatch
+        XCTAssertTrue(topics.waitForExistence(timeout: 5))
+        topics.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.noteRow.QA Topic.md"
+        ].waitForExistence(timeout: 8))
+        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+
+        selectSidebarLocation("Trash")
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.libraryEmpty"
+        ].waitForExistence(timeout: 8))
+        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+        selectSidebarLocation("Library")
+
+        analyses.click()
+        let sourceRow = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave B.md"
+        ]
+        XCTAssertTrue(sourceRow.waitForExistence(timeout: 8))
+        sourceRow.rightClick()
+        XCTAssertTrue(app.menuItems["Move to Trash…"].waitForExistence(timeout: 3))
+        app.menuItems["Move to Trash…"].click()
+        XCTAssertTrue(app.windows.firstMatch.buttons[
+            "Move to Trash"
+        ].waitForExistence(timeout: 3))
+        app.windows.firstMatch.buttons["Move to Trash"].click()
+
+        selectSidebarLocation("Trash")
+        let trashedRow = app.descendants(matching: .any)[
+            "scholium.noteRow.Trash/QA Autosave B.md"
+        ]
+        XCTAssertTrue(trashedRow.waitForExistence(timeout: 8))
+        let encodedTrashPath = try XCTUnwrap(
+            "Trash/QA Autosave B.md".addingPercentEncoding(
+                withAllowedCharacters: .alphanumerics
+            )
+        )
+        let putBack = app.descendants(matching: .any)[
+            "scholium.lifecyclePutBack.\(encodedTrashPath)"
+        ]
+        XCTAssertTrue(putBack.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(putBack.frame.width, 28)
+        XCTAssertGreaterThanOrEqual(putBack.frame.height, 28)
+        putBack.click()
+        XCTAssertTrue(app.windows.firstMatch.buttons[
+            "Put Back"
+        ].waitForExistence(timeout: 5))
+        app.windows.firstMatch.buttons["Put Back"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { !trashedRow.exists })
+
+        selectSidebarLocation("Library")
+        let folder = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-01"
+        ]
+        let noteList = app.scrollViews["scholium.noteList"].firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 8))
+        XCTAssertTrue(noteList.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            noteList.frame.width,
+            QAWorkspaceMetricContract.libraryMinimumReadableWidth,
+            accuracy: QAWorkspaceMetricContract.frameTolerance
+        )
+        folder.click()
+        noteList.swipeUp(velocity: .slow)
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(
+            abs(folder.frame.minY - noteList.frame.minY),
+            30,
+            "The active top-level Folder must remain pinned at the source viewport edge."
+        )
+
+        topics.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.noteRow.QA Topic.md"
+        ].waitForExistence(timeout: 8))
+        let attentionButton = app.descendants(matching: .any)[
+            "scholium.location.attention"
+        ]
+        XCTAssertTrue(attentionButton.waitForExistence(timeout: 5))
+        attentionButton.click()
+
+        let attentionPopover = app.popovers.firstMatch
+        XCTAssertTrue(attentionPopover.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(attentionPopover.frame.width, 360)
+        XCTAssertGreaterThanOrEqual(attentionPopover.frame.height, 320)
+        let kindPicker = attentionPopover.descendants(matching: .any)[
+            "scholium.attentionKindFilter"
+        ].firstMatch
+        XCTAssertTrue(kindPicker.waitForExistence(timeout: 5))
+        kindPicker.click()
+        let materialChanged = app.menuItems["Material Changed Since Use"].firstMatch
+        XCTAssertTrue(materialChanged.waitForExistence(timeout: 3))
+        materialChanged.click()
+        let attentionItem = attentionPopover.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.attentionItem."
+            )
+        ).firstMatch
+        XCTAssertTrue(attentionItem.waitForExistence(timeout: 10))
+        attentionItem.click()
+        // The native Outline exposes each Section header as the first disabled
+        // row; the task itself is the next row and owns selection.
+        let selectedRow = attentionPopover.outlineRows.element(boundBy: 1)
+        XCTAssertTrue(selectedRow.isSelected)
+        let inspect = attentionPopover.buttons["Inspect"].firstMatch
+        XCTAssertTrue(inspect.waitForExistence(timeout: 5))
+        inspect.click()
+
+        XCTAssertTrue(waitUntil(timeout: 5) { !attentionPopover.exists })
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            (documentTitle.value as? String) == "QA Autosave A"
+        })
+        app.menuBars.menuBarItems["Window"].click()
+        let attentionMenuItem = app.menuItems["Attention"].firstMatch
+        XCTAssertTrue(attentionMenuItem.waitForExistence(timeout: 3))
+        attentionMenuItem.click()
+        XCTAssertTrue(attentionPopover.waitForExistence(timeout: 5))
+        let reopenedItem = attentionPopover.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.attentionItem."
+            )
+        ).firstMatch
+        XCTAssertTrue(reopenedItem.waitForExistence(timeout: 5))
+
+        let evidence = XCTAttachment(screenshot: app.screenshot())
+        evidence.name = "Sidebar clean cutover and transient Attention popover"
+        evidence.lifetime = .keepAlways
+        add(evidence)
+    }
+
+    @MainActor
+    func testTrashAndPutBackPreserveExactSourceThroughTheLifecycleUI() throws {
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let trashURL = triptychDirectory.appendingPathComponent("01-analyses/Trash/QA Autosave A.md")
+        let originalSource = try source(at: sourceURL)
+
+        let sourceRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
+        XCTAssertTrue(sourceRow.waitForExistence(timeout: 10))
+        sourceRow.rightClick()
+        let moveToTrash = app.menuItems["Move to Trash…"]
+        XCTAssertTrue(moveToTrash.waitForExistence(timeout: 3))
+        moveToTrash.click()
+
+        let confirmMove = app.windows.firstMatch.buttons["Move to Trash"]
+        XCTAssertTrue(confirmMove.waitForExistence(timeout: 3))
+        confirmMove.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                FileManager.default.fileExists(atPath: trashURL.path)
+                    && !FileManager.default.fileExists(atPath: sourceURL.path)
+            },
+            "Move to Trash must relocate the exact note instead of copying or deleting it."
+        )
+        XCTAssertEqual(try source(at: trashURL), originalSource)
+
+        selectSidebarLocation("Trash")
+        let trashedNote = app.descendants(matching: .any)[
+            "scholium.noteRow.Trash/QA Autosave A.md"
+        ]
+        XCTAssertTrue(trashedNote.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(trashedNote.frame.height, 28)
+
+        trashedNote.click()
+        XCTAssertTrue(
+            (app.descendants(matching: .any)["scholium.locationPicker"].value as? String) == "Trash",
+            "Opening a trashed note must keep the shared LocationPicker on Trash."
+        )
+
+        let encodedPath = try XCTUnwrap(
+            "Trash/QA Autosave A.md".addingPercentEncoding(
+                withAllowedCharacters: .alphanumerics
+            )
+        )
+        let putBackAction = app.descendants(matching: .any)[
+            "scholium.lifecyclePutBack.\(encodedPath)"
+        ]
+        XCTAssertTrue(putBackAction.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(putBackAction.frame.width, 28)
+        XCTAssertGreaterThanOrEqual(putBackAction.frame.height, 28)
+        let visibleActionEvidence = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        visibleActionEvidence.name = "Trash row with always-visible Put Back action"
+        visibleActionEvidence.lifetime = .keepAlways
+        add(visibleActionEvidence)
+
+        putBackAction.click()
+
+        XCTAssertTrue(app.staticTexts["Put Back Note"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["QA Autosave A.md"].waitForExistence(timeout: 5))
+        let putBack = app.windows.firstMatch.buttons["Put Back"]
+        XCTAssertTrue(putBack.waitForExistence(timeout: 5))
+        XCTAssertTrue(putBack.isEnabled)
+        putBack.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                FileManager.default.fileExists(atPath: sourceURL.path)
+                    && !FileManager.default.fileExists(atPath: trashURL.path)
+            },
+            "Put Back must return the trashed note to its exact original vault-relative path."
+        )
+        XCTAssertEqual(try source(at: sourceURL), originalSource)
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { !trashedNote.exists && !putBackAction.exists },
+            "The Trash row must disappear after the coherent Location refresh completes."
+        )
+
+        selectSidebarLocation("Library")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
+                .waitForExistence(timeout: 8)
+        )
+    }
+
+    @MainActor
+    func testLifecycleDestinationKeepsLongTitleOnOneRow() throws {
+        let longTitle = "A deliberately long lifecycle title about attention, salience, and the normative structure of reasons"
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave B.md")
+        let trashURL = triptychDirectory.appendingPathComponent("01-analyses/Trash/QA Autosave B.md")
+        let sourceRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(sourceRow.waitForExistence(timeout: 10))
+        sourceRow.rightClick()
+        let moveToTrash = app.menuItems["Move to Trash…"]
+        XCTAssertTrue(moveToTrash.waitForExistence(timeout: 3))
+        moveToTrash.click()
+        let confirmMove = app.windows.firstMatch.buttons["Move to Trash"]
+        XCTAssertTrue(confirmMove.waitForExistence(timeout: 3))
+        confirmMove.click()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            FileManager.default.fileExists(atPath: trashURL.path)
+                && !FileManager.default.fileExists(atPath: sourceURL.path)
+        })
+
+        selectSidebarLocation("Trash")
+        let title = app.buttons[longTitle]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+
+        let encodedPath = try XCTUnwrap(
+            "Trash/QA Autosave B.md".addingPercentEncoding(
+                withAllowedCharacters: .alphanumerics
+            )
+        )
+        let putBack = app.descendants(matching: .any)[
+            "scholium.lifecyclePutBack.\(encodedPath)"
+        ]
+        XCTAssertTrue(putBack.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(title.frame.height, 28)
+        XCTAssertLessThanOrEqual(
+            title.frame.maxX,
+            putBack.frame.minX,
+            "The fixed Put Back track must reserve width instead of reflowing the title."
+        )
+
+        let evidence = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        evidence.name = "Lifecycle long title truncation with visible Put Back"
+        evidence.lifetime = .keepAlways
+        add(evidence)
+    }
+
+    @MainActor
+    func testPermanentDeletionPurgesTrashedSourceAndContainingCheckpoint() throws {
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let trashURL = triptychDirectory.appendingPathComponent("01-analyses/Trash/QA Autosave A.md")
+        let checkpointName = "QA Permanent Deletion \(UUID().uuidString.prefix(8))"
+
+        app.menuBars.menuBarItems["File"].click()
+        let createCheckpoint = app.menuItems["Create Checkpoint…"]
+        XCTAssertTrue(createCheckpoint.waitForExistence(timeout: 3))
+        createCheckpoint.click()
+
+        let nameField = app.textFields["Checkpoint name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.click()
+        nameField.typeText(checkpointName)
+        let create = app.windows.firstMatch.buttons["Create Checkpoint"]
+        XCTAssertTrue(create.waitForExistence(timeout: 3))
+        XCTAssertTrue(create.isEnabled)
+        create.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 15) { !nameField.exists },
+            "The containing checkpoint must be durable before permanent deletion begins."
+        )
+
+        let sourceRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
+        XCTAssertTrue(sourceRow.waitForExistence(timeout: 10))
+        sourceRow.rightClick()
+        let moveToTrash = app.menuItems["Move to Trash…"]
+        XCTAssertTrue(moveToTrash.waitForExistence(timeout: 3))
+        moveToTrash.click()
+        let confirmMove = app.windows.firstMatch.buttons["Move to Trash"]
+        XCTAssertTrue(confirmMove.waitForExistence(timeout: 3))
+        confirmMove.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                FileManager.default.fileExists(atPath: trashURL.path)
+                    && !FileManager.default.fileExists(atPath: sourceURL.path)
+                    && !sourceRow.exists
+            },
+            "The note must enter Trash and leave the live library before the irreversible action is offered."
+        )
+
+        selectSidebarLocation("Trash")
+        let trashedNote = app.descendants(matching: .any)[
+            "scholium.noteRow.Trash/QA Autosave A.md"
+        ]
+        XCTAssertTrue(trashedNote.waitForExistence(timeout: 5))
+        trashedNote.rightClick()
+        let deletePermanently = app.menuItems["Delete Permanently…"]
+        XCTAssertTrue(deletePermanently.waitForExistence(timeout: 3))
+        deletePermanently.click()
+
+        XCTAssertTrue(app.staticTexts["Delete Permanently?"].waitForExistence(timeout: 5))
+        let confirmationSheet = app.sheets
+            .matching(NSPredicate(format: "label == %@", "alert"))
+            .firstMatch
+        XCTAssertTrue(confirmationSheet.waitForExistence(timeout: 5))
+        let confirmation = confirmationSheet.buttons["Delete Permanently"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
+        confirmation.click()
+
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                !FileManager.default.fileExists(atPath: sourceURL.path)
+                    && !FileManager.default.fileExists(atPath: trashURL.path)
+                    && !trashedNote.exists
+            },
+            "Permanent deletion must remove both the live and trashed source with no note left in Trash."
+        )
+
+        app.menuBars.menuBarItems["File"].click()
+        let restoreFromCheckpoint = app.menuItems["Restore from Checkpoint…"]
+        XCTAssertTrue(restoreFromCheckpoint.waitForExistence(timeout: 3))
+        restoreFromCheckpoint.click()
+        XCTAssertTrue(
+            app.staticTexts["No Checkpoints"].waitForExistence(timeout: 10),
+            "A checkpoint containing a permanently deleted note must be invalidated instead of retaining recoverable bytes."
+        )
+        XCTAssertFalse(app.staticTexts[checkpointName].exists)
+    }
+
+    @MainActor
+    func testSelectiveCheckpointRestorePreservesTheExactCheckpointSource() throws {
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalSource = try source(at: sourceURL)
+        let checkpointName = "QA Selective Restore \(UUID().uuidString.prefix(8))"
+
+        app.menuBars.menuBarItems["File"].click()
+        let createCheckpoint = app.menuItems["Create Checkpoint…"]
+        XCTAssertTrue(createCheckpoint.waitForExistence(timeout: 3))
+        createCheckpoint.click()
+
+        let nameField = app.textFields["Checkpoint name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.click()
+        nameField.typeText(checkpointName)
+        let create = app.windows.firstMatch.buttons["Create Checkpoint"]
+        XCTAssertTrue(create.waitForExistence(timeout: 3))
+        XCTAssertTrue(create.isEnabled)
+        create.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 15) { !nameField.exists },
+            "The checkpoint sheet must close only after the self-contained checkpoint is committed."
+        )
+
+        let token = "\n\nSelective checkpoint restore token \(UUID().uuidString)"
+        try enterLivePreviewAndAppend(token)
+        XCTAssertFalse(try source(at: sourceURL).contains(token))
+
+        let secondRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
+        secondRow.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { (try? self.source(at: sourceURL).contains(token)) == true },
+            "Navigating away must flush the edited source before checkpoint comparison begins."
+        )
+
+        app.menuBars.menuBarItems["File"].click()
+        let restoreFromCheckpoint = app.menuItems["Restore from Checkpoint…"]
+        XCTAssertTrue(restoreFromCheckpoint.waitForExistence(timeout: 3))
+        restoreFromCheckpoint.click()
+
+        XCTAssertTrue(app.staticTexts["Restore from Checkpoint"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[checkpointName].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Changed"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["QA Autosave A.md"].waitForExistence(timeout: 8))
+
+        // A native SwiftUI List can briefly expose both its current row and
+        // the outgoing accessibility snapshot during an asynchronous reload.
+        // They represent the same checked control, so address the actionable
+        // first match instead of requiring XCTest to synthesize uniqueness.
+        let selection = app.checkBoxes
+            .matching(identifier: "Restore QA Autosave A.md")
+            .firstMatch
+        XCTAssertTrue(selection.waitForExistence(timeout: 5))
+        let restoreSelected = app.windows.firstMatch.buttons["Restore Selected Notes"]
+        XCTAssertTrue(restoreSelected.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            restoreSelected.isEnabled,
+            "The default selection must make the selective restore action available."
+        )
+        restoreSelected.click()
+
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                !restoreSelected.exists && (try? self.source(at: sourceURL)) == originalSource
+            },
+            "Selective restore must write the exact checkpoint source through the repository path."
+        )
+        XCTAssertFalse(try source(at: sourceURL).contains(token))
+
+        // Reopen the browser to prove that restoration also created the
+        // durable recovery checkpoint promised by the confirmation copy.
+        app.menuBars.menuBarItems["File"].click()
+        XCTAssertTrue(restoreFromCheckpoint.waitForExistence(timeout: 3))
+        restoreFromCheckpoint.click()
+        XCTAssertTrue(app.staticTexts["Before Restore"].waitForExistence(timeout: 8))
+        app.windows.firstMatch.buttons["Cancel"].click()
+    }
+
+    @MainActor
+    func testCompleteCheckpointRestoreMovesLaterFilesToTrash() throws {
+        let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
+        let sourceURL = analyses.appendingPathComponent("QA Autosave A.md")
+        let originalSource = try source(at: sourceURL)
+        let checkpointName = "QA Full Restore \(UUID().uuidString.prefix(8))"
+
+        app.menuBars.menuBarItems["File"].click()
+        let createCheckpoint = app.menuItems["Create Checkpoint…"]
+        XCTAssertTrue(createCheckpoint.waitForExistence(timeout: 3))
+        createCheckpoint.click()
+        let nameField = app.textFields["Checkpoint name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.click()
+        nameField.typeText(checkpointName)
+        let create = app.windows.firstMatch.buttons["Create Checkpoint"]
+        XCTAssertTrue(create.waitForExistence(timeout: 3))
+        create.click()
+        XCTAssertTrue(waitUntil(timeout: 15) { !nameField.exists })
+
+        let editToken = "\n\nComplete checkpoint restore token \(UUID().uuidString)"
+        try enterLivePreviewAndAppend(editToken)
+        let secondRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
+        secondRow.click()
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? self.source(at: sourceURL).contains(editToken)) == true })
+
+        let laterName = "QA Post Checkpoint.md"
+        let laterSource = "# QA Post Checkpoint\n\nThis file must remain recoverable after a complete restore.\n"
+        let laterURL = analyses.appendingPathComponent(laterName)
+        try write(laterSource, to: laterURL)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.noteRow.\(laterName)"]
+                .waitForExistence(timeout: 30),
+            "The shared watcher must publish the externally created post-checkpoint note."
+        )
+
+        app.menuBars.menuBarItems["File"].click()
+        let restoreFromCheckpoint = app.menuItems["Restore from Checkpoint…"]
+        XCTAssertTrue(restoreFromCheckpoint.waitForExistence(timeout: 3))
+        restoreFromCheckpoint.click()
+        XCTAssertTrue(app.staticTexts[checkpointName].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Changed"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Created Since Checkpoint"].waitForExistence(timeout: 8))
+
+        let completeRestoreButtons = app.buttons.matching(identifier: "Restore Complete Triptych")
+        let openConfirmation = completeRestoreButtons.firstMatch
+        XCTAssertTrue(openConfirmation.waitForExistence(timeout: 5))
+        XCTAssertTrue(openConfirmation.isEnabled)
+        openConfirmation.click()
+        XCTAssertTrue(app.staticTexts["Restore the Complete Triptych?"].waitForExistence(timeout: 5))
+
+        let confirmationSheet = app.sheets
+            .matching(NSPredicate(format: "label == %@", "alert"))
+            .firstMatch
+        XCTAssertTrue(confirmationSheet.waitForExistence(timeout: 5))
+        let confirmation = confirmationSheet.buttons["Restore Complete Triptych"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
+        confirmation.click()
+
+        let trashedLaterURL = analyses
+            .appendingPathComponent("Trash/After \(checkpointName)", isDirectory: true)
+            .appendingPathComponent(laterName)
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                !FileManager.default.fileExists(atPath: laterURL.path)
+                    && FileManager.default.fileExists(atPath: trashedLaterURL.path)
+                    && (try? self.source(at: sourceURL)) == originalSource
+            },
+            "Complete restore must recover checkpoint bytes and move later files to Trash."
+        )
+        XCTAssertEqual(try source(at: trashedLaterURL), laterSource)
+        XCTAssertFalse(try source(at: sourceURL).contains(editToken))
+    }
+
+    @MainActor
+    func testCommittedWindowModeRestoresAfterRelaunch() throws {
+        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        mode.click()
+        let livePreview = app.menuItems
+            .matching(identifier: "text.page.badge.magnifyingglass")
+            .firstMatch
+        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
+        livePreview.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { mode.value as? String == "Edit" })
+
+        let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")
+            .appendingPathComponent(sessionID.uuidString + ".json")
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            guard let data = try? Data(contentsOf: sessionFile),
+                  let text = String(data: data, encoding: .utf8) else { return false }
+            return text.contains("livePreview")
+        })
+
+        app.terminate()
+        app = configuredApplication(sessionID: sessionID)
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+
+        let restoredMode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(restoredMode.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                restoredMode.value as? String == "Edit"
+            },
+            "The restored window session must reapply Live Preview after asynchronous workspace restoration."
+        )
+    }
+
+    @MainActor
+    func testDocumentHasNoFloatingMetadataSurfaceAndInspectorRemainsIndependent() throws {
+        let renderedDocument = app.descendants(matching: .any)[
+            "scholium.renderedDocument.QA Autosave A.md"
+        ]
+        XCTAssertTrue(renderedDocument.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.documentContextCluster"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.documentContextControls"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.metadataPanel"].exists)
+
+        let documentIdentity = app.descendants(matching: .any)["scholium.documentNoteName"]
+        XCTAssertTrue(documentIdentity.waitForExistence(timeout: 10))
+        XCTAssertEqual(documentIdentity.value as? String, "QA Autosave A")
+
+        let inspectorButton = app.descendants(matching: .any)["scholium.toggleInspector"]
+        let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
+        XCTAssertTrue(inspectorButton.waitForExistence(timeout: 5))
+        let inspectorWasVisible = inspector.exists
+        inspectorButton.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { inspector.exists != inspectorWasVisible })
+        XCTAssertTrue(renderedDocument.exists)
+        inspectorButton.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { inspector.exists == inspectorWasVisible })
+        XCTAssertTrue(renderedDocument.exists)
+    }
+
+    @MainActor
+    func testActionsExposeSettleWithoutAReviewModel() throws {
+        selectResearchInspectorMode("actions")
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.openReview"].exists)
+        XCTAssertFalse(app.buttons["Complete Review"].exists)
+        XCTAssertFalse(app.textViews["Review Note"].exists)
+
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchAction.discuss"
+        ].waitForExistence(timeout: 5))
+        let settle = app.descendants(matching: .any)["scholium.researchAction.settle"]
+        XCTAssertTrue(settle.exists)
+        XCTAssertTrue(settle.isEnabled)
+    }
+
+    @MainActor
+    func testOverviewRoutesZoteroOnlyFromCurrentAnalysis() throws {
+        _ = selectResearchInspectorMode("overview")
+        let openInZotero = app.descendants(matching: .any)[
+            "scholium.researchOverview.openInZotero"
+        ]
+        XCTAssertTrue(openInZotero.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["QAITEM01"].exists)
+        XCTAssertFalse(app.buttons["Open PDF in Preview"].exists)
+        XCTAssertFalse(app.buttons["Open Attachment"].exists)
+
+        let topics = app.buttons["scholium.vault.topic_knowledge"].firstMatch
+        topics.click()
+        let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
+        XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
+        topicRow.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
+
+        let works = app.buttons["scholium.vault.output"].firstMatch
+        works.click()
+        let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
+        XCTAssertTrue(workRow.waitForExistence(timeout: 8))
+        workRow.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
+
+        let analyses = app.buttons["scholium.vault.paper_analysis"].firstMatch
+        analyses.click()
+        let analysisRow = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave A.md"
+        ]
+        XCTAssertTrue(analysisRow.waitForExistence(timeout: 8))
+        analysisRow.click()
+        XCTAssertTrue(openInZotero.waitForExistence(timeout: 8))
+    }
+
+    @MainActor
+    func testRecommendedBibliographyRemainsSidebarUtilityAcrossScopes() throws {
+        let bibliographyUtility = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.utility"
+        ]
+        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 8))
+        let initialFrame = bibliographyUtility.frame
+
+        let openDetails = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.open"
+        ]
+        XCTAssertTrue(openDetails.waitForExistence(timeout: 5))
+        openDetails.click()
+        let details = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography"
+        ]
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
+
+        let goals = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.goals"
+        ]
+        let purpose = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.purpose"
+        ]
+        let prepare = app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.prepare"
+        ]
+        XCTAssertTrue(goals.exists)
+        XCTAssertEqual(goals.value as? String, "Goals: Neutral")
+        XCTAssertTrue(purpose.exists)
+        XCTAssertTrue(prepare.isEnabled)
+
+        goals.click()
+        let objections = app.menuItems["Objections"]
+        XCTAssertTrue(objections.waitForExistence(timeout: 3))
+        objections.click()
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            (goals.value as? String) == "Goals: 1"
+        })
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !details.exists })
+
+        app.descendants(matching: .any)["scholium.vault.topic_knowledge"].click()
+        let topic = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
+        XCTAssertTrue(topic.waitForExistence(timeout: 8))
+        topic.click()
+        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 8))
+        XCTAssertEqual(bibliographyUtility.frame.minY, initialFrame.minY, accuracy: 1)
+        openDetails.click()
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.prepare"
+        ].isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+
+        app.descendants(matching: .any)["scholium.vault.output"].click()
+        let work = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
+        XCTAssertTrue(work.waitForExistence(timeout: 8))
+        work.click()
+        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 8))
+        XCTAssertEqual(bibliographyUtility.frame.minY, initialFrame.minY, accuracy: 1)
+        openDetails.click()
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.recommendedBibliography.prepare"
+        ].isEnabled)
+    }
+
+}

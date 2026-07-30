@@ -45,7 +45,9 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── WindowWorkspaceController
             │   ├── WindowSessionPersistenceCoordinator
             │   ├── DocumentTransitionCoordinator
+            │   ├── WindowWorkspaceProjectionController
             │   ├── DiscoveryController
+            │   ├── WindowSearchController
             │   ├── AttentionPresentationState
             │   ├── AttentionPopoverSession (exact Workspace adapter)
             │   ├── DocumentTabController
@@ -54,6 +56,7 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── ResearchController
             │   │   ├── ResearchActionController
             │   │   └── RecommendedBibliographyController
+            │   ├── AgentNoteChangeWindowController
             │   ├── WindowPresentationRouter
             │   └── typed WindowIntent routing
             └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
@@ -98,10 +101,16 @@ prepare → Search synchronize → snapshot publish cycle. Monotonic
 `RefreshRequestID`s make an in-flight cycle cover only the requests it captured;
 later requests coalesce into the next cycle, and cancelling one waiter cannot
 cancel work required by another. Merged cycles prepare every requested source
-path, not just the last payload. An exclusive source-mutation gate buffers
-watcher invalidations until the filesystem transaction, portable identity, and
-other path-bound stores agree, preventing a builder from observing the
-file/identity gap. Search publication applies one transactional
+path, not just the last payload. One `WorkspaceSourceOperationGate` value,
+isolated by the owning `WorkspaceHandle` actor, gives source mutations and
+refresh cycles mutually exclusive leases. Its tokenized waiters are
+cancellation-aware, so cancellation before lease acquisition removes only that
+waiter; cancellation after acquisition does not revoke a transaction that must
+finish or recover. The extraction adds no actor hop and owns no I/O, rollback,
+or publication. While a source-mutation lease is active, watcher invalidations
+remain buffered until the filesystem transaction, portable identity, and other
+path-bound stores agree, preventing a builder from observing the file/identity
+gap. Search publication applies one transactional
 `SearchIndexDelta` carrying a transactionally persisted workspace generation
 and refuses stale generations, including across index reopen or another
 process connection. A failed cycle preserves the last complete snapshot and index.
@@ -123,8 +132,10 @@ the disposable SQLite schema, staging/validation/recovery, read transactions,
 cancellation, deterministic ranking, and in-memory **This Note** matcher.
 Application resolves presentation scope to execution scope and is the only
 search capability exposed to GUI and CLI. Saved Searches persist only query
-and presentation scope. Selection, request cancellation, and Related loading
-are window-controller state rather than persisted search definition.
+and presentation scope. `WindowSearchController` owns execution cancellation,
+freshness validation, and serialized Saved Search persistence;
+`DiscoveryController` owns the visible selection and Related projection. None
+of that window state enters the persisted search definition.
 
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 only `DocumentUseCases`, `DiscoveryUseCases`, and `ResearchUseCases` plus
@@ -133,10 +144,14 @@ installation, retains one event subscription before publishing activation,
 starts it with a complete `WorkspaceSnapshot`, and accepts only increasing
 generations. Commands remain direct capability calls, not event-bus messages.
 
-`WorkspaceStore` owns the live runtime, accepted subscription, immutable GUI
-snapshots, cross-window editor-flush registry, and macOS adapters. Each window
-receives one atomic capability generation. CSS/App Support, Obsidian reads, and
-Zotero HTTP stay behind Application actors; the store owns no Core authority.
+`WorkspaceStore` owns the live runtime, accepted Application-event
+subscription, latest complete immutable snapshots used by direct app adapters,
+cross-window editor-flush registry, and macOS adapters. It publishes one
+generation-gated `WorkspaceEvent` map to windows; derived-refresh status and
+generation remain inside that event rather than separate window-facing
+mirrors. Each window receives one atomic capability generation. CSS/App
+Support, Obsidian reads, and Zotero HTTP stay behind Application actors; the
+store owns no Core authority.
 
 The Beta agent-application handoff is one app-wide macOS presentation adapter
 owned by `WorkspaceStore`. `AgentApplicationHandoffController` coordinates the
@@ -151,12 +166,28 @@ result, and no Function record treats launch as execution state.
 `WindowWorkspaceController` resolves the requested Triptych and stable vault
 identities, `WindowSessionPersistenceCoordinator` owns replaceable and final
 presentation saves, and `DocumentTransitionCoordinator` owns transition
-generation plus flush/capture ordering. `WindowModel` applies their typed
-results, routes Search/temporary Find, presentation, and cross-feature intents,
-but no longer owns those three state machines. `DocumentController` alone owns selection and
-document workflow state; `ResearchController` owns research generations,
+generation plus flush/capture ordering. `AgentNoteChangeWindowController` owns
+the exact window's Agent request, display identity, expiry, decision tasks, and
+sheet route. `WindowSearchController` owns Search/temporary Find execution and
+cancellation, exact result-freshness validation, Search-generation reruns, and
+serialized Saved Search loading and persistence. It coordinates the
+`DiscoveryController` Search projection while borrowing only a checked current
+document snapshot and navigation/presentation effects from the window root.
+`WindowModel` composes these owners, forwards their invalidation, and routes
+focused commands and cross-feature intents; it does not own those state
+machines. `DocumentController` alone owns selection and document workflow
+state; `ResearchController` owns research generations,
 initial Dialogue projection, checkpoint-list failures, and durable-recovery
-listing. `WindowModel` exposes computed projections, not duplicated storage.
+listing. `WindowWorkspaceProjectionController` is the exact-window owner of the
+immutable catalog, per-vault snapshots, selected Location's Notes/tags/revisions
+and property-filter options, graph, Search generation, derived-refresh status,
+and catalog refresh lifecycle. It accepts only the active runtime and increasing
+event generations, stages a complete `State`, and publishes that state once.
+Research-configuration invalidation advances event order without replaying an
+unchanged projection; a deleted Note remains in the visible projection only
+while its exact dirty editor owns conflict recovery. `WindowModel` forwards
+read-only values and applies typed presentation effects, but exposes neither the
+controller's backing cache nor a second writable source authority.
 Direct New Note requests remain focused-window commands: the Library and File
 menu send a target folder value to `WindowModel`, which flushes the current
 editor and calls the Application-owned untitled-note use case. Application
@@ -211,18 +242,16 @@ controller is a foreground sibling inside the system safe area.
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Before split attachment,
 `WorkspaceWindowCoordinator` installs an inert toolbar and later replaces its
-items in place. Each peripheral has one real `NSToolbarItem`: while its pane is
-visible, the item is ordered outside the corresponding separator and presents
-Hide in that pane's titlebar section; when collapsed, the same route moves
-inside the separators and presents Show in the Document section. The toolbar
-controller diffs item identifiers from native collapsed state, so no duplicate
-route or second toolbar exists. No split-content titlebar host remains in the
-current construction: under full-size content it rendered beneath the
-toolbar's pointer hit-testing layer even when accessibility could still
-discover it. This tracked-toolbar transfer is the current safe implementation,
-but it does not satisfy `SCHOLIUM_SPEC.md` §18.2's pane-ownership requirement;
-the status ledger
-records that migration debt without treating this workaround as target authority.
+items in place. An expanded peripheral owns one pointer-hittable Hide control
+inside its foreground content tree. On collapse that subtree leaves the window
+and exactly one Show `NSToolbarItem` enters the Document section between the
+corresponding tracking separator and Document controls; expansion removes it
+again. The toolbar controller diffs identifiers from native collapsed state,
+so no duplicate route or second toolbar exists. No split-content titlebar host
+remains: under full-size content that host rendered beneath the toolbar's
+pointer hit-testing layer even when accessibility could still discover it.
+Pane-local content plus collapsed-only native toolbar items satisfy §18.2
+without adding a geometry owner or painted titlebar layer.
 
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width
@@ -320,7 +349,9 @@ ResearchActionController (one window, production UI)
         ↓ ResearchActionClient
 ResearchActionUseCases (Contracts)
         ↓ internal Action-to-Function adapter
-ResearchFunctionCoordinator + Action resolver (Application)
+ResearchFunctionCoordinator
+        (Application; preparation, delivery, evidence, completion;
+         one shared WorkspaceHandle isolation domain)
         ↓
 Core skill, checkpoint, record, and repository authorities
 ```
@@ -432,13 +463,25 @@ intellectual procedure. The old conditional Development, Revision, and
 Manuscript resource selectors remain internal to protected stored execution
 records and are never offered by current Actions; each Method now loads
 its complete adaptive core, with Write feedback guidance included by default.
-Before a new Triptych manifest is committed, `ResearchSkillStore` installs six
-independent editable packages under `.scholium/skills/` and atomically writes
+Before a new Triptych manifest is committed,
+`ResearchSkillTransactionCoordinator` installs six independent editable
+packages under `.scholium/skills/` and atomically writes
 `research-working-method-bindings-v2.json`; Manuscript is represented by an
 explicit disabled state. The initializer is idempotent for an exact interrupted
 bootstrap and never runs automatically for a Triptych with an existing
 manifest. Application exposes the same absence-checked operation as the
 explicit repair primitive for the later categorized Settings interface.
+
+The coordinator is the sole actor and cross-store transaction owner, not the
+implementation of every storage concern. `ResearchSkillPackageRepository`
+owns bounded package discovery, resources, revisions, CRUD and publication;
+`ResearchWorkingMethodStore`, `ResearchActionProfileStore`,
+`ResearchCitationMethodStore`, and `ResearchBibliographyMethodStore` each own
+one persisted document; and the I/O-free `ResearchSkillResolver` owns package
+graph validation and dependency ordering. These are synchronous values used
+under the coordinator's isolation. Package-plus-binding replacement, recovery,
+and use-before-delete checks remain together in the coordinator because they
+span those authorities.
 
 `ResearchSkillInstallationStore` owns the app-wide, short-lived staging
 boundary for researcher-selected local directories. It walks the selected
@@ -452,7 +495,7 @@ name, bounded file inventory and fingerprints, method metadata, proposed
 Action placement, and the explicit fact that an Action Profile is still
 required; source paths and bytes remain Core-private and expire from memory.
 `WorkspaceRuntime` resolves the explicitly selected Triptychs and supplies
-their existing `ResearchSkillStore` actors. Core preflights every destination,
+their existing `ResearchSkillTransactionCoordinator` actors. Core preflights every destination,
 publishes each independently copied package with descriptor-relative
 `RENAME_EXCL`, then repeats the bounded file/link/mode/readback validation.
 Preflight and post-publication validation both reject a package identifier
@@ -474,22 +517,61 @@ Action execution resolves only that Action-keyed v2 document. Its
 `installed_default`, `researcher_skill`, and `disabled` states are explicit;
 absence, malformed data, missing packages, invalid packages, and role/Action
 incompatibility fail closed without a bundled fallback. The bundled package is
-read only during initial installation or explicit restore. The retained
-Function-keyed `research-skill-bindings.json` file and APIs remain readable for
-legacy Settings and temporary citation/bibliography compatibility. Its primary,
-supplemental, and Practice fields cannot select or compose an Action's Working
-Method.
+read only during initial installation or explicit restore. Research Citation
+Method writes only `research-citation-method-v1.json`, and Recommended
+Bibliography Method writes only `research-bibliography-method-v1.json`. If
+either owned document is absent, a minimal compatibility reader may project
+only that capability's fields from a retained Function-era
+`research-skill-bindings.json`. Complete or empty valid state migrates lazily to
+the owned document; an incomplete Citation package selection remains visible
+for explicit style repair, and malformed bytes expose their exact revision for
+revision-checked repair. The retained file is never rewritten or deleted, and
+its Function-keyed primary, supplemental and Practice fields are not decoded,
+validated, executed, or treated as package-use constraints. After an owned
+document exists, later retained-file edits cannot change that capability.
 
-One delivery-neutral `ResearchFunctionCoordinator` per workspace owns
-availability, preparation, completion, cancellation, and record projection. It
-resolves/rechecks identities, inputs, Action-specific Methods, protected
-resources, checkpoints, records, and final fingerprints and rolls back partial
-work. Current preparations load one complete Method plus the exact required
-System references and never enter conditional-resource finalization. The
-legacy selection payload remains Codable for machine-local state, but no
-public Use Case, CLI command, next action, or rendered packet exposes its
-retired finalizer. Public `ResearchOperations` delegates here;
-Dialogue/Critique have no alternate preparation path.
+One independently constructed `ResearchFunctionCoordinator` now exists per
+workspace. It owns availability, Action/Skill resolution, immutable authority
+and instruction packets, preparation and rollback across checkpoints,
+Critique, Local-v2 and grants, delivery-only process keys, Local-v2 run lookup
+and duplicate-Critique reconciliation, the complete completion/Fidelity
+transaction, portable-record repair, protected cancellation, and protected
+Discussion Finish. Its purpose-specific dependency bundle contains only the
+repositories, vault roles and roots, control and Skill stores, source and Agent
+request stores, checkpoints, portable records, Local-v2, Critique, and Zotero
+authorities proved necessary by those responsibilities; the Workspace-wide
+service aggregate cannot enter the coordinator.
+
+A narrow `ResearchFunctionCoordinatorHost` lets the component borrow the
+existing `WorkspaceHandle` actor for active-lifetime checks, the current
+immutable Workspace projection, process-local key custody, default Action
+context, Critique's general source-mutation adapter, Discussion Finish, and
+disposable post-commit publication. The coordinator directs the protected
+Critique preparation transaction and recovery, while the host adapter retains
+the one general Critique Markdown mutation owner. The coordinator is not
+another actor, adds no actor hop, and owns no Markdown buffer,
+source-operation gate, mutable Workspace snapshot, or refresh implementation.
+`ResearchOperations`, public Action preparation/completion/cancellation, and
+Agent-request preparation/cancellation call it directly. The old
+WorkspaceHandle preparation, completion, cancel, finish, record,
+grant-completion, portable-record, Fidelity-linkage, continuation-validation,
+source-validation, and refresh-warning helpers are deleted.
+
+The component is physically divided by responsibility without creating new
+owners: `ResearchFunctionPreparation.swift` contains availability and the
+cross-store preparation/rollback transaction;
+`ResearchFunctionDelivery.swift` contains Action/Skill resolution, packet
+rendering, live-key attachment, and next actions;
+`ResearchFunctionEvidence.swift` contains current source, Material, Target,
+and repair evidence; and `ResearchFunctionCompletion.swift` contains the
+terminal completion/Fidelity transaction. Machine-local source-binding
+mutations and citation-method settings are the separate
+`WorkspaceResearchGuidanceOperations.swift` adapter. Current preparations load
+one complete Method plus the exact required System references and never enter
+conditional-resource finalization. The legacy selection payload remains
+Codable for machine-local state, but no public Use Case, CLI command, next
+action, or rendered packet exposes its retired finalizer. Dialogue and Critique
+have no alternate preparation path.
 
 ### Portable Research Record storage v1, record schema 3, and Local Execution v2
 
@@ -700,8 +782,10 @@ Topic Develop remains Synthesize and has no source requirement.
 The assembled machine-local delivery packet may include the validated absolute
 file path as a transient locator; the durable `ResearchFunctionSnapshot`
 retains only `ResearchSourceReference`. Application exposes bind, inspect, and
-remove operations, while the later modular source-picker interface is not yet
-connected. For the Zotero route, `ZoteroOperations` permits only exact bodyless
+remove operations; the production Action sheet connects the native local-file
+picker and its repair route through those operations. A bounded in-sheet Zotero
+attachment chooser is not yet connected. For the Zotero route,
+`ZoteroOperations` permits only exact bodyless
 loopback GETs, refuses redirects, verifies the exact response URL, parent and
 attachment keys, absolute query-free local file URL, and exact selected path,
 and repeats that identity check through completion. Permanent note deletion
@@ -716,7 +800,7 @@ submit its evidence. Parent advancement validates and links that child (or
 identical completed evidence); direct write-run Fidelity outcomes are rejected.
 Exact evidence keys prevent duplicate storage or scheduling.
 
-Core separates Skill discovery/bindings (`ResearchSkillStore`), machine-local
+Core separates Skill discovery/bindings (`ResearchSkillTransactionCoordinator`), machine-local
 source access (`ResearchSourceAccessStore`), dependency and
 instruction assembly (`ResearchWorkflowAssembler`), checkpoints
 (`TriptychCheckpointStore`), portable Discussion, Critique, and Research Record
@@ -768,15 +852,16 @@ RecommendedBibliographyUseCases (Contracts)
         ↓
 RecommendedBibliographyCoordinator (Application)
         ↓
-ResearchSkillStore + RecommendedBibliographyStore + Zotero read adapter (Core)
+ResearchSkillTransactionCoordinator + RecommendedBibliographyStore + Zotero read adapter (Core)
 ```
 
 The controller is a sibling of `ResearchActionController` under the
-per-window `ResearchController`. The current Application preparation path
-still locks an Analysis identity and fingerprint; replacing that migration
-bridge with a Triptych-owned preparation identity is tracked in Implementation
-Status rather than treated as an alternative target contract. Application
-snapshots the complete Source Analyzer method, validates completion tokens and
+per-window `ResearchController`. One `RecommendedBibliographyScope` freezes the
+Triptych identity and the exact revisions of researcher-selected active Notes;
+those Notes are focal source context, not a second durable owner. The portable
+store exposes one Triptych overview and permits one active request regardless
+of current Scope, Location, selected Note, or window. Application snapshots the
+complete Source Analyzer method, validates completion tokens and
 evidence, and performs conservative duplicate discrimination without note or
 Zotero mutation. Core owns portable storage,
 package resolution, path safety, and matching inputs. The App owns goals,
@@ -813,8 +898,9 @@ failure.
   and Settings delivery controllers and per-window editor sessions.
 - `Scholium/App/Window` contains mutually exclusive window presentation
   routing plus the document-transition, presentation-persistence, and
-  workspace-resolution coordinators. These coordinators do not duplicate a
-  feature controller or writable document owner.
+  workspace-resolution and immutable-projection coordinators. These
+  coordinators do not duplicate a feature controller or writable document
+  owner.
 - Feature-root view files remain inside `Scholium/Views`. The application and
   window roots may receive the complete `WindowModel`; feature roots receive
   their one controller, and reusable leaves receive immutable values and
@@ -898,15 +984,16 @@ participates. Recommended Bibliography is the fixed, intrinsic-height sibling
 below the Library Source List scroll. It shares the Sidebar's navigation
 surface and adds one structural boundary but owns no Scope, Location, selection,
 filter, sort, disclosure, or lifecycle state. Inspector alone consumes the
-document-adjacent apparatus surface. Its current Analysis-locked Application
-preparation identity remains migration debt recorded in Implementation Status.
+document-adjacent apparatus surface. Changing the current Note may change the
+focal source for a later request, but does not replace or hide the current
+Triptych result or active request.
 
 Ordinary Scope and Location navigation uses a
 `DiscoveryLocationRequest(.stagedReplacement)`. `DiscoveryController` retains
 the last committed Scope/Location pair until completion and still rejects late
 request identities. `WindowModel.currentWorkspaceVaultSnapshot` first consumes
-the immutable snapshot already published into `workspaceVaultSnapshotsByID`;
-the Application operation is only an initial-construction fallback. A complete
+the narrow `WindowWorkspaceProjectionController.vaultSnapshot(id:)` query; the
+Application operation is only an initial-construction fallback. A complete
 target pair and Source List commit together, while staged failure retains the
 prior projection and reports through the existing toast path. Explicit refresh
 continues to use the content-loading/error presentation.
@@ -1008,12 +1095,12 @@ protocol. Catalog metadata also exposes capabilities—including
 `bibliography-recommendation`—and citation styles while retaining modes only
 for internal package assembly.
 
-Function-method activation remains a legacy Settings-facing capability.
-`ResearchFunctionSkillSelection` can still decode and revise the preserved v1
-file so old data remains inspectable, but `ResearchWorkflowAssembler` ignores
-its primary, supplemental, and Practice selections. New Application operations
-edit, disable, replace, and explicitly restore an Action's v2 Working Method
-through exact package and binding revisions. Direct edit and restore exchange
+Function-keyed Method activation and its Settings contracts are retired. No
+current decoder or mutation API models the preserved v1 primary, supplemental,
+or Practice selections; only the bounded Citation/Bibliography migration reader
+described above may inspect its own fields. Current Application operations edit,
+disable, replace, and explicitly restore an Action's v2 Working Method through
+exact package and binding revisions. Direct edit and restore exchange
 the complete package through descriptor-relative operations, recheck the v2
 binding before and after package mutation, and publish the displaced package
 through the existing machine-local Research Guidance snapshot lifecycle.
@@ -1118,17 +1205,28 @@ a completion key or child grant. Journaled permanent-deletion finalization
 purges requests targeting the deleted Note and requests whose authenticated
 parent execution contains it.
 
-`AgentNoteChangePresentationCoordinator` is the one MainActor, App-wide owner
-of native presentation claims. Each `WorkspaceWindowCoordinator` explicitly
-registers its exact scene identity, live Triptych identity, key-window state,
-presentation availability, focus route, and bounded present/update/dismiss
-closures; the coordinator never searches the global AppKit window list. One
-request ID can be claimed by only one matching window. The key matching window
-wins, a closing window releases its claim for another live matching window,
-and a busy window retains the request without replacing its existing sheet.
-Exact bridge replay updates the claimed sheet, while
-`show_note_change_request` only focuses that existing claim and never creates a
-second presentation.
+`AgentNoteChangeClaimCoordinator` is the one MainActor, App-wide owner of
+request-to-window claims. Each exact window has its own
+`AgentNoteChangeWindowController`, which registers the live Triptych identity,
+key-window state, presentation availability, and bounded presentation/focus
+endpoint. The claim coordinator never owns a sheet, identity lookup, expiry or
+decision task, and never searches the global AppKit window list. One request ID
+can be claimed by only one matching window. The key matching window wins, a
+closing window releases its claim for another live matching window, and a busy
+window retains the request without replacing its existing sheet. Exact bridge
+replay updates the claimed controller, while `show_note_change_request` only
+focuses that existing claim and never creates a second presentation.
+
+The per-window controller owns the transient request record, display identity,
+identity retry, local expiry, snapshot refresh, decision task, and exact
+`WindowSheetRoute`. It cancels all four task families on dismissal or window
+closure and checks request identity before applying an asynchronous result, so
+a cancellation-insensitive late failure cannot revive closed-window state.
+`WorkspaceWindowCoordinator` retains only AppKit-native prior-responder capture
+and restoration; `ContentView` consumes the window controller rather than
+duplicating presentation state. The former App-wide presentation coordinator
+file and the former `WindowModel` request fields, tasks, and lifecycle methods
+have no compatibility alias.
 
 The shared `WindowSheetRoute` presents one native Agent Note Change sheet. It
 derives current titles, roles, and revision state from the live Workspace
@@ -1152,8 +1250,12 @@ evidence. Identity lookup uses a bounded retry, and a later exact replay or
 refresh retries a still-pending unavailable identity. At `expiresAt` it removes
 the decision controls immediately and uses a
 bounded durable-refresh retry before retaining the contract-derived expired
-state. Either route records only coordination state; creating a separately
-bounded child snapshot and grant remains the next implementation phase.
+state. Either route records only coordination state. An allowed schema-v2
+record freezes an exact child-phase plan; Application revalidates current
+Action, Method, Profile, Note identities, roles, operations, and fingerprints
+before atomically preparing one independent single-Target child snapshot,
+checkpoint, and grant for each approved Note. Partial siblings remain
+independent, while interrupted group preparation is reconciled before retry.
 All in-App mutations of active Working Methods, Action Profiles, Skill package
 content, Skill maintenance state, and standing policy borrow the same gate as
 the final request validation and decision write. Actor reentrancy therefore
@@ -1410,6 +1512,19 @@ composition, and undo history. Swift owns a checked mirror reconstructed from
 accepted UTF-16 deltas and reconciled against complete editor text before
 persistence.
 
+The native implementation preserves that single ownership while separating
+code-element responsibilities. `MarkdownEditorSession` alone owns the retained
+WebView lifecycle, checked source mirror, generation, recovery, and pending
+requests. `MarkdownEditorBridgeAdapter` owns the typed wire envelope and
+structured JavaScript dispatcher; `MarkdownEditorNativeWebView` owns AppKit
+attachment and context-menu behavior; and `MarkdownEditorWebView` is the
+SwiftUI/WebKit composition and message-routing boundary. Debug-only WebKit
+probes live in `MarkdownEditorSessionTesting` and are absent from Release
+builds. On the Web side, `editor.ts` remains the sole composition root and
+source/identity owner, while selection actions, cached preview presentation,
+and scroll observation/restoration are bounded components around the same
+`EditorView`. None may persist Markdown or create another `EditorState`.
+
 Every bridge request is bounded and carries protocol, request, session,
 document, fingerprint, and generation identity. Mutating requests are
 serialized. Unknown operations, stale identities, generation gaps or repeats,
@@ -1418,7 +1533,7 @@ without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge v5 sends source deltas immediately in generation order and adds a
+Bridge v7 sends source deltas immediately in generation order and includes a
 generation-checked, nonmutating exact UTF-16 source-range reveal operation. It coalesces
 selection-only reports to the latest envelope per animation frame, with a 50 ms
 offscreen watchdog. Each envelope carries exact selection and coordinates but

@@ -277,7 +277,7 @@ struct DerivedRefreshStatusTests {
                 finalTargetFingerprint: target.fingerprint,
                 summary: "Checked the exact Analysis revision.",
                 didModifyTarget: false,
-                fidelityOutcomes: [.passedContent]
+                fidelityOutcomes: [.derivedRefreshPassedContent]
             )
         )
         #expect(completion.state == .complete)
@@ -366,7 +366,7 @@ struct DerivedRefreshStatusTests {
                     summary: "The final Work revision passed the selected check."
                 )
             }
-        let reviseActivityCompletion = try researchActivityCompletion(
+        let reviseActivityCompletion = try derivedRefreshActivityCompletion(
             for: revise,
             candidateModifiedNotes: [workID],
             summary: "Revised the Work."
@@ -465,7 +465,7 @@ private func functionTarget(
     )
 }
 
-private func researchActivityCompletion(
+private func derivedRefreshActivityCompletion(
     for preparation: ResearchFunctionPreparation,
     candidateModifiedNotes: [VaultQualifiedNoteID],
     summary: String,
@@ -489,7 +489,7 @@ private func researchActivityCompletion(
 }
 
 private extension FidelityCheckOutcome {
-    static let passedContent = Self(
+    static let derivedRefreshPassedContent = Self(
         check: .content,
         state: .passed,
         summary: "The exact final revision passed the Content Fidelity check."

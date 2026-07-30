@@ -3,13 +3,13 @@ import Testing
 import ScholiumContracts
 @testable import ScholiumCore
 
-@Suite("Triptych-local Research Guidance skills")
-struct ResearchSkillStoreTests {
+@Suite("Triptych-local Research Guidance transaction coordinator")
+struct ResearchSkillTransactionCoordinatorTests {
     @Test("Discovery is confined to direct SKILL.md packages under the portable root")
     func boundedDiscovery() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         _ = try await store.create(id: "local-method", source: Self.validSource(name: "Local Method"))
 
         let nested = fixture.control
@@ -48,7 +48,7 @@ struct ResearchSkillStoreTests {
     func malformedSkillIsVisibleButUnavailable() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         _ = try await store.create(id: "broken-skill", source: "---\nname: Broken\n---\n")
 
         let skills = try await store.skills()
@@ -66,7 +66,7 @@ struct ResearchSkillStoreTests {
     func packageEntryAssemblyDisclosesResourceBoundary() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
 
         let assembly = try await store.instructionAssembly(
             mode: .review,
@@ -88,7 +88,7 @@ struct ResearchSkillStoreTests {
         let package = fixture.control.appendingPathComponent("skills/binary-skill", isDirectory: true)
         try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
         try Data([0xFF, 0xFE, 0x00]).write(to: package.appendingPathComponent("SKILL.md"))
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
 
         let skill = try #require(try await store.skills().first { $0.id == "binary-skill" })
 
@@ -101,7 +101,7 @@ struct ResearchSkillStoreTests {
     func traversalAndStaleWriteRejection() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
 
         await #expect(throws: ResearchSkillError.self) {
             _ = try await store.create(id: "../escape", source: Self.validSource(name: "Escape"))
@@ -129,7 +129,7 @@ struct ResearchSkillStoreTests {
         let skillsURL = fixture.control.appendingPathComponent("skills", isDirectory: true)
         try FileManager.default.createDirectory(at: fixture.control, withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(at: skillsURL, withDestinationURL: external)
-        let unsafeStore = ResearchSkillStore(controlURL: fixture.control)
+        let unsafeStore = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
 
         await #expect(throws: ResearchSkillError.self) {
             _ = try await unsafeStore.prepareSkillsFolder()
@@ -146,7 +146,7 @@ struct ResearchSkillStoreTests {
             at: skillsURL.appendingPathComponent("linked-skill"),
             withDestinationURL: realPackage
         )
-        let safeStore = ResearchSkillStore(controlURL: fixture.control)
+        let safeStore = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         let skills = try await safeStore.skills()
 
         #expect(!skills.contains { $0.id == "linked-skill" })
@@ -186,7 +186,7 @@ struct ResearchSkillStoreTests {
             at: references.appendingPathComponent("Reviewer.md"),
             withDestinationURL: outside
         )
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         let linked = try #require(try await store.skills().first {
             $0.id == "linked-practices"
         })
@@ -205,7 +205,7 @@ struct ResearchSkillStoreTests {
     func managementLifecycle() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
 
         let duplicated = try await store.duplicateBundled(
             id: "scholium-analyze",
@@ -280,7 +280,7 @@ struct ResearchSkillStoreTests {
     func localPackageResourcesAndRevision() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         let created = try await store.create(
             id: "practice-library",
             source: Self.validSource(name: "Practice Library")
@@ -323,7 +323,7 @@ struct ResearchSkillStoreTests {
     func noLegacyEmbeddedMicroSkills() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let skills = try await ResearchSkillStore(controlURL: fixture.control).skills()
+        let skills = try await ResearchSkillTransactionCoordinator(controlURL: fixture.control).skills()
         #expect(!skills.contains { $0.id == "scholium-source-fidelity" })
         #expect(!skills.contains { $0.id == "scholium-triptych-editing" })
     }
@@ -342,7 +342,7 @@ struct ResearchSkillStoreTests {
             atomically: true,
             encoding: .utf8
         )
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
 
         let collisions = try await store.skills().filter { $0.id == "scholium-core-protocol" }
 
@@ -363,7 +363,7 @@ struct ResearchSkillStoreTests {
     func legacyRoutingDefaults() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         let package = try await store.create(
             id: "legacy-method",
             source: Self.validSource(name: "Legacy Method")
@@ -387,7 +387,7 @@ struct ResearchSkillStoreTests {
     func namespacedRoutingAndCombinedDependencies() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         _ = try await store.create(
             id: "local-method",
             source: Self.routedSource(
@@ -425,7 +425,7 @@ struct ResearchSkillStoreTests {
     func spoofingAndUnknownRoutingKeys() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         let source = """
         ---
         name: Spoof Attempt
@@ -503,7 +503,7 @@ struct ResearchSkillStoreTests {
             source: practiceSource,
             skillsURL: skills
         )
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         let packages = try await store.skills()
         let cycleA = try #require(packages.first { $0.id == "cycle-a" })
         let practices = try #require(packages.first { $0.id == "incomplete-practices" })
@@ -524,7 +524,7 @@ struct ResearchSkillStoreTests {
     func duplicatedRoutingMetadataIsComplete() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.control)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
         let copy = try await store.duplicateBundled(
             id: "scholium-philosophical-practices",
             as: "my-philosophical-practices"
@@ -544,6 +544,52 @@ struct ResearchSkillStoreTests {
         #expect(!paths.contains("references/COMPOSITION-RULES.md"))
         #expect(paths.contains("references/Reviewer.md"))
         #expect(copy.isValid)
+    }
+
+    @Test("Storage responsibilities remain explicit and Function-era APIs stay retired")
+    func storageArchitectureBoundary() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let core = root.appendingPathComponent("ScholiumCore", isDirectory: true)
+        let components = [
+            "ResearchSkillPackageRepository.swift": "struct ResearchSkillPackageRepository",
+            "ResearchSkillResolver.swift": "struct ResearchSkillResolver",
+            "ResearchGuidanceDocumentStores.swift": "struct ResearchWorkingMethodStore",
+            "ResearchCapabilityMethodStores.swift": "struct ResearchCitationMethodStore",
+        ]
+        for (file, declaration) in components {
+            let source = try String(
+                contentsOf: core.appendingPathComponent(file),
+                encoding: .utf8
+            )
+            #expect(source.contains(declaration))
+        }
+
+        let coordinator = try String(
+            contentsOf: core.appendingPathComponent(
+                "ResearchSkillTransactionCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        for retired in [
+            "ResearchSkillBindingDocument",
+            "ResearchFunctionSkillSelection",
+            "functionSkillSelection(",
+            "saveFunctionSkillSelection(",
+            "clearFunctionSkillSelection(",
+        ] {
+            #expect(!coordinator.contains(retired))
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: core.appendingPathComponent("ResearchSkillStore.swift").path
+        ))
+        #expect(!FileManager.default.fileExists(
+            atPath: root.appendingPathComponent(
+                "ScholiumContracts/ResearchFunctionSkillBindingContracts.swift"
+            ).path
+        ))
     }
 
     private static func validSource(name: String) -> String {

@@ -4,9 +4,9 @@ import ScholiumContracts
 
 public struct ResearchSkillInstallationDestination: Sendable {
     public let triptychID: UUID
-    public let skillStore: ResearchSkillStore
+    public let skillStore: ResearchSkillTransactionCoordinator
 
-    public init(triptychID: UUID, skillStore: ResearchSkillStore) {
+    public init(triptychID: UUID, skillStore: ResearchSkillTransactionCoordinator) {
         self.triptychID = triptychID
         self.skillStore = skillStore
     }
@@ -102,7 +102,7 @@ public actor ResearchSkillInstallationStore {
             revision: packageRevision
         )
         let package = inspected.addingValidationIssues(
-            ResearchSkillStore.declaredResourceValidationIssues(
+            ResearchSkillPackageRepository.declaredResourceValidationIssues(
                 for: inspected,
                 availableResourcePaths: Set(sources.keys)
             )
@@ -556,7 +556,7 @@ public actor ResearchSkillInstallationStore {
     }
 }
 
-extension ResearchSkillStore {
+extension ResearchSkillTransactionCoordinator {
     func preflightStagedResearcherSkillInstallation(
         id: String,
         sources: [String: String],
@@ -708,41 +708,11 @@ extension ResearchSkillStore {
            }) {
             return true
         }
-
-        let controlURL = bindingsURL.deletingLastPathComponent()
-        let controlDescriptor = try SecureResearchSkillPackageIO
-            .openAbsoluteDirectory(controlURL)
-        defer { Darwin.close(controlDescriptor) }
-        let controlIdentity = try SecureResearchSkillPackageIO.identity(
-            of: controlDescriptor,
-            path: controlURL.path
-        )
-        guard let data = try SecureResearchSkillPackageIO.dataFileIfPresent(
-            parentDescriptor: controlDescriptor,
-            leaf: bindingsURL.lastPathComponent,
-            path: bindingsURL.path,
-            maximumByteCount: 1_048_576
-        ) else {
-            return false
+        if try citationMethods.snapshotWithoutMigration()?.document.packageID == id {
+            return true
         }
-        guard try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-            controlURL,
-            identity: controlIdentity
-        ) else {
-            throw ResearchSkillBindingError.unsafeBindingFile
-        }
-        let document = try JSONDecoder().decode(
-            ResearchSkillBindingDocument.self,
-            from: data
-        )
-        guard document.schemaVersion == ResearchSkillBindingDocument
-            .currentSchemaVersion else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Unsupported retained binding schema version \(document.schemaVersion)."
-            )
-        }
-        return document.citationBinding == id
-            || document.bibliographyMethodBinding == id
+        return try bibliographyMethods
+            .snapshotWithoutMigration()?.document.packageID == id
     }
 
     func quarantineExactStagedResearcherSkillPackage(

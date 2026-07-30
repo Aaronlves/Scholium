@@ -112,7 +112,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                 applicationSupportURL: configuration.applicationSupportURL,
                 mode: .live(identityRegistry: identityRegistry)
             )
-            researchGuidance = ResearchGuidanceOperations(store: ResearchSkillStore(
+            researchGuidance = ResearchGuidanceOperations(store: ResearchSkillTransactionCoordinator(
                 controlURL: configuration.applicationSupportURL.appendingPathComponent(
                     "BundledResearchGuidance",
                     isDirectory: true
@@ -137,7 +137,7 @@ public actor WorkspaceRuntime: SettingsUseCases {
                 applicationSupportURL: configuration.applicationSupportURL,
                 mode: .snapshot
             )
-            researchGuidance = ResearchGuidanceOperations(store: ResearchSkillStore(
+            researchGuidance = ResearchGuidanceOperations(store: ResearchSkillTransactionCoordinator(
                 controlURL: configuration.applicationSupportURL.appendingPathComponent(
                     "BundledResearchGuidance",
                     isDirectory: true

@@ -161,7 +161,7 @@ struct ArchitectureBoundaryTests {
             ("vault identity registry", #"\bVaultIdentityRegistry\s*\("#),
             ("portable-control registry", #"\bPortableControlAccessRegistry\s*\("#),
             ("portable control store", #"\bTriptychControlStore\s*\("#),
-            ("research skill store", #"\bResearchSkillStore\s*\("#),
+            ("research skill store", #"\bResearchSkillTransactionCoordinator\s*\("#),
             ("human review store", #"\bHumanReviewStore\s*\("#),
             ("Dialogue store", #"\bDialogueStore\s*\("#),
             ("Critique registry", #"\bCritiqueRegistry\s*\("#),
@@ -182,7 +182,7 @@ struct ArchitectureBoundaryTests {
             ("vault repository authority", #"\bVaultRepository\b"#),
             ("Triptych Search index authority", #"\bTriptychSearchIndex\b"#),
             ("portable control-store authority", #"\bTriptychControlStore\b"#),
-            ("research-skill store authority", #"\bResearchSkillStore\b"#),
+            ("research-skill store authority", #"\bResearchSkillTransactionCoordinator\b"#),
             ("legacy Review archive authority", #"\bHumanReviewStore\b"#),
             ("Dialogue store authority", #"\bDialogueStore\b"#),
             ("Critique registry authority", #"\bCritiqueRegistry\b"#),
@@ -255,6 +255,230 @@ struct ArchitectureBoundaryTests {
         #expect(!source.contains("var eventSource: WorkspaceEventSource"))
     }
 
+    @Test("Workspace source and refresh exclusion has one cancellation-aware owner")
+    func workspaceSourceOperationGateBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let handle = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumApplication/WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+        let gate = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumApplication/WorkspaceSourceOperationGate.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(handle.contains(
+            "var sourceOperationGate = WorkspaceSourceOperationGate()"
+        ))
+        #expect(handle.contains(
+            "public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner"
+        ))
+        for retiredOwner in [
+            "private var activeSourceMutationID",
+            "private var refreshCycleIsActive",
+            "private var sourceGateWaiters",
+            "func waitForSourceGateChange",
+            "func signalSourceGateChange",
+        ] {
+            #expect(
+                !handle.contains(retiredOwner),
+                Comment(rawValue: "WorkspaceHandle regained \(retiredOwner)")
+            )
+        }
+        #expect(gate.contains("protocol WorkspaceSourceOperationGateOwner: Actor"))
+        #expect(gate.contains("withTaskCancellationHandler"))
+        #expect(gate.contains("try Task.checkCancellation()"))
+    }
+
+    @Test("Research execution lifecycle has one Workspace coordinator")
+    func researchFunctionCoordinatorBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        let coordinator = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchFunctionCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        let preparation = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchFunctionPreparation.swift"
+            ),
+            encoding: .utf8
+        )
+        let delivery = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchFunctionDelivery.swift"
+            ),
+            encoding: .utf8
+        )
+        let evidence = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchFunctionEvidence.swift"
+            ),
+            encoding: .utf8
+        )
+        let guidance = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceResearchGuidanceOperations.swift"
+            ),
+            encoding: .utf8
+        )
+        let completion = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchFunctionCompletion.swift"
+            ),
+            encoding: .utf8
+        )
+        let handle = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+        let operations = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "Operations.swift"
+            ),
+            encoding: .utf8
+        )
+        let actionResolver = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchActionResolver.swift"
+            ),
+            encoding: .utf8
+        )
+        let agentRequests = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "AgentNoteChangeRequestOperations.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(coordinator.contains(
+            "final class ResearchFunctionCoordinator: Sendable"
+        ))
+        #expect(coordinator.contains(
+            "protocol ResearchFunctionCoordinatorHost: Actor"
+        ))
+        #expect(coordinator.contains("host: isolated Host"))
+        #expect(coordinator.contains("func cancelProtectedFunction"))
+        #expect(coordinator.contains("func finishProtectedDiscussion"))
+        #expect(!coordinator.contains("WorkspaceServices"))
+        #expect(!completion.contains("WorkspaceServices"))
+        #expect(!preparation.contains("WorkspaceServices"))
+        #expect(!delivery.contains("WorkspaceServices"))
+        #expect(!evidence.contains("WorkspaceServices"))
+        #expect(!preparation.contains("extension WorkspaceHandle"))
+        #expect(!delivery.contains("extension WorkspaceHandle"))
+        #expect(!evidence.contains("extension WorkspaceHandle"))
+        #expect(!coordinator.contains("actor ResearchFunctionCoordinator"))
+        #expect(completion.contains("func completeProtectedFunction"))
+        #expect(completion.contains("func ensurePortableResearchRecord"))
+        #expect(completion.contains("func validateResearchContinuation"))
+        #expect(completion.contains("func confirmWriteActivity"))
+        #expect(completion.contains("func validateSnapshotResearchSourceAccess"))
+        #expect(preparation.contains("func researchFunctionAvailability"))
+        #expect(preparation.contains("func prepareResearchFunction"))
+        #expect(preparation.contains("func prepareAutomaticFidelity"))
+        #expect(preparation.contains("func researchFunctionRun"))
+        #expect(preparation.contains("func discardFailedAgentContinuation"))
+        #expect(preparation.contains("host: isolated Host"))
+        #expect(delivery.contains("func deliveryInstructions"))
+        #expect(delivery.contains("func attachingAgentActions"))
+        #expect(delivery.contains("host: isolated Host"))
+        #expect(evidence.contains("func requiredResearchSourceAccess"))
+        #expect(evidence.contains("func researchFunctionTargetRepairReason"))
+        #expect(evidence.contains("host: isolated Host"))
+        #expect(handle.contains(
+            "let researchFunctionCoordinator: ResearchFunctionCoordinator"
+        ))
+        #expect(handle.contains(
+            "localExecutionStore: services.localResearchExecutionStore"
+        ))
+        #expect(handle.contains(
+            "critiqueRegistry: services.critiqueRegistry"
+        ))
+        #expect(operations.contains(
+            "functionCoordinator.cancelProtectedFunction("
+        ))
+        #expect(operations.contains("functionCoordinator.cancelAction("))
+        #expect(operations.contains(
+            "functionCoordinator.completeProtectedFunction("
+        ))
+        #expect(operations.contains(
+            "functionCoordinator.prepareResearchFunction("
+        ))
+        #expect(operations.contains(
+            "functionCoordinator.researchFunctionAvailability("
+        ))
+        #expect(actionResolver.contains(
+            ".completeProtectedFunction("
+        ))
+        #expect(actionResolver.contains(
+            "researchFunctionCoordinator.prepareResearchFunction("
+        ))
+        #expect(agentRequests.contains(
+            "researchFunctionCoordinator.discardFailedAgentContinuation("
+        ))
+        #expect(!agentRequests.contains("activeResearchActivityKeys["))
+        #expect(!agentRequests.contains("activeAgentCoordinationKeys["))
+        #expect(!agentRequests.contains(
+            "localResearchExecutionStore.discardFailedContinuation("
+        ))
+        for retiredPath in [
+            "func completeResearchFunction",
+            "func cancelResearchFunction",
+            "func finishResearchDiscussion",
+            "func storedFunctionRecord",
+            "func persistFunctionCompletion",
+            "recoverableResearchRefreshWarning",
+            "func ensurePortableResearchRecord",
+            "func validateResearchContinuation",
+            "func confirmWriteActivity",
+        ] {
+            #expect(
+                !guidance.contains(retiredPath),
+                Comment(rawValue: "WorkspaceHandle regained \(retiredPath)")
+            )
+        }
+        for retiredPreparationOwner in [
+            "func researchFunctionAvailability",
+            "func researchFunctionMaterialCandidates",
+            "func prepareResearchFunction",
+            "func prepareAutomaticFidelity",
+            "func researchFunctionRun",
+            "func attachingAgentActions",
+            "func researchFunctionTargetRepairReason",
+        ] {
+            #expect(
+                !guidance.contains(retiredPreparationOwner),
+                Comment(rawValue:
+                    "Workspace guidance regained \(retiredPreparationOwner)"
+                )
+            )
+        }
+        #expect(guidance.contains("func researchSourceAccessStatus"))
+        #expect(guidance.contains("func researchCitationMethodStatus"))
+        #expect(!FileManager.default.fileExists(atPath: applicationRoot
+            .appendingPathComponent("WorkspaceResearchFunctionOperations.swift")
+            .path))
+        #expect(!actionResolver.contains("func cancelResearchAction"))
+    }
+
     @Test("App retains shared documents without mutable note or YAML projections")
     func appProjectionAliasesAreRemoved() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -306,7 +530,7 @@ struct ArchitectureBoundaryTests {
         }
     }
 
-    @Test("Markdown editor exposes the typed v5 dispatcher and completion response callback")
+    @Test("Markdown editor composes one typed host from bounded native and web components")
     func markdownEditorBridgeBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -322,6 +546,24 @@ struct ArchitectureBoundaryTests {
             ),
             encoding: .utf8
         )
+        let session = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let bridge = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorBridgeAdapter.swift"
+            ),
+            encoding: .utf8
+        )
+        let testing = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorSessionTesting.swift"
+            ),
+            encoding: .utf8
+        )
 
         #expect(editor.contains("webkitWindow.scholiumEditor = {"))
         #expect(editor.contains("dispatch: dispatchEditorRequest,"))
@@ -333,10 +575,17 @@ struct ArchitectureBoundaryTests {
         #expect(!editor.contains("calloutRoles"))
         #expect(native.contains("callAsyncJavaScript"))
         #expect(!native.contains("evaluateJavaScript"))
+        #expect(session.contains("final class MarkdownEditorSession"))
+        #expect(!native.contains("final class MarkdownEditorSession"))
+        #expect(bridge.contains("final class WKWebViewMarkdownEditorBridgeDispatcher"))
+        #expect(bridge.contains("callAsyncJavaScript"))
+        #expect(testing.hasPrefix("#if DEBUG"))
+        #expect(!session.contains("TestingPresentationSnapshot"))
         for module in [
             "protocol.ts", "projection.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
             "table-presentation.ts",
             "interaction.ts", "clipboard.ts", "state.ts", "accessibility.ts", "bootstrap.ts", "performance.ts",
+            "selection-actions.ts", "preview-popover.ts", "scroll-coordinator.ts",
         ] {
             #expect(
                 FileManager.default.fileExists(
@@ -345,6 +594,120 @@ struct ArchitectureBoundaryTests {
                 Comment(rawValue: "Missing editor module: \(module)")
             )
         }
+        #expect(editor.contains("createSelectionActionsController"))
+        #expect(editor.contains("createPreviewPopoverController"))
+        #expect(editor.contains("createEditorScrollCoordinator"))
+        #expect(!editor.contains(#"document.createElement("aside")"#))
+        #expect(!editor.contains(#"scrollDOM.addEventListener("scroll""#))
+    }
+
+    @Test("Large settings and regression surfaces stay organized by responsibility")
+    func largeSourceFilesRemainResponsibilitySplit() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        for fileName in [
+            "ResearchMethodsSettingsView.swift",
+            "ResearcherSkillsSettingsView.swift",
+            "ResearchPermissionSettingsView.swift",
+            "ResearchSourcesSettingsView.swift",
+            "ResearchRecoverySettingsView.swift",
+        ] {
+            #expect(FileManager.default.fileExists(
+                atPath: repositoryRoot.appendingPathComponent(
+                    "Scholium/Views/\(fileName)"
+                ).path
+            ))
+        }
+        let guidanceRoot = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchGuidanceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(guidanceRoot.contains("struct ResearchGuidanceSettingsView"))
+        #expect(!guidanceRoot.contains("private struct WorkingMethodEditorContext"))
+        #expect(!guidanceRoot.contains("private struct ResearchActionProfileEditorView"))
+
+        for fileName in [
+            "ResearchFunctionSourceAccessTests.swift",
+            "ResearchFunctionDiscussionTests.swift",
+            "ResearchFunctionPreparationTests.swift",
+            "ResearchFunctionActionRecordTests.swift",
+            "ResearchFunctionContinuationTests.swift",
+        ] {
+            let source = try String(
+                contentsOf: repositoryRoot.appendingPathComponent(
+                    "Tests/ScholiumApplicationTests/\(fileName)"
+                ),
+                encoding: .utf8
+            )
+            #expect(source.contains("extension ResearchFunctionOperationsTests"))
+        }
+
+        let uiTestFiles = [
+            "ScholiumUITests+WorkspaceResearch.swift",
+            "ScholiumUITests+PresentationRecords.swift",
+            "ScholiumUITests+WindowsLifecycle.swift",
+            "ScholiumUITests+EditorCoordination.swift",
+            "ScholiumUITests+Support.swift",
+            "ScholiumPerformanceUITests.swift",
+            "ScholiumUpgradeSafetyUITests.swift",
+        ]
+        let uiProject = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumUITests.xcodeproj/project.pbxproj"
+            ),
+            encoding: .utf8
+        )
+        for fileName in uiTestFiles {
+            #expect(
+                uiProject.contains(fileName),
+                Comment(rawValue: "UI test project does not compile \(fileName)")
+            )
+        }
+        let uiRoot = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "UITests/ScholiumUITests.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(uiRoot.contains("final class ScholiumUITests: XCTestCase"))
+        #expect(uiRoot.contains("override func setUp() async throws"))
+        #expect(!uiRoot.contains("func testCanonicalAcceptanceJourney"))
+    }
+
+    @Test("Recommended Bibliography has one Triptych owner and no Analysis target bridge")
+    func recommendedBibliographyTriptychOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let paths = [
+            "ScholiumContracts/RecommendedBibliographyContracts.swift",
+            "ScholiumCore/RecommendedBibliographyStore.swift",
+            "ScholiumApplication/RecommendedBibliographyCoordinator.swift",
+            "Scholium/Features/ResearchContext/RecommendedBibliographyController.swift",
+            "Scholium/App/ScholiumApp.swift",
+            "ScholiumCLI/RecommendedBibliographyCommandHandler.swift",
+        ]
+        let source = try paths.map {
+            try String(
+                contentsOf: repositoryRoot.appendingPathComponent($0),
+                encoding: .utf8
+            )
+        }.joined(separator: "\n")
+
+        #expect(source.contains("RecommendedBibliographyScope"))
+        #expect(source.contains("triptychID"))
+        #expect(source.contains("selectedNotes"))
+        #expect(source.contains("sourceRevisions"))
+        #expect(!source.contains("RecommendedBibliographyTarget"))
+        #expect(!source.contains("analysisTargetRequired"))
+        #expect(!source.contains("targetNoteID"))
+        #expect(!source.contains("Analysis-only"))
     }
 
     private func swiftFiles(beneath root: URL) throws -> [URL] {

@@ -13,7 +13,7 @@ struct ResearchActionProfileStoreTests {
             "DisplacedControl",
             isDirectory: true
         )
-        let store = ResearchSkillStore(
+        let store = ResearchSkillTransactionCoordinator(
             controlURL: fixture.firstControl,
             workingMethodHooks: ResearchWorkingMethodStoreHooks { point in
                 guard case .afterActionProfileCommit = point else { return }
@@ -56,7 +56,7 @@ struct ResearchActionProfileStoreTests {
     func saveReopenAndStaleDraft() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.firstControl)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await store.create(
             id: "counterexample-method",
             source: Self.skillSource(actionID: "counterexample-test")
@@ -88,7 +88,7 @@ struct ResearchActionProfileStoreTests {
     func invalidProfileAndBoundDeletion() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(controlURL: fixture.firstControl)
+        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         let package = try await store.create(
             id: "counterexample-method",
             source: Self.skillSource(actionID: "counterexample-test")
@@ -118,8 +118,8 @@ struct ResearchActionProfileStoreTests {
     func independentTriptychCopies() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let first = ResearchSkillStore(controlURL: fixture.firstControl)
-        let second = ResearchSkillStore(controlURL: fixture.secondControl)
+        let first = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
+        let second = ResearchSkillTransactionCoordinator(controlURL: fixture.secondControl)
         for store in [first, second] {
             _ = try await store.create(
                 id: "counterexample-method",
@@ -158,7 +158,7 @@ struct ResearchActionProfileStoreTests {
             "SkillRecovery",
             isDirectory: true
         )
-        let store = ResearchSkillStore(
+        let store = ResearchSkillTransactionCoordinator(
             controlURL: fixture.firstControl,
             workingMethodRecoveryStore: ResearchWorkingMethodRecoveryStore(
                 snapshotRootURL: recoveryRoot
@@ -193,7 +193,7 @@ struct ResearchActionProfileStoreTests {
     func editableManuscriptMethod() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = ResearchSkillStore(
+        let store = ResearchSkillTransactionCoordinator(
             controlURL: fixture.firstControl,
             workingMethodRecoveryStore: ResearchWorkingMethodRecoveryStore(
                 snapshotRootURL: fixture.root.appendingPathComponent(

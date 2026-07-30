@@ -35,11 +35,13 @@ extension WorkspaceHandle {
         _ request: ResearchActionExecutionRequest
     ) async throws -> ResearchActionPreparation {
         let resolved = try await resolvedResearchActionExecution(request)
-        let functionPreparation = try attachingAgentActions(
-            to: await prepareResearchFunction(
-                resolved.request,
-                actionContext: resolved.context
-            )
+        let prepared = try await researchFunctionCoordinator.prepareResearchFunction(
+            resolved.request,
+            actionContext: resolved.context,
+            host: self
+        )
+        let functionPreparation = try researchFunctionCoordinator.attachingAgentActions(
+            to: prepared
         )
         guard let snapshot = functionPreparation.snapshot.actionSnapshot else {
             throw ResearchActionExecutionContractError.staleResolution
@@ -67,21 +69,32 @@ extension WorkspaceHandle {
         }) else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        return try await researchFunctionMaterialCandidates(
+        return try await researchFunctionCoordinator.researchFunctionMaterialCandidates(
             for: target.functionTarget,
-            function: candidate.function
+            function: candidate.function,
+            host: self
         ).map { $0.material.actionNote }
     }
 
     func researchActionRun(id: UUID) async throws -> ResearchActionPreparation {
-        try await publicActionPreparation(from: researchFunctionRun(id: id))
+        try await publicActionPreparation(
+            from: researchFunctionCoordinator.researchFunctionRun(
+                id: id,
+                host: self
+            )
+        )
     }
 
     func prepareResearchActionFidelity(
         parentRunID: UUID
     ) async throws -> ResearchActionFidelityPreparation {
-        let automatic = try await attachingAgentActions(
-            to: prepareAutomaticFidelity(parentRunID: parentRunID)
+        let prepared = try await researchFunctionCoordinator.prepareAutomaticFidelity(
+            parentRunID: parentRunID,
+            host: self
+        )
+        let automatic = try await researchFunctionCoordinator.attachingAgentActions(
+            to: prepared,
+            host: self
         )
         let preparation = try await publicActionPreparation(from: automatic.preparation)
         return ResearchActionFidelityPreparation(
@@ -96,14 +109,21 @@ extension WorkspaceHandle {
     func completeResearchAction(
         _ submission: ResearchActionCompletionSubmission
     ) async throws -> ResearchActionCompletion {
-        let stored = try await researchFunctionRun(id: submission.runID)
+        let stored = try await researchFunctionCoordinator.researchFunctionRun(
+            id: submission.runID,
+            host: self
+        )
         guard let actionID = stored.snapshot.actionSnapshot?.actionID else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        let protectedCompletion = try await completeResearchFunction(
-            submission.functionSubmission
+        let protectedCompletion = try await researchFunctionCoordinator
+            .completeProtectedFunction(
+                submission.functionSubmission,
+                host: self
+            )
+        let completion = researchFunctionCoordinator.attachingAgentActions(
+            to: protectedCompletion
         )
-        let completion = attachingAgentActions(to: protectedCompletion)
         guard let actuallyUsedMaterialNoteIDs = completion.actuallyUsedMaterialNoteIDs else {
             throw ResearchActionExecutionContractError.staleResolution
         }
@@ -123,14 +143,6 @@ extension WorkspaceHandle {
             derivedRefreshWarning: completion.derivedRefreshWarning,
             nextActions: completion.nextActions ?? []
         )
-    }
-
-    func cancelResearchAction(runID: UUID) async throws {
-        let stored = try await researchFunctionRun(id: runID)
-        guard stored.snapshot.actionSnapshot != nil else {
-            throw ResearchActionExecutionContractError.staleResolution
-        }
-        try await cancelResearchFunction(runID: runID)
     }
 
     func prepareResearchResynthesis(
@@ -194,15 +206,17 @@ extension WorkspaceHandle {
             requestID: runID,
             kind: .resynthesis
         )
-        let functionPreparation = try attachingAgentActions(
-            to: await prepareResearchFunction(
-                resolved.request,
-                actionContext: resolved.context,
-                runIDOverride: runID,
-                continuationLineage: lineage,
-                resynthesisContext: context,
-                requiresAutomaticCheckpoint: true
-            )
+        let prepared = try await researchFunctionCoordinator.prepareResearchFunction(
+            resolved.request,
+            actionContext: resolved.context,
+            runIDOverride: runID,
+            continuationLineage: lineage,
+            resynthesisContext: context,
+            requiresAutomaticCheckpoint: true,
+            host: self
+        )
+        let functionPreparation = try researchFunctionCoordinator.attachingAgentActions(
+            to: prepared
         )
         guard let snapshot = functionPreparation.snapshot.actionSnapshot else {
             throw ResearchActionExecutionContractError.staleResolution
@@ -223,7 +237,9 @@ extension WorkspaceHandle {
         guard let snapshot = preparation.snapshot.actionSnapshot else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        let attached = try attachingAgentActions(to: preparation)
+        let attached = try researchFunctionCoordinator.attachingAgentActions(
+            to: preparation
+        )
         return ResearchActionPreparation(
             snapshot: snapshot,
             runID: attached.runID,
@@ -345,9 +361,10 @@ extension WorkspaceHandle {
         checkingSourceAccess: Bool
     ) async throws -> [ResolvedResearchActionCandidate] {
         let functionAvailability = Dictionary(uniqueKeysWithValues:
-            try await researchFunctionAvailability(
+            try await researchFunctionCoordinator.researchFunctionAvailability(
                 for: target,
-                checkingSourceAccess: checkingSourceAccess
+                checkingSourceAccess: checkingSourceAccess,
+                host: self
             ).map {
                 ($0.function, $0)
             }
@@ -487,7 +504,8 @@ extension WorkspaceHandle {
         checkingSourceAccess: Bool
     ) async -> [ResearchActionRepairReason] {
         var reasons: [ResearchActionRepairReason] = []
-        if let reason = await researchFunctionTargetRepairReason(target) {
+        if let reason = await researchFunctionCoordinator
+            .researchFunctionTargetRepairReason(target, host: self) {
             reasons.append(Self.actionRepairReason(reason))
         }
         if !function.allowedTargetRoles.contains(target.role)

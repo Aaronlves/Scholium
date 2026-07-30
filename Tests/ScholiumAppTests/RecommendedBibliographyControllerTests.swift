@@ -6,12 +6,12 @@ import Testing
 @Suite("Recommended Bibliography controller")
 @MainActor
 struct RecommendedBibliographyControllerTests {
-    @Test("The controller constructs a canonical request and preserves explicit goals")
+    @Test("The controller constructs a canonical Triptych request")
     func requestConstruction() async throws {
         let controller = RecommendedBibliographyController()
         var captured: RecommendedBibliographyRequest?
         controller.bind(RecommendedBibliographyClient(
-            overview: { _ in RecommendedBibliographyOverview() },
+            overview: { RecommendedBibliographyOverview() },
             prepare: { request in
                 captured = request
                 return preparation(request: request)
@@ -19,60 +19,93 @@ struct RecommendedBibliographyControllerTests {
             cancel: { _ in },
             dismiss: { _, _ in }
         ))
-        let target = target(title: "Analysis")
-        await controller.refresh(for: target)
+        let scope = scope(title: "Analysis")
+        await controller.refresh(for: scope)
         controller.selectedGoals = [.classicWorks, .objections]
         controller.purpose = "  map the strongest objection  "
         controller.prepare()
         await waitUntil { controller.phase == .awaitingAgent }
 
-        #expect(captured?.target == target)
+        #expect(captured?.scope == scope)
         #expect(captured?.goals == [.objections, .classicWorks])
         #expect(captured?.purpose == "map the strongest objection")
         #expect(controller.preparation?.request == captured)
     }
 
-    @Test("A stale asynchronous projection cannot replace the current Analysis")
+    @Test("A stale asynchronous projection cannot cross a Triptych switch")
     func staleProjectionIsRejected() async {
         let controller = RecommendedBibliographyController()
         let gate = BibliographyLoadGate()
+        let first = scope(title: "First")
+        let second = scope(title: "Second")
+        var invocation = 0
         controller.bind(RecommendedBibliographyClient(
-            overview: { target in
-                if target.title == "First" { await gate.wait() }
-                return overview(target: target)
+            overview: {
+                invocation += 1
+                if invocation == 1 {
+                    await gate.wait()
+                    return overview(scope: first)
+                }
+                return overview(scope: second)
             },
             prepare: { preparation(request: $0) },
             cancel: { _ in },
             dismiss: { _, _ in }
         ))
-        let first = target(title: "First")
-        let second = target(title: "Second")
         let task = Task { await controller.refresh(for: first) }
         await gate.waitUntilArrived()
         await controller.refresh(for: second)
         await gate.release()
         await task.value
 
-        #expect(controller.target == second)
-        #expect(controller.projection?.request.target == second)
+        #expect(controller.scope == second)
+        #expect(controller.projection?.request.scope == second)
     }
 
-    @Test("Same-Analysis refresh failures preserve the previous result list")
-    func refreshFailurePreservesProjection() async {
-        enum FixtureFailure: Error { case unavailable }
+    @Test("Changing the focal Note retains the Triptych result and draft")
+    func selectedNoteChangeRetainsTriptychState() async {
         let controller = RecommendedBibliographyController()
-        let failureSwitch = BibliographyFailureSwitch()
+        let triptychID = UUID()
+        let first = scope(title: "First", triptychID: triptychID)
+        let second = scope(title: "Second", triptychID: triptychID)
+        var loadCount = 0
         controller.bind(RecommendedBibliographyClient(
-            overview: { target in
-                if await failureSwitch.isEnabled { throw FixtureFailure.unavailable }
-                return overview(target: target)
+            overview: {
+                loadCount += 1
+                return overview(scope: first)
             },
             prepare: { preparation(request: $0) },
             cancel: { _ in },
             dismiss: { _, _ in }
         ))
-        let analysis = target(title: "Analysis")
-        await controller.refresh(for: analysis)
+
+        await controller.refresh(for: first)
+        let retained = controller.projection
+        controller.purpose = "Retain this draft"
+        await controller.refresh(for: second)
+
+        #expect(loadCount == 1)
+        #expect(controller.scope == second)
+        #expect(controller.projection == retained)
+        #expect(controller.purpose == "Retain this draft")
+    }
+
+    @Test("Same-Triptych refresh failures preserve the previous result list")
+    func refreshFailurePreservesProjection() async {
+        enum FixtureFailure: Error { case unavailable }
+        let controller = RecommendedBibliographyController()
+        let failureSwitch = BibliographyFailureSwitch()
+        let scope = scope(title: "Analysis")
+        controller.bind(RecommendedBibliographyClient(
+            overview: {
+                if await failureSwitch.isEnabled { throw FixtureFailure.unavailable }
+                return overview(scope: scope)
+            },
+            prepare: { preparation(request: $0) },
+            cancel: { _ in },
+            dismiss: { _, _ in }
+        ))
+        await controller.refresh(for: scope)
         let retained = controller.projection
         await failureSwitch.enable()
         await controller.retry()
@@ -86,12 +119,12 @@ struct RecommendedBibliographyControllerTests {
     func methodRepairState() async {
         let controller = RecommendedBibliographyController()
         controller.bind(RecommendedBibliographyClient(
-            overview: { _ in RecommendedBibliographyOverview() },
+            overview: { RecommendedBibliographyOverview() },
             prepare: { _ in throw RecommendedBibliographyError.methodRequiresRepair },
             cancel: { _ in },
             dismiss: { _, _ in }
         ))
-        await controller.refresh(for: target(title: "Analysis"))
+        await controller.refresh(for: scope(title: "Analysis"))
         controller.prepare()
         await waitUntil { controller.phase == .failed }
 
@@ -99,21 +132,22 @@ struct RecommendedBibliographyControllerTests {
         #expect(controller.errorMessage?.contains("Research Guidance") == true)
     }
 
-    @Test("Unbinding resets the per-window draft and cancels presentation state")
+    @Test("Unbinding resets the per-window draft and presentation state")
     func reset() async {
         let controller = RecommendedBibliographyController()
+        let scope = scope(title: "Analysis")
         controller.bind(RecommendedBibliographyClient(
-            overview: { overview(target: $0) },
+            overview: { overview(scope: scope) },
             prepare: { preparation(request: $0) },
             cancel: { _ in },
             dismiss: { _, _ in }
         ))
-        await controller.refresh(for: target(title: "Analysis"))
+        await controller.refresh(for: scope)
         controller.selectedGoals = [.backgroundReading]
         controller.purpose = "A purpose"
         controller.unbind()
 
-        #expect(controller.target == nil)
+        #expect(controller.scope == nil)
         #expect(controller.projection == nil)
         #expect(controller.selectedGoals.isEmpty)
         #expect(controller.purpose.isEmpty)
@@ -123,8 +157,8 @@ struct RecommendedBibliographyControllerTests {
     @Test("A persisted pending request is restored and cannot be prepared twice")
     func pendingRequestRestoration() async {
         let controller = RecommendedBibliographyController()
-        let analysis = target(title: "Pending")
-        let request = RecommendedBibliographyRequest(target: analysis)
+        let scope = scope(title: "Pending")
+        let request = RecommendedBibliographyRequest(scope: scope)
         let active = preparation(request: request)
         let activeProjection = RecommendedBibliographyProjection(
             id: active.id,
@@ -135,7 +169,7 @@ struct RecommendedBibliographyControllerTests {
         )
         var prepareCount = 0
         controller.bind(RecommendedBibliographyClient(
-            overview: { _ in
+            overview: {
                 RecommendedBibliographyOverview(
                     activePreparation: active,
                     latestRun: activeProjection
@@ -149,7 +183,7 @@ struct RecommendedBibliographyControllerTests {
             dismiss: { _, _ in }
         ))
 
-        await controller.refresh(for: analysis)
+        await controller.refresh(for: scope)
         #expect(controller.phase == .awaitingAgent)
         #expect(controller.preparation?.id == active.id)
         #expect(!controller.canPrepare)
@@ -164,8 +198,8 @@ struct RecommendedBibliographyControllerTests {
     @Test("Stale results remain visible with an explicit stale phase")
     func staleResultPresentation() async {
         let controller = RecommendedBibliographyController()
-        let analysis = target(title: "Stale")
-        let request = RecommendedBibliographyRequest(target: analysis)
+        let scope = scope(title: "Stale")
+        let request = RecommendedBibliographyRequest(scope: scope)
         let stale = RecommendedBibliographyProjection(
             id: UUID(),
             request: request,
@@ -176,22 +210,22 @@ struct RecommendedBibliographyControllerTests {
             completedAt: Date(timeIntervalSince1970: 1_700_000_100)
         )
         controller.bind(RecommendedBibliographyClient(
-            overview: { _ in RecommendedBibliographyOverview(result: stale, latestRun: stale) },
+            overview: { RecommendedBibliographyOverview(result: stale, latestRun: stale) },
             prepare: { preparation(request: $0) },
             cancel: { _ in },
             dismiss: { _, _ in }
         ))
 
-        await controller.refresh(for: analysis)
+        await controller.refresh(for: scope)
         #expect(controller.phase == .stale)
         #expect(controller.projection == stale)
         #expect(controller.canPrepare)
     }
 
-    @Test("Dismissal is scoped to the visible recommendation request")
+    @Test("Dismissal is scoped to the visible Triptych request")
     func scopedDismissal() async {
         let controller = RecommendedBibliographyController()
-        let analysis = target(title: "Dismiss")
+        let scope = scope(title: "Dismiss")
         let candidateID = UUID()
         let candidate = RecommendedBibliographyCandidate(
             id: candidateID,
@@ -202,7 +236,7 @@ struct RecommendedBibliographyControllerTests {
             ),
             requiredNextCheck: "Inspect the work."
         )
-        let request = RecommendedBibliographyRequest(target: analysis)
+        let request = RecommendedBibliographyRequest(scope: scope)
         let result = RecommendedBibliographyProjection(
             id: UUID(),
             request: request,
@@ -215,28 +249,35 @@ struct RecommendedBibliographyControllerTests {
         )
         var dismissed: (UUID, UUID)?
         controller.bind(RecommendedBibliographyClient(
-            overview: { _ in RecommendedBibliographyOverview(result: result, latestRun: result) },
+            overview: { RecommendedBibliographyOverview(result: result, latestRun: result) },
             prepare: { preparation(request: $0) },
             cancel: { _ in },
             dismiss: { dismissed = ($0, $1) }
         ))
 
-        await controller.refresh(for: analysis)
+        await controller.refresh(for: scope)
         controller.dismiss(candidateID: candidateID)
         await waitUntil { dismissed != nil }
         #expect(dismissed?.0 == result.id)
         #expect(dismissed?.1 == candidateID)
     }
 
-    private func target(title: String) -> RecommendedBibliographyTarget {
-        RecommendedBibliographyTarget(
-            noteID: UUID(),
-            note: VaultQualifiedNoteID(
-                vaultID: UUID(),
-                relativePath: "Analyses/\(title).md"
-            ),
-            fingerprint: DocumentFingerprint(content: title),
-            title: title
+    private func scope(
+        title: String,
+        triptychID: UUID = UUID()
+    ) -> RecommendedBibliographyScope {
+        RecommendedBibliographyScope(
+            triptychID: triptychID,
+            selectedNotes: [RecommendedBibliographySourceNote(
+                noteID: UUID(),
+                note: VaultQualifiedNoteID(
+                    vaultID: UUID(),
+                    relativePath: "Analyses/\(title).md"
+                ),
+                role: .sourceCorpus,
+                fingerprint: DocumentFingerprint(content: title),
+                title: title
+            )]
         )
     }
 
@@ -260,11 +301,11 @@ struct RecommendedBibliographyControllerTests {
         )
     }
 
-    private func projection(
-        target: RecommendedBibliographyTarget
-    ) -> RecommendedBibliographyProjection {
-        let request = RecommendedBibliographyRequest(target: target)
-        return RecommendedBibliographyProjection(
+    private func overview(
+        scope: RecommendedBibliographyScope
+    ) -> RecommendedBibliographyOverview {
+        let request = RecommendedBibliographyRequest(scope: scope)
+        let result = RecommendedBibliographyProjection(
             id: UUID(),
             request: request,
             method: method(),
@@ -273,12 +314,6 @@ struct RecommendedBibliographyControllerTests {
             preparedAt: Date(timeIntervalSince1970: 1_700_000_000),
             completedAt: Date(timeIntervalSince1970: 1_700_000_100)
         )
-    }
-
-    private func overview(
-        target: RecommendedBibliographyTarget
-    ) -> RecommendedBibliographyOverview {
-        let result = projection(target: target)
         return RecommendedBibliographyOverview(result: result, latestRun: result)
     }
 

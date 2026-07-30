@@ -201,36 +201,36 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(!sidebarContext.contains("availablePropertyValues(for:"))
     }
 
-    @Test("Window model caches property filter options when the note inventory changes")
-    func windowModelCachesPropertyFilterOptions() throws {
+    @Test("Window projection owner commits property filters with the note inventory")
+    func windowProjectionOwnsPropertyFilterOptions() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
+        let app = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/App/ScholiumApp.swift"
             ),
             encoding: .utf8
         )
-        let notesStart = try #require(source.range(
-            of: "@Published var notes: [WindowDocumentLocation]"
-        ))
-        let filtersEnd = try #require(source.range(
-            of: "var activeMetadataFilterCount",
-            range: notesStart.lowerBound..<source.endIndex
-        ))
-        let filterState = source[notesStart.lowerBound..<filtersEnd.lowerBound]
+        let controller = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowWorkspaceProjectionController.swift"
+            ),
+            encoding: .utf8
+        )
 
-        #expect(filterState.contains(
-            "didSet {\n            availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: notes)"
+        #expect(controller.contains(
+            "var propertyFilterOptions = WindowPropertyFilterOptions(notes: [])"
         ))
-        #expect(filterState.contains(
-            "private(set) var availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: [])"
+        #expect(controller.contains(
+            "state.propertyFilterOptions = WindowPropertyFilterOptions(notes: notes)"
         ))
-        #expect(!filterState.contains(
+        #expect(app.contains(
             "var availablePropertyFilterOptions: WindowPropertyFilterOptions {"
         ))
+        #expect(app.contains("workspaceProjectionController.propertyFilterOptions"))
+        #expect(!app.contains("@Published var notes: [WindowDocumentLocation]"))
     }
 }
 

@@ -1,7 +1,6 @@
 import ScholiumContracts
 import Darwin
 import Foundation
-import Yams
 
 enum ResearchWorkingMethodStoreFaultPoint: Sendable {
     case beforePackageReplacement(packageID: String)
@@ -18,25 +17,25 @@ struct ResearchWorkingMethodStoreHooks: Sendable {
     static let none = Self { _ in }
 }
 
-private enum ResearchWorkingMethodBindingWriteFailure: Error {
-    case committed(
-        snapshot: ResearchWorkingMethodBindingSnapshot?,
-        underlying: any Error
-    )
-}
-
 /// Owns the only supported Triptych-local Skill root:
 /// `.scholium/skills/<skill-id>/SKILL.md` beside the Works vault.
-public actor ResearchSkillStore {
+public actor ResearchSkillTransactionCoordinator {
     public nonisolated let skillsURL: URL
-    public nonisolated let bindingsURL: URL
     public nonisolated let workingMethodBindingsURL: URL
     public nonisolated let actionProfileBindingsURL: URL
+    public nonisolated let citationMethodBindingsURL: URL
+    public nonisolated let bibliographyMethodBindingsURL: URL
 
     private let controlURL: URL
+    nonisolated let legacyFunctionBindingsURL: URL
     private let fileManager: FileManager
     private let workingMethodHooks: ResearchWorkingMethodStoreHooks
     private let workingMethodRecoveryStore: ResearchWorkingMethodRecoveryStore?
+    let workingMethods: ResearchWorkingMethodStore
+    let actionProfiles: ResearchActionProfileStore
+    let citationMethods: ResearchCitationMethodStore
+    let bibliographyMethods: ResearchBibliographyMethodStore
+    private let packageRepository: ResearchSkillPackageRepository
 
     public init(
         controlURL: URL,
@@ -46,7 +45,7 @@ public actor ResearchSkillStore {
         self.controlURL = controlURL.standardizedFileURL
         self.skillsURL = controlURL.standardizedFileURL
             .appendingPathComponent("skills", isDirectory: true)
-        self.bindingsURL = controlURL.standardizedFileURL
+        self.legacyFunctionBindingsURL = controlURL.standardizedFileURL
             .appendingPathComponent("research-skill-bindings.json", isDirectory: false)
         self.workingMethodBindingsURL = controlURL.standardizedFileURL
             .appendingPathComponent(
@@ -58,9 +57,66 @@ public actor ResearchSkillStore {
                 "research-action-profiles-v1.json",
                 isDirectory: false
             )
+        self.citationMethodBindingsURL = controlURL.standardizedFileURL
+            .appendingPathComponent(
+                "research-citation-method-v1.json",
+                isDirectory: false
+            )
+        self.bibliographyMethodBindingsURL = controlURL.standardizedFileURL
+            .appendingPathComponent(
+                "research-bibliography-method-v1.json",
+                isDirectory: false
+            )
         self.fileManager = fileManager
         workingMethodHooks = .none
         self.workingMethodRecoveryStore = workingMethodRecoveryStore
+        self.packageRepository = ResearchSkillPackageRepository(
+            controlURL: controlURL,
+            fileManager: fileManager,
+            resolver: ResearchSkillResolver()
+        )
+        self.workingMethods = ResearchWorkingMethodStore(
+            controlURL: controlURL.standardizedFileURL,
+            documentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-working-method-bindings-v2.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager,
+            hooks: .none
+        )
+        self.actionProfiles = ResearchActionProfileStore(
+            controlURL: controlURL.standardizedFileURL,
+            documentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-action-profiles-v1.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager,
+            hooks: .none
+        )
+        self.citationMethods = ResearchCitationMethodStore(files: .init(
+            controlURL: controlURL.standardizedFileURL,
+            currentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-citation-method-v1.json",
+                isDirectory: false
+            ),
+            legacyURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-skill-bindings.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager
+        ))
+        self.bibliographyMethods = ResearchBibliographyMethodStore(files: .init(
+            controlURL: controlURL.standardizedFileURL,
+            currentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-bibliography-method-v1.json",
+                isDirectory: false
+            ),
+            legacyURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-skill-bindings.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager
+        ))
     }
 
     init(
@@ -72,7 +128,7 @@ public actor ResearchSkillStore {
         self.controlURL = controlURL.standardizedFileURL
         self.skillsURL = controlURL.standardizedFileURL
             .appendingPathComponent("skills", isDirectory: true)
-        self.bindingsURL = controlURL.standardizedFileURL
+        self.legacyFunctionBindingsURL = controlURL.standardizedFileURL
             .appendingPathComponent("research-skill-bindings.json", isDirectory: false)
         self.workingMethodBindingsURL = controlURL.standardizedFileURL
             .appendingPathComponent(
@@ -84,9 +140,66 @@ public actor ResearchSkillStore {
                 "research-action-profiles-v1.json",
                 isDirectory: false
             )
+        self.citationMethodBindingsURL = controlURL.standardizedFileURL
+            .appendingPathComponent(
+                "research-citation-method-v1.json",
+                isDirectory: false
+            )
+        self.bibliographyMethodBindingsURL = controlURL.standardizedFileURL
+            .appendingPathComponent(
+                "research-bibliography-method-v1.json",
+                isDirectory: false
+            )
         self.fileManager = fileManager
         self.workingMethodRecoveryStore = workingMethodRecoveryStore
         self.workingMethodHooks = workingMethodHooks
+        self.packageRepository = ResearchSkillPackageRepository(
+            controlURL: controlURL,
+            fileManager: fileManager,
+            resolver: ResearchSkillResolver()
+        )
+        self.workingMethods = ResearchWorkingMethodStore(
+            controlURL: controlURL.standardizedFileURL,
+            documentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-working-method-bindings-v2.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager,
+            hooks: workingMethodHooks
+        )
+        self.actionProfiles = ResearchActionProfileStore(
+            controlURL: controlURL.standardizedFileURL,
+            documentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-action-profiles-v1.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager,
+            hooks: workingMethodHooks
+        )
+        self.citationMethods = ResearchCitationMethodStore(files: .init(
+            controlURL: controlURL.standardizedFileURL,
+            currentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-citation-method-v1.json",
+                isDirectory: false
+            ),
+            legacyURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-skill-bindings.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager
+        ))
+        self.bibliographyMethods = ResearchBibliographyMethodStore(files: .init(
+            controlURL: controlURL.standardizedFileURL,
+            currentURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-bibliography-method-v1.json",
+                isDirectory: false
+            ),
+            legacyURL: controlURL.standardizedFileURL.appendingPathComponent(
+                "research-skill-bindings.json",
+                isDirectory: false
+            ),
+            fileManager: fileManager
+        ))
     }
 
     public nonisolated static func inspectDraft(
@@ -98,108 +211,23 @@ public actor ResearchSkillStore {
     }
 
     public func skills() throws -> [ResearchSkillPackage] {
-        let local = try validatedLocalSkills()
-        let catalogPackages = try bundledCatalogPackages()
-        let protectedIDs = Set(catalogPackages.map(\.id))
-        let visibleLocal = local.map { package in
-            guard protectedIDs.contains(package.id) else { return package }
-            return ResearchSkillPackage(
-                id: package.id,
-                name: package.name,
-                description: package.description,
-                source: package.source,
-                origin: package.origin,
-                skillClass: package.skillClass,
-                role: package.role,
-                version: package.version,
-                updatePolicy: package.updatePolicy,
-                supportedActions: package.supportedActions,
-                supportedFunctions: package.supportedFunctions,
-                capabilities: package.capabilities,
-                citationStyles: package.citationStyles,
-                citationStyleResources: package.citationStyleResources,
-                allowsEvolution: package.allowsEvolution,
-                supportedModes: package.supportedModes,
-                automaticModes: package.automaticModes,
-                compatiblePracticeIDs: package.compatiblePracticeIDs,
-                requiredSkillIDs: package.requiredSkillIDs,
-                practiceResources: package.practiceResources,
-                validationIssues: package.validationIssues + [
-                    "This Triptych-local identifier conflicts with a protected Scholium package. Rename or delete the local package before it can be assembled."
-                ],
-                revision: package.revision
-            )
-        }
-        let merged = catalogPackages + visibleLocal
-        return merged.sorted {
-            if $0.origin != $1.origin { return $0.origin.rawValue < $1.origin.rawValue }
-            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
+        try packageRepository.packages()
     }
 
     public func create(id: String, source: String) throws -> ResearchSkillPackage {
-        if try catalog().entries.contains(where: { $0.id == id }) {
-            throw ResearchSkillError.protectedPackageShadow(id)
-        }
-        let packageURL = try safePackageURL(id: id)
-        try ensureSkillsDirectory()
-        guard !fileManager.fileExists(atPath: packageURL.path) else {
-            throw ResearchSkillError.packageAlreadyExists(id)
-        }
-        try fileManager.createDirectory(at: packageURL, withIntermediateDirectories: false)
-        try write(source, id: id, expectedRevision: nil, requiresExisting: false)
-        return try localPackage(id: id)
+        try packageRepository.create(id: id, source: source)
     }
 
     public func duplicateBundled(id: String, as newID: String) throws -> ResearchSkillPackage {
-        let entry: ResearchSkillCatalogEntry
-        do {
-            entry = try catalog().entry(id: id)
-        } catch is ResearchSkillCatalogError {
-            throw ResearchSkillError.packageNotFound(id)
-        }
-        guard entry.updatePolicy == "release-managed-duplicable"
-                || entry.updatePolicy == "copy-on-adoption-researcher-owned" else {
-            throw ResearchSkillError.bundledPackageIsNotDuplicable(id)
-        }
-        if newID != id, try catalog().entries.contains(where: { $0.id == newID }) {
-            throw ResearchSkillError.protectedPackageShadow(newID)
-        }
-        let packageURL = try safePackageURL(id: newID)
-        try ensureSkillsDirectory()
-        guard !fileManager.fileExists(atPath: packageURL.path) else {
-            throw ResearchSkillError.packageAlreadyExists(newID)
-        }
-        try fileManager.createDirectory(at: packageURL, withIntermediateDirectories: false)
-        do {
-            for relativePath in try BundledResearchSkillLibrary.resourcePaths(for: entry) {
-                let destination = packageURL.appendingPathComponent(relativePath)
-                let parent = destination.deletingLastPathComponent()
-                if parent != packageURL, !fileManager.fileExists(atPath: parent.path) {
-                    try fileManager.createDirectory(at: parent, withIntermediateDirectories: false)
-                }
-                var source = try BundledResearchSkillLibrary.resource(
-                    for: entry,
-                    relativePath: relativePath
-                )
-                if relativePath == "SKILL.md" {
-                    source = try Self.injectedResearcherRoutingMetadata(
-                        into: source,
-                        from: entry
-                    )
-                }
-                try Data(source.utf8).write(to: destination, options: .atomic)
-            }
-            return try localPackage(id: newID)
-        } catch {
-            try? fileManager.removeItem(at: packageURL)
-            throw error
-        }
+        try packageRepository.duplicateBundled(id: id, as: newID)
     }
 
     public func save(id: String, source: String, expectedRevision: DocumentFingerprint) throws -> ResearchSkillPackage {
-        try write(source, id: id, expectedRevision: expectedRevision, requiresExisting: true)
-        return try localPackage(id: id)
+        try packageRepository.save(
+            id: id,
+            source: source,
+            expectedRevision: expectedRevision
+        )
     }
 
     public func rename(
@@ -208,22 +236,16 @@ public actor ResearchSkillStore {
         expectedRevision: DocumentFingerprint
     ) throws -> ResearchSkillPackage {
         _ = try validatePackageIsUnused(id)
-        if try catalog().entries.contains(where: { $0.id == newID }) {
-            throw ResearchSkillError.protectedPackageShadow(newID)
-        }
-        let sourceURL = try existingRegularSkillURL(id: id, expectedRevision: expectedRevision)
-        let sourcePackageURL = sourceURL.deletingLastPathComponent()
-        let destinationPackageURL = try safePackageURL(id: newID)
-        guard !fileManager.fileExists(atPath: destinationPackageURL.path) else {
-            throw ResearchSkillError.packageAlreadyExists(newID)
-        }
-        try fileManager.moveItem(at: sourcePackageURL, to: destinationPackageURL)
-        return try localPackage(id: newID)
+        return try packageRepository.rename(
+            id: id,
+            to: newID,
+            expectedRevision: expectedRevision
+        )
     }
 
     public func delete(id: String, expectedRevision: DocumentFingerprint) throws {
         let usage = try validatePackageIsUnused(id)
-        try ensureSkillsDirectory()
+        try packageRepository.ensureSkillsDirectory()
         let rootDescriptor = try SecureResearchSkillPackageIO.openSkillsRoot(skillsURL)
         defer { Darwin.close(rootDescriptor) }
         let rootIdentity = try SecureResearchSkillPackageIO.identity(
@@ -251,7 +273,7 @@ public actor ResearchSkillStore {
             Darwin.close(packageDescriptor)
             throw error
         }
-        guard Self.packageRevision(sources: sources) == expectedRevision else {
+        guard packageRepository.packageRevision(sources: sources) == expectedRevision else {
             throw ResearchSkillError.stalePackage(id)
         }
 
@@ -339,174 +361,63 @@ public actor ResearchSkillStore {
     }
 
     public func catalog() throws -> ResearchSkillCatalog {
-        try BundledResearchSkillLibrary.catalog()
+        try packageRepository.catalog()
     }
 
     /// Returns one protected package by stable catalog identifier. This is
     /// the bounded package-retrieval API used by the CLI and Settings; it
     /// never searches a global Skill directory.
     public func bundledPackage(id: String) throws -> ResearchSkillPackage {
-        let entry: ResearchSkillCatalogEntry
-        do {
-            entry = try catalog().entry(id: id)
-        } catch {
-            throw ResearchSkillError.packageNotFound(id)
-        }
-        do {
-            return ResearchSkillInspector.inspect(
-                id: entry.id,
-                source: try BundledResearchSkillLibrary.source(for: entry),
-                origin: .bundled,
-                catalogEntry: entry,
-                revision: try BundledResearchSkillLibrary.revision(for: entry)
-            )
-        } catch {
-            throw ResearchSkillError.unsafePackage(id)
-        }
+        try packageRepository.bundledPackage(id: id)
     }
 
     /// Returns either one release-managed package or one direct
     /// Triptych-local package. No global Skill directory is searched.
     public func package(id: String) throws -> ResearchSkillPackage {
-        if try catalog().entries.contains(where: { $0.id == id }) {
-            return try bundledPackage(id: id)
-        }
-        return try localPackage(id: id)
+        try packageRepository.package(id: id)
     }
 
     public func resourcePaths(id: String) throws -> [String] {
-        if let entry = try? catalog().entry(id: id) {
-            return try BundledResearchSkillLibrary.resourcePaths(for: entry)
-        }
-        let packageURL = try existingPackageURL(id: id)
-        return try localResourcePaths(packageURL: packageURL)
+        try packageRepository.resourcePaths(id: id)
     }
 
     public func resource(id: String, relativePath: String) throws -> String {
-        if let entry = try? catalog().entry(id: id) {
-            return try BundledResearchSkillLibrary.resource(
-                for: entry,
-                relativePath: relativePath
-            )
-        }
-        guard ResearchSkillResourcePath.isAllowed(relativePath) else {
-            throw ResearchSkillCatalogError.invalidResourcePath(relativePath)
-        }
-        let packageURL = try existingPackageURL(id: id)
-        let resourceURL = packageURL.appendingPathComponent(relativePath).standardizedFileURL
-        guard resourceURL.path.hasPrefix(packageURL.path + "/") else {
-            throw ResearchSkillCatalogError.invalidResourcePath(relativePath)
-        }
-        let values = try resourceURL.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        )
-        guard values.isRegularFile == true,
-              values.isSymbolicLink != true,
-              let source = try? String(contentsOf: resourceURL, encoding: .utf8) else {
-            throw ResearchSkillCatalogError.resourceMissing(
-                ".scholium/skills/\(id)/\(relativePath)"
-            )
-        }
-        return source
+        try packageRepository.resource(id: id, relativePath: relativePath)
     }
 
     public func resourceFingerprint(
         id: String,
         relativePath: String
     ) throws -> DocumentFingerprint {
-        DocumentFingerprint(content: try resource(id: id, relativePath: relativePath))
-    }
-
-    public func bindingSnapshot() throws -> ResearchSkillBindingSnapshot? {
-        guard fileManager.fileExists(atPath: bindingsURL.path) else { return nil }
-        let values = try bindingsURL.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        )
-        guard values.isRegularFile == true, values.isSymbolicLink != true else {
-            throw ResearchSkillBindingError.unsafeBindingFile
-        }
-        let data = try Data(contentsOf: bindingsURL)
-        let document: ResearchSkillBindingDocument
-        do {
-            document = try JSONDecoder().decode(ResearchSkillBindingDocument.self, from: data)
-        } catch {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "The JSON cannot be decoded. \(error.localizedDescription)"
-            )
-        }
-        try validateBindingDocument(document)
-        return ResearchSkillBindingSnapshot(
-            document: document,
-            revision: DocumentFingerprint(data: data)
+        try packageRepository.resourceFingerprint(
+            id: id,
+            relativePath: relativePath
         )
     }
 
-    /// Returns the revision of a safe binding file without decoding it. This
-    /// is intentionally available for revision-checked repair of malformed
-    /// researcher-controlled JSON.
-    public func bindingFileRevision() throws -> DocumentFingerprint? {
-        guard fileManager.fileExists(atPath: bindingsURL.path) else { return nil }
-        let values = try bindingsURL.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        )
-        guard values.isRegularFile == true, values.isSymbolicLink != true else {
-            throw ResearchSkillBindingError.unsafeBindingFile
-        }
-        return DocumentFingerprint(data: try Data(contentsOf: bindingsURL))
+    // MARK: - Citation Method
+
+    public func citationMethodSnapshot() throws -> ResearchCitationMethodSnapshot? {
+        try citationMethods.snapshotMigratingLegacyIfNeeded()
     }
 
-    @discardableResult
-    public func saveBindingDocument(
-        _ document: ResearchSkillBindingDocument,
-        expectedRevision: DocumentFingerprint?
-    ) throws -> ResearchSkillBindingSnapshot {
-        try validateBindingDocument(document)
-        try ensureControlDirectoryForGuidance()
-        if fileManager.fileExists(atPath: bindingsURL.path) {
-            let values = try bindingsURL.resourceValues(
-                forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-            )
-            guard values.isRegularFile == true, values.isSymbolicLink != true else {
-                throw ResearchSkillBindingError.unsafeBindingFile
-            }
-            let current = try Data(contentsOf: bindingsURL)
-            guard let expectedRevision,
-                  DocumentFingerprint(data: current) == expectedRevision else {
-                throw ResearchSkillBindingError.staleBindingFile
-            }
-        } else if expectedRevision != nil {
-            throw ResearchSkillBindingError.staleBindingFile
-        }
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let data = try encoder.encode(document)
-        try data.write(to: bindingsURL, options: .atomic)
-        let readback = try Data(contentsOf: bindingsURL)
-        guard readback == data else {
-            throw ResearchSkillBindingError.unsafeBindingFile
-        }
-        return ResearchSkillBindingSnapshot(
-            document: document,
-            revision: DocumentFingerprint(data: readback)
-        )
+    public func citationMethodBindingFileRevision() throws -> DocumentFingerprint? {
+        try citationMethods.rawRevision()
     }
 
-    /// Activates one installed Triptych-local citation package while
-    /// preserving function bindings. The raw expected revision permits a
-    /// malformed but safe binding document to be replaced deliberately.
     @discardableResult
     public func activateCitationBinding(
         packageID: String,
         citationStyle: String? = nil,
         expectedBindingRevision: DocumentFingerprint?
-    ) throws -> ResearchSkillBindingSnapshot {
-        let observed = try bindingFileRevision()
+    ) throws -> ResearchCitationMethodSnapshot {
+        let observed = try citationMethods.rawRevision()
         guard observed == expectedBindingRevision else {
             throw ResearchSkillBindingError.staleBindingFile
         }
-        let package = try localPackage(id: packageID)
-        let normalizedStyle = citationStyle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let package = try packageRepository.localPackage(id: packageID)
+        let normalizedStyle = citationStyle?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         guard package.origin == .triptych,
               package.isValid,
@@ -520,55 +431,33 @@ public actor ResearchSkillStore {
                 "The selected package and style are not a valid installed citation method."
             )
         }
-        let existing = (try? bindingSnapshot()?.document)
-            ?? ResearchSkillBindingDocument()
-        let replacement = ResearchSkillBindingDocument(
-            functionBindings: existing.functionBindings,
-            functionSkillBindings: existing.functionSkillBindings,
-            functionPracticeBindings: existing.functionPracticeBindings,
-            citationBinding: packageID,
-            citationStyle: normalizedStyle,
-            bibliographyMethodBinding: existing.bibliographyMethodBinding
-        )
-        return try saveBindingDocument(
-            replacement,
-            expectedRevision: expectedBindingRevision
-        )
-    }
-
-    /// Clears the active citation package through the same revision-checked
-    /// repair path. A safe malformed file is replaced by a valid empty binding
-    /// document rather than edited in place.
-    @discardableResult
-    public func clearCitationBinding(
-        expectedBindingRevision: DocumentFingerprint?
-    ) throws -> ResearchSkillBindingSnapshot {
-        let observed = try bindingFileRevision()
-        guard observed == expectedBindingRevision else {
-            throw ResearchSkillBindingError.staleBindingFile
-        }
-        let existing = (try? bindingSnapshot()?.document)
-            ?? ResearchSkillBindingDocument()
-        return try saveBindingDocument(
-            ResearchSkillBindingDocument(
-                functionBindings: existing.functionBindings,
-                functionSkillBindings: existing.functionSkillBindings,
-                functionPracticeBindings: existing.functionPracticeBindings,
-                citationBinding: nil,
-                citationStyle: nil,
-                bibliographyMethodBinding: existing.bibliographyMethodBinding
+        return try citationMethods.save(
+            ResearchCitationMethodDocument(
+                packageID: packageID,
+                citationStyle: normalizedStyle
             ),
             expectedRevision: expectedBindingRevision
         )
     }
 
-    /// Creates a noncolliding Triptych-local copy of the bundled APA starter
-    /// and activates it as one transaction from the caller's perspective. A
-    /// failed binding write removes only the just-created package.
+    @discardableResult
+    public func clearCitationBinding(
+        expectedBindingRevision: DocumentFingerprint?
+    ) throws -> ResearchCitationMethodSnapshot {
+        let observed = try citationMethods.rawRevision()
+        guard observed == expectedBindingRevision else {
+            throw ResearchSkillBindingError.staleBindingFile
+        }
+        return try citationMethods.save(
+            ResearchCitationMethodDocument(),
+            expectedRevision: expectedBindingRevision
+        )
+    }
+
     public func adoptAPACitationStarter(
         expectedBindingRevision: DocumentFingerprint?
-    ) throws -> ResearchSkillCitationAdoption {
-        let observed = try bindingFileRevision()
+    ) throws -> ResearchCitationMethodAdoption {
+        let observed = try citationMethods.rawRevision()
         guard observed == expectedBindingRevision else {
             throw ResearchSkillBindingError.staleBindingFile
         }
@@ -600,8 +489,8 @@ public actor ResearchSkillStore {
                 citationStyle: "apa-7",
                 expectedBindingRevision: expectedBindingRevision
             )
-            return ResearchSkillCitationAdoption(
-                package: try localPackage(id: adopted.id),
+            return ResearchCitationMethodAdoption(
+                package: try packageRepository.localPackage(id: adopted.id),
                 binding: binding
             )
         } catch {
@@ -617,96 +506,6 @@ public actor ResearchSkillStore {
             }
             throw error
         }
-    }
-
-    /// Reads the complete Settings-owned Researcher Skill profile for one
-    /// semantic function. Absence means the release-managed primary Method
-    /// runs without a researcher-owned refinement.
-    public func functionSkillSelection(
-        for function: ResearchFunctionID
-    ) throws -> ResearchFunctionSkillSelection {
-        guard let document = try bindingSnapshot()?.document else {
-            return ResearchFunctionSkillSelection(function: function)
-        }
-        return ResearchFunctionSkillSelection(
-            function: function,
-            primaryPackageID: document.functionBindings[function.rawValue],
-            supplementalPackageIDs: document.functionSkillBindings[function.rawValue] ?? [],
-            selectedPractices: document.functionPracticeBindings[function.rawValue] ?? []
-        )
-    }
-
-    /// Atomically replaces one function's Researcher Skill profile through a
-    /// raw-revision check. A valid explicit save may repair a malformed but
-    /// safe JSON document; it never preserves unvalidated fragments from that
-    /// document.
-    @discardableResult
-    public func saveFunctionSkillSelection(
-        _ selection: ResearchFunctionSkillSelection,
-        expectedBindingRevision: DocumentFingerprint?
-    ) throws -> ResearchSkillBindingSnapshot {
-        let observed = try bindingFileRevision()
-        guard observed == expectedBindingRevision else {
-            throw ResearchSkillBindingError.staleBindingFile
-        }
-        let compatiblePractices = try compatiblePracticeIDs(
-            for: selection.function,
-            primaryPackageID: selection.primaryPackageID
-        )
-        guard selection.selectedPractices.allSatisfy({
-            compatiblePractices.contains($0.practiceID)
-        }) else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "A selected Practice is not compatible with the complete primary method for \(selection.function.rawValue)."
-            )
-        }
-        try validateFunctionSkillSelection(selection)
-
-        let existing = (try? bindingSnapshot()?.document)
-            ?? ResearchSkillBindingDocument()
-        var primary = existing.functionBindings
-        var supplemental = existing.functionSkillBindings
-        var practices = existing.functionPracticeBindings
-        let key = selection.function.rawValue
-
-        if let packageID = selection.primaryPackageID {
-            primary[key] = packageID
-        } else {
-            primary.removeValue(forKey: key)
-        }
-        if selection.supplementalPackageIDs.isEmpty {
-            supplemental.removeValue(forKey: key)
-        } else {
-            supplemental[key] = selection.supplementalPackageIDs
-        }
-        if selection.selectedPractices.isEmpty {
-            practices.removeValue(forKey: key)
-        } else {
-            practices[key] = selection.selectedPractices
-        }
-
-        return try saveBindingDocument(
-            ResearchSkillBindingDocument(
-                functionBindings: primary,
-                functionSkillBindings: supplemental,
-                functionPracticeBindings: practices,
-                citationBinding: existing.citationBinding,
-                citationStyle: existing.citationStyle,
-                bibliographyMethodBinding: existing.bibliographyMethodBinding
-            ),
-            expectedRevision: expectedBindingRevision
-        )
-    }
-
-    @discardableResult
-    public func clearFunctionSkillSelection(
-        for function: ResearchFunctionID,
-        expectedBindingRevision: DocumentFingerprint?
-    ) throws -> ResearchSkillBindingSnapshot {
-        try saveFunctionSkillSelection(
-            ResearchFunctionSkillSelection(function: function),
-            expectedBindingRevision: expectedBindingRevision
-        )
     }
 
     // MARK: - Action-keyed Working Method bindings v2
@@ -734,15 +533,15 @@ public actor ResearchSkillStore {
             return existing
         }
 
-        try ensureSkillsDirectory()
+        try packageRepository.ensureSkillsDirectory()
         do {
             var bindings: [ResearchActionID: ResearchWorkingMethodBinding] = [:]
             for descriptor in Self.defaultWorkingMethodDescriptors {
                 let sources = try workingMethodSources(for: descriptor)
-                let expectedRevision = Self.packageRevision(sources: sources)
-                let packageURL = try safePackageURL(id: descriptor.workingPackageID)
+                let expectedRevision = packageRepository.packageRevision(sources: sources)
+                let packageURL = try packageRepository.safePackageURL(id: descriptor.workingPackageID)
                 if fileManager.fileExists(atPath: packageURL.path) {
-                    let existing = try localPackage(id: descriptor.workingPackageID)
+                    let existing = try packageRepository.localPackage(id: descriptor.workingPackageID)
                     guard existing.revision == expectedRevision,
                           existing.isValid else {
                         throw ResearchSkillBindingError.invalidBindingDocument(
@@ -750,7 +549,7 @@ public actor ResearchSkillStore {
                         )
                     }
                 } else {
-                    let installed = try installLocalPackage(
+                    let installed = try packageRepository.installLocalPackage(
                         id: descriptor.workingPackageID,
                         sources: sources
                     ).package
@@ -771,11 +570,11 @@ public actor ResearchSkillStore {
                 actionBindings: bindings
             )
             try validateNewTriptychWorkingMethodDocument(document)
-            return try saveWorkingMethodBindingDocument(
+            return try workingMethods.save(
                 document,
                 expectedRevision: nil
             )
-        } catch is ResearchWorkingMethodBindingWriteFailure {
+        } catch is ResearchWorkingMethodStoreWriteFailure {
             throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
         } catch {
             // Fully installed packages are intentionally retained. The v2
@@ -788,130 +587,17 @@ public actor ResearchSkillStore {
     public func workingMethodBindingSnapshot()
         throws -> ResearchWorkingMethodBindingSnapshot?
     {
-        guard fileManager.fileExists(atPath: controlURL.path) else {
-            return nil
-        }
-        let rootDescriptor = try SecureResearchSkillPackageIO.openAbsoluteDirectory(
-            controlURL
-        )
-        defer { Darwin.close(rootDescriptor) }
-        let identity = try SecureResearchSkillPackageIO.identity(
-            of: rootDescriptor,
-            path: controlURL.path
-        )
-        guard let data = try SecureResearchSkillPackageIO.dataFileIfPresent(
-            parentDescriptor: rootDescriptor,
-            leaf: workingMethodBindingsURL.lastPathComponent,
-            path: workingMethodBindingsURL.path,
-            maximumByteCount: 1_048_576
-        ) else {
-            return nil
-        }
-        guard try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-            controlURL,
-            identity: identity
-        ) else {
-            throw ResearchSkillBindingError.unsafeBindingFile
-        }
-        guard data.count <= 1_048_576 else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Working Method binding v2 exceeds the 1 MiB safety limit."
-            )
-        }
-        let document: ResearchWorkingMethodBindingDocument
-        do {
-            document = try JSONDecoder().decode(
-                ResearchWorkingMethodBindingDocument.self,
-                from: data
-            )
-        } catch {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Working Method binding v2 cannot be decoded. \(error.localizedDescription)"
-            )
-        }
-        guard document.actionBindings.count <= 256 else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Working Method binding v2 exceeds 256 Actions."
-            )
-        }
-        return ResearchWorkingMethodBindingSnapshot(
-            document: document,
-            revision: DocumentFingerprint(data: data)
-        )
+        try workingMethods.snapshot()
     }
 
     public func workingMethodBindingFileRevision() throws -> DocumentFingerprint? {
-        guard fileManager.fileExists(atPath: controlURL.path) else {
-            return nil
-        }
-        let rootDescriptor = try SecureResearchSkillPackageIO.openAbsoluteDirectory(
-            controlURL
-        )
-        defer { Darwin.close(rootDescriptor) }
-        let identity = try SecureResearchSkillPackageIO.identity(
-            of: rootDescriptor,
-            path: controlURL.path
-        )
-        guard let data = try SecureResearchSkillPackageIO.dataFileIfPresent(
-            parentDescriptor: rootDescriptor,
-            leaf: workingMethodBindingsURL.lastPathComponent,
-            path: workingMethodBindingsURL.path,
-            maximumByteCount: 1_048_576
-        ) else {
-            return nil
-        }
-        guard try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-            controlURL,
-            identity: identity
-        ) else {
-            throw ResearchSkillBindingError.unsafeBindingFile
-        }
-        return DocumentFingerprint(data: data)
+        try workingMethods.rawRevision()
     }
 
     // MARK: - Researcher Action Profiles v1
 
     public func actionProfileSnapshot() throws -> ResearchActionProfileSnapshot? {
-        guard fileManager.fileExists(atPath: controlURL.path) else {
-            return nil
-        }
-        let rootDescriptor = try SecureResearchSkillPackageIO.openAbsoluteDirectory(
-            controlURL
-        )
-        defer { Darwin.close(rootDescriptor) }
-        let rootIdentity = try SecureResearchSkillPackageIO.identity(
-            of: rootDescriptor,
-            path: controlURL.path
-        )
-        guard let data = try SecureResearchSkillPackageIO.dataFileIfPresent(
-            parentDescriptor: rootDescriptor,
-            leaf: actionProfileBindingsURL.lastPathComponent,
-            path: actionProfileBindingsURL.path,
-            maximumByteCount: Self.maximumActionProfileDocumentByteCount
-        ) else {
-            return nil
-        }
-        guard try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-            controlURL,
-            identity: rootIdentity
-        ) else {
-            throw ResearchActionProfileStorageError.unsafeDocument
-        }
-        let document: ResearchActionProfileDocument
-        do {
-            document = try JSONDecoder().decode(
-                ResearchActionProfileDocument.self,
-                from: data
-            )
-        } catch {
-            throw ResearchActionProfileStorageError.invalidDocument(
-                error.localizedDescription
-            )
-        }
-        return ResearchActionProfileSnapshot(
-            document: document,
-            revision: DocumentFingerprint(data: data)
-        )
+        try actionProfiles.snapshot()
     }
 
     /// Saves one structurally validated custom Action or optional Manuscript
@@ -961,115 +647,10 @@ public actor ResearchSkillStore {
         for binding in document.actionBindings.values {
             try validateActionProfileBinding(binding)
         }
-        try ensureControlDirectoryForGuidance()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let data = try encoder.encode(document)
-        guard data.count <= Self.maximumActionProfileDocumentByteCount else {
-            throw ResearchActionProfileStorageError.invalidDocument(
-                "The encoded document exceeds the 8 MiB storage boundary."
-            )
-        }
-
-        let rootDescriptor = try SecureResearchSkillPackageIO.openAbsoluteDirectory(
-            controlURL
+        return try actionProfiles.save(
+            document,
+            expectedRevision: expectedRevision
         )
-        defer { Darwin.close(rootDescriptor) }
-        let rootIdentity = try SecureResearchSkillPackageIO.identity(
-            of: rootDescriptor,
-            path: controlURL.path
-        )
-        let leaf = actionProfileBindingsURL.lastPathComponent
-        let current = try SecureResearchSkillPackageIO.dataFileIfPresent(
-            parentDescriptor: rootDescriptor,
-            leaf: leaf,
-            path: actionProfileBindingsURL.path,
-            maximumByteCount: Self.maximumActionProfileDocumentByteCount
-        )
-        if let current {
-            guard let expectedRevision,
-                  DocumentFingerprint(data: current) == expectedRevision else {
-                throw ResearchActionProfileStorageError.staleDocument
-            }
-        } else if expectedRevision != nil {
-            throw ResearchActionProfileStorageError.staleDocument
-        }
-
-        let stageName = ".action-profiles-\(UUID().uuidString.lowercased())"
-        var stageCreated = false
-        var committed = false
-        do {
-            try SecureResearchSkillPackageIO.createDataFile(
-                parentDescriptor: rootDescriptor,
-                leaf: stageName,
-                data: data,
-                path: stageName
-            )
-            stageCreated = true
-            if current != nil {
-                try SecureResearchSkillPackageIO.swapPackages(
-                    rootDescriptor: rootDescriptor,
-                    first: leaf,
-                    second: stageName
-                )
-            } else {
-                try SecureResearchSkillPackageIO.movePackageExclusively(
-                    rootDescriptor: rootDescriptor,
-                    source: stageName,
-                    destination: leaf
-                )
-            }
-            committed = true
-            try workingMethodHooks.handler(.afterActionProfileCommit)
-            guard fsync(rootDescriptor) == 0 else {
-                throw ResearchActionProfileStorageError.unsafeDocument
-            }
-            let readback = try SecureResearchSkillPackageIO.readDataFile(
-                parentDescriptor: rootDescriptor,
-                leaf: leaf,
-                path: actionProfileBindingsURL.path,
-                maximumByteCount: Self.maximumActionProfileDocumentByteCount
-            )
-            guard readback == data,
-                  try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-                      controlURL,
-                      identity: rootIdentity
-                  ) else {
-                throw ResearchActionProfileStorageError.unsafeDocument
-            }
-            if current != nil {
-                try SecureResearchSkillPackageIO.removeDataFile(
-                    parentDescriptor: rootDescriptor,
-                    leaf: stageName,
-                    path: stageName
-                )
-                guard fsync(rootDescriptor) == 0 else {
-                    throw ResearchActionProfileStorageError.unsafeDocument
-                }
-            }
-            return ResearchActionProfileSnapshot(
-                document: document,
-                revision: DocumentFingerprint(data: readback)
-            )
-        } catch {
-            if !committed, stageCreated {
-                try? SecureResearchSkillPackageIO.removeDataFile(
-                    parentDescriptor: rootDescriptor,
-                    leaf: stageName,
-                    path: stageName
-                )
-            }
-            if committed {
-                // Once the exchange has happened, a failed directory flush,
-                // cleanup, readback, or canonical-path identity check is not
-                // success. The new bytes may be present through this already
-                // open descriptor while the Triptych path refers elsewhere.
-                // Preserve every artifact and force an explicit reload or
-                // recovery instead of claiming that Settings saved safely.
-                throw ResearchActionProfileStorageError.unsafeDocument
-            }
-            throw error
-        }
     }
 
     /// Replaces one Action binding without interpreting absence as a default.
@@ -1086,11 +667,11 @@ public actor ResearchSkillStore {
         try validateWorkingMethodBinding(binding, for: actionID)
         let replacement = try current.document.replacing(binding, for: actionID)
         do {
-            return try saveWorkingMethodBindingDocument(
+            return try workingMethods.save(
                 replacement,
                 expectedRevision: expectedBindingRevision
             )
-        } catch is ResearchWorkingMethodBindingWriteFailure {
+        } catch is ResearchWorkingMethodStoreWriteFailure {
             throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
         }
     }
@@ -1166,13 +747,13 @@ public actor ResearchSkillStore {
             throw ResearchSkillBindingError.staleBindingFile
         }
         let sources = try workingMethodSources(for: descriptor)
-        let restoredRevision = Self.packageRevision(sources: sources)
+        let restoredRevision = packageRepository.packageRevision(sources: sources)
         _ = try validatedProposedResearcherPackage(
             id: descriptor.workingPackageID,
             sources: sources,
             revision: restoredRevision
         )
-        try ensureSkillsDirectory()
+        try packageRepository.ensureSkillsDirectory()
 
         let rootDescriptor = try SecureResearchSkillPackageIO.openSkillsRoot(skillsURL)
         defer { Darwin.close(rootDescriptor) }
@@ -1194,7 +775,7 @@ public actor ResearchSkillStore {
                 rootDescriptor: rootDescriptor,
                 packageID: descriptor.workingPackageID
             )
-            guard Self.packageRevision(sources: currentSources) == expectedRevision else {
+            guard packageRepository.packageRevision(sources: currentSources) == expectedRevision else {
                 throw ResearchSkillError.stalePackage(descriptor.workingPackageID)
             }
             displacedRevision = expectedRevision
@@ -1249,7 +830,7 @@ public actor ResearchSkillStore {
                     packageID: descriptor.workingPackageID
                 )
                 if case .present(let expectedRevision) = expectedPackageState {
-                    guard Self.packageRevision(sources: rechecked) == expectedRevision else {
+                    guard packageRepository.packageRevision(sources: rechecked) == expectedRevision else {
                         throw ResearchSkillError.stalePackage(descriptor.workingPackageID)
                     }
                 }
@@ -1276,12 +857,12 @@ public actor ResearchSkillStore {
                 )
             }
 
-            let binding = try saveWorkingMethodBindingDocument(
+            let binding = try workingMethods.save(
                 replacementDocument,
                 expectedRevision: expectedBindingRevision
             )
             committedBinding = binding
-            let package = try localPackage(id: descriptor.workingPackageID)
+            let package = try packageRepository.localPackage(id: descriptor.workingPackageID)
             guard package.revision == restoredRevision, package.isValid else {
                 throw ResearchSkillError.stalePackage(descriptor.workingPackageID)
             }
@@ -1309,7 +890,7 @@ public actor ResearchSkillStore {
                     descriptor.workingPackageID
                 )
             }
-        } catch is ResearchWorkingMethodBindingWriteFailure {
+        } catch is ResearchWorkingMethodStoreWriteFailure {
             // The binding exchange happened. Keep the restored package and all
             // displaced artifacts; trying to infer an uncommitted state here
             // could pair a rolled-back package with a newly active binding.
@@ -1344,7 +925,7 @@ public actor ResearchSkillStore {
                             rootDescriptor: rootDescriptor,
                             packageID: descriptor.workingPackageID
                         )
-                    rollbackPreservesExternalState = Self.packageRevision(
+                    rollbackPreservesExternalState = packageRepository.packageRevision(
                         sources: installedSources
                     ) == restoredRevision
                     if rollbackPreservesExternalState,
@@ -1354,7 +935,7 @@ public actor ResearchSkillStore {
                                 rootDescriptor: rootDescriptor,
                                 packageID: stageName
                             )
-                        rollbackPreservesExternalState = Self.packageRevision(
+                        rollbackPreservesExternalState = packageRepository.packageRevision(
                             sources: displacedSources
                         ) == displacedRevision
                     }
@@ -1382,7 +963,7 @@ public actor ResearchSkillStore {
                         )
                     let rollbackReservation = workingMethodRecoveryStore.reserve(
                         packageID: descriptor.workingPackageID,
-                        packageRevision: Self.packageRevision(sources: rollbackSources)
+                        packageRevision: packageRepository.packageRevision(sources: rollbackSources)
                     )
                     try workingMethodRecoveryStore.archive(
                         sourceParentDescriptor: rootDescriptor,
@@ -1420,46 +1001,12 @@ public actor ResearchSkillStore {
         )
     }
 
-    /// Resolves the exact Practice IDs declared compatible by the complete
-    /// primary method without consulting global Skill directories or inferring
-    /// applicability from filenames.
-    public func compatiblePracticeIDs(
-        for function: ResearchFunctionID,
-        primaryPackageID: String? = nil
-    ) throws -> Set<String> {
-        if let primaryPackageID {
-            let package = try package(id: primaryPackageID)
-            guard package.supports(function),
-                  package.role == "method"
-                    || (package.role == "specialist"
-                        && !composesWithFunction(package, function: function)) else {
-                return []
-            }
-            return Set(package.compatiblePracticeIDs)
-        }
-        let candidates = try skills().filter {
-            $0.origin == .bundled
-                && $0.skillClass == .method
-                && $0.supports(function)
-                && $0.isValid
-        }
-        guard let first = candidates.first else { return [] }
-        // Binding v1 is still Function-keyed. When one protected Function
-        // serves more than one Action, expose only Practices declared
-        // compatible by every candidate Method; never widen one Action from
-        // the other. Action-keyed bindings replace this compatibility bridge.
-        return candidates.dropFirst().reduce(Set(first.compatiblePracticeIDs)) {
-            compatible, package in
-            compatible.intersection(package.compatiblePracticeIDs)
-        }
-    }
-
-    /// Resolves the complete Source Analyzer used by the Analysis-only
+    /// Resolves the complete Source Analyzer used by the Triptych-owned
     /// Recommended Bibliography capability. A missing explicit binding uses
     /// the release-managed template; a broken explicit binding never falls
     /// back silently.
     public func bibliographyMethodBindingResolution() throws -> ResearchSkillBindingResolution {
-        let revision = try? bindingFileRevision()
+        let revision = try? bibliographyMethods.rawRevision()
         let all = try skills()
         let bundled = all.filter {
             $0.origin == .bundled
@@ -1472,9 +1019,9 @@ public actor ResearchSkillStore {
                 && $0.provides(.bibliographyRecommendation)
                 && $0.role == "method"
         }
-        let document: ResearchSkillBindingDocument?
+        let snapshot: ResearchBibliographyMethodSnapshot?
         do {
-            document = try bindingSnapshot()?.document
+            snapshot = try bibliographyMethods.snapshotMigratingLegacyIfNeeded()
         } catch {
             return ResearchSkillBindingResolution(
                 source: .none,
@@ -1484,14 +1031,15 @@ public actor ResearchSkillStore {
                 bindingRevision: revision
             )
         }
-        if let packageID = document?.bibliographyMethodBinding {
+        let bindingRevision = snapshot?.revision ?? revision
+        if let packageID = snapshot?.document.packageID {
             guard let package = installed.first(where: { $0.id == packageID }) else {
                 return ResearchSkillBindingResolution(
                     source: .triptychBinding,
                     bundledTemplateAvailable: !bundled.isEmpty,
                     installedCandidateIDs: installed.map(\.id).sorted(),
                     issue: .invalidPackage(packageID),
-                    bindingRevision: revision
+                    bindingRevision: bindingRevision
                 )
             }
             return ResearchSkillBindingResolution(
@@ -1499,7 +1047,7 @@ public actor ResearchSkillStore {
                 package: package,
                 bundledTemplateAvailable: !bundled.isEmpty,
                 installedCandidateIDs: installed.map(\.id).sorted(),
-                bindingRevision: revision
+                bindingRevision: bindingRevision
             )
         }
         guard bundled.count == 1, let package = bundled.first else {
@@ -1508,7 +1056,7 @@ public actor ResearchSkillStore {
                 bundledTemplateAvailable: !bundled.isEmpty,
                 installedCandidateIDs: installed.map(\.id).sorted(),
                 issue: .missingCapability(.bibliographyRecommendation),
-                bindingRevision: revision
+                bindingRevision: bindingRevision
             )
         }
         return ResearchSkillBindingResolution(
@@ -1516,7 +1064,7 @@ public actor ResearchSkillStore {
             package: package,
             bundledTemplateAvailable: true,
             installedCandidateIDs: installed.map(\.id).sorted(),
-            bindingRevision: revision
+            bindingRevision: bindingRevision
         )
     }
 
@@ -1524,13 +1072,13 @@ public actor ResearchSkillStore {
     public func setBibliographyMethodBinding(
         packageID: String?,
         expectedBindingRevision: DocumentFingerprint?
-    ) throws -> ResearchSkillBindingSnapshot {
-        let observed = try bindingFileRevision()
+    ) throws -> ResearchBibliographyMethodSnapshot {
+        let observed = try bibliographyMethods.rawRevision()
         guard observed == expectedBindingRevision else {
             throw ResearchSkillBindingError.staleBindingFile
         }
         if let packageID {
-            let package = try localPackage(id: packageID)
+            let package = try packageRepository.localPackage(id: packageID)
             guard package.origin == .triptych,
                   package.isValid,
                   package.role == "method",
@@ -1540,17 +1088,8 @@ public actor ResearchSkillStore {
                 )
             }
         }
-        let existing = (try? bindingSnapshot()?.document)
-            ?? ResearchSkillBindingDocument()
-        return try saveBindingDocument(
-            ResearchSkillBindingDocument(
-                functionBindings: existing.functionBindings,
-                functionSkillBindings: existing.functionSkillBindings,
-                functionPracticeBindings: existing.functionPracticeBindings,
-                citationBinding: existing.citationBinding,
-                citationStyle: existing.citationStyle,
-                bibliographyMethodBinding: packageID
-            ),
+        return try bibliographyMethods.save(
+            ResearchBibliographyMethodDocument(packageID: packageID),
             expectedRevision: expectedBindingRevision
         )
     }
@@ -1773,7 +1312,7 @@ public actor ResearchSkillStore {
         ],
         citationStyle: String? = nil
     ) throws -> ResearchSkillBindingResolution {
-        let rawBindingRevision = try? bindingFileRevision()
+        let rawBindingRevision = try? citationMethods.rawRevision()
         let all = try skills()
         let bundledTemplateAvailable = all.contains { package in
             package.origin == .bundled
@@ -1788,9 +1327,9 @@ public actor ResearchSkillStore {
                 && requiredCapabilities.allSatisfy { package.provides($0) }
                 && !package.citationStyleResources.isEmpty
         }
-        let snapshot: ResearchSkillBindingSnapshot?
+        let snapshot: ResearchCitationMethodSnapshot?
         do {
-            snapshot = try bindingSnapshot()
+            snapshot = try citationMethods.snapshotMigratingLegacyIfNeeded()
         } catch {
             return ResearchSkillBindingResolution(
                 source: .none,
@@ -1800,13 +1339,14 @@ public actor ResearchSkillStore {
                 bindingRevision: rawBindingRevision
             )
         }
-        guard let id = snapshot?.document.citationBinding else {
+        let bindingRevision = snapshot?.revision ?? rawBindingRevision
+        guard let id = snapshot?.document.packageID else {
             return ResearchSkillBindingResolution(
                 source: .none,
                 bundledTemplateAvailable: bundledTemplateAvailable,
                 installedCandidateIDs: localCandidates.map(\.id),
                 issue: .missing,
-                bindingRevision: rawBindingRevision
+                bindingRevision: bindingRevision
             )
         }
         guard let bound = localCandidates.first(where: { $0.id == id }) else {
@@ -1815,7 +1355,7 @@ public actor ResearchSkillStore {
                 bundledTemplateAvailable: bundledTemplateAvailable,
                 installedCandidateIDs: localCandidates.map(\.id),
                 issue: .invalidPackage(id),
-                bindingRevision: rawBindingRevision
+                bindingRevision: bindingRevision
             )
         }
         guard let activeStyle = snapshot?.document.citationStyle else {
@@ -1824,7 +1364,7 @@ public actor ResearchSkillStore {
                 bundledTemplateAvailable: bundledTemplateAvailable,
                 installedCandidateIDs: localCandidates.map(\.id),
                 issue: .citationStyleMissing(packageID: id),
-                bindingRevision: rawBindingRevision
+                bindingRevision: bindingRevision
             )
         }
         guard bound.citationStyles.contains(activeStyle),
@@ -1834,7 +1374,7 @@ public actor ResearchSkillStore {
                 bundledTemplateAvailable: bundledTemplateAvailable,
                 installedCandidateIDs: localCandidates.map(\.id),
                 issue: .citationStyleMismatch(packageID: id, requested: activeStyle),
-                bindingRevision: rawBindingRevision
+                bindingRevision: bindingRevision
             )
         }
         if let citationStyle {
@@ -1846,7 +1386,7 @@ public actor ResearchSkillStore {
                     bundledTemplateAvailable: bundledTemplateAvailable,
                     installedCandidateIDs: localCandidates.map(\.id),
                     issue: .citationStyleMismatch(packageID: id, requested: normalized),
-                    bindingRevision: rawBindingRevision
+                    bindingRevision: bindingRevision
                 )
             }
         }
@@ -1856,7 +1396,7 @@ public actor ResearchSkillStore {
             bundledTemplateAvailable: bundledTemplateAvailable,
             installedCandidateIDs: localCandidates.map(\.id),
             citationStyle: activeStyle,
-            bindingRevision: rawBindingRevision
+            bindingRevision: bindingRevision
         )
     }
 
@@ -2172,7 +1712,7 @@ public actor ResearchSkillStore {
         guard let snapshot = try actionProfileSnapshot(),
               snapshot.revision == expectedRevision,
               snapshot.document.binding(for: actionID) == binding,
-              let package = try? localPackage(id: binding.packageID),
+              let package = try? packageRepository.localPackage(id: binding.packageID),
               package.origin == .triptych,
               package.isValid,
               package.skillClass != .system,
@@ -2208,7 +1748,7 @@ public actor ResearchSkillStore {
         for path in paths {
             sources[path] = try resource(id: id, relativePath: path)
         }
-        guard Self.packageRevision(sources: sources) == expectedRevision else {
+        guard packageRepository.packageRevision(sources: sources) == expectedRevision else {
             throw ResearchSkillError.stalePackage(id)
         }
         return sources
@@ -2276,180 +1816,27 @@ public actor ResearchSkillStore {
             throw ResearchSkillCatalogError.mixedModeRequiresPhases
         }
         let protectedCatalog = try catalog()
-        let bundled = try bundledCatalogPackages()
-        let rawLocal = try localSkills()
+        let bundled = try packageRepository.bundledPackages()
+        let rawLocal = try packageRepository.localPackages()
         let protectedIDs = Set(bundled.map(\.id))
         if let shadow = rawLocal.first(where: { protectedIDs.contains($0.id) }) {
             throw ResearchSkillError.protectedPackageShadow(shadow.id)
         }
-        let local = try validatedLocalSkills(rawLocal: rawLocal, bundled: bundled)
-        let packages = bundled + local
-        let byID = Dictionary(uniqueKeysWithValues: packages.map { ($0.id, $0) })
-        let automatic = protectedCatalog.entries.filter {
-            $0.skillClass == .system && $0.activatesAutomatically(in: mode)
-        }.map(\.id)
-        let seeds = Self.unique(automatic + requestedSkillIDs)
-        var visiting: Set<String> = []
-        var included: Set<String> = []
-        var ordered: [ResearchSkillPackage] = []
-
-        func visit(_ id: String) throws {
-            guard let package = byID[id] else {
-                throw ResearchSkillError.packageNotFound(id)
-            }
-            guard package.isValid else {
-                throw ResearchSkillError.invalidPackage(id, package.validationIssues)
-            }
-            guard package.supports(mode) else {
-                throw ResearchSkillCatalogError.unsupportedMode(skillID: id, mode: mode)
-            }
-            guard !included.contains(id) else { return }
-            guard visiting.insert(id).inserted else {
-                throw ResearchSkillCatalogError.malformedCatalog(
-                    "Dependency cycle includes \(id)."
-                )
-            }
-            for dependency in package.requiredSkillIDs {
-                try visit(dependency)
-            }
-            visiting.remove(id)
-            included.insert(id)
-            ordered.append(package)
-        }
-
-        for seed in seeds { try visit(seed) }
-        return ordered
+        let local = packageRepository.resolver.validatedLocalPackages(
+            rawLocal,
+            bundled: bundled
+        )
+        return try packageRepository.resolver.resolvedPackages(
+            catalog: protectedCatalog,
+            bundled: bundled,
+            local: local,
+            mode: mode,
+            requestedSkillIDs: requestedSkillIDs
+        )
     }
 
     public func prepareSkillsFolder() throws -> URL {
-        try ensureSkillsDirectory()
-        return skillsURL
-    }
-
-    private func localSkills() throws -> [ResearchSkillPackage] {
-        guard fileManager.fileExists(atPath: skillsURL.path) else { return [] }
-        try validateDirectory(skillsURL, error: .unsafeSkillsRoot)
-        let entries = try fileManager.contentsOfDirectory(
-            at: skillsURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
-        )
-        return try entries.compactMap { packageURL in
-            let id = packageURL.lastPathComponent
-            guard Self.isValidIdentifier(id) else { return nil }
-            let values = try packageURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-            guard values.isDirectory == true, values.isSymbolicLink != true else { return nil }
-            let sourceURL = packageURL.appendingPathComponent("SKILL.md")
-            guard fileManager.fileExists(atPath: sourceURL.path) else { return nil }
-            let sourceValues = try sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-            guard sourceValues.isRegularFile == true, sourceValues.isSymbolicLink != true else {
-                return ResearchSkillInspector.inspect(
-                    id: id,
-                    source: "",
-                    origin: .triptych,
-                    additionalIssues: ["SKILL.md must be a regular file and must not be a symbolic link."]
-                )
-            }
-            do {
-                return try localPackage(id: id)
-            } catch {
-                return ResearchSkillInspector.inspect(
-                    id: id,
-                    source: "",
-                    origin: .triptych,
-                    additionalIssues: ["SKILL.md must contain valid UTF-8 text."]
-                )
-            }
-        }
-    }
-
-    private func validatedLocalSkills() throws -> [ResearchSkillPackage] {
-        try validatedLocalSkills(
-            rawLocal: localSkills(),
-            bundled: bundledCatalogPackages()
-        )
-    }
-
-    private func validatedLocalSkills(
-        rawLocal: [ResearchSkillPackage],
-        bundled: [ResearchSkillPackage]
-    ) throws -> [ResearchSkillPackage] {
-        let protectedIDs = Set(bundled.map(\.id))
-        let noncolliding = rawLocal.filter { !protectedIDs.contains($0.id) }
-        let combined = bundled + noncolliding
-        let byID = Dictionary(uniqueKeysWithValues: combined.map { ($0.id, $0) })
-
-        var memoizedIssues: [String: [String]] = [:]
-        func graphIssues(for id: String, path: Set<String>) -> [String] {
-            if path.contains(id) {
-                return ["The package dependency graph contains a cycle."]
-            }
-            if let cached = memoizedIssues[id] { return cached }
-            guard let package = byID[id] else { return [] }
-            var issues = package.validationIssues
-            var nextPath = path
-            nextPath.insert(id)
-            for dependencyID in package.requiredSkillIDs {
-                guard let dependency = byID[dependencyID] else {
-                    issues.append("Required Skill does not exist: \(dependencyID).")
-                    continue
-                }
-                if !dependency.isValid {
-                    issues.append("Required Skill is structurally invalid: \(dependencyID).")
-                }
-                if dependency.role == "method" {
-                    issues.append(
-                        "A Triptych-local package cannot execute Method \(dependencyID) as a dependency. Each Action graph must contain only its one bound complete Method."
-                    )
-                }
-                for mode in package.supportedModes where !dependency.supports(mode) {
-                    issues.append(
-                        "Required Skill \(dependencyID) does not support \(mode.rawValue) mode."
-                    )
-                }
-                let dependencyIssues = graphIssues(
-                    for: dependencyID,
-                    path: nextPath
-                )
-                if !dependencyIssues.isEmpty {
-                    issues.append(
-                        "Required Skill has an invalid dependency graph: \(dependencyID)."
-                    )
-                }
-                if dependencyIssues.contains(where: {
-                    $0.localizedCaseInsensitiveContains("cycle")
-                }) {
-                    issues.append("The package dependency graph contains a cycle.")
-                }
-            }
-            let result = Self.unique(issues)
-            memoizedIssues[id] = result
-            return result
-        }
-
-        return rawLocal.map { package in
-            guard !protectedIDs.contains(package.id) else { return package }
-            let additional = graphIssues(for: package.id, path: [])
-                .filter { !package.validationIssues.contains($0) }
-            return package.addingValidationIssues(additional)
-        }
-    }
-
-    private func write(
-        _ source: String,
-        id: String,
-        expectedRevision: DocumentFingerprint?,
-        requiresExisting: Bool
-    ) throws {
-        let packageURL = try safePackageURL(id: id)
-        let sourceURL = packageURL.appendingPathComponent("SKILL.md")
-        if requiresExisting {
-            guard let expectedRevision else { throw ResearchSkillError.stalePackage(id) }
-            _ = try existingRegularSkillURL(id: id, expectedRevision: expectedRevision)
-        } else {
-            try validateDirectory(packageURL, error: .unsafePackage(id))
-        }
-        try Data(source.utf8).write(to: sourceURL, options: .atomic)
+        try packageRepository.prepareSkillsFolder()
     }
 
     /// Replaces one editable Working Method as a whole package. The package
@@ -2465,7 +1852,7 @@ public actor ResearchSkillStore {
         expectedPackageRevision: DocumentFingerprint,
         expectedBindingRevision: DocumentFingerprint
     ) throws -> ResearchSkillPackage {
-        try ensureSkillsDirectory()
+        try packageRepository.ensureSkillsDirectory()
         let rootDescriptor = try SecureResearchSkillPackageIO.openSkillsRoot(skillsURL)
         defer { Darwin.close(rootDescriptor) }
         let rootIdentity = try SecureResearchSkillPackageIO.identity(
@@ -2476,12 +1863,12 @@ public actor ResearchSkillStore {
             rootDescriptor: rootDescriptor,
             packageID: packageID
         )
-        guard Self.packageRevision(sources: originalSources) == expectedPackageRevision else {
+        guard packageRepository.packageRevision(sources: originalSources) == expectedPackageRevision else {
             throw ResearchSkillError.stalePackage(packageID)
         }
         var replacementSources = originalSources
         replacementSources["SKILL.md"] = source
-        let replacementRevision = Self.packageRevision(sources: replacementSources)
+        let replacementRevision = packageRepository.packageRevision(sources: replacementSources)
         let stageName = ".working-edit-\(UUID().uuidString.lowercased())"
         guard let workingMethodRecoveryStore else {
             throw ResearchSkillBindingError.workingMethodEditRecoveryRequired(packageID)
@@ -2555,7 +1942,7 @@ public actor ResearchSkillStore {
                     packageID
                 )
             }
-            let package = try localPackage(id: packageID)
+            let package = try packageRepository.localPackage(id: packageID)
             guard package.revision == replacementRevision else {
                 throw ResearchSkillBindingError.workingMethodEditRecoveryRequired(
                     packageID
@@ -2645,7 +2032,7 @@ public actor ResearchSkillStore {
                 )
                 let rollbackReservation = workingMethodRecoveryStore.reserve(
                     packageID: packageID,
-                    packageRevision: Self.packageRevision(sources: rollbackSources)
+                    packageRevision: packageRepository.packageRevision(sources: rollbackSources)
                 )
                 try workingMethodRecoveryStore.archive(
                     sourceParentDescriptor: rootDescriptor,
@@ -2676,29 +2063,8 @@ public actor ResearchSkillStore {
         return editableState && binding.packageID == packageID
     }
 
-    private func existingRegularSkillURL(
-        id: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> URL {
-        let packageURL = try safePackageURL(id: id)
-        guard fileManager.fileExists(atPath: packageURL.path) else {
-            throw ResearchSkillError.packageNotFound(id)
-        }
-        try validateDirectory(packageURL, error: .unsafePackage(id))
-        let sourceURL = packageURL.appendingPathComponent("SKILL.md")
-        let values = try sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-        guard values.isRegularFile == true, values.isSymbolicLink != true else {
-            throw ResearchSkillError.unsafePackage(id)
-        }
-        _ = try String(contentsOf: sourceURL, encoding: .utf8)
-        guard try packageRevision(packageURL: packageURL) == expectedRevision else {
-            throw ResearchSkillError.stalePackage(id)
-        }
-        return sourceURL
-    }
-
     func ensureSkillsDirectoryForInstallation() throws {
-        try ensureSkillsDirectory()
+        try packageRepository.ensureSkillsDirectory()
     }
 
     func installPackageForInstallation(
@@ -2711,43 +2077,19 @@ public actor ResearchSkillStore {
         package: ResearchSkillPackage,
         identity: SecureResearchSkillPackageIO.DirectoryIdentity
     ) {
-        try installLocalPackage(
+        try packageRepository.installLocalPackage(
             id: id,
             sources: sources,
             onPublished: onPublished
         )
     }
 
-    private func ensureSkillsDirectory() throws {
-        if !fileManager.fileExists(atPath: controlURL.path) {
-            try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
-        }
-        if !fileManager.fileExists(atPath: skillsURL.path) {
-            try fileManager.createDirectory(at: skillsURL, withIntermediateDirectories: false)
-        }
-        try validateDirectory(skillsURL, error: .unsafeSkillsRoot)
-    }
-
-    private func ensureControlDirectoryForGuidance() throws {
-        if !fileManager.fileExists(atPath: controlURL.path) {
-            try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
-        }
-        let values = try controlURL.resourceValues(
-            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-        )
-        guard values.isDirectory == true, values.isSymbolicLink != true else {
-            throw ResearchSkillBindingError.unsafeBindingFile
-        }
-    }
-
-    private static let maximumActionProfileDocumentByteCount = 8_388_608
-
     private func validateActionProfileBinding(
         _ binding: ResearchActionProfileBinding
     ) throws {
         let package: ResearchSkillPackage
         do {
-            package = try localPackage(id: binding.packageID)
+            package = try packageRepository.localPackage(id: binding.packageID)
         } catch let error as ResearchSkillError {
             throw ResearchActionProfileStorageError.invalidPackage(
                 binding.packageID,
@@ -2775,7 +2117,8 @@ public actor ResearchSkillStore {
     private struct ResearchSkillUsageSnapshot: Equatable {
         let workingMethodRevision: DocumentFingerprint?
         let actionProfileRevision: DocumentFingerprint?
-        let retainedBindingRevision: DocumentFingerprint?
+        let citationMethodRevision: DocumentFingerprint?
+        let bibliographyMethodRevision: DocumentFingerprint?
     }
 
     private func validatePackageIsUnused(
@@ -2793,169 +2136,20 @@ public actor ResearchSkillStore {
            }) == true {
             throw ResearchActionProfileStorageError.packageInUse(packageID)
         }
-        let retained = try bindingSnapshot()
-        if let legacy = retained?.document {
-            let legacyReferences = Set(legacy.functionBindings.values)
-                .union(legacy.functionSkillBindings.values.flatMap { $0 })
-                .union(legacy.functionPracticeBindings.values.flatMap { values in
-                    values.map(\.packageID)
-                })
-                .union([legacy.citationBinding, legacy.bibliographyMethodBinding].compactMap { $0 })
-            if legacyReferences.contains(packageID) {
-                throw ResearchActionProfileStorageError.packageInUse(packageID)
-            }
+        let citation = try citationMethods.snapshotMigratingLegacyIfNeeded()
+        if citation?.document.packageID == packageID {
+            throw ResearchActionProfileStorageError.packageInUse(packageID)
+        }
+        let bibliography = try bibliographyMethods.snapshotMigratingLegacyIfNeeded()
+        if bibliography?.document.packageID == packageID {
+            throw ResearchActionProfileStorageError.packageInUse(packageID)
         }
         return ResearchSkillUsageSnapshot(
             workingMethodRevision: working?.revision,
             actionProfileRevision: profiles?.revision,
-            retainedBindingRevision: retained?.revision
+            citationMethodRevision: citation?.revision,
+            bibliographyMethodRevision: bibliography?.revision
         )
-    }
-
-    @discardableResult
-    private func saveWorkingMethodBindingDocument(
-        _ document: ResearchWorkingMethodBindingDocument,
-        expectedRevision: DocumentFingerprint?
-    ) throws -> ResearchWorkingMethodBindingSnapshot {
-        try ensureControlDirectoryForGuidance()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let data = try encoder.encode(document)
-        guard data.count <= 1_048_576,
-              document.actionBindings.count <= 256 else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Working Method binding v2 exceeds its bounded storage contract."
-            )
-        }
-
-        let rootDescriptor = try SecureResearchSkillPackageIO.openAbsoluteDirectory(
-            controlURL
-        )
-        defer { Darwin.close(rootDescriptor) }
-        let rootIdentity = try SecureResearchSkillPackageIO.identity(
-            of: rootDescriptor,
-            path: controlURL.path
-        )
-        let leaf = workingMethodBindingsURL.lastPathComponent
-        let current = try SecureResearchSkillPackageIO.dataFileIfPresent(
-            parentDescriptor: rootDescriptor,
-            leaf: leaf,
-            path: workingMethodBindingsURL.path,
-            maximumByteCount: 1_048_576
-        )
-        if let current {
-            guard let expectedRevision,
-                  DocumentFingerprint(data: current) == expectedRevision else {
-                throw ResearchSkillBindingError.staleBindingFile
-            }
-        } else if expectedRevision != nil {
-            throw ResearchSkillBindingError.staleBindingFile
-        }
-
-        let stageName = ".working-binding-\(UUID().uuidString.lowercased())"
-        var stageCreated = false
-        var didCommit = false
-        do {
-            try SecureResearchSkillPackageIO.createDataFile(
-                parentDescriptor: rootDescriptor,
-                leaf: stageName,
-                data: data,
-                path: stageName
-            )
-            stageCreated = true
-            if current != nil {
-                do {
-                    try SecureResearchSkillPackageIO.swapPackages(
-                        rootDescriptor: rootDescriptor,
-                        first: leaf,
-                        second: stageName
-                    )
-                } catch {
-                    throw ResearchSkillBindingError.staleBindingFile
-                }
-            } else {
-                do {
-                    try SecureResearchSkillPackageIO.movePackageExclusively(
-                        rootDescriptor: rootDescriptor,
-                        source: stageName,
-                        destination: leaf
-                    )
-                } catch {
-                    throw ResearchSkillBindingError.staleBindingFile
-                }
-            }
-            didCommit = true
-            try workingMethodHooks.handler(.afterBindingCommit)
-            if let current {
-                let displaced = try SecureResearchSkillPackageIO.readDataFile(
-                    parentDescriptor: rootDescriptor,
-                    leaf: stageName,
-                    path: stageName,
-                    maximumByteCount: 1_048_576
-                )
-                guard displaced == current else {
-                    throw ResearchSkillBindingError.staleBindingFile
-                }
-            }
-            guard fsync(rootDescriptor) == 0 else {
-                throw ResearchSkillBindingError.unsafeBindingFile
-            }
-            let readback = try SecureResearchSkillPackageIO.readDataFile(
-                parentDescriptor: rootDescriptor,
-                leaf: leaf,
-                path: workingMethodBindingsURL.path,
-                maximumByteCount: 1_048_576
-            )
-            guard readback == data,
-                  try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-                      controlURL,
-                      identity: rootIdentity
-                  ) else {
-                throw ResearchSkillBindingError.unsafeBindingFile
-            }
-            let snapshot = ResearchWorkingMethodBindingSnapshot(
-                document: document,
-                revision: DocumentFingerprint(data: readback)
-            )
-            if current != nil {
-                try SecureResearchSkillPackageIO.removeDataFile(
-                    parentDescriptor: rootDescriptor,
-                    leaf: stageName,
-                    path: stageName
-                )
-                guard fsync(rootDescriptor) == 0 else {
-                    throw ResearchSkillBindingError.workingMethodBindingRecoveryRequired
-                }
-            }
-            return snapshot
-        } catch {
-            guard didCommit else {
-                if stageCreated {
-                    try? SecureResearchSkillPackageIO.removeDataFile(
-                        parentDescriptor: rootDescriptor,
-                        leaf: stageName,
-                        path: stageName
-                    )
-                }
-                throw error
-            }
-            let readback = try? SecureResearchSkillPackageIO.readDataFile(
-                parentDescriptor: rootDescriptor,
-                leaf: leaf,
-                path: workingMethodBindingsURL.path,
-                maximumByteCount: 1_048_576
-            )
-            let snapshot = readback == data
-                ? ResearchWorkingMethodBindingSnapshot(
-                    document: document,
-                    revision: DocumentFingerprint(data: data)
-                )
-                : nil
-            throw ResearchWorkingMethodBindingWriteFailure.committed(
-                snapshot: snapshot,
-                underlying: error
-            )
-        }
     }
 
     private func validateNewTriptychWorkingMethodDocument(
@@ -3037,238 +2231,10 @@ public actor ResearchSkillStore {
         }
     }
 
-    private func validateBindingDocument(
-        _ document: ResearchSkillBindingDocument
-    ) throws {
-        guard document.schemaVersion == ResearchSkillBindingDocument.currentSchemaVersion else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Unsupported schema version \(document.schemaVersion)."
-            )
-        }
-        let functionKeys = Set(document.functionBindings.keys)
-            .union(document.functionSkillBindings.keys)
-            .union(document.functionPracticeBindings.keys)
-        for rawFunction in functionKeys {
-            guard let function = ResearchFunctionID(rawValue: rawFunction) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "Unknown or non-skill function binding: \(rawFunction)."
-                )
-            }
-            try validateFunctionSkillSelection(ResearchFunctionSkillSelection(
-                function: function,
-                primaryPackageID: document.functionBindings[rawFunction],
-                supplementalPackageIDs: document.functionSkillBindings[rawFunction] ?? [],
-                selectedPractices: document.functionPracticeBindings[rawFunction] ?? []
-            ))
-        }
-        if let packageID = document.citationBinding {
-            guard Self.isValidIdentifier(packageID) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The citation binding has an invalid package identifier."
-                )
-            }
-            let package: ResearchSkillPackage
-            do {
-                package = try localPackage(id: packageID)
-            } catch {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The citation binding must name an installed Triptych-local package."
-                )
-            }
-            guard package.origin == .triptych,
-                  package.isValid,
-                  package.supports(.fidelity),
-                  package.provides(.citationVerification),
-                  package.provides(.citationFormatting) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The citation binding lacks Fidelity or a required citation capability."
-                )
-            }
-            // Missing style remains decodable so a pre-style binding can be
-            // surfaced as a precise Settings repair. New writes always include
-            // and validate the semantic style.
-            if let style = document.citationStyle {
-                guard package.citationStyles.contains(style),
-                      package.citationStyleResources[style] != nil else {
-                    throw ResearchSkillBindingError.invalidBindingDocument(
-                        "The citation binding style is not explicitly supported by its package."
-                    )
-                }
-            }
-        } else if document.citationStyle != nil {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "A citation style cannot be selected without a citation package."
-            )
-        }
-        if let packageID = document.bibliographyMethodBinding {
-            guard Self.isValidIdentifier(packageID) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The bibliography method binding has an invalid package identifier."
-                )
-            }
-            let package: ResearchSkillPackage
-            do {
-                package = try localPackage(id: packageID)
-            } catch {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The bibliography method binding must name an installed Triptych-local package."
-                )
-            }
-            guard package.origin == .triptych,
-                  package.isValid,
-                  package.role == "method",
-                  package.provides(.bibliographyRecommendation) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The bibliography method binding lacks the required capability."
-                )
-            }
-        }
-    }
-
-    private func validateFunctionSkillSelection(
-        _ selection: ResearchFunctionSkillSelection
-    ) throws {
-        if selection.function == .discuss, selection.primaryPackageID != nil {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Discuss transport is protected System guidance and cannot be replaced by a Researcher Skill."
-            )
-        }
-        let selectedPracticeIDs = selection.selectedPractices.map(\.selectionID)
-        guard Set(selectedPracticeIDs).count == selectedPracticeIDs.count else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "A function cannot select the same Practice more than once."
-            )
-        }
-        let supplementalIDs = selection.supplementalPackageIDs
-        guard Set(supplementalIDs).count == supplementalIDs.count else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "A function cannot select the same supplemental Skill more than once."
-            )
-        }
-        if let primary = selection.primaryPackageID,
-           supplementalIDs.contains(primary) {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "The same package cannot be both primary and supplemental."
-            )
-        }
-
-        if let packageID = selection.primaryPackageID {
-            let package = try boundLocalPackage(
-                id: packageID,
-                function: selection.function,
-                purpose: "primary"
-            )
-            guard package.role != "practice",
-                  !isCitationMethod(package),
-                  package.role == "method"
-                    || (package.role == "specialist"
-                        && !composesWithFunction(package, function: selection.function)) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The primary binding for \(selection.function.rawValue) must be a complete non-citation Researcher Skill."
-                )
-            }
-        }
-
-        for packageID in supplementalIDs {
-            let package = try boundLocalPackage(
-                id: packageID,
-                function: selection.function,
-                purpose: "supplemental"
-            )
-            guard package.role == "specialist",
-                  !isCitationMethod(package),
-                  composesWithFunction(package, function: selection.function) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "Supplemental binding \(packageID) must be a non-citation specialist that explicitly composes with this function."
-                )
-            }
-        }
-
-        for practice in selection.selectedPractices {
-            guard Self.isValidIdentifier(practice.packageID),
-                  Self.isValidIdentifier(practice.practiceID) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "Practice bindings require stable lowercase identifiers."
-                )
-            }
-            let package = try boundLocalPackage(
-                id: practice.packageID,
-                function: selection.function,
-                purpose: "Practice"
-            )
-            guard package.role == "practice",
-                  package.practiceResources[practice.practiceID] != nil else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "Practice \(practice.selectionID) is not declared by a compatible Triptych-local Practice package."
-                )
-            }
-        }
-    }
-
-    private func boundLocalPackage(
-        id: String,
-        function: ResearchFunctionID,
-        purpose: String
-    ) throws -> ResearchSkillPackage {
-        guard Self.isValidIdentifier(id) else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "The \(purpose) binding has an invalid package identifier."
-            )
-        }
-        let package: ResearchSkillPackage
-        do {
-            package = try localPackage(id: id)
-        } catch {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "The \(purpose) binding must name an installed Triptych-local package: \(id)."
-            )
-        }
-        guard package.origin == .triptych,
-              package.isValid,
-              package.supports(function) else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Package \(id) does not validly support \(function.rawValue)."
-            )
-        }
-        return package
-    }
-
     private func isCitationMethod(_ package: ResearchSkillPackage) -> Bool {
         package.provides(.citationVerification)
             || package.provides(.citationFormatting)
             || !package.citationStyleResources.isEmpty
-    }
-
-    private func composesWithFunction(
-        _ package: ResearchSkillPackage,
-        function: ResearchFunctionID
-    ) -> Bool {
-        package.requiredSkillIDs.contains { dependencyID in
-            (try? self.package(id: dependencyID))?.supports(function) == true
-        }
-    }
-
-    private func safePackageURL(id: String) throws -> URL {
-        guard Self.isValidIdentifier(id) else { throw ResearchSkillError.invalidIdentifier(id) }
-        let url = skillsURL.appendingPathComponent(id, isDirectory: true).standardizedFileURL
-        guard url.deletingLastPathComponent() == skillsURL.standardizedFileURL else {
-            throw ResearchSkillError.invalidIdentifier(id)
-        }
-        return url
-    }
-
-    private func validateDirectory(_ url: URL, error: ResearchSkillError) throws {
-        let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-        guard values.isDirectory == true, values.isSymbolicLink != true else { throw error }
-    }
-
-    private func existingPackageURL(id: String) throws -> URL {
-        let packageURL = try safePackageURL(id: id)
-        guard fileManager.fileExists(atPath: packageURL.path) else {
-            throw ResearchSkillError.packageNotFound(id)
-        }
-        try validateDirectory(packageURL, error: .unsafePackage(id))
-        return packageURL
     }
 
     /// Validates a complete in-memory replacement through the same package,
@@ -3280,177 +2246,11 @@ public actor ResearchSkillStore {
         sources: [String: String],
         revision: DocumentFingerprint
     ) throws -> ResearchSkillPackage {
-        guard Self.isValidIdentifier(id) else {
-            throw ResearchSkillError.invalidIdentifier(id)
-        }
-        if try catalog().entries.contains(where: { $0.id == id }) {
-            throw ResearchSkillError.protectedPackageShadow(id)
-        }
-        guard sources.keys.allSatisfy(ResearchSkillMaintenancePath.isAllowed),
-              let source = sources["SKILL.md"],
-              Self.packageRevision(sources: sources) == revision else {
-            throw ResearchSkillError.unsafePackage(id)
-        }
-
-        let resourcePaths = Set(sources.keys)
-        let inspected = ResearchSkillInspector.inspect(
+        try packageRepository.validatedProposedPackage(
             id: id,
-            source: source,
-            origin: .triptych,
+            sources: sources,
             revision: revision
         )
-        let candidate = inspected.addingValidationIssues(
-            Self.declaredResourceValidationIssues(
-                for: inspected,
-                availableResourcePaths: resourcePaths
-            )
-        )
-        let bundled = try bundledCatalogPackages()
-        let local = try localSkills().filter { $0.id != id } + [candidate]
-        let validated = try validatedLocalSkills(rawLocal: local, bundled: bundled)
-        guard let result = validated.first(where: { $0.id == id }) else {
-            throw ResearchSkillError.packageNotFound(id)
-        }
-        return result
-    }
-
-    private func localPackage(id: String) throws -> ResearchSkillPackage {
-        let packageURL = try existingPackageURL(id: id)
-        let sourceURL = packageURL.appendingPathComponent("SKILL.md")
-        let values = try sourceURL.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        )
-        guard values.isRegularFile == true, values.isSymbolicLink != true else {
-            throw ResearchSkillError.unsafePackage(id)
-        }
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let parsed = ResearchSkillInspector.inspect(
-            id: id,
-            source: source,
-            origin: .triptych,
-            revision: try packageRevision(packageURL: packageURL)
-        )
-        let resources = Set(try localResourcePaths(packageURL: packageURL))
-        return parsed.addingValidationIssues(
-            Self.declaredResourceValidationIssues(
-                for: parsed,
-                availableResourcePaths: resources
-            )
-        )
-    }
-
-    static func declaredResourceValidationIssues(
-        for package: ResearchSkillPackage,
-        availableResourcePaths: Set<String>
-    ) -> [String] {
-        var issues: [String] = []
-        for path in package.practiceResources.values
-            where !availableResourcePaths.contains(path) {
-            issues.append("Declared Practice resource is missing: \(path).")
-        }
-        for (style, path) in package.citationStyleResources {
-            if !package.citationStyles.contains(style) {
-                issues.append(
-                    "Citation style resource \(style) is not declared in citation_styles."
-                )
-            }
-            if !availableResourcePaths.contains(path) {
-                issues.append(
-                    "Declared citation style resource is missing for \(style): \(path)."
-                )
-            }
-        }
-        for style in package.citationStyles
-            where package.citationStyleResources[style] == nil {
-            issues.append("Citation style \(style) has no declared citation style resource.")
-        }
-        return Self.unique(issues)
-    }
-
-    private func localResourcePaths(packageURL: URL) throws -> [String] {
-        var paths: [String] = []
-        let entryPoint = packageURL.appendingPathComponent("SKILL.md")
-        let entryValues = try entryPoint.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        )
-        if entryValues.isRegularFile == true, entryValues.isSymbolicLink != true {
-            paths.append("SKILL.md")
-        }
-        for directory in ["references", "templates", "evals"] {
-            let directoryURL = packageURL.appendingPathComponent(directory, isDirectory: true)
-            guard let files = try? fileManager.contentsOfDirectory(
-                at: directoryURL,
-                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-                options: [.skipsHiddenFiles]
-            ) else {
-                continue
-            }
-            for file in files {
-                let relativePath = "\(directory)/\(file.lastPathComponent)"
-                let values = try file.resourceValues(
-                    forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-                )
-                guard values.isRegularFile == true,
-                      values.isSymbolicLink != true,
-                      ResearchSkillResourcePath.isAllowed(relativePath) else {
-                    continue
-                }
-                paths.append(relativePath)
-            }
-        }
-        return paths.sorted()
-    }
-
-    private func packageRevision(packageURL: URL) throws -> DocumentFingerprint {
-        let paths = try localResourcePaths(packageURL: packageURL)
-        var bytes = Data()
-        for path in paths {
-            let data = try Data(contentsOf: packageURL.appendingPathComponent(path))
-            bytes.append(Data(path.utf8))
-            bytes.append(0)
-            bytes.append(Data(String(data.count).utf8))
-            bytes.append(0)
-            bytes.append(data)
-            bytes.append(0)
-        }
-        return DocumentFingerprint(data: bytes)
-    }
-
-    private static func packageRevision(
-        sources: [String: String]
-    ) -> DocumentFingerprint {
-        var bytes = Data()
-        for path in sources.keys.sorted() {
-            let data = Data((sources[path] ?? "").utf8)
-            bytes.append(Data(path.utf8))
-            bytes.append(0)
-            bytes.append(Data(String(data.count).utf8))
-            bytes.append(0)
-            bytes.append(data)
-            bytes.append(0)
-        }
-        return DocumentFingerprint(data: bytes)
-    }
-
-    private func bundledCatalogPackages() throws -> [ResearchSkillPackage] {
-        try catalog().entries.map { entry in
-            do {
-                return ResearchSkillInspector.inspect(
-                    id: entry.id,
-                    source: try BundledResearchSkillLibrary.source(for: entry),
-                    origin: .bundled,
-                    catalogEntry: entry,
-                    revision: try BundledResearchSkillLibrary.revision(for: entry)
-                )
-            } catch {
-                return ResearchSkillInspector.inspect(
-                    id: entry.id,
-                    source: "",
-                    origin: .bundled,
-                    additionalIssues: [error.localizedDescription]
-                )
-            }
-        }
     }
 
     private static func render(id: String, source: String) -> String {
@@ -3464,10 +2264,6 @@ public actor ResearchSkillStore {
     private static func unique<T: Hashable>(_ values: [T]) -> [T] {
         var seen: Set<T> = []
         return values.filter { seen.insert($0).inserted }
-    }
-
-    private static func isValidIdentifier(_ id: String) -> Bool {
-        id.range(of: #"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"#, options: .regularExpression) != nil
     }
 
     private static func skillMode(for actionID: ResearchActionID) -> ResearchSkillMode {
@@ -3616,159 +2412,12 @@ public actor ResearchSkillStore {
     private func workingMethodSources(
         for descriptor: DefaultWorkingMethodDescriptor
     ) throws -> [String: String] {
-        let entry = try catalog().entry(id: descriptor.bundledPackageID)
-        guard entry.skillClass == .method,
-              entry.supportedActions == [descriptor.actionID],
-              entry.supportedFunctions == [descriptor.function] else {
-            throw ResearchSkillCatalogError.malformedCatalog(
-                "Bundled reference \(descriptor.bundledPackageID) is not the unique Method for \(descriptor.actionID.rawValue)."
-            )
-        }
-        var sources: [String: String] = [:]
-        for path in try BundledResearchSkillLibrary.resourcePaths(for: entry) {
-            var source = try BundledResearchSkillLibrary.resource(
-                for: entry,
-                relativePath: path
-            )
-            if path == "SKILL.md" {
-                source = try Self.injectedResearcherRoutingMetadata(
-                    into: source,
-                    from: entry,
-                    allowsEvolution: true
-                )
-                source = try Self.replacingSkillName(
-                    in: source,
-                    with: descriptor.workingPackageID
-                )
-            }
-            sources[path] = source
-        }
-        return sources
-    }
-
-    private func installLocalPackage(
-        id: String,
-        sources: [String: String],
-        onPublished: ((SecureResearchSkillPackageIO.DirectoryIdentity) -> Void)? = nil
-    ) throws -> (
-        package: ResearchSkillPackage,
-        identity: SecureResearchSkillPackageIO.DirectoryIdentity
-    ) {
-        guard Self.isValidIdentifier(id),
-              !sources.isEmpty,
-              sources.keys.allSatisfy(ResearchSkillMaintenancePath.isAllowed) else {
-            throw ResearchSkillError.unsafePackage(id)
-        }
-        try ensureSkillsDirectory()
-        let rootDescriptor = try SecureResearchSkillPackageIO.openSkillsRoot(skillsURL)
-        defer { Darwin.close(rootDescriptor) }
-        let rootIdentity = try SecureResearchSkillPackageIO.identity(
-            of: rootDescriptor,
-            path: skillsURL.path
+        try packageRepository.workingMethodSources(
+            bundledPackageID: descriptor.bundledPackageID,
+            actionID: descriptor.actionID,
+            function: descriptor.function,
+            workingPackageID: descriptor.workingPackageID
         )
-        guard try !SecureResearchSkillPackageIO.directoryExists(
-            parentDescriptor: rootDescriptor,
-            name: id,
-            path: id
-        ) else {
-            throw ResearchSkillError.packageAlreadyExists(id)
-        }
-        let stageName = ".working-install-\(id)-\(UUID().uuidString.lowercased())"
-        var didInstall = false
-        do {
-            try SecureResearchSkillPackageIO.createPackage(
-                rootDescriptor: rootDescriptor,
-                packageName: stageName,
-                sources: sources
-            )
-            let stageDescriptor = try SecureResearchSkillPackageIO.openDirectory(
-                parentDescriptor: rootDescriptor,
-                name: stageName,
-                path: stageName
-            )
-            let stageIdentity: SecureResearchSkillPackageIO.DirectoryIdentity
-            do {
-                stageIdentity = try SecureResearchSkillPackageIO.identity(
-                    of: stageDescriptor,
-                    path: stageName
-                )
-                Darwin.close(stageDescriptor)
-            } catch {
-                Darwin.close(stageDescriptor)
-                throw error
-            }
-            guard try SecureResearchSkillPackageIO.strictPackageSources(
-                rootDescriptor: rootDescriptor,
-                packageID: stageName
-            ) == sources,
-                  try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-                      skillsURL,
-                      identity: rootIdentity
-                  ),
-                  try !SecureResearchSkillPackageIO.directoryExists(
-                      parentDescriptor: rootDescriptor,
-                      name: id,
-                      path: id
-                  ) else {
-                throw ResearchSkillError.packageAlreadyExists(id)
-            }
-            try SecureResearchSkillPackageIO.movePackageExclusively(
-                rootDescriptor: rootDescriptor,
-                source: stageName,
-                destination: id
-            )
-            didInstall = true
-            onPublished?(stageIdentity)
-            let installedDescriptor = try SecureResearchSkillPackageIO.openDirectory(
-                parentDescriptor: rootDescriptor,
-                name: id,
-                path: id
-            )
-            defer { Darwin.close(installedDescriptor) }
-            let installedIdentity = try SecureResearchSkillPackageIO.identity(
-                of: installedDescriptor,
-                path: id
-            )
-            guard installedIdentity == stageIdentity,
-                  fsync(rootDescriptor) == 0,
-                  try SecureResearchSkillPackageIO.strictPackageSources(
-                      packageDescriptor: installedDescriptor,
-                      packageID: id
-                  ) == sources,
-                  try SecureResearchSkillPackageIO.pathStillRefersToDirectory(
-                      skillsURL,
-                      identity: rootIdentity
-                  ) else {
-                throw ResearchSkillBindingError.workingMethodEditRecoveryRequired(id)
-            }
-            let installed = try localPackage(id: id)
-            let recheckedDescriptor = try SecureResearchSkillPackageIO.openDirectory(
-                parentDescriptor: rootDescriptor,
-                name: id,
-                path: id
-            )
-            defer { Darwin.close(recheckedDescriptor) }
-            guard installed.revision == Self.packageRevision(sources: sources),
-                  try SecureResearchSkillPackageIO.identity(
-                      of: recheckedDescriptor,
-                      path: id
-                  ) == installedIdentity,
-                  try SecureResearchSkillPackageIO.strictPackageSources(
-                      packageDescriptor: recheckedDescriptor,
-                      packageID: id
-                  ) == sources else {
-                throw ResearchSkillBindingError.workingMethodEditRecoveryRequired(id)
-            }
-            return (installed, installedIdentity)
-        } catch {
-            if !didInstall {
-                try? SecureResearchSkillPackageIO.removePackage(
-                    rootDescriptor: rootDescriptor,
-                    packageName: stageName
-                )
-            }
-            throw error
-        }
     }
 
     private func rollbackWorkingMethodReplacement(
@@ -3795,77 +2444,6 @@ public actor ResearchSkillStore {
                 packageID
             )
         }
-    }
-
-    private static func replacingSkillName(
-        in source: String,
-        with packageID: String
-    ) throws -> String {
-        var lines = source.components(separatedBy: .newlines)
-        guard lines.first == "---",
-              let closing = lines.dropFirst().firstIndex(of: "---"),
-              let nameIndex = lines[1..<closing].firstIndex(where: {
-                  $0.hasPrefix("name:")
-              }) else {
-            throw ResearchSkillCatalogError.malformedCatalog(
-                "Bundled Working Method has no replaceable name field."
-            )
-        }
-        lines[nameIndex] = "name: \(packageID)"
-        return lines.joined(separator: "\n")
-    }
-
-    private static func injectedResearcherRoutingMetadata(
-        into source: String,
-        from entry: ResearchSkillCatalogEntry,
-        allowsEvolution: Bool = false
-    ) throws -> String {
-        let lines = source.components(separatedBy: .newlines)
-        guard lines.first == "---",
-              let closing = lines.dropFirst().firstIndex(of: "---") else {
-            throw ResearchSkillCatalogError.malformedCatalog(
-                "Bundled Skill \(entry.id) has malformed frontmatter."
-            )
-        }
-        let yaml = lines[1..<closing].joined(separator: "\n")
-        if let metadata = try Yams.load(yaml: yaml) as? [String: Any],
-           metadata["scholium"] != nil {
-            throw ResearchSkillCatalogError.malformedCatalog(
-                "Bundled Skill \(entry.id) already declares local scholium metadata."
-            )
-        }
-        var routing = [
-            "scholium:",
-            "  role: \(entry.role)",
-            "  supported_actions: [\(entry.supportedActions.map(\.rawValue).joined(separator: ", "))]",
-            "  supported_functions: [\(entry.supportedFunctions.map(\.rawValue).joined(separator: ", "))]",
-            "  capabilities: [\(entry.capabilities.map(\.rawValue).joined(separator: ", "))]",
-            "  citation_styles: [\(entry.citationStyles.joined(separator: ", "))]",
-            "  allow_evolution: \(allowsEvolution ? "true" : "false")",
-            "  supported_modes: [\(entry.supportedModes.map(\.rawValue).joined(separator: ", "))]",
-            "  required_skills: [\(entry.requiredSkillIDs.joined(separator: ", "))]",
-        ]
-        if !entry.citationStyleResources.isEmpty {
-            routing.append("  citation_style_resources:")
-            for style in entry.citationStyleResources.keys.sorted() {
-                routing.append("    \(style): \(entry.citationStyleResources[style]!)")
-            }
-        }
-        if !entry.compatiblePracticeIDs.isEmpty {
-            routing.append(
-                "  compatible_practices: [\(entry.compatiblePracticeIDs.joined(separator: ", "))]"
-            )
-        }
-        if !entry.practiceResources.isEmpty {
-            routing.append("  practice_resources:")
-            for identifier in entry.practiceResources.keys.sorted() {
-                routing.append("    \(identifier): \(entry.practiceResources[identifier]!)")
-            }
-        }
-        var result = Array(lines[...closing])
-        result.insert(contentsOf: routing, at: closing)
-        result.append(contentsOf: lines[(closing + 1)...])
-        return result.joined(separator: "\n")
     }
 
 }

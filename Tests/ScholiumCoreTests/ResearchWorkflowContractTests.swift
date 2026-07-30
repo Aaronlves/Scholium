@@ -264,7 +264,7 @@ struct ResearchWorkflowContractTests {
     func boundedPracticeAssembly() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = ResearchSkillStore(controlURL: root.appendingPathComponent(".scholium"))
+        let store = ResearchSkillTransactionCoordinator(controlURL: root.appendingPathComponent(".scholium"))
         let note = object(.note, "Works/Argument.md")
         let contract = ResearchWorkflowContract(
             mode: .review,

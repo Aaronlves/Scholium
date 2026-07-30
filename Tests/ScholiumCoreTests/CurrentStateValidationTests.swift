@@ -38,11 +38,37 @@ struct CurrentStateValidationTests {
         }
     }
 
-    @Test("Incomplete Research Skill bindings fail closed")
-    func incompleteResearchSkillBinding() {
-        let source = Data(#"{"schema_version":1,"function_bindings":{}}"#.utf8)
-        #expect(throws: DecodingError.self) {
-            _ = try JSONDecoder().decode(ResearchSkillBindingDocument.self, from: source)
+    @Test("Incomplete Citation Method documents fail closed")
+    func incompleteCitationMethodDocument() {
+        let source = Data(#"{"schema_version":1,"package_id":"citations"}"#.utf8)
+        #expect(throws: ResearchSkillBindingError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchCitationMethodDocument.self,
+                from: source
+            )
+        }
+    }
+
+    @Test("Current capability Method documents reject unknown and future fields")
+    func strictCapabilityMethodDocuments() {
+        let unknownCitation = Data(
+            #"{"schema_version":1,"package_id":null,"citation_style":null,"future":true}"#.utf8
+        )
+        #expect(throws: ResearchSkillBindingError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchCitationMethodDocument.self,
+                from: unknownCitation
+            )
+        }
+
+        let futureBibliography = Data(
+            #"{"schema_version":2,"package_id":null}"#.utf8
+        )
+        #expect(throws: ResearchSkillBindingError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchBibliographyMethodDocument.self,
+                from: futureBibliography
+            )
         }
     }
 

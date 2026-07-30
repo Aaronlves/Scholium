@@ -33,6 +33,7 @@ struct SidebarContext {
     let bibliographyController: RecommendedBibliographyController
     let attentionPopoverSession: AttentionPopoverSession?
     let notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
+    let hideLibrary: () -> Void
     let openAttention: () -> Void
     let retryAttention: () -> Void
     let selectLocationScope: (NoteLocationScope) -> Void
@@ -239,11 +240,24 @@ struct SidebarView: View {
 
     private var brandHeader: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Text("Scholium")
-                .font(ScholiumInterfaceTypography.identity)
-                .foregroundStyle(ScholiumColorRole.primaryText.color)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("scholium.wordmark")
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("Scholium")
+                    .font(ScholiumInterfaceTypography.identity)
+                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("scholium.wordmark")
+
+                Spacer(minLength: 0)
+
+                ScholiumInkIconControl(
+                    title: ScholiumL10n.dynamicString("Hide Sidebar"),
+                    systemImage: "sidebar.leading",
+                    identifier: "scholium.toggleSidebar",
+                    isActive: true,
+                    action: context.hideLibrary
+                )
+                .accessibilityValue(ScholiumL10n.dynamicString("Shown"))
+            }
 
             Menu {
                 Button(action: context.openSettings) {

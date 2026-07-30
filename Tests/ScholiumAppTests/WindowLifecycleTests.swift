@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ScholiumContracts
 import SwiftUI
 import Testing
 @testable import ScholiumApp
@@ -340,6 +341,50 @@ struct WindowLifecycleTests {
         #expect(window.delegate === expectedDelegate)
     }
 
+    @Test("Native window close releases its Agent request claim before teardown")
+    func nativeCloseReleasesAgentRequestClaim() throws {
+        let windowID = UUID()
+        let triptychID = UUID()
+        let store = makeTestWorkspaceStore()
+        let model = WindowModel(
+            workspaceStore: store,
+            nativeWindowID: windowID
+        )
+        let request = try AgentNoteChangeTestFixtures.record(
+            triptychID: triptychID
+        )
+        model.agentNoteChangeWindowController.registerWindowEndpoint(
+            activeTriptychID: { triptychID },
+            isKeyWindow: { true },
+            canPresent: { model.presentationRouter.sheet == nil },
+            willPresent: {},
+            focus: {}
+        )
+        store.agentNoteChangeClaims.receive(request, intent: .submit)
+        #expect(store.agentNoteChangeClaims.claimedWindowID(for: request.id) == windowID)
+
+        let registry = ScholiumWindowLifecycleRegistry()
+        let coordinator = WorkspaceWindowCoordinator(
+            windowID: windowID,
+            appState: model,
+            lifecycleRegistry: registry
+        )
+        let window = testWindow()
+        let priorDelegate = TestWindowDelegate()
+        window.delegate = priorDelegate
+        coordinator.attach(to: window)
+
+        coordinator.windowWillClose(Notification(
+            name: NSWindow.willCloseNotification,
+            object: window
+        ))
+
+        #expect(store.agentNoteChangeClaims.claimedWindowID(for: request.id) == nil)
+        #expect(model.agentNoteChangeWindowController.record == nil)
+        #expect(model.presentationRouter.sheet == nil)
+        #expect(priorDelegate.didReceiveWindowWillClose)
+    }
+
     @Test("Workspace readiness requires the exact attached window and split")
     func coordinatorMarksExactNativeBoundaryReady() async {
         let id = UUID()
@@ -553,7 +598,13 @@ private final class ManualLifecycleSuspension {
 }
 
 @MainActor
-private final class TestWindowDelegate: NSObject, NSWindowDelegate {}
+private final class TestWindowDelegate: NSObject, NSWindowDelegate {
+    private(set) var didReceiveWindowWillClose = false
+
+    func windowWillClose(_ notification: Notification) {
+        didReceiveWindowWillClose = true
+    }
+}
 
 private final class WeakReference<Value: AnyObject> {
     weak var value: Value?

@@ -5,9 +5,9 @@ import ScholiumContracts
 import SwiftUI
 
 /// The configured window has one native toolbar. Tracking separators establish
-/// Library, Document, and Apparatus sections, allowing each peripheral's one
-/// control to remain in the native hit-testing layer while it moves between its
-/// visible pane section (Hide) and the Document section (Show).
+/// Library, Document, and Apparatus sections. A collapsed peripheral contributes
+/// one Show control to the Document section; an expanded peripheral owns its
+/// Hide control inside its own pointer-hittable content tree.
 @MainActor
 final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     static let toolbarIdentifier = NSToolbar.Identifier("scholium.workspaceToolbar")
@@ -16,7 +16,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let sidebar = NSToolbarItem.Identifier("scholium.toolbar.sidebar")
         static let inspector = NSToolbarItem.Identifier("scholium.toolbar.inspector")
         // These identifiers are structural bounds for the Document toolbar.
-        // They do not make either peripheral pane a semantic toolbar owner.
         static let libraryDivider = NSToolbarItem.Identifier.sidebarTrackingSeparator
         static let documentIdentity = NSToolbarItem.Identifier(
             "scholium.toolbar.documentIdentity"
@@ -101,9 +100,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         researchInspectorVisible: Bool
     ) -> [NSToolbarItem.Identifier] {
         var identifiers: [NSToolbarItem.Identifier] = [.flexibleSpace]
-        if sidebarVisible {
-            identifiers.append(Item.sidebar)
-        }
         identifiers.append(Item.libraryDivider)
         if !sidebarVisible {
             identifiers.append(Item.sidebar)
@@ -118,9 +114,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             identifiers.append(Item.inspector)
         }
         identifiers.append(Item.apparatusDivider)
-        if researchInspectorVisible {
-            identifiers.append(Item.inspector)
-        }
         identifiers.append(.flexibleSpace)
         return identifiers
     }
@@ -135,7 +128,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             return hostedItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Sidebar"),
-                view: ScholiumWorkspaceSidebarToolbarView(
+                view: ScholiumWorkspaceShowSidebarToolbarView(
                     appState: appState,
                     windowActions: windowActions
                 )
@@ -182,7 +175,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             return hostedItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Research Inspector"),
-                view: ScholiumWorkspaceInspectorToolbarView(
+                view: ScholiumWorkspaceShowInspectorToolbarView(
                     appState: appState,
                     windowActions: windowActions
                 )
@@ -195,8 +188,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     private func reconcileToolbarOwnership() {
         let desired = desiredItemIdentifiers
         if toolbar.itemIdentifiers != desired {
-            // `itemIdentifiers` diffs the live toolbar. This preserves retained
-            // Document items while the reveal control crosses a split boundary.
+            // Preserve retained Document items while a collapsed peripheral's
+            // Show route enters or leaves the Document toolbar.
             toolbar.itemIdentifiers = desired
         }
     }
@@ -246,53 +239,40 @@ private struct ScholiumWorkspaceToolbarEnvironment<Content: View>: View {
     }
 }
 
-private struct ScholiumWorkspaceSidebarToolbarView: View {
+private struct ScholiumWorkspaceShowSidebarToolbarView: View {
     @ObservedObject var appState: WindowModel
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
-        let isVisible = appState.sidebarVisible
-        let title = ScholiumL10n.dynamicString(
-            isVisible ? "Hide Sidebar" : "Show Sidebar"
-        )
         ScholiumInkIconControl(
-            title: title,
+            title: ScholiumL10n.dynamicString("Show Sidebar"),
             systemImage: "sidebar.leading",
-            identifier: "scholium.toggleSidebar",
-            isActive: isVisible
+            identifier: "scholium.toggleSidebar"
         ) {
-            windowActions.setLibraryVisible(!isVisible)
+            windowActions.setLibraryVisible(true)
         }
-        .accessibilityValue(
-            ScholiumL10n.dynamicString(isVisible ? "Shown" : "Hidden")
-        )
+        .accessibilityValue(ScholiumL10n.dynamicString("Hidden"))
     }
 }
 
-private struct ScholiumWorkspaceInspectorToolbarView: View {
+private struct ScholiumWorkspaceShowInspectorToolbarView: View {
     @ObservedObject var appState: WindowModel
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
-        let isVisible = appState.researchInspectorVisible
         ScholiumInkIconControl(
-            title: ScholiumL10n.dynamicString(
-                isVisible ? "Hide Research Inspector" : "Show Research Inspector"
-            ),
+            title: ScholiumL10n.dynamicString("Show Research Inspector"),
             systemImage: "sidebar.trailing",
-            identifier: "scholium.toggleInspector",
-            isActive: isVisible
+            identifier: "scholium.toggleInspector"
         ) {
             // The window coordinator converts the explicit intent into the
             // exact split controller's native Inspector transition.
-            windowActions.setResearchInspectorVisible(!isVisible)
+            windowActions.setResearchInspectorVisible(true)
         }
         .disabled(
-            !isVisible && appState.documentController.selectedDocument == nil
+            appState.documentController.selectedDocument == nil
         )
-        .accessibilityValue(
-            ScholiumL10n.dynamicString(isVisible ? "Shown" : "Hidden")
-        )
+        .accessibilityValue(ScholiumL10n.dynamicString("Hidden"))
     }
 }
 
@@ -375,7 +355,7 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
                     systemImage: "magnifyingglass",
                     identifier: "scholium.documentSearch"
                 ) {
-                    appState.beginSearch(.general)
+                    appState.searchController.begin(.general)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)

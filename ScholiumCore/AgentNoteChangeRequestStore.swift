@@ -35,9 +35,9 @@ public enum AgentNoteChangeRequestStoreError: LocalizedError, Hashable, Sendable
 
 /// Private per-Triptych coordination state for agent-requested changes.
 ///
-/// A stored decision is not a write grant. The later continuation coordinator
-/// must independently resolve current identity, revision, permission, recovery,
-/// and completion authority before creating a child phase.
+/// A stored decision is not a write grant. The Application continuation
+/// coordinator independently resolves current identity, revision, permission,
+/// recovery, and completion authority before creating a child phase.
 public actor AgentNoteChangeRequestStore {
     private static let maximumRecordCount = 4_096
     private static let maximumRecordByteCount = 1024 * 1024

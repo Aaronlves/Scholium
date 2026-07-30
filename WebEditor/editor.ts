@@ -114,6 +114,12 @@ import {
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
 import {createMarkdownEditor} from "./bootstrap";
 import {editorPerformanceSamples, recordEditorMetric, sampleEditorMemory} from "./performance";
+import {createPreviewPopoverController} from "./preview-popover";
+import {createEditorScrollCoordinator} from "./scroll-coordinator";
+import {
+  createSelectionActionsController,
+  type SelectionActionCommand,
+} from "./selection-actions";
 import {
   AnimationFrameCoalescer,
   interactionAvailabilitySignature,
@@ -2569,39 +2575,7 @@ function calloutCompletionSource(context: CompletionContext) {
   return { from: context.pos - match[2].length, options, filter: false };
 }
 
-type SelectionToolbarCommand = "bold" | "emphasis" | "inlineCode" | "standardLink";
-
-const selectionToolbar = document.createElement("div");
-selectionToolbar.id = "scholium-selection-actions";
-selectionToolbar.className = "scholium-selection-actions";
-selectionToolbar.hidden = true;
-selectionToolbar.dataset.scholiumProtected = "selection-actions";
-const selectionCommandBar = document.createElement("div");
-selectionCommandBar.className = "scholium-selection-toolbar";
-selectionCommandBar.setAttribute("role", "toolbar");
-selectionCommandBar.setAttribute("aria-label", "Formatting actions");
-selectionToolbar.append(selectionCommandBar);
-document.body.append(selectionToolbar);
-
-let selectionToolbarView: EditorView | null = null;
-
-function selectionToolbarButton(
-  title: string,
-  label: string,
-  action: () => void,
-) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = title;
-  button.setAttribute("aria-label", label);
-  button.title = label;
-  button.addEventListener("mousedown", (event) => event.preventDefault());
-  button.addEventListener("click", action);
-  selectionCommandBar.append(button);
-  return button;
-}
-
-function applySelectionToolbarCommand(view: EditorView, command: SelectionToolbarCommand) {
+function applySelectionAction(view: EditorView, command: SelectionActionCommand) {
   const transformed = transformMarkdown(
     view.state.doc.toString(),
     view.state.selection.ranges.map((range) => ({anchor: range.anchor, head: range.head})),
@@ -2623,51 +2597,9 @@ function applySelectionToolbarCommand(view: EditorView, command: SelectionToolba
   view.focus();
 }
 
-for (const [title, label, command] of [
-  ["B", "Bold", "bold"],
-  ["I", "Italic", "emphasis"],
-  ["</>", "Inline Code", "inlineCode"],
-  ["↗", "Link", "standardLink"],
-] as const) {
-  selectionToolbarButton(title, label, () => {
-    if (selectionToolbarView) applySelectionToolbarCommand(selectionToolbarView, command);
-  });
-}
-
-function hideSelectionToolbar() {
-  selectionToolbar.hidden = true;
-  selectionToolbarView = null;
-}
-
-function updateSelectionToolbar(view: EditorView) {
-  const selection = view.state.selection;
-  const main = selection.main;
-  if (currentMode !== "livePreview" || view.composing || !view.hasFocus
-      || selection.ranges.length !== 1 || main.empty) {
-    hideSelectionToolbar();
-    return;
-  }
-  const from = Math.min(main.anchor, main.head);
-  const to = Math.max(main.anchor, main.head);
-  const start = view.coordsAtPos(from);
-  const end = view.coordsAtPos(to);
-  if (!start || !end) {
-    hideSelectionToolbar();
-    return;
-  }
-  selectionToolbarView = view;
-  selectionToolbar.hidden = false;
-  const measured = selectionToolbar.getBoundingClientRect();
-  selectionToolbar.style.left = `${Math.max(12, Math.min(
-    Math.min(start.left, end.left), window.innerWidth - measured.width - 12,
-  ))}px`;
-  selectionToolbar.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
-}
-
-const selectionToolbarReporter = EditorView.updateListener.of((update) => {
-  if (update.docChanged || update.selectionSet || update.focusChanged) {
-    updateSelectionToolbar(update.view);
-  }
+const selectionActions = createSelectionActionsController({
+  mode: () => currentMode,
+  applyCommand: applySelectionAction,
 });
 
 const editorExtensions = [
@@ -2694,7 +2626,7 @@ const editorExtensions = [
       structuralInteractionKeymap,
       saveKeymap,
       stateReporter,
-      selectionToolbarReporter,
+      selectionActions.extension,
       linkActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
       liveProjectionIndexField,
@@ -2713,224 +2645,19 @@ editor.dom.classList.add("scholium-live-mode");
 editor.scrollDOM.classList.add("scholium-live-scroller");
 editor.contentDOM.addEventListener("keydown", () => { pendingKeyStartedAt = performance.now(); }, {capture: true});
 
-const previewPopover = document.createElement("aside");
-previewPopover.id = "scholium-preview-popover";
-previewPopover.className = "scholium-preview-popover";
-previewPopover.dataset.scholiumProtected = "preview-popover";
-previewPopover.setAttribute("role", "tooltip");
-previewPopover.setAttribute("aria-live", "polite");
-previewPopover.hidden = true;
-const previewTitle = document.createElement("h2");
-previewTitle.className = "scholium-preview-title";
-const previewMetadata = document.createElement("p");
-previewMetadata.className = "scholium-preview-metadata";
-const previewBody = document.createElement("div");
-previewBody.className = "scholium-preview-body";
-previewBody.setAttribute("role", "group");
-previewBody.setAttribute("aria-label", "Preview content");
-previewPopover.append(previewTitle, previewMetadata, previewBody);
-document.body.append(previewPopover);
-
-const relationshipLabels: Record<VectorLinkKind, string> = {
-  neutral: "Related note",
-  supports: "Supports",
-  opposes: "Opposes",
-  incompatible: "Incompatible",
-};
-let previewTimer: number | undefined;
-let pendingPreviewAnchor: HTMLElement | null = null;
-type PreviewAnchorRect = Pick<DOMRect, "left" | "right" | "top" | "bottom">;
-
-function hidePreview() {
-  window.clearTimeout(previewTimer);
-  previewTimer = undefined;
-  pendingPreviewAnchor = null;
-  previewPopover.hidden = true;
-  previewPopover.style.visibility = "";
-  previewTitle.textContent = "";
-  previewMetadata.textContent = "";
-  previewBody.replaceChildren();
-}
-
-function positionPreview(anchor: PreviewAnchorRect, startedAt: number) {
-  previewPopover.style.visibility = "hidden";
-  previewPopover.hidden = false;
-  const inset = 12;
-  const gap = 8;
-  editor.requestMeasure({
-    read: () => ({
-      measured: previewPopover.getBoundingClientRect(),
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-    }),
-    write: ({measured, viewportWidth, viewportHeight}) => {
-      if (previewPopover.hidden) return;
-      const left = Math.max(inset, Math.min(anchor.left, viewportWidth - measured.width - inset));
-      const below = anchor.bottom + gap;
-      const top = below + measured.height <= viewportHeight - inset
-        ? below
-        : Math.max(inset, anchor.top - measured.height - gap);
-      previewPopover.style.left = `${left}px`;
-      previewPopover.style.top = `${top}px`;
-      previewPopover.style.visibility = "visible";
-      window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
-        documentLength: editor.state.doc.length,
-      }));
-    },
-  });
-}
-
-function removeInteractivePreviewContent(root: HTMLElement) {
-  root.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
-  root.querySelectorAll<HTMLElement>("*").forEach((node) => {
-    for (const attribute of Array.from(node.attributes)) {
-      if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-    }
-    node.removeAttribute("href");
-    node.removeAttribute("contenteditable");
-    node.tabIndex = -1;
-  });
-}
-
-function showLinkPreview(preview: LinkPreview, anchor: PreviewAnchorRect, startedAt: number) {
-  previewTitle.textContent = preview.title;
-  const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
-  previewMetadata.textContent = preview.fragment
-    ? `${relationship}\n${preview.fragment}`
-    : relationship;
-  previewBody.innerHTML = preview.htmlBody;
-  removeInteractivePreviewContent(previewBody);
-  recordEditorMetric("cached-preview-work", startedAt, {
-    documentLength: editor.state.doc.length,
-  });
-  positionPreview(anchor, startedAt);
-}
-
-function showPreviewAtSelection() {
-  const startedAt = performance.now();
-  if (currentMode !== "livePreview") return false;
-  const head = editor.state.selection.main.head;
-  const coords = editor.coordsAtPos(head);
-  if (!coords) return false;
-  const preview = linkPreviews.find((candidate) => head >= candidate.from && head < candidate.to);
-  if (preview) {
-    showLinkPreview(preview, coords, startedAt);
-    return true;
-  }
-  announceEditorMessage(editor.contentDOM, "No preview is available at the insertion point.");
-  return false;
-}
-
-function showPreviewAtPoint(x: number, y: number) {
-  const startedAt = performance.now();
-  if (currentMode !== "livePreview") return false;
-  const anchor = document.elementFromPoint(x, y)?.closest<HTMLElement>(
-    "[data-link-preview-index]",
-  );
-  if (!anchor) return showPreviewAtSelection();
-  const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-  if (Number.isInteger(previewIndex) && linkPreviews[previewIndex]) {
-    showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
-    return true;
-  }
-  return showPreviewAtSelection();
-}
-
-function previewAnchorAtEvent(event: PointerEvent): HTMLElement | null {
-  if (!event.metaKey || currentMode !== "livePreview" || !(event.target instanceof Element)) return null;
-  return event.target.closest<HTMLElement>("[data-link-preview-index]");
-}
-
-document.addEventListener("pointermove", (event) => {
-  const anchor = previewAnchorAtEvent(event);
-  if (!anchor) {
-    if (pendingPreviewAnchor || !previewPopover.hidden) hidePreview();
-    return;
-  }
-  if (anchor === pendingPreviewAnchor) return;
-  hidePreview();
-  pendingPreviewAnchor = anchor;
-  previewTimer = window.setTimeout(() => {
-    if (pendingPreviewAnchor !== anchor) return;
-    const startedAt = performance.now();
-    const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-    if (Number.isInteger(previewIndex) && linkPreviews[previewIndex]) {
-      showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
-      return;
-    }
-  }, 300);
-}, {passive: true});
-document.addEventListener("keyup", (event) => {
-  if (event.key === "Meta") hidePreview();
+const previewPopover = createPreviewPopoverController(editor, {
+  mode: () => currentMode,
+  previews: () => linkPreviews,
 });
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !previewPopover.hidden) hidePreview();
+const scrollCoordinator = createEditorScrollCoordinator(editor, {
+  post: (scrollAnchor) => post({
+    type: "scrollChanged",
+    scrollFraction: scrollAnchor.fallbackFraction,
+    scrollAnchor,
+  }),
+  onScroll: () => selectionActions.update(editor),
+  flushPresentationGeometry: flushPresentationStyleAndGeometry,
 });
-
-function currentEditorScrollAnchor(): EditorScrollAnchor {
-  const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
-  const fallbackFraction = extent > 0
-    ? Math.max(0, Math.min(1, editor.scrollDOM.scrollTop / extent))
-    : 0;
-  const probeHeight = Math.max(0, editor.scrollDOM.scrollTop + 8);
-  const block = editor.lineBlockAtHeight(probeHeight);
-  const relativeBlockPosition = block.height > 0
-    ? Math.max(0, Math.min(1, (probeHeight - block.top) / block.height))
-    : 0;
-  return {
-    sourceUTF16Offset: block.from,
-    blockUTF16LowerBound: block.from,
-    blockUTF16UpperBound: block.to,
-    relativeBlockPosition,
-    fallbackFraction,
-  };
-}
-
-function postCurrentScrollPosition() {
-  const scrollAnchor = currentEditorScrollAnchor();
-  post({type: "scrollChanged", scrollFraction: scrollAnchor.fallbackFraction, scrollAnchor});
-}
-
-let scrollReportTimer: number | undefined;
-let scrollSessionStartedAt: number | null = null;
-let previousScrollFrameAt: number | null = null;
-let scrollMeasurementFrame: number | null = null;
-let scrollSessionFrameCount = 0;
-let scrollSessionLongestFrame = 0;
-let scrollSessionDroppedFrameCount = 0;
-editor.scrollDOM.addEventListener("scroll", () => {
-  updateSelectionToolbar(editor);
-  if (scrollSessionStartedAt === null) scrollSessionStartedAt = performance.now();
-  if (scrollMeasurementFrame === null) {
-    scrollMeasurementFrame = window.requestAnimationFrame(() => {
-      scrollMeasurementFrame = null;
-      const now = performance.now();
-      scrollSessionFrameCount += 1;
-      if (previousScrollFrameAt !== null) {
-        const duration = Math.max(0, now - previousScrollFrameAt);
-        scrollSessionLongestFrame = Math.max(scrollSessionLongestFrame, duration);
-        if (duration > 20) scrollSessionDroppedFrameCount += 1;
-      }
-      previousScrollFrameAt = now;
-    });
-  }
-  window.clearTimeout(scrollReportTimer);
-  scrollReportTimer = window.setTimeout(() => {
-    postCurrentScrollPosition();
-    if (scrollSessionStartedAt !== null) {
-      recordEditorMetric("scroll-session", scrollSessionStartedAt, {
-        frameCount: scrollSessionFrameCount,
-        longestFrameMilliseconds: scrollSessionLongestFrame,
-        droppedFrameCount: scrollSessionDroppedFrameCount,
-      });
-    }
-    scrollSessionStartedAt = null;
-    previousScrollFrameAt = null;
-    scrollSessionFrameCount = 0;
-    scrollSessionLongestFrame = 0;
-    scrollSessionDroppedFrameCount = 0;
-  }, 120);
-}, { passive: true });
 
 const allCommands = [
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode",
@@ -3076,8 +2803,8 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
-  case "showPreview": showPreviewAtSelection(); break;
-  case "showPreviewAt": showPreviewAtPoint(operation.x, operation.y); break;
+  case "showPreview": previewPopover.showAtSelection(); break;
+  case "showPreviewAt": previewPopover.showAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
   case "goToLine": editorOperations.goToLine(operation.line); break;
   case "revealSourceRange": editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16); break;
@@ -3091,7 +2818,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "queryContext": return {...successfulResult(request.requestID), context: currentEditorContext()};
   case "queryScrollAnchor": return {
     ...successfulResult(request.requestID),
-    scrollAnchor: currentEditorScrollAnchor(),
+    scrollAnchor: scrollCoordinator.currentAnchor(),
   };
   case "queryPerformance": return {
     ...successfulResult(request.requestID),
@@ -3295,28 +3022,12 @@ editor.contentDOM.addEventListener("drop", (event) => {
   if (pasteTransfer(event.dataTransfer, position ?? undefined)) event.preventDefault();
 }, {capture: true});
 
-let dynamicStyleMeasureScheduled = false;
-function scheduleDynamicStyleMeasure() {
-  if (dynamicStyleMeasureScheduled) return;
-  dynamicStyleMeasureScheduled = true;
-  queueMicrotask(() => {
-    dynamicStyleMeasureScheduled = false;
-    const documentSnapshot = editor.state.doc;
-    editor.requestMeasure({
-      read: () => editor.state.doc === documentSnapshot,
-      write: (isCurrentDocument) => {
-        if (isCurrentDocument && editor.state.doc === documentSnapshot) postCurrentScrollPosition();
-      },
-    });
-  });
-}
-
 function setDynamicStyle(id: string, css: string) {
   const style = document.getElementById(id);
   if (!style || style.textContent === css) return;
   style.textContent = css;
-  scheduleDynamicStyleMeasure();
-  void document.fonts.ready.then(scheduleDynamicStyleMeasure);
+  scrollCoordinator.scheduleGeometryReport();
+  void document.fonts.ready.then(scrollCoordinator.scheduleGeometryReport);
 }
 
 function flushPresentationStyleAndGeometry() {
@@ -3365,7 +3076,7 @@ async function convergeLivePreviewProjection() {
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
-    hidePreview();
+    previewPopover.hide();
     compositionGate.rejectAll((pending) => rejected(
       pending.requestID,
       documentVersion,
@@ -3394,7 +3105,7 @@ const editorOperations = {
   /** @param {string} mode */
   async setMode(mode: string) {
     const startedAt = performance.now();
-    hidePreview();
+    previewPopover.hide();
     const scrollSnapshot = editor.scrollSnapshot();
     const nextMode = mode === "livePreview" ? "livePreview" : "source";
     let selection: EditorSelection | undefined;
@@ -3426,7 +3137,7 @@ const editorOperations = {
     editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
     editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
     currentMode = nextMode;
-    updateSelectionToolbar(editor);
+    selectionActions.update(editor);
     updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
     scheduleEditorInteractionReport(true);
     recordEditorMetric("mode-toggle-work", startedAt, {
@@ -3440,7 +3151,7 @@ const editorOperations = {
         {documentLength},
       )),
     });
-    window.setTimeout(postCurrentScrollPosition, 0);
+    window.setTimeout(scrollCoordinator.postCurrent, 0);
     if (nextMode === "livePreview") {
       await convergeLivePreviewProjection();
     }
@@ -3492,78 +3203,11 @@ const editorOperations = {
     // Scroll restoration is the final independent bridge turn before native
     // reveals a newly created editor. Resolve presentation CSS and projected
     // line geometry here so its acknowledgement is a real visibility barrier.
-    flushPresentationStyleAndGeometry();
-    const fraction = Number.isFinite(requestedFraction)
-      ? Math.max(0, Math.min(1, requestedFraction))
-      : 0;
-    const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
-    editor.scrollDOM.scrollTop = extent * fraction;
+    scrollCoordinator.setFraction(requestedFraction);
   },
 
   setScrollAnchor(anchor: EditorScrollAnchor) {
-    flushPresentationStyleAndGeometry();
-    const documentLength = editor.state.doc.length;
-    const valid = Number.isSafeInteger(anchor.sourceUTF16Offset)
-      && anchor.sourceUTF16Offset >= 0
-      && anchor.sourceUTF16Offset <= documentLength
-      && Number.isSafeInteger(anchor.blockUTF16LowerBound)
-      && Number.isSafeInteger(anchor.blockUTF16UpperBound)
-      && anchor.blockUTF16LowerBound >= 0
-      && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset
-      && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset
-      && anchor.blockUTF16UpperBound <= documentLength;
-    if (!valid) {
-      this.setScrollFraction(anchor.fallbackFraction);
-      return;
-    }
-    const documentSnapshot = editor.state.doc;
-    const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
-    const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound
-      && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound
-      ? anchor.blockUTF16LowerBound + 1
-      : anchor.sourceUTF16Offset;
-    const requestedScrollTop = () => {
-      // CodeMirror positions at a newline boundary may associate with the
-      // preceding line. A validated semantic block range lets restoration
-      // probe one UTF-16 unit inside the intended block without changing the
-      // authoritative source offset stored in the anchor.
-      const block = editor.lineBlockAt(blockProbe);
-      return Math.max(0, block.top + block.height * relativePosition - 4);
-    };
-    const applyMeasuredAnchor = () => {
-      if (editor.state.doc !== documentSnapshot) return;
-      editor.requestMeasure({
-        read: () => editor.state.doc === documentSnapshot ? requestedScrollTop() : null,
-        write: (scrollTop) => {
-          if (scrollTop === null || editor.state.doc !== documentSnapshot) return;
-          editor.scrollDOM.scrollTop = scrollTop;
-          postCurrentScrollPosition();
-        },
-      });
-    };
-    const applyScrollEffect = () => {
-      if (editor.state.doc !== documentSnapshot) return;
-      editor.dispatch({
-        effects: EditorView.scrollIntoView(blockProbe, {y: "start", yMargin: 4}),
-      });
-    };
-    // `lineBlockAt` supplies estimated geometry even while the retained
-    // WebView is offscreen, so restore immediately. A measured pass and a
-    // local-font-ready pass then correct any line-box change without allowing
-    // a late callback to target a replacement document.
-    editor.scrollDOM.scrollTop = requestedScrollTop();
-    postCurrentScrollPosition();
-    applyScrollEffect();
-    applyMeasuredAnchor();
-    void document.fonts.ready.then(applyMeasuredAnchor);
-    window.requestAnimationFrame(() => {
-      applyScrollEffect();
-      applyMeasuredAnchor();
-    });
-    window.setTimeout(() => {
-      applyScrollEffect();
-      applyMeasuredAnchor();
-    }, 80);
+    scrollCoordinator.setAnchor(anchor);
   },
 
   synchronizeCommittedText(expectedText: string, committedText: string, startingFingerprint: string) {
@@ -3596,7 +3240,7 @@ const editorOperations = {
   },
 
   blur() {
-    hidePreview();
+    previewPopover.hide();
     editor.contentDOM.blur();
   },
 };

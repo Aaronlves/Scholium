@@ -932,20 +932,20 @@ struct ResearchSkillMaintenanceReplacementHooks: Sendable {
 }
 
 /// Owns explicit Research Guidance maintenance for one Triptych. Research
-/// Skill package discovery remains in `ResearchSkillStore`; this actor owns
+/// Skill package discovery remains in `ResearchSkillTransactionCoordinator`; this actor owns
 /// only bounded whole-package evaluation, replacement, snapshot, and rollback.
 /// Its snapshots are injected from Triptych-scoped Application Support and
 /// never written into a research vault or portable `.scholium/` state.
 public actor ResearchSkillMaintenanceStore {
     public nonisolated let snapshotRootURL: URL
 
-    private let skillStore: ResearchSkillStore
+    private let skillStore: ResearchSkillTransactionCoordinator
     private let fileManager: FileManager
     private let replacementHooks: ResearchSkillMaintenanceReplacementHooks
     private var preparations: [UUID: ResearchSkillMaintenancePreparation] = [:]
 
     public init(
-        skillStore: ResearchSkillStore,
+        skillStore: ResearchSkillTransactionCoordinator,
         snapshotRootURL: URL,
         fileManager: FileManager = .default
     ) {
@@ -956,7 +956,7 @@ public actor ResearchSkillMaintenanceStore {
     }
 
     init(
-        skillStore: ResearchSkillStore,
+        skillStore: ResearchSkillTransactionCoordinator,
         snapshotRootURL: URL,
         fileManager: FileManager = .default,
         replacementHooks: ResearchSkillMaintenanceReplacementHooks
@@ -1832,7 +1832,7 @@ public actor ResearchSkillMaintenanceStore {
                 "The snapshot does not identify a Triptych-local Researcher Skill."
             )
         }
-        let package = ResearchSkillStore.inspectDraft(
+        let package = ResearchSkillTransactionCoordinator.inspectDraft(
             id: snapshot.manifest.packageID,
             source: entryPoint,
             origin: .triptych

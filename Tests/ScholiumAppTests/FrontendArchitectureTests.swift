@@ -319,17 +319,18 @@ struct FrontendArchitectureTests {
         #expect(!contentSource.contains("documentIdentityHeader(for:"))
         #expect(toolbarSource.contains("static let inspector = NSToolbarItem.Identifier"))
         #expect(toolbarSource.contains("\"scholium.toolbar.inspector\""))
-        #expect(toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
+        #expect(toolbarSource.contains("ScholiumWorkspaceShowInspectorToolbarView"))
         #expect(toolbarSource.contains("identifier: \"scholium.toggleInspector\""))
         #expect(toolbarSource.contains(
-            "windowActions.setResearchInspectorVisible(!isVisible)"
+            "windowActions.setResearchInspectorVisible(true)"
         ))
         #expect(toolbarSource.contains(
-            "!isVisible && appState.documentController.selectedDocument == nil"
+            "appState.documentController.selectedDocument == nil"
         ))
-        #expect(toolbarSource.contains(
-            "isVisible ? \"Hide Research Inspector\" : \"Show Research Inspector\""
-        ))
+        #expect(!toolbarSource.contains("Hide Research Inspector"))
+        #expect(sidebarSource.contains("Hide Sidebar"))
+        #expect(noteSource.contains("Hide Research Inspector"))
+        #expect(contentSource.contains("apparatusHideControl"))
         #expect(appSource.contains(
             "appState?.researchInspectorVisible != true"
         ))
@@ -414,8 +415,8 @@ struct FrontendArchitectureTests {
         #expect(controller.minimumThicknessForInlineSidebars == NSSplitViewController.automaticDimension)
     }
 
-    @Test("Peripheral toolbar controls cross the correct tracking separator exactly once")
-    func peripheralToolbarTransferLayout() throws {
+    @Test("Only collapsed peripheral Show controls enter the Document toolbar")
+    func collapsedPeripheralToolbarLayout() throws {
         typealias Item = ScholiumWorkspaceToolbarController.Item
 
         for sidebarVisible in [false, true] {
@@ -424,7 +425,6 @@ struct FrontendArchitectureTests {
                     sidebarVisible: sidebarVisible,
                     researchInspectorVisible: researchInspectorVisible
                 )
-                let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
                 let libraryDividerIndex = try #require(
                     identifiers.firstIndex(of: Item.libraryDivider)
                 )
@@ -434,22 +434,26 @@ struct FrontendArchitectureTests {
                 let apparatusDividerIndex = try #require(
                     identifiers.firstIndex(of: Item.apparatusDivider)
                 )
-                let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
-
-                #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
-                #expect(identifiers.filter { $0 == Item.inspector }.count == 1)
-                #expect(
-                    sidebarVisible
-                        ? sidebarIndex < libraryDividerIndex
-                        : sidebarIndex > libraryDividerIndex
-                )
                 #expect(libraryDividerIndex < documentIndex)
                 #expect(documentIndex < apparatusDividerIndex)
-                #expect(
-                    researchInspectorVisible
-                        ? inspectorIndex > apparatusDividerIndex
-                        : inspectorIndex < apparatusDividerIndex
-                )
+                if sidebarVisible {
+                    #expect(!identifiers.contains(Item.sidebar))
+                } else {
+                    let sidebarIndex = try #require(
+                        identifiers.firstIndex(of: Item.sidebar)
+                    )
+                    #expect(libraryDividerIndex < sidebarIndex)
+                    #expect(sidebarIndex < documentIndex)
+                }
+                if researchInspectorVisible {
+                    #expect(!identifiers.contains(Item.inspector))
+                } else {
+                    let inspectorIndex = try #require(
+                        identifiers.firstIndex(of: Item.inspector)
+                    )
+                    #expect(documentIndex < inspectorIndex)
+                    #expect(inspectorIndex < apparatusDividerIndex)
+                }
             }
         }
 
@@ -651,7 +655,7 @@ struct FrontendArchitectureTests {
                 separatedBy: "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
             ).count >= 3
         )
-        #expect(!sidebarSource.contains("ScholiumInkIconControl("))
+        #expect(sidebarSource.contains("title: ScholiumL10n.dynamicString(\"Hide Sidebar\")"))
 
         for section in ["Integrity", "Metadata", "Properties", "Order", "Actions"] {
             #expect(sidebarSource.contains("Section(\"\(section)\")"))
@@ -741,7 +745,6 @@ struct FrontendArchitectureTests {
             "scholium.lifecycleBack",
             "sidebarBottomRegion",
             "libraryFooterHeight",
-            "ScholiumInkIconControl(",
             ".boundedPanel",
             "0.48",
             ".move(edge: .bottom)",
@@ -858,10 +861,21 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let uiTestSource = try String(
-            contentsOf: repository.appendingPathComponent("UITests/ScholiumUITests.swift"),
-            encoding: .utf8
-        )
+        let uiTestSource = try [
+            "ScholiumUITests.swift",
+            "ScholiumUITests+WorkspaceResearch.swift",
+            "ScholiumUITests+PresentationRecords.swift",
+            "ScholiumUITests+WindowsLifecycle.swift",
+            "ScholiumUITests+EditorCoordination.swift",
+            "ScholiumUITests+Support.swift",
+            "ScholiumPerformanceUITests.swift",
+            "ScholiumUpgradeSafetyUITests.swift",
+        ].map { fileName in
+            try String(
+                contentsOf: repository.appendingPathComponent("UITests/\(fileName)"),
+                encoding: .utf8
+            )
+        }.joined(separator: "\n")
         let appSource = try String(
             contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
             encoding: .utf8
@@ -1150,7 +1164,7 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("\"scholium.showResearchRecord\""))
         #expect(toolbar.contains("windowActions.showResearchRecord()"))
         #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
-        #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
+        #expect(toolbar.contains("ScholiumWorkspaceShowInspectorToolbarView"))
         #expect(toolbar.contains("static let researchRecord"))
         #expect(toolbar.contains("selectedDocument == nil"))
         #expect(toolbar.contains(".disabled(!isAvailable)"))
@@ -1417,20 +1431,24 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+        let searchSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/Window/WindowSearchController.swift"
+            ),
             encoding: .utf8
         )
         let searchBoundary = try #require(
-            appSource.range(of: "func beginSearch(_ invocation: SearchInvocation)")
+            searchSource.range(of: "func begin(_ invocation: SearchInvocation)")
         )
         let dismissalBoundary = try #require(
-            appSource.range(
-                of: "func dismissSearch()",
-                range: searchBoundary.upperBound ..< appSource.endIndex
+            searchSource.range(
+                of: "func dismiss()",
+                range: searchBoundary.upperBound ..< searchSource.endIndex
             )
         )
-        let implementation = appSource[searchBoundary.lowerBound ..< dismissalBoundary.lowerBound]
+        let implementation = searchSource[
+            searchBoundary.lowerBound ..< dismissalBoundary.lowerBound
+        ]
         #expect(implementation.contains("discoveryController.presentSearch(invocation)"))
         #expect(!implementation.contains("flushRegisteredEditorIfNeeded"))
         #expect(!implementation.contains("save"))
@@ -1464,12 +1482,14 @@ struct FrontendArchitectureTests {
         )
         for forbidden in [
             "WindowModel", "ResearchFunctionController", "FileManager",
-            "ResearchSkillStore", "import ScholiumApplication",
+            "ResearchSkillTransactionCoordinator", "import ScholiumApplication",
         ] {
             #expect(!section.contains(forbidden))
             #expect(!controller.contains(forbidden))
         }
         #expect(controller.contains("final class RecommendedBibliographyController"))
+        #expect(controller.contains("RecommendedBibliographyScope"))
+        #expect(!controller.contains("RecommendedBibliographyTarget"))
         #expect(controller.contains("It owns no repository, skill package, YAML, or filesystem authority."))
         #expect(!section.contains("Triptych · Reading leads, not evidence"))
         #expect(section.contains("Triptych Recommended Bibliography"))
@@ -1487,6 +1507,7 @@ struct FrontendArchitectureTests {
         #expect(section.contains("Dismiss"))
         #expect(section.contains("Repair in Research Guidance"))
         #expect(section.contains("Recommended Bibliography"))
+        #expect(!section.contains("Open an Analysis to prepare"))
         #expect(!section.contains("SidebarLiteratureSection"))
         #expect(ScholiumMetrics.Library.bibliographyTopInset == 12)
         #expect(ScholiumMetrics.Library.bibliographyBottomInset == 16)
@@ -1935,7 +1956,7 @@ struct FrontendArchitectureTests {
             appSource.range(of: "func showToast(_ message:")
         )
         let suffix = appSource[showToastSource.lowerBound...]
-        let end = suffix.range(of: "private func refreshDocumentRevisions")
+        let end = suffix.range(of: "private func refreshIdentityState")
         let body = end.map { String(suffix[..<$0.lowerBound]) } ?? String(suffix.prefix(1_000))
         #expect(!body.contains("withAnimation"))
     }
@@ -2324,12 +2345,16 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
             encoding: .utf8
         )
-        let fractionOperation = try #require(
-            editorSource.range(of: "setScrollFraction(requestedFraction: number) {")
+        let scrollSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/scroll-coordinator.ts"),
+            encoding: .utf8
         )
-        let fractionTail = editorSource[fractionOperation.lowerBound...]
+        let fractionOperation = try #require(
+            scrollSource.range(of: "function setFraction(requestedFraction: number) {")
+        )
+        let fractionTail = scrollSource[fractionOperation.lowerBound...]
         let fractionBarrier = try #require(fractionTail.range(
-            of: "flushPresentationStyleAndGeometry();"
+            of: "options.flushPresentationGeometry();"
         ))
         let fractionExtent = try #require(fractionTail.range(
             of: "const extent = Math.max(0, editor.scrollDOM.scrollHeight"
@@ -2337,14 +2362,17 @@ struct FrontendArchitectureTests {
         #expect(fractionBarrier.lowerBound < fractionExtent.lowerBound)
 
         let anchorOperation = try #require(
-            editorSource.range(of: "setScrollAnchor(anchor: EditorScrollAnchor) {")
+            scrollSource.range(of: "function setAnchor(anchor: EditorScrollAnchor) {")
         )
-        let anchorTail = editorSource[anchorOperation.lowerBound...]
+        let anchorTail = scrollSource[anchorOperation.lowerBound...]
         let anchorBarrier = try #require(anchorTail.range(
-            of: "flushPresentationStyleAndGeometry();"
+            of: "options.flushPresentationGeometry();"
         ))
         let anchorGeometry = try #require(anchorTail.range(of: "editor.lineBlockAt(blockProbe)"))
         #expect(anchorBarrier.lowerBound < anchorGeometry.lowerBound)
+        #expect(editorSource.contains(
+            "flushPresentationGeometry: flushPresentationStyleAndGeometry"
+        ))
         #expect(editorSource.contains("getComputedStyle(element).fontSize"))
         #expect(editorSource.contains("element.getBoundingClientRect().width"))
         #expect(!editorSource.contains("SCHOLIUM_UI_TEST_EDITOR_PRESENTATION_MARKER"))
@@ -2575,9 +2603,13 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
             encoding: .utf8
         )
+        let selectionActionsSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/selection-actions.ts"),
+            encoding: .utf8
+        )
         let editorMenuSource = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorWebView.swift"
+                "Scholium/Views/Note/MarkdownEditorNativeWebView.swift"
             ),
             encoding: .utf8
         )
@@ -2611,12 +2643,10 @@ struct FrontendArchitectureTests {
         #expect(readHTML.contains("endLine"))
         #expect(!readHTML.contains("quotation:"))
         #expect(!readHTML.contains("utf16Range"))
-        #expect(editorSource.contains(#"currentMode !== "livePreview""#))
-        #expect(editorSource.contains("view.composing || !view.hasFocus"))
-        #expect(editorSource.contains(#"["B", "Bold", "bold"]"#))
-        #expect(editorSource.contains(
-            #"selectionToolbar.className = "scholium-selection-actions""#
-        ))
+        #expect(selectionActionsSource.contains(#"options.mode() !== "livePreview""#))
+        #expect(selectionActionsSource.contains("view.composing || !view.hasFocus"))
+        #expect(selectionActionsSource.contains(#"addButton("B", "Bold", "bold")"#))
+        #expect(selectionActionsSource.contains(#"root.className = "scholium-selection-actions""#))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             ".scholium-selection-actions"
         ))
@@ -2631,7 +2661,7 @@ struct FrontendArchitectureTests {
         ))
         #expect(!editorSource.contains("commentSubmitted"))
         #expect(!editorSource.contains("showCommentComposer"))
-        #expect(!editorSource.contains(#"selectionToolbarButton("Comment", "Comment""#))
+        #expect(!selectionActionsSource.contains(#"addButton("Comment", "Comment""#))
         #expect(!editorMenuSource.contains("Comment on Selection"))
         #expect(!editorMenuSource.contains("commentSubmitted"))
         #expect(!editorMenuSource.contains("onRequestComment"))

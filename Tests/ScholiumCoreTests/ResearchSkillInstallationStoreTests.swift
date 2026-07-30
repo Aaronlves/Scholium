@@ -27,7 +27,7 @@ struct ResearchSkillInstallationStoreTests {
         try await Task.sleep(for: .milliseconds(1_500))
         let replacement = try await installer.stage(directoryURL: fixture.source)
         #expect(replacement.packageID == fixture.packageID)
-        let destination = ResearchSkillStore(controlURL: fixture.firstControl)
+        let destination = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await destination.installDefaultWorkingMethods()
 
         await #expect(throws: ResearchSkillInstallationError.self) {
@@ -80,8 +80,8 @@ struct ResearchSkillInstallationStoreTests {
         defer { fixture.remove() }
         try fixture.writeValidPackage()
 
-        let first = ResearchSkillStore(controlURL: fixture.firstControl)
-        let second = ResearchSkillStore(controlURL: fixture.secondControl)
+        let first = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
+        let second = ResearchSkillTransactionCoordinator(controlURL: fixture.secondControl)
         let firstBinding = try await first.installDefaultWorkingMethods()
         let secondBinding = try await second.installDefaultWorkingMethods()
         let installer = ResearchSkillInstallationStore()
@@ -274,8 +274,8 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let first = ResearchSkillStore(controlURL: fixture.firstControl)
-        let second = ResearchSkillStore(controlURL: fixture.secondControl)
+        let first = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
+        let second = ResearchSkillTransactionCoordinator(controlURL: fixture.secondControl)
         _ = try await first.installDefaultWorkingMethods()
         _ = try await second.installDefaultWorkingMethods()
         _ = try await second.create(
@@ -314,8 +314,8 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let first = ResearchSkillStore(controlURL: fixture.firstControl)
-        let second = ResearchSkillStore(controlURL: fixture.secondControl)
+        let first = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
+        let second = ResearchSkillTransactionCoordinator(controlURL: fixture.secondControl)
         _ = try await first.installDefaultWorkingMethods()
         _ = try await second.installDefaultWorkingMethods()
         let installer = ResearchSkillInstallationStore(
@@ -363,7 +363,7 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let destination = ResearchSkillStore(controlURL: fixture.firstControl)
+        let destination = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await destination.installDefaultWorkingMethods()
         let installedPackage = fixture.firstControl.appendingPathComponent(
             "skills/\(fixture.packageID)",
@@ -418,7 +418,7 @@ struct ResearchSkillInstallationStoreTests {
             skillSource: InstallationFixture.validMethodSkillSource
         )
 
-        let current = ResearchSkillStore(controlURL: fixture.firstControl)
+        let current = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         let currentBinding = try await current.installDefaultWorkingMethods()
         _ = try await current.create(
             id: fixture.packageID,
@@ -450,7 +450,7 @@ struct ResearchSkillInstallationStoreTests {
             #expect(error == .destinationBindingConflict(fixture.packageID))
         }
 
-        let retained = ResearchSkillStore(controlURL: fixture.secondControl)
+        let retained = ResearchSkillTransactionCoordinator(controlURL: fixture.secondControl)
         _ = try await retained.installDefaultWorkingMethods()
         let ignoredRetainedDocument = """
         {
@@ -463,7 +463,9 @@ struct ResearchSkillInstallationStoreTests {
           "bibliography_method_binding": null
         }
         """
-        try Data(ignoredRetainedDocument.utf8).write(to: retained.bindingsURL)
+        try Data(ignoredRetainedDocument.utf8).write(
+            to: retained.legacyFunctionBindingsURL
+        )
         let ignoredPreparation = try await installer.stage(directoryURL: fixture.source)
         _ = try await installer.install(
             ignoredPreparation,
@@ -472,6 +474,12 @@ struct ResearchSkillInstallationStoreTests {
                 skillStore: retained
             )]
         )
+        #expect(!FileManager.default.fileExists(
+            atPath: retained.citationMethodBindingsURL.path
+        ))
+        #expect(!FileManager.default.fileExists(
+            atPath: retained.bibliographyMethodBindingsURL.path
+        ))
         try FileManager.default.removeItem(
             at: fixture.secondControl.appendingPathComponent(
                 "skills/\(fixture.packageID)"
@@ -489,7 +497,9 @@ struct ResearchSkillInstallationStoreTests {
           "bibliography_method_binding": "\(fixture.packageID)"
         }
         """
-        try Data(executableRetainedDocument.utf8).write(to: retained.bindingsURL)
+        try Data(executableRetainedDocument.utf8).write(
+            to: retained.legacyFunctionBindingsURL
+        )
         let retainedPreparation = try await installer.stage(directoryURL: fixture.source)
         do {
             _ = try await installer.install(
@@ -503,6 +513,12 @@ struct ResearchSkillInstallationStoreTests {
         } catch let error as ResearchSkillInstallationError {
             #expect(error == .destinationBindingConflict(fixture.packageID))
         }
+        #expect(!FileManager.default.fileExists(
+            atPath: retained.citationMethodBindingsURL.path
+        ))
+        #expect(!FileManager.default.fileExists(
+            atPath: retained.bibliographyMethodBindingsURL.path
+        ))
     }
 
     @Test("A post-publish hard link fails closed and is quarantined")
@@ -510,7 +526,7 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let destination = ResearchSkillStore(controlURL: fixture.firstControl)
+        let destination = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await destination.installDefaultWorkingMethods()
         let installedEntry = fixture.firstControl.appendingPathComponent(
             "skills/\(fixture.packageID)/SKILL.md"
@@ -547,7 +563,7 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let destination = ResearchSkillStore(controlURL: fixture.firstControl)
+        let destination = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await destination.installDefaultWorkingMethods()
         let installedEntry = fixture.firstControl.appendingPathComponent(
             "skills/\(fixture.packageID)/SKILL.md"
@@ -588,7 +604,7 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let destination = ResearchSkillStore(controlURL: fixture.firstControl)
+        let destination = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await destination.installDefaultWorkingMethods()
         let installedPackage = fixture.firstControl.appendingPathComponent(
             "skills/\(fixture.packageID)",
@@ -637,7 +653,7 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let destination = ResearchSkillStore(controlURL: fixture.firstControl)
+        let destination = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await destination.installDefaultWorkingMethods()
         let skillsRoot = fixture.firstControl.appendingPathComponent(
             "skills",
@@ -689,7 +705,7 @@ struct ResearchSkillInstallationStoreTests {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
         try fixture.writeValidPackage()
-        let destination = ResearchSkillStore(controlURL: fixture.firstControl)
+        let destination = ResearchSkillTransactionCoordinator(controlURL: fixture.firstControl)
         _ = try await destination.installDefaultWorkingMethods()
         let state = LateInstallationWriter()
         let installedEntry = fixture.firstControl.appendingPathComponent(

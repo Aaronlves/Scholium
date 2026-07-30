@@ -27,7 +27,8 @@ Use the smallest authority set that answers the question:
 2. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) describes
    modules, runtimes, state ownership, and the editor boundary.
 3. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) records current
-   reachability, dated evidence, migration debt, and open acceptance.
+   reachability, remaining work, completed architecture migrations, the latest
+   verification baseline, and open acceptance.
 4. This README, live construction, tests, and scripts provide setup and current
    implementation evidence.
 

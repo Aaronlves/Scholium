@@ -30553,6 +30553,347 @@ ${fence}
     });
   }
 
+  // preview-popover.ts
+  var relationshipLabels = {
+    neutral: "Related note",
+    supports: "Supports",
+    opposes: "Opposes",
+    incompatible: "Incompatible"
+  };
+  function createPreviewPopoverController(editor2, options) {
+    const root = document.createElement("aside");
+    root.id = "scholium-preview-popover";
+    root.className = "scholium-preview-popover";
+    root.dataset.scholiumProtected = "preview-popover";
+    root.setAttribute("role", "tooltip");
+    root.setAttribute("aria-live", "polite");
+    root.hidden = true;
+    const title = document.createElement("h2");
+    title.className = "scholium-preview-title";
+    const metadata = document.createElement("p");
+    metadata.className = "scholium-preview-metadata";
+    const body = document.createElement("div");
+    body.className = "scholium-preview-body";
+    body.setAttribute("role", "group");
+    body.setAttribute("aria-label", "Preview content");
+    root.append(title, metadata, body);
+    document.body.append(root);
+    let timer;
+    let pendingAnchor = null;
+    function hide() {
+      window.clearTimeout(timer);
+      timer = void 0;
+      pendingAnchor = null;
+      root.hidden = true;
+      root.style.visibility = "";
+      title.textContent = "";
+      metadata.textContent = "";
+      body.replaceChildren();
+    }
+    function position(anchor, startedAt) {
+      root.style.visibility = "hidden";
+      root.hidden = false;
+      const inset = 12;
+      const gap = 8;
+      editor2.requestMeasure({
+        read: () => ({
+          measured: root.getBoundingClientRect(),
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight
+        }),
+        write: ({ measured, viewportWidth, viewportHeight }) => {
+          if (root.hidden) return;
+          const left = Math.max(inset, Math.min(anchor.left, viewportWidth - measured.width - inset));
+          const below = anchor.bottom + gap;
+          const top2 = below + measured.height <= viewportHeight - inset ? below : Math.max(inset, anchor.top - measured.height - gap);
+          root.style.left = `${left}px`;
+          root.style.top = `${top2}px`;
+          root.style.visibility = "visible";
+          window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
+            documentLength: editor2.state.doc.length
+          }));
+        }
+      });
+    }
+    function removeInteractiveContent() {
+      body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
+      body.querySelectorAll("*").forEach((node) => {
+        for (const attribute of Array.from(node.attributes)) {
+          if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
+        }
+        node.removeAttribute("href");
+        node.removeAttribute("contenteditable");
+        node.tabIndex = -1;
+      });
+    }
+    function show(preview, anchor, startedAt) {
+      title.textContent = preview.title;
+      const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
+      metadata.textContent = preview.fragment ? `${relationship}
+${preview.fragment}` : relationship;
+      body.innerHTML = preview.htmlBody;
+      removeInteractiveContent();
+      recordEditorMetric("cached-preview-work", startedAt, {
+        documentLength: editor2.state.doc.length
+      });
+      position(anchor, startedAt);
+    }
+    function showAtSelection() {
+      const startedAt = performance.now();
+      if (options.mode() !== "livePreview") return false;
+      const head = editor2.state.selection.main.head;
+      const coords = editor2.coordsAtPos(head);
+      if (!coords) return false;
+      const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
+      if (preview) {
+        show(preview, coords, startedAt);
+        return true;
+      }
+      announceEditorMessage(editor2.contentDOM, "No preview is available at the insertion point.");
+      return false;
+    }
+    function showAtPoint(x, y) {
+      const startedAt = performance.now();
+      if (options.mode() !== "livePreview") return false;
+      const anchor = document.elementFromPoint(x, y)?.closest("[data-link-preview-index]");
+      if (!anchor) return showAtSelection();
+      const previewIndex = Number(anchor.dataset.linkPreviewIndex);
+      const preview = options.previews()[previewIndex];
+      if (Number.isInteger(previewIndex) && preview) {
+        show(preview, anchor.getBoundingClientRect(), startedAt);
+        return true;
+      }
+      return showAtSelection();
+    }
+    function anchorAtEvent(event) {
+      if (!event.metaKey || options.mode() !== "livePreview" || !(event.target instanceof Element)) {
+        return null;
+      }
+      return event.target.closest("[data-link-preview-index]");
+    }
+    document.addEventListener("pointermove", (event) => {
+      const anchor = anchorAtEvent(event);
+      if (!anchor) {
+        if (pendingAnchor || !root.hidden) hide();
+        return;
+      }
+      if (anchor === pendingAnchor) return;
+      hide();
+      pendingAnchor = anchor;
+      timer = window.setTimeout(() => {
+        if (pendingAnchor !== anchor) return;
+        const previewIndex = Number(anchor.dataset.linkPreviewIndex);
+        const preview = options.previews()[previewIndex];
+        if (Number.isInteger(previewIndex) && preview) {
+          show(preview, anchor.getBoundingClientRect(), performance.now());
+        }
+      }, 300);
+    }, { passive: true });
+    document.addEventListener("keyup", (event) => {
+      if (event.key === "Meta") hide();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !root.hidden) hide();
+    });
+    return { hide, showAtSelection, showAtPoint };
+  }
+
+  // scroll-coordinator.ts
+  function createEditorScrollCoordinator(editor2, options) {
+    function currentAnchor() {
+      const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
+      const fallbackFraction = extent > 0 ? Math.max(0, Math.min(1, editor2.scrollDOM.scrollTop / extent)) : 0;
+      const probeHeight = Math.max(0, editor2.scrollDOM.scrollTop + 8);
+      const block = editor2.lineBlockAtHeight(probeHeight);
+      const relativeBlockPosition = block.height > 0 ? Math.max(0, Math.min(1, (probeHeight - block.top) / block.height)) : 0;
+      return {
+        sourceUTF16Offset: block.from,
+        blockUTF16LowerBound: block.from,
+        blockUTF16UpperBound: block.to,
+        relativeBlockPosition,
+        fallbackFraction
+      };
+    }
+    function postCurrent() {
+      options.post(currentAnchor());
+    }
+    let reportTimer;
+    let sessionStartedAt = null;
+    let previousFrameAt = null;
+    let measurementFrame = null;
+    let sessionFrameCount = 0;
+    let sessionLongestFrame = 0;
+    let sessionDroppedFrameCount = 0;
+    editor2.scrollDOM.addEventListener("scroll", () => {
+      options.onScroll();
+      if (sessionStartedAt === null) sessionStartedAt = performance.now();
+      if (measurementFrame === null) {
+        measurementFrame = window.requestAnimationFrame(() => {
+          measurementFrame = null;
+          const now = performance.now();
+          sessionFrameCount += 1;
+          if (previousFrameAt !== null) {
+            const duration = Math.max(0, now - previousFrameAt);
+            sessionLongestFrame = Math.max(sessionLongestFrame, duration);
+            if (duration > 20) sessionDroppedFrameCount += 1;
+          }
+          previousFrameAt = now;
+        });
+      }
+      window.clearTimeout(reportTimer);
+      reportTimer = window.setTimeout(() => {
+        postCurrent();
+        if (sessionStartedAt !== null) {
+          recordEditorMetric("scroll-session", sessionStartedAt, {
+            frameCount: sessionFrameCount,
+            longestFrameMilliseconds: sessionLongestFrame,
+            droppedFrameCount: sessionDroppedFrameCount
+          });
+        }
+        sessionStartedAt = null;
+        previousFrameAt = null;
+        sessionFrameCount = 0;
+        sessionLongestFrame = 0;
+        sessionDroppedFrameCount = 0;
+      }, 120);
+    }, { passive: true });
+    let geometryReportScheduled = false;
+    function scheduleGeometryReport() {
+      if (geometryReportScheduled) return;
+      geometryReportScheduled = true;
+      queueMicrotask(() => {
+        geometryReportScheduled = false;
+        const documentSnapshot = editor2.state.doc;
+        editor2.requestMeasure({
+          read: () => editor2.state.doc === documentSnapshot,
+          write: (isCurrentDocument) => {
+            if (isCurrentDocument && editor2.state.doc === documentSnapshot) postCurrent();
+          }
+        });
+      });
+    }
+    function setFraction(requestedFraction) {
+      options.flushPresentationGeometry();
+      const fraction = Number.isFinite(requestedFraction) ? Math.max(0, Math.min(1, requestedFraction)) : 0;
+      const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
+      editor2.scrollDOM.scrollTop = extent * fraction;
+    }
+    function setAnchor(anchor) {
+      options.flushPresentationGeometry();
+      const documentLength = editor2.state.doc.length;
+      const valid = Number.isSafeInteger(anchor.sourceUTF16Offset) && anchor.sourceUTF16Offset >= 0 && anchor.sourceUTF16Offset <= documentLength && Number.isSafeInteger(anchor.blockUTF16LowerBound) && Number.isSafeInteger(anchor.blockUTF16UpperBound) && anchor.blockUTF16LowerBound >= 0 && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound <= documentLength;
+      if (!valid) {
+        setFraction(anchor.fallbackFraction);
+        return;
+      }
+      const documentSnapshot = editor2.state.doc;
+      const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
+      const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound ? anchor.blockUTF16LowerBound + 1 : anchor.sourceUTF16Offset;
+      const requestedScrollTop = () => {
+        const block = editor2.lineBlockAt(blockProbe);
+        return Math.max(0, block.top + block.height * relativePosition - 4);
+      };
+      const applyMeasuredAnchor = () => {
+        if (editor2.state.doc !== documentSnapshot) return;
+        editor2.requestMeasure({
+          read: () => editor2.state.doc === documentSnapshot ? requestedScrollTop() : null,
+          write: (scrollTop) => {
+            if (scrollTop === null || editor2.state.doc !== documentSnapshot) return;
+            editor2.scrollDOM.scrollTop = scrollTop;
+            postCurrent();
+          }
+        });
+      };
+      const applyScrollEffect = () => {
+        if (editor2.state.doc !== documentSnapshot) return;
+        editor2.dispatch({ effects: EditorView.scrollIntoView(blockProbe, { y: "start", yMargin: 4 }) });
+      };
+      editor2.scrollDOM.scrollTop = requestedScrollTop();
+      postCurrent();
+      applyScrollEffect();
+      applyMeasuredAnchor();
+      void document.fonts.ready.then(applyMeasuredAnchor);
+      window.requestAnimationFrame(() => {
+        applyScrollEffect();
+        applyMeasuredAnchor();
+      });
+      window.setTimeout(() => {
+        applyScrollEffect();
+        applyMeasuredAnchor();
+      }, 80);
+    }
+    return { currentAnchor, postCurrent, scheduleGeometryReport, setAnchor, setFraction };
+  }
+
+  // selection-actions.ts
+  function createSelectionActionsController(options) {
+    const root = document.createElement("div");
+    root.id = "scholium-selection-actions";
+    root.className = "scholium-selection-actions";
+    root.hidden = true;
+    root.dataset.scholiumProtected = "selection-actions";
+    const commandBar = document.createElement("div");
+    commandBar.className = "scholium-selection-toolbar";
+    commandBar.setAttribute("role", "toolbar");
+    commandBar.setAttribute("aria-label", "Formatting actions");
+    root.append(commandBar);
+    document.body.append(root);
+    let activeView = null;
+    function addButton(title, label, command2) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = title;
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", () => {
+        if (activeView) options.applyCommand(activeView, command2);
+      });
+      commandBar.append(button);
+    }
+    addButton("B", "Bold", "bold");
+    addButton("I", "Italic", "emphasis");
+    addButton("</>", "Inline Code", "inlineCode");
+    addButton("\u2197", "Link", "standardLink");
+    function hide() {
+      root.hidden = true;
+      activeView = null;
+    }
+    function update(view) {
+      const selection = view.state.selection;
+      const main = selection.main;
+      if (options.mode() !== "livePreview" || view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
+        hide();
+        return;
+      }
+      const from = Math.min(main.anchor, main.head);
+      const to = Math.max(main.anchor, main.head);
+      const start = view.coordsAtPos(from);
+      const end = view.coordsAtPos(to);
+      if (!start || !end) {
+        hide();
+        return;
+      }
+      activeView = view;
+      root.hidden = false;
+      const measured = root.getBoundingClientRect();
+      root.style.left = `${Math.max(12, Math.min(
+        Math.min(start.left, end.left),
+        window.innerWidth - measured.width - 12
+      ))}px`;
+      root.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
+    }
+    return {
+      extension: EditorView.updateListener.of((updateEvent) => {
+        if (updateEvent.docChanged || updateEvent.selectionSet || updateEvent.focusChanged) {
+          update(updateEvent.view);
+        }
+      }),
+      hide,
+      update
+    };
+  }
+
   // interaction-reporting.ts
   function interactionAvailabilitySignature(context) {
     return JSON.stringify({
@@ -33000,30 +33341,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }));
     return { from: context.pos - match[2].length, options, filter: false };
   }
-  var selectionToolbar = document.createElement("div");
-  selectionToolbar.id = "scholium-selection-actions";
-  selectionToolbar.className = "scholium-selection-actions";
-  selectionToolbar.hidden = true;
-  selectionToolbar.dataset.scholiumProtected = "selection-actions";
-  var selectionCommandBar = document.createElement("div");
-  selectionCommandBar.className = "scholium-selection-toolbar";
-  selectionCommandBar.setAttribute("role", "toolbar");
-  selectionCommandBar.setAttribute("aria-label", "Formatting actions");
-  selectionToolbar.append(selectionCommandBar);
-  document.body.append(selectionToolbar);
-  var selectionToolbarView = null;
-  function selectionToolbarButton(title, label, action) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = title;
-    button.setAttribute("aria-label", label);
-    button.title = label;
-    button.addEventListener("mousedown", (event) => event.preventDefault());
-    button.addEventListener("click", action);
-    selectionCommandBar.append(button);
-    return button;
-  }
-  function applySelectionToolbarCommand(view, command2) {
+  function applySelectionAction(view, command2) {
     const transformed = transformMarkdown(
       view.state.doc.toString(),
       view.state.selection.ranges.map((range) => ({ anchor: range.anchor, head: range.head })),
@@ -33044,48 +33362,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     lastRedoLabel = transformed.undoLabel;
     view.focus();
   }
-  for (const [title, label, command2] of [
-    ["B", "Bold", "bold"],
-    ["I", "Italic", "emphasis"],
-    ["</>", "Inline Code", "inlineCode"],
-    ["\u2197", "Link", "standardLink"]
-  ]) {
-    selectionToolbarButton(title, label, () => {
-      if (selectionToolbarView) applySelectionToolbarCommand(selectionToolbarView, command2);
-    });
-  }
-  function hideSelectionToolbar() {
-    selectionToolbar.hidden = true;
-    selectionToolbarView = null;
-  }
-  function updateSelectionToolbar(view) {
-    const selection = view.state.selection;
-    const main = selection.main;
-    if (currentMode !== "livePreview" || view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
-      hideSelectionToolbar();
-      return;
-    }
-    const from = Math.min(main.anchor, main.head);
-    const to = Math.max(main.anchor, main.head);
-    const start = view.coordsAtPos(from);
-    const end = view.coordsAtPos(to);
-    if (!start || !end) {
-      hideSelectionToolbar();
-      return;
-    }
-    selectionToolbarView = view;
-    selectionToolbar.hidden = false;
-    const measured = selectionToolbar.getBoundingClientRect();
-    selectionToolbar.style.left = `${Math.max(12, Math.min(
-      Math.min(start.left, end.left),
-      window.innerWidth - measured.width - 12
-    ))}px`;
-    selectionToolbar.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
-  }
-  var selectionToolbarReporter = EditorView.updateListener.of((update) => {
-    if (update.docChanged || update.selectionSet || update.focusChanged) {
-      updateSelectionToolbar(update.view);
-    }
+  var selectionActions = createSelectionActionsController({
+    mode: () => currentMode,
+    applyCommand: applySelectionAction
   });
   var editorExtensions = [
     highlightSpecialChars(),
@@ -33111,7 +33390,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     structuralInteractionKeymap,
     saveKeymap,
     stateReporter,
-    selectionToolbarReporter,
+    selectionActions.extension,
     linkActivation,
     lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
     liveProjectionIndexField,
@@ -33128,204 +33407,19 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   editor.contentDOM.addEventListener("keydown", () => {
     pendingKeyStartedAt = performance.now();
   }, { capture: true });
-  var previewPopover = document.createElement("aside");
-  previewPopover.id = "scholium-preview-popover";
-  previewPopover.className = "scholium-preview-popover";
-  previewPopover.dataset.scholiumProtected = "preview-popover";
-  previewPopover.setAttribute("role", "tooltip");
-  previewPopover.setAttribute("aria-live", "polite");
-  previewPopover.hidden = true;
-  var previewTitle = document.createElement("h2");
-  previewTitle.className = "scholium-preview-title";
-  var previewMetadata = document.createElement("p");
-  previewMetadata.className = "scholium-preview-metadata";
-  var previewBody = document.createElement("div");
-  previewBody.className = "scholium-preview-body";
-  previewBody.setAttribute("role", "group");
-  previewBody.setAttribute("aria-label", "Preview content");
-  previewPopover.append(previewTitle, previewMetadata, previewBody);
-  document.body.append(previewPopover);
-  var relationshipLabels = {
-    neutral: "Related note",
-    supports: "Supports",
-    opposes: "Opposes",
-    incompatible: "Incompatible"
-  };
-  var previewTimer;
-  var pendingPreviewAnchor = null;
-  function hidePreview() {
-    window.clearTimeout(previewTimer);
-    previewTimer = void 0;
-    pendingPreviewAnchor = null;
-    previewPopover.hidden = true;
-    previewPopover.style.visibility = "";
-    previewTitle.textContent = "";
-    previewMetadata.textContent = "";
-    previewBody.replaceChildren();
-  }
-  function positionPreview(anchor, startedAt) {
-    previewPopover.style.visibility = "hidden";
-    previewPopover.hidden = false;
-    const inset = 12;
-    const gap = 8;
-    editor.requestMeasure({
-      read: () => ({
-        measured: previewPopover.getBoundingClientRect(),
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight
-      }),
-      write: ({ measured, viewportWidth, viewportHeight }) => {
-        if (previewPopover.hidden) return;
-        const left = Math.max(inset, Math.min(anchor.left, viewportWidth - measured.width - inset));
-        const below = anchor.bottom + gap;
-        const top2 = below + measured.height <= viewportHeight - inset ? below : Math.max(inset, anchor.top - measured.height - gap);
-        previewPopover.style.left = `${left}px`;
-        previewPopover.style.top = `${top2}px`;
-        previewPopover.style.visibility = "visible";
-        window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
-          documentLength: editor.state.doc.length
-        }));
-      }
-    });
-  }
-  function removeInteractivePreviewContent(root) {
-    root.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
-    root.querySelectorAll("*").forEach((node) => {
-      for (const attribute of Array.from(node.attributes)) {
-        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-      }
-      node.removeAttribute("href");
-      node.removeAttribute("contenteditable");
-      node.tabIndex = -1;
-    });
-  }
-  function showLinkPreview(preview, anchor, startedAt) {
-    previewTitle.textContent = preview.title;
-    const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
-    previewMetadata.textContent = preview.fragment ? `${relationship}
-${preview.fragment}` : relationship;
-    previewBody.innerHTML = preview.htmlBody;
-    removeInteractivePreviewContent(previewBody);
-    recordEditorMetric("cached-preview-work", startedAt, {
-      documentLength: editor.state.doc.length
-    });
-    positionPreview(anchor, startedAt);
-  }
-  function showPreviewAtSelection() {
-    const startedAt = performance.now();
-    if (currentMode !== "livePreview") return false;
-    const head = editor.state.selection.main.head;
-    const coords = editor.coordsAtPos(head);
-    if (!coords) return false;
-    const preview = linkPreviews.find((candidate) => head >= candidate.from && head < candidate.to);
-    if (preview) {
-      showLinkPreview(preview, coords, startedAt);
-      return true;
-    }
-    announceEditorMessage(editor.contentDOM, "No preview is available at the insertion point.");
-    return false;
-  }
-  function showPreviewAtPoint(x, y) {
-    const startedAt = performance.now();
-    if (currentMode !== "livePreview") return false;
-    const anchor = document.elementFromPoint(x, y)?.closest(
-      "[data-link-preview-index]"
-    );
-    if (!anchor) return showPreviewAtSelection();
-    const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-    if (Number.isInteger(previewIndex) && linkPreviews[previewIndex]) {
-      showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
-      return true;
-    }
-    return showPreviewAtSelection();
-  }
-  function previewAnchorAtEvent(event) {
-    if (!event.metaKey || currentMode !== "livePreview" || !(event.target instanceof Element)) return null;
-    return event.target.closest("[data-link-preview-index]");
-  }
-  document.addEventListener("pointermove", (event) => {
-    const anchor = previewAnchorAtEvent(event);
-    if (!anchor) {
-      if (pendingPreviewAnchor || !previewPopover.hidden) hidePreview();
-      return;
-    }
-    if (anchor === pendingPreviewAnchor) return;
-    hidePreview();
-    pendingPreviewAnchor = anchor;
-    previewTimer = window.setTimeout(() => {
-      if (pendingPreviewAnchor !== anchor) return;
-      const startedAt = performance.now();
-      const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-      if (Number.isInteger(previewIndex) && linkPreviews[previewIndex]) {
-        showLinkPreview(linkPreviews[previewIndex], anchor.getBoundingClientRect(), startedAt);
-        return;
-      }
-    }, 300);
-  }, { passive: true });
-  document.addEventListener("keyup", (event) => {
-    if (event.key === "Meta") hidePreview();
+  var previewPopover = createPreviewPopoverController(editor, {
+    mode: () => currentMode,
+    previews: () => linkPreviews
   });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !previewPopover.hidden) hidePreview();
+  var scrollCoordinator = createEditorScrollCoordinator(editor, {
+    post: (scrollAnchor) => post({
+      type: "scrollChanged",
+      scrollFraction: scrollAnchor.fallbackFraction,
+      scrollAnchor
+    }),
+    onScroll: () => selectionActions.update(editor),
+    flushPresentationGeometry: flushPresentationStyleAndGeometry
   });
-  function currentEditorScrollAnchor() {
-    const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
-    const fallbackFraction = extent > 0 ? Math.max(0, Math.min(1, editor.scrollDOM.scrollTop / extent)) : 0;
-    const probeHeight = Math.max(0, editor.scrollDOM.scrollTop + 8);
-    const block = editor.lineBlockAtHeight(probeHeight);
-    const relativeBlockPosition = block.height > 0 ? Math.max(0, Math.min(1, (probeHeight - block.top) / block.height)) : 0;
-    return {
-      sourceUTF16Offset: block.from,
-      blockUTF16LowerBound: block.from,
-      blockUTF16UpperBound: block.to,
-      relativeBlockPosition,
-      fallbackFraction
-    };
-  }
-  function postCurrentScrollPosition() {
-    const scrollAnchor = currentEditorScrollAnchor();
-    post({ type: "scrollChanged", scrollFraction: scrollAnchor.fallbackFraction, scrollAnchor });
-  }
-  var scrollReportTimer;
-  var scrollSessionStartedAt = null;
-  var previousScrollFrameAt = null;
-  var scrollMeasurementFrame = null;
-  var scrollSessionFrameCount = 0;
-  var scrollSessionLongestFrame = 0;
-  var scrollSessionDroppedFrameCount = 0;
-  editor.scrollDOM.addEventListener("scroll", () => {
-    updateSelectionToolbar(editor);
-    if (scrollSessionStartedAt === null) scrollSessionStartedAt = performance.now();
-    if (scrollMeasurementFrame === null) {
-      scrollMeasurementFrame = window.requestAnimationFrame(() => {
-        scrollMeasurementFrame = null;
-        const now = performance.now();
-        scrollSessionFrameCount += 1;
-        if (previousScrollFrameAt !== null) {
-          const duration = Math.max(0, now - previousScrollFrameAt);
-          scrollSessionLongestFrame = Math.max(scrollSessionLongestFrame, duration);
-          if (duration > 20) scrollSessionDroppedFrameCount += 1;
-        }
-        previousScrollFrameAt = now;
-      });
-    }
-    window.clearTimeout(scrollReportTimer);
-    scrollReportTimer = window.setTimeout(() => {
-      postCurrentScrollPosition();
-      if (scrollSessionStartedAt !== null) {
-        recordEditorMetric("scroll-session", scrollSessionStartedAt, {
-          frameCount: scrollSessionFrameCount,
-          longestFrameMilliseconds: scrollSessionLongestFrame,
-          droppedFrameCount: scrollSessionDroppedFrameCount
-        });
-      }
-      scrollSessionStartedAt = null;
-      previousScrollFrameAt = null;
-      scrollSessionFrameCount = 0;
-      scrollSessionLongestFrame = 0;
-      scrollSessionDroppedFrameCount = 0;
-    }, 120);
-  }, { passive: true });
   var allCommands = [
     "bold",
     "emphasis",
@@ -33510,10 +33604,10 @@ ${preview.fragment}` : relationship;
         editorOperations.setLinkPreviews(operation.value);
         break;
       case "showPreview":
-        showPreviewAtSelection();
+        previewPopover.showAtSelection();
         break;
       case "showPreviewAt":
-        showPreviewAtPoint(operation.x, operation.y);
+        previewPopover.showAtPoint(operation.x, operation.y);
         break;
       case "announceStatus":
         announceEditorMessage(editor.contentDOM, operation.value);
@@ -33541,7 +33635,7 @@ ${preview.fragment}` : relationship;
       case "queryScrollAnchor":
         return {
           ...successfulResult(request.requestID),
-          scrollAnchor: currentEditorScrollAnchor()
+          scrollAnchor: scrollCoordinator.currentAnchor()
         };
       case "queryPerformance":
         return {
@@ -33741,27 +33835,12 @@ ${preview.fragment}` : relationship;
     const position = editor.posAtCoords({ x: event.clientX, y: event.clientY });
     if (pasteTransfer(event.dataTransfer, position ?? void 0)) event.preventDefault();
   }, { capture: true });
-  var dynamicStyleMeasureScheduled = false;
-  function scheduleDynamicStyleMeasure() {
-    if (dynamicStyleMeasureScheduled) return;
-    dynamicStyleMeasureScheduled = true;
-    queueMicrotask(() => {
-      dynamicStyleMeasureScheduled = false;
-      const documentSnapshot = editor.state.doc;
-      editor.requestMeasure({
-        read: () => editor.state.doc === documentSnapshot,
-        write: (isCurrentDocument) => {
-          if (isCurrentDocument && editor.state.doc === documentSnapshot) postCurrentScrollPosition();
-        }
-      });
-    });
-  }
   function setDynamicStyle(id2, css2) {
     const style = document.getElementById(id2);
     if (!style || style.textContent === css2) return;
     style.textContent = css2;
-    scheduleDynamicStyleMeasure();
-    void document.fonts.ready.then(scheduleDynamicStyleMeasure);
+    scrollCoordinator.scheduleGeometryReport();
+    void document.fonts.ready.then(scrollCoordinator.scheduleGeometryReport);
   }
   function flushPresentationStyleAndGeometry() {
     for (const selector of [
@@ -33791,7 +33870,7 @@ ${preview.fragment}` : relationship;
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {
-      hidePreview();
+      previewPopover.hide();
       compositionGate.rejectAll((pending) => rejected(
         pending.requestID,
         documentVersion,
@@ -33819,7 +33898,7 @@ ${preview.fragment}` : relationship;
     /** @param {string} mode */
     async setMode(mode) {
       const startedAt = performance.now();
-      hidePreview();
+      previewPopover.hide();
       const scrollSnapshot = editor.scrollSnapshot();
       const nextMode = mode === "livePreview" ? "livePreview" : "source";
       let selection;
@@ -33850,7 +33929,7 @@ ${preview.fragment}` : relationship;
       editor.scrollDOM.classList.toggle("scholium-live-scroller", nextMode === "livePreview");
       editor.scrollDOM.classList.toggle("scholium-source-scroller", nextMode !== "livePreview");
       currentMode = nextMode;
-      updateSelectionToolbar(editor);
+      selectionActions.update(editor);
       updateEditorAccessibility(editor.contentDOM, currentMode, currentEditorContext());
       scheduleEditorInteractionReport(true);
       recordEditorMetric("mode-toggle-work", startedAt, {
@@ -33864,7 +33943,7 @@ ${preview.fragment}` : relationship;
           { documentLength }
         ))
       });
-      window.setTimeout(postCurrentScrollPosition, 0);
+      window.setTimeout(scrollCoordinator.postCurrent, 0);
       if (nextMode === "livePreview") {
         await convergeLivePreviewProjection();
       }
@@ -33907,56 +33986,10 @@ ${preview.fragment}` : relationship;
       editor.focus();
     },
     setScrollFraction(requestedFraction) {
-      flushPresentationStyleAndGeometry();
-      const fraction = Number.isFinite(requestedFraction) ? Math.max(0, Math.min(1, requestedFraction)) : 0;
-      const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
-      editor.scrollDOM.scrollTop = extent * fraction;
+      scrollCoordinator.setFraction(requestedFraction);
     },
     setScrollAnchor(anchor) {
-      flushPresentationStyleAndGeometry();
-      const documentLength = editor.state.doc.length;
-      const valid = Number.isSafeInteger(anchor.sourceUTF16Offset) && anchor.sourceUTF16Offset >= 0 && anchor.sourceUTF16Offset <= documentLength && Number.isSafeInteger(anchor.blockUTF16LowerBound) && Number.isSafeInteger(anchor.blockUTF16UpperBound) && anchor.blockUTF16LowerBound >= 0 && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound <= documentLength;
-      if (!valid) {
-        this.setScrollFraction(anchor.fallbackFraction);
-        return;
-      }
-      const documentSnapshot = editor.state.doc;
-      const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
-      const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound ? anchor.blockUTF16LowerBound + 1 : anchor.sourceUTF16Offset;
-      const requestedScrollTop = () => {
-        const block = editor.lineBlockAt(blockProbe);
-        return Math.max(0, block.top + block.height * relativePosition - 4);
-      };
-      const applyMeasuredAnchor = () => {
-        if (editor.state.doc !== documentSnapshot) return;
-        editor.requestMeasure({
-          read: () => editor.state.doc === documentSnapshot ? requestedScrollTop() : null,
-          write: (scrollTop) => {
-            if (scrollTop === null || editor.state.doc !== documentSnapshot) return;
-            editor.scrollDOM.scrollTop = scrollTop;
-            postCurrentScrollPosition();
-          }
-        });
-      };
-      const applyScrollEffect = () => {
-        if (editor.state.doc !== documentSnapshot) return;
-        editor.dispatch({
-          effects: EditorView.scrollIntoView(blockProbe, { y: "start", yMargin: 4 })
-        });
-      };
-      editor.scrollDOM.scrollTop = requestedScrollTop();
-      postCurrentScrollPosition();
-      applyScrollEffect();
-      applyMeasuredAnchor();
-      void document.fonts.ready.then(applyMeasuredAnchor);
-      window.requestAnimationFrame(() => {
-        applyScrollEffect();
-        applyMeasuredAnchor();
-      });
-      window.setTimeout(() => {
-        applyScrollEffect();
-        applyMeasuredAnchor();
-      }, 80);
+      scrollCoordinator.setAnchor(anchor);
     },
     synchronizeCommittedText(expectedText, committedText, startingFingerprint) {
       if (exactSource !== expectedText || normalizedDocumentText(editor.state.doc.toString()) !== normalizedDocumentText(expectedText)) return false;
@@ -33982,7 +34015,7 @@ ${preview.fragment}` : relationship;
       editor.focus();
     },
     blur() {
-      hidePreview();
+      previewPopover.hide();
       editor.contentDOM.blur();
     }
   };

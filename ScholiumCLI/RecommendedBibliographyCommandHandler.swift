@@ -35,7 +35,9 @@ extension ScholiumCLI {
                 RecommendedBibliographyRequest.self,
                 from: bibliographyInput(input)
             )
-            let assignment = try await context.triptych(containing: [request.target.note.vaultID])
+            let assignment = try await context.triptych(
+                selector: request.scope.triptychID.uuidString
+            )
             let handle = try await context.handle(for: assignment)
             let preparation = try await handle.research.prepareRecommendation(request)
             switch option("--format", in: arguments) ?? "markdown" {

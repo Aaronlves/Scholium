@@ -14248,18 +14248,18 @@
         }
       }
     },
-    "No reading leads have been requested for this Analysis." : {
+    "No reading leads have been requested for this Triptych." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "No reading leads have been requested for this Analysis."
+            "value" : "No reading leads have been requested for this Triptych."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "尚未为此分析请求推荐文献。"
+            "value" : "尚未为此研究脉络请求推荐文献。"
           }
         }
       }
@@ -15043,34 +15043,34 @@
         }
       }
     },
-    "Open an Analysis to prepare new recommendations for this Triptych." : {
+    "Select an active Note to prepare new recommendations for this Triptych." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Open an Analysis to prepare new recommendations for this Triptych."
+            "value" : "Select an active Note to prepare new recommendations for this Triptych."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "打开一篇分析，为此脉络准备新的文献推荐。"
+            "value" : "选择一篇活跃笔记，为此研究脉络准备新的文献推荐。"
           }
         }
       }
     },
-    "Open an Analysis to prepare new recommendations; existing Triptych recommendations remain available" : {
+    "Select an active Note to prepare new recommendations; existing Triptych recommendations remain available" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Open an Analysis to prepare new recommendations; existing Triptych recommendations remain available"
+            "value" : "Select an active Note to prepare new recommendations; existing Triptych recommendations remain available"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "打开一篇分析以准备新的推荐；现有脉络推荐仍然可用"
+            "value" : "选择一篇活跃笔记以准备新的推荐；现有研究脉络推荐仍然可用"
           }
         }
       }
@@ -17265,18 +17265,18 @@
         }
       }
     },
-    "Recommendations refer to an earlier Analysis revision." : {
+    "Recommendations refer to an earlier selected-Note revision." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Recommendations refer to an earlier Analysis revision."
+            "value" : "Recommendations refer to an earlier selected-Note revision."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "建议参考早期的分析修订版。"
+            "value" : "推荐结果基于所选笔记的较早修订版。"
           }
         }
       }
@@ -21712,23 +21712,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在文稿中选择一个段落，然后从“研究”菜单或检查器中的对应操作重新打开此操作。"
-          }
-        }
-      }
-    },
-    "Select an Analysis to open Recommended Bibliography" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Select an Analysis to open Recommended Bibliography"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一篇分析以打开推荐文献"
           }
         }
       }

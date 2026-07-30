@@ -527,15 +527,20 @@ struct ActionCLIExecutableLifecycleTests {
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
         let encoder = Self.encoder()
         let decoder = Self.decoder()
-        let analysis = RecommendedBibliographyTarget(
+        let analysis = RecommendedBibliographySourceNote(
             noteID: fixture.analysisTarget.noteID,
             note: fixture.analysisTarget.note,
+            role: .sourceCorpus,
             fingerprint: fixture.analysisTarget.fingerprint,
             title: fixture.analysisTarget.title
         )
+        let scope = RecommendedBibliographyScope(
+            triptychID: fixture.assignment.id,
+            selectedNotes: [analysis]
+        )
 
         let request = RecommendedBibliographyRequest(
-            target: analysis,
+            scope: scope,
             goals: [.objections, .classicWorks],
             purpose: "Screen only source-grounded reading leads."
         )
@@ -565,7 +570,7 @@ struct ActionCLIExecutableLifecycleTests {
         let completion = RecommendedBibliographyCompletionSubmission(
             requestID: preparation.id,
             confirmationToken: preparation.confirmationToken,
-            targetFingerprint: analysis.fingerprint,
+            sourceRevisions: scope.sourceRevisions,
             sourceScope: "Synthetic complete source fixture",
             candidates: [first, second]
         )
@@ -589,7 +594,7 @@ struct ActionCLIExecutableLifecycleTests {
             from: try cli.run([
                 "bibliography", "prepare", "--from", "-", "--format", "json",
             ], stdin: try encoder.encode(RecommendedBibliographyRequest(
-                target: analysis,
+                scope: scope,
                 goals: []
             ))).stdout
         )
@@ -610,7 +615,7 @@ struct ActionCLIExecutableLifecycleTests {
             from: try cli.run([
                 "bibliography", "prepare", "--from", "-", "--format", "json",
             ], stdin: try encoder.encode(RecommendedBibliographyRequest(
-                target: analysis
+                scope: scope
             ))).stdout
         )
         try cli.expectFailure([
@@ -620,7 +625,7 @@ struct ActionCLIExecutableLifecycleTests {
         ], stdin: try encoder.encode(RecommendedBibliographyCompletionSubmission(
             requestID: wrongConfirmation.id,
             confirmationToken: UUID(),
-            targetFingerprint: analysis.fingerprint,
+            sourceRevisions: scope.sourceRevisions,
             sourceScope: "Synthetic source",
             candidates: []
         )), contains: "confirmation token")
@@ -629,17 +634,30 @@ struct ActionCLIExecutableLifecycleTests {
             "--triptych", fixture.assignment.id.uuidString,
         ])
 
-        let workTarget = RecommendedBibliographyTarget(
+        let workSource = RecommendedBibliographySourceNote(
             noteID: fixture.workTarget.noteID,
             note: fixture.workTarget.note,
+            role: .draftProject,
             fingerprint: fixture.workTarget.fingerprint,
             title: fixture.workTarget.title
         )
-        try cli.expectFailure(
-            ["bibliography", "prepare", "--from", "-", "--format", "json"],
-            stdin: try encoder.encode(RecommendedBibliographyRequest(target: workTarget)),
-            contains: "only for an Analysis"
+        let workScope = RecommendedBibliographyScope(
+            triptychID: fixture.assignment.id,
+            selectedNotes: [workSource]
         )
+        let workPreparation = try decoder.decode(
+            RecommendedBibliographyPreparation.self,
+            from: try cli.run([
+                "bibliography", "prepare", "--from", "-", "--format", "json",
+            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
+                scope: workScope
+            ))).stdout
+        )
+        #expect(workPreparation.request.scope == workScope)
+        _ = try cli.run([
+            "bibliography", "cancel", workPreparation.id.uuidString,
+            "--triptych", fixture.assignment.id.uuidString,
+        ])
         try cli.expectFailure(
             ["bibliography", "prepare", "--from", "-", "--format", "json"],
             stdin: Data("{malformed".utf8),
@@ -651,7 +669,7 @@ struct ActionCLIExecutableLifecycleTests {
             from: try cli.run([
                 "bibliography", "prepare", "--from", "-", "--format", "json",
             ], stdin: try encoder.encode(RecommendedBibliographyRequest(
-                target: analysis
+                scope: scope
             ))).stdout
         )
         try Data("---\ntitle: Analysis\n---\n# Analysis\n\nChanged after preparation.\n".utf8)
@@ -663,7 +681,7 @@ struct ActionCLIExecutableLifecycleTests {
         ], stdin: try encoder.encode(RecommendedBibliographyCompletionSubmission(
             requestID: stale.id,
             confirmationToken: stale.confirmationToken,
-            targetFingerprint: analysis.fingerprint,
+            sourceRevisions: scope.sourceRevisions,
             sourceScope: "Synthetic source",
             candidates: []
         )), contains: "changed")

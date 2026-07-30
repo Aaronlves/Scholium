@@ -7,115 +7,106 @@ import Testing
 struct RecommendedBibliographyStoreTests {
     @Test("Preparation, zero completion, dismissal, and cancellation remain atomic")
     func lifecycle() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scholium-bibliography-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = RecommendedBibliographyStore(controlURL: root)
+        let fixture = makeStore()
+        defer { fixture.remove() }
         let first = preparation(title: "First")
 
-        let prepared = try await store.save(preparation: first)
+        let prepared = try await fixture.store.save(preparation: first)
         #expect(prepared.state == .prepared)
-        #expect(try await store.preparation(id: first.id) == first)
+        #expect(try await fixture.store.preparation(id: first.id) == first)
 
-        let zero = try await store.complete(
+        let zero = try await fixture.store.complete(
             requestID: first.id,
             sourceScope: "Reference list",
             candidates: []
         )
         #expect(zero.state == .complete)
         #expect(zero.candidates.isEmpty)
-        #expect(try await store.latest(targetNoteID: first.request.target.noteID) == zero)
+        #expect(try await fixture.store.latest() == zero)
 
-        let second = preparation(title: "Second", preparedAt: first.preparedAt.addingTimeInterval(1))
-        _ = try await store.save(preparation: second)
-        try await store.cancel(id: second.id)
-        try await store.cancel(id: second.id)
-        let cancelled = try await store.overview(targetNoteID: second.request.target.noteID)
-        #expect(cancelled.result == nil)
+        let second = preparation(
+            title: "Second",
+            preparedAt: first.preparedAt.addingTimeInterval(1)
+        )
+        _ = try await fixture.store.save(preparation: second)
+        try await fixture.store.cancel(id: second.id)
+        try await fixture.store.cancel(id: second.id)
+        let cancelled = try await fixture.store.overview()
+        #expect(cancelled.result == zero)
         #expect(cancelled.latestRun?.state == .cancelled)
     }
 
     @Test("A candidate dismissal changes only app-owned projection state")
     func dismissal() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scholium-bibliography-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = RecommendedBibliographyStore(controlURL: root)
+        let fixture = makeStore()
+        defer { fixture.remove() }
         let run = preparation(title: "Dismiss")
-        _ = try await store.save(preparation: run)
+        _ = try await fixture.store.save(preparation: run)
         let candidate = RecommendedBibliographyCandidate(
             identity: BibliographyCandidateIdentity(rawCitation: "Author, Work"),
-            reason: "The paper discusses this objection.",
+            reason: "The selected source discusses this objection.",
             evidence: BibliographyRecommendationEvidence(
                 discussionStatus: .substantivelyDiscussed
             ),
             requiredNextCheck: "Inspect the source."
         )
-        _ = try await store.complete(
+        _ = try await fixture.store.complete(
             requestID: run.id,
-            sourceScope: "Complete paper",
+            sourceScope: "Complete selected source",
             candidates: [candidate]
         )
-        try await store.dismiss(requestID: run.id, candidateID: candidate.id)
-        let projection = try #require(
-            try await store.latest(targetNoteID: run.request.target.noteID)
-        )
+        try await fixture.store.dismiss(requestID: run.id, candidateID: candidate.id)
+        let projection = try #require(try await fixture.store.latest())
         #expect(projection.candidates.first?.isDismissed == true)
         #expect(projection.candidates.first?.identity == candidate.identity)
         #expect(projection.candidates.first?.evidence == candidate.evidence)
     }
 
-    @Test("A pending update preserves the latest completed result")
+    @Test("A pending update preserves the latest completed Triptych result")
     func pendingUpdatePreservesResult() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scholium-bibliography-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = RecommendedBibliographyStore(controlURL: root)
+        let fixture = makeStore()
+        defer { fixture.remove() }
         let first = preparation(title: "Analysis")
-        let completed = try await store.save(preparation: first)
-        _ = completed
-        let result = try await store.complete(
+        _ = try await fixture.store.save(preparation: first)
+        let result = try await fixture.store.complete(
             requestID: first.id,
             sourceScope: "Complete source",
             candidates: []
         )
         let second = preparation(
-            title: "Analysis update",
-            target: first.request.target,
+            title: "Topic update",
             preparedAt: first.preparedAt.addingTimeInterval(1)
         )
-        _ = try await store.save(preparation: second)
+        _ = try await fixture.store.save(preparation: second)
 
-        let overview = try await store.overview(targetNoteID: first.request.target.noteID)
+        let overview = try await fixture.store.overview()
         #expect(overview.result == result)
         #expect(overview.activePreparation == second)
         #expect(overview.latestRun?.id == second.id)
-        #expect(overview.latestRun?.state == .prepared)
 
         await #expect(throws: RecommendedBibliographyError.self) {
-            _ = try await store.save(preparation: preparation(
+            _ = try await fixture.store.save(preparation: preparation(
                 title: "Duplicate active",
-                target: first.request.target,
                 preparedAt: second.preparedAt.addingTimeInterval(1)
             ))
         }
 
-        try await store.markStale(id: second.id)
-        let staleOverview = try await store.overview(
-            targetNoteID: first.request.target.noteID
-        )
+        try await fixture.store.markStale(id: second.id)
+        let staleOverview = try await fixture.store.overview()
         #expect(staleOverview.result == result)
         #expect(staleOverview.activePreparation == nil)
         #expect(staleOverview.latestRun?.state == .stale)
     }
 
-    @Test("Independent App and CLI store instances cannot lose concurrent updates")
+    @Test("Independent App and CLI stores serialize one Triptych request")
     func coordinatedConcurrentStores() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("scholium-bibliography-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let appStore = RecommendedBibliographyStore(controlURL: root)
-        let cliStore = RecommendedBibliographyStore(controlURL: root)
+        let stores = [
+            RecommendedBibliographyStore(controlURL: root),
+            RecommendedBibliographyStore(controlURL: root),
+        ]
         let runs = (0..<32).map { index in
             preparation(
                 title: "Concurrent \(index)",
@@ -123,45 +114,40 @@ struct RecommendedBibliographyStoreTests {
             )
         }
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
+        let savedCount = await withTaskGroup(of: Bool.self) { group in
             for (index, run) in runs.enumerated() {
                 group.addTask {
-                    let store = index.isMultiple(of: 2) ? appStore : cliStore
-                    _ = try await store.save(preparation: run)
+                    do {
+                        _ = try await stores[index % stores.count].save(preparation: run)
+                        return true
+                    } catch {
+                        return false
+                    }
                 }
             }
-            try await group.waitForAll()
+            var count = 0
+            for await saved in group where saved { count += 1 }
+            return count
         }
 
-        for run in runs {
-            let overview = try await appStore.overview(
-                targetNoteID: run.request.target.noteID
-            )
-            #expect(overview.activePreparation?.id == run.id)
-        }
+        #expect(savedCount == 1)
+        #expect(try await stores[0].overview().activePreparation != nil)
     }
 
     @Test("Same-second runs use a deterministic identifier tie break")
     func deterministicSameSecondOrdering() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scholium-bibliography-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = RecommendedBibliographyStore(controlURL: root)
-        let target = RecommendedBibliographyTarget(
-            noteID: UUID(),
-            note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Analysis.md"),
-            fingerprint: DocumentFingerprint(content: "analysis"),
-            title: "Analysis"
-        )
+        let fixture = makeStore()
+        defer { fixture.remove() }
+        let scope = bibliographyScope(title: "Analysis")
         let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
         let first = preparation(
             id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
             title: "First",
-            target: target,
+            scope: scope,
             preparedAt: timestamp
         )
-        _ = try await store.save(preparation: first)
-        _ = try await store.complete(
+        _ = try await fixture.store.save(preparation: first)
+        _ = try await fixture.store.complete(
             requestID: first.id,
             sourceScope: "Complete source",
             candidates: []
@@ -169,16 +155,34 @@ struct RecommendedBibliographyStoreTests {
         let second = preparation(
             id: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!,
             title: "Second",
-            target: target,
+            scope: scope,
             preparedAt: timestamp
         )
-        _ = try await store.save(preparation: second)
-        try await store.cancel(id: second.id)
+        _ = try await fixture.store.save(preparation: second)
+        try await fixture.store.cancel(id: second.id)
 
-        let overview = try await store.overview(targetNoteID: target.noteID)
+        let overview = try await fixture.store.overview()
         #expect(overview.latestRun?.id == second.id)
         #expect(overview.latestRun?.state == .cancelled)
         #expect(overview.result?.id == first.id)
+    }
+
+    @Test("Unsupported pre-Triptych schema is refused without rewriting bytes")
+    func unsupportedSchemaIsPreserved() async throws {
+        let fixture = makeStore()
+        defer { fixture.remove() }
+        try FileManager.default.createDirectory(
+            at: fixture.root,
+            withIntermediateDirectories: true
+        )
+        let bytes = Data(#"{"schema_version":1,"records":[]}"#.utf8)
+        let file = fixture.root.appendingPathComponent("recommended-bibliography.json")
+        try bytes.write(to: file)
+
+        await #expect(throws: RecommendedBibliographyError.self) {
+            _ = try await fixture.store.latest()
+        }
+        #expect(try Data(contentsOf: file) == bytes)
     }
 
     @Test("Symlinked storage is refused without following it")
@@ -196,26 +200,32 @@ struct RecommendedBibliographyStoreTests {
         )
         let store = RecommendedBibliographyStore(controlURL: control)
         await #expect(throws: RecommendedBibliographyError.self) {
-            _ = try await store.latest(targetNoteID: UUID())
+            _ = try await store.latest()
         }
         #expect(try Data(contentsOf: outside) == Data("outside".utf8))
+    }
+
+    private func makeStore() -> (root: URL, store: RecommendedBibliographyStore, remove: () -> Void) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scholium-bibliography-\(UUID().uuidString)")
+        return (
+            root,
+            RecommendedBibliographyStore(controlURL: root),
+            { _ = try? FileManager.default.removeItem(at: root) }
+        )
     }
 
     private func preparation(
         id: UUID = UUID(),
         title: String,
-        target suppliedTarget: RecommendedBibliographyTarget? = nil,
+        scope suppliedScope: RecommendedBibliographyScope? = nil,
         preparedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)
     ) -> RecommendedBibliographyPreparation {
-        let target = suppliedTarget ?? RecommendedBibliographyTarget(
-            noteID: UUID(),
-            note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "\(title).md"),
-            fingerprint: DocumentFingerprint(content: title),
-            title: title
-        )
-        return RecommendedBibliographyPreparation(
+        RecommendedBibliographyPreparation(
             id: id,
-            request: RecommendedBibliographyRequest(target: target),
+            request: RecommendedBibliographyRequest(
+                scope: suppliedScope ?? bibliographyScope(title: title)
+            ),
             method: RecommendedBibliographyMethodSnapshot(
                 packageID: "scholium-source-analyzer",
                 origin: .bundled,
@@ -225,6 +235,22 @@ struct RecommendedBibliographyStoreTests {
             ),
             instructions: "Instructions",
             preparedAt: preparedAt
+        )
+    }
+
+    private func bibliographyScope(title: String) -> RecommendedBibliographyScope {
+        RecommendedBibliographyScope(
+            triptychID: UUID(),
+            selectedNotes: [RecommendedBibliographySourceNote(
+                noteID: UUID(),
+                note: VaultQualifiedNoteID(
+                    vaultID: UUID(),
+                    relativePath: "\(title).md"
+                ),
+                role: .sourceCorpus,
+                fingerprint: DocumentFingerprint(content: title),
+                title: title
+            )]
         )
     }
 }

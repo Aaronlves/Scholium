@@ -547,9 +547,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private func registerAgentNoteChangeWindow() {
         guard !agentRequestWindowIsRegistered else { return }
         agentRequestWindowIsRegistered = true
-        appState.agentNoteChangePresentationCoordinator.register(.init(
-            id: windowID,
-            triptychID: { [weak appState] in
+        appState.agentNoteChangeWindowController.registerWindowEndpoint(
+            activeTriptychID: { [weak appState] in
                 appState?.activeTriptychServicesID
             },
             isKeyWindow: { [weak self] in
@@ -564,25 +563,18 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                     && window.attachedSheet == nil
                     && appState.presentationRouter.sheet == nil
             },
-            present: { [weak self, weak appState] record in
+            willPresent: { [weak self] in
                 self?.agentRequestPriorResponder = self?.window?.firstResponder
-                appState?.presentAgentNoteChangeRequest(record)
             },
-            update: { [weak appState] record in
-                appState?.updatePresentedAgentNoteChangeRequest(record)
-            },
-            dismiss: { [weak appState] requestID in
-                appState?.dismissPresentedAgentNoteChangeRequest(id: requestID)
-            },
-            focus: { [weak self] _ in
+            focus: { [weak self] in
                 self?.focusAgentNoteChangeSheet()
             }
-        ))
+        )
     }
 
     private func unregisterAgentNoteChangeWindow() {
         guard agentRequestWindowIsRegistered else { return }
-        appState.agentNoteChangePresentationCoordinator.unregister(windowID: windowID)
+        appState.agentNoteChangeWindowController.unregisterWindow()
         agentRequestWindowIsRegistered = false
         agentRequestPriorResponder = nil
     }
@@ -604,8 +596,15 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if lifecycleRegistry.noteWorkspaceWindowActivated(windowID) {
             appState.attentionPopoverSession.resetForWorkspaceSwitch()
         }
-        appState.agentNoteChangePresentationCoordinator.noteWindowActivated(windowID)
+        appState.agentNoteChangeWindowController.noteWindowActivated()
         previousDelegate?.windowDidBecomeKey?(notification)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Release App-wide claims before SwiftUI tears down the per-window
+        // model so an unresolved request can move to another exact window.
+        unregisterAgentNoteChangeWindow()
+        previousDelegate?.windowWillClose?(notification)
     }
 
     private struct PreferredAttentionRoute {

@@ -549,7 +549,7 @@ struct ResearchSkillCatalogTests {
     func protectedPackageCollisionFailsClosed() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = ResearchSkillStore(controlURL: root.appendingPathComponent(".scholium"))
+        let store = ResearchSkillTransactionCoordinator(controlURL: root.appendingPathComponent(".scholium"))
         let shadow = root.appendingPathComponent(
             ".scholium/skills/scholium-core-protocol",
             isDirectory: true

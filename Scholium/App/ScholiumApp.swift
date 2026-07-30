@@ -767,7 +767,9 @@ private struct ScholiumCommands: Commands {
             Divider()
             Button("Find in This Note…") {
                 guard let appState else { return }
-                searchActions?.begin(.findInNote(previousScope: appState.ordinarySearchScope))
+                searchActions?.begin(
+                    .findInNote(previousScope: appState.searchController.ordinaryScope)
+                )
             }
             .keyboardShortcut("f", modifiers: [.command])
             .disabled(searchActions == nil || appState?.currentNote == nil)
@@ -1088,29 +1090,6 @@ private struct ScholiumCommands: Commands {
 
 // MARK: - App State
 
-struct WindowPropertyFilterOptions: Equatable {
-    let keys: [String]
-    let valuesByKey: [String: [String]]
-
-    init(notes: [WindowDocumentLocation]) {
-        var accumulated: [String: Set<String>] = [:]
-        for note in notes {
-            for (key, values) in note.filterableProperties {
-                let usableValues = values.filter { !$0.isEmpty && $0.count <= 80 }
-                guard !usableValues.isEmpty else { continue }
-                accumulated[key, default: []].formUnion(usableValues)
-            }
-        }
-
-        keys = accumulated.keys.sorted {
-            $0.localizedStandardCompare($1) == .orderedAscending
-        }
-        valuesByKey = accumulated.mapValues { values in
-            values.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-        }
-    }
-}
-
 @MainActor
 final class WindowModel: ObservableObject {
     struct ClosePreparationOutcome: Sendable {
@@ -1194,12 +1173,6 @@ final class WindowModel: ObservableObject {
     @Published var vaultConfig: VaultConfig?
     @Published var currentRegisteredVault: RegisteredVault?
     @Published var currentVaultRole: VaultRole = .other
-    @Published var notes: [WindowDocumentLocation] = [] {
-        didSet {
-            availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: notes)
-        }
-    }
-    private(set) var availablePropertyFilterOptions = WindowPropertyFilterOptions(notes: [])
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published private(set) var isCreatingNote = false
     @Published private(set) var isMutatingFolder = false
@@ -1211,31 +1184,16 @@ final class WindowModel: ObservableObject {
             UserDefaults.standard.set(colorScheme.rawValue, forKey: "colorScheme")
         }
     }
-    @Published var allTags: [String] = []
-    @Published var savedSearches: [SavedSearch] = []
     @Published var documentTextScale = ScholiumMetrics.Document.defaultTextScale
-    @Published var documentRevisions: [String: DocumentFingerprint] = [:]
     @Published var triptychSettings = TriptychSettings()
     @Published var workspaceAssignment: TriptychAssignment?
     @Published var registeredTriptychs: [TriptychAssignment] = []
     @Published var workspaceRecoveryMessage: String?
     @Published var workspaceAccessRecovery: WorkspaceAccessRecovery?
-    @Published var workspaceCatalog: WorkspaceCatalogSnapshot?
-    @Published var isRefreshingWorkspaceCatalog = false
     @Published var refreshStatusText: String?
-    @Published private(set) var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
-    @Published var workspaceCatalogError: String?
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
-    @Published private(set) var presentedAgentNoteChangeRequest:
-        AgentNoteChangeRequestRecord?
-    @Published private(set) var presentedAgentNoteChangeIdentity:
-        AgentNoteChangePresentationIdentity?
-    @Published private(set) var agentNoteChangeIdentityLoadFailed = false
-    @Published private(set) var agentNoteChangeHasLocallyExpired = false
-    @Published private(set) var isResolvingAgentNoteChangeRequest = false
-    @Published private(set) var workspaceVaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
     @Published var registeredVaults: [RegisteredVault] = []
     @Published var windowSessionPersistenceError: String?
     let presentationRouter = WindowPresentationRouter()
@@ -1245,6 +1203,67 @@ final class WindowModel: ObservableObject {
     ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
+    lazy var searchController = WindowSearchController(
+        discoveryController: discoveryController,
+        dependencies: .init(
+            loadSavedSearches: { [workspaceStore] in
+                try await workspaceStore.savedSearches()
+            },
+            saveSavedSearches: { [workspaceStore] searches in
+                try await workspaceStore.saveSavedSearches(searches)
+            },
+            executionContext: { [weak self] state in
+                guard let self else {
+                    throw DiscoverySearchExecutionError.workspaceUnavailable
+                }
+                return DiscoverySearchExecutionContext(
+                    workspaceIsAvailable: self.workspaceAssignment != nil,
+                    currentNoteSnapshot: state.scope == .thisNote
+                        ? try await self.currentSearchSourceSnapshot()
+                        : nil,
+                    currentVaultID: self.currentRegisteredVault?.id
+                )
+            },
+            lexicalEvidence: { [weak self] hit, scope in
+                guard let self else {
+                    return WindowLexicalSearchEvidence(
+                        freshness: nil,
+                        fingerprint: nil
+                    )
+                }
+                return await self.currentLexicalSearchEvidence(
+                    for: hit,
+                    scope: scope
+                )
+            },
+            open: { [weak self] result, disposition in
+                await self?.openSearchSelection(result, disposition: disposition)
+            },
+            hasCurrentNote: { [weak self] in self?.currentNote != nil },
+            isPresented: { [weak self] in self?.showSearchSurface == true },
+            setPresented: { [weak self] in self?.showSearchSurface = $0 },
+            reportInformation: { [weak self] message in
+                self?.showToast(message, kind: .information)
+            },
+            reportLoadFailure: { [weak self] message in
+                self?.vaultError = message
+            },
+            reportSaveFailure: { [weak self] message in
+                self?.showToast(message, kind: .error)
+            },
+            setAvailabilityStatus: { [weak self] status in
+                guard let self else { return }
+                if let status {
+                    self.refreshStatusText = status
+                } else if self.refreshStatusText == "Search unavailable" {
+                    self.refreshStatusText = nil
+                }
+            },
+            reportCatalogFailure: { [weak self] message in
+                self?.workspaceProjectionController.reportCatalogError(message)
+            }
+        )
+    )
     lazy var documentController = DocumentController { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
@@ -1254,9 +1273,67 @@ final class WindowModel: ObservableObject {
     ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
+    lazy var workspaceProjectionController = WindowWorkspaceProjectionController(
+        loadCatalog: { [weak self] in
+            guard let self else {
+                throw DiscoverySearchExecutionError.workspaceUnavailable
+            }
+            return try await self.discoveryController.discoverySnapshot().catalog
+        }
+    )
     let attentionPresentationState = AttentionPresentationState()
     lazy var attentionPopoverSession = AttentionPopoverSession(workspace: self)
+    lazy var agentNoteChangeWindowController = AgentNoteChangeWindowController(
+        windowID: nativeWindowID,
+        presentationRouter: presentationRouter,
+        claimCoordinator: workspaceStore.agentNoteChangeClaims,
+        dependencies: .init(
+            presentationIdentity: { [workspaceStore] record in
+                try await workspaceStore.agentNoteChangePresentationIdentity(
+                    for: record
+                )
+            },
+            refresh: { [workspaceStore] requestID, triptychID in
+                try await workspaceStore.refreshAgentNoteChangeRequest(
+                    id: requestID,
+                    in: triptychID
+                )
+            },
+            resolve: { [workspaceStore] triptychID, requestID, state, noteIDs in
+                try await workspaceStore.resolveAgentNoteChangeRequest(
+                    triptychID: triptychID,
+                    requestID: requestID,
+                    state: state,
+                    allowedNoteIDs: noteIDs
+                )
+            },
+            snapshot: { [workspaceStore] in workspaceStore.snapshot(for: $0) }
+        ),
+        reportError: { [weak self] message in
+            self?.showToast(message, kind: .error)
+        }
+    )
 
+    var notes: [WindowDocumentLocation] { workspaceProjectionController.notes }
+    var availablePropertyFilterOptions: WindowPropertyFilterOptions {
+        workspaceProjectionController.propertyFilterOptions
+    }
+    var allTags: [String] { workspaceProjectionController.tags }
+    var documentRevisions: [String: DocumentFingerprint] {
+        workspaceProjectionController.documentRevisions
+    }
+    var workspaceCatalog: WorkspaceCatalogSnapshot? {
+        workspaceProjectionController.catalog
+    }
+    var isRefreshingWorkspaceCatalog: Bool {
+        workspaceProjectionController.isRefreshingCatalog
+    }
+    var derivedRefreshStatus: WorkspaceDerivedRefreshStatus? {
+        workspaceProjectionController.derivedRefreshStatus
+    }
+    var workspaceCatalogError: String? {
+        workspaceProjectionController.catalogError
+    }
     // Window-level projections for Library leaves. DiscoveryController remains
     // the sole mutable owner.
     var noteLocationScope: NoteLocationScope {
@@ -1319,9 +1396,11 @@ final class WindowModel: ObservableObject {
         discoveryController.replaceFilters(filters)
     }
 
-    // Source-located semantic graph for the current vault. Triptych-wide
-    // resolution is published through `workspaceCatalog.graph`.
-    @Published var relationshipGraph: GraphSnapshot?
+    // Triptych-wide immutable semantic graph forwarded from the exact-window
+    // Workspace projection owner.
+    var relationshipGraph: GraphSnapshot? {
+        workspaceProjectionController.relationshipGraph
+    }
 
     // MARK: Window Presentation
 
@@ -1333,11 +1412,6 @@ final class WindowModel: ObservableObject {
     var researchInspectorVisible: Bool {
         get { researchController.inspector.isVisible }
         set { researchController.showResearchInspector(newValue) }
-    }
-
-    var advancedSearchState: SearchWorkspaceState {
-        get { discoveryController.search.criteria }
-        set { discoveryController.replaceSearchCriteria(newValue) }
     }
 
     var noteLifecycleRequest: NoteLifecycleRequest? {
@@ -1471,298 +1545,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    var agentNoteChangePresentationCoordinator:
-        AgentNoteChangePresentationCoordinator
-    {
-        workspaceStore.agentNoteChangePresentations
-    }
-
-    func presentAgentNoteChangeRequest(_ record: AgentNoteChangeRequestRecord) {
-        guard activeTriptychServicesID == record.request.triptychID,
-              presentationRouter.sheet == nil else { return }
-        presentedAgentNoteChangeRequest = record
-        presentedAgentNoteChangeIdentity = nil
-        agentNoteChangeIdentityLoadFailed = false
-        agentNoteChangeHasLocallyExpired = false
-        scheduleAgentNoteChangeExpiryRefresh(for: record)
-        presentationRouter.present(.agentNoteChange(record.id))
-        resolveAgentNoteChangePresentationIdentity(for: record)
-    }
-
-    private func resolveAgentNoteChangePresentationIdentity(
-        for record: AgentNoteChangeRequestRecord
-    ) {
-        guard record.isUnresolved,
-              presentedAgentNoteChangeRequest?.id == record.id,
-              agentNoteChangeIdentityTask == nil else { return }
-        agentNoteChangeIdentityLoadFailed = false
-        agentNoteChangeIdentityTask = Task { [weak self] in
-            guard let self else { return }
-            for attempt in 0..<3 {
-                do {
-                    let identity = try await workspaceStore
-                        .agentNoteChangePresentationIdentity(for: record)
-                    guard presentedAgentNoteChangeRequest?.id == record.id else {
-                        agentNoteChangeIdentityTask = nil
-                        return
-                    }
-                    presentedAgentNoteChangeIdentity = identity
-                    agentNoteChangeIdentityTask = nil
-                    return
-                } catch where attempt < 2 {
-                    do {
-                        try await Task.sleep(
-                            for: .milliseconds(250 * (attempt + 1))
-                        )
-                    } catch {
-                        agentNoteChangeIdentityTask = nil
-                        return
-                    }
-                } catch {
-                    break
-                }
-            }
-            try? await workspaceStore.refreshAgentNoteChangeRequest(
-                id: record.id,
-                in: record.request.triptychID
-            )
-            guard presentedAgentNoteChangeRequest?.id == record.id else {
-                agentNoteChangeIdentityTask = nil
-                return
-            }
-            agentNoteChangeIdentityLoadFailed = true
-            agentNoteChangeIdentityTask = nil
-        }
-    }
-
-    func updatePresentedAgentNoteChangeRequest(
-        _ record: AgentNoteChangeRequestRecord
-    ) {
-        guard presentedAgentNoteChangeRequest?.id == record.id else { return }
-        presentedAgentNoteChangeRequest = record
-        isResolvingAgentNoteChangeRequest = false
-        agentNoteChangeHasLocallyExpired = false
-        scheduleAgentNoteChangeExpiryRefresh(for: record)
-        if record.isUnresolved,
-           presentedAgentNoteChangeIdentity == nil {
-            resolveAgentNoteChangePresentationIdentity(for: record)
-        } else if !record.isUnresolved {
-            agentNoteChangeIdentityTask?.cancel()
-            agentNoteChangeIdentityTask = nil
-        }
-    }
-
-    func dismissPresentedAgentNoteChangeRequest(id: UUID) {
-        presentationRouter.dismissSheet(
-            if: "agent-note-change:\(id.uuidString.lowercased())"
-        )
-    }
-
-    func finishAgentNoteChangeRequestDismissal() {
-        guard let requestID = presentedAgentNoteChangeRequest?.id else { return }
-        presentedAgentNoteChangeRequest = nil
-        presentedAgentNoteChangeIdentity = nil
-        agentNoteChangeIdentityLoadFailed = false
-        isResolvingAgentNoteChangeRequest = false
-        agentNoteChangeHasLocallyExpired = false
-        agentNoteChangeExpiryTask?.cancel()
-        agentNoteChangeExpiryTask = nil
-        agentNoteChangeIdentityTask?.cancel()
-        agentNoteChangeIdentityTask = nil
-        agentNoteChangePresentationCoordinator.presentationDidDismiss(
-            requestID: requestID,
-            windowID: nativeWindowID
-        )
-        agentNoteChangePresentationCoordinator.presentationBecameAvailable(
-            windowID: nativeWindowID
-        )
-    }
-
-    func resolvePresentedAgentNoteChangeRequest(
-        state: AgentNoteChangeDecisionState,
-        allowedNoteIDs: [UUID]
-    ) {
-        guard !isResolvingAgentNoteChangeRequest,
-              let record = presentedAgentNoteChangeRequest,
-              record.isUnresolved else { return }
-        #if DEBUG
-        if Bundle.main.bundleIdentifier == "com.scholium.qa",
-           ProcessInfo.processInfo.arguments.contains(
-               "--scholium-agent-change-request-fixture"
-           ) {
-            do {
-                let resolved = try record.resolving(
-                    state: state,
-                    allowedNoteIDs: allowedNoteIDs,
-                    continuationPlan: state == .allowedSubset
-                        ? AgentNoteChangeContinuationPlan(
-                            groupID: record.request.parentRunID,
-                            parentRunID: record.request.parentRunID,
-                            requestID: record.id,
-                            childPhases: allowedNoteIDs.map {
-                                AgentNoteChangeChildPhasePlan(noteID: $0)
-                            }
-                        )
-                        : nil,
-                    at: Date()
-                )
-                agentNoteChangePresentationCoordinator.receive(
-                    resolved,
-                    intent: .decision
-                )
-            } catch {
-                showToast(error.localizedDescription, kind: .error)
-            }
-            return
-        }
-        #endif
-        isResolvingAgentNoteChangeRequest = true
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let resolved = try await workspaceStore.resolveAgentNoteChangeRequest(
-                    triptychID: record.request.triptychID,
-                    requestID: record.id,
-                    state: state,
-                    allowedNoteIDs: allowedNoteIDs
-                )
-                if resolved.decision.state == .stale
-                    || resolved.decision.state == .expired {
-                    updatePresentedAgentNoteChangeRequest(resolved)
-                }
-            } catch {
-                isResolvingAgentNoteChangeRequest = false
-                showToast(
-                    "Scholium could not record this decision. \(error.localizedDescription)",
-                    kind: .error
-                )
-            }
-        }
-    }
-
-    private func scheduleAgentNoteChangeExpiryRefresh(
-        for record: AgentNoteChangeRequestRecord
-    ) {
-        agentNoteChangeExpiryTask?.cancel()
-        agentNoteChangeExpiryTask = nil
-        guard record.isUnresolved else { return }
-        let delay = max(0, record.expiresAt.timeIntervalSinceNow)
-        agentNoteChangeExpiryTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(delay))
-                try Task.checkCancellation()
-            } catch {
-                return
-            }
-            guard let self,
-                  self.presentedAgentNoteChangeRequest?.id == record.id else {
-                return
-            }
-            self.agentNoteChangeHasLocallyExpired = true
-            self.isResolvingAgentNoteChangeRequest = true
-            for attempt in 0..<3 {
-                do {
-                    try await self.workspaceStore.refreshAgentNoteChangeRequest(
-                        id: record.id,
-                        in: record.request.triptychID
-                    )
-                    return
-                } catch where attempt < 2 {
-                    try? await Task.sleep(for: .milliseconds(250 * (attempt + 1)))
-                } catch {
-                    break
-                }
-            }
-            guard self.presentedAgentNoteChangeRequest?.id == record.id,
-                  let expired = try? record.expiringIfNeeded(at: Date()) else {
-                return
-            }
-            self.agentNoteChangePresentationCoordinator.receive(
-                expired,
-                intent: .refresh
-            )
-        }
-    }
-
-    func displayTargets(
-        for record: AgentNoteChangeRequestRecord
-    ) -> [AgentNoteChangeDisplayTarget] {
-        let snapshot = workspaceStore.snapshot(for: record.request.triptychID)
-        return record.request.targets.map { target in
-            let currentDocument = snapshot?.document(id: target.note)
-            let title: String
-            if let note = currentDocument {
-                title = ResearchNoteTitleResolver.resolve(
-                    document: note.document,
-                    vaultRole: note.vaultRole
-                ).title
-            } else {
-                title = URL(fileURLWithPath: target.note.relativePath)
-                    .deletingPathExtension().lastPathComponent
-            }
-            return AgentNoteChangeDisplayTarget(
-                id: target.noteID,
-                title: title,
-                relativePath: target.note.relativePath,
-                role: target.role,
-                expectedFingerprint: target.expectedFingerprint,
-                currentFingerprint: currentDocument?.fingerprint
-            )
-        }
-    }
-
-    #if DEBUG
-    private func presentQASyntheticAgentNoteChangeRequest() {
-        guard Bundle.main.bundleIdentifier == "com.scholium.qa",
-              let triptychID = activeTriptychServicesID,
-              let snapshot = workspaceStore.snapshot(for: triptychID),
-              let note = snapshot.vaults
-                .first(where: { $0.vault.role == .topicKnowledge })?
-                .documents.first,
-              let noteID = note.stableIdentity.resolvedID else { return }
-        do {
-            let parent = try AgentNoteChangeActionRevision(
-                definition: .analyze,
-                packageID: "scholium-analyze",
-                skillRevision: DocumentFingerprint(content: "qa-analyze-skill"),
-                profileOrigin: .applicationDefault,
-                profileRevision: DocumentFingerprint(content: "qa-analyze-profile"),
-                profileDocumentRevision: nil
-            )
-            let requested = try AgentNoteChangeActionRevision(
-                definition: .synthesize,
-                packageID: "scholium-synthesize",
-                skillRevision: DocumentFingerprint(content: "qa-synthesize-skill"),
-                profileOrigin: .applicationDefault,
-                profileRevision: DocumentFingerprint(content: "qa-synthesize-profile"),
-                profileDocumentRevision: nil
-            )
-            let request = try AgentNoteChangeRequest(
-                triptychID: triptychID,
-                parentRunID: UUID(),
-                parentAction: parent,
-                requestedAction: requested,
-                targets: [try AgentNoteChangeTarget(
-                    noteID: noteID,
-                    note: note.id,
-                    role: .topic,
-                    expectedFingerprint: note.fingerprint
-                )],
-                operations: [.modifyMarkdown],
-                agentReason: "The current analysis may qualify this Topic. Review the requested Note before allowing a separate synthesis phase."
-            )
-            let record = try AgentNoteChangeRequestRecord(
-                request: request,
-                receivedAt: Date(),
-                validFor: 10 * 60
-            )
-            agentNoteChangePresentationCoordinator.receive(record, intent: .submit)
-        } catch {
-            showToast(error.localizedDescription, kind: .error)
-        }
-    }
-    #endif
-
     // MARK: Services
     private var activeWorkspaceCapabilities: WindowWorkspaceCapabilities?
     let cssSnippetStore: CSSSnippetStore
@@ -1778,7 +1560,6 @@ final class WindowModel: ObservableObject {
     private var editorFlushRegistration: EditorFlushRegistration?
     private let stableEditorFlushToken = UUID()
     private var stableEditorFlushTriptychID: UUID?
-    private var workspaceProjectionTail: Task<Void, Never>?
     private var projectionRefreshToken: UInt64 = 0
     private var attemptedVaultRestore = false
     private let workspaceStore: WorkspaceStore
@@ -1787,22 +1568,14 @@ final class WindowModel: ObservableObject {
     private let windowSessionPersistenceCoordinator: WindowSessionPersistenceCoordinator
     private let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
-    private var workspaceCatalogRefreshTask: Task<Void, Never>?
     private var researchActionOpenTask: Task<Void, Never>?
-    private var agentNoteChangeExpiryTask: Task<Void, Never>?
-    private var agentNoteChangeIdentityTask: Task<Void, Never>?
     private var researchActionOpenRequestID: UUID?
     private var discussionPresentationRequestID: UUID?
-    private var workspaceCatalogNeedsAnotherRefresh = false
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
     private var closeAttemptSequence: UInt64 = 0
     private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
     private var identityRefreshGeneration: UInt64 = 0
-    private var savedSearchMutationTail: Task<Void, Never>?
-    private var advancedSearchExecutionTask: Task<Void, Never>?
-    private var advancedSearchExecutionID: UUID?
-    private var workspaceSearchGeneration: SearchGenerationID?
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
     #if DEBUG
     private var qaPerformanceModeNotificationTokens: [Int32] = []
@@ -1844,6 +1617,9 @@ final class WindowModel: ObservableObject {
         discoveryController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
+        searchController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &workspaceCancellables)
         researchController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
@@ -1853,6 +1629,12 @@ final class WindowModel: ObservableObject {
         documentTabController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
+        workspaceProjectionController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &workspaceCancellables)
+        agentNoteChangeWindowController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &workspaceCancellables)
         cssSnippetStore.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
@@ -1860,16 +1642,6 @@ final class WindowModel: ObservableObject {
             .compactMap { $0 }
             .sink { [weak self] activation in
                 self?.adoptWorkspaceActivation(activation)
-            }
-            .store(in: &workspaceCancellables)
-        workspaceStore.$workspaceSnapshots
-            .sink { [weak self] snapshots in
-                self?.receiveWorkspaceSnapshots(snapshots)
-            }
-            .store(in: &workspaceCancellables)
-        workspaceStore.$workspaceDerivedRefreshStatuses
-            .sink { [weak self] statuses in
-                self?.receiveWorkspaceDerivedRefreshStatuses(statuses)
             }
             .store(in: &workspaceCancellables)
         workspaceStore.$workspaceEvents
@@ -1906,7 +1678,10 @@ final class WindowModel: ObservableObject {
             let name = "com.scholium.qa.present-agent-change-request.\(resolvedWindowID.uuidString)"
             let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.presentQASyntheticAgentNoteChangeRequest()
+                    guard let self else { return }
+                    self.agentNoteChangeWindowController.presentQASyntheticRequest(
+                        activeTriptychID: self.activeTriptychServicesID
+                    )
                 }
             }
             if status == NOTIFY_STATUS_OK {
@@ -1926,27 +1701,12 @@ final class WindowModel: ObservableObject {
             noteSortOrder = order == .debateImportanceDescending ? .modifiedNewest : order
         }
         UserDefaults.standard.removeObject(forKey: "libraryViewMode")
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let searches = try await workspaceStore.savedSearches()
-                await MainActor.run {
-                    guard self.savedSearches != searches else { return }
-                    self.savedSearches = searches
-                }
-            } catch {
-                await MainActor.run {
-                    self.vaultError = error.localizedDescription
-                }
-            }
-        }
+        searchController.loadSavedSearches()
         observeWindowSessionChanges()
     }
 
     deinit {
         researchActionOpenTask?.cancel()
-        agentNoteChangeExpiryTask?.cancel()
-        agentNoteChangeIdentityTask?.cancel()
         #if DEBUG
         for token in qaPerformanceModeNotificationTokens {
             notify_cancel(token)
@@ -2063,7 +1823,7 @@ final class WindowModel: ObservableObject {
 
     var currentDocumentVaultSnapshot: WorkspaceVaultSnapshot? {
         guard let vaultID = currentDocumentVaultID else { return nil }
-        return workspaceVaultSnapshotsByID[vaultID]
+        return workspaceProjectionController.vaultSnapshot(id: vaultID)
     }
 
     var currentDocumentNotes: [WindowDocumentLocation] {
@@ -2079,7 +1839,9 @@ final class WindowModel: ObservableObject {
     var currentLibraryFolders: [String] {
         guard noteLocationScope == .workspace,
               let vaultID = currentRegisteredVault?.id,
-              let snapshot = workspaceVaultSnapshotsByID[vaultID] else { return [] }
+              let snapshot = workspaceProjectionController.vaultSnapshot(
+                  id: vaultID
+              ) else { return [] }
         return snapshot.folders
             .map(\.rawValue)
             .filter {
@@ -2111,10 +1873,11 @@ final class WindowModel: ObservableObject {
             return .workspace(active)
         }
         if let descriptor = currentDocumentDescriptor,
-           let snapshot = workspaceVaultSnapshotsByID[descriptor.reference.vaultID]?.documents.first(where: {
-               $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID
-                   || $0.id.relativePath == descriptor.reference.relativePath
-           }) {
+           let snapshot = workspaceProjectionController.cachedNote(
+               vaultID: descriptor.reference.vaultID,
+               stableNoteID: descriptor.sessionKey.noteID,
+               relativePath: descriptor.reference.relativePath
+           ) {
             return .workspace(snapshot)
         }
         guard let selectedDocumentPath else { return nil }
@@ -2173,14 +1936,24 @@ final class WindowModel: ObservableObject {
         currentDocumentDescriptor?.reference
     }
 
-    var currentRecommendedBibliographyTarget: RecommendedBibliographyTarget? {
-        guard let target = currentResearchFunctionTarget,
-              target.role == .analysis else { return nil }
-        return RecommendedBibliographyTarget(
-            noteID: target.noteID,
-            note: target.note,
-            fingerprint: target.fingerprint,
-            title: target.title
+    var currentRecommendedBibliographyScope: RecommendedBibliographyScope? {
+        guard let triptychID = activeTriptychServicesID else { return nil }
+        let selectedNotes: [RecommendedBibliographySourceNote]
+        if let target = currentResearchFunctionTarget,
+           let descriptor = currentDocumentDescriptor {
+            selectedNotes = [RecommendedBibliographySourceNote(
+                noteID: target.noteID,
+                note: target.note,
+                role: descriptor.reference.vaultRole,
+                fingerprint: target.fingerprint,
+                title: target.title
+            )]
+        } else {
+            selectedNotes = []
+        }
+        return RecommendedBibliographyScope(
+            triptychID: triptychID,
+            selectedNotes: selectedNotes
         )
     }
 
@@ -2210,7 +1983,7 @@ final class WindowModel: ObservableObject {
         reconcileResearchActionPresentation()
         await researchController.actions.refreshAvailability(for: target)
         await researchController.bibliography.refresh(
-            for: currentRecommendedBibliographyTarget
+            for: currentRecommendedBibliographyScope
         )
     }
 
@@ -2562,26 +2335,6 @@ final class WindowModel: ObservableObject {
     }
     #endif
 
-    var ordinarySearchScope: SearchPresentationScope {
-        discoveryController.search.ordinaryScope
-    }
-
-    /// Opens the one shared Search surface. Standard Find temporarily uses
-    /// This Note and leaves the researcher's ordinary scope untouched.
-    func beginSearch(_ invocation: SearchInvocation) {
-        if case .findInNote = invocation, currentNote == nil { return }
-        discoveryController.presentSearch(invocation)
-        showSearchSurface = true
-    }
-
-    func dismissSearch() {
-        advancedSearchExecutionTask?.cancel()
-        advancedSearchExecutionTask = nil
-        advancedSearchExecutionID = nil
-        discoveryController.dismissSearch()
-        showSearchSurface = false
-    }
-
     /// The only cross-feature routing boundary. Feature controllers emit a
     /// closed intent and never reach into a peer controller's mutable state.
     private func handleWindowIntent(_ intent: WindowIntent) {
@@ -2600,7 +2353,7 @@ final class WindowModel: ObservableObject {
             }
         case .openSearchResult(let result, let disposition):
             Task { [weak self] in
-                await self?.openSearchResult(result, disposition: disposition)
+                await self?.searchController.open(result, disposition: disposition)
             }
         case .revealSourceLocator(let vaultID, let locator):
             Task { [weak self] in
@@ -2643,7 +2396,7 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    private func openSearchResult(
+    private func openSearchSelection(
         _ result: SearchResultSelection,
         disposition: WindowOpenDisposition
     ) async {
@@ -2664,33 +2417,7 @@ final class WindowModel: ObservableObject {
                     mode: route.sourceLocator == nil ? .read : .source
                 )
             }
-            dismissSearch()
-
         case .lexical(let hit):
-            guard discoveryController.search.freshnessToken == hit.freshnessToken else {
-                await refreshAfterStaleSearchResult()
-                return
-            }
-
-            let currentFingerprint: DocumentFingerprint?
-            let currentFreshness: SearchFreshnessToken?
-            if discoveryController.search.criteria.scope == .thisNote {
-                let snapshot = try? await currentSearchSourceSnapshot()
-                currentFingerprint = snapshot?.fingerprint
-                currentFreshness = snapshot.map(SearchFreshnessToken.currentNote)
-            } else {
-                let discovery = try? await discoveryController.discoverySnapshot()
-                currentFreshness = discovery?.searchGeneration.map(SearchFreshnessToken.triptych)
-                currentFingerprint = workspaceVaultSnapshotsByID[hit.vaultID]?.documents.first {
-                    $0.id.relativePath == hit.relativePath
-                }?.fingerprint
-            }
-            guard currentFreshness == hit.freshnessToken,
-                  currentFingerprint == hit.fingerprint else {
-                await refreshAfterStaleSearchResult()
-                return
-            }
-
             let reference = VaultNoteReference(
                 vaultID: hit.vaultID,
                 vaultName: hit.vaultName,
@@ -2713,16 +2440,7 @@ final class WindowModel: ObservableObject {
                     fallbackLine: hit.sourceLine
                 )
             }
-            dismissSearch()
         }
-    }
-
-    private func refreshAfterStaleSearchResult() async {
-        showToast(
-            String(localized: "The note changed. Search results were refreshed.", table: "Localizable", bundle: .module),
-            kind: .information
-        )
-        await refreshAdvancedSearch()
     }
 
     func requestOpenNote(
@@ -3175,15 +2893,20 @@ final class WindowModel: ObservableObject {
         refreshStatusText = "Retrying Triptych refresh…"
         do {
             let snapshot = try await discoveryController.refreshWorkspace()
-            await applyWorkspaceSnapshot(snapshot, vaultID: vaultID)
-            applyDerivedRefreshStatus(
-                .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
-            )
+            guard currentRegisteredVault?.id == vaultID,
+                  let capabilities = activeWorkspaceCapabilities,
+                  let commit = workspaceProjectionController.replaceSnapshot(
+                      snapshot,
+                      runtimeIdentity: capabilities.runtimeIdentity,
+                      status: .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)),
+                      context: workspaceProjectionContext
+                  ) else { return }
+            applyWorkspaceProjectionCommit(commit)
             refreshStatusText = nil
-            workspaceCatalogError = nil
+            workspaceProjectionController.reportCatalogError(nil)
         } catch {
             refreshStatusText = "Triptych refresh failed"
-            workspaceCatalogError = error.localizedDescription
+            workspaceProjectionController.reportCatalogError(error.localizedDescription)
         }
     }
 
@@ -3483,7 +3206,7 @@ final class WindowModel: ObservableObject {
         let restoredDocumentVaultID = requestedInitialDocument?.vaultID
             ?? stored.selectedDocument?.vaultID
         let restoredDocumentPaths = restoredDocumentVaultID
-            .flatMap { workspaceVaultSnapshotsByID[$0] }
+            .flatMap { workspaceProjectionController.vaultSnapshot(id: $0) }
             .map { Set($0.documents.map(\.id.relativePath)) }
             ?? Set(notes.map(\.relativePath))
         let restoredPresentation = stored.normalized(availablePaths: restoredDocumentPaths)
@@ -3600,7 +3323,7 @@ final class WindowModel: ObservableObject {
             inspectorMode: researchInspectorMode.rawValue,
             inspectorVisible: researchInspectorVisible,
             contentDestination: .document,
-            searchState: SearchWorkspaceState(scope: ordinarySearchScope),
+            searchState: SearchWorkspaceState(scope: searchController.ordinaryScope),
             documentTextScale: documentTextScale
         )
     }
@@ -3820,8 +3543,8 @@ final class WindowModel: ObservableObject {
             }
         ))
         researchController.bibliography.bind(RecommendedBibliographyClient(
-            overview: { target in
-                try await capabilities.research.recommendationOverview(for: target)
+            overview: {
+                try await capabilities.research.recommendationOverview()
             },
             prepare: { [weak self] request in
                 guard let self, let assignment = self.workspaceAssignment else {
@@ -3911,9 +3634,14 @@ final class WindowModel: ObservableObject {
                 flush: registration.flush
             )
         }
-        receiveWorkspaceSnapshot(
-            activation.snapshot,
-            runtimeIdentity: activation.runtimeIdentity
+        let projectionCommit = workspaceProjectionController.activate(
+            snapshot: activation.snapshot,
+            runtimeIdentity: activation.runtimeIdentity,
+            context: workspaceProjectionContext
+        )
+        applyWorkspaceProjectionCommit(projectionCommit)
+        agentNoteChangeWindowController.refreshForWorkspaceSnapshot(
+            triptychID: activation.snapshot.triptych.id
         )
     }
 
@@ -4040,7 +3768,9 @@ final class WindowModel: ObservableObject {
             try await rescanVault()
         } catch {
             refreshStatusText = "Triptych refresh failed after restore"
-            workspaceCatalogError = "The checkpoint restore committed successfully, but Scholium could not reload every restored setting or derived view. \(error.localizedDescription)"
+            workspaceProjectionController.reportCatalogError(
+                "The checkpoint restore committed successfully, but Scholium could not reload every restored setting or derived view. \(error.localizedDescription)"
+            )
         }
         return result
     }
@@ -4150,7 +3880,6 @@ final class WindowModel: ObservableObject {
         currentRegisteredVault = registered
         currentVaultRole = registered.role
         vaultConfig = targetConfig
-        workspaceVaultSnapshotsByID[registered.id] = vaultSnapshot
         if let locationRequest {
             guard discoveryController.receiveLocationResult(for: locationRequest) else {
                 throw CancellationError()
@@ -4164,11 +3893,11 @@ final class WindowModel: ObservableObject {
         if let resolvedSlot {
             attentionPresentationState.selectWorkspaceSlot(resolvedSlot)
         }
-        notes = targetNotes
-        refreshDocumentRevisions()
+        workspaceProjectionController.commitVaultSelection(
+            snapshot: vaultSnapshot,
+            notes: targetNotes
+        )
         await refreshIdentityState()
-        relationshipGraph = workspaceCatalog?.graph
-        allTags = notes.orderedTags
         scheduleWorkspaceCatalogRefresh()
         persistWindowSessionNow()
     }
@@ -4188,23 +3917,7 @@ final class WindowModel: ObservableObject {
     }
 
     func refreshWorkspaceCatalog() async {
-        guard !isRefreshingWorkspaceCatalog else {
-            workspaceCatalogNeedsAnotherRefresh = true
-            return
-        }
-        isRefreshingWorkspaceCatalog = true
-        workspaceCatalogNeedsAnotherRefresh = false
-        workspaceCatalogError = nil
-        defer {
-            isRefreshingWorkspaceCatalog = false
-            if workspaceCatalogNeedsAnotherRefresh { scheduleWorkspaceCatalogRefresh() }
-        }
-
-        do {
-            workspaceCatalog = try await discoveryController.discoverySnapshot().catalog
-        } catch {
-            workspaceCatalogError = error.localizedDescription
-        }
+        await workspaceProjectionController.refreshCatalog()
     }
 
     private func loadVault(_ registered: RegisteredVault) async throws {
@@ -4246,9 +3959,7 @@ final class WindowModel: ObservableObject {
 
             resetWindowSession()
 
-            workspaceVaultSnapshotsByID = Dictionary(
-                uniqueKeysWithValues: workspaceVaultSnapshots.map { ($0.vault.id, $0) }
-            )
+            workspaceProjectionController.replaceVaultSnapshots(workspaceVaultSnapshots)
             if let slot = workspaceSlot(for: registered) {
                 discoveryController.synchronizeLibrarySelection(
                     workspaceSlot: slot,
@@ -4261,14 +3972,15 @@ final class WindowModel: ObservableObject {
             activeTriptychServicesID = assignment.id
             activeWorkspaceCapabilities = capabilities
             vaultConfig = targetConfig
-            notes = targetNotes
-            refreshDocumentRevisions()
+            workspaceProjectionController.replaceVisibleNotes(targetNotes)
             await refreshIdentityState()
             if let snapshot = workspaceStore.snapshot(for: capabilities.id) {
-                receiveWorkspaceSnapshot(
-                    snapshot,
-                    runtimeIdentity: capabilities.runtimeIdentity
+                let commit = workspaceProjectionController.activate(
+                    snapshot: snapshot,
+                    runtimeIdentity: capabilities.runtimeIdentity,
+                    context: workspaceProjectionContext
                 )
+                applyWorkspaceProjectionCommit(commit)
             }
             isLoading = false
             refreshStatusText = nil
@@ -4428,20 +4140,16 @@ final class WindowModel: ObservableObject {
         await refreshIdentityState()
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
 
-        relationshipGraph = try? await discoveryController.discoverySnapshot().catalog.graph
+        if let catalog = try? await discoveryController.discoverySnapshot().catalog {
+            workspaceProjectionController.replaceCatalog(catalog)
+        }
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
         if let vaultID = startingVaultID,
            let vault = try? await documentController.workspaceSnapshot(vaultID: vaultID) {
             let snapshots = Dictionary(uniqueKeysWithValues: vault.documents.map { ($0.id.relativePath, $0) })
-            notes = notes.map { location in
-                snapshots[location.relativePath].map(WindowDocumentLocation.workspace) ?? location
-            }
+            workspaceProjectionController.refreshVisibleNoteSnapshots(snapshots)
         }
-
-        // Update tags
-        let tags = notes.orderedTags
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
-        allTags = tags
 
         if noteLocationScope == .workspace, workspaceAssignment != nil {
             scheduleWorkspaceCatalogRefresh()
@@ -4453,13 +4161,7 @@ final class WindowModel: ObservableObject {
     }
 
     private func scheduleWorkspaceCatalogRefresh() {
-        workspaceCatalogNeedsAnotherRefresh = true
-        workspaceCatalogRefreshTask?.cancel()
-        workspaceCatalogRefreshTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled, let self else { return }
-            await self.refreshWorkspaceCatalog()
-        }
+        workspaceProjectionController.scheduleCatalogRefresh()
     }
 
     func rescanVault() async throws {
@@ -4481,8 +4183,9 @@ final class WindowModel: ObservableObject {
                 vaultID: currentRegisteredVault?.id
             )
             guard discoveryController.receiveLocationResult(for: request) else { return }
-            notes = loaded.sorted(by: notesAreOrdered)
-            refreshDocumentRevisions()
+            workspaceProjectionController.replaceVisibleNotes(
+                loaded.sorted(by: notesAreOrdered)
+            )
             await refreshIdentityState()
             await refreshWindowProjection()
         } catch {
@@ -4513,8 +4216,9 @@ final class WindowModel: ObservableObject {
             throw error
         }
         guard discoveryController.receiveLocationResult(for: request) else { return }
-        notes = loaded.sorted(by: notesAreOrdered)
-        refreshDocumentRevisions()
+        workspaceProjectionController.replaceVisibleNotes(
+            loaded.sorted(by: notesAreOrdered)
+        )
         await refreshIdentityState()
         await refreshWindowProjection()
     }
@@ -4543,7 +4247,7 @@ final class WindowModel: ObservableObject {
     private func currentWorkspaceVaultSnapshot(
         vaultID: UUID
     ) async throws -> WorkspaceVaultSnapshot {
-        if let snapshot = workspaceVaultSnapshotsByID[vaultID] {
+        if let snapshot = workspaceProjectionController.vaultSnapshot(id: vaultID) {
             return snapshot
         }
         guard let snapshot = try await documentController.workspaceSnapshot(
@@ -4578,13 +4282,16 @@ final class WindowModel: ObservableObject {
 
     func prepareLifecycleOperation(_ item: LifecycleLocationItem) {
         noteIdentityByPath[item.note.relativePath] = item.noteID
-        documentRevisions[item.note.relativePath] = item.revision
+        workspaceProjectionController.recordPreparedRevision(
+            item.revision,
+            at: item.note.relativePath
+        )
     }
 
     func clearPreparedLifecycleOperation(at path: String) {
         guard WorkspaceDocumentLifecycle(relativePath: path) != .active else { return }
         noteIdentityByPath[path] = nil
-        documentRevisions[path] = nil
+        workspaceProjectionController.clearPreparedRevision(at: path)
     }
 
     func requestUntitledNoteCreation(in folderRelativePath: String?) {
@@ -4601,9 +4308,10 @@ final class WindowModel: ObservableObject {
                 folderRelativePath: folderRelativePath
             )
             try await browseRegisteredVault(vault)
-            guard let snapshot = workspaceVaultSnapshotsByID[vault.id]?.documents.first(where: {
-                $0.id.relativePath == document.relativePath
-            }) else {
+            guard let snapshot = workspaceProjectionController.cachedNote(
+                vaultID: vault.id,
+                relativePath: document.relativePath
+            ) else {
                 throw WindowNavigationError.noteUnavailable(document.relativePath)
             }
             guard let noteID = snapshot.stableIdentity.resolvedID else {
@@ -4753,7 +4461,7 @@ final class WindowModel: ObservableObject {
         ) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        workspaceVaultSnapshotsByID[vaultID] = snapshot
+        workspaceProjectionController.replaceVaultSnapshot(snapshot)
     }
 
     private func projectFolderMove(_ commit: FolderMoveCommit) {
@@ -5049,51 +4757,25 @@ final class WindowModel: ObservableObject {
             : trimmed + ".md"
     }
 
-    func refreshAdvancedSearch() async {
-        advancedSearchExecutionTask?.cancel()
-        let executionID = UUID()
-        advancedSearchExecutionID = executionID
-        let task = Task { [weak self] in
-            guard let self else { return }
-            await self.performAdvancedSearch(executionID: executionID)
-        }
-        advancedSearchExecutionTask = task
-        await withTaskCancellationHandler {
-            await task.value
-        } onCancel: {
-            task.cancel()
-        }
-        if advancedSearchExecutionID == executionID {
-            advancedSearchExecutionTask = nil
-            advancedSearchExecutionID = nil
-        }
-    }
-
-    private func performAdvancedSearch(executionID: UUID) async {
-        let state = advancedSearchState
-        do {
-            let sourceSnapshot = state.scope == .thisNote
-                ? try await currentSearchSourceSnapshot()
-                : nil
-            try await discoveryController.executeSearch(
-                state,
-                context: DiscoverySearchExecutionContext(
-                    workspaceIsAvailable: workspaceAssignment != nil,
-                    currentNoteSnapshot: sourceSnapshot,
-                    currentVaultID: currentRegisteredVault?.id
-                )
+    private func currentLexicalSearchEvidence(
+        for hit: SearchHit,
+        scope: SearchPresentationScope
+    ) async -> WindowLexicalSearchEvidence {
+        if scope == .thisNote {
+            let snapshot = try? await currentSearchSourceSnapshot()
+            return WindowLexicalSearchEvidence(
+                freshness: snapshot.map(SearchFreshnessToken.currentNote),
+                fingerprint: snapshot?.fingerprint
             )
-            if refreshStatusText == "Search unavailable" { refreshStatusText = nil }
-        } catch is CancellationError {
-            return
-        } catch {
-            guard advancedSearchExecutionID == executionID else { return }
-            discoveryController.failPendingSearch(error.localizedDescription, for: state)
-            refreshStatusText = "Search unavailable"
-            if !(error is DiscoverySearchExecutionError) {
-                workspaceCatalogError = "Search refresh failed. \(error.localizedDescription)"
-            }
         }
+        let discovery = try? await discoveryController.discoverySnapshot()
+        return WindowLexicalSearchEvidence(
+            freshness: discovery?.searchGeneration.map(SearchFreshnessToken.triptych),
+            fingerprint: workspaceProjectionController.cachedNote(
+                vaultID: hit.vaultID,
+                relativePath: hit.relativePath
+            )?.fingerprint
+        )
     }
 
     /// Captures CodeMirror's checked in-memory source without flushing or
@@ -5128,82 +4810,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func saveCurrentSearch(named requestedName: String) {
-        let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty,
-              !advancedSearchState.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let state = advancedSearchState
-        enqueueSavedSearchMutation { searches in
-            var searches = searches
-            searches.insert(SavedSearch(
-                name: name,
-                definition: SearchDefinition(
-                    query: state.query,
-                    presentationScope: state.scope
-                )
-            ), at: 0)
-            return searches
-        }
-    }
-
-    func runSavedSearch(_ search: SavedSearch) {
-        advancedSearchState = SearchWorkspaceState(
-            query: search.definition.query,
-            scope: search.definition.presentationScope
-        )
-        showSearchSurface = true
-        Task { await refreshAdvancedSearch() }
-    }
-
-    func deleteSavedSearch(_ id: UUID) {
-        enqueueSavedSearchMutation { searches in
-            searches.filter { $0.id != id }
-        }
-    }
-
-    func renameSavedSearch(_ id: UUID, to requestedName: String) {
-        let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        enqueueSavedSearchMutation { searches in
-            var searches = searches
-            guard let index = searches.firstIndex(where: { $0.id == id }) else { return searches }
-            searches[index].name = name
-            return searches
-        }
-    }
-
-    func moveSavedSearch(_ id: UUID, by offset: Int) {
-        guard offset != 0 else { return }
-        enqueueSavedSearchMutation { searches in
-            var searches = searches
-            guard let source = searches.firstIndex(where: { $0.id == id }) else { return searches }
-            let destination = min(max(0, source + offset), searches.count - 1)
-            guard source != destination else { return searches }
-            let search = searches.remove(at: source)
-            searches.insert(search, at: destination)
-            return searches
-        }
-    }
-
-    private func enqueueSavedSearchMutation(
-        _ mutation: @escaping @MainActor ([SavedSearch]) -> [SavedSearch]
-    ) {
-        let previous = savedSearchMutationTail
-        savedSearchMutationTail = Task { [weak self] in
-            _ = await previous?.value
-            guard let self else { return }
-            let proposed = mutation(self.savedSearches)
-            guard proposed != self.savedSearches else { return }
-            do {
-                try await self.workspaceStore.saveSavedSearches(proposed)
-                guard !Task.isCancelled else { return }
-                self.savedSearches = proposed
-            } catch {
-                self.showToast(String(localized: "Could not save search: \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
-            }
-        }
-    }
-
     func openNote(
         _ path: String,
         tabActivation: DocumentTabActivation = .place(.replaceSelected)
@@ -5235,9 +4841,10 @@ final class WindowModel: ObservableObject {
 
     private func openRestoredDocument(_ id: VaultQualifiedNoteID) {
         guard let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == id.vaultID }),
-              let snapshot = workspaceVaultSnapshotsByID[id.vaultID]?.documents.first(where: {
-                  $0.id.relativePath == id.relativePath
-              }) else { return }
+              let snapshot = workspaceProjectionController.cachedNote(
+                  vaultID: id.vaultID,
+                  relativePath: id.relativePath
+              ) else { return }
         PerformanceProbe.shared.beginReadActivation(documentID: id.relativePath)
         documentController.installOpenedDocument(
             snapshot,
@@ -5280,13 +4887,11 @@ final class WindowModel: ObservableObject {
             throw WindowNavigationError.vaultUnavailable(reference.vaultName)
         }
         let requestedStableID = reference.stableNoteID.flatMap(UUID.init(uuidString:))
-        guard let snapshot = workspaceVaultSnapshotsByID[reference.vaultID]?.documents.first(where: {
-            if let requestedStableID,
-               $0.stableIdentity.resolvedID == requestedStableID {
-                return true
-            }
-            return $0.id.relativePath == reference.relativePath
-        }) else {
+        guard let snapshot = workspaceProjectionController.cachedNote(
+            vaultID: reference.vaultID,
+            stableNoteID: requestedStableID,
+            relativePath: reference.relativePath
+        ) else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
         PerformanceProbe.shared.beginReadActivation(documentID: snapshot.id.relativePath)
@@ -5398,10 +5003,11 @@ final class WindowModel: ObservableObject {
     private func refreshDocumentTabProjections() {
         for tab in documentTabController.tabs {
             guard case .workspace(let descriptor) = tab.document,
-                  let snapshot = workspaceVaultSnapshotsByID[descriptor.reference.vaultID]?
-                    .documents.first(where: {
-                        $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID
-                    }),
+                  let snapshot = workspaceProjectionController.cachedNote(
+                      vaultID: descriptor.reference.vaultID,
+                      stableNoteID: descriptor.sessionKey.noteID,
+                      relativePath: descriptor.reference.relativePath
+                  ),
                   let vault = workspaceAssignment?.vaults.values.first(where: {
                       $0.id == descriptor.reference.vaultID
                   }) else { continue }
@@ -5428,8 +5034,11 @@ final class WindowModel: ObservableObject {
         for document: WindowSelectedDocument
     ) -> (title: String, toolTip: String) {
         let location: WindowDocumentLocation? = if let sessionKey = document.sessionKey {
-            workspaceVaultSnapshotsByID[sessionKey.vaultID]?.documents
-                .first(where: { $0.stableIdentity.resolvedID == sessionKey.noteID })
+            workspaceProjectionController.cachedNote(
+                vaultID: sessionKey.vaultID,
+                stableNoteID: sessionKey.noteID,
+                relativePath: document.relativePath
+            )
                 .map(WindowDocumentLocation.workspace)
         } else {
             notes.first(where: { $0.relativePath == document.relativePath })
@@ -5655,12 +5264,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    private func refreshDocumentRevisions() {
-        documentRevisions = Dictionary(uniqueKeysWithValues: notes.map {
-            ($0.relativePath, DocumentFingerprint(content: $0.rawContent))
-        })
-    }
-
     private func refreshIdentityState() async {
         identityRefreshGeneration &+= 1
         let refreshGeneration = identityRefreshGeneration
@@ -5717,9 +5320,7 @@ final class WindowModel: ObservableObject {
             let snapshots = Dictionary(
                 uniqueKeysWithValues: vaultSnapshot.documents.map { ($0.id.relativePath, $0) }
             )
-            notes = notes.map { location in
-                snapshots[location.relativePath].map(WindowDocumentLocation.workspace) ?? location
-            }
+            workspaceProjectionController.refreshVisibleNoteSnapshots(snapshots)
         }
         refreshSelectedDocumentProjection()
     }
@@ -5727,9 +5328,10 @@ final class WindowModel: ObservableObject {
     private func resetWindowSession() {
         presentationRouter.dismissAll()
         documentController.removeAll(retainingSessions: true)
+        searchController.resetExecution()
         discoveryController.reset()
         researchController.reset()
-        notes = []
+        workspaceProjectionController.reset()
         documentController.resetPresentationState()
         pendingSourceLine = nil
         pendingSourceRange = nil
@@ -5741,22 +5343,6 @@ final class WindowModel: ObservableObject {
         pendingIdentityRebindings = []
         identityMigrationFailures = []
         identityResolutionError = nil
-        documentRevisions = [:]
-        relationshipGraph = nil
-        workspaceVaultSnapshotsByID = [:]
-        workspaceSearchGeneration = nil
-        advancedSearchExecutionTask?.cancel()
-        advancedSearchExecutionTask = nil
-        advancedSearchExecutionID = nil
-        derivedRefreshStatus = nil
-    }
-
-    private func receiveWorkspaceSnapshots(
-        _ snapshots: [UUID: WorkspaceSnapshot]
-    ) {
-        guard let capabilities = activeWorkspaceCapabilities,
-              let snapshot = snapshots[capabilities.id] else { return }
-        receiveWorkspaceSnapshot(snapshot, runtimeIdentity: capabilities.runtimeIdentity)
     }
 
     private func receiveWorkspaceEvents(_ events: [UUID: WorkspaceEvent]) {
@@ -5769,169 +5355,94 @@ final class WindowModel: ObservableObject {
             }
         }
 
-        guard case .inventoryChanged(let change) = event,
-              let vaultID = currentRegisteredVault?.id else { return }
-        for move in change.moved where move.previousLocation.vaultID == vaultID
-            && move.location.vaultID == vaultID {
-            migrateInMemoryPath(
-                from: move.previousLocation.relativePath,
-                to: move.location.relativePath,
-                noteID: move.stableNoteID,
-                identityResolved: true,
-                vaultID: vaultID
-            )
-        }
-    }
-
-    private func receiveWorkspaceSnapshot(
-        _ snapshot: WorkspaceSnapshot,
-        runtimeIdentity: TriptychRuntimeIdentity
-    ) {
-        guard activeWorkspaceCapabilities?.runtimeIdentity == runtimeIdentity else { return }
-        documentController.receive(snapshot)
-        researchController.receive(snapshot)
-        if let request = presentedAgentNoteChangeRequest,
-           request.isUnresolved,
-           request.request.triptychID == snapshot.triptych.id {
-            Task { [weak self] in
-                try? await self?.workspaceStore.refreshAgentNoteChangeRequest(
-                    id: request.id,
-                    in: request.request.triptychID
+        if case .inventoryChanged(let change) = event,
+           let vaultID = currentRegisteredVault?.id {
+            for move in change.moved where move.previousLocation.vaultID == vaultID
+                && move.location.vaultID == vaultID {
+                migrateInMemoryPath(
+                    from: move.previousLocation.relativePath,
+                    to: move.location.relativePath,
+                    noteID: move.stableNoteID,
+                    identityResolved: true,
+                    vaultID: vaultID
                 )
             }
         }
-        guard let watchedVaultID = currentRegisteredVault?.id else { return }
 
-        let predecessor = workspaceProjectionTail
-        workspaceProjectionTail = Task { [weak self] in
-            _ = await predecessor?.result
-            guard !Task.isCancelled,
-                  let self,
-                  self.activeWorkspaceCapabilities?.runtimeIdentity == runtimeIdentity,
-                  self.currentRegisteredVault?.id == watchedVaultID else { return }
-            await self.applyWorkspaceSnapshot(snapshot, vaultID: watchedVaultID)
+        if case .researchConfigurationInvalidated = event {
+            _ = workspaceProjectionController.receive(
+                event,
+                runtimeIdentity: capabilities.runtimeIdentity,
+                context: workspaceProjectionContext
+            )
+            return
+        }
+
+        documentController.receive(event.snapshot)
+        researchController.receive(event.snapshot)
+        agentNoteChangeWindowController.refreshForWorkspaceSnapshot(
+            triptychID: event.snapshot.triptych.id
+        )
+        if let commit = workspaceProjectionController.receive(
+            event,
+            runtimeIdentity: capabilities.runtimeIdentity,
+            context: workspaceProjectionContext
+        ) {
+            applyWorkspaceProjectionCommit(commit)
         }
     }
 
-    private func receiveWorkspaceDerivedRefreshStatuses(
-        _ statuses: [UUID: WorkspaceDerivedRefreshStatus]
+    private var workspaceProjectionContext: WindowWorkspaceProjectionContext {
+        WindowWorkspaceProjectionContext(
+            selectedVaultID: currentRegisteredVault?.id,
+            locationScope: noteLocationScope,
+            currentDocumentVaultID: currentDocumentVaultID,
+            selectedDocumentPath: selectedDocumentPath,
+            editingDocumentPath: documentController.editingDocumentPath
+        )
+    }
+
+    private func applyWorkspaceProjectionCommit(
+        _ commit: WindowWorkspaceProjectionCommit
     ) {
-        guard let capabilities = activeWorkspaceCapabilities,
-              let status = statuses[capabilities.id] else { return }
-        let runtimeIdentity = capabilities.runtimeIdentity
-        let predecessor = workspaceProjectionTail
-        workspaceProjectionTail = Task { [weak self] in
-            _ = await predecessor?.result
-            guard !Task.isCancelled,
-                  let self,
-                  self.activeWorkspaceCapabilities?.runtimeIdentity == runtimeIdentity else { return }
-            self.applyDerivedRefreshStatus(status)
+        refreshDocumentTabProjections()
+        if commit.searchGenerationChanged {
+            searchController.searchGenerationDidChange()
         }
-    }
-
-    private func applyDerivedRefreshStatus(_ status: WorkspaceDerivedRefreshStatus) {
-        derivedRefreshStatus = status
-        switch status {
+        switch commit.derivedRefreshStatus {
         case .current:
             if refreshStatusText == "Derived state is stale"
                 || refreshStatusText == "Derived refresh failed" {
                 refreshStatusText = nil
             }
-            workspaceCatalogError = nil
-        case .stale(let issue):
+        case .stale:
             if refreshStatusText?.hasPrefix("Conflict:") != true {
                 refreshStatusText = "Derived state is stale"
             }
-            workspaceCatalogError = issue.reason
-        case .failed(let issue):
+        case .failed:
             if refreshStatusText?.hasPrefix("Conflict:") != true {
                 refreshStatusText = "Derived refresh failed"
             }
-            workspaceCatalogError = issue.reason
         }
-    }
-
-    private func applyWorkspaceSnapshot(
-        _ snapshot: WorkspaceSnapshot,
-        vaultID: UUID
-    ) async {
-        let previousSearchGeneration = workspaceSearchGeneration
-        workspaceSearchGeneration = snapshot.discovery.searchGeneration
-        workspaceCatalog = snapshot.discovery.catalog
-        workspaceVaultSnapshotsByID = Dictionary(
-            uniqueKeysWithValues: snapshot.vaults.map { ($0.vault.id, $0) }
-        )
-        refreshDocumentTabProjections()
-        if let previousSearchGeneration,
-           previousSearchGeneration != snapshot.discovery.searchGeneration,
-           showSearchSurface,
-           !advancedSearchState.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // A source-generation change invalidates both the visible rows and
-            // any index statement still evaluating the predecessor.
-            advancedSearchExecutionTask?.cancel()
-            Task { [weak self] in await self?.refreshAdvancedSearch() }
-        }
-        guard noteLocationScope == .workspace else {
-            try? await refreshNoteLocationScope()
-            return
-        }
-        guard let vault = snapshot.vault(id: vaultID) else { return }
-
-        let previousByPath = Dictionary(uniqueKeysWithValues: notes.map { ($0.relativePath, $0) })
-        var refreshed = vault.documents
-            .filter { $0.lifecycle == .active }
-            .map(WindowDocumentLocation.workspace)
-            .sorted {
-                $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
-            }
-        let editingDocumentPath = documentController.editingDocumentPath
-        let activeRecoveryNote: WindowDocumentLocation? = {
-            guard currentDocumentVaultID == vaultID,
-                  let selectedDocumentPath,
-                  editingDocumentPath == selectedDocumentPath,
-                  !refreshed.contains(where: { $0.relativePath == selectedDocumentPath }) else { return nil }
-            return previousByPath[selectedDocumentPath]
-        }()
-        if let activeRecoveryNote {
-            refreshed.append(activeRecoveryNote)
+        if commit.retainedDeletedEditorPath != nil {
             refreshStatusText = "Conflict: note deleted outside Scholium"
         }
-
-        notes = refreshed.sorted(by: notesAreOrdered)
-        refreshDocumentRevisions()
-        if let activeRecoveryNote {
-            documentRevisions[activeRecoveryNote.relativePath] = previousByPath[activeRecoveryNote.relativePath]
-                .map { DocumentFingerprint(content: $0.rawContent) }
+        Task { [weak self] in
+            await self?.refreshIdentityState()
         }
-        await refreshIdentityState()
-        relationshipGraph = snapshot.discovery.catalog.graph
-        allTags = notes.orderedTags
-        workspaceCatalogError = nil
     }
 
     private func replaceCachedWorkspaceNote(_ note: WorkspaceNoteSnapshot) {
-        guard let vaultSnapshot = workspaceVaultSnapshotsByID[note.id.vaultID] else { return }
-        var documents = vaultSnapshot.documents
-        if let noteID = note.stableIdentity.resolvedID,
-           let index = documents.firstIndex(where: { $0.stableIdentity.resolvedID == noteID }) {
-            documents[index] = note
-        } else if let index = documents.firstIndex(where: { $0.id == note.id }) {
-            documents[index] = note
-        } else {
-            documents.append(note)
-        }
-        workspaceVaultSnapshotsByID[note.id.vaultID] = WorkspaceVaultSnapshot(
-            slot: vaultSnapshot.slot,
-            vault: vaultSnapshot.vault,
-            documents: documents,
-            folders: vaultSnapshot.folders,
-            identityRecovery: vaultSnapshot.identityRecovery
-        )
+        guard let vault = workspaceProjectionController.recordCommittedNote(
+            note,
+            visibleVaultID: currentRegisteredVault?.id,
+            visibleLocationScope: noteLocationScope
+        ) else { return }
         refreshDocumentTabProjections()
         documentController.recordCommittedSnapshot(
             note,
-            vaultName: vaultSnapshot.vault.name,
-            vaultRole: vaultSnapshot.vault.role
+            vaultName: vault.name,
+            vaultRole: vault.role
         )
     }
 
@@ -5943,10 +5454,11 @@ final class WindowModel: ObservableObject {
         guard let context = activeDocumentContext(for: document.relativePath) else {
             return nil
         }
-        let previous = workspaceVaultSnapshotsByID[context.vaultID]?.documents.first(where: {
-            $0.stableIdentity.resolvedID == context.noteID
-                || $0.id.relativePath == document.relativePath
-        })
+        let previous = workspaceProjectionController.cachedNote(
+            vaultID: context.vaultID,
+            stableNoteID: context.noteID,
+            relativePath: document.relativePath
+        )
         let loaded = try? await documentController.noteSnapshot(VaultQualifiedNoteID(
             vaultID: context.vaultID,
             relativePath: document.relativePath
@@ -5994,15 +5506,6 @@ final class WindowModel: ObservableObject {
 
         replaceCachedWorkspaceNote(savedSnapshot)
         let saved = WindowDocumentLocation.workspace(savedSnapshot)
-        if currentRegisteredVault?.id == context.vaultID {
-            if let index = notes.firstIndex(where: { $0.relativePath == document.relativePath }) {
-                notes[index] = saved
-            } else {
-                notes.append(saved)
-                notes.sort(by: notesAreOrdered)
-            }
-            documentRevisions[document.relativePath] = document.fingerprint
-        }
         await refreshWindowProjection()
         if currentRegisteredVault?.id == context.vaultID {
             return notes.first(where: { $0.relativePath == document.relativePath }) ?? saved

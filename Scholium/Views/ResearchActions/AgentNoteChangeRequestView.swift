@@ -1,20 +1,6 @@
 import ScholiumContracts
 import SwiftUI
 
-struct AgentNoteChangeDisplayTarget: Identifiable, Equatable {
-    let id: UUID
-    let title: String
-    let relativePath: String
-    let role: ResearchActionTargetRole
-    let expectedFingerprint: DocumentFingerprint
-    let currentFingerprint: DocumentFingerprint?
-}
-
-struct AgentNoteChangePresentationIdentity: Equatable {
-    let actionName: String
-    let skillName: String
-}
-
 struct AgentNoteChangeRequestView: View {
     let record: AgentNoteChangeRequestRecord
     let targets: [AgentNoteChangeDisplayTarget]

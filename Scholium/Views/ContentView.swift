@@ -151,17 +151,19 @@ struct ContentView: View {
             value: appState.showSearchSurface
         )
         .sheet(item: presentedSheet, onDismiss: {
-            if appState.presentedAgentNoteChangeRequest != nil {
+            let agentRequest = appState.agentNoteChangeWindowController
+            if agentRequest.record != nil {
                 windowCoordinator.restoreAgentNoteChangeFocus()
-                appState.finishAgentNoteChangeRequestDismissal()
+                agentRequest.finishDismissal()
             } else if appState.researchController.actions.isPresented {
                 let actionID = appState.researchController.actions.activeActionID
                 appState.presentationRouter.dismissSheet()
                 appState.researchController.actions.dismiss()
                 restoreResearchActionFocus(ifOwnedBy: actionID)
+                agentRequest.presentationBecameAvailable()
+            } else {
+                agentRequest.presentationBecameAvailable()
             }
-            appState.agentNoteChangePresentationCoordinator
-                .presentationBecameAvailable(windowID: appState.nativeWindowID)
         }) { route in
             sheetContent(for: route)
         }
@@ -220,14 +222,14 @@ struct ContentView: View {
 
     private var spotlightSearchContext: SpotlightSearchContext {
         SpotlightSearchContext(
-            savedSearches: appState.savedSearches,
-            refresh: { await appState.refreshAdvancedSearch() },
-            dismiss: { appState.dismissSearch() },
-            save: { appState.saveCurrentSearch(named: $0) },
-            run: { appState.runSavedSearch($0) },
-            rename: { appState.renameSavedSearch($0, to: $1) },
-            move: { appState.moveSavedSearch($0, by: $1) },
-            delete: { appState.deleteSavedSearch($0) }
+            savedSearches: appState.searchController.savedSearches,
+            refresh: { await appState.searchController.refresh() },
+            dismiss: { appState.searchController.dismiss() },
+            save: { appState.searchController.saveCurrent(named: $0) },
+            run: { appState.searchController.run($0) },
+            rename: { appState.searchController.rename($0, to: $1) },
+            move: { appState.searchController.move($0, by: $1) },
+            delete: { appState.searchController.delete($0) }
         )
     }
 
@@ -328,7 +330,7 @@ struct ContentView: View {
         return DocumentFeatureState(
             notes: appState.currentDocumentNotes,
             selectedDocumentPath: appState.selectedDocumentPath,
-            ordinarySearchScope: appState.ordinarySearchScope,
+            ordinarySearchScope: appState.searchController.ordinaryScope,
             currentVaultID: appState.currentDocumentVaultID,
             vaultRole: appState.currentDocumentVaultRole,
             locationScope: appState.currentDocumentDescriptor == nil
@@ -366,7 +368,7 @@ struct ContentView: View {
                 appState.requestIdentityResolution(for: path)
             },
             retryIdentityRecovery: { await appState.retryIdentityRecovery() },
-            beginSearch: { appState.beginSearch($0) },
+            beginSearch: { appState.searchController.begin($0) },
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
             clearPendingSourceRange: { appState.pendingSourceRange = nil },
@@ -526,6 +528,9 @@ struct ContentView: View {
             bibliographyController: appState.researchController.bibliography,
             attentionPopoverSession: appState.attentionPopoverSession,
             notesAreOrdered: { appState.notesAreOrdered($0, $1) },
+            hideLibrary: {
+                windowCoordinator.actions.setLibraryVisible(false)
+            },
             openAttention: {
                 windowCoordinator.actions.showAttention(.sidebar, nil)
             },
@@ -685,23 +690,24 @@ struct ContentView: View {
                 }
             }
         case .agentNoteChange(let requestID):
-            if let record = appState.presentedAgentNoteChangeRequest,
+            let controller = appState.agentNoteChangeWindowController
+            if let record = controller.record,
                record.id == requestID {
                 AgentNoteChangeRequestView(
                     record: record,
-                    targets: appState.displayTargets(for: record),
-                    identity: appState.presentedAgentNoteChangeIdentity,
-                    identityLoadFailed: appState.agentNoteChangeIdentityLoadFailed,
-                    hasLocallyExpired: appState.agentNoteChangeHasLocallyExpired,
-                    isResolving: appState.isResolvingAgentNoteChangeRequest,
+                    targets: controller.displayTargets(for: record),
+                    identity: controller.identity,
+                    identityLoadFailed: controller.identityLoadFailed,
+                    hasLocallyExpired: controller.hasLocallyExpired,
+                    isResolving: controller.isResolving,
                     resolve: { state, allowedNoteIDs in
-                        appState.resolvePresentedAgentNoteChangeRequest(
+                        controller.resolve(
                             state: state,
                             allowedNoteIDs: allowedNoteIDs
                         )
                     },
                     dismiss: {
-                        appState.dismissPresentedAgentNoteChangeRequest(id: requestID)
+                        controller.requestDismissal(id: requestID)
                     }
                 )
             }
@@ -815,12 +821,15 @@ struct ContentView: View {
             ResearchInspectorView(
                 note: note,
                 controller: appState.researchController,
-                graph: appState.workspaceCatalog?.graph ?? appState.relationshipGraph,
+                graph: appState.relationshipGraph,
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
                 researchInspectorContentContext: researchInspectorContentContext,
                 researchActionsPresentation: appState.researchActionsPresentation(),
                 researchActionFocusRequest: researchActionFocusRequest,
+                hideInspector: {
+                    windowCoordinator.actions.setResearchInspectorVisible(false)
+                },
                 registerResearchActionFocusOwner: {
                     pendingResearchActionFocusID = $0
                 },
@@ -837,25 +846,46 @@ struct ContentView: View {
                     )
                 }
             )
-        } else if appState.researchController.actions.hasCancellationBarrier {
-            ResearchActionsInspectorView(
-                presentation: appState.researchActionsPresentation(),
-                freshness: .current,
-                focusRequest: nil,
-                registerFocusOwner: { _ in },
-                select: { _ in },
-                retryRefresh: {},
-                retryCancellationRecovery: { runID in
-                    appState.researchController.actions.retryCancellationRecovery(runID: runID)
-                },
-                settle: { _ in }
-            )
-            .scholiumSurface(.apparatus)
-            .accessibilityIdentifier("scholium.researchActions.recoveryOnly")
         } else {
-            Color.clear
-                .scholiumSurface(.apparatus)
-                .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                apparatusHideControl
+
+                if appState.researchController.actions.hasCancellationBarrier {
+                    ResearchActionsInspectorView(
+                        presentation: appState.researchActionsPresentation(),
+                        freshness: .current,
+                        focusRequest: nil,
+                        registerFocusOwner: { _ in },
+                        select: { _ in },
+                        retryRefresh: {},
+                        retryCancellationRecovery: { runID in
+                            appState.researchController.actions
+                                .retryCancellationRecovery(runID: runID)
+                        },
+                        settle: { _ in }
+                    )
+                    .accessibilityIdentifier("scholium.researchActions.recoveryOnly")
+                } else {
+                    Color.clear
+                        .accessibilityHidden(true)
+                }
+            }
+            .scholiumSurface(.apparatus)
+        }
+    }
+
+    private var apparatusHideControl: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            ScholiumInkIconControl(
+                title: ScholiumL10n.dynamicString("Hide Research Inspector"),
+                systemImage: "sidebar.trailing",
+                identifier: "scholium.toggleInspector",
+                isActive: true
+            ) {
+                windowCoordinator.actions.setResearchInspectorVisible(false)
+            }
+            .accessibilityValue(ScholiumL10n.dynamicString("Shown"))
         }
     }
 

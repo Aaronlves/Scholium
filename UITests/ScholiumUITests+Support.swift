@@ -1,0 +1,1307 @@
+@preconcurrency import XCTest
+import AppKit
+import CryptoKit
+import notify
+
+extension ScholiumUITests {
+    @MainActor
+    func accessibilityText(of element: XCUIElement) -> String {
+        if let value = element.value as? String, !value.isEmpty {
+            return value
+        }
+        return element.label
+    }
+
+    @MainActor
+    func sliderNumericValue(_ element: XCUIElement) -> Double? {
+        if let number = element.value as? NSNumber {
+            return number.doubleValue
+        }
+        if let value = element.value as? String {
+            return Double(value)
+                ?? value.split(whereSeparator: { $0.isWhitespace }).first.flatMap {
+                    Double($0)
+                }
+        }
+        return nil
+    }
+
+
+    @MainActor
+    func scrollUntilHittable(
+        _ element: XCUIElement,
+        in scrollView: XCUIElement
+    ) {
+        func isVisiblyHittable() -> Bool {
+            guard element.isHittable else { return false }
+            let intersection = element.frame.intersection(scrollView.frame)
+            return !intersection.isNull
+                && intersection.width >= 8
+                && intersection.height >= 8
+        }
+        guard !isVisiblyHittable() else { return }
+
+        // XCUITest exposes offscreen SwiftUI list rows with their actual frame.
+        // Scroll toward that frame rather than always moving down the list;
+        // an unconditional upward swipe can move a near-top row offscreen.
+        for _ in 0..<12 where !isVisiblyHittable() {
+            if element.frame.midY < scrollView.frame.midY {
+                scrollView.swipeDown(velocity: .slow)
+            } else {
+                scrollView.swipeUp(velocity: .slow)
+            }
+        }
+        XCTAssertTrue(
+            isVisiblyHittable(),
+            "Expected the control to become visibly reachable after scrolling."
+        )
+    }
+
+    @MainActor
+    func closeFrontmostWindow() {
+        let initialWindowCount = app.windows.count
+        app.typeKey("w", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { self.app.windows.count < initialWindowCount },
+            "Command-W must close the key window without depending on AX window ordering."
+        )
+    }
+
+    @MainActor
+    func waitUntil(timeout: TimeInterval, condition: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in condition() },
+            object: nil
+        )
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    @MainActor
+    func resizeProofWindow(_ window: XCUIElement, toWidth width: CGFloat) {
+        var currentFrame = window.frame
+        guard let screenFrame = NSScreen.main?.frame ?? NSScreen.screens.first?.frame else {
+            XCTFail("The responsive proof requires an attached macOS display.")
+            return
+        }
+
+        let requiredShift = max(
+            0,
+            currentFrame.minX + width - (screenFrame.maxX - 16)
+        )
+        if requiredShift > 0 {
+            let titlebar = window.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.42, dy: 0.025)
+            )
+            titlebar.click(
+                forDuration: 0.15,
+                thenDragTo: titlebar.withOffset(CGVector(dx: -requiredShift - 12, dy: 0))
+            )
+            XCTAssertTrue(waitUntil(timeout: 5) {
+                window.frame.minX < currentFrame.minX - requiredShift / 2
+            })
+            currentFrame = window.frame
+        }
+
+        let widthDelta = width - currentFrame.width
+        let resizeCorner = window.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.996, dy: 0.996)
+        )
+        resizeCorner.click(
+            forDuration: 0.15,
+            thenDragTo: resizeCorner.withOffset(CGVector(dx: widthDelta, dy: 0))
+        )
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            abs(window.frame.width - width) <= QAWorkspaceMetricContract.frameTolerance
+        })
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    }
+
+    @MainActor
+
+    func configuredApplication(
+        sessionID: UUID,
+        initialWorkspaceWidth: Int? = 1380,
+        usesFixedSessionID: Bool = true,
+        usesFixtureWorkspace: Bool = true,
+        autosaveDelayMS: Int = 5_000,
+        ignoresSystemWindowRestoration: Bool = true,
+        appearance: QAAppearance? = nil,
+        openNote: String? = "QA Autosave A.md"
+    ) -> XCUIApplication {
+        let application = XCUIApplication(bundleIdentifier: "com.scholium.qa")
+        // Keep macOS scene restoration from reopening windows left by an
+        // earlier isolated run. Scholium's own WindowSession snapshot tests
+        // still verify application-level restoration explicitly below.
+        application.launchArguments += [
+            "-ApplePersistenceIgnoreState", ignoresSystemWindowRestoration ? "YES" : "NO",
+        ]
+        if !ignoresSystemWindowRestoration {
+            application.launchArguments += ["-NSQuitAlwaysKeepsWindows", "YES"]
+            application.launchEnvironment[
+                "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"
+            ] = "1"
+        }
+        application.launchArguments += [
+            "-scholium.settings.selectedPane", "research-guidance",
+            "-scholium.settings.researchGuidanceCategory", "Methods",
+        ]
+        if name.contains("testResearchWorkflowInterfaceProofs") {
+            application.launchArguments += ["--scholium-research-workflow-proofs"]
+        }
+        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
+            application.launchArguments += ["--scholium-document-heading-proof"]
+        }
+        if name.contains("testAgentNoteChangeRequestSheet") {
+            application.launchArguments += ["--scholium-agent-change-request-fixture"]
+        }
+        if let appearance {
+            application.launchArguments += ["-colorScheme", appearance.rawValue]
+        }
+        application.launchEnvironment["SCHOLIUM_HOME"] = homeDirectory.path
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeDirectory.path
+        application.launchEnvironment["SCHOLIUM_CLI_INSTALL_PATH"] = testDirectory
+            .appendingPathComponent("cli-bin/scholium")
+            .path
+        if usesFixtureWorkspace {
+            application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = triptychDirectory.path
+        }
+        if let secondTriptychDirectory {
+            application.launchEnvironment[
+                "SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"
+            ] = secondTriptychDirectory.path
+        }
+        // Keep navigation assertions independent of the user's persisted note
+        // sort preference. The journey deliberately starts from A, then
+        // crosses to the peer Topics vault and back again.
+        if let openNote {
+            application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = openNote
+        }
+        if usesFixedSessionID {
+            application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = sessionID.uuidString
+        }
+        application.launchEnvironment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"] = String(autosaveDelayMS)
+        if let initialWorkspaceWidth {
+            application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = String(initialWorkspaceWidth)
+        }
+        return application
+    }
+
+    @MainActor
+    func relaunchApplication(initialWorkspaceWidth: Int) {
+        app.terminate()
+        sessionID = UUID()
+        app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: initialWorkspaceWidth)
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+    }
+
+    @MainActor
+    func focusWorkspaceWindow(_ window: XCUIElement) {
+        guard window.exists else {
+            XCTFail("The requested workspace must exist before focus routing.")
+            return
+        }
+        let targetIdentifier = window.identifier
+        guard !targetIdentifier.isEmpty else {
+            XCTFail("The requested workspace must expose a stable window identifier.")
+            return
+        }
+        guard targetIdentifier.hasPrefix("scholium-main-"),
+              let windowID = UUID(
+                  uuidString: String(targetIdentifier.suffix(36))
+              )
+        else {
+            XCTFail("The requested workspace must expose its native scene identity.")
+            return
+        }
+        XCTAssertEqual(
+            notify_post("com.scholium.qa.focus-workspace.\(windowID.uuidString)"),
+            UInt32(NOTIFY_STATUS_OK),
+            "The QA workspace focus request could not be posted."
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    @MainActor
+    func openResearchActionAndVerifyPanel(
+        minimumWidth: CGFloat,
+        maximumWidth: CGFloat,
+        window: XCUIElement
+    ) {
+        selectResearchInspectorMode("actions")
+        let sheet = openDiscussFromActions()
+        XCTAssertGreaterThanOrEqual(sheet.frame.width, minimumWidth)
+        XCTAssertLessThanOrEqual(sheet.frame.width, maximumWidth)
+        XCTAssertLessThan(sheet.frame.width, window.frame.width)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchAction.sheet"
+        ].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchAction.boundary"
+        ].exists)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchAction.noteSearch.materials"
+        ].exists)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchAction.text.researcher-request"
+        ].exists)
+        XCTAssertFalse(app.staticTexts["Supported modes"].exists)
+        XCTAssertFalse(app.staticTexts["Required packages"].exists)
+    }
+
+    @MainActor
+    @discardableResult
+    func openDiscussFromActions() -> XCUIElement {
+        let discuss = app.descendants(matching: .any)[
+            "scholium.researchAction.discuss"
+        ].firstMatch
+        XCTAssertTrue(discuss.waitForExistence(timeout: 5))
+        discuss.click()
+
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 8))
+        XCTAssertTrue(sheet.descendants(matching: .any)[
+            "scholium.researchAction.sheet"
+        ].waitForExistence(timeout: 8))
+        return sheet
+    }
+
+    @MainActor
+    func waitForDocumentSurface() {
+        let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
+        XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
+    }
+
+    /// Exercises pane-owned Hide controls and the collapsed-only toolbar Show
+    /// controls through their actual pointer hit-testing paths.
+    @MainActor
+    func exercisePeripheralVisibilityControls() {
+        waitForDocumentSurface()
+        let toolbar = app.toolbars.firstMatch
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
+
+        let library = app.descendants(matching: .any)["scholium.librarySurface"]
+        if !library.exists {
+            let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+            XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
+            showSidebar.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
+            XCTAssertTrue(library.waitForExistence(timeout: 5))
+        }
+
+        let hideSidebar = app.buttons["Hide Sidebar"].firstMatch
+        XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
+        XCTAssertTrue(hideSidebar.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleSidebar").count,
+            1
+        )
+        hideSidebar.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !library.exists })
+
+        let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+        XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
+        XCTAssertTrue(showSidebar.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleSidebar").count,
+            1
+        )
+        showSidebar.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(library.waitForExistence(timeout: 5))
+
+        let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
+        if inspector.exists {
+            let hideInspector = app.buttons["Hide Research Inspector"].firstMatch
+            XCTAssertTrue(hideInspector.waitForExistence(timeout: 5))
+            hideInspector.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        }
+
+        let showInspector = toolbar.buttons["Show Research Inspector"].firstMatch
+        XCTAssertTrue(showInspector.waitForExistence(timeout: 5))
+        XCTAssertTrue(showInspector.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleInspector").count,
+            1
+        )
+        showInspector.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+
+        let hideInspector = app.buttons["Hide Research Inspector"].firstMatch
+        XCTAssertTrue(hideInspector.waitForExistence(timeout: 5))
+        XCTAssertTrue(hideInspector.isHittable)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "scholium.toggleInspector").count,
+            1
+        )
+        hideInspector.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+    }
+
+    @MainActor
+    @discardableResult
+    func selectResearchInspectorMode(_ mode: String) -> XCUIElement {
+        let inspector = app.descendants(matching: .any)[
+            "scholium.researchInspector"
+        ].firstMatch
+        if !inspector.exists {
+            let toggle = app.descendants(matching: .any)[
+                "scholium.toggleInspector"
+            ].firstMatch
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+            toggle.click()
+        }
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+
+        let modeButton = app.buttons[
+            "scholium.inspectorMode.\(mode)"
+        ].firstMatch
+        XCTAssertTrue(modeButton.waitForExistence(timeout: 5))
+        modeButton.click()
+
+        let contentIdentifier: String
+        switch mode {
+        case "overview": contentIdentifier = "scholium.about"
+        case "connect": contentIdentifier = "scholium.connectionGroup.0"
+        case "actions": contentIdentifier = "scholium.researchAction.discuss"
+        default:
+            XCTFail("Unknown Inspector mode: \(mode)")
+            return inspector
+        }
+        XCTAssertTrue(
+            app.descendants(matching: .any)[contentIdentifier]
+                .waitForExistence(timeout: 8)
+        )
+        let scrollableInspector = app.scrollViews[
+            "scholium.researchInspector"
+        ].firstMatch
+        return scrollableInspector.exists ? scrollableInspector : inspector
+    }
+
+    @MainActor
+    func openNote(
+        _ relativePath: String,
+        expectedTitle: String,
+        in window: XCUIElement
+    ) {
+        focusWorkspaceWindow(window)
+        let row = window.descendants(matching: .any)["scholium.noteRow.\(relativePath)"]
+        XCTAssertTrue(
+            row.waitForExistence(timeout: 10),
+            "The requested note must be available in the target window."
+        )
+        row.click()
+        let metadata = window.descendants(matching: .any)["scholium.documentNoteName"]
+        XCTAssertTrue(
+            metadata.waitForExistence(timeout: 10)
+                && waitUntil(timeout: 10) { metadata.value as? String == expectedTitle },
+            "The target window must finish opening the requested note."
+        )
+    }
+
+    @MainActor
+    func selectSidebarLocation(_ title: String) {
+        let picker = app.descendants(matching: .any)[
+            "scholium.locationPicker"
+        ].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.click()
+        let item = app.menuItems.matching(
+            NSPredicate(format: "title == %@ OR label == %@", title, title)
+        ).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 3))
+        item.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            (picker.value as? String) == title
+                || (picker.label == title)
+        })
+    }
+
+    @MainActor
+    func selectVault(
+        _ identifier: String,
+        waitingFor rowIdentifier: String
+    ) {
+        let button = app.buttons[identifier].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        let row = app.descendants(matching: .any)[rowIdentifier]
+        let deadline = Date().addingTimeInterval(20)
+        repeat {
+            button.click()
+            if row.waitForExistence(timeout: 5) { return }
+        } while Date() < deadline
+        XCTFail("The selected vault did not publish its expected Library content.")
+    }
+
+    @MainActor
+    func checkboxIsSelected(_ checkbox: XCUIElement) -> Bool {
+        if let value = checkbox.value as? NSNumber {
+            return value.boolValue
+        }
+        guard let value = checkbox.value as? String else { return false }
+        return ["1", "true", "selected", "checked"].contains(value.lowercased())
+    }
+
+    @MainActor
+    func enterLivePreviewAndAppend(_ token: String, in root: XCUIElement? = nil) throws {
+        let editor = enterLivePreview(in: root)
+        editor.typeKey(.end, modifierFlags: [.command])
+        try setPasteboardText(token)
+        editor.typeKey("v", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                (editor.value as? String ?? "").contains(token)
+            },
+            "The editor must accept the complete synthetic token before the journey tests a save or navigation boundary."
+        )
+    }
+
+    @MainActor
+    func enterLivePreview(in root: XCUIElement? = nil) -> XCUIElement {
+        if let root { focusWorkspaceWindow(root) }
+        let mode = root?.descendants(matching: .any)["scholium.documentModeMenu"]
+            ?? app.descendants(matching: .any)["scholium.documentModeMenu"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        mode.click()
+        let livePreview = app.menuItems
+            .matching(identifier: "text.page.badge.magnifyingglass")
+            .firstMatch
+        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
+        livePreview.click()
+
+        let editor = root?.descendants(matching: .any)["Markdown editor, Edit mode"]
+            ?? app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitUntil(timeout: 8) { editor.isHittable })
+        // The mode transition requests focus, but XCUITest must still prove
+        // that the WebKit text surface is the active command target before it
+        // sends editing or document-session shortcuts.
+        editor.click()
+        return editor
+    }
+
+    @MainActor
+    func chooseSetupFolder(_ folder: URL, role: String) {
+        let openPanelButton = app.buttons["Choose \(role) folder"]
+        XCTAssertTrue(openPanelButton.waitForExistence(timeout: 5))
+        openPanelButton.click()
+
+        let panel = app.dialogs["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let folderEntry = panel.descendants(matching: .any).matching(
+            NSPredicate(format: "value == %@", folder.lastPathComponent)
+        ).firstMatch
+        XCTAssertTrue(folderEntry.waitForExistence(timeout: 5))
+        folderEntry.click()
+
+        let choose = panel.buttons["OKButton"]
+        XCTAssertTrue(choose.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) { choose.isEnabled })
+        choose.click()
+
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { !choose.exists },
+            "Expected the standard Open panel to close after choosing the \(role) folder."
+        )
+    }
+
+    @MainActor
+    func authorizePortableFolder(_ folder: URL) {
+        let authorizeButton = app.buttons["Authorize folder containing Works"]
+        XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
+        authorizeButton.click()
+
+        let panel = app.dialogs["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let folderEntry = panel.descendants(matching: .any).matching(
+            NSPredicate(format: "value == %@", folder.lastPathComponent)
+        ).firstMatch
+        XCTAssertTrue(folderEntry.waitForExistence(timeout: 5))
+        folderEntry.click()
+
+        let authorize = panel.buttons["OKButton"]
+        XCTAssertTrue(authorize.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) { authorize.isEnabled })
+        authorize.click()
+
+        XCTAssertTrue(waitUntil(timeout: 5) { !authorize.exists })
+    }
+
+    func source(at url: URL) throws -> String {
+        try String(contentsOf: url, encoding: .utf8)
+    }
+
+    func pasteboardText() throws -> String {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbpaste")
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return String(
+            decoding: output.fileHandleForReading.readDataToEndOfFile(),
+            as: UTF8.self
+        )
+    }
+
+    func setPasteboardText(_ text: String) throws {
+        let process = Process()
+        let input = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
+        process.standardInput = input
+        try process.run()
+        input.fileHandleForWriting.write(Data(text.utf8))
+        try input.fileHandleForWriting.close()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+    }
+
+    func runScholiumCLI(_ arguments: [String]) throws -> String {
+        // The QA app keeps its live registry beneath its isolated Application
+        // Support root, while an explicitly isolated CLI resolves a frozen
+        // invocation registry at <SCHOLIUM_HOME>/registry. Copy that small
+        // registry only after the app has configured this disposable
+        // Triptych. The CLI then exercises the real packaged boundary without
+        // receiving a synthetic assignment or touching researcher state.
+        let appRegistry = homeDirectory
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Workspace", isDirectory: true)
+        let cliRegistry = homeDirectory
+            .appendingPathComponent("registry", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: appRegistry.path),
+              !FileManager.default.fileExists(atPath: cliRegistry.path) else {
+            throw NSError(
+                domain: "ScholiumUITests.CLI",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The isolated QA registry could not be snapshotted exactly once.",
+                ]
+            )
+        }
+        try FileManager.default.copyItem(at: appRegistry, to: cliRegistry)
+
+        let registeredApp = try XCTUnwrap(
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.scholium.qa")
+        )
+        let executable = registeredApp
+            .appendingPathComponent("Contents/Helpers/scholium")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: executable.path))
+        let process = Process()
+        let output = Pipe()
+        let error = Pipe()
+        process.executableURL = executable
+        process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["SCHOLIUM_HOME"] = homeDirectory.path
+        environment["CFFIXED_USER_HOME"] = homeDirectory.path
+        process.environment = environment
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+        process.waitUntilExit()
+        let stdout = String(
+            decoding: output.fileHandleForReading.readDataToEndOfFile(),
+            as: UTF8.self
+        )
+        let stderr = String(
+            decoding: error.fileHandleForReading.readDataToEndOfFile(),
+            as: UTF8.self
+        )
+        guard process.terminationStatus == 0 else {
+            throw NSError(
+                domain: "ScholiumUITests.CLI",
+                code: Int(process.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: stderr]
+            )
+        }
+        return stdout
+    }
+
+    @MainActor
+    func paste(_ text: String, into element: XCUIElement) throws {
+        try setPasteboardText(text)
+        element.click()
+        element.typeKey("a", modifierFlags: [.command])
+        element.typeKey("v", modifierFlags: [.command])
+    }
+
+    @MainActor
+    func openResearchGuidanceSkills(openAdvanced: Bool = false) {
+        let appMenu = app.menuBars.menuBarItems["Scholium QA"]
+        XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
+        appMenu.click()
+        let settings = app.menuItems["Settings…"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 3))
+        settings.click()
+        let categoryList = app.descendants(matching: .any)[
+            "scholium.researchGuidance.categoryList"
+        ]
+        XCTAssertTrue(categoryList.waitForExistence(timeout: 10))
+        let category = app.descendants(matching: .any)[
+            openAdvanced
+                ? "scholium.researchGuidance.category.Sources & Integrations"
+                : "scholium.researchGuidance.category.Researcher Skills"
+        ]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        category.click()
+        if openAdvanced {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["scholium.agentCLI.section"]
+                    .waitForExistence(timeout: 10)
+            )
+        }
+    }
+
+    func packageRevision(_ files: [(String, String)]) -> (String, Int) {
+        var bytes = Data()
+        for (path, source) in files.sorted(by: { $0.0 < $1.0 }) {
+            let sourceData = Data(source.utf8)
+            bytes.append(Data(path.utf8))
+            bytes.append(0)
+            bytes.append(Data(String(sourceData.count).utf8))
+            bytes.append(0)
+            bytes.append(sourceData)
+            bytes.append(0)
+        }
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        return (digest, bytes.count)
+    }
+
+    func maintenanceEvidence(revision: (String, Int)) throws -> String {
+        let payload: [String: Any] = [
+            "proposedPackageRevision": [
+                "sha256": revision.0,
+                "byteCount": revision.1,
+            ],
+            "evaluator": "Synthetic UI transport fixture",
+            "method": "Structural, boundary, and rollback gating only",
+            "status": "passed",
+            "cases": [[
+                "id": "synthetic-transport-gate",
+                "status": "passed",
+                "summary": "Fixture evidence exercises transport and gating; it makes no philosophical-quality claim.",
+            ]],
+            "evaluatedAt": ISO8601DateFormatter().string(from: Date()),
+        ]
+        return String(
+            decoding: try JSONSerialization.data(
+                withJSONObject: payload,
+                options: [.prettyPrinted, .sortedKeys]
+            ),
+            as: UTF8.self
+        )
+    }
+
+    private struct QAStoredNoteIdentity {
+        let noteID: UUID
+        let vaultID: UUID
+        let relativePath: String
+        let fingerprint: [String: Any]
+    }
+
+    func seedResearchRecordFixture(
+        hasUnavailableTopicRevision: Bool = false,
+        createsSynthesisAttention: Bool = false
+    ) throws -> QAResearchRecordFixture {
+        let triptychID = try triptychID(at: triptychDirectory)
+        let manifestURL = triptychDirectory.appendingPathComponent(
+            ".scholium/manifest.json"
+        )
+        let manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: manifestURL)
+            ) as? [String: Any]
+        )
+        let currentVaultIDs = Set(
+            (manifest["vaultIDs"] as? [String] ?? []).compactMap(UUID.init(uuidString:))
+        )
+        let identityURL = triptychDirectory.appendingPathComponent(
+            ".scholium/identities.json"
+        )
+        let identityDocument = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: identityURL)
+            ) as? [String: Any]
+        )
+        let records = identityDocument["records"] as? [[String: Any]] ?? []
+
+        func identity(_ relativePath: String) throws -> QAStoredNoteIdentity {
+            let record = try XCTUnwrap(records.first(where: { candidate in
+                guard candidate["relativePath"] as? String == relativePath,
+                      let vault = candidate["vaultID"] as? String,
+                      let vaultID = UUID(uuidString: vault) else { return false }
+                return currentVaultIDs.contains(vaultID)
+            }))
+            return QAStoredNoteIdentity(
+                noteID: try XCTUnwrap(
+                    (record["id"] as? String).flatMap(UUID.init(uuidString:))
+                ),
+                vaultID: try XCTUnwrap(
+                    (record["vaultID"] as? String).flatMap(UUID.init(uuidString:))
+                ),
+                relativePath: relativePath,
+                fingerprint: try XCTUnwrap(record["fingerprint"] as? [String: Any])
+            )
+        }
+
+        let analysis = try identity("QA Autosave A.md")
+        let topic = try identity("QA Topic.md")
+        let recordID = UUID(uuidString: "5E551019-0000-4000-8000-000000000001")!
+        let statementID = UUID(uuidString: "5E551019-0000-4000-8000-000000000002")!
+        let tombstoneNoteID = UUID(
+            uuidString: "5E551019-0000-4000-8000-000000000003"
+        )!
+        let startedAt = "2026-07-27T04:00:00Z"
+        let finishedAt = "2026-07-27T04:01:00Z"
+        let methodRevision = qaFingerprint("QA bounded Analyze Method")
+        let profileRevision = qaFingerprint("QA bounded Analyze Profile")
+        let deletedRevision = qaFingerprint("Deleted QA Note starting bytes")
+
+        func note(
+            _ identity: QAStoredNoteIdentity,
+            role: String,
+            title: String,
+            recordedRelativePath: String? = nil
+        ) -> [String: Any] {
+            [
+                "note_id": identity.noteID.uuidString,
+                "note": [
+                    "vaultID": identity.vaultID.uuidString,
+                    "relativePath": recordedRelativePath ?? identity.relativePath,
+                ],
+                "role": role,
+                "title": title,
+                "starting_revision": identity.fingerprint,
+                "ending_revision": identity.fingerprint,
+                "is_tombstone": false,
+            ]
+        }
+
+        var topicParticipant = note(
+            topic,
+            role: "topic",
+            title: "QA Topic",
+            recordedRelativePath: "Historical/QA Topic Before Rename.md"
+        )
+        let topicStartingRevision: [String: Any]
+        if hasUnavailableTopicRevision {
+            topicStartingRevision = [
+                "sha256": String(repeating: "0", count: 64),
+                "byteCount": 1,
+            ]
+        } else {
+            topicStartingRevision = topic.fingerprint
+        }
+        topicParticipant["starting_revision"] = topicStartingRevision
+
+        var portableRecord: [String: Any] = [
+            "schema_version": 3,
+            "id": recordID.uuidString,
+            "triptych_id": triptychID.uuidString,
+            "kind": "action",
+            "action": [
+                "schema_version": 1,
+                "action_id": createsSynthesisAttention ? "synthesize" : "analyze",
+            ],
+            "method": [
+                "package_id": createsSynthesisAttention
+                    ? "scholium-synthesize"
+                    : "scholium-analyze",
+                "origin": "bundled",
+                "version": "1.0.0",
+                "package_revision": methodRevision,
+                "loaded_resources": [[
+                    "relative_path": "SKILL.md",
+                    "revision": methodRevision,
+                ]],
+                "profile_revision": profileRevision,
+            ],
+            "participating_notes": [
+                note(analysis, role: "analysis", title: "QA Autosave A"),
+                topicParticipant,
+                [
+                    "note_id": tombstoneNoteID.uuidString,
+                    "note": [
+                        "vaultID": analysis.vaultID.uuidString,
+                        "relativePath": "Deleted QA Note.md",
+                    ],
+                    "role": "analysis",
+                    "title": "Deleted QA Note",
+                    "starting_revision": deletedRevision,
+                    "is_tombstone": true,
+                ],
+            ],
+            "statements": [[
+                "id": statementID.uuidString,
+                "author": "agent",
+                "kind": "agent_feedback",
+                "attribution": "Synthetic Action Agent",
+                "text": "A bounded nonconversational analysis report.",
+                "created_at": finishedAt,
+            ]],
+            "actually_used_materials": [[
+                "note_id": createsSynthesisAttention
+                    ? analysis.noteID.uuidString
+                    : topic.noteID.uuidString,
+                "note": [
+                    "vaultID": createsSynthesisAttention
+                        ? analysis.vaultID.uuidString
+                        : topic.vaultID.uuidString,
+                    "relativePath": createsSynthesisAttention
+                        ? analysis.relativePath
+                        : "Historical/QA Topic Before Rename.md",
+                ],
+                "role": createsSynthesisAttention ? "analysis" : "topic",
+                "title": createsSynthesisAttention ? "QA Autosave A" : "QA Topic",
+                "revision": createsSynthesisAttention
+                    ? analysis.fingerprint
+                    : topicStartingRevision,
+            ]],
+            "fidelity_completion": "unverified",
+            "confirmed_changes": [],
+            "discrepancies": [],
+            "started_at": startedAt,
+            "finished_at": finishedAt,
+            "is_pinned": false,
+        ]
+        if createsSynthesisAttention {
+            portableRecord["primary_note_id"] = topic.noteID.uuidString
+        }
+
+        let recordsDirectory = triptychDirectory.appendingPathComponent(
+            ".scholium/research-records/v1/records",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: recordsDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o755)]
+        )
+        let recordURL = recordsDirectory.appendingPathComponent(
+            recordID.uuidString.lowercased() + ".json"
+        )
+        try JSONSerialization.data(
+            withJSONObject: portableRecord,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        ).write(to: recordURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: recordURL.path
+        )
+
+        if createsSynthesisAttention {
+            let analysisURL = triptychDirectory.appendingPathComponent(
+                "01-analyses/QA Autosave A.md"
+            )
+            let source = try String(contentsOf: analysisURL, encoding: .utf8)
+            try write(
+                source + "\nA changed Analysis revision for bounded Attention QA.\n",
+                to: analysisURL
+            )
+        }
+
+        return QAResearchRecordFixture(
+            recordID: recordID,
+            analysisNoteID: analysis.noteID,
+            topicNoteID: topic.noteID,
+            tombstoneNoteID: tombstoneNoteID
+        )
+    }
+
+    func seedSynthesisAttentionFixture() throws -> QAResearchRecordFixture {
+        try seedResearchRecordFixture(createsSynthesisAttention: true)
+    }
+
+    func createSecondTriptychFixture() throws -> URL {
+        let destination = testDirectory.appendingPathComponent(
+            "Second Triptych",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: destination,
+            withIntermediateDirectories: true
+        )
+        for component in ["01-analyses", "02-topics", "03-works"] {
+            try FileManager.default.copyItem(
+                at: triptychDirectory.appendingPathComponent(component, isDirectory: true),
+                to: destination.appendingPathComponent(component, isDirectory: true)
+            )
+        }
+        return destination
+    }
+
+    func triptychID(at root: URL) throws -> UUID {
+        let document = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: root.appendingPathComponent(
+                    ".scholium/manifest.json"
+                ))
+            ) as? [String: Any]
+        )
+        return try XCTUnwrap(
+            (document["id"] as? String).flatMap(UUID.init(uuidString:))
+        )
+    }
+
+    func qaFingerprint(_ source: String) -> [String: Any] {
+        let data = Data(source.utf8)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return ["sha256": digest, "byteCount": data.count]
+    }
+
+    func createIsolatedTriptych() throws {
+        // The Xcode 26.6 runner can deny a sandboxed test bundle direct writes
+        // to the literal /tmp root. Its process-specific temporary directory
+        // remains test-owned and is also reachable by the unsandboxed QA app.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-XCUITests", isDirectory: true)
+            .appendingPathComponent(sessionID.uuidString, isDirectory: true)
+        testDirectory = root
+        homeDirectory = root.appendingPathComponent("home", isDirectory: true)
+        triptychDirectory = root.appendingPathComponent("Triptych", isDirectory: true)
+
+        // `run-ui-tests.sh` first makes one disposable copy of the researcher-
+        // approved static TestVaults root. Every journey clones that test-owned
+        // copy and uses its existing QA Autosave A/B, QA Topic, and QA Work
+        // anchors. Only state-specific records absent from the static fixture
+        // may be added below. No UI test opens or mutates Desktop/TestVaults.
+        // Xcode's macOS UI-test runner does not consistently inherit arbitrary
+        // shell environment variables. Prefer the explicit runner value when
+        // available, then fall back to the same repository-local staging path
+        // derived from this compiled test source. Neither route can resolve to
+        // the researcher's Desktop TestVaults source.
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let stagedFixturePath = ProcessInfo.processInfo.environment["SCHOLIUM_QA_FIXTURES"]
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? sourceRoot.appendingPathComponent(".build/qa-runtime/fixtures", isDirectory: true).path
+        let stagedFixtures = URL(fileURLWithPath: stagedFixturePath, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: stagedFixtures.path) else {
+            throw NSError(
+                domain: "ScholiumUITests.Configuration",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The disposable TestVaults copy was not staged by build-qa-app.sh.",
+                ]
+            )
+        }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: stagedFixtures, to: triptychDirectory)
+
+        if name.contains("testCanonicalAcceptanceJourney")
+            || name.contains("testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth")
+            || name.contains("testResearchActionsVoiceOverSpeechOrder")
+            || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
+            || name.contains("testLineCommentDiscussReopenAndFinish")
+            || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
+            || name.contains("testResearchActionPanelFits")
+            || name.contains("testSidebarCleanCutoverScopeLocationStickyPutBackAndAttentionWindowJourney") {
+            // These journeys exercise the new-Triptych Action surface. Remove
+            // only the disposable copy's durable bootstrap marker so the real
+            // bootstrap path installs editable Working Methods before launch.
+            try? FileManager.default.removeItem(
+                at: triptychDirectory.appendingPathComponent(".scholium/manifest.json")
+            )
+        }
+
+        let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
+        let topics = triptychDirectory.appendingPathComponent("02-topics", isDirectory: true)
+        let works = triptychDirectory.appendingPathComponent("03-works", isDirectory: true)
+        let critiques = works.appendingPathComponent("Critiques", isDirectory: true)
+        for directory in [homeDirectory!, analyses, topics, works, critiques] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+
+        for staticAnchor in [
+            analyses.appendingPathComponent("QA Autosave A.md"),
+            analyses.appendingPathComponent("QA Autosave B.md"),
+            topics.appendingPathComponent("QA Topic.md"),
+            works.appendingPathComponent("QA Work.md"),
+        ] where !FileManager.default.fileExists(atPath: staticAnchor.path) {
+            throw NSError(
+                domain: "ScholiumUITests.Configuration",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)",
+                ]
+            )
+        }
+        if name.contains("testCanonicalAcceptanceJourney")
+            || name.contains("testOverviewRoutesZoteroOnlyFromCurrentAnalysis") {
+            let analysisURL = analyses.appendingPathComponent("QA Autosave A.md")
+            var source = try String(contentsOf: analysisURL, encoding: .utf8)
+            guard let frontmatterStart = source.range(of: "---\n") else {
+                throw NSError(
+                    domain: "ScholiumUITests.Configuration",
+                    code: 4,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The Analysis fixture has no frontmatter boundary.",
+                    ]
+                )
+            }
+            source.insert(contentsOf: "zotero_item_key: QAITEM01\n", at: frontmatterStart.upperBound)
+            try write(source, to: analysisURL)
+        }
+        if name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl") {
+            let visualNoteURL = analyses.appendingPathComponent("QA Autosave A.md")
+            let existingVisualFixture = try String(
+                contentsOf: visualNoteURL,
+                encoding: .utf8
+            )
+            try write(
+                existingVisualFixture + #"""
+
+                ## Mixed-script measure fixture
+
+                A readable scholarly line should hold an argument together without making the eye travel across the entire window. This paragraph repeats enough conceptual structure to expose the selected measure, its centering, and its relation to the surrounding editorial panes.
+
+                中文段落用于检查混合文字在默认正文宽度下的换行。价值、理由、反对意见与回应应当保持清楚的节奏，同时窄窗口必须自然回流，不能产生整页横向阅读滚动。
+
+                $$
+                \int_0^1 x^2\,dx = \frac{1}{3}
+                $$
+
+                A final long paragraph makes the lower page rhythm visible after tables, code, mathematics, and callouts. It remains synthetic, contains no private research material, and exists only inside this test-owned Triptych copy.
+                """# + "\n",
+                to: visualNoteURL
+            )
+        }
+        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
+            let studyURL = analyses.appendingPathComponent("QA Document Heading Study.md")
+            let revisedURL = analyses.appendingPathComponent(
+                "QA Document Heading Study — Revised.md"
+            )
+            let study = documentHeadingStudySource()
+            try write(study, to: studyURL)
+            try write(
+                study.replacingOccurrences(
+                    of: "The comparison revision keeps every other line fixed.",
+                    with: "The comparison revision changes only this synthetic sentence."
+                ),
+                to: revisedURL
+            )
+        }
+        if name.contains("testReviewOwnsFootnoteNavigationAndEditKeepsItPassive") {
+            let footnoteNoteURL = analyses.appendingPathComponent("QA Autosave A.md")
+            let existingFootnoteFixture = try String(
+                contentsOf: footnoteNoteURL,
+                encoding: .utf8
+            )
+            try write(
+                existingFootnoteFixture + "\nQA footnote marker[^qa-footnote].\n\n"
+                    + "[^qa-footnote]: Synthetic Review-only footnote.\n",
+                to: footnoteNoteURL
+            )
+        }
+        if name.contains("testSearchKeepsDirectResultsSeparateFromRelatedConnections") {
+            try write(
+                """
+                ---
+                title: "QA Related Search Concept 947"
+                aliases: ["QA Related Search Alias 947"]
+                status: seed
+                ---
+                # QA Related Search Concept 947
+
+                Synthetic navigation fixture: +[[QA Autosave A|A distinct analysis relation]].
+                """ + "\n",
+                to: topics.appendingPathComponent("QA Related Search Topic.md")
+            )
+        }
+        if name.contains("testSearchExplainsTitleAliasHeadingAndBodyRanking") {
+            try write(
+                "---\ntitle: Deliberative Autonomy\n---\nA concise account.\n",
+                to: analyses.appendingPathComponent("Ranking Title.md")
+            )
+            try write(
+                "---\ntitle: Agency Structure\naliases: [Deliberative Autonomy]\n---\nA concise account.\n",
+                to: analyses.appendingPathComponent("Ranking Alias.md")
+            )
+            try write(
+                "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account.\n",
+                to: analyses.appendingPathComponent("Ranking Heading.md")
+            )
+            try write(
+                "---\ntitle: Practical Reason\n---\nThis account develops deliberative autonomy in ordinary prose.\n",
+                to: analyses.appendingPathComponent("Ranking Body.md")
+            )
+        }
+        if name.contains("testLifecycleDestinationKeepsLongTitleOnOneRow") {
+            try write(
+                """
+                ---
+                title: "A deliberately long lifecycle title about attention, salience, and the normative structure of reasons"
+                ---
+                # Long Lifecycle Title
+
+                Synthetic long-title fixture.
+                """ + "\n",
+                to: analyses.appendingPathComponent("QA Autosave B.md")
+            )
+        }
+        try write(
+            """
+            ---
+            critique_authorship: agent
+            critique_target_path: QA Work.md
+            critique_requested_at: "2026-07-14T00:00:00Z"
+            critique_request_scope: "Both"
+            ---
+            # Critique: QA Work
+
+            ## Specific Findings
+
+            ### Traced — Topic connection
+            - Target Work: QA Work.md
+            - Target line: 105
+            - Target quotation: "[[QA Topic]]"
+
+            ## Materials Consulted and Limitations
+
+            Synthetic QA fixture only.
+            """ + "\n",
+            to: critiques.appendingPathComponent("QA Critique.md")
+        )
+    }
+
+    func write(_ string: String, to url: URL) throws {
+        try Data(string.utf8).write(to: url, options: .atomic)
+    }
+
+    func documentHeadingStudySource() -> String {
+        #"""
+        ---
+        title: "Heading Wrap Fixture"
+        fixture: synthetic-nonprivate
+        ---
+        # 在长期论证中保持证据边界：Reasons, Values, and the Practical Option Space Across Competing Interpretations
+
+        A sustained philosophical argument asks the reader to retain one distinction while testing several objections. The line should turn without breaking the conceptual thread.
+
+        A second paragraph asks whether evidence supports a premise or merely motivates further inquiry. Its role should remain visible without decorative emphasis.
+
+        A third paragraph separates an author's claim from the researcher's reconstruction. Spacing should keep that evidential boundary calm and legible.
+
+        A fourth paragraph states an objection before considering any reply. The reader should not mistake visual proximity for argumentative support.
+
+        A fifth paragraph introduces a qualification that narrows the conclusion. The transition should remain easy to recover after moving between lines.
+
+        A sixth paragraph compares two practical options without assigning either one authority. Repeated terms should remain trackable through the page.
+
+        A seventh paragraph distinguishes an apparent reason from its normative force. This fixture makes no philosophical claim about that distinction.
+
+        An eighth paragraph returns to the main inference after a short detour. Paragraph boundaries should guide reading without fragmenting the argument.
+
+        A ninth paragraph records a provisional consequence and leaves its source status explicit. Density should remain suitable for sustained inspection.
+
+        A tenth paragraph closes the sequence without becoming a visual conclusion card. It belongs to the same ordinary body rhythm as every prior paragraph.
+
+        The comparison revision keeps every other line fixed.
+
+        ## Mixed writing systems
+
+        中文长段落用于检验混合文字下的换行与两端对齐。论证、反对意见、回应、限定条件与结论应当保持清楚的层级；窗口变窄或文档文字放大时，普通正文必须自然回流，而不是产生整页横向阅读滚动。
+
+        This mixed paragraph asks whether 理由、价值与可行选项 remain legible beside Latin punctuation, *emphasis*, a [local link](QA%20Autosave%20A.md), a footnote marker[^measure], and inline code such as `sourceUTF16Offset`.
+
+        هذه فقرة عربية اصطناعية لا تنسب رأيا إلى مصدر حقيقي، وهي تختبر اتجاه الفقرة وعلامات الترقيم مع `inline code` والأرقام 12345. זהו טקסט עברי סינתטי לבדיקת כיווניות וסימני פיסוק.
+
+        The unbroken token scholium_document_rhythm_fixture_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 and the URL https://example.invalid/a/very/long/synthetic/path/that/contains/no/research/data test local break and overflow behavior.
+
+        ### Heading Level Three
+
+        #### Heading Level Four
+
+        ##### Heading Level Five
+
+        ###### Heading Level Six
+
+        > [!orient] Reading Route
+        > Begin with the ordinary prose, then inspect exact objects without treating this note as a source.
+
+        > [!connect]
+        > A neutral connection list can remain untitled and still belong to the same document grammar.
+
+        > [!state] Provisional Claim
+        > A displayed distinction should remain visibly subordinate to the surrounding research document.
+        >
+        > A second paragraph checks internal callout rhythm.
+
+        > [!illustrate] Synthetic Case
+        > Imagine two options that differ only in the information available to the researcher.
+
+        > [!flag] Limitation
+        > No sentence in this fixture is evidence for a philosophical conclusion.
+
+        > [!quote] Synthetic Wording
+        > This is invented wording, not a quotation from any author.
+
+        > [!cite] Fixture Source Boundary
+        > Synthetic UI material; no bibliography item is being attributed.
+
+        > [!neutral]- Folded Synthetic Note
+        > This neutral fallback tests the source-controlled collapsed state.
+
+        | Claim | Status | Count |
+        |:---|:---:|---:|
+        | Ordinary prose reflows | Open | 12 |
+        | Exact objects stay local | Required | 3 |
+        | 超宽表格单元格包含中英混排与一段很长的综合说明 | Synthetic | 987654 |
+
+        Table note: counts are arbitrary fixture values and carry no evidential meaning.
+
+        A named footnote appears here[^measure], and the same reference appears again[^measure]. An inline note follows.^[This inline note is also synthetic.]
+
+        [^measure]: The named footnote tests a long continuation, source return, and hanging rhythm without citing a real work.
+          Its continuation includes **emphasis**, mixed text 与中文, and a second sentence.
+
+        ## References
+
+        Synthetic, A. (2026). *A deliberately long un-attributed title used only to test bibliography indentation and continuation rhythm*. Fixture Press.
+
+        Example, B., & Sample, C. (2025). A second invented entry with mixed-script metadata: 排版比较条目. *Nonexistent Journal, 12*(3), 100–128.
+
+        Inline mathematics $r = f(o, c)$ remains part of the sentence.
+
+        $$
+        \int_0^1 x^2\,dx = \frac{1}{3}
+        $$
+
+        ```swift
+        let exactSource = "Synthetic fixture only"
+        let retainedIdentity = true
+        ```
+
+        > Ordinary quotation syntax remains distinct from semantic Callouts and should preserve selectable prose.
+
+        1. First ordered item with a continuation that wraps across the selected measure.
+        2. Second ordered item with **emphasis**, `code`, and mixed text 理由.
+
+        - Unordered evidence placeholder
+          - Nested qualification placeholder
+
+        Final ordinary prose returns after every exact object. It should still look like the same document, retain the same source authority, and leave tables, code, mathematics, and the synthetic diff pair inside their own bounded responsibilities.
+        """# + "\n"
+    }
+}

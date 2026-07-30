@@ -66,6 +66,9 @@ struct AppCompositionRootTests {
         #expect(first.discoveryController !== second.discoveryController)
         #expect(first.documentController !== second.documentController)
         #expect(first.researchController !== second.researchController)
+        #expect(
+            first.workspaceProjectionController !== second.workspaceProjectionController
+        )
 
         first.presentationRouter.present(.createCheckpoint)
         #expect(first.presentationRouter.sheet?.id == "create-checkpoint")
@@ -152,7 +155,6 @@ struct AppCompositionRootTests {
         // Construction and window-local state changes do not activate a vault,
         // create a watcher, or publish derived runtime state.
         #expect(workspaceStore.workspaceSnapshots.isEmpty)
-        #expect(workspaceStore.workspaceEventGenerations.isEmpty)
 
         first.documentController.removeAll()
         second.documentController.removeAll()
@@ -249,7 +251,7 @@ struct AppCompositionRootTests {
         // NoteContentView can disappear during an Inspector or hosting-view
         // reconstruction even though this same document remains selected.
         window.unregisterEditorFlush(token: token)
-        window.beginSearch(.general)
+        window.searchController.begin(.general)
 
         await Task.yield()
         #expect(flushCount == 0)
@@ -259,7 +261,7 @@ struct AppCompositionRootTests {
 
         // A successful close releases the workspace-wide registration rather
         // than retaining the document session through the shared store.
-        window.beginSearch(.general)
+        window.searchController.begin(.general)
         try await Task.sleep(for: .milliseconds(50))
         #expect(flushCount == 1)
     }
@@ -740,6 +742,14 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.presentationRouter !== secondWindow.presentationRouter)
         #expect(firstWindow!.discoveryController !== secondWindow.discoveryController)
         #expect(firstWindow!.researchController !== secondWindow.researchController)
+        #expect(
+            firstWindow!.workspaceProjectionController
+                !== secondWindow.workspaceProjectionController
+        )
+        #expect(
+            firstWindow!.agentNoteChangeWindowController
+                !== secondWindow.agentNoteChangeWindowController
+        )
 
         #expect(await configuredHandle.events.subscriberCount == 1)
         #expect(await configuredHandle.ownedBackgroundTaskCount > 0)
@@ -971,7 +981,6 @@ struct AppCompositionRootTests {
         await store.shutdownApplicationRuntime()
         #expect(store.workspaceSnapshots.isEmpty)
         #expect(store.workspaceEvents.isEmpty)
-        #expect(store.workspaceEventGenerations.isEmpty)
         #expect(await configuredHandle.events.subscriberCount == 0)
         #expect(await configuredHandle.ownedBackgroundTaskCount == 0)
         do {
