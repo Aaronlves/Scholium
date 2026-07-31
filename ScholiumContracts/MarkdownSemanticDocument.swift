@@ -67,6 +67,7 @@ public enum MarkdownInlineKind: String, Codable, Hashable, Sendable {
     case strong
     case emphasis
     case strikethrough
+    case highlight
     case code
     case link
     case image
@@ -481,6 +482,12 @@ public enum MarkdownSemanticParser {
         )
         literalRanges.append(contentsOf: commentResult.ranges)
         literalRanges.append(contentsOf: inlineCodeRanges(in: document.body))
+        inlines.append(contentsOf: parseHighlights(
+            body: document.body,
+            bodyUTF16Offset: bodyOffset,
+            sourceMapper: sourceMapper,
+            excluded: literalRanges
+        ))
 
         let calloutResult = parseCallouts(
             body: document.body,
@@ -602,6 +609,30 @@ public enum MarkdownSemanticParser {
         case is Link: .link
         case is Image: .image
         default: nil
+        }
+    }
+
+    private static func parseHighlights(
+        body: String,
+        bodyUTF16Offset: Int,
+        sourceMapper: SemanticSourceMapper,
+        excluded: [NSRange]
+    ) -> [MarkdownInline] {
+        guard let expression = try? NSRegularExpression(pattern: #"(?<!\\)==([^=\r\n]+)=="#) else {
+            return []
+        }
+        let bodyLength = (body as NSString).length
+        return expression.matches(
+            in: body,
+            range: NSRange(location: 0, length: bodyLength)
+        ).compactMap { match in
+            guard match.numberOfRanges > 1,
+                  match.range.length > 4,
+                  !intersectsExcluded(match.range, excluded),
+                  let span = sourceMapper.span(for: shifted(match.range, by: bodyUTF16Offset)) else {
+                return nil
+            }
+            return MarkdownInline(kind: .highlight, span: span)
         }
     }
 

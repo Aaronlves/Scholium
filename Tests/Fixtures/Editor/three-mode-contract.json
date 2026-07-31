@@ -157,6 +157,56 @@
       "expectation": "mustMatchReview"
     },
     {
+      "id": "strikethrough-inline",
+      "semanticRole": "strikethrough",
+      "sourceToken": "~~withdrawn wording~~",
+      "visibleToken": "withdrawn wording",
+      "level": "inline",
+      "readSelector": ".scholium-document del",
+      "editSelector": ".cm-live-strike",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "highlight-inline",
+      "semanticRole": "highlight",
+      "sourceToken": "==provisional emphasis==",
+      "visibleToken": "provisional emphasis",
+      "level": "inline",
+      "readSelector": ".scholium-document .scholium-highlight",
+      "editSelector": ".cm-live-highlight",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "standard-link-inline",
+      "semanticRole": "link",
+      "sourceToken": "[a standard link](https://example.invalid/editor-contract)",
+      "visibleToken": "a standard link",
+      "level": "inline",
+      "readSelector": ".scholium-document a",
+      "editSelector": ".cm-live-link",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "wikilink-inline",
+      "semanticRole": "wikilink",
+      "sourceToken": "[[Synthetic Note|a wikilink]]",
+      "visibleToken": "a wikilink",
+      "level": "inline",
+      "readSelector": ".scholium-document .scholium-vector-link",
+      "editSelector": ".cm-live-vector-link",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "math-inline",
+      "semanticRole": "math",
+      "sourceToken": "$x^2 + y^2$",
+      "visibleToken": null,
+      "level": "inline",
+      "readSelector": ".scholium-document .scholium-math-inline",
+      "editSelector": ".cm-live-math.scholium-math-inline",
+      "expectation": "mustMatchReview"
+    },
+    {
       "id": "unordered-list-item",
       "semanticRole": "listItem",
       "sourceToken": "- First unordered item",
@@ -205,6 +255,7 @@
       "level": "block",
       "readSelector": ".scholium-document blockquote",
       "editSelector": ".cm-line.cm-live-quote",
+      "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
       "expectation": "mustMatchReview"
     },
     {
@@ -226,6 +277,12 @@
       "level": "block",
       "readSelector": ".scholium-document pre",
       "editSelector": ".cm-line.cm-live-codeblock",
+      "adapterStyleKeys": [
+        "margin-block-start",
+        "margin-block-end",
+        "border-radius",
+        "padding-block-end"
+      ],
       "expectation": "mustMatchReview"
     },
     {
@@ -237,6 +294,13 @@
       "level": "block",
       "readSelector": ".scholium-document hr",
       "editSelector": ".cm-line.cm-live-rule",
+      "adapterStyleKeys": [
+        "margin-block-start",
+        "margin-block-end",
+        "border-inline-start-color",
+        "color",
+        "text-decoration-color"
+      ],
       "expectation": "mustMatchReview"
     },
     {
@@ -257,6 +321,7 @@
       "level": "block",
       "readSelector": ".scholium-document > .scholium-callout-orient",
       "editSelector": ".cm-live-callout-widget.scholium-callout-orient",
+      "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
       "expectation": "mustMatchReview"
     },
     {
@@ -267,6 +332,7 @@
       "level": "block",
       "readSelector": ".scholium-document > .scholium-callout-state",
       "editSelector": ".cm-live-callout-widget.scholium-callout-state",
+      "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
       "expectation": "mustMatchReview"
     },
     {
@@ -277,6 +343,7 @@
       "level": "block",
       "readSelector": ".scholium-document > .scholium-math-display",
       "editSelector": ".cm-live-math.scholium-math-display",
+      "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
       "expectation": "mustMatchReview"
     },
     {
@@ -285,7 +352,7 @@
       "sourceToken": "[^parity]: Synthetic footnote content",
       "visibleToken": "Synthetic footnote content",
       "level": "block",
-      "readSelector": ".scholium-document > .footnotes li",
+      "readSelector": ".scholium-document > .scholium-footnotes-slot .footnotes li",
       "editSelector": ".cm-live-footnotes-widget li",
       "expectation": "mustMatchReview"
     },
@@ -306,7 +373,8 @@
       "visibleToken": "Raw HTML remains",
       "level": "block",
       "readSelector": ".scholium-document pre.raw-html",
-      "editSelector": ".cm-line",
+      "editSelector": ".cm-live-raw-html-widget",
+      "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
       "expectation": "mustMatchReview"
     }
   ]

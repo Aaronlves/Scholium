@@ -4,6 +4,7 @@ import {describe, expect, it} from "vitest";
 import {
   boundedLinePrefix,
   boundedProjectionRanges,
+  mapSemanticProjectionRanges,
   rangeKey,
   semanticProjectionRanges,
 } from "../semantic-projection";
@@ -68,5 +69,77 @@ describe("Lezer-backed semantic projection", () => {
     const calloutEnd = source.indexOf("\n\n");
 
     expect(ranges.callouts).toEqual([{from: 0, to: calloutEnd}]);
+  });
+
+  it("owns marker ranges and nesting for both presentation adapters", () => {
+    const source = [
+      "## ATX heading",
+      "",
+      "Setext title",
+      "============",
+      "",
+      "> Quote with **strong** and [link](target.md).",
+      "[[Target Note|Visible alias]] and +[[Support Note]]",
+      "",
+      "- [x] Task",
+      "  - Nested",
+    ].join("\n");
+    const ranges = completeProjection(source);
+    const headings = ranges.blocks.filter((block) => block.kind === "heading");
+    const quote = ranges.blocks.find((block) => block.kind === "blockQuote");
+    const items = ranges.blocks.filter((block) => block.kind === "listItem");
+    const strong = ranges.inlines.find((inline) => inline.kind === "strong");
+    const link = ranges.inlines.find((inline) => inline.kind === "link");
+    const wikilink = ranges.inlines.find((inline) => inline.kind === "wikilink");
+    const vectorLink = ranges.inlines.find((inline) => inline.kind === "vectorLink");
+
+    expect(headings[0]).toMatchObject({headingLevel: 2, depth: 0, parent: null});
+    expect(headings[0]?.markerRanges.map((range) => source.slice(range.from, range.to)))
+      .toEqual(["## "]);
+    expect(headings[1]).toMatchObject({headingLevel: 1, depth: 0, parent: null});
+    expect(headings[1]?.markerRanges.map((range) => source.slice(range.from, range.to)))
+      .toEqual(["============"]);
+    expect(quote?.markerRanges.map((range) => source.slice(range.from, range.to)))
+      .toEqual([">"]);
+    expect(items.map((item) => ({
+      depth: item.listDepth,
+      parent: item.parent?.kind,
+      markers: item.markerRanges.map((range) => source.slice(range.from, range.to)),
+    }))).toEqual([
+      {depth: 0, parent: "unorderedList", markers: ["-", "[x]"]},
+      {depth: 1, parent: "unorderedList", markers: ["-"]},
+    ]);
+    expect(strong?.markerRanges.map((range) => source.slice(range.from, range.to)))
+      .toEqual(["**", "**"]);
+    expect(strong?.visibleRanges.map((range) => source.slice(range.from, range.to)))
+      .toEqual(["strong"]);
+    expect(link?.visibleRanges.map((range) => source.slice(range.from, range.to)))
+      .toEqual(["link"]);
+    expect(wikilink?.targetRange && source.slice(wikilink.targetRange.from, wikilink.targetRange.to))
+      .toBe("Target Note");
+    expect(wikilink?.aliasRange && source.slice(wikilink.aliasRange.from, wikilink.aliasRange.to))
+      .toBe("Visible alias");
+    expect(vectorLink?.targetRange && source.slice(vectorLink.targetRange.from, vectorLink.targetRange.to))
+      .toBe("Support Note");
+    expect(vectorLink?.aliasRange).toBeNull();
+  });
+
+  it("maps the complete catalog through non-structural edits", () => {
+    const source = "Paragraph with **strong**.";
+    const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
+    const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
+    if (!tree) throw new Error("Expected the semantic syntax tree to complete.");
+    const projection = semanticProjectionRanges(state, [{from: 0, to: source.length}], 0, tree);
+    const transaction = state.update({changes: {from: 0, insert: "A "}});
+    const mapped = mapSemanticProjectionRanges(
+      projection,
+      transaction.state,
+      (position) => transaction.changes.mapPos(position),
+    );
+
+    const strong = mapped.inlines.find((inline) => inline.kind === "strong");
+    expect(strong && transaction.state.doc.sliceString(strong.from, strong.to)).toBe("**strong**");
+    expect(strong?.markerRanges.map((range) =>
+      transaction.state.doc.sliceString(range.from, range.to))).toEqual(["**", "**"]);
   });
 });

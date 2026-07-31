@@ -47,7 +47,8 @@ enum DocumentAppearanceStyles {
           font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor));
         }
         .scholium-document p {
-          margin-block: 0 var(--scholium-rhythm-paragraph-gap);
+          margin: 0;
+          padding-block: 0 var(--scholium-rhythm-paragraph-gap);
           text-indent: \(number(body.firstLineIndentEm))em;
         }
         .cm-editor.scholium-live-mode .cm-live-paragraph-start {
@@ -71,8 +72,8 @@ enum DocumentAppearanceStyles {
           letter-spacing: \(number(headings.letterSpacingEm))em;
         }
         .scholium-document > h1:first-child {
-          margin-block: var(--scholium-appearance-title-before) var(--scholium-appearance-title-after);
-          padding-block: 0;
+          margin: 0;
+          padding-block: var(--scholium-appearance-title-before) var(--scholium-appearance-title-after);
           text-align: \(title.alignment.rawValue);
         }
         .scholium-live-mode .cm-live-document-title,
@@ -82,7 +83,8 @@ enum DocumentAppearanceStyles {
           text-align: \(title.alignment.rawValue);
         }
         .scholium-document h2 {
-          margin-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
+          margin: 0;
+          padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
           text-align: \(level1.alignment.rawValue);
         }
         .scholium-live-mode .cm-live-h2 {
@@ -93,7 +95,8 @@ enum DocumentAppearanceStyles {
         .scholium-document h4,
         .scholium-document h5,
         .scholium-document h6 {
-          margin-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+          margin: 0;
+          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
           text-align: \(level2.alignment.rawValue);
         }
         .scholium-live-mode .cm-live-h3,

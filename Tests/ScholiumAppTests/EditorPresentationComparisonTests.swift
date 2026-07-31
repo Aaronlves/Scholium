@@ -17,6 +17,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             let readSelector: String
             let editSelector: String
             let expectation: String
+            let adapterStyleKeys: [String]?
         }
 
         let comparisonProbes: [Probe]
@@ -36,6 +37,9 @@ extension MarkdownEditorWebViewIntegrationTests {
             let lineCount: Int
             let lineTops: [Double]
             let lineWidths: [Double]
+            let widgetBufferCount: Int
+            let widgetBufferHeight: Double
+            let widgetBufferFontSize: String
             let styles: [String: String]
         }
 
@@ -56,6 +60,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             let read: GeometrySnapshot.Probe
             let edit: GeometrySnapshot.Probe
             let styleDifferences: [String: [String]]
+            let adapterStyleDifferences: [String: [String]]
             let topDelta: Double
             let heightDelta: Double
             let lineCountDelta: Int
@@ -321,11 +326,21 @@ extension MarkdownEditorWebViewIntegrationTests {
             let editProbe = try #require(editByID[probe.id])
             let argument = try #require(argumentsByID[probe.id])
             let styleKeys = Set(readProbe.styles.keys).union(editProbe.styles.keys)
-            let styleDifferences = Dictionary(uniqueKeysWithValues: styleKeys.compactMap { key in
+            let observedStyleDifferences = Dictionary(uniqueKeysWithValues: styleKeys.compactMap { key in
                 let readValue = readProbe.styles[key] ?? ""
                 let editValue = editProbe.styles[key] ?? ""
                 return readValue == editValue ? nil : (key, [readValue, editValue])
             })
+            // CodeMirror must preserve exact whitespace in its contenteditable
+            // source DOM. `break-spaces` is therefore an adapter mechanism, not
+            // a visual mismatch when the measured line bands are identical.
+            let adapterStyleKeys = Set(["white-space"] + (probe.adapterStyleKeys ?? []))
+            let styleDifferences = observedStyleDifferences.filter {
+                !adapterStyleKeys.contains($0.key)
+            }
+            let adapterStyleDifferences = observedStyleDifferences.filter {
+                adapterStyleKeys.contains($0.key)
+            }
             let precedingReadBlockID = probe.level == "block"
                 ? readPredecessors[probe.id]
                 : nil
@@ -367,6 +382,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 read: readProbe,
                 edit: editProbe,
                 styleDifferences: styleDifferences,
+                adapterStyleDifferences: adapterStyleDifferences,
                 topDelta: topDelta,
                 heightDelta: heightDelta,
                 lineCountDelta: lineCountDelta,
@@ -425,8 +441,17 @@ extension MarkdownEditorWebViewIntegrationTests {
             ranges = semantic.inlines.filter { $0.kind == .strong }.map(\.span.utf16Range)
         case "emphasis":
             ranges = semantic.inlines.filter { $0.kind == .emphasis }.map(\.span.utf16Range)
+        case "strikethrough":
+            ranges = semantic.inlines.filter { $0.kind == .strikethrough }.map(\.span.utf16Range)
+        case "highlight":
+            ranges = semantic.inlines.filter { $0.kind == .highlight }.map(\.span.utf16Range)
         case "inlineCode":
             ranges = semantic.inlines.filter { $0.kind == .code }.map(\.span.utf16Range)
+        case "link":
+            ranges = semantic.links.filter { $0.syntax == .markdown }.map(\.span.utf16Range)
+        case "wikilink":
+            ranges = semantic.links.filter { $0.syntax == .wikilink || $0.syntax == .vectorWikilink }
+                .map(\.span.utf16Range)
         case "listItem":
             ranges = semantic.blocks.filter { $0.kind == .listItem }.map(\.span.utf16Range)
         case "blockQuote":
@@ -467,7 +492,9 @@ extension MarkdownEditorWebViewIntegrationTests {
       'letter-spacing', 'text-align', 'color', 'background-color', 'direction',
       'white-space', 'overflow-wrap', 'margin-block-start', 'margin-block-end',
       'padding-block-start', 'padding-block-end', 'padding-inline-start',
-      'padding-inline-end', 'border-inline-start-width', 'border-inline-start-color'
+      'padding-inline-end', 'border-inline-start-width', 'border-inline-start-color',
+      'border-radius', 'box-sizing', 'display', 'text-decoration-line',
+      'text-decoration-color', 'text-underline-offset'
     ];
     const measure = probe => {
       const selector = probe[selectorKey];
@@ -491,7 +518,8 @@ extension MarkdownEditorWebViewIntegrationTests {
           ].join(' | '),
           top: 0, bottom: 0, left: 0,
           right: 0, width: 0, height: 0, lineCount: 0, lineTops: [],
-          lineWidths: [], styles: {}
+          lineWidths: [], widgetBufferCount: 0, widgetBufferHeight: 0,
+          widgetBufferFontSize: '', styles: {}
         };
       }
       let endIndex = startIndex;
@@ -509,16 +537,23 @@ extension MarkdownEditorWebViewIntegrationTests {
       const bottom = Math.max(...bounds.map(rect => rect.bottom));
       const textRects = [];
       for (const element of selected) {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        for (const rect of Array.from(range.getClientRects())) {
-          if (rect.width <= 0 || rect.height <= 0) continue;
-          textRects.push({
-            top: rect.top,
-            bottom: rect.bottom,
-            left: rect.left,
-            right: rect.right
-          });
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          if (!node.textContent || !node.textContent.trim()) continue;
+          const parent = node.parentElement;
+          if (!parent || getComputedStyle(parent).display === 'none') continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          for (const rect of Array.from(range.getClientRects())) {
+            if (rect.width <= 0 || rect.height <= 0) continue;
+            textRects.push({
+              top: rect.top,
+              bottom: rect.bottom,
+              left: rect.left,
+              right: rect.right
+            });
+          }
         }
       }
       textRects.sort((a, b) => a.top - b.top || a.left - b.left);
@@ -538,6 +573,7 @@ extension MarkdownEditorWebViewIntegrationTests {
       }
       orderedLines.sort((a, b) => a.top - b.top);
       const computed = getComputedStyle(selected[0]);
+      const widgetBuffer = selected[0].querySelector('.cm-widgetBuffer');
       const styles = Object.fromEntries(styleKeys.map(key => [
         key,
         computed.getPropertyValue(key).trim()
@@ -555,6 +591,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         lineCount: orderedLines.length,
         lineTops: orderedLines.map(line => rounded(line.top - rootRect.top)),
         lineWidths: orderedLines.map(line => rounded(line.right - line.left)),
+        widgetBufferCount: selected.reduce(
+          (count, element) => count + element.querySelectorAll('.cm-widgetBuffer').length,
+          0
+        ),
+        widgetBufferHeight: rounded(widgetBuffer?.getBoundingClientRect().height || 0),
+        widgetBufferFontSize: widgetBuffer ? getComputedStyle(widgetBuffer).fontSize : '',
         styles
       };
     };
@@ -565,4 +607,5 @@ extension MarkdownEditorWebViewIntegrationTests {
       probes: probes.map(measure)
     };
     """
+
 }

@@ -104,25 +104,28 @@ implementation evidence, not researcher visual, installed-IME, or assistive-
 technology acceptance.
 
 The 2026-07-31 Review/Edit comparison baseline extends that tracked catalog
-with 22 exact semantic probes spanning headings, ordinary and mixed-script
-prose, inline constructs, lists and tasks, quotation, code, rule, table,
-Callouts, display math, footnotes, irregular Markdown, and raw HTML. One real
+with 27 exact semantic probes spanning headings, ordinary and mixed-script
+prose, strong/emphasis/strikethrough/highlight, standard and Wiki links,
+inline code and mathematics, lists and tasks, quotation, fenced code, rule,
+table, Callouts, display mathematics, footnotes, irregular Markdown, and raw HTML. One real
 WKWebView test renders the same bytes at a fixed 900-point workspace, keeps the
 Edit caret at a final inactive anchor, materializes the complete document in a
 tall test viewport, and writes the ignored report to
 `.build/editor-presentation-comparison/baseline.json`. Review and inactive Edit
-currently retain the same 19-probe visual block order, but Edit is 16.875 points
-taller overall and all 22 `mustMatchReview` probes retain at least one measured
-style, geometry, wrapping, or accumulated-rhythm difference. Those values are
-pre-fix implementation evidence, not a product threshold or researcher visual
-acceptance; the following batches must reduce the differences through shared
-semantic presentation ownership rather than test-specific tolerances.
+retain the same 19-probe visual block order and both measure 2,534 points tall.
+The report records zero total-height delta and zero undeclared
+`mustMatchReview` style, geometry, wrapping, order, or accumulated-rhythm
+differences. Adapter-local mechanisms such as CodeMirror `break-spaces`,
+marginless block widgets, and direct StateField gap ownership remain declared
+separately rather than being hidden by tolerances. This is automated fixed-
+fixture evidence, not researcher visual, installed-IME, text-service, or
+assistive-technology acceptance.
 
 ## Remaining implementation and release work
 
 | Workstream | Implemented boundary | Required next evidence or work |
 | --- | --- | --- |
-| Editor semantics and components | `MarkdownSemanticDocument` is the sole shared projection. The locked dialect, retained Host, atomic Document presentation state, editor-only bridge mode, shared components, bridge v7, semantic scroll, guarded projection, exact-source reveal, ordered CSS layers, heading highlighting, construct-scoped inline syntax reveal, mode-owned CodeMirror compartments, and half-open Callout activation have automated coverage. In ordinary Edit prose, selecting one strong, emphasis, strikethrough, highlight, inline-code, or standard-link construct reveals only that construct's exact markers while retaining its semantic style; sibling constructs on the same line remain projected. Source uses exact-source typography, selection-match highlighting is absent, and focus loss preserves the projected heading state. Display mathematics is centered, italic, and automatically numbered at the physical right on both surfaces; code and tables retain shared protected styles. The superseded render authority, KaTeX 0.18.0 pin, and line-style imitations are absent. The 2026-07-30 researcher comparison accepted the shared 72ch measure, mixed-script/RTL flow, 100%/200% reflow, and current user-theme rhythm in representative Review windows. | Real pointer and keyboard experiential acceptance of construct-scoped syntax and the post-migration mode handoff, speech, text-service, installed CJK/RTL/IME, composition-recovery, inactive Edit researcher review, and retained-memory journeys remain open. Syntax/parser changes must extend shared fixtures first. |
+| Editor semantics and components | `MarkdownSemanticDocument` remains the Contracts-owned committed projection. The locked dialect and one Lezer-backed Edit catalog now provide typed roles, nesting, exact UTF-16 construct/marker/visible/target/alias ranges, including the ATX separator boundary. One mode compartment keeps Source free of every Edit projection. Direct CodeMirror StateFields own semantic line geometry, inter-block gaps, frontmatter, tables, display mathematics, inert raw HTML, Callouts, and footnotes; the bounded viewport plugin owns inline presentation only. Review and Edit share document, quotation, code, table, Callout, footnote-slot, mathematics, and inline-role styling. The 27-probe real-WKWebView comparison has zero total-height delta and zero undeclared must-match difference. Construct-scoped reveal, exact raw-HTML activation, 200% pointer mapping, mode convergence, Source exact bytes, no selection-match highlighting, focus persistence, 100,000-CJK editing, and the complete 27-test WKWebView suite have automated coverage. Display mathematics is centered, italic, automatically numbered at the physical right, and locally scrollable on both surfaces. The superseded render authority, KaTeX 0.18.0 pin, per-list gap widget, and ViewPlugin-owned vertical geometry are absent. The 2026-07-30 researcher comparison accepted the shared 72ch measure, mixed-script/RTL flow, 100%/200% reflow, and current user-theme rhythm in representative Review windows. | Real pointer and keyboard experiential acceptance of construct-scoped syntax and the post-migration mode handoff, speech, text-service, installed CJK/RTL/IME, composition-recovery, inactive Edit researcher review, and retained-memory journeys remain open. Syntax/parser changes must extend shared fixtures first. |
 | Complete interface gate | The runner has explicit `smoke` and `complete` profiles; complete dynamically enumerates tests, builds once, and runs serially. Each launch receives isolated `SCHOLIUM_HOME`, `CFFIXED_USER_HOME`, session identity, disposable fixture data, and disabled system restoration. The 2026-07-28 run executed all 74 current journeys; its three wait/focus harness failures and compact-width conditional skip passed focused revalidation after their test corrections. | Genuine VoiceOver speech remained conditionally skipped. Physical Full Keyboard Access, installed IME, researcher visual review, real system-setting acceptance, and release-app execution remain open. |
 | Performance | Privacy-safe instrumentation, strict validation, exact WebKit attribution, fail-closed sampling, and RDF-1 v2 exist. Editor hot paths use a cached projection index, bounded inline updates, construct/physical-line selection signatures that skip decoration work while the visible projection is unchanged, coalesced bridge v7 reports, nonpublished selection, and one-shot Read restore. The cold-start cut removes repeated UTF-16 scans, per-Work identity reads, and serial three-vault preparation; deterministic 100,000-CJK, RDF-1, refresh-concurrency, Search, and visible-library diagnostics pass. Three Debug launch samples and incomplete 3/5-sample memory prefixes remain nonrelease evidence. | Complete the 51-sample memory scenario, add visible Editor latency actions, approve thresholds, freeze/tag/package the source, and run the 5-warm-up/30-sample G7 protocol on R1. |
 | Search | Contract v4 retains one Triptych corpus and the v3 lexical behavior while deleting semantic `status` projection and query support. Finite syntax, visible-semantic projection, CJK verification, exact identity, rank reasons, This Note occurrences, CLI parity, atomic generations, and direct Related remain implemented. | Complete the 30-sample GUI first-paint protocol, disposable UI matrix, and human pointer/VoiceOver/Voice Control/Dictation/CJK IME/visual/ranking acceptance. |

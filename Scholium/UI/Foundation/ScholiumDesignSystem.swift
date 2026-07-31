@@ -529,8 +529,8 @@ enum ScholiumWebDesignTokens {
     --scholium-rhythm-heading-after: \(ScholiumDocumentRhythm.headingGapAfterCSSPixels)px;
     --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
     --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
-    --scholium-rhythm-live-code-inline-inset: \(ScholiumDocumentRhythm.livePreviewCodeInlineInsetEm)em;
-    --scholium-rhythm-live-quote-inline-inset: \(ScholiumDocumentRhythm.livePreviewQuoteInlineInset)px;
+    --scholium-rhythm-semantic-block-gap: 1em;
+    --scholium-rhythm-rule-block-gap: 0.5em;
     --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
@@ -604,6 +604,137 @@ enum ScholiumWebDesignTokens {
         calc(50% - var(--scholium-document-half-line-width))
       );
     }
+    .scholium-document p,
+    .cm-editor.scholium-live-mode .cm-live-paragraph {
+      box-sizing: border-box;
+    }
+    .scholium-document p {
+      margin: 0;
+      padding-block: 0 var(--scholium-rhythm-paragraph-gap);
+    }
+    .cm-editor.scholium-live-mode .cm-live-paragraph-end {
+      padding-block-end: var(--scholium-rhythm-paragraph-gap);
+    }
+    .scholium-document > ul,
+    .scholium-document > ol,
+    .scholium-document li > ul,
+    .scholium-document li > ol,
+    .scholium-document > blockquote,
+    .scholium-document > pre {
+      margin-block: var(--scholium-rhythm-semantic-block-gap);
+    }
+    .scholium-document > hr {
+      margin-block: var(--scholium-rhythm-rule-block-gap);
+    }
+    .scholium-document > hr,
+    .cm-editor.scholium-live-mode .cm-live-rule {
+      box-sizing: border-box;
+      block-size: 1px;
+      min-block-size: 1px;
+      border: 0;
+      border-block-start: 1px solid var(--scholium-color-separator);
+    }
+    .scholium-document li > p,
+    .cm-editor.scholium-live-mode .cm-live-list {
+      box-sizing: border-box;
+      padding-inline-start: 0;
+      text-align: start;
+    }
+    .scholium-document blockquote,
+    .cm-editor.scholium-live-mode .cm-live-quote {
+      box-sizing: border-box;
+      padding-inline-start: var(--scholium-rhythm-quote-inset);
+      border-inline-start: 3px solid var(--scholium-color-accent);
+      color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
+    }
+    .scholium-document pre,
+    .cm-editor.scholium-live-mode .cm-live-codeblock {
+      box-sizing: border-box;
+      font-family: "Victor Mono", ui-monospace, monospace;
+      background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
+    }
+    .scholium-document pre.raw-html,
+    .cm-editor.scholium-live-mode .cm-live-raw-html {
+      box-sizing: border-box;
+      color: var(--scholium-color-muted-text);
+      background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
+      font-family: "Victor Mono", ui-monospace, monospace;
+    }
+    .cm-editor.scholium-live-mode .cm-live-raw-html {
+      padding-inline: var(--scholium-rhythm-code-inset);
+    }
+    .scholium-document pre {
+      max-inline-size: 100%;
+      padding: var(--scholium-rhythm-code-inset);
+      overflow: auto;
+      border-radius: 10px;
+    }
+    .cm-editor.scholium-live-mode .cm-live-codeblock {
+      padding-inline: var(--scholium-rhythm-code-inset);
+    }
+    .cm-editor.scholium-live-mode .cm-live-codeblock-start {
+      padding-block-start: var(--scholium-rhythm-code-inset);
+      border-start-start-radius: 10px;
+      border-start-end-radius: 10px;
+    }
+    .cm-editor.scholium-live-mode .cm-live-raw-html-start {
+      padding-block-start: var(--scholium-rhythm-code-inset);
+      border-start-start-radius: 10px;
+      border-start-end-radius: 10px;
+    }
+    .cm-editor.scholium-live-mode .cm-live-codeblock-end {
+      padding-block-end: var(--scholium-rhythm-code-inset);
+      border-end-start-radius: 10px;
+      border-end-end-radius: 10px;
+    }
+    .cm-editor.scholium-live-mode .cm-live-raw-html-end {
+      padding-block-end: var(--scholium-rhythm-code-inset);
+      border-end-start-radius: 10px;
+      border-end-end-radius: 10px;
+    }
+    .scholium-callout p,
+    .footnote-content p {
+      padding-block: 0;
+    }
+    .scholium-document strong,
+    .scholium-live-mode .cm-live-strong {
+      font-weight: 700;
+    }
+    .scholium-document em,
+    .scholium-live-mode .cm-live-emphasis {
+      font-style: italic;
+    }
+    .scholium-document del,
+    .scholium-live-mode .cm-live-strike {
+      color: var(--scholium-color-primary-text);
+      text-decoration: line-through;
+    }
+    .scholium-document .scholium-highlight,
+    .scholium-live-mode .cm-live-highlight {
+      padding-inline: 0.06em;
+      color: var(--scholium-color-primary-text);
+      background: color-mix(in srgb, var(--scholium-color-notification-highlight) 32%, transparent);
+      border-radius: 3px;
+    }
+    .scholium-document :not(pre) > code,
+    .scholium-live-mode .cm-live-code {
+      padding: 0.08em 0.25em;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
+      font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.82em;
+    }
+    .scholium-document a:not(.scholium-vector-link),
+    .scholium-live-mode .cm-live-link {
+      color: var(--scholium-color-accent);
+      text-decoration: underline;
+      text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
+      text-underline-offset: 0.15em;
+    }
+    .scholium-document .scholium-vector-link,
+    .scholium-live-mode .cm-live-vector-link {
+      line-height: 1.2;
+    }
     .scholium-document h1,
     .scholium-document h2,
     .scholium-document h3,
@@ -618,16 +749,8 @@ enum ScholiumWebDesignTokens {
       text-decoration-line: none;
       text-decoration: none;
       text-wrap: balance;
-    }
-    .scholium-document h1,
-    .scholium-document h2,
-    .scholium-document h3,
-    .scholium-document h4,
-    .scholium-document h5,
-    .scholium-document h6 {
-      margin: var(--scholium-rhythm-heading-before) 0 var(--scholium-rhythm-heading-after);
-    }
-    .scholium-live-mode .cm-live-heading {
+      box-sizing: border-box;
+      margin: 0;
       padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after);
     }
     .scholium-document h1,
@@ -665,8 +788,7 @@ enum ScholiumWebDesignTokens {
     .scholium-document > h1:first-child,
     .scholium-live-mode .cm-live-document-title,
     .scholium-live-mode .cm-live-h1 {
-      margin-top: 0;
-      margin-bottom: var(--scholium-rhythm-heading-before);
+      margin: 0;
       padding-top: 0;
       padding-bottom: var(--scholium-rhythm-heading-after);
       text-align: center;
@@ -1221,8 +1343,6 @@ enum ScholiumDocumentRhythm {
     static let headingGapAfterCSSPixels = ScholiumGrid.Document.headingGapAfterCSSPixels
     static let codeBlockInset: CGFloat = 16
     static let quoteInlineInset = ScholiumGrid.Spacing.sectionSeparation
-    static let livePreviewCodeInlineInsetEm = 0.8
-    static let livePreviewQuoteInlineInset: CGFloat = 12
 
     static func contentInsets(
         for renderer: ScholiumDocumentRenderer,

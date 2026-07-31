@@ -1849,19 +1849,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         static let baseCSS = """
         html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
-        p { margin: var(--scholium-rhythm-paragraph-gap) 0; } a { color: LinkText; text-underline-offset: .12em; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
         .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }
         .scholium-document .scholium-vector-supports { color: var(--scholium-color-connection-support); }
         .scholium-document .scholium-vector-opposes { color: var(--scholium-color-connection-incompatible); }
         .scholium-document .scholium-vector-incompatible { color: var(--scholium-color-connection-incompatible); }
         .scholium-vector-icon { display: inline-block; width: .92em; height: .92em; margin-right: .24em; vertical-align: -.08em; background-color: currentColor; -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
-        .scholium-highlight { color: CanvasText; background: Mark; border-radius: 3px; padding-inline: .06em; }
-        code, pre { font-family: "Victor Mono", ui-monospace, monospace; }
-        code { font-size: .82em; padding: .08em .25em; border-radius: 4px; background: color-mix(in srgb, CanvasText 8%, transparent); }
-        pre { box-sizing: border-box; max-width: 100%; padding: var(--scholium-rhythm-code-inset); overflow: auto; border-radius: 10px; background: color-mix(in srgb, CanvasText 7%, transparent); }
+        code { font-family: "Victor Mono", ui-monospace, monospace; }
         img, video, svg { max-width: 100%; height: auto; }
-        blockquote { margin: 1em 0; padding-left: var(--scholium-rhythm-quote-inset); border-left: 3px solid var(--scholium-color-accent); color: color-mix(in srgb, CanvasText 78%, transparent); }
         \(ScholiumCalloutStyles.css)
         #comment-composer { display: grid; gap: 4px; width: min(320px, calc(100vw - 32px)); }
         #comment-composer[hidden], #selection-toolbar[hidden] { display: none; }

@@ -4,6 +4,13 @@ import type {MarkdownEditingDialect} from "./protocol";
 import {markdownLiteralRanges, scanMath} from "./math";
 import {footnotePresentation} from "./footnote-presentation";
 import {scholiumNoteLanguage} from "./language";
+import {
+  semanticProjectionRanges,
+  type BaseBlockKind,
+  type BaseInlineKind,
+} from "./semantic-projection";
+
+export type {BaseBlockKind, BaseInlineKind} from "./semantic-projection";
 
 function intersects(
   range: {from: number; to: number},
@@ -46,20 +53,6 @@ export interface DialectSemanticProjection {
     mathExpressions: Array<{source: string; content: string}>;
   };
 }
-
-export type BaseBlockKind =
-  | "paragraph"
-  | "heading"
-  | "blockQuote"
-  | "code"
-  | "unorderedList"
-  | "orderedList"
-  | "listItem"
-  | "table"
-  | "thematicBreak"
-  | "html";
-
-export type BaseInlineKind = "strong" | "emphasis" | "strikethrough" | "code" | "link" | "image";
 
 export interface BaseSyntaxProjection {
   blocks: Array<{kind: BaseBlockKind; from: number; to: number; source: string}>;
@@ -111,58 +104,36 @@ export function projectBaseSyntax(source: string): BaseSyntaxProjection {
   const state = EditorState.create({doc: parserInput.normalized, extensions: [scholiumNoteLanguage]});
   const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
   if (!tree) throw new Error("Could not complete the base Markdown syntax tree.");
+  const catalog = semanticProjectionRanges(
+    state,
+    [{from: 0, to: state.doc.length}],
+    0,
+    tree,
+  );
   const blocks: BaseSyntaxProjection["blocks"] = [];
   const inlines: BaseSyntaxProjection["inlines"] = [];
-  const blockKinds = new Map<string, BaseBlockKind>([
-    ["Paragraph", "paragraph"],
-    ["Blockquote", "blockQuote"],
-    ["FencedCode", "code"],
-    ["CodeBlock", "code"],
-    ["BulletList", "unorderedList"],
-    ["OrderedList", "orderedList"],
-    ["ListItem", "listItem"],
-    ["Table", "table"],
-    ["HorizontalRule", "thematicBreak"],
-    ["HTMLBlock", "html"],
+  const baseBlockKinds = new Set<BaseBlockKind>([
+    "paragraph", "heading", "blockQuote", "code", "unorderedList",
+    "orderedList", "listItem", "table", "thematicBreak", "html",
   ]);
-  const inlineKinds = new Map<string, BaseInlineKind>([
-    ["StrongEmphasis", "strong"],
-    ["Emphasis", "emphasis"],
-    ["Strikethrough", "strikethrough"],
-    ["InlineCode", "code"],
-    ["Link", "link"],
-    ["Autolink", "link"],
-    ["Image", "image"],
+  const baseInlineKinds = new Set<BaseInlineKind>([
+    "strong", "emphasis", "strikethrough", "highlight", "code", "link", "image",
   ]);
-  tree.iterate({
-    enter(node) {
-      const exactFrom = parserInput.exactOffsets[node.from];
-      const exactTo = parserInput.exactOffsets[node.to];
-      const heading = /^(?:ATX|Setext)Heading[1-6]$/.test(node.name);
-      const blockKind = heading ? "heading" : blockKinds.get(node.name);
-      if (blockKind) {
-        const to = withoutTerminalLineEnding(source, exactFrom, exactTo);
-        blocks.push({kind: blockKind, from: exactFrom, to, source: source.slice(exactFrom, to)});
-      }
-      if (node.name === "Task") {
-        const raw = source.slice(exactFrom, exactTo);
-        const marker = /^\[[ xX]\][ \t]*/.exec(raw);
-        if (marker && marker[0].length < raw.length) {
-          const from = exactFrom + marker[0].length;
-          blocks.push({kind: "paragraph", from, to: exactTo, source: source.slice(from, exactTo)});
-        }
-      }
-      const inlineKind = inlineKinds.get(node.name);
-      if (inlineKind) {
-        inlines.push({
-          kind: inlineKind,
-          from: exactFrom,
-          to: exactTo,
-          source: source.slice(exactFrom, exactTo),
-        });
-      }
-    },
-  });
+  for (const block of catalog.blocks) {
+    if (!baseBlockKinds.has(block.kind as BaseBlockKind)) continue;
+    const exactFrom = parserInput.exactOffsets[block.from];
+    const exactTo = parserInput.exactOffsets[block.to];
+    const to = withoutTerminalLineEnding(source, exactFrom, exactTo);
+    const kind = block.kind as BaseBlockKind;
+    blocks.push({kind, from: exactFrom, to, source: source.slice(exactFrom, to)});
+  }
+  for (const inline of catalog.inlines) {
+    if (!baseInlineKinds.has(inline.kind as BaseInlineKind)) continue;
+    const from = parserInput.exactOffsets[inline.from];
+    const to = parserInput.exactOffsets[inline.to];
+    const kind = inline.kind as BaseInlineKind;
+    inlines.push({kind, from, to, source: source.slice(from, to)});
+  }
   blocks.sort(compareLocatedSyntax);
   inlines.sort(compareLocatedSyntax);
   return {blocks, inlines};

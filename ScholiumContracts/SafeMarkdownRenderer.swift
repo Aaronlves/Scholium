@@ -122,19 +122,21 @@ public enum SafeMarkdownRenderer {
             guard block.kind == .code || block.kind == .html else { return nil }
             return relativeRange(block.span, bodyStart: bodyStart, bodyLength: bodyLength)
         } + inlineLiteralRanges(in: document.body)
-        if let expression = try? NSRegularExpression(pattern: #"(?<!\\)==([^=\n]+)=="#) {
-            let body = document.body as NSString
-            for (index, match) in expression.matches(
-                in: document.body,
-                range: NSRange(location: 0, length: body.length)
-            ).enumerated() {
-                guard match.numberOfRanges > 1,
-                      !overlaps(match.range, literalRanges),
-                      !overlaps(match.range, replacements.map(\.range)) else { continue }
-                let key = "SCHOLIUMINLINETOKEN\(nonce)H\(index)"
-                inlineHTML[key] = "<mark class=\"scholium-highlight\">\(escapeHTML(body.substring(with: match.range(at: 1))))</mark>"
-                replacements.append(Replacement(range: match.range, text: key))
-            }
+        let body = document.body as NSString
+        for (index, highlight) in semantic.inlines
+            .filter({ $0.kind == .highlight })
+            .enumerated() {
+            guard let relative = relativeRange(
+                highlight.span,
+                bodyStart: bodyStart,
+                bodyLength: bodyLength
+            ), relative.length > 4,
+               !overlaps(relative, literalRanges),
+               !overlaps(relative, replacements.map(\.range)) else { continue }
+            let key = "SCHOLIUMINLINETOKEN\(nonce)H\(index)"
+            let contentRange = NSRange(location: relative.location + 2, length: relative.length - 4)
+            inlineHTML[key] = "<mark class=\"scholium-highlight\">\(escapeHTML(body.substring(with: contentRange)))</mark>"
+            replacements.append(Replacement(range: relative, text: key))
         }
 
         let transformed = apply(replacements, to: document.body)
@@ -226,7 +228,7 @@ public enum SafeMarkdownRenderer {
             )
             return "<li id=\"fn-\(ordinal)\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
         }.joined()
-        return "<section class=\"footnotes\" data-scholium-protected=\"footnotes\" aria-label=\"Footnotes\"><hr><ol>\(items)</ol></section>"
+        return "<div class=\"scholium-footnotes-slot\"><section class=\"footnotes\" data-scholium-protected=\"footnotes\" aria-label=\"Footnotes\"><hr><ol>\(items)</ol></section></div>"
     }
 
     private static func renderWikilink(_ link: LinkOccurrence) -> String {

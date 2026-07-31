@@ -1891,10 +1891,13 @@ struct FrontendArchitectureTests {
         #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
         for liveOnlyExtension in [
             "liveProjectionIndexField",
+            "liveSemanticLineField",
+            "liveSemanticBlockSpacingField",
             "liveFrontmatterGuardField",
-            "liveListRhythmField",
             "liveBlockActivationField",
             "liveTableField",
+            "liveDisplayMathField",
+            "liveRawHTMLField",
             "liveCalloutField",
             "liveFootnoteField",
             "livePreview",
@@ -1938,6 +1941,49 @@ struct FrontendArchitectureTests {
         #expect(ScholiumDocumentPresentationConfiguration(textScale: 1).css.contains(
             "@media (max-width:"
         ))
+    }
+
+    @Test("Edit vertical geometry is owned by direct CodeMirror StateFields")
+    func editVerticalGeometryUsesDirectStateFields() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+        for field in [
+            "liveSemanticLineField",
+            "liveSemanticBlockSpacingField",
+            "liveTableField",
+            "liveDisplayMathField",
+            "liveRawHTMLField",
+            "liveCalloutField",
+            "liveFootnoteField",
+            "liveFrontmatterGuardField",
+        ] {
+            #expect(editorSource.contains("const \(field) = StateField.define"))
+        }
+
+        let buildStart = try #require(
+            editorSource.range(of: "function buildLiveDecorations(")
+        )
+        let buildEnd = try #require(
+            editorSource.range(
+                of: "function replacingDecorationsInRanges(",
+                range: buildStart.upperBound..<editorSource.endIndex
+            )
+        )
+        let viewportProjection = editorSource[
+            buildStart.lowerBound..<buildEnd.lowerBound
+        ]
+        #expect(!viewportProjection.contains("block: true"))
+        #expect(!viewportProjection.contains("cm-live-semantic-gap"))
+        #expect(!viewportProjection.contains("cm-live-blank-line"))
+        #expect(!viewportProjection.contains("cm-live-heading-marker-line"))
+        #expect(!viewportProjection.contains("cm-live-code-fence-line"))
+        #expect(!editorSource.contains("cm-live-list-gap"))
     }
 
     @Test("Production native surfaces consume semantic color roles")
@@ -2322,7 +2368,12 @@ struct FrontendArchitectureTests {
         #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
         #expect(sharedCSS.contains("--scholium-document-line-width: 72ch"))
         #expect(sharedCSS.contains("--scholium-document-half-line-width: 36ch"))
-        #expect(!sharedCSS.contains("max-inline-size:"))
+        let sharedDocumentRoot = try #require(
+            sharedCSS.components(
+                separatedBy: ".cm-editor.scholium-source-mode .cm-content"
+            ).first
+        )
+        #expect(!sharedDocumentRoot.contains("max-inline-size:"))
         #expect(sharedCSS.contains("inline-size: 100%;"))
         #expect(sharedCSS.contains("calc(50% - var(--scholium-document-half-line-width))"))
         #expect(sharedCSS.contains(".cm-editor.scholium-source-mode .cm-content"))
@@ -2376,24 +2427,34 @@ struct FrontendArchitectureTests {
     }
 
     @Test("Ordinary quotation uses the semantic Accent in Read and Live Preview")
-    func ordinaryQuotationUsesSemanticAccent() {
-        let readCSS = SafeMarkdownReadWebView.Coordinator.baseCSS
+    func ordinaryQuotationUsesSemanticAccent() throws {
+        let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
         let editorHTML = MarkdownEditorWebView.editorHTML ?? ""
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorCSS = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Resources/Editor/editor.css"
+            ),
+            encoding: .utf8
+        )
 
-        #expect(readCSS.contains(
-            "border-left: 3px solid var(--scholium-color-accent);"
+        #expect(sharedCSS.contains(".scholium-document blockquote,"))
+        #expect(sharedCSS.contains(".cm-editor.scholium-live-mode .cm-live-quote"))
+        #expect(sharedCSS.contains(
+            "border-inline-start: 3px solid var(--scholium-color-accent);"
         ))
-        #expect(!readCSS.contains(
-            "border-left: 3px solid color-mix(in srgb, AccentColor"
+        #expect(!sharedCSS.contains(
+            "color-mix(in srgb, AccentColor"
         ))
-        #expect(editorHTML.contains(
-            ".cm-line.cm-live-quote {\n  box-shadow: inset 3px 0 var(--scholium-color-accent);"
+        #expect(editorHTML.contains(sharedCSS))
+        #expect(editorCSS.contains(
+            "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote"
         ))
-        #expect(!editorHTML.contains(
-            ".cm-line.cm-live-quote {\n  box-shadow: inset 3px 0 color-mix("
-        ))
-        #expect(editorHTML.contains(
-            "padding-left: var(--scholium-rhythm-quote-inset);"
+        #expect(editorCSS.contains(
+            "padding-inline-start: var(--scholium-rhythm-quote-inset);"
         ))
     }
 
@@ -2408,7 +2469,9 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(editorSource.contains("const isDocumentTitle = headingLevel === 1;"))
+        #expect(editorSource.contains(
+            #"if (heading.headingLevel === 1) classes.add("cm-live-document-title");"#
+        ))
         #expect(!editorSource.contains(
             "const isDocumentTitle = headingLevel === 1 && line.from === firstBodyLineFrom;"
         ))

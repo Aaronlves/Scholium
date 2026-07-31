@@ -130,8 +130,6 @@ extension MarkdownEditorSession {
         let liveListMarkerUsesPrimaryText: Bool
         let liveListMarkerText: String
         let liveTaskSourceTokenCount: Int
-        let liveListGapCount: Int
-        let liveListGapHeight: Double
         let quotePaddingInlineStart: String
         let visibleLineClassSummary: String
         let contentPaddingTop: String
@@ -176,9 +174,12 @@ extension MarkdownEditorSession {
         let footnoteDefinitionSourceCount: Int
         let liveCalloutWidgetCount: Int
         let liveCalloutSourceLineCount: Int
+        let liveRawHTMLWidgetCount: Int
+        let liveRawHTMLSourceLineCount: Int
         let exactWikilinkSourceCount: Int
         let incompleteWikilinkSourceCount: Int
         let exactCalloutSourceCount: Int
+        let activeLiveBlockKind: String
         let presentation: TestingPresentationSnapshot
     }
 
@@ -227,6 +228,7 @@ extension MarkdownEditorSession {
                 let node;
                 while ((node = walker.nextNode())) {
                     if (!node.textContent?.trim()) continue;
+                    if (node.parentElement?.closest('.cm-widgetBuffer')) continue;
                     const offset = node.textContent.search(/\\S/);
                     const range = document.createRange();
                     range.setStart(node, Math.max(0, offset));
@@ -376,9 +378,6 @@ extension MarkdownEditorSession {
                 liveTaskSourceTokenCount: Array.from(document.querySelectorAll('.cm-live-task-list'))
                     .filter(line => /\\[[ xX]\\]/.test(line.textContent || ''))
                     .length,
-                liveListGapCount: document.querySelectorAll('.cm-live-list-gap').length,
-                liveListGapHeight: document.querySelector('.cm-live-list-gap')
-                    ?.getBoundingClientRect().height || 0,
                 quotePaddingInlineStart: style('.cm-live-quote')?.paddingLeft || '',
                 visibleLineClassSummary: Array.from(document.querySelectorAll('.cm-line'))
                     .slice(0, 16)
@@ -438,12 +437,16 @@ extension MarkdownEditorSession {
                 footnoteDefinitionSourceCount: document.querySelectorAll('.cm-live-footnote-definition-source').length,
                 liveCalloutWidgetCount: document.querySelectorAll('.cm-live-callout-widget.scholium-callout').length,
                 liveCalloutSourceLineCount: document.querySelectorAll('.cm-line.cm-live-callout').length,
+                liveRawHTMLWidgetCount: document.querySelectorAll('.cm-live-raw-html-widget').length,
+                liveRawHTMLSourceLineCount: document.querySelectorAll('.cm-line.cm-live-raw-html').length,
                 exactWikilinkSourceCount: Array.from(document.querySelectorAll('.cm-line'))
                     .filter(line => line.textContent?.includes('[[') && line.textContent?.includes(']]')).length,
                 incompleteWikilinkSourceCount: Array.from(document.querySelectorAll('.cm-line'))
                     .filter(line => line.textContent?.includes('[[') !== line.textContent?.includes(']]')).length,
                 exactCalloutSourceCount: Array.from(document.querySelectorAll('.cm-line'))
                     .filter(line => line.textContent?.includes('[!')).length,
+                activeLiveBlockKind: document.querySelector('.cm-editor')
+                    ?.dataset.scholiumActiveLiveBlock || '',
                 presentation: {
                     rootContentTopInset: rootStyle.getPropertyValue('--scholium-document-content-top-inset').trim(),
                     rootTextScale: rootStyle.getPropertyValue('--scholium-document-text-scale').trim(),

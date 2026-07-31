@@ -45,6 +45,7 @@
 .cm-live-table-widget {
   display: block;
   inline-size: 100%;
+  margin-block: 0;
   white-space: normal;
 }
 

@@ -78,12 +78,14 @@ enum ScholiumMathAssets {
     .scholium-math-display .katex .mclose,
     .scholium-math-display .katex .mpunct { font-style: normal; }
     .cm-live-math.scholium-math-display { inline-size: 100%; }
-    .cm-line.cm-live-math-display-line { padding-block: 0; }
-    .cm-line.cm-live-math-collapsed-line {
-      block-size: 0;
-      min-block-size: 0;
-      line-height: 0;
-      overflow: hidden;
+    .cm-live-math-slot {
+      box-sizing: border-box;
+      inline-size: 100%;
+      pointer-events: none;
+    }
+    .cm-live-math-slot > .scholium-math-display {
+      margin-block: 0;
+      pointer-events: auto;
     }
     .scholium-math-source {
       font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;

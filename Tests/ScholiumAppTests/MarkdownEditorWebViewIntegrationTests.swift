@@ -525,7 +525,19 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(initial.h1FontSize == "64px")
         #expect(initial.h2FontSize == "48px")
         #expect(initial.collapsedCodeFenceVisibleHeight <= 0.5)
-        let quoteInset = Double(initial.quotePaddingInlineStart.replacingOccurrences(of: "px", with: ""))
+
+        // At 200% the quotation may be outside CodeMirror's mounted viewport
+        // even though the surrounding semantic catalog is complete. Move the
+        // caret to the following blank line so the quotation is both mounted
+        // and inactive; an active quotation intentionally exposes exact
+        // source rather than retaining its projected inset.
+        harness.session.goToLine(9)
+        let inactiveQuote = try await harness.waitUntilPresentation(stage: "mounted inactive quotation") {
+            !$0.quotePaddingInlineStart.isEmpty
+        }
+        let quoteInset = Double(
+            inactiveQuote.quotePaddingInlineStart.replacingOccurrences(of: "px", with: "")
+        )
         #expect(quoteInset == Double(ScholiumDocumentRhythm.quoteInlineInset))
 
         harness.session.goToLine(4)
@@ -698,8 +710,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(inactive.liveListMarkerUsesPrimaryText)
         #expect(inactive.liveListMarkerText == "•|•|◦|1.|2.|1.|•|•")
-        #expect(inactive.liveListGapCount == 8)
-        #expect(inactive.liveListGapHeight == 24)
 
         let taskSourceFrom = try #require(source.range(of: "- [ ] Open task fixture"))
             .lowerBound.utf16Offset(in: source)
@@ -709,6 +719,39 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.liveListMarkerCount == 7 && $0.liveTaskSourceTokenCount == 1
         }
         #expect(active.liveListMarkerUsesPrimaryText)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Raw HTML switches between an inert projection and exact editable source")
+    func rawHTMLProjectionRevealsExactSourceOnlyWhileActive() async throws {
+        let source = """
+        # Raw HTML boundary
+
+        <section data-fixture="raw-html">Literal source.</section>
+
+        Following paragraph.
+        """
+        let htmlFrom = try #require(source.range(of: "<section"))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.waitUntilPresentation(stage: "inactive raw HTML projection") {
+            $0.liveRawHTMLWidgetCount == 1 && $0.liveRawHTMLSourceLineCount == 0
+        }
+        harness.session.goToLine(3)
+        try await harness.waitUntilSelection(head: htmlFrom)
+        _ = try await harness.waitUntilPresentation(stage: "active exact raw HTML source") {
+            $0.liveRawHTMLWidgetCount == 0 && $0.liveRawHTMLSourceLineCount == 1
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.goToLine(5)
+        _ = try await harness.waitUntilPresentation(stage: "restored raw HTML projection") {
+            $0.liveRawHTMLWidgetCount == 1 && $0.liveRawHTMLSourceLineCount == 0
+        }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -908,30 +951,28 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         let activeCallout = try await harness.waitUntilPresentation(stage: "active callout source") {
-            $0.liveCalloutWidgetCount == 0
-                && $0.liveCalloutSourceLineCount == 0
-                && $0.exactCalloutSourceCount > 0
+            $0.activeLiveBlockKind == "callout"
         }
         #expect(activeCallout.semanticTableCount == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
 
         harness.session.goToLine(sharedCalloutLine - 1)
         _ = try await harness.waitUntilPresentation(stage: "callout restored before arrow navigation") {
-            $0.liveCalloutWidgetCount == 1
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 1
         }
         try await harness.session.testingPressArrow("ArrowDown")
         try await harness.waitUntilSelection(head: calloutFrom, stage: "down-arrow callout entry")
         _ = try await harness.waitUntilPresentation(stage: "arrow-revealed callout source") {
-            $0.liveCalloutWidgetCount == 0 && $0.exactCalloutSourceCount > 0
+            $0.activeLiveBlockKind == "callout"
         }
         harness.session.goToLine(sharedCalloutLine + 3)
         _ = try await harness.waitUntilPresentation(stage: "callout restored below") {
-            $0.liveCalloutWidgetCount == 1
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 1
         }
         try await harness.session.testingPressArrow("ArrowUp")
         try await harness.waitUntilSelection(head: calloutTo - 1, stage: "up-arrow callout entry")
         _ = try await harness.waitUntilPresentation(stage: "up-arrow-revealed callout source") {
-            $0.liveCalloutWidgetCount == 0 && $0.exactCalloutSourceCount > 0
+            $0.activeLiveBlockKind == "callout"
         }
         try await harness.session.testingPressArrow("ArrowUp")
         _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)

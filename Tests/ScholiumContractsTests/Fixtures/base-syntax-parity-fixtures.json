@@ -42,5 +42,15 @@
       {"kind": "strong", "from": 56, "to": 62, "source": "**强调**"},
       {"kind": "link", "from": 67, "to": 78, "source": "[链接](目标.md)"}
     ]
+  },
+  {
+    "name": "Obsidian highlight presentation role",
+    "source": "==highlight==",
+    "blocks": [
+      {"kind": "paragraph", "from": 0, "to": 13, "source": "==highlight=="}
+    ],
+    "inlines": [
+      {"kind": "highlight", "from": 0, "to": 13, "source": "==highlight=="}
+    ]
   }
 ]

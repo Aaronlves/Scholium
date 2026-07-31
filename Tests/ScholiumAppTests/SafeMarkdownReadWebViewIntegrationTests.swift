@@ -613,7 +613,15 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(live.mathColor == read.mathColor)
         #expect(live.mathFontSize == read.mathFontSize)
         #expect(live.mathLineHeight == read.mathLineHeight)
-        #expect(live.mathMarginBlockStart == read.mathMarginBlockStart)
+        // Review owns ordinary flow with component margins. Edit owns the
+        // equivalent vertical geometry in a direct CodeMirror StateField so
+        // the height map and pointer coordinates remain identical. Requiring
+        // the adapter-local margin properties to match would double-count the
+        // gap in Edit.
+        #expect(live.mathMarginBlockStart == "0px")
+        let readMathMargin = Double(read.mathMarginBlockStart.dropLast(2)) ?? -.infinity
+        let sharedParagraphGap = Double(read.rootParagraphGap.dropLast(2)) ?? .infinity
+        #expect(abs(readMathMargin - sharedParagraphGap) <= 0.001)
         #expect(live.mathPaddingBlockStart == read.mathPaddingBlockStart)
         #expect(abs(live.mathWidth - read.mathWidth) <= 1)
         #expect(abs(live.mathScrollExtent - read.mathScrollExtent) <= 1)
@@ -1165,10 +1173,11 @@ extension MarkdownEditorWebViewIntegrationTests {
                     const element = document.querySelector(selector);
                     if (!element) return 0;
                     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-                    let node;
-                    while ((node = walker.nextNode())) {
-                        if (!node.textContent?.trim()) continue;
-                        const offset = node.textContent.search(/\\S/);
+                let node;
+                while ((node = walker.nextNode())) {
+                    if (!node.textContent?.trim()) continue;
+                    if (node.parentElement?.closest('.cm-widgetBuffer')) continue;
+                    const offset = node.textContent.search(/\\S/);
                         const range = document.createRange();
                         range.setStart(node, Math.max(0, offset));
                         range.setEnd(node, Math.max(0, offset) + 1);
@@ -1223,8 +1232,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const orientationStyle = style('.scholium-document > .scholium-callout-orient .scholium-callout-body');
                 const tableStyle = style('.scholium-document > .scholium-table-scroll');
                 const tableCellStyle = style('.scholium-document > .scholium-table-scroll th');
-                const footnoteStyle = style('.scholium-document > .footnotes');
-                const footnoteListStyle = style('.scholium-document > .footnotes > ol');
+                const footnoteStyle = style('.scholium-document > .scholium-footnotes-slot > .footnotes');
+                const footnoteListStyle = style('.scholium-document > .scholium-footnotes-slot > .footnotes > ol');
                 const mathStyle = style('.scholium-document > .scholium-math-display');
                 const mathGeometry = (() => {
                     const display = document.querySelector('.scholium-document > .scholium-math-display');
@@ -1334,7 +1343,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                     footnoteLineHeight: footnoteStyle?.lineHeight || '',
                     footnoteMarginBlockStart: footnoteStyle?.marginBlockStart || '',
                     footnoteListPaddingInlineStart: footnoteListStyle?.paddingInlineStart || '',
-                    footnoteWidth: width('.scholium-document > .footnotes'),
+                    footnoteWidth: width('.scholium-document > .scholium-footnotes-slot > .footnotes'),
                     mathOverflowX: mathStyle?.overflowX || '',
                     mathColor: mathStyle?.color || '',
                     mathFontSize: mathStyle?.fontSize || '',

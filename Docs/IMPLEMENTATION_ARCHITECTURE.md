@@ -1767,33 +1767,44 @@ diagnostics, identity, relationship meaning, and committed Read output. Graph
 contract 5 invalidates the retired reverse-support and directed-Questions
 projection rather than decoding it as current state.
 
-The mode-neutral base catalog is also explicit rather than assumed. Contracts
-publishes source-located CommonMark/GFM blocks plus strong, emphasis,
-strikethrough, inline-code, link, and image nodes; the TypeScript projector maps
-the corresponding Lezer nodes to the same kinds and exact UTF-16 ranges.
-Semantic blocks do not own their terminal CR/LF sequence, and task-list prose
-owns the text after its task marker. Shared LF and BOM/CRLF/Unicode fixtures
-enforce that boundary. Incomplete inline extension markers remain ordinary
-editable source, matching mature Markdown failure behavior; only structurally
-opened block mathematics and comments produce fail-closed malformed
-diagnostics.
+The mode-neutral presentation catalog is explicit rather than assumed.
+Contracts publishes source-located CommonMark/GFM blocks plus strong,
+emphasis, strikethrough, highlight, inline-code, link, and image nodes. The
+TypeScript catalog extends those base roles with the editing dialect's
+Callouts, footnotes, mathematics, comments, Wiki/Vector-Links, and protected
+literals. Each catalog entry carries its exact half-open UTF-16 range, exact
+marker ranges, visible ranges, parent and nesting role, and, where applicable,
+heading level, list depth, task marker, link target, and alias range. The
+opening ATX-heading marker owns its required following space or tab; leaving
+that separator as visible source would indent Edit relative to Review under
+CodeMirror's exact-whitespace layout. Semantic blocks do not own their terminal
+CR/LF sequence, and task-list prose owns the text after its task marker. Shared
+LF and BOM/CRLF/Unicode fixtures enforce those boundaries. Incomplete inline
+extension markers remain ordinary editable source, matching mature Markdown
+failure behavior; only structurally opened block mathematics and comments
+produce fail-closed malformed diagnostics.
 
-Live block projections use direct CodeMirror `StateField` decorations because
-their replacement widgets change vertical geometry. One immutable
-`LiveProjectionIndex` owns sorted frontmatter, literal, code-block, table,
-Callout, and footnote ranges. A prefix-maximum interval index handles nested
-half-open overlap and containment without mutating StateField-owned arrays.
-Plain bounded insertions outside constructs map existing positions; deletions,
-structural markers, and uncertain block boundaries rebuild conservatively. A
-new background Lezer tree may refresh structure once; selection and viewport
-transactions reuse it.
+Live vertical geometry uses direct CodeMirror `StateField` decorations. One
+immutable `LiveProjectionIndex` owns the typed catalog plus sorted frontmatter,
+literal, code-block, table, Callout, footnote, and mathematics ranges. Direct
+fields own semantic line classes, collapsed source lines, inter-block gaps,
+frontmatter, tables, display mathematics, raw HTML, Callouts, and footnotes.
+Semantic gaps are zero-content block widgets placed at typed block boundaries;
+projected components themselves use no Edit-only block margins or fixed-height
+estimates. This keeps the visible DOM, CodeMirror height map, pointer mapping,
+selection, and scrolling under one geometry owner. A prefix-maximum interval
+index handles nested half-open overlap and containment without mutating
+StateField-owned arrays. Plain bounded insertions outside constructs map
+existing positions; deletions, structural markers, and uncertain block
+boundaries rebuild conservatively. A new background Lezer tree may refresh
+structure once; selection and viewport transactions reuse it.
 
-The inline `ViewPlugin` parses visible ranges plus a 2,000 UTF-16 buffer and
-reuses decorations while it still covers the viewport. Indexed literals and
-fenced-code ranges avoid scanning from line one. Selection changes replace only
-merged old/new neighborhoods within that margin, not the visible buffer or
-structural index. Widget equality preserves DOM; height work stays inside
-CodeMirror's measurement cycle.
+The remaining `ViewPlugin` is an inline adapter only. It projects visible
+ranges plus a 2,000 UTF-16 buffer and never supplies block widgets, collapsed
+lines, or semantic gaps. Indexed literals and fenced-code ranges avoid scanning
+from line one. Selection changes replace only merged old/new neighborhoods
+within that margin, not the visible buffer or structural index. Widget equality
+preserves DOM; height work stays inside CodeMirror's measurement cycle.
 
 Read and Live Preview consume one app-owned presentation contract:
 
@@ -1827,11 +1838,14 @@ WebView, EditorState, buffer, selection, composition, or undo history.
 
 Inactive Live callouts share Read's `.scholium-callout` DOM and stylesheet.
 `LiveBlockActivation` records the half-open range and entry edge: downward
-entry selects `from`, while upward or rendered-body entry selects `to` before
-CodeMirror resumes ownership. The atomic replacement is noninclusive at both
-boundaries. Its slot uses measured padding, never block margins or fixed height;
-fold, style, and pointer changes measure before further coordinate mapping.
-Footnote definitions remain excluded so their end-section widget is the sole
+entry selects `from`, while upward or rendered-body entry selects the final
+source unit before CodeMirror resumes ownership. The whole-line block
+replacement retains CodeMirror's inclusive defaults so it consumes the source
+line boxes instead of leaving empty lines at its boundaries; the explicit
+activation field, not decoration inclusivity, decides when exact source is
+revealed. Its slot uses no block margin or fixed-height estimate; fold, style,
+and pointer changes measure before further coordinate mapping. Footnote
+definitions remain excluded so their end-section widget is the sole
 nested-block owner.
 
 Semantic tables follow that adapter boundary. Read emits a protected scroll
@@ -1844,8 +1858,8 @@ entry removes the projection and reveals the exact Markdown table in the same
 EditorState. The table DOM is never a writable or round-trip source.
 
 Footnotes use the same projection rule. Read and Live share `footnotes.css`,
-the reference-number role, end-section structure, logical-direction spacing,
-and contrast behavior. A direct Live `StateField` derives case-sensitive
+the reference-number role, `.scholium-footnotes-slot` flow wrapper, end-section
+structure, logical-direction spacing, and contrast behavior. A direct Live `StateField` derives case-sensitive
 identifiers, first-reference ordinals, repeated occurrences, inline notes, and
 bounded two-space/tab continuations from the current buffer while excluding
 YAML, code, HTML, and comments. Inactive references become nonbutton numbered
@@ -1868,7 +1882,11 @@ Mathematics uses a locally bundled, exactly pinned KaTeX runtime and matching
 CSS/fonts. The first admissible integration must use `htmlAndMathml`,
 `trust: false`, bounded `maxExpand` and `maxSize`, no remote resources, and
 escaped plain-source diagnostics for failures. KaTeX output is a projection;
-only the original delimiter span is editable or writable.
+only the original delimiter span is editable or writable. Inactive display
+mathematics is a direct StateField block replacement; its component remains
+marginless in Edit while the shared semantic-gap field owns the equivalent
+Review flow spacing. Inactive raw HTML follows the same direct-field rule as an
+inert literal widget and reveals exact source only when active.
 
 Link and Vector-Link previews are revision-bound Edit requests. Review resolves
 footnote preview and navigation against its committed sanitized projection. Swift

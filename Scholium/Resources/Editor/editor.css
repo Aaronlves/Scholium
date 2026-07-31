@@ -134,8 +134,20 @@ body,
   outline: none;
 }
 
-.scholium-live-mode .cm-line {
+#editor .cm-editor.scholium-live-mode .cm-line:not(.cm-live-quote):not(.cm-live-codeblock):not(.cm-live-raw-html) {
   padding-inline: 0;
+}
+
+/* CodeMirror inserts a zero-width image around replaced syntax so the caret
+   never sits directly beside an uneditable widget. Its default 1em height
+   must follow the editor's body strut, not a semantic heading's enlarged em,
+   or hidden heading markers enlarge the line box and accumulate page drift. */
+.scholium-live-mode .cm-live-heading .cm-widgetBuffer {
+  font-size: calc(
+    var(--scholium-document-prose-font-size)
+    * var(--scholium-document-text-scale-factor)
+  );
+  vertical-align: baseline;
 }
 
 .cm-live-callout-widget {
@@ -145,7 +157,6 @@ body,
 .cm-live-callout-slot {
   box-sizing: border-box;
   inline-size: 100%;
-  padding-block: calc(var(--scholium-callout-block-gap, 1.4em) / 2);
   pointer-events: none;
 }
 
@@ -161,25 +172,8 @@ body,
   white-space: pre-wrap;
 }
 
-.cm-live-strong { font-weight: 700; }
-.cm-live-emphasis { font-style: italic; }
-.cm-live-highlight {
-  color: var(--scholium-color-primary-text);
-  background: color-mix(in srgb, var(--scholium-color-notification-highlight) 32%, transparent);
-  border-radius: 3px;
-  padding-inline: 0.06em;
-}
-.cm-live-strike { text-decoration: line-through; color: var(--scholium-color-muted-text); }
-
-.cm-live-code {
-  font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  padding: 0.08em 0.28em;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
-}
-
 .cm-live-wikilink,
-.cm-live-link {
+.cm-live-vector-link {
   color: var(--scholium-color-accent);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
@@ -223,27 +217,36 @@ body,
 }
 
 .cm-line.cm-live-list {
-  padding-inline-start: 0.5em;
-}
-.cm-live-list-gap {
-  block-size: calc(var(--scholium-rhythm-paragraph-gap) * 2);
-  pointer-events: none;
+  padding-inline-start: 0;
 }
 .cm-live-list-marker {
   display: inline-block;
-  min-width: 1.35em;
+  min-width: 2.5em;
   color: var(--scholium-color-primary-text);
   font-family: inherit;
   font-weight: 400;
 }
 .cm-live-list-marker-nested {
-  font-size: 1.05em;
+  margin-inline-start: 2.5em;
 }
 
+.cm-live-semantic-gap {
+  --scholium-live-gap-after: 0px;
+  --scholium-live-gap-before: 0px;
+  block-size: max(var(--scholium-live-gap-after), var(--scholium-live-gap-before));
+  pointer-events: none;
+}
+.cm-live-semantic-gap-after-half { --scholium-live-gap-after: var(--scholium-rhythm-rule-block-gap, 0.5em); }
+.cm-live-semantic-gap-before-half { --scholium-live-gap-before: var(--scholium-rhythm-rule-block-gap, 0.5em); }
+.cm-live-semantic-gap-after-paragraph { --scholium-live-gap-after: var(--scholium-rhythm-paragraph-gap); }
+.cm-live-semantic-gap-before-paragraph { --scholium-live-gap-before: var(--scholium-rhythm-paragraph-gap); }
+.cm-live-semantic-gap-after-standard { --scholium-live-gap-after: var(--scholium-rhythm-semantic-block-gap, 1em); }
+.cm-live-semantic-gap-before-standard { --scholium-live-gap-before: var(--scholium-rhythm-semantic-block-gap, 1em); }
+.cm-live-semantic-gap-after-callout { --scholium-live-gap-after: var(--scholium-callout-block-gap, 1.4em); }
+.cm-live-semantic-gap-before-callout { --scholium-live-gap-before: var(--scholium-callout-block-gap, 1.4em); }
+
 .cm-live-codeblock {
-  font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  background: color-mix(in srgb, var(--scholium-color-primary-text) 6%, transparent);
-  padding-inline: var(--scholium-rhythm-live-code-inline-inset);
+  font-family: "Victor Mono", ui-monospace, monospace;
 }
 
 .cm-line.cm-live-code-fence-line {
@@ -263,35 +266,40 @@ body,
   overflow: hidden;
 }
 
+.cm-line.cm-live-heading-marker-line {
+  block-size: 0;
+  min-block-size: 0;
+  line-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 .cm-live-table {
   font-variant-numeric: tabular-nums;
   box-shadow: inset 0 -1px var(--scholium-color-separator);
 }
 .cm-live-table-separator { color: var(--scholium-color-muted-text); }
 
+.cm-live-raw-html-widget {
+  max-inline-size: 100%;
+  margin: 0;
+  overflow: auto;
+  white-space: pre;
+}
+
 /* Inactive semantic tables are supplied as direct CodeMirror block widgets
    and share tables.css with Read. These source-line rules remain only while
    the caret or an IME composition is inside the exact Markdown table. */
 
-.cm-live-relation {
-  background: color-mix(in srgb, var(--scholium-color-accent) 5%, transparent);
-  padding-inline: 0.35em;
-}
-.cm-live-relation-predicate { color: color-mix(in srgb, var(--scholium-color-accent) 80%, var(--scholium-color-primary-text)); font-weight: 700; }
-.cm-live-relation-arrow { color: var(--scholium-color-muted-text); }
-
-.cm-line.cm-live-quote {
-  box-shadow: inset 3px 0 var(--scholium-color-accent);
-  color: var(--scholium-color-secondary-text);
-  padding-left: var(--scholium-rhythm-quote-inset);
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote {
+  padding-inline-start: var(--scholium-rhythm-quote-inset);
+  padding-inline-end: 0;
 }
 
 /* Protected Callout presentation is injected from callouts.css by the app. */
 
 .cm-live-rule {
-  border-top: 1px solid var(--scholium-color-separator);
-  height: 0;
-  margin: 0.9em 0;
+  margin: 0;
 }
 
 @media (prefers-reduced-transparency: reduce) {
