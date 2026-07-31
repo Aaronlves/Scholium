@@ -13,7 +13,16 @@ enum DiscussionPresentationError: LocalizedError {
 // MARK: - Content View
 
 struct ContentView: View {
-    @EnvironmentObject var appState: WindowModel
+    @ObservedObject var appState: WindowModel
+    @ObservedObject private var presentationRouter: WindowPresentationRouter
+    @ObservedObject private var searchController: WindowSearchController
+    @ObservedObject private var researchController: ResearchController
+    @ObservedObject private var documentController: DocumentController
+    @ObservedObject private var documentTabController: DocumentTabController
+    @ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController
+    @ObservedObject private var agentNoteChangeWindowController: AgentNoteChangeWindowController
+    @ObservedObject private var cssSnippetStore: CSSSnippetStore
+    @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openSettings) private var openSettings
@@ -21,6 +30,29 @@ struct ContentView: View {
     private var attentionDismissalLedgerData = Data()
     @State private var pendingResearchActionFocusID: ResearchActionID?
     @State private var researchActionFocusRequest: ResearchActionFocusRequest?
+
+    init(
+        appState: WindowModel,
+        windowCoordinator: WorkspaceWindowCoordinator
+    ) {
+        self.appState = appState
+        self.windowCoordinator = windowCoordinator
+        _presentationRouter = ObservedObject(wrappedValue: appState.presentationRouter)
+        _searchController = ObservedObject(wrappedValue: appState.searchController)
+        _researchController = ObservedObject(wrappedValue: appState.researchController)
+        _documentController = ObservedObject(wrappedValue: appState.documentController)
+        _documentTabController = ObservedObject(wrappedValue: appState.documentTabController)
+        _workspaceProjectionController = ObservedObject(
+            wrappedValue: appState.workspaceProjectionController
+        )
+        _agentNoteChangeWindowController = ObservedObject(
+            wrappedValue: appState.agentNoteChangeWindowController
+        )
+        _cssSnippetStore = ObservedObject(wrappedValue: appState.cssSnippetStore)
+        _windowWorkspaceController = ObservedObject(
+            wrappedValue: appState.windowWorkspaceController
+        )
+    }
 
     var body: some View {
         ScholiumWorkspaceSplitView(
@@ -528,9 +560,6 @@ struct ContentView: View {
             bibliographyController: appState.researchController.bibliography,
             attentionPopoverSession: appState.attentionPopoverSession,
             notesAreOrdered: { appState.notesAreOrdered($0, $1) },
-            hideLibrary: {
-                windowCoordinator.actions.setLibraryVisible(false)
-            },
             openAttention: {
                 windowCoordinator.actions.showAttention(.sidebar, nil)
             },
@@ -827,9 +856,6 @@ struct ContentView: View {
                 researchInspectorContentContext: researchInspectorContentContext,
                 researchActionsPresentation: appState.researchActionsPresentation(),
                 researchActionFocusRequest: researchActionFocusRequest,
-                hideInspector: {
-                    windowCoordinator.actions.setResearchInspectorVisible(false)
-                },
                 registerResearchActionFocusOwner: {
                     pendingResearchActionFocusID = $0
                 },
@@ -848,8 +874,6 @@ struct ContentView: View {
             )
         } else {
             VStack(spacing: 0) {
-                apparatusHideControl
-
                 if appState.researchController.actions.hasCancellationBarrier {
                     ResearchActionsInspectorView(
                         presentation: appState.researchActionsPresentation(),
@@ -871,21 +895,6 @@ struct ContentView: View {
                 }
             }
             .scholiumSurface(.apparatus)
-        }
-    }
-
-    private var apparatusHideControl: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: 0)
-            ScholiumInkIconControl(
-                title: ScholiumL10n.dynamicString("Hide Research Inspector"),
-                systemImage: "sidebar.trailing",
-                identifier: "scholium.toggleInspector",
-                isActive: true
-            ) {
-                windowCoordinator.actions.setResearchInspectorVisible(false)
-            }
-            .accessibilityValue(ScholiumL10n.dynamicString("Shown"))
         }
     }
 
@@ -1076,7 +1085,6 @@ struct ToastView: View {
         appState: model,
         lifecycleRegistry: ScholiumWindowLifecycleRegistry()
     )
-    ContentView(windowCoordinator: coordinator)
-        .environmentObject(model)
+    ContentView(appState: model, windowCoordinator: coordinator)
         .frame(width: 1100, height: 700)
 }

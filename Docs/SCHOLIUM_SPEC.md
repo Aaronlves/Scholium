@@ -1569,13 +1569,13 @@ loading may replace items but not move traffic lights or change band height.
 Opaque regions extend beneath it, and controls use the live safe area rather
 than a measured toolbar height.
 
-Visible Library and Apparatus own pane-local Hide controls. On collapse, that
-route leaves with the pane and one borderless Show control enters the Document
-toolbar; expansion reverses the transfer. Native collapsed state governs the
-reconciliation, which must leave exactly one route without rebuilding the
-shell. Tracking separators remain structural bounds. Add no split-item
-accessory row, custom title strip, Inspector replacement, ellipsis, fixed
-height, automatic glass-like item, or Liquid Glass.
+Sidebar and Inspector each keep one visibility control at a stable position in
+the one native Document toolbar. Native collapsed state changes that item's
+accessible Show/Hide label, value, and explicit per-window action; collapse and
+expansion never transfer the control, change toolbar item topology, or add a
+pane-local duplicate. Tracking separators remain structural bounds. Add no
+split-item accessory row, custom title strip, Inspector replacement, ellipsis,
+fixed height, automatic glass-like item, or Liquid Glass.
 
 Attention never enters the Document toolbar. While Sidebar is visible, its
 conditional current-Scope alert is the only workspace-chrome signal;
@@ -1585,11 +1585,11 @@ summary. **Window → Attention** is enabled only when the focused Workspace has
 a visible Sidebar alert or Inspector summary capable of anchoring the transient
 popover; otherwise showing Sidebar restores the contextual route.
 
-If needed, the collapsed Inspector's Show control and View command may send one
-explicit intent through the exact window coordinator to the native split.
+The Inspector toolbar control and View command send one explicit intent through
+the exact window coordinator to the native split.
 The Inspector routes share selected-document availability and preserve native
-transition and geometry. Collapsed-Inspector Show remains visible but disabled
-without a Target; a visible Inspector can always be hidden. Research Record is
+transition and geometry. Inspector Show remains visible but disabled without a
+Target; a visible Inspector can always be hidden. Research Record is
 Triptych-scoped and remains available in every configured workspace; opening it
 with a Target applies the removable **This Note** filter.
 
@@ -1859,10 +1859,9 @@ Appearance, but Appearance displays no generated CSS preview. Source typography
 and the application interface are not changed by a document configuration;
 only the shared Line width changes Source layout.
 
-Subject to the transfer rule in §18.2, Document toolbar order is conditional
-Show Sidebar; Heading
-Outline and compact identity; mode and Search; Research Record; conditional
-Show Inspector. Scholium controls are borderless ink. No second identity row,
+Document toolbar order is Sidebar visibility; Heading Outline and compact
+identity; mode and Search; Research Record; Inspector visibility. Scholium
+controls are borderless ink. No second identity row,
 Document Properties button, or More control exists.
 Complete Properties is in Research; direct controls retain menu/keyboard
 routes. The compact identity uses secondary text while the in-document H1
@@ -2186,13 +2185,12 @@ cards, colorful category tiles, score badges, agent avatars, chat bubbles,
 nested rounded containers, or decorative workflow diagrams. Selection and
 consequence remain clear through native state, typography, symbols, and text.
 
-Library Locations and pane-local titlebar controls retain one opaque
-navigation plane. Location content neither dims retained content nor floats
+Library Locations retain one opaque navigation plane. Location content neither dims retained content nor floats
 above it, and adds no material, reflection, grabber, rounded panel, accessory
 row, separately measured bar, shadow, or sheet motion. The LocationPicker's
 transient menu remains system-owned rather than becoming a Scholium popover.
-Pane-local hosts consume the native safe area once; the titlebar owns vertical
-alignment.
+Pane-local content hosts consume the native safe area once; the titlebar and
+its single native toolbar own visibility-control alignment.
 
 The fixed Recommended Bibliography band is a sibling Sidebar utility, not a
 Library Location or Source List footer. It shares the complete Sidebar's

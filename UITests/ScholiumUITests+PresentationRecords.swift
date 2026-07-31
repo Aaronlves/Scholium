@@ -117,9 +117,9 @@ extension ScholiumUITests {
         add(screenshot)
     }
 
-    /// A retained visual checkpoint for pane-owned Hide and collapsed-only
-    /// toolbar Show controls. This is intentionally a narrow proof rather than
-    /// a claim that the complete UI acceptance matrix has passed.
+    /// A retained visual checkpoint for stable native-toolbar Sidebar and
+    /// Inspector visibility controls. This is intentionally a narrow proof
+    /// rather than a claim that the complete UI acceptance matrix has passed.
     @MainActor
     func testNativeToolbarVisualProofAtDefaultWindowSize() throws {
         app.terminate()
@@ -155,11 +155,11 @@ extension ScholiumUITests {
             )
         }
 
-        let sidebarToggle = app.descendants(matching: .any)["scholium.toggleSidebar"]
+        let sidebarToggle = loadedToolbar.buttons["Hide Sidebar"].firstMatch
         let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
         let search = app.descendants(matching: .any)["scholium.documentSearch"]
         let history = app.descendants(matching: .any)["scholium.showResearchRecord"]
-        let inspectorToggle = app.descendants(matching: .any)["scholium.toggleInspector"]
+        let inspectorToggle = loadedToolbar.buttons["Show Research Inspector"].firstMatch
         XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 5))
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
         XCTAssertTrue(search.waitForExistence(timeout: 5))
@@ -175,14 +175,11 @@ extension ScholiumUITests {
         XCTAssertTrue(library.waitForExistence(timeout: 5))
         XCTAssertEqual(sidebarToggle.label, "Hide Sidebar")
         XCTAssertTrue(sidebarToggle.isHittable)
-        XCTAssertGreaterThanOrEqual(sidebarToggle.frame.minX, library.frame.minX)
-        XCTAssertLessThanOrEqual(sidebarToggle.frame.maxX, library.frame.maxX)
+        XCTAssertEqual(sidebarToggle.frame.midY, close.frame.midY, accuracy: 12)
 
         sidebarToggle.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !library.exists })
-        let sidebarReveal = app.descendants(matching: .any)[
-            "scholium.toggleSidebar"
-        ].firstMatch
+        let sidebarReveal = loadedToolbar.buttons["Show Sidebar"].firstMatch
         XCTAssertTrue(sidebarReveal.waitForExistence(timeout: 5))
         XCTAssertEqual(sidebarReveal.label, "Show Sidebar")
         XCTAssertEqual(sidebarReveal.frame.midY, close.frame.midY, accuracy: 12)
@@ -198,14 +195,11 @@ extension ScholiumUITests {
         )
         sidebarReveal.click()
         XCTAssertTrue(library.waitForExistence(timeout: 5))
-        let sidebarHide = app.descendants(matching: .any)[
-            "scholium.toggleSidebar"
-        ].firstMatch
+        let sidebarHide = loadedToolbar.buttons["Hide Sidebar"].firstMatch
         XCTAssertTrue(sidebarHide.waitForExistence(timeout: 5))
         XCTAssertEqual(sidebarHide.label, "Hide Sidebar")
         XCTAssertTrue(sidebarHide.isHittable)
-        XCTAssertGreaterThanOrEqual(sidebarHide.frame.minX, library.frame.minX)
-        XCTAssertLessThanOrEqual(sidebarHide.frame.maxX, library.frame.maxX)
+        XCTAssertEqual(sidebarHide.frame.midY, close.frame.midY, accuracy: 12)
 
         let triptych = app.descendants(matching: .any)["scholium.triptychManagement"]
         XCTAssertTrue(triptych.waitForExistence(timeout: 5))
@@ -235,14 +229,11 @@ extension ScholiumUITests {
         let inspector = app.scrollViews["scholium.researchInspector"]
         inspectorToggle.click()
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
-        let inspectorHide = app.descendants(matching: .any)[
-            "scholium.toggleInspector"
-        ].firstMatch
+        let inspectorHide = loadedToolbar.buttons["Hide Research Inspector"].firstMatch
         XCTAssertTrue(inspectorHide.waitForExistence(timeout: 5))
         XCTAssertEqual(inspectorHide.label, "Hide Research Inspector")
         XCTAssertTrue(inspectorHide.isHittable)
-        XCTAssertGreaterThanOrEqual(inspectorHide.frame.minX, inspector.frame.minX)
-        XCTAssertLessThanOrEqual(inspectorHide.frame.maxX, inspector.frame.maxX)
+        XCTAssertEqual(inspectorHide.frame.midY, close.frame.midY, accuracy: 12)
         XCTAssertEqual(
             app.descendants(matching: .any).matching(
                 identifier: "scholium.toggleInspector"
@@ -251,9 +242,7 @@ extension ScholiumUITests {
         )
         inspectorHide.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
-        let inspectorReveal = app.descendants(matching: .any)[
-            "scholium.toggleInspector"
-        ].firstMatch
+        let inspectorReveal = loadedToolbar.buttons["Show Research Inspector"].firstMatch
         XCTAssertTrue(inspectorReveal.waitForExistence(timeout: 5))
         XCTAssertEqual(inspectorReveal.frame.midY, close.frame.midY, accuracy: 12)
         inspectorReveal.click()
@@ -273,7 +262,7 @@ extension ScholiumUITests {
         proofFocus.click()
 
         let screenshot = XCTAttachment(screenshot: window.screenshot())
-        screenshot.name = "Pane-owned peripheral controls — default 1180pt workspace"
+        screenshot.name = "Native-toolbar peripheral controls — default 1180pt workspace"
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
@@ -421,7 +410,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testVisiblePeripheralTitlebarControlsCloseWithPointerCoordinates() throws {
+    func testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates() throws {
         exercisePeripheralVisibilityControls()
     }
 

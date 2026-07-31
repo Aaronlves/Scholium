@@ -44,6 +44,7 @@ ApplicationBootstrapController (one app-owned storage gate)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowShellState
             │   ├── WindowWorkspaceController (assignment and capability session)
+            │   ├── WindowCommandObservation (focused-command invalidation only)
             │   ├── WindowEditorFlushCoordinator
             │   ├── WindowSessionPersistenceCoordinator
             │   ├── DocumentTransitionCoordinator
@@ -204,9 +205,19 @@ cancellation, exact result-freshness validation, Search-generation reruns, and
 serialized Saved Search loading and persistence. It coordinates the
 `DiscoveryController` Search projection while borrowing only a checked current
 document snapshot and navigation/presentation effects from the window root.
-`WindowModel` composes these owners, forwards only the observation needed by
-its compatibility facets and focused commands, and routes cross-feature
-intents; it does not own those state machines. `DocumentController` alone owns
+`WindowModel` composes these owners, publishes only its own remaining mutable
+facts, and routes cross-feature intents; it does not relay child
+`objectWillChange` or own those state machines. `ScholiumWindowRoot`,
+`ContentView`, Research Record, and toolbar hosts observe their actual bounded
+owners directly. The scene root first retains `WindowModel` and
+`WorkspaceWindowCoordinator` as `StateObject`s, then passes those stable
+instances into `ScholiumWindowObservedRoot`; child `ObservedObject`s are never
+derived from a newly constructed root instance that SwiftUI may discard.
+`WindowCommandObservation` owns no product state: it advances
+one window-local revision only for the shell, assignment, Library location,
+document/projection, and Research Action facts that affect focused command
+labels or availability. Commands still read and mutate the existing owners.
+`DocumentController` alone owns
 selection and document workflow state; `ResearchController` owns the current
 research-record projection, checkpoint-list failures, and durable-recovery
 listing. `WindowWorkspaceProjectionController` is the exact-window owner of the
@@ -273,16 +284,15 @@ controller is a foreground sibling inside the system safe area.
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Before split attachment,
 `WorkspaceWindowCoordinator` installs an inert toolbar and later replaces its
-items in place. An expanded peripheral owns one pointer-hittable Hide control
-inside its foreground content tree. On collapse that subtree leaves the window
-and exactly one Show `NSToolbarItem` enters the Document section between the
-corresponding tracking separator and Document controls; expansion removes it
-again. The toolbar controller diffs identifiers from native collapsed state,
-so no duplicate route or second toolbar exists. No split-content titlebar host
-remains: under full-size content that host rendered beneath the toolbar's
-pointer hit-testing layer even when accessibility could still discover it.
-Pane-local content plus collapsed-only native toolbar items satisfy §18.2
-without adding a geometry owner or painted titlebar layer.
+items in place. Sidebar and Inspector each retain one borderless hosted
+`NSToolbarItem` at a stable position inside the Document section. Their hosted
+views observe `WindowShellState` and switch accessible Show/Hide label, value,
+active presentation, and explicit exact-window action without changing toolbar
+item topology. Pane content contains no duplicate visibility control. No
+split-content titlebar host remains: under full-size content that host rendered
+beneath the toolbar's pointer hit-testing layer even when accessibility could
+still discover it. Stable native toolbar controls satisfy §18.2 without adding
+a geometry owner or painted titlebar layer.
 
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width
@@ -302,12 +312,14 @@ Apparatus uses `NSSplitViewItem(inspectorWithViewController:)`; production does
 not replace its native minimum, divider, safe area, separator, or collapse
 policy. The one initial ideal-width offer above is released immediately after
 application; the native item and `toggleInspector(_:)` own transitions. Because
-the nested split may sit outside
-the responder chain, the collapsed Show route is a borderless hosted item, not
-the platform-wrapped standard toolbar item, and bridges with the View command
+the nested split may sit outside the responder chain, the visibility route is a
+borderless hosted item, not the platform-wrapped standard toolbar item, and bridges with the View command
 through the exact per-window coordinator. Selected-document state supplies
-availability. `WindowModel` mirrors native visibility for commands,
-restoration, and toolbar reconciliation but never reasserts it or stores width.
+availability when showing, while a visible Inspector can always be hidden.
+`WindowShellState` mirrors native visibility for commands, toolbar labels, and
+restoration. The toolbar controller installs one stable item list; its hosted
+controls observe shell visibility without reasserting split state or storing
+width.
 
 The Inspector has exactly three current-note modes: Overview, Connect, and
 Actions. Overview presents a current-Note Attention summary whose one button
@@ -932,7 +944,8 @@ failure.
 - `Scholium/Features` contains the Discovery, Document, Research, Properties,
   and Settings delivery controllers and per-window editor sessions.
 - `Scholium/App/Window` contains `WindowShellState`,
-  `WindowEditorFlushCoordinator`, mutually exclusive window presentation
+  `WindowCommandObservation`, `WindowEditorFlushCoordinator`, mutually
+  exclusive window presentation
   routing, and the document-transition,
   presentation-persistence, workspace-session, and immutable-projection
   coordinators. These
@@ -965,14 +978,21 @@ window. Its bounded AppKit bridge creates the three-item split described above;
 role-owned backgrounds fill each container while Library, Document, and
 Apparatus content stays foreground in the live safe area. Bootstrap never
 constructs this split. Loading and document states replace hosted content, not
-the shell. `WorkspaceWindowCoordinator` receives the exact window and split,
+the shell. The composition root passes the complete `WindowModel` explicitly;
+`ContentView` observes the presentation, Search, Research, Document, tab,
+projection, Agent-request, CSS, and workspace-session owners it actually
+reads, while reusable feature leaves remain on narrow values/controllers.
+`WorkspaceWindowCoordinator` receives the exact window and split,
 installs toolbar/delegate state, and registers readiness/flushing. No singleton,
 window search, notification, polling, delayed correction, or width calculation
 participates.
 
 Research Record is a separate, nonrestored SwiftUI `UtilityWindow`. Its root
 receives the current native focused object observed at the app scene boundary;
-each Workspace supplies its `WindowModel` with `focusedSceneObject`. No model
+each Workspace supplies its `WindowModel` and its read-only
+`WindowCommandObservation` with `focusedSceneObject`. Research Record then
+observes the focused window's workspace-session, Document, and Research owners
+directly. No model
 registry, notification, presentation coordinator, custom focused key, or
 manually retained window model participates. Each presentation owns one
 `ResearchRecordBrowserModel`: one disposable deterministic in-memory index plus

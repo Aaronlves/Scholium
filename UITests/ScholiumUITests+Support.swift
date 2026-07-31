@@ -272,7 +272,7 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
     }
 
-    /// Exercises pane-owned Hide controls and the collapsed-only toolbar Show
+    /// Exercises the stable native-toolbar Sidebar and Inspector visibility
     /// controls through their actual pointer hit-testing paths.
     @MainActor
     func exercisePeripheralVisibilityControls() {
@@ -290,7 +290,7 @@ extension ScholiumUITests {
             XCTAssertTrue(library.waitForExistence(timeout: 5))
         }
 
-        let hideSidebar = app.buttons["Hide Sidebar"].firstMatch
+        let hideSidebar = toolbar.buttons["Hide Sidebar"].firstMatch
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(hideSidebar.isHittable)
         XCTAssertEqual(
@@ -316,7 +316,7 @@ extension ScholiumUITests {
 
         let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
         if inspector.exists {
-            let hideInspector = app.buttons["Hide Research Inspector"].firstMatch
+            let hideInspector = toolbar.buttons["Hide Research Inspector"].firstMatch
             XCTAssertTrue(hideInspector.waitForExistence(timeout: 5))
             hideInspector.coordinate(
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
@@ -336,7 +336,7 @@ extension ScholiumUITests {
         ).click()
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
 
-        let hideInspector = app.buttons["Hide Research Inspector"].firstMatch
+        let hideInspector = toolbar.buttons["Hide Research Inspector"].firstMatch
         XCTAssertTrue(hideInspector.waitForExistence(timeout: 5))
         XCTAssertTrue(hideInspector.isHittable)
         XCTAssertEqual(

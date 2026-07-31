@@ -102,7 +102,7 @@ final class ScholiumUITests: XCTestCase {
             || name.contains("testNativeToolbarVisualProofAtDefaultWindowSize")
             || name.contains("testNoDocumentKeepsTrailingToolbarControlsVisibleAndDisabled")
             || name.contains("testInspectorToolbarItemOpensAndClosesInspector")
-            || name.contains("testVisiblePeripheralTitlebarControlsCloseWithPointerCoordinates")
+            || name.contains("testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates")
             || name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl")
             || name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm")
             || name.contains("testLibraryRemainsReadableAtItsNativeMinimum") {

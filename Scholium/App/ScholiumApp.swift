@@ -192,27 +192,39 @@ private struct ScholiumResearchRecordUtilityRoot: View {
 }
 
 private struct ScholiumResearchRecordFocusedContent: View {
-    @ObservedObject var appState: WindowModel
+    let appState: WindowModel
+    @ObservedObject private var workspaceController: WindowWorkspaceController
+    @ObservedObject private var documentController: DocumentController
+    @ObservedObject private var researchController: ResearchController
     @State private var browserModel = ResearchRecordBrowserModel()
 
+    init(appState: WindowModel) {
+        self.appState = appState
+        _workspaceController = ObservedObject(
+            wrappedValue: appState.windowWorkspaceController
+        )
+        _documentController = ObservedObject(wrappedValue: appState.documentController)
+        _researchController = ObservedObject(wrappedValue: appState.researchController)
+    }
+
     var body: some View {
-        if let assignment = appState.workspaceAssignment {
+        if let assignment = workspaceController.state.assignment {
             ResearchRecordBrowserView(
                 model: browserModel,
                 triptychName: assignment.triptych.name,
                 initialNoteID: currentNoteID,
                 context: ResearchRecordBrowserContext(
                     setPinned: { id, isPinned in
-                        try await appState.researchController.setResearchRecordPinned(
+                        try await researchController.setResearchRecordPinned(
                             id: id,
                             isPinned: isPinned
                         )
                     },
                     deletePermanently: { id in
-                        try await appState.researchController.deleteResearchRecordPermanently(id: id)
+                        try await researchController.deleteResearchRecordPermanently(id: id)
                     },
                     comparison: { recordID, noteID in
-                        try await appState.researchController.researchRecordComparison(
+                        try await researchController.researchRecordComparison(
                             recordID: recordID,
                             noteID: noteID
                         )
@@ -233,7 +245,7 @@ private struct ScholiumResearchRecordFocusedContent: View {
                     initialNoteID: currentNoteID
                 )
             }
-            .onReceive(appState.researchController.$records) { snapshot in
+            .onReceive(researchController.$records) { snapshot in
                 browserModel.receive(
                     triptychID: assignment.id,
                     records: snapshot?.finishedResearchRecords ?? [],
@@ -250,11 +262,11 @@ private struct ScholiumResearchRecordFocusedContent: View {
     }
 
     private var currentNoteID: UUID? {
-        appState.currentDocumentDescriptor?.sessionKey.noteID
+        documentController.activeDocument?.sessionKey.noteID
     }
 
     private var finishedRecords: [PortableResearchRecord] {
-        appState.researchController.records?.finishedResearchRecords ?? []
+        researchController.records?.finishedResearchRecords ?? []
     }
 }
 
@@ -452,14 +464,10 @@ private final class ScholiumBootstrapModel: ObservableObject {
 }
 
 private struct ScholiumWindowRoot: View {
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     @StateObject private var appState: WindowModel
     @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
-    @State private var destinationBootstrapWindowID: UUID?
 
     init(
         workspaceStore: WorkspaceStore,
@@ -483,23 +491,73 @@ private struct ScholiumWindowRoot: View {
     }
 
     var body: some View {
+        ScholiumWindowObservedRoot(
+            appState: appState,
+            windowCoordinator: windowCoordinator,
+            route: route,
+            lifecycleRegistry: lifecycleRegistry
+        )
+    }
+}
+
+/// Receives the retained scene owners before deriving child observations.
+/// Keeping this boundary below `ScholiumWindowRoot` prevents a SwiftUI root
+/// reinitialization from pairing its retained `@StateObject` with children from
+/// a newly constructed, discarded `WindowModel`.
+private struct ScholiumWindowObservedRoot: View {
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+    let appState: WindowModel
+    @ObservedObject private var windowCoordinator: WorkspaceWindowCoordinator
+    @ObservedObject private var shellState: WindowShellState
+    @ObservedObject private var presentationRouter: WindowPresentationRouter
+    @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
+    private let route: TriptychWindowRoute
+    private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    @State private var destinationBootstrapWindowID: UUID?
+
+    init(
+        appState: WindowModel,
+        windowCoordinator: WorkspaceWindowCoordinator,
+        route: TriptychWindowRoute,
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    ) {
+        self.appState = appState
+        _windowCoordinator = ObservedObject(wrappedValue: windowCoordinator)
+        _shellState = ObservedObject(wrappedValue: appState.shellState)
+        _presentationRouter = ObservedObject(wrappedValue: appState.presentationRouter)
+        _windowWorkspaceController = ObservedObject(
+            wrappedValue: appState.windowWorkspaceController
+        )
+        self.route = route
+        self.lifecycleRegistry = lifecycleRegistry
+    }
+
+    var body: some View {
         Group {
-            if appState.hasCompletedInitialRestore, appState.vaultConfig != nil {
-                ContentView(windowCoordinator: windowCoordinator)
+            if shellState.hasCompletedInitialRestore, appState.vaultConfig != nil {
+                ContentView(
+                    appState: appState,
+                    windowCoordinator: windowCoordinator
+                )
             } else {
                 ScholiumLaunchPlaceholderView()
             }
         }
-            .environmentObject(appState)
             .toolbar(removing: .sidebarToggle)
             .tint(ScholiumColorRole.accent.color)
             .focusedSceneObject(appState)
+            .focusedSceneObject(appState.commandObservation)
             .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
             .background(
                 WorkspaceWindowAttachment(coordinator: windowCoordinator)
             )
             .fileImporter(
-                isPresented: $appState.showMarkdownImporter,
+                isPresented: Binding(
+                    get: { presentationRouter.fileImport == .markdown },
+                    set: { presentationRouter.fileImport = $0 ? .markdown : nil }
+                ),
                 allowedContentTypes: [UTType(filenameExtension: "md") ?? .plainText],
                 allowsMultipleSelection: true
             ) { result in
@@ -519,7 +577,10 @@ private struct ScholiumWindowRoot: View {
                     appState.vaultError = error.localizedDescription
                 }
             }
-            .sheet(item: $appState.workspaceAccessRecovery) { recovery in
+            .sheet(item: Binding(
+                get: { windowWorkspaceController.state.accessRecovery },
+                set: { windowWorkspaceController.setAccessRecovery($0) }
+            )) { recovery in
                 RestoreWorkspaceAccessView(
                     recovery: recovery,
                     restore: { try await appState.restoreWorkspaceAccess(using: $0) },
@@ -572,9 +633,9 @@ private struct ScholiumWindowRoot: View {
     }
 
     private func redirectUnconfiguredWindowToBootstrapIfNeeded() {
-        guard appState.hasCompletedInitialRestore,
+        guard shellState.hasCompletedInitialRestore,
               appState.vaultConfig == nil,
-              appState.workspaceAccessRecovery == nil,
+              windowWorkspaceController.state.accessRecovery == nil,
               destinationBootstrapWindowID == nil
         else { return }
         let destination = BootstrapWindowRoute(
@@ -593,7 +654,7 @@ private struct ScholiumWindowRoot: View {
     }
 
     private var colorScheme: ColorScheme? {
-        switch appState.colorScheme {
+        switch shellState.colorScheme {
         case .dark: return .dark
         case .light: return .light
         case .system: return nil
@@ -686,6 +747,7 @@ extension FocusedValues {
 private struct ScholiumCommands: Commands {
     let storageReady: Bool
     @FocusedObject private var appState: WindowModel?
+    @FocusedObject private var commandObservation: WindowCommandObservation?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
     @FocusedValue(\.scholiumResearchActionActions) private var researchActionActions
@@ -693,6 +755,7 @@ private struct ScholiumCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        let _ = commandObservation?.revision
         CommandGroup(replacing: .newItem) {
             Button("New Window") {
                 openWindow(
@@ -1214,6 +1277,14 @@ final class WindowModel: ObservableObject {
             return try await self.discoveryController.discoverySnapshot().catalog
         }
     )
+    lazy var commandObservation = WindowCommandObservation(
+        shellState: shellState,
+        workspaceController: windowWorkspaceController,
+        discoveryController: discoveryController,
+        documentController: documentController,
+        workspaceProjectionController: workspaceProjectionController,
+        researchActionController: researchController.actions
+    )
     let attentionPresentationState = AttentionPresentationState()
     lazy var attentionPopoverSession = AttentionPopoverSession(workspace: self)
     lazy var agentNoteChangeWindowController = AgentNoteChangeWindowController(
@@ -1603,36 +1674,6 @@ final class WindowModel: ObservableObject {
         cssSnippetStore = workspaceStore.cssSnippetStore
         zoteroBridge = workspaceStore.zoteroBridge
         agentApplicationHandoff = workspaceStore.agentApplicationHandoff
-        presentationRouter.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        discoveryController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        searchController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        researchController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        documentController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        documentTabController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        workspaceProjectionController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        agentNoteChangeWindowController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        cssSnippetStore.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
-        windowWorkspaceController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &workspaceCancellables)
         workspaceStore.$latestWorkspaceActivation
             .compactMap { $0 }
             .sink { [weak self] activation in

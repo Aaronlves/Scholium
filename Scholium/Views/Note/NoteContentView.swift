@@ -288,7 +288,6 @@ struct ResearchInspectorView: View {
     let researchInspectorContentContext: ResearchInspectorContentContext
     let researchActionsPresentation: ResearchActionsPresentation
     let researchActionFocusRequest: ResearchActionFocusRequest?
-    let hideInspector: () -> Void
     let registerResearchActionFocusOwner: (ResearchActionID) -> Void
     let openResearchAction: (ResearchActionID) -> Void
     let retryResearchActionCancellation: (UUID) -> Void
@@ -303,7 +302,6 @@ struct ResearchInspectorView: View {
         researchInspectorContentContext: ResearchInspectorContentContext,
         researchActionsPresentation: ResearchActionsPresentation,
         researchActionFocusRequest: ResearchActionFocusRequest?,
-        hideInspector: @escaping () -> Void,
         registerResearchActionFocusOwner: @escaping (ResearchActionID) -> Void,
         openResearchAction: @escaping (ResearchActionID) -> Void,
         retryResearchActionCancellation: @escaping (UUID) -> Void,
@@ -317,7 +315,6 @@ struct ResearchInspectorView: View {
         self.researchInspectorContentContext = researchInspectorContentContext
         self.researchActionsPresentation = researchActionsPresentation
         self.researchActionFocusRequest = researchActionFocusRequest
-        self.hideInspector = hideInspector
         self.registerResearchActionFocusOwner = registerResearchActionFocusOwner
         self.openResearchAction = openResearchAction
         self.retryResearchActionCancellation = retryResearchActionCancellation
@@ -326,25 +323,10 @@ struct ResearchInspectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ScholiumInspectorModeIndex(
-                    selectedMode: controller.inspector.mode,
-                    select: controller.selectInspectorMode
-                )
-
-                ScholiumInkIconControl(
-                    title: ScholiumL10n.dynamicString("Hide Research Inspector"),
-                    systemImage: "sidebar.trailing",
-                    identifier: "scholium.toggleInspector",
-                    isActive: true,
-                    action: hideInspector
-                )
-                .accessibilityValue(ScholiumL10n.dynamicString("Shown"))
-            }
-            // Contain the header's children so the pane-level identifier below
-            // does not replace the Hide control's stable identifier in the
-            // macOS accessibility tree.
-            .accessibilityElement(children: .contain)
+            ScholiumInspectorModeIndex(
+                selectedMode: controller.inspector.mode,
+                select: controller.selectInspectorMode
+            )
 
             Group {
                 switch controller.inspector.mode {

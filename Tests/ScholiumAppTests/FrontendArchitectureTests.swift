@@ -358,10 +358,9 @@ struct FrontendArchitectureTests {
             ".accessibilityIdentifier(\"scholium.triptychManagement\")"
         ))
         #expect(toolbarSource.contains("identifier: \"scholium.toggleSidebar\""))
-        #expect(toolbarSource.contains("private var desiredItemIdentifiers"))
-        #expect(toolbarSource.contains("static func itemIdentifiers("))
-        #expect(toolbarSource.contains("Self.itemIdentifiers("))
-        #expect(toolbarSource.contains("toolbar.itemIdentifiers = desired"))
+        #expect(!toolbarSource.contains("private var desiredItemIdentifiers"))
+        #expect(toolbarSource.contains("static var itemIdentifiers:"))
+        #expect(toolbarSource.contains("toolbar.itemIdentifiers = Self.itemIdentifiers"))
         #expect(toolbarSource.contains("NSTrackingSeparatorToolbarItem("))
         #expect(toolbarSource.contains("dividerIndex: 0"))
         #expect(toolbarSource.contains("dividerIndex: 1"))
@@ -379,18 +378,19 @@ struct FrontendArchitectureTests {
         #expect(!contentSource.contains("documentIdentityHeader(for:"))
         #expect(toolbarSource.contains("static let inspector = NSToolbarItem.Identifier"))
         #expect(toolbarSource.contains("\"scholium.toolbar.inspector\""))
-        #expect(toolbarSource.contains("ScholiumWorkspaceShowInspectorToolbarView"))
+        #expect(toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(toolbarSource.contains("identifier: \"scholium.toggleInspector\""))
         #expect(toolbarSource.contains(
-            "windowActions.setResearchInspectorVisible(true)"
+            "windowActions.setResearchInspectorVisible(!shellState.inspector.isVisible)"
         ))
         #expect(toolbarSource.contains(
-            "appState.documentController.selectedDocument == nil"
+            "documentController.selectedDocument == nil"
         ))
-        #expect(!toolbarSource.contains("Hide Research Inspector"))
-        #expect(sidebarSource.contains("Hide Sidebar"))
-        #expect(noteSource.contains("Hide Research Inspector"))
-        #expect(contentSource.contains("apparatusHideControl"))
+        #expect(toolbarSource.contains("Hide Sidebar"))
+        #expect(toolbarSource.contains("Hide Research Inspector"))
+        #expect(!sidebarSource.contains("Hide Sidebar"))
+        #expect(!noteSource.contains("Hide Research Inspector"))
+        #expect(!contentSource.contains("apparatusHideControl"))
         #expect(appSource.contains(
             "appState?.researchInspectorVisible != true"
         ))
@@ -475,47 +475,28 @@ struct FrontendArchitectureTests {
         #expect(controller.minimumThicknessForInlineSidebars == NSSplitViewController.automaticDimension)
     }
 
-    @Test("Only collapsed peripheral Show controls enter the Document toolbar")
-    func collapsedPeripheralToolbarLayout() throws {
+    @Test("Peripheral visibility controls stay in the native Document toolbar")
+    func stablePeripheralToolbarLayout() throws {
         typealias Item = ScholiumWorkspaceToolbarController.Item
 
-        for sidebarVisible in [false, true] {
-            for researchInspectorVisible in [false, true] {
-                let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers(
-                    sidebarVisible: sidebarVisible,
-                    researchInspectorVisible: researchInspectorVisible
-                )
-                let libraryDividerIndex = try #require(
-                    identifiers.firstIndex(of: Item.libraryDivider)
-                )
-                let documentIndex = try #require(
-                    identifiers.firstIndex(of: Item.documentIdentity)
-                )
-                let apparatusDividerIndex = try #require(
-                    identifiers.firstIndex(of: Item.apparatusDivider)
-                )
-                #expect(libraryDividerIndex < documentIndex)
-                #expect(documentIndex < apparatusDividerIndex)
-                if sidebarVisible {
-                    #expect(!identifiers.contains(Item.sidebar))
-                } else {
-                    let sidebarIndex = try #require(
-                        identifiers.firstIndex(of: Item.sidebar)
-                    )
-                    #expect(libraryDividerIndex < sidebarIndex)
-                    #expect(sidebarIndex < documentIndex)
-                }
-                if researchInspectorVisible {
-                    #expect(!identifiers.contains(Item.inspector))
-                } else {
-                    let inspectorIndex = try #require(
-                        identifiers.firstIndex(of: Item.inspector)
-                    )
-                    #expect(documentIndex < inspectorIndex)
-                    #expect(inspectorIndex < apparatusDividerIndex)
-                }
-            }
-        }
+        let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers
+        let libraryDividerIndex = try #require(
+            identifiers.firstIndex(of: Item.libraryDivider)
+        )
+        let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
+        let documentIndex = try #require(
+            identifiers.firstIndex(of: Item.documentIdentity)
+        )
+        let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
+        let apparatusDividerIndex = try #require(
+            identifiers.firstIndex(of: Item.apparatusDivider)
+        )
+        #expect(libraryDividerIndex < sidebarIndex)
+        #expect(sidebarIndex < documentIndex)
+        #expect(documentIndex < inspectorIndex)
+        #expect(inspectorIndex < apparatusDividerIndex)
+        #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
+        #expect(identifiers.filter { $0 == Item.inspector }.count == 1)
 
         let toolbarSource = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
@@ -715,7 +696,7 @@ struct FrontendArchitectureTests {
                 separatedBy: "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
             ).count >= 3
         )
-        #expect(sidebarSource.contains("title: ScholiumL10n.dynamicString(\"Hide Sidebar\")"))
+        #expect(!sidebarSource.contains("Hide Sidebar"))
 
         for section in ["Integrity", "Metadata", "Properties", "Order", "Actions"] {
             #expect(sidebarSource.contains("Section(\"\(section)\")"))
@@ -1224,7 +1205,7 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("\"scholium.showResearchRecord\""))
         #expect(toolbar.contains("windowActions.showResearchRecord()"))
         #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
-        #expect(toolbar.contains("ScholiumWorkspaceShowInspectorToolbarView"))
+        #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(toolbar.contains("static let researchRecord"))
         #expect(toolbar.contains("selectedDocument == nil"))
         #expect(toolbar.contains(".disabled(!isAvailable)"))
