@@ -15,6 +15,7 @@ enum DiscussionPresentationError: LocalizedError {
 struct ContentView: View {
     @ObservedObject var appState: WindowModel
     @ObservedObject private var presentationRouter: WindowPresentationRouter
+    @ObservedObject private var discoveryController: DiscoveryController
     @ObservedObject private var searchController: WindowSearchController
     @ObservedObject private var researchController: ResearchController
     @ObservedObject private var documentController: DocumentController
@@ -38,6 +39,7 @@ struct ContentView: View {
         self.appState = appState
         self.windowCoordinator = windowCoordinator
         _presentationRouter = ObservedObject(wrappedValue: appState.presentationRouter)
+        _discoveryController = ObservedObject(wrappedValue: appState.discoveryController)
         _searchController = ObservedObject(wrappedValue: appState.searchController)
         _researchController = ObservedObject(wrappedValue: appState.researchController)
         _documentController = ObservedObject(wrappedValue: appState.documentController)

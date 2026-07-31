@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ScholiumContracts
 import Testing
@@ -14,6 +15,36 @@ private final class WindowSearchPresentationProbe {
 @Suite("Window Search controller")
 @MainActor
 struct WindowSearchControllerTests {
+    @Test("Discovery changes do not invalidate the Saved Search owner")
+    func observationOwnership() async {
+        let savedSearch = SavedSearch(
+            name: "Owned Saved Search",
+            definition: SearchDefinition(
+                query: "ownership",
+                presentationScope: .triptych
+            )
+        )
+        let discovery = DiscoveryController()
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(loadSavedSearches: { [savedSearch] })
+        )
+        var invalidations = 0
+        let observation = controller.objectWillChange.sink { invalidations += 1 }
+
+        discovery.replaceSearchCriteria(SearchWorkspaceState(
+            query: "visible projection",
+            scope: .currentVault
+        ))
+        #expect(invalidations == 0)
+
+        controller.loadSavedSearches()
+        await controller.waitForPendingWorkForTesting()
+        #expect(controller.savedSearches == [savedSearch])
+        #expect(invalidations == 1)
+        observation.cancel()
+    }
+
     @Test("Search presentation is owned without touching document persistence")
     func presentationLifecycle() {
         let discovery = DiscoveryController()

@@ -95,6 +95,9 @@ struct WindowControllerArchitectureTests {
         #expect(content.contains(
             "@ObservedObject private var searchController: WindowSearchController"
         ))
+        #expect(content.contains(
+            "@ObservedObject private var discoveryController: DiscoveryController"
+        ))
         for retiredRootOwner in [
             "@Published var savedSearches",
             "savedSearchMutationTail",
@@ -113,6 +116,7 @@ struct WindowControllerArchitectureTests {
         #expect(controller.contains("private var executionTask"))
         #expect(controller.contains("private var savedSearchMutationTail"))
         #expect(controller.contains("func searchGenerationDidChange()"))
+        #expect(!controller.contains("discoveryController.objectWillChange"))
     }
 
     @Test("Workspace events have one exact-window projection owner")
@@ -1561,6 +1565,7 @@ struct WindowControllerArchitectureTests {
         #expect(!contentSource.contains("@EnvironmentObject var appState: WindowModel"))
         for boundedOwner in [
             "@ObservedObject private var presentationRouter: WindowPresentationRouter",
+            "@ObservedObject private var discoveryController: DiscoveryController",
             "@ObservedObject private var searchController: WindowSearchController",
             "@ObservedObject private var researchController: ResearchController",
             "@ObservedObject private var documentController: DocumentController",

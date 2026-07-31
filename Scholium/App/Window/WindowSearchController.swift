@@ -45,7 +45,6 @@ final class WindowSearchController: ObservableObject {
     private var savedSearchMutationTail: Task<Void, Never>?
     private var executionTask: Task<Void, Never>?
     private var executionID: UUID?
-    private var cancellables: Set<AnyCancellable> = []
 
     init(
         discoveryController: DiscoveryController,
@@ -53,9 +52,6 @@ final class WindowSearchController: ObservableObject {
     ) {
         self.discoveryController = discoveryController
         self.dependencies = dependencies
-        discoveryController.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
     }
 
     deinit {

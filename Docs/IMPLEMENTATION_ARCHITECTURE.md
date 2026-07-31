@@ -148,7 +148,9 @@ Application resolves presentation scope to execution scope and is the only
 search capability exposed to GUI and CLI. Saved Searches persist only query
 and presentation scope. `WindowSearchController` owns execution cancellation,
 freshness validation, and serialized Saved Search persistence;
-`DiscoveryController` owns the visible selection and Related projection. None
+`DiscoveryController` owns the visible selection and Related projection. Search
+views and their composition consumer observe `DiscoveryController` directly;
+`WindowSearchController` never republishes Discovery changes as its own. None
 of that window state enters the persisted search definition.
 
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
@@ -204,7 +206,9 @@ sheet route. `WindowSearchController` owns Search/temporary Find execution and
 cancellation, exact result-freshness validation, Search-generation reruns, and
 serialized Saved Search loading and persistence. It coordinates the
 `DiscoveryController` Search projection while borrowing only a checked current
-document snapshot and navigation/presentation effects from the window root.
+document snapshot and navigation/presentation effects from the window root;
+consumers observe the two owners independently rather than using the execution
+controller as an invalidation relay.
 `WindowModel` composes these owners, publishes only its own remaining mutable
 facts, and routes cross-feature intents; it does not relay child
 `objectWillChange` or own those state machines. `ScholiumWindowRoot`,
