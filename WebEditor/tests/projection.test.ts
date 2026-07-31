@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {linkTargetAt} from "../projection";
+import {Text} from "@codemirror/state";
 
 describe("exact link activation projection", () => {
   it("resolves wikilink, embed, vector-link, and standard-link targets", () => {
@@ -16,5 +17,10 @@ describe("exact link activation projection", () => {
   });
   it("does not activate ordinary prose", () => {
     expect(linkTargetAt("plain claim", 3)).toBeNull();
+  });
+  it("resolves the clicked line directly from CodeMirror Text", () => {
+    const source = "Earlier prose.\n[[Local target]]\nFollowing prose.";
+    const document = Text.of(source.split("\n"));
+    expect(linkTargetAt(document, source.indexOf("Local"))).toBe("Local target");
   });
 });

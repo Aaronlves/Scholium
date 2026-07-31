@@ -1,4 +1,5 @@
 import type {MarkdownEditorCommand, SelectionRange} from "./protocol";
+import {Text} from "@codemirror/state";
 
 export interface TableSourceChange { from: number; to: number; insert: string }
 export interface TableTransformation {
@@ -20,10 +21,10 @@ const tableCommands = new Set<MarkdownEditorCommand>([
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight",
 ]);
 
-function lineRange(source: string, offset: number) {
-  const from = source.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-  const newline = source.indexOf("\n", offset);
-  return {from, to: newline < 0 ? source.length : newline};
+type TableSource = string | Text;
+
+function tableDocument(source: TableSource) {
+  return typeof source === "string" ? Text.of(source.split("\n")) : source;
 }
 
 function unescapedPipes(line: string) {
@@ -37,8 +38,8 @@ function unescapedPipes(line: string) {
   return positions;
 }
 
-function parseRow(source: string, from: number, to: number): ParsedTableRow | null {
-  const line = source.slice(from, to);
+function parseRow(source: Text, from: number, to: number): ParsedTableRow | null {
+  const line = source.sliceString(from, to);
   const pipes = unescapedPipes(line);
   if (pipes.length === 0) return null;
   const firstContent = line.search(/\S/);
@@ -64,37 +65,36 @@ function parseRow(source: string, from: number, to: number): ParsedTableRow | nu
   return cells.length >= 2 ? {lineFrom: from, lineTo: to, cells} : null;
 }
 
-function isSeparatorCell(source: string, cell: ParsedTableCell) {
-  return /^:?-{3,}:?$/.test(source.slice(cell.contentFrom, cell.contentTo));
+function isSeparatorCell(source: Text, cell: ParsedTableCell) {
+  return /^:?-{3,}:?$/.test(source.sliceString(cell.contentFrom, cell.contentTo));
 }
 
 function rowNumber(table: ParsedTable, rawRow: number) {
   return rawRow > table.separatorIndex ? rawRow - 1 : rawRow;
 }
 
-export function tableAt(source: string, offset: number): ParsedTable | null {
-  if (offset < 0 || offset > source.length) return null;
-  const current = lineRange(source, offset);
-  let first = current.from;
-  while (first > 0) {
-    const previous = lineRange(source, first - 1);
-    if (!parseRow(source, previous.from, previous.to)) break;
-    first = previous.from;
+export function tableAt(source: TableSource, offset: number): ParsedTable | null {
+  const document = tableDocument(source);
+  if (offset < 0 || offset > document.length) return null;
+  const current = document.lineAt(offset);
+  let firstLineNumber = current.number;
+  while (firstLineNumber > 1) {
+    const previous = document.line(firstLineNumber - 1);
+    if (!parseRow(document, previous.from, previous.to)) break;
+    firstLineNumber -= 1;
   }
   const rows: ParsedTableRow[] = [];
-  let cursor = first;
-  while (cursor <= source.length) {
-    const line = lineRange(source, cursor);
-    const row = parseRow(source, line.from, line.to);
+  for (let number = firstLineNumber; number <= document.lines; number += 1) {
+    const line = document.line(number);
+    const row = parseRow(document, line.from, line.to);
     if (!row) break;
     rows.push(row);
-    if (line.to === source.length) break;
-    cursor = line.to + 1;
   }
   if (rows.length < 2) return null;
   const columnCount = rows[0].cells.length;
   if (rows.some((row) => row.cells.length !== columnCount)) return null;
-  const separators = rows.flatMap((row, index) => row.cells.every((cell) => isSeparatorCell(source, cell)) ? [index] : []);
+  const separators = rows.flatMap((row, index) =>
+    row.cells.every((cell) => isSeparatorCell(document, cell)) ? [index] : []);
   if (separators.length !== 1 || separators[0] !== 1) return null;
   const rawRow = rows.findIndex((row) => offset >= row.lineFrom && offset <= row.lineTo);
   if (rawRow < 0 || rawRow === separators[0]) return null;
@@ -174,7 +174,11 @@ export function transformTableCommand(
   return {changes, selections, undoLabel: inserting ? "Insert Table Column" : "Delete Table Column"};
 }
 
-export function tableTabAction(source: string, offset: number, backwards: boolean): TableTransformation | null {
+export function tableTabAction(
+  source: TableSource,
+  offset: number,
+  backwards: boolean,
+): TableTransformation | null {
   const table = tableAt(source, offset);
   if (!table) return null;
   const editableCells = table.rows.flatMap((row, rawRow) => rawRow === table.separatorIndex ? [] : row.cells);

@@ -87,3 +87,20 @@ export function projectionSelectionOverlaps(
   }
   return projectionRangesIntersecting(ranges, selection.from, selection.to).length > 0;
 }
+
+/**
+ * Tests the inclusive edit boundary used by projection mapping without an
+ * O(n) scan. An insertion immediately after a construct remains conservative:
+ * it may extend that Markdown construct and therefore still touches it.
+ */
+export function projectionBoundaryTouches(
+  ranges: readonly ImmutableProjectionRange[],
+  offset: number,
+) {
+  const candidates = projectionRangesIntersecting(
+    ranges,
+    Math.max(0, offset - 1),
+    offset + 1,
+  );
+  return candidates.some((range) => offset >= range.from && offset <= range.to);
+}

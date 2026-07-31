@@ -1,4 +1,4 @@
-import {EditorState} from "@codemirror/state";
+import {EditorState, Text} from "@codemirror/state";
 import {ensureSyntaxTree} from "@codemirror/language";
 import type {MarkdownEditingDialect} from "./protocol";
 import {markdownLiteralRanges, scanMath} from "./math";
@@ -19,12 +19,12 @@ function intersects(
   return candidates.some((candidate) => candidate.from < range.to && range.from < candidate.to);
 }
 
-export function linkTargetAt(source: string, offset: number): string | null {
-  if (offset < 0 || offset > source.length) return null;
-  const lineFrom = source.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-  const newline = source.indexOf("\n", offset);
-  const lineTo = newline < 0 ? source.length : newline;
-  const line = source.slice(lineFrom, lineTo);
+export function linkTargetAt(source: string | Text, offset: number): string | null {
+  const document = typeof source === "string" ? Text.of(source.split("\n")) : source;
+  if (offset < 0 || offset > document.length) return null;
+  const sourceLine = document.lineAt(offset);
+  const lineFrom = sourceLine.from;
+  const line = sourceLine.text;
   for (const match of line.matchAll(/(?:!|[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
     const from = lineFrom + match.index;
     const to = from + match[0].length;

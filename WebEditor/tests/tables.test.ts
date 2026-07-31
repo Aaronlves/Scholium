@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {applySourceChanges} from "../transformations";
 import {tableAt, tableTabAction, transformTableCommand} from "../tables";
+import {Text} from "@codemirror/state";
 
 const source = "| Claim | Status |\n|---|:---:|\n| Exact | Open |";
 
@@ -27,5 +28,11 @@ describe("guarded GFM table operations", () => {
     expect(source.slice(move!.selections[0].anchor, move!.selections[0].head)).toBe("Open");
     const append = tableTabAction(source, source.indexOf("Open"), false);
     expect(applySourceChanges(source, append!.changes)).toBe(`${source}\n|  |  |`);
+  });
+  it("uses CodeMirror Text for the production table Tab path", () => {
+    const document = Text.of(source.split("\n"));
+    const move = tableTabAction(document, source.indexOf("Exact"), false);
+    expect(move?.changes).toEqual([]);
+    expect(source.slice(move!.selections[0].anchor, move!.selections[0].head)).toBe("Open");
   });
 });

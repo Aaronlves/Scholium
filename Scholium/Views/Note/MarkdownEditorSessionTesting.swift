@@ -821,6 +821,27 @@ extension MarkdownEditorSession {
         guard result as? Bool == true else { throw SessionError.invalidResult }
     }
 
+    func testingDispatchCompositionEvent(_ type: String) async throws {
+        guard let webView, type == "compositionstart" || type == "compositionend" else {
+            throw SessionError.invalidResult
+        }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            if (!content) return false;
+            return content.dispatchEvent(new CompositionEvent(type, {
+                bubbles: true,
+                cancelable: false,
+                data: ''
+            }));
+            """,
+            arguments: ["type": type],
+            in: nil,
+            contentWorld: .page
+        )
+        guard result as? Bool == true else { throw SessionError.invalidResult }
+    }
+
     func testingApplyScrollAnchor(_ anchor: EditorScrollAnchor) async throws {
         guard isReady, isLoaded, let webView,
               let wireAnchor = wireAnchor(from: anchor, in: checkedSource) else {

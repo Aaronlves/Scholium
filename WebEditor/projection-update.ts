@@ -1,7 +1,11 @@
 import type {Text, Transaction} from "@codemirror/state";
 import {syntaxTree} from "@codemirror/language";
 import {boundedProjectionRanges} from "./semantic-projection";
-import {immutableProjectionRanges, projectionRangesIntersecting} from "./projection-index";
+import {
+  immutableProjectionRanges,
+  projectionBoundaryTouches,
+  projectionRangesIntersecting,
+} from "./projection-index";
 
 export interface ProjectionSourceRange {
   from: number;
@@ -158,7 +162,7 @@ export function transactionCanMapProjection(
       canMap = false;
       return;
     }
-    canMap = !ranges.some((range) => fromA >= range.from && fromA <= range.to);
+    canMap = !projectionBoundaryTouches(ranges, fromA);
   });
   return canMap;
 }

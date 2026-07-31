@@ -103,11 +103,12 @@ import {
   type ProjectionSourceRange,
 } from "./projection-update";
 import {
-  applyNormalizedChangesToExactSource,
+  ExactSourceMirror,
   frontmatterBodyOffset,
   frontmatterBoundary,
   normalizedDocumentText,
   replacementChange,
+  type NormalizedSourceChange,
 } from "./state";
 import {
   announceEditorMessage,
@@ -178,6 +179,7 @@ interface LiveProjectionIndex {
   readonly frontmatterRange: Readonly<ProjectionSourceRange> | null;
   readonly commandProtectedRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly structuralRanges: readonly Readonly<ProjectionSourceRange>[];
+  readonly mutationSensitiveRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly blockRanges: readonly Readonly<LiveBlockProjectionRange>[];
   readonly footnoteRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly tablePositionRanges: readonly Readonly<IndexedTablePositionRange>[];
@@ -194,7 +196,7 @@ let bridgeSessionID = "";
 let bridgeDocumentID = "";
 let bridgeFingerprint = "";
 let documentVersion = 0;
-let exactSource = "";
+const exactSourceMirror = new ExactSourceMirror();
 let nextLinkCompletionRequest = 0;
 const pendingLinkCompletionQueries = new Map<
   string,
@@ -222,7 +224,7 @@ const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
 });
 
 function exactEditorSource() {
-  return exactSource;
+  return exactSourceMirror.text;
 }
 
 const modeCompartment = new Compartment();
@@ -559,6 +561,17 @@ function finalizedLiveProjectionIndex(
     ...footnotes.definitions,
     ...footnotes.references,
   ].map(({from, to}) => ({from, to})));
+  const immutableCommandProtectedRanges = commandProtectionRanges(
+    immutableExcluded,
+    immutableFrontmatter ?? undefined,
+  );
+  const immutableStructuralRanges = immutableProjectionRanges([
+    ...immutableTables,
+    ...immutableCallouts,
+    ...footnotes.definitions,
+    ...footnotes.references,
+    ...immutableMathExpressions.filter((expression) => expression.kind === "display"),
+  ].map(({from, to}) => ({from, to})));
   return Object.freeze({
     syntax,
     literals: Object.freeze({
@@ -571,17 +584,12 @@ function finalizedLiveProjectionIndex(
     callouts: immutableCallouts,
     mathExpressions: immutableMathExpressions,
     frontmatterRange: immutableFrontmatter,
-    commandProtectedRanges: commandProtectionRanges(
-      immutableExcluded,
-      immutableFrontmatter ?? undefined,
-    ),
-    structuralRanges: immutableProjectionRanges([
-      ...immutableTables,
-      ...immutableCallouts,
-      ...footnotes.definitions,
-      ...footnotes.references,
-      ...immutableMathExpressions.filter((expression) => expression.kind === "display"),
-    ].map(({from, to}) => ({from, to}))),
+    commandProtectedRanges: immutableCommandProtectedRanges,
+    structuralRanges: immutableStructuralRanges,
+    mutationSensitiveRanges: immutableProjectionRanges([
+      ...immutableCommandProtectedRanges,
+      ...immutableStructuralRanges,
+    ]),
     blockRanges: immutableProjectionRanges([
       ...immutableTables.map(({from, to}) => ({from, to, kind: "table" as const})),
       ...immutableCallouts.map(({from, to}) => ({from, to, kind: "callout" as const})),
@@ -693,25 +701,29 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
   const frontmatterRange = yamlBodyFrom > 0 ? {from: 0, to: yamlBodyFrom} : null;
   const footnoteExcluded = [...excluded];
   if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
-  const projectedFootnotes = footnotePresentation(
-    state.doc.toString(),
-    footnoteExcluded,
-    editingDialect?.footnotes,
-  );
-  const footnotes: FootnotePresentation = {
-    definitions: projectedFootnotes.definitions.filter((definition) =>
-      definitionRanges.has(rangeKey(definition.from, definition.to))),
-    references: projectedFootnotes.references.filter((reference) =>
-      referenceRanges.has(rangeKey(reference.from, reference.to))),
-  };
+  let completeSource: string | null = null;
+  const source = () => completeSource ??= state.doc.toString();
+  let footnotes: FootnotePresentation = {definitions: [], references: []};
+  if (definitionRanges.size > 0 || referenceRanges.size > 0) {
+    const projectedFootnotes = footnotePresentation(
+      source(),
+      footnoteExcluded,
+      editingDialect?.footnotes,
+    );
+    footnotes = {
+      definitions: projectedFootnotes.definitions.filter((definition) =>
+        definitionRanges.has(rangeKey(definition.from, definition.to))),
+      references: projectedFootnotes.references.filter((reference) =>
+        referenceRanges.has(rangeKey(reference.from, reference.to))),
+    };
+  }
   const insideNamedDefinition = (range: ProjectionSourceRange) => footnotes.definitions.some(
     (definition) => !definition.isInline
       && definition.from <= range.from && definition.to >= range.to,
   );
-  const source = state.doc.toString();
   const tables = tableRanges.flatMap((range): TablePresentation[] => {
     if (insideNamedDefinition(range)) return [];
-    const presentation = tablePresentation(source, range.from, range.to);
+    const presentation = tablePresentation(source(), range.from, range.to);
     return presentation ? [presentation] : [];
   });
   const callouts = calloutRanges.flatMap((range): CalloutPresentation[] => {
@@ -818,16 +830,16 @@ const liveProjectionIndexField = StateField.define<LiveProjectionIndex>({
         ? buildLiveProjectionIndex(transaction.state)
         : previous;
     }
-    const indexedRanges: ProjectionSourceRange[] = [
-      ...previous.commandProtectedRanges,
-      ...previous.structuralRanges,
-    ];
     const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
-    if (indexedRanges.length === 0
+    if (previous.mutationSensitiveRanges.length === 0
         && !transactionMayCreateProjection(transaction, structuralMarker)) {
       return mapLiveProjectionIndex(previous, transaction);
     }
-    return transactionCanMapProjection(transaction, structuralMarker, indexedRanges)
+    return transactionCanMapProjection(
+      transaction,
+      structuralMarker,
+      previous.mutationSensitiveRanges,
+    )
       ? mapLiveProjectionIndex(previous, transaction)
       : buildLiveProjectionIndex(transaction.state);
   },
@@ -1252,10 +1264,28 @@ function buildLiveRawHTMLDecorations(state: EditorState): LiveRawHTMLProjectionS
   };
 }
 
+function mapRawHTMLPresentations(
+  presentations: readonly RawHTMLPresentation[],
+  transaction: Transaction,
+) {
+  return presentations.map((presentation): RawHTMLPresentation => ({
+    ...presentation,
+    from: transaction.changes.mapPos(presentation.from),
+    to: transaction.changes.mapPos(presentation.to),
+  }));
+}
+
 const liveRawHTMLField = StateField.define<LiveRawHTMLProjectionState>({
   create: buildLiveRawHTMLDecorations,
   update(previous, transaction) {
-    if (!transaction.docChanged && !transactionChangedSyntaxTree(transaction)) {
+    if (!transaction.docChanged && transactionChangedSyntaxTree(transaction)) {
+      return buildLiveRawHTMLDecorations(transaction.state);
+    }
+    if (!previous.hasConstructs) {
+      if (!transaction.docChanged) return previous;
+      if (!transactionMayCreateProjection(transaction, /[<>]/)) return previous;
+    }
+    if (!transaction.docChanged) {
       if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
       if (activeProjectionSignature(transaction.startState.selection.ranges, previous.presentations)
           === activeProjectionSignature(transaction.state.selection.ranges, previous.presentations)) {
@@ -1264,6 +1294,14 @@ const liveRawHTMLField = StateField.define<LiveRawHTMLProjectionState>({
       return {
         ...previous,
         decorations: liveRawHTMLDecorations(transaction.state, previous.presentations),
+      };
+    }
+    if (transactionCanMapProjection(transaction, /[<>]/, previous.presentations)) {
+      const presentations = mapRawHTMLPresentations(previous.presentations, transaction);
+      return {
+        decorations: liveRawHTMLDecorations(transaction.state, presentations),
+        hasConstructs: true,
+        presentations,
       };
     }
     return buildLiveRawHTMLDecorations(transaction.state);
@@ -1992,12 +2030,12 @@ const liveSemanticLineField = StateField.define<LiveSemanticLineState>({
     }
     if (transaction.docChanged) {
       const oldIndex = liveProjectionIndexForState(transaction.startState);
-      const indexedRanges: ProjectionSourceRange[] = [
-        ...oldIndex.commandProtectedRanges,
-        ...oldIndex.structuralRanges,
-      ];
       const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
-      if (!transactionCanMapProjection(transaction, structuralMarker, indexedRanges)) {
+      if (!transactionCanMapProjection(
+        transaction,
+        structuralMarker,
+        oldIndex.mutationSensitiveRanges,
+      )) {
         return buildLiveSemanticLineState(transaction.state);
       }
       const mapped = previous.decorations.map(transaction.changes);
@@ -2151,12 +2189,12 @@ const liveSemanticBlockSpacingField = StateField.define<LiveSemanticBlockSpacing
       return buildLiveSemanticBlockSpacingState(transaction.state);
     }
     const oldIndex = liveProjectionIndexForState(transaction.startState);
-    const indexedRanges: ProjectionSourceRange[] = [
-      ...oldIndex.commandProtectedRanges,
-      ...oldIndex.structuralRanges,
-    ];
     const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
-    return transactionCanMapProjection(transaction, structuralMarker, indexedRanges)
+    return transactionCanMapProjection(
+      transaction,
+      structuralMarker,
+      oldIndex.mutationSensitiveRanges,
+    )
       ? {decorations: previous.decorations.map(transaction.changes)}
       : buildLiveSemanticBlockSpacingState(transaction.state);
   },
@@ -2744,20 +2782,29 @@ const stateReporter = EditorView.updateListener.of((update) => {
     }
     /** @type {{from: number, to: number, insert: string}[]} */
     const changes: SourceDelta[] = [];
+    const mirrorChanges: NormalizedSourceChange[] = [];
     update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-      changes.push({ from: fromA, to: toA, insert: inserted.toString() });
+      const insert = inserted.toString();
+      changes.push({from: fromA, to: toA, insert});
+      mirrorChanges.push({
+        from: fromA,
+        to: toA,
+        insert,
+        removed: update.startState.doc.sliceString(fromA, toA),
+      });
     });
-    const updatedExactSource = applyNormalizedChangesToExactSource(exactSource, changes);
-    if (updatedExactSource === null
-        || normalizedDocumentText(updatedExactSource)
-            !== normalizedDocumentText(update.state.doc.toString())) {
+    const exactUpdateStartedAt = performance.now();
+    if (!exactSourceMirror.apply(mirrorChanges)) {
       post({
         type: "editorError",
         message: "The editor could not preserve the exact source line endings.",
       });
       return;
     }
-    exactSource = updatedExactSource;
+    recordEditorMetric("exact-source-update", exactUpdateStartedAt, {
+      changeCount: mirrorChanges.length,
+      documentLength: update.state.doc.length,
+    });
     post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
   }
 
@@ -2773,7 +2820,7 @@ const linkActivation = EditorView.domEventHandlers({
   click(event) {
     if (event.metaKey) {
       const position = editor.posAtCoords({x: event.clientX, y: event.clientY});
-      const target = position === null ? null : linkTargetAt(editor.state.doc.toString(), position);
+      const target = position === null ? null : linkTargetAt(editor.state.doc, position);
       if (target) {
         post({type: "linkActivated", target});
         event.preventDefault();
@@ -2824,7 +2871,7 @@ const structuralInteractionKeymap = keymap.of([
   {
     key: "Enter",
     run: (view) => applyInteraction(
-      continueList(view.state.doc.toString(), editorSelections()),
+      continueList(view.state.doc, editorSelections()),
       "input.scholium.continueList",
     ),
   },
@@ -2832,11 +2879,11 @@ const structuralInteractionKeymap = keymap.of([
     key: "Tab",
     run: (view) => {
       if (view.state.selection.ranges.length !== 1) {
-        return applyInteraction(indentList(view.state.doc.toString(), editorSelections(), false), "input.scholium.indentList");
+        return applyInteraction(indentList(view.state.doc, editorSelections(), false), "input.scholium.indentList");
       }
       return applyInteraction(
-        tableTabAction(view.state.doc.toString(), view.state.selection.main.head, false)
-          ?? indentList(view.state.doc.toString(), editorSelections(), false),
+        tableTabAction(view.state.doc, view.state.selection.main.head, false)
+          ?? indentList(view.state.doc, editorSelections(), false),
         "input.scholium.structuralTab",
       );
     },
@@ -2845,11 +2892,11 @@ const structuralInteractionKeymap = keymap.of([
     key: "Shift-Tab",
     run: (view) => {
       if (view.state.selection.ranges.length !== 1) {
-        return applyInteraction(indentList(view.state.doc.toString(), editorSelections(), true), "input.scholium.outdentList");
+        return applyInteraction(indentList(view.state.doc, editorSelections(), true), "input.scholium.outdentList");
       }
       return applyInteraction(
-        tableTabAction(view.state.doc.toString(), view.state.selection.main.head, true)
-          ?? indentList(view.state.doc.toString(), editorSelections(), true),
+        tableTabAction(view.state.doc, view.state.selection.main.head, true)
+          ?? indentList(view.state.doc, editorSelections(), true),
         "input.scholium.structuralBackTab",
       );
     },
@@ -2883,9 +2930,7 @@ function revealProjectedBlockForVerticalMove(
   const isCallout = projection.kind === "callout";
   const sourceHead = forward
     ? projection.from
-    : isCallout
-      ? Math.max(projection.from, projection.to - 1)
-      : Math.max(projection.from, projection.to - 1);
+    : Math.max(projection.from, projection.to - 1);
   const originalCoords = view.coordsAtPos(selection.head);
   const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
   const anchor = extend ? selection.anchor : sourceHead;
@@ -3342,7 +3387,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
           // CodeMirror history offsets are expressed in its normalized LF
           // coordinate space. The state serializer follows the configured
           // presentation separator, so normalize only this disposable state
-          // document before reconstruction; `exactSource` remains untouched.
+          // document before reconstruction; the exact-source mirror remains untouched.
           serializedState.doc = normalizedDocumentText(serializedState.doc);
         }
         const restored = EditorState.fromJSON(
@@ -3378,7 +3423,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // stateJSON or selection validation path.
     const restoredMode = configuredEditorMode(editor.state);
     editor.setState(recoveredState);
-    exactSource = snapshot.source;
+    exactSourceMirror.replace(snapshot.source);
     await editorOperations.setMode(restoredMode);
     dirty = snapshot.dirty;
     documentVersion = snapshot.generation;
@@ -3570,7 +3615,7 @@ const editorOperations = {
     documentVersion = 0;
     hiddenFrontmatterSourceSelection = null;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
-    exactSource = text;
+    exactSourceMirror.replace(text);
     editor.dispatch({
       changes: replacementChange(editor.state.doc.toString(), text),
       effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -3702,7 +3747,7 @@ const editorOperations = {
   },
 
   synchronizeCommittedText(expectedText: string, committedText: string, startingFingerprint: string) {
-    if (exactSource !== expectedText
+    if (exactSourceMirror.text !== expectedText
         || normalizedDocumentText(editor.state.doc.toString())
             !== normalizedDocumentText(expectedText)) return false;
 
@@ -3716,7 +3761,7 @@ const editorOperations = {
         programmaticDocumentChange.of(true),
       ],
     });
-    exactSource = committedText;
+    exactSourceMirror.replace(committedText);
     dirty = false;
     scheduleEditorInteractionReport(true);
     return true;

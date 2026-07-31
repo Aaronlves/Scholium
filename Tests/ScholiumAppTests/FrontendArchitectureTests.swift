@@ -1986,6 +1986,52 @@ struct FrontendArchitectureTests {
         #expect(!editorSource.contains("cm-live-list-gap"))
     }
 
+    @Test("Basic editor input paths do not materialize the complete CodeMirror document")
+    func editorInputHotPathsAvoidCompleteDocumentCopies() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+
+        func section(from start: String, to end: String) throws -> Substring {
+            let startRange = try #require(editorSource.range(of: start))
+            let endRange = try #require(editorSource.range(
+                of: end,
+                range: startRange.upperBound..<editorSource.endIndex
+            ))
+            return editorSource[startRange.lowerBound..<endRange.lowerBound]
+        }
+
+        let stateReporting = try section(
+            from: "const stateReporter = EditorView.updateListener.of",
+            to: "const linkActivation = EditorView.domEventHandlers"
+        )
+        #expect(stateReporting.contains("exactSourceMirror.apply(mirrorChanges)"))
+        #expect(stateReporting.contains("update.startState.doc.sliceString(fromA, toA)"))
+        #expect(!stateReporting.contains("doc.toString()"))
+        #expect(!stateReporting.contains("normalizedDocumentText("))
+
+        let linkActivation = try section(
+            from: "const linkActivation = EditorView.domEventHandlers",
+            to: "const saveKeymap = keymap.of"
+        )
+        #expect(linkActivation.contains("linkTargetAt(editor.state.doc, position)"))
+        #expect(!linkActivation.contains("doc.toString()"))
+
+        let structuralKeymap = try section(
+            from: "const structuralInteractionKeymap = keymap.of",
+            to: "function revealProjectedBlockForVerticalMove"
+        )
+        #expect(structuralKeymap.contains("continueList(view.state.doc"))
+        #expect(structuralKeymap.contains("tableTabAction(view.state.doc"))
+        #expect(structuralKeymap.contains("indentList(view.state.doc"))
+        #expect(!structuralKeymap.contains("doc.toString()"))
+    }
+
     @Test("Production native surfaces consume semantic color roles")
     func productionNativeSurfaceTokenAdoption() throws {
         let repository = URL(fileURLWithPath: #filePath)

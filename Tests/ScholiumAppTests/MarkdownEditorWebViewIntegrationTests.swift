@@ -92,6 +92,33 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A mode request waits for marked-text composition before changing presentation")
+    func modeChangeDefersUntilCompositionEnds() async throws {
+        let source = "# Composition boundary\r\n\r\n研究输入 remains exact.\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        harness.session.setMode(.source)
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(harness.session.presentedMode == .livePreview)
+        let composing = try await harness.session.testingAccessibilitySnapshot()
+        #expect(composing.label == "Markdown editor, Edit mode")
+        #expect(composing.sourceModeClassCount == 0)
+
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
+        try await harness.waitUntilPresentedMode(.source)
+        let sourceMode = try await harness.waitUntilPresentation(stage: "post-composition Source") {
+            $0.label == "Markdown source editor"
+                && $0.sourceModeClassCount == 1
+                && $0.liveProjectionDOMCount == 0
+        }
+        #expect(sourceMode.liveModeClassCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Source mode preserves exact Markdown without semantic typography")
     func sourceModeUsesExactSourceTypography() async throws {
         let source = """
@@ -251,26 +278,36 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("One hundred thousand CJK characters preserve an exact appended edit across modes")
+    @Test("One hundred thousand CJK characters preserve an exact CRLF edit across modes")
     func largeCJKExactRoundTrip() async throws {
         let seed = "研究性能边界输入选择撤销渲染滚动保存恢复"
         let cjkCharacters = String(
             String(repeating: seed, count: 100_000 / seed.count + 1).prefix(100_000)
         )
-        let source = "---\ntitle: WK 100k CJK\n---\n# CJK Stress\n\n\(cjkCharacters)\n"
+        let normalizedSource = "---\ntitle: WK 100k CJK\n---\n# CJK Stress\n\n\(cjkCharacters)\n"
+        let source = normalizedSource.replacingOccurrences(of: "\n", with: "\r\n")
         let token = "QA-CJK-END-\(UUID().uuidString)"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
 
         try await harness.waitUntilReady()
-        harness.session.goToLine(source.split(separator: "\n", omittingEmptySubsequences: false).count)
-        try await harness.waitUntilSelection(head: source.utf16.count)
+        harness.session.goToLine(
+            normalizedSource.split(separator: "\n", omittingEmptySubsequences: false).count
+        )
+        try await harness.waitUntilSelection(head: normalizedSource.utf16.count)
         try await harness.session.perform(.pastePlain, argument: token)
 
         let edited = try await harness.session.currentText(for: harness.documentID)
         #expect(Data(edited.utf8) == Data((source + token).utf8))
         #expect(harness.latestSource == source + token)
         #expect(harness.session.isDirty)
+        let exactUpdate = try #require(
+            try await harness.session.queryPerformanceSamples().last {
+                $0.name == "exact-source-update"
+            }
+        )
+        #expect(exactUpdate.observed["changeCount"] == 1)
+        #expect((exactUpdate.observed["documentLength"] ?? 0) >= 100_000)
 
         harness.session.setMode(.source)
         _ = try await harness.waitUntilPresentation(stage: "100k Source mode") {

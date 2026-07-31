@@ -1520,9 +1520,17 @@ The editor is an app-private typed boundary, not a generic event bus. One exact
 Markdown source is the only writable authority. Edit and Source share one
 persistent CodeMirror `EditorState`; Review renders a fingerprint-bound
 committed revision. CodeMirror owns active editing state, selection,
-composition, and undo history. Swift owns a checked mirror reconstructed from
-accepted UTF-16 deltas and reconciled against complete editor text before
-persistence.
+composition, and undo history. Because CodeMirror normalizes line separators,
+the Web boundary keeps one checked `ExactSourceMirror` beside that state. Its
+text preserves the loaded BOM, CRLF/LF form, Unicode, and final newline; a
+sorted derived CRLF-offset index maps CodeMirror UTF-16 positions without
+rescanning the Note. Each ordinary input transaction validates only its exact
+deleted span and applies all accepted deltas atomically. Complete-document
+reconciliation remains a save, synchronization, command, or recovery boundary,
+not a per-keystroke path. The mirror cannot initiate edits or create a second
+selection, composition, or Undo owner. Swift independently reconstructs its
+checked boundary mirror from accepted generation-ordered UTF-16 deltas and
+reconciles it against complete editor text before persistence.
 
 The native implementation preserves that single ownership while separating
 code-element responsibilities. `MarkdownEditorSession` alone owns the retained
@@ -1617,6 +1625,15 @@ not replaced by internal-work durations. UI automation and exact process-set
 measurement remain the authorities for visible response and retained memory.
 Process attribution uses the originator's launchd service map and verifies each
 executable; PPID or process-name matching is insufficient for WebKit workers.
+
+Ordinary input does not materialize the complete CodeMirror document. The
+update listener supplies only transaction deltas and their deleted start-state
+spans to `ExactSourceMirror`; Enter, Tab, Backtab, and direct link activation
+query CodeMirror `Text` lines around the active ranges. One immutable sorted
+mutation-sensitive interval set is cached with `LiveProjectionIndex` and reused
+by every projection field. Plain edits outside raw HTML map its existing ranges;
+full source strings remain reserved for bounded semantic constructs or explicit
+whole-document commands that actually require them.
 
 The retained-memory scenario uses an app-owned, run-specific handshake rather
 than inferring readiness from XCUITest timing. The initial editor load and each

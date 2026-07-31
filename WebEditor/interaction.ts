@@ -1,21 +1,23 @@
 import type {SelectionRange} from "./protocol";
 import type {SourceChange, Transformation} from "./transformations";
+import {Text} from "@codemirror/state";
 
-function lineBounds(source: string, offset: number) {
-  const from = source.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-  const newline = source.indexOf("\n", offset);
-  return {from, to: newline < 0 ? source.length : newline};
+type InteractionSource = string | Text;
+
+function interactionDocument(source: InteractionSource) {
+  return typeof source === "string" ? Text.of(source.split("\n")) : source;
 }
 
 function listPrefix(line: string) {
   return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
 }
 
-export function continueList(source: string, selections: SelectionRange[]): Transformation | null {
+export function continueList(source: InteractionSource, selections: SelectionRange[]): Transformation | null {
+  const document = interactionDocument(source);
   if (selections.some((selection) => selection.anchor !== selection.head)) return null;
   const entries = selections.map((selection) => {
-    const bounds = lineBounds(source, selection.head);
-    const line = source.slice(bounds.from, bounds.to);
+    const bounds = document.lineAt(selection.head);
+    const line = bounds.text;
     const match = listPrefix(line);
     if (!match) return null;
     const prefix = match[0];
@@ -39,24 +41,24 @@ export function continueList(source: string, selections: SelectionRange[]): Tran
   return {changes: sorted.map((entry) => entry.change), selections: mapped, undoLabel: "Continue List"};
 }
 
-export function indentList(source: string, selections: SelectionRange[], backwards: boolean): Transformation | null {
+export function indentList(
+  source: InteractionSource,
+  selections: SelectionRange[],
+  backwards: boolean,
+): Transformation | null {
+  const document = interactionDocument(source);
   const lineStarts = [...new Set(selections.flatMap((selection) => {
-    const first = lineBounds(source, Math.min(selection.anchor, selection.head));
-    const last = lineBounds(source, Math.max(selection.anchor, selection.head));
+    const first = document.lineAt(Math.min(selection.anchor, selection.head));
+    const last = document.lineAt(Math.max(selection.anchor, selection.head));
     const starts: number[] = [];
-    let cursor = first.from;
-    while (cursor <= last.from) {
-      starts.push(cursor);
-      const next = source.indexOf("\n", cursor);
-      if (next < 0) break;
-      cursor = next + 1;
+    for (let number = first.number; number <= last.number; number += 1) {
+      starts.push(document.line(number).from);
     }
     return starts;
   }))].sort((left, right) => left - right);
   const changes: SourceChange[] = [];
   for (const from of lineStarts) {
-    const bounds = lineBounds(source, from);
-    const line = source.slice(bounds.from, bounds.to);
+    const line = document.lineAt(from).text;
     if (!listPrefix(line)) return null;
     if (backwards) {
       const indentation = /^\s*/.exec(line)?.[0] ?? "";

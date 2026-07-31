@@ -2,6 +2,7 @@ import {describe, expect, it} from "vitest";
 import {
   commandProtectionRanges,
   immutableProjectionRanges,
+  projectionBoundaryTouches,
   projectionRangeContaining,
   projectionRangesIntersecting,
   projectionSelectionOverlaps,
@@ -57,5 +58,16 @@ describe("immutable live projection range index", () => {
     expect(matches).toBe(1_000);
     expect(Object.isFrozen(ranges)).toBe(true);
     expect(ranges).toHaveLength(10_000);
+  });
+
+  it("uses the same index for inclusive edit-boundary checks", () => {
+    const ranges = immutableProjectionRanges(Array.from({length: 10_000}, (_, index) => ({
+      from: index * 20,
+      to: index * 20 + 10,
+    })));
+    expect(projectionBoundaryTouches(ranges, 0)).toBe(true);
+    expect(projectionBoundaryTouches(ranges, 10)).toBe(true);
+    expect(projectionBoundaryTouches(ranges, 11)).toBe(false);
+    expect(projectionBoundaryTouches(ranges, 199_990)).toBe(true);
   });
 });

@@ -23,6 +23,47 @@ export interface NormalizedSourceChange {
   from: number;
   to: number;
   insert: string;
+  removed?: string;
+}
+
+function lowerBound(values: readonly number[], target: number) {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (values[middle] < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function crlfNormalizedOffsets(source: string) {
+  const offsets: number[] = [];
+  let exactOffset = 0;
+  let normalizedOffset = 0;
+  while (exactOffset < source.length) {
+    if (source.charCodeAt(exactOffset) === 13
+        && source.charCodeAt(exactOffset + 1) === 10) {
+      offsets.push(normalizedOffset);
+      exactOffset += 2;
+    } else {
+      exactOffset += 1;
+    }
+    normalizedOffset += 1;
+  }
+  return offsets;
+}
+
+function exactOffsetFromCRLFIndex(
+  exactLength: number,
+  crlfOffsets: readonly number[],
+  requestedOffset: number,
+) {
+  const normalizedLength = exactLength - crlfOffsets.length;
+  if (!Number.isSafeInteger(requestedOffset)
+      || requestedOffset < 0
+      || requestedOffset > normalizedLength) return null;
+  return requestedOffset + lowerBound(crlfOffsets, requestedOffset);
 }
 
 /**
@@ -31,19 +72,101 @@ export interface NormalizedSourceChange {
  * code units so untouched line endings can survive a full-buffer query.
  */
 export function exactOffsetForNormalizedOffset(exactSource: string, requestedOffset: number) {
-  if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0) return null;
-  let exactOffset = 0;
-  let normalizedOffset = 0;
-  while (exactOffset < exactSource.length && normalizedOffset < requestedOffset) {
-    if (exactSource.charCodeAt(exactOffset) === 13
-        && exactSource.charCodeAt(exactOffset + 1) === 10) {
-      exactOffset += 2;
-    } else {
-      exactOffset += 1;
-    }
-    normalizedOffset += 1;
+  return exactOffsetFromCRLFIndex(
+    exactSource.length,
+    crlfNormalizedOffsets(exactSource),
+    requestedOffset,
+  );
+}
+
+/**
+ * Owns the exact line-ending mirror for one CodeMirror document.
+ *
+ * The text remains the sole exact-source value. The CRLF array is derived
+ * positional metadata that maps CodeMirror's normalized offsets in O(log n)
+ * and is updated by the same transaction, rather than rescanning the complete
+ * note for every insertion point and deletion boundary.
+ */
+export class ExactSourceMirror {
+  private value: string;
+  private crlfOffsets: number[];
+
+  constructor(source = "") {
+    this.value = source;
+    this.crlfOffsets = crlfNormalizedOffsets(source);
   }
-  return normalizedOffset === requestedOffset ? exactOffset : null;
+
+  get text() { return this.value; }
+
+  replace(source: string) {
+    this.value = source;
+    this.crlfOffsets = crlfNormalizedOffsets(source);
+  }
+
+  apply(changes: readonly NormalizedSourceChange[]) {
+    if (changes.length === 0) return true;
+    const ordered = [...changes]
+      .map((change) => ({...change, insert: normalizedDocumentText(change.insert)}))
+      .sort((left, right) => left.from - right.from || left.to - right.to);
+    let previousTo = -1;
+    for (const change of ordered) {
+      if (change.from < previousTo || change.to < change.from) return false;
+      previousTo = change.to;
+    }
+
+    const usesCRLF = this.crlfOffsets.length > 0;
+    const exactChanges = ordered.map((change) => {
+      const from = exactOffsetFromCRLFIndex(
+        this.value.length,
+        this.crlfOffsets,
+        change.from,
+      );
+      const to = exactOffsetFromCRLFIndex(
+        this.value.length,
+        this.crlfOffsets,
+        change.to,
+      );
+      if (from === null || to === null || to < from) return null;
+      if (change.removed !== undefined
+          && normalizedDocumentText(this.value.slice(from, to)) !== change.removed) return null;
+      return {
+        ...change,
+        exactFrom: from,
+        exactTo: to,
+        exactInsert: usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert,
+      };
+    });
+    if (exactChanges.some((change) => change === null)) return false;
+
+    for (const change of exactChanges
+      .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+      .sort((left, right) => right.from - left.from)) {
+      this.value = this.value.slice(0, change.exactFrom)
+        + change.exactInsert
+        + this.value.slice(change.exactTo);
+    }
+
+    let nextCRLFOffsets = this.crlfOffsets;
+    for (const change of [...ordered].sort((left, right) => right.from - left.from)) {
+      const firstRemoved = lowerBound(nextCRLFOffsets, change.from);
+      const afterRemoved = lowerBound(nextCRLFOffsets, change.to);
+      const delta = change.insert.length - (change.to - change.from);
+      const insertedOffsets: number[] = [];
+      if (usesCRLF) {
+        for (let index = change.insert.indexOf("\n"); index >= 0;
+          index = change.insert.indexOf("\n", index + 1)) {
+          insertedOffsets.push(change.from + index);
+        }
+      }
+      nextCRLFOffsets = [
+        ...nextCRLFOffsets.slice(0, firstRemoved),
+        ...insertedOffsets,
+        ...nextCRLFOffsets.slice(afterRemoved).map((offset) => offset + delta),
+      ];
+    }
+    this.crlfOffsets = nextCRLFOffsets;
+    return true;
+  }
 }
 
 /**
@@ -54,26 +177,8 @@ export function applyNormalizedChangesToExactSource(
   exactSource: string,
   changes: readonly NormalizedSourceChange[],
 ) {
-  const usesCRLF = exactSource.includes("\r\n");
-  const exactChanges = changes.map((change) => {
-    const from = exactOffsetForNormalizedOffset(exactSource, change.from);
-    const to = exactOffsetForNormalizedOffset(exactSource, change.to);
-    if (from === null || to === null || to < from) return null;
-    return {
-      from,
-      to,
-      insert: usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert,
-    };
-  });
-  if (exactChanges.some((change) => change === null)) return null;
-
-  let result = exactSource;
-  for (const change of exactChanges
-    .filter((candidate): candidate is {from: number; to: number; insert: string} => candidate !== null)
-    .sort((lhs, rhs) => rhs.from - lhs.from)) {
-    result = result.slice(0, change.from) + change.insert + result.slice(change.to);
-  }
-  return result;
+  const mirror = new ExactSourceMirror(exactSource);
+  return mirror.apply(changes) ? mirror.text : null;
 }
 
 function isFrontmatterOpening(text: string) {

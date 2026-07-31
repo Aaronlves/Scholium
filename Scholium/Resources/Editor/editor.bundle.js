@@ -21039,10 +21039,8 @@
     "tableAlignCenter",
     "tableAlignRight"
   ]);
-  function lineRange(source, offset) {
-    const from = source.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-    const newline3 = source.indexOf("\n", offset);
-    return { from, to: newline3 < 0 ? source.length : newline3 };
+  function tableDocument(source) {
+    return typeof source === "string" ? Text.of(source.split("\n")) : source;
   }
   function unescapedPipes(line) {
     const positions = [];
@@ -21055,7 +21053,7 @@
     return positions;
   }
   function parseRow(source, from, to) {
-    const line = source.slice(from, to);
+    const line = source.sliceString(from, to);
     const pipes = unescapedPipes(line);
     if (pipes.length === 0) return null;
     const firstContent = line.search(/\S/);
@@ -21081,34 +21079,32 @@
     return cells.length >= 2 ? { lineFrom: from, lineTo: to, cells } : null;
   }
   function isSeparatorCell(source, cell) {
-    return /^:?-{3,}:?$/.test(source.slice(cell.contentFrom, cell.contentTo));
+    return /^:?-{3,}:?$/.test(source.sliceString(cell.contentFrom, cell.contentTo));
   }
   function rowNumber(table, rawRow) {
     return rawRow > table.separatorIndex ? rawRow - 1 : rawRow;
   }
   function tableAt(source, offset) {
-    if (offset < 0 || offset > source.length) return null;
-    const current = lineRange(source, offset);
-    let first = current.from;
-    while (first > 0) {
-      const previous = lineRange(source, first - 1);
-      if (!parseRow(source, previous.from, previous.to)) break;
-      first = previous.from;
+    const document2 = tableDocument(source);
+    if (offset < 0 || offset > document2.length) return null;
+    const current = document2.lineAt(offset);
+    let firstLineNumber = current.number;
+    while (firstLineNumber > 1) {
+      const previous = document2.line(firstLineNumber - 1);
+      if (!parseRow(document2, previous.from, previous.to)) break;
+      firstLineNumber -= 1;
     }
     const rows = [];
-    let cursor = first;
-    while (cursor <= source.length) {
-      const line = lineRange(source, cursor);
-      const row = parseRow(source, line.from, line.to);
+    for (let number2 = firstLineNumber; number2 <= document2.lines; number2 += 1) {
+      const line = document2.line(number2);
+      const row = parseRow(document2, line.from, line.to);
       if (!row) break;
       rows.push(row);
-      if (line.to === source.length) break;
-      cursor = line.to + 1;
     }
     if (rows.length < 2) return null;
     const columnCount = rows[0].cells.length;
     if (rows.some((row) => row.cells.length !== columnCount)) return null;
-    const separators = rows.flatMap((row, index) => row.cells.every((cell) => isSeparatorCell(source, cell)) ? [index] : []);
+    const separators = rows.flatMap((row, index) => row.cells.every((cell) => isSeparatorCell(document2, cell)) ? [index] : []);
     if (separators.length !== 1 || separators[0] !== 1) return null;
     const rawRow = rows.findIndex((row) => offset >= row.lineFrom && offset <= row.lineTo);
     if (rawRow < 0 || rawRow === separators[0]) return null;
@@ -21407,19 +21403,18 @@ ${fence}`;
   }
 
   // interaction.ts
-  function lineBounds2(source, offset) {
-    const from = source.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-    const newline3 = source.indexOf("\n", offset);
-    return { from, to: newline3 < 0 ? source.length : newline3 };
+  function interactionDocument(source) {
+    return typeof source === "string" ? Text.of(source.split("\n")) : source;
   }
   function listPrefix(line) {
     return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
   }
   function continueList(source, selections) {
+    const document2 = interactionDocument(source);
     if (selections.some((selection) => selection.anchor !== selection.head)) return null;
     const entries = selections.map((selection) => {
-      const bounds = lineBounds2(source, selection.head);
-      const line = source.slice(bounds.from, bounds.to);
+      const bounds = document2.lineAt(selection.head);
+      const line = bounds.text;
       const match = listPrefix(line);
       if (!match) return null;
       const prefix = match[0];
@@ -21444,23 +21439,19 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
     return { changes: sorted.map((entry) => entry.change), selections: mapped, undoLabel: "Continue List" };
   }
   function indentList(source, selections, backwards) {
+    const document2 = interactionDocument(source);
     const lineStarts = [...new Set(selections.flatMap((selection) => {
-      const first = lineBounds2(source, Math.min(selection.anchor, selection.head));
-      const last = lineBounds2(source, Math.max(selection.anchor, selection.head));
+      const first = document2.lineAt(Math.min(selection.anchor, selection.head));
+      const last = document2.lineAt(Math.max(selection.anchor, selection.head));
       const starts = [];
-      let cursor = first.from;
-      while (cursor <= last.from) {
-        starts.push(cursor);
-        const next = source.indexOf("\n", cursor);
-        if (next < 0) break;
-        cursor = next + 1;
+      for (let number2 = first.number; number2 <= last.number; number2 += 1) {
+        starts.push(document2.line(number2).from);
       }
       return starts;
     }))].sort((left, right) => left - right);
     const changes = [];
     for (const from of lineStarts) {
-      const bounds = lineBounds2(source, from);
-      const line = source.slice(bounds.from, bounds.to);
+      const line = document2.lineAt(from).text;
       if (!listPrefix(line)) return null;
       if (backwards) {
         const indentation2 = /^\s*/.exec(line)?.[0] ?? "";
@@ -29988,11 +29979,11 @@ ${fence}
 
   // projection.ts
   function linkTargetAt(source, offset) {
-    if (offset < 0 || offset > source.length) return null;
-    const lineFrom = source.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
-    const newline3 = source.indexOf("\n", offset);
-    const lineTo = newline3 < 0 ? source.length : newline3;
-    const line = source.slice(lineFrom, lineTo);
+    const document2 = typeof source === "string" ? Text.of(source.split("\n")) : source;
+    if (offset < 0 || offset > document2.length) return null;
+    const sourceLine = document2.lineAt(offset);
+    const lineFrom = sourceLine.from;
+    const line = sourceLine.text;
     for (const match of line.matchAll(/(?:!|[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
       const from = lineFrom + match.index;
       const to = from + match[0].length;
@@ -30055,6 +30046,14 @@ ${fence}
       return projectionRangeContaining(ranges, selection.from) !== null;
     }
     return projectionRangesIntersecting(ranges, selection.from, selection.to).length > 0;
+  }
+  function projectionBoundaryTouches(ranges, offset) {
+    const candidates = projectionRangesIntersecting(
+      ranges,
+      Math.max(0, offset - 1),
+      offset + 1
+    );
+    return candidates.some((range) => offset >= range.from && offset <= range.to);
   }
 
   // projection-update.ts
@@ -30129,7 +30128,7 @@ ${fence}
         canMap = false;
         return;
       }
-      canMap = !ranges.some((range) => fromA >= range.from && fromA <= range.to);
+      canMap = !projectionBoundaryTouches(ranges, fromA);
     });
     return canMap;
   }
@@ -30151,39 +30150,104 @@ ${fence}
     }
     return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
   }
-  function exactOffsetForNormalizedOffset(exactSource2, requestedOffset) {
-    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0) return null;
+  function lowerBound(values2, target) {
+    let low = 0;
+    let high = values2.length;
+    while (low < high) {
+      const middle = low + high >>> 1;
+      if (values2[middle] < target) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  }
+  function crlfNormalizedOffsets(source) {
+    const offsets = [];
     let exactOffset = 0;
     let normalizedOffset = 0;
-    while (exactOffset < exactSource2.length && normalizedOffset < requestedOffset) {
-      if (exactSource2.charCodeAt(exactOffset) === 13 && exactSource2.charCodeAt(exactOffset + 1) === 10) {
+    while (exactOffset < source.length) {
+      if (source.charCodeAt(exactOffset) === 13 && source.charCodeAt(exactOffset + 1) === 10) {
+        offsets.push(normalizedOffset);
         exactOffset += 2;
       } else {
         exactOffset += 1;
       }
       normalizedOffset += 1;
     }
-    return normalizedOffset === requestedOffset ? exactOffset : null;
+    return offsets;
   }
-  function applyNormalizedChangesToExactSource(exactSource2, changes) {
-    const usesCRLF = exactSource2.includes("\r\n");
-    const exactChanges = changes.map((change) => {
-      const from = exactOffsetForNormalizedOffset(exactSource2, change.from);
-      const to = exactOffsetForNormalizedOffset(exactSource2, change.to);
-      if (from === null || to === null || to < from) return null;
-      return {
-        from,
-        to,
-        insert: usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert
-      };
-    });
-    if (exactChanges.some((change) => change === null)) return null;
-    let result = exactSource2;
-    for (const change of exactChanges.filter((candidate) => candidate !== null).sort((lhs, rhs) => rhs.from - lhs.from)) {
-      result = result.slice(0, change.from) + change.insert + result.slice(change.to);
+  function exactOffsetFromCRLFIndex(exactLength, crlfOffsets, requestedOffset) {
+    const normalizedLength = exactLength - crlfOffsets.length;
+    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalizedLength) return null;
+    return requestedOffset + lowerBound(crlfOffsets, requestedOffset);
+  }
+  var ExactSourceMirror = class {
+    value;
+    crlfOffsets;
+    constructor(source = "") {
+      this.value = source;
+      this.crlfOffsets = crlfNormalizedOffsets(source);
     }
-    return result;
-  }
+    get text() {
+      return this.value;
+    }
+    replace(source) {
+      this.value = source;
+      this.crlfOffsets = crlfNormalizedOffsets(source);
+    }
+    apply(changes) {
+      if (changes.length === 0) return true;
+      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
+      let previousTo = -1;
+      for (const change of ordered) {
+        if (change.from < previousTo || change.to < change.from) return false;
+        previousTo = change.to;
+      }
+      const usesCRLF = this.crlfOffsets.length > 0;
+      const exactChanges = ordered.map((change) => {
+        const from = exactOffsetFromCRLFIndex(
+          this.value.length,
+          this.crlfOffsets,
+          change.from
+        );
+        const to = exactOffsetFromCRLFIndex(
+          this.value.length,
+          this.crlfOffsets,
+          change.to
+        );
+        if (from === null || to === null || to < from) return null;
+        if (change.removed !== void 0 && normalizedDocumentText(this.value.slice(from, to)) !== change.removed) return null;
+        return {
+          ...change,
+          exactFrom: from,
+          exactTo: to,
+          exactInsert: usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert
+        };
+      });
+      if (exactChanges.some((change) => change === null)) return false;
+      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
+        this.value = this.value.slice(0, change.exactFrom) + change.exactInsert + this.value.slice(change.exactTo);
+      }
+      let nextCRLFOffsets = this.crlfOffsets;
+      for (const change of [...ordered].sort((left, right) => right.from - left.from)) {
+        const firstRemoved = lowerBound(nextCRLFOffsets, change.from);
+        const afterRemoved = lowerBound(nextCRLFOffsets, change.to);
+        const delta = change.insert.length - (change.to - change.from);
+        const insertedOffsets = [];
+        if (usesCRLF) {
+          for (let index = change.insert.indexOf("\n"); index >= 0; index = change.insert.indexOf("\n", index + 1)) {
+            insertedOffsets.push(change.from + index);
+          }
+        }
+        nextCRLFOffsets = [
+          ...nextCRLFOffsets.slice(0, firstRemoved),
+          ...insertedOffsets,
+          ...nextCRLFOffsets.slice(afterRemoved).map((offset) => offset + delta)
+        ];
+      }
+      this.crlfOffsets = nextCRLFOffsets;
+      return true;
+    }
+  };
   function isFrontmatterOpening(text) {
     return text.replace(/^\uFEFF/, "").trim() === "---";
   }
@@ -31151,7 +31215,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var bridgeDocumentID = "";
   var bridgeFingerprint = "";
   var documentVersion = 0;
-  var exactSource = "";
+  var exactSourceMirror = new ExactSourceMirror();
   var nextLinkCompletionRequest = 0;
   var pendingLinkCompletionQueries = /* @__PURE__ */ new Map();
   var linkPreviews = [];
@@ -31171,7 +31235,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     ...message
   });
   function exactEditorSource() {
-    return exactSource;
+    return exactSourceMirror.text;
   }
   var modeCompartment = new Compartment();
   var lineSeparatorCompartment = new Compartment();
@@ -31489,6 +31553,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ...footnotes.definitions,
       ...footnotes.references
     ].map(({ from, to }) => ({ from, to })));
+    const immutableCommandProtectedRanges = commandProtectionRanges(
+      immutableExcluded,
+      immutableFrontmatter ?? void 0
+    );
+    const immutableStructuralRanges = immutableProjectionRanges([
+      ...immutableTables,
+      ...immutableCallouts,
+      ...footnotes.definitions,
+      ...footnotes.references,
+      ...immutableMathExpressions.filter((expression) => expression.kind === "display")
+    ].map(({ from, to }) => ({ from, to })));
     return Object.freeze({
       syntax,
       literals: Object.freeze({
@@ -31501,17 +31576,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       callouts: immutableCallouts,
       mathExpressions: immutableMathExpressions,
       frontmatterRange: immutableFrontmatter,
-      commandProtectedRanges: commandProtectionRanges(
-        immutableExcluded,
-        immutableFrontmatter ?? void 0
-      ),
-      structuralRanges: immutableProjectionRanges([
-        ...immutableTables,
-        ...immutableCallouts,
-        ...footnotes.definitions,
-        ...footnotes.references,
-        ...immutableMathExpressions.filter((expression) => expression.kind === "display")
-      ].map(({ from, to }) => ({ from, to }))),
+      commandProtectedRanges: immutableCommandProtectedRanges,
+      structuralRanges: immutableStructuralRanges,
+      mutationSensitiveRanges: immutableProjectionRanges([
+        ...immutableCommandProtectedRanges,
+        ...immutableStructuralRanges
+      ]),
       blockRanges: immutableProjectionRanges([
         ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
         ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
@@ -31593,22 +31663,26 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const frontmatterRange = yamlBodyFrom > 0 ? { from: 0, to: yamlBodyFrom } : null;
     const footnoteExcluded = [...excluded];
     if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
-    const projectedFootnotes = footnotePresentation(
-      state.doc.toString(),
-      footnoteExcluded,
-      editingDialect?.footnotes
-    );
-    const footnotes = {
-      definitions: projectedFootnotes.definitions.filter((definition) => definitionRanges.has(rangeKey(definition.from, definition.to))),
-      references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
-    };
+    let completeSource = null;
+    const source = () => completeSource ??= state.doc.toString();
+    let footnotes = { definitions: [], references: [] };
+    if (definitionRanges.size > 0 || referenceRanges.size > 0) {
+      const projectedFootnotes = footnotePresentation(
+        source(),
+        footnoteExcluded,
+        editingDialect?.footnotes
+      );
+      footnotes = {
+        definitions: projectedFootnotes.definitions.filter((definition) => definitionRanges.has(rangeKey(definition.from, definition.to))),
+        references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
+      };
+    }
     const insideNamedDefinition = (range) => footnotes.definitions.some(
       (definition) => !definition.isInline && definition.from <= range.from && definition.to >= range.to
     );
-    const source = state.doc.toString();
     const tables = tableRanges.flatMap((range) => {
       if (insideNamedDefinition(range)) return [];
-      const presentation = tablePresentation(source, range.from, range.to);
+      const presentation = tablePresentation(source(), range.from, range.to);
       return presentation ? [presentation] : [];
     });
     const callouts = calloutRanges.flatMap((range) => {
@@ -31706,15 +31780,15 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (!transaction.docChanged) {
         return transactionChangedSyntaxTree(transaction) ? buildLiveProjectionIndex(transaction.state) : previous;
       }
-      const indexedRanges = [
-        ...previous.commandProtectedRanges,
-        ...previous.structuralRanges
-      ];
       const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
-      if (indexedRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
+      if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
         return mapLiveProjectionIndex(previous, transaction);
       }
-      return transactionCanMapProjection(transaction, structuralMarker, indexedRanges) ? mapLiveProjectionIndex(previous, transaction) : buildLiveProjectionIndex(transaction.state);
+      return transactionCanMapProjection(
+        transaction,
+        structuralMarker,
+        previous.mutationSensitiveRanges
+      ) ? mapLiveProjectionIndex(previous, transaction) : buildLiveProjectionIndex(transaction.state);
     }
   });
   function liveProjectionIndexForState(state) {
@@ -32046,10 +32120,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       presentations
     };
   }
+  function mapRawHTMLPresentations(presentations, transaction) {
+    return presentations.map((presentation) => ({
+      ...presentation,
+      from: transaction.changes.mapPos(presentation.from),
+      to: transaction.changes.mapPos(presentation.to)
+    }));
+  }
   var liveRawHTMLField = StateField.define({
     create: buildLiveRawHTMLDecorations,
     update(previous, transaction) {
-      if (!transaction.docChanged && !transactionChangedSyntaxTree(transaction)) {
+      if (!transaction.docChanged && transactionChangedSyntaxTree(transaction)) {
+        return buildLiveRawHTMLDecorations(transaction.state);
+      }
+      if (!previous.hasConstructs) {
+        if (!transaction.docChanged) return previous;
+        if (!transactionMayCreateProjection(transaction, /[<>]/)) return previous;
+      }
+      if (!transaction.docChanged) {
         if (transaction.startState.selection.eq(transaction.state.selection)) return previous;
         if (activeProjectionSignature(transaction.startState.selection.ranges, previous.presentations) === activeProjectionSignature(transaction.state.selection.ranges, previous.presentations)) {
           return previous;
@@ -32057,6 +32145,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return {
           ...previous,
           decorations: liveRawHTMLDecorations(transaction.state, previous.presentations)
+        };
+      }
+      if (transactionCanMapProjection(transaction, /[<>]/, previous.presentations)) {
+        const presentations = mapRawHTMLPresentations(previous.presentations, transaction);
+        return {
+          decorations: liveRawHTMLDecorations(transaction.state, presentations),
+          hasConstructs: true,
+          presentations
         };
       }
       return buildLiveRawHTMLDecorations(transaction.state);
@@ -32638,12 +32734,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       if (transaction.docChanged) {
         const oldIndex = liveProjectionIndexForState(transaction.startState);
-        const indexedRanges = [
-          ...oldIndex.commandProtectedRanges,
-          ...oldIndex.structuralRanges
-        ];
         const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
-        if (!transactionCanMapProjection(transaction, structuralMarker, indexedRanges)) {
+        if (!transactionCanMapProjection(
+          transaction,
+          structuralMarker,
+          oldIndex.mutationSensitiveRanges
+        )) {
           return buildLiveSemanticLineState(transaction.state);
         }
         const mapped = previous.decorations.map(transaction.changes);
@@ -32783,12 +32879,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return buildLiveSemanticBlockSpacingState(transaction.state);
       }
       const oldIndex = liveProjectionIndexForState(transaction.startState);
-      const indexedRanges = [
-        ...oldIndex.commandProtectedRanges,
-        ...oldIndex.structuralRanges
-      ];
       const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
-      return transactionCanMapProjection(transaction, structuralMarker, indexedRanges) ? { decorations: previous.decorations.map(transaction.changes) } : buildLiveSemanticBlockSpacingState(transaction.state);
+      return transactionCanMapProjection(
+        transaction,
+        structuralMarker,
+        oldIndex.mutationSensitiveRanges
+      ) ? { decorations: previous.decorations.map(transaction.changes) } : buildLiveSemanticBlockSpacingState(transaction.state);
     },
     provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
   });
@@ -33252,18 +33348,29 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         hiddenFrontmatterSourceSelection = null;
       }
       const changes = [];
+      const mirrorChanges = [];
       update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-        changes.push({ from: fromA, to: toA, insert: inserted.toString() });
+        const insert2 = inserted.toString();
+        changes.push({ from: fromA, to: toA, insert: insert2 });
+        mirrorChanges.push({
+          from: fromA,
+          to: toA,
+          insert: insert2,
+          removed: update.startState.doc.sliceString(fromA, toA)
+        });
       });
-      const updatedExactSource = applyNormalizedChangesToExactSource(exactSource, changes);
-      if (updatedExactSource === null || normalizedDocumentText(updatedExactSource) !== normalizedDocumentText(update.state.doc.toString())) {
+      const exactUpdateStartedAt = performance.now();
+      if (!exactSourceMirror.apply(mirrorChanges)) {
         post({
           type: "editorError",
           message: "The editor could not preserve the exact source line endings."
         });
         return;
       }
-      exactSource = updatedExactSource;
+      recordEditorMetric("exact-source-update", exactUpdateStartedAt, {
+        changeCount: mirrorChanges.length,
+        documentLength: update.state.doc.length
+      });
       post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
     }
     scheduleEditorInteractionReport();
@@ -33276,7 +33383,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     click(event) {
       if (event.metaKey) {
         const position = editor.posAtCoords({ x: event.clientX, y: event.clientY });
-        const target = position === null ? null : linkTargetAt(editor.state.doc.toString(), position);
+        const target = position === null ? null : linkTargetAt(editor.state.doc, position);
         if (target) {
           post({ type: "linkActivated", target });
           event.preventDefault();
@@ -33321,7 +33428,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     {
       key: "Enter",
       run: (view) => applyInteraction(
-        continueList(view.state.doc.toString(), editorSelections()),
+        continueList(view.state.doc, editorSelections()),
         "input.scholium.continueList"
       )
     },
@@ -33329,10 +33436,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       key: "Tab",
       run: (view) => {
         if (view.state.selection.ranges.length !== 1) {
-          return applyInteraction(indentList(view.state.doc.toString(), editorSelections(), false), "input.scholium.indentList");
+          return applyInteraction(indentList(view.state.doc, editorSelections(), false), "input.scholium.indentList");
         }
         return applyInteraction(
-          tableTabAction(view.state.doc.toString(), view.state.selection.main.head, false) ?? indentList(view.state.doc.toString(), editorSelections(), false),
+          tableTabAction(view.state.doc, view.state.selection.main.head, false) ?? indentList(view.state.doc, editorSelections(), false),
           "input.scholium.structuralTab"
         );
       }
@@ -33341,10 +33448,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       key: "Shift-Tab",
       run: (view) => {
         if (view.state.selection.ranges.length !== 1) {
-          return applyInteraction(indentList(view.state.doc.toString(), editorSelections(), true), "input.scholium.outdentList");
+          return applyInteraction(indentList(view.state.doc, editorSelections(), true), "input.scholium.outdentList");
         }
         return applyInteraction(
-          tableTabAction(view.state.doc.toString(), view.state.selection.main.head, true) ?? indentList(view.state.doc.toString(), editorSelections(), true),
+          tableTabAction(view.state.doc, view.state.selection.main.head, true) ?? indentList(view.state.doc, editorSelections(), true),
           "input.scholium.structuralBackTab"
         );
       }
@@ -33368,7 +33475,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const projection = forward ? crossed[0] : crossed.at(-1);
     if (!projection) return false;
     const isCallout = projection.kind === "callout";
-    const sourceHead = forward ? projection.from : isCallout ? Math.max(projection.from, projection.to - 1) : Math.max(projection.from, projection.to - 1);
+    const sourceHead = forward ? projection.from : Math.max(projection.from, projection.to - 1);
     const originalCoords = view.coordsAtPos(selection.head);
     const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
     const anchor = extend ? selection.anchor : sourceHead;
@@ -33876,7 +33983,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
         const restoredMode = configuredEditorMode(editor.state);
         editor.setState(recoveredState);
-        exactSource = snapshot.source;
+        exactSourceMirror.replace(snapshot.source);
         await editorOperations.setMode(restoredMode);
         dirty = snapshot.dirty;
         documentVersion = snapshot.generation;
@@ -34051,7 +34158,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentVersion = 0;
       hiddenFrontmatterSourceSelection = null;
       const separator = text.includes("\r\n") ? "\r\n" : "\n";
-      exactSource = text;
+      exactSourceMirror.replace(text);
       editor.dispatch({
         changes: replacementChange(editor.state.doc.toString(), text),
         effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
@@ -34167,7 +34274,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       scrollCoordinator.setAnchor(anchor);
     },
     synchronizeCommittedText(expectedText, committedText, startingFingerprint) {
-      if (exactSource !== expectedText || normalizedDocumentText(editor.state.doc.toString()) !== normalizedDocumentText(expectedText)) return false;
+      if (exactSourceMirror.text !== expectedText || normalizedDocumentText(editor.state.doc.toString()) !== normalizedDocumentText(expectedText)) return false;
       bridgeFingerprint = startingFingerprint;
       const separator = committedText.includes("\r\n") ? "\r\n" : "\n";
       editor.dispatch({
@@ -34178,7 +34285,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           programmaticDocumentChange.of(true)
         ]
       });
-      exactSource = committedText;
+      exactSourceMirror.replace(committedText);
       dirty = false;
       scheduleEditorInteractionReport(true);
       return true;
