@@ -92,6 +92,7 @@ struct WindowDocumentMetadataProjectionTests {
                 broken: 0,
                 ambiguous: 0
             ),
+            headings: semantic.headings,
             cachedTitleProjection: cachedTitle
         )
 

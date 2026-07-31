@@ -5466,47 +5466,64 @@ final class WindowModel: ObservableObject {
         let savedSnapshot: WorkspaceNoteSnapshot
         if let loaded, loaded.fingerprint == document.fingerprint {
             savedSnapshot = loaded
-        } else if let previous {
-            savedSnapshot = WorkspaceNoteSnapshot(
-                id: previous.id,
-                vaultRole: previous.vaultRole,
-                stableIdentity: previous.stableIdentity,
-                document: document,
-                fileMetadata: WorkspaceFileMetadata(
+        } else {
+            // Only the active Note needs an immediate source-bound title and
+            // outline before the Triptych-wide derived refresh catches up.
+            // Parse it off the main actor once, then publish the immutable
+            // projection; SwiftUI views never parse Markdown in `body`.
+            let semantic = await Task.detached(priority: .utility) {
+                MarkdownSemanticDocument(parsing: document)
+            }.value
+            let metadata: WorkspaceFileMetadata
+            let identity: WorkspaceNoteIdentityState
+            let lifecycle: WorkspaceDocumentLifecycle
+            let graphCounts: WorkspaceGraphCounts
+            if let previous {
+                metadata = WorkspaceFileMetadata(
                     byteCount: document.sourceBytes.count,
                     creationDate: previous.fileMetadata.creationDate,
                     modificationDate: previous.fileMetadata.modificationDate
-                ),
-                lifecycle: previous.lifecycle,
-                graphCounts: previous.graphCounts
-            )
-        } else {
+                )
+                identity = previous.stableIdentity
+                lifecycle = previous.lifecycle
+                graphCounts = previous.graphCounts
+            } else {
+                metadata = WorkspaceFileMetadata(
+                    byteCount: document.sourceBytes.count,
+                    creationDate: nil,
+                    modificationDate: nil
+                )
+                identity = .resolved(context.noteID)
+                lifecycle = .active
+                graphCounts = WorkspaceGraphCounts(
+                    incoming: 0,
+                    outgoing: 0,
+                    broken: 0,
+                    ambiguous: 0
+                )
+            }
             savedSnapshot = WorkspaceNoteSnapshot(
                 id: VaultQualifiedNoteID(
                     vaultID: context.vaultID,
                     relativePath: document.relativePath
                 ),
                 vaultRole: context.vaultRole,
-                stableIdentity: .resolved(context.noteID),
+                stableIdentity: identity,
                 document: document,
-                fileMetadata: WorkspaceFileMetadata(
-                    byteCount: document.sourceBytes.count,
-                    creationDate: nil,
-                    modificationDate: nil
-                ),
-                lifecycle: .active,
-                graphCounts: WorkspaceGraphCounts(
-                    incoming: 0,
-                    outgoing: 0,
-                    broken: 0,
-                    ambiguous: 0
+                fileMetadata: metadata,
+                lifecycle: lifecycle,
+                graphCounts: graphCounts,
+                headings: semantic.headings,
+                cachedTitleProjection: WorkspaceNoteTitleProjection(
+                    document: document,
+                    vaultRole: context.vaultRole,
+                    semantic: semantic
                 )
             )
         }
 
         replaceCachedWorkspaceNote(savedSnapshot)
         let saved = WindowDocumentLocation.workspace(savedSnapshot)
-        await refreshWindowProjection()
         if currentRegisteredVault?.id == context.vaultID {
             return notes.first(where: { $0.relativePath == document.relativePath }) ?? saved
         }

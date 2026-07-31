@@ -507,6 +507,13 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Hashable, Identifiable, 
 /// Custom properties transport resolved semantic roles into WebKit; they are
 /// not a second set of configurable color Variables.
 enum ScholiumWebDesignTokens {
+    /// Fixed document-markup colors are not Appearance inputs and do not
+    /// participate in the Accent/Paper resolver. They are shared verbatim by
+    /// Review and Edit so Markdown semantics cannot drift by mode or theme.
+    static let fixedDocumentSyntaxCSSDeclarations = """
+    --scholium-mark-highlight-background: #ff9a00;
+    --scholium-mark-highlight-text: #28241d;
+    """
     static let resolvedColorRoleCSSVariableNames = Set(
         ScholiumColorRole.allCases.map(\.cssVariableName)
     )
@@ -583,6 +590,7 @@ enum ScholiumWebDesignTokens {
     :root {
       color-scheme: light dark;
       \(rootCSSDeclarations)
+      \(fixedDocumentSyntaxCSSDeclarations)
       \(rhythmCSSDeclarations)
     }
     .scholium-document,
@@ -718,8 +726,8 @@ enum ScholiumWebDesignTokens {
     .scholium-document .scholium-highlight,
     .scholium-live-mode .cm-live-highlight {
       padding-inline: 0.06em;
-      color: var(--scholium-color-primary-text);
-      background: color-mix(in srgb, var(--scholium-color-notification-highlight) 32%, transparent);
+      color: var(--scholium-mark-highlight-text);
+      background: var(--scholium-mark-highlight-background);
       border-radius: 3px;
     }
     .scholium-document :not(pre) > code,

@@ -21,6 +21,8 @@
   --scholium-color-connection-neutral: #6f593f;
   --scholium-color-connection-support: #2f675e;
   --scholium-color-connection-incompatible: #72516a;
+  --scholium-mark-highlight-background: #ff9a00;
+  --scholium-mark-highlight-text: #28241d;
   --scholium-symbol-link: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAGKADAAQAAAABAAAAGAAAAADiNXWtAAACV0lEQVRIDe3US0hVQRjA8atpD3uIFYVWBIYkRIsWbQqyMFq4KF1EhVAQEe1EEkRbSItA3FRQFBHUwkKCHkJQ5EYMQty46GVU0KYWtehhLwur/z/uwFw9V68Grfzg55lz5pyZ+b6Zayo1E5NUIG+S/qTuOTzcgVqU4QVuoRej+KdYwded+IrfGE5ff3E9CyefVuTzVQV68AnnsRHlMJu7+I4zKMSUwjI6+D18RCsWIo4l3NzBT1TFHbm0V/NSGLyF9oIsH5mJZTudpT/xcQlPL8CVN2M55qMAY2MND9yb7rjD2k4Uu+jcjnO4hg7cQB3mIo6l3LjJb+KHSRPM4oVlsK7V8IRchh+/hftxEbsRTs0i2ocxgpvIGk5YiXbUwNMxiFKE2EZjCM9gWdyTNljGSwiT0swMT0sZuvASrvAK/CFtgJmFOEbDY7kX+/EBt2HmGRF/VELPQeyBA5vqPGyBkz+Gg1oyN9nBH6bbZt6A10gMB9iJAZyCv1jDqxm5wpOogiWoxRc0Yj1WwTHGRThuxfRsgpvl6sNJcEXH4fHbmr660fVw0gcwM7NKjDBBEb2L8Rlulj+YEE9pHIWbb581dzFX8QhZB6cvZe2MHzBla+6/gfCc5t94z99X2IcDuA9LaWY5xWzeOoQnaILHMkzidSVOwNK5J2uRWHOeZ0Q4Rf4fdzUO5Gab9gg84+U4AuvehzY8R1xGbpMjXoUrrYAZbE6//o2r+zOM6+iEWeQ0OO+NS9MJ3UwnWAczeId+uPqxB4BHE0ecQfxmITceXffG0k15YL75P/EHCCx3R5I0KkcAAAAASUVORK5CYII=");
   --scholium-symbol-supports: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACTUlEQVQ4EdXUPUhVYRzH8Zu9v1lmZVb0wkVILMReKInIorbApWjJhlpaCsHBQMSpralyU2lpCGppDrqGi1T2oqgpSmARBb1aiSXl93v13O4591Q4NPiDD97znHOe1/8xkZhtmfOPCedzvxTbUIg36Ec3vmPGWcMb59GJH/iVZYLfD3AODhyb6Izn8tRhNGAn3iGFxxiFs7bdZwrQgXo8gQPGxkEq8AwfcBXlyEM022logYP1YA/+mI3cuYa3qIUz+lvmc7MRX9CO5ciJW3Aaz3EJRYhmGQ3rYIdB5vGjFR6ke56TTbS4tEG4HdG9pylxHM7sKLI7L+P6FR5hMUKp5soDuo2103dcxQLYiTbjFrpxCAthnMQNWD27kU5wMEmunLUjf4WdWr9VODLNWr4Dl+/B7oLPWYpdsN130vHCuH/OwE5/YhUuwk6ddRD3cgl8/gxc5RjewxRP/Zkaxd/f4Evukav4hDbch9tgHNBKOQU7d/Yu3wQfinUfigfTg5tYHbrz+8KXL6MPJxCs1ok4iQlUIpStXFkVdm6xu3fRHKMhhZMIOuVnYgeG8RArEIr7eBb+g2nCBnja2bG27STYGu+5NVfwGX5UsUnS2owBWOx2HjdzmtODOtAFfEQKfjyZZL/ogfnQQVinrsIqGYez99lFWIkSWBV1sET9tJ8ik+hyfXkvalAFD6QXrzEGy8ySqoAVcRfX0QWrJpNox96wLYkD2I99WA9XYEm+gPV7D+14CT+SUOI6Dh6wI/fZL2wLlmIUQ7DjEeR0SNv/zSRjEXIpUvpbJgAAAABJRU5ErkJggg==");
   --scholium-symbol-supported-by: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACVUlEQVQ4EdXUuWtUURSA8WhcIhpNkLgjyiAobhgNCYi4FuksrUwRmzSGSBALESv/AZdOQRIsLGy1CVlAkBCNKxKVyIDZFNw1oonL903mPsY7L4iFhQd+zJvz3rv33HvPTEnJ/xYz/lDwQu5vwHosxksM4CG+4a+jijeOohcT+Flgkus+NMGJUyOuuJSn9uEkqvEa3biLj7Bq8z5TiZs4gXtwwtRwkm14gLc4h62YiTg2kbgIJ3uEGkwbq7hzHq/QAisKEa/M/Gycwif0oBxF4RY04AnOYClCzOFiJRwojlkkLsGDdM+LYjUZl/YMbkeo0Bcb4V66XAuIYyOJYdzBvPjmQRIe0DUsyd8s4/MQsjgLV2H1Vu5n2HuLuAK7ZwdyEW5m+GbVzvwZVlYP9zCLW3Al+3Eg/+k7vm8r9sPV2fO58IuxAHPhoD9QgcPwZSu1YicLYZVXcQxf8AbG8qmPqVm8HocH4B5ZhW10A+7fGK7DSQvDrQu/vvBDse9zESrO8m0EzujgDtIG99nW+4p2fEAcFmK/f8fj+OZaEnZFaPawbA/qODqxBSHPZRKbuXqO21iUZPMXnvIR+AdzGvZtaDmr9uDKEUclCffflbiy1MiQvYCnaIKDp1VIOjeph9qMd+jGMiRR+OJ7sj60G3vhKtxr99fqfdbqK7AOjWiFLWpb3kcSYbkh4cu1sNX2YBIeyChsK9vSA3Zr/EF04DL6YZsmEQ/sDXMZ7MJO1GEFXIHtlYWt1oUeDMEfyW+RNnB4wIHc5+1Yg/mwvwfhwC9QNCC5fxu/AGL/diOPbj0lAAAAAElFTkSuQmCC");
@@ -121,8 +123,12 @@ body,
   font-size: 0.86em;
 }
 
-.cm-selectionBackground,
 .cm-content ::selection {
+  color: inherit;
+  background: transparent !important;
+}
+
+.cm-scholium-selected-text {
   background: color-mix(in srgb, var(--scholium-color-accent) 24%, transparent) !important;
 }
 
@@ -260,11 +266,21 @@ body,
 }
 
 .cm-line.cm-live-blank-line {
-  block-size: var(--scholium-rhythm-paragraph-gap);
-  min-block-size: var(--scholium-rhythm-paragraph-gap);
-  line-height: var(--scholium-rhythm-paragraph-gap);
+  --scholium-live-blank-gap-after: var(--scholium-rhythm-paragraph-gap);
+  --scholium-live-blank-gap-before: var(--scholium-rhythm-paragraph-gap);
+  block-size: max(var(--scholium-live-blank-gap-after), var(--scholium-live-blank-gap-before));
+  min-block-size: max(var(--scholium-live-blank-gap-after), var(--scholium-live-blank-gap-before));
+  line-height: max(var(--scholium-live-blank-gap-after), var(--scholium-live-blank-gap-before));
   padding-block: 0;
 }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-after-half { --scholium-live-blank-gap-after: var(--scholium-rhythm-rule-block-gap, 0.5em); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-before-half { --scholium-live-blank-gap-before: var(--scholium-rhythm-rule-block-gap, 0.5em); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-after-paragraph { --scholium-live-blank-gap-after: var(--scholium-rhythm-paragraph-gap); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-before-paragraph { --scholium-live-blank-gap-before: var(--scholium-rhythm-paragraph-gap); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-after-standard { --scholium-live-blank-gap-after: var(--scholium-rhythm-semantic-block-gap, 1em); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-before-standard { --scholium-live-blank-gap-before: var(--scholium-rhythm-semantic-block-gap, 1em); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-after-callout { --scholium-live-blank-gap-after: var(--scholium-callout-block-gap, 1.4em); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-before-callout { --scholium-live-blank-gap-before: var(--scholium-callout-block-gap, 1.4em); }
 
 .cm-line.cm-live-heading-marker-line {
   block-size: 0;

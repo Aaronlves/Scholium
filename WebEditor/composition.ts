@@ -14,7 +14,7 @@ export function compositionRequestPolicy(operationType: string): CompositionRequ
     "setLinkPreviews",
     "goToLine",
     "restoreRecovery",
-    "synchronizeCommittedText",
+    "acknowledgeCommittedSnapshot",
     "command",
   ].includes(operationType)) return "defer";
   return "allow";

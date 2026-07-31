@@ -564,6 +564,12 @@ struct ArchitectureBoundaryTests {
             ),
             encoding: .utf8
         )
+        let testingInteractions = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorSessionTestingInteractions.swift"
+            ),
+            encoding: .utf8
+        )
 
         #expect(editor.contains("webkitWindow.scholiumEditor = {"))
         #expect(editor.contains("dispatch: dispatchEditorRequest,"))
@@ -580,12 +586,14 @@ struct ArchitectureBoundaryTests {
         #expect(bridge.contains("final class WKWebViewMarkdownEditorBridgeDispatcher"))
         #expect(bridge.contains("callAsyncJavaScript"))
         #expect(testing.hasPrefix("#if DEBUG"))
+        #expect(testingInteractions.hasPrefix("#if DEBUG"))
         #expect(!session.contains("TestingPresentationSnapshot"))
         for module in [
             "protocol.ts", "projection.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
             "table-presentation.ts",
             "interaction.ts", "clipboard.ts", "state.ts", "accessibility.ts", "bootstrap.ts", "performance.ts",
-            "selection-actions.ts", "preview-popover.ts", "scroll-coordinator.ts",
+            "selection-actions.ts", "live-selection.ts", "live-projection-index.ts",
+            "source-direction.ts", "preview-popover.ts", "scroll-coordinator.ts",
         ] {
             #expect(
                 FileManager.default.fileExists(

@@ -259,8 +259,11 @@ function parseCallout(cx: BlockContext, line: Line) {
   if (!isCalloutOpening(line)) return false;
   const from = cx.lineStart + line.pos;
   const size = quoteMarkerSize(line);
+  const roleFrom = from + size;
+  const role = /^\[![^\]\r\n]+\]([+-])?/.exec(line.text.slice(line.pos + size));
   cx.startComposite("Callout", line.pos);
   cx.addElement(cx.elt("CalloutQuoteMark", from, from + 1));
+  if (role) cx.addElement(cx.elt("CalloutRoleMark", roleFrom, roleFrom + role[0].length));
   line.moveBase(line.pos + size);
   return null;
 }
@@ -310,7 +313,8 @@ export const scholiumMarkdownDialect: MarkdownConfig = {
     "InlineMath", {name: "BlockMath", block: true}, {name: "UnclosedBlockMath", block: true},
     "MathMark", "MathContent",
     "Highlight", "HighlightMark", "HighlightContent",
-    {name: "Callout", block: true, composite: continueCallout}, "CalloutQuoteMark",
+    {name: "Callout", block: true, composite: continueCallout},
+    "CalloutQuoteMark", "CalloutRoleMark",
     "ObsidianComment", "UnclosedObsidianComment",
     {name: "ObsidianCommentBlock", block: true}, {name: "UnclosedObsidianCommentBlock", block: true},
   ],

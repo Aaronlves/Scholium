@@ -12,7 +12,6 @@ struct DocumentSessionKey: Hashable, Sendable {
 enum EditorSaveOutcome: Equatable {
     case clean
     case changedDuringSave
-    case committedWithRefreshFailure(String)
 }
 
 struct ObservedScrollPosition: Equatable, Sendable {
@@ -82,6 +81,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var showConflictComparison = false
 
     var autosaveTask: Task<Void, Never>?
+    var autosaveDeadline: ContinuousClock.Instant?
     var activeSaveTask: Task<EditorSaveOutcome, Error>?
     var activeSaveToken: UUID?
     private var editorCancellable: AnyCancellable?
@@ -132,11 +132,16 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func cancelScheduledWork() {
-        autosaveTask?.cancel()
-        autosaveTask = nil
+        cancelAutosave()
         activeSaveTask?.cancel()
         activeSaveTask = nil
         activeSaveToken = nil
+    }
+
+    func cancelAutosave() {
+        autosaveDeadline = nil
+        autosaveTask?.cancel()
+        autosaveTask = nil
     }
 
     /// Releases reconstruction-sensitive state after the owning tab lease and

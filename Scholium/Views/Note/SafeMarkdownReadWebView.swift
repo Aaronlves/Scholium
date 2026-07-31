@@ -14,6 +14,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     /// preview payloads during unrelated SwiftUI updates.
     var configurationRevision: String? = nil
     var linkPreviews: [DocumentLinkPreview] = []
+    /// A caller-owned revision lets preview data converge without becoming a
+    /// document-load identity or hashing bounded HTML on every SwiftUI pass.
+    var linkPreviewRevision: String? = nil
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
     /// A lightweight researcher Comment saved into the active Discussion.
@@ -94,6 +97,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             userCSS: userCSS,
             configurationRevision: configurationRevision,
             linkPreviews: linkPreviews,
+            linkPreviewRevision: linkPreviewRevision,
             in: webView
         )
         return webView
@@ -132,6 +136,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             userCSS: userCSS,
             configurationRevision: configurationRevision,
             linkPreviews: linkPreviews,
+            linkPreviewRevision: linkPreviewRevision,
             in: webView
         )
     }
@@ -209,6 +214,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var activeNavigation: WKNavigation?
         private var loadFinalizationTask: Task<Void, Never>?
         private var sourceLineNavigationTask: Task<Void, Never>?
+        private var linkPreviewUpdateTask: Task<Void, Never>?
+        private var desiredLinkPreviewRevision = ""
+        private var appliedLinkPreviewRevision = ""
+        private var loadingLinkPreviewRevision = ""
+        private var desiredLinkPreviews: [DocumentLinkPreview] = []
         private var onScrollFractionChange: ((Double) -> Void)?
 
         private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
@@ -291,6 +301,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let documentChanged = self.documentID != documentID || self.fingerprint != fingerprint
             if documentChanged {
                 loadedSignature = nil
+                appliedLinkPreviewRevision = ""
+                loadingLinkPreviewRevision = ""
                 lastReachedSourceLine = nil
                 pageIsReady = false
                 hasLoadedPage = false
@@ -385,9 +397,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             userCSS: String,
             configurationRevision: String?,
             linkPreviews: [DocumentLinkPreview],
+            linkPreviewRevision: String?,
             in webView: WKWebView
         ) {
             let capabilitySignature = "\(onCommentSelection != nil):\(onSelectionChange != nil)"
+            let previewRevision = linkPreviewRevision ?? String(linkPreviews.hashValue)
             let signature = configurationRevision.map {
                 "revision:\($0):\(capabilitySignature)"
             } ?? [
@@ -398,7 +412,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 String(linkPreviews.hashValue),
                 capabilitySignature,
             ].joined(separator: ":")
-            guard loadedSignature != signature else { return }
+            desiredLinkPreviews = linkPreviews
+            desiredLinkPreviewRevision = previewRevision
+            guard loadedSignature != signature else {
+                applyLinkPreviewsIfNeeded(in: webView)
+                return
+            }
             self.source = source
             sourceUTF16Length = source.utf16.count
             sourceUTF8Length = source.utf8.count
@@ -412,6 +431,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             activeNavigation = nil
             cancelPendingPageWork(keepingLoadIdentity: true)
             loadedSignature = signature
+            loadingLinkPreviewRevision = previewRevision
             pageIsReady = false
             activeWebView = webView
             let html = Self.documentHTML(
@@ -443,6 +463,29 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       self.activeLoadSignature == expectedSignature,
                       self.loadGeneration == expectedLoadGeneration else { return }
                 self.activeNavigation = navigation
+            }
+        }
+
+        private func applyLinkPreviewsIfNeeded(in webView: WKWebView) {
+            guard pageIsReady,
+                  desiredLinkPreviewRevision != appliedLinkPreviewRevision,
+                  activeWebView === webView else { return }
+            let revision = desiredLinkPreviewRevision
+            let previews = Self.linkPreviewArguments(desiredLinkPreviews)
+            linkPreviewUpdateTask?.cancel()
+            linkPreviewUpdateTask = Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView, self.activeWebView === webView else { return }
+                let result = try? await webView.callAsyncJavaScript(
+                    "return window.scholiumSetLinkPreviews?.(previews) === true",
+                    arguments: ["previews": previews],
+                    in: nil,
+                    contentWorld: .page
+                )
+                guard !Task.isCancelled,
+                      result as? Bool == true,
+                      self.activeWebView === webView,
+                      self.desiredLinkPreviewRevision == revision else { return }
+                self.appliedLinkPreviewRevision = revision
             }
         }
 
@@ -541,6 +584,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   loadedSignature == expectedSignature else { return }
             let expectedLoadGeneration = loadGeneration
             pageIsReady = true
+            appliedLinkPreviewRevision = loadingLinkPreviewRevision
+            applyLinkPreviewsIfNeeded(in: webView)
             let restoreClaim = claimScrollRestoreRequest()
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
@@ -935,6 +980,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadFinalizationTask = nil
             sourceLineNavigationTask?.cancel()
             sourceLineNavigationTask = nil
+            linkPreviewUpdateTask?.cancel()
+            linkPreviewUpdateTask = nil
             inFlightScrollRestoreClaim = nil
             pageIsReady = false
             guard !keepingLoadIdentity else { return }
@@ -1193,10 +1240,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const commentText = document.getElementById('comment-text');
                 const commentHelp = document.getElementById('comment-help');
                 const qaCommentSubmit = document.getElementById('qa-submit-comment');
+                \(ReviewSelectionPresentation.script)
                 let pendingCommentRequestID = null;
                 let commentAnchorElement = null;
                 let commentSelectionRange = null;
-                const previewByRange = new Map(linkPreviews.map(preview => [
+                let previewByRange = new Map(linkPreviews.map(preview => [
                   preview.utf16LowerBound + ':' + preview.utf16UpperBound,
                   preview
                 ]));
@@ -1258,6 +1306,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   previewMetadata.textContent = '';
                   previewBody.replaceChildren();
                 }
+
+                window.scholiumSetLinkPreviews = previews => {
+                  if (!Array.isArray(previews)) return false;
+                  previewByRange = new Map(previews.map(preview => [
+                    preview.utf16LowerBound + ':' + preview.utf16UpperBound,
+                    preview
+                  ]));
+                  hidePopover();
+                  return true;
+                };
 
                 function positionPopover(anchor) {
                   popover.hidden = false;
@@ -1431,6 +1489,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     // not a request to discard the marginal note.
                     if (!commentComposer.hidden) return;
                     const selection = window.getSelection();
+                    const main = document.getElementById('scholium-document');
+                    reviewSelectionPresentation.update(selection, main);
                     const text = selection ? selection.toString().trim() : '';
                     if (!text) {
                       commentSelectionRange = null;
@@ -1439,7 +1499,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       return;
                     }
                     const range = selection.getRangeAt(0);
-                    const main = document.getElementById('scholium-document');
                     if (!main || !main.contains(range.startContainer) || !main.contains(range.endContainer)) {
                       commentSelectionRange = null;
                       selectionActions.hidden = true;
@@ -1828,6 +1887,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let htmlBody: String
         }
 
+        private static func linkPreviewArguments(
+            _ previews: [DocumentLinkPreview]
+        ) -> [[String: Any]] {
+            previews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).map { preview in
+                [
+                    "utf16LowerBound": preview.sourceSpan.utf16LowerBound,
+                    "utf16UpperBound": preview.sourceSpan.utf16UpperBound,
+                    "title": String(preview.title.prefix(240)),
+                    "relationship": preview.relationship?.rawValue ?? NSNull(),
+                    "fragment": preview.fragment.map { String($0.prefix(240)) } ?? NSNull(),
+                    "htmlBody": String(preview.htmlBody.prefix(24_000)),
+                ]
+            }
+        }
+
         private static func base64JSON<T: Encodable>(_ value: T) -> String {
             guard let data = try? JSONEncoder().encode(value) else { return "W10=" }
             return data.base64EncodedString()
@@ -1849,6 +1923,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         static let baseCSS = """
         html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
+        \(ReviewSelectionPresentation.css)
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
         .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }
         .scholium-document .scholium-vector-supports { color: var(--scholium-color-connection-support); }

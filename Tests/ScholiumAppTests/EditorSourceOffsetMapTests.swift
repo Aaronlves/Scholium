@@ -53,7 +53,12 @@ struct EditorSourceOffsetMapTests {
 
         for deltas in batches {
             let next = try MarkdownEditorDeltaApplier.apply(deltas, to: source)
-            map.apply(deltas, resultingSource: next)
+            let nextNSString = next as NSString
+            map.apply(
+                deltas,
+                resultingSourceUTF16Length: nextNSString.length,
+                resultingCharacterAt: nextNSString.character(at:)
+            )
             source = next
             #expect(map == EditorSourceOffsetMap(source: source))
             assertEquivalent(map, source: source)

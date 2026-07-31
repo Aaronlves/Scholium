@@ -18,6 +18,8 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
         sourceUTF16Length - crlfSourceOffsets.count
     }
 
+    var usesCRLF: Bool { !crlfSourceOffsets.isEmpty }
+
     func sourceUTF16Offset(forEditorUTF16Offset requestedOffset: Int) -> Int? {
         guard requestedOffset >= 0, requestedOffset <= editorUTF16Length else {
             return nil
@@ -65,7 +67,8 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
     /// coordinates in the old exact source, as required by DeltaApplier.
     mutating func apply(
         _ deltas: [MarkdownEditorDelta],
-        resultingSource: String
+        resultingSourceUTF16Length: Int,
+        resultingCharacterAt: (Int) -> unichar
     ) {
         guard !deltas.isEmpty else { return }
         let ordered = deltas.sorted {
@@ -74,12 +77,12 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
             }
             return $0.fromUTF16 < $1.fromUTF16
         }
-        let resultingLength = resultingSource.utf16.count
+        let resultingLength = resultingSourceUTF16Length
         let expectedLength = ordered.reduce(sourceUTF16Length) { length, delta in
             length + delta.insertion.utf16.count - (delta.toUTF16 - delta.fromUTF16)
         }
         guard expectedLength == resultingLength else {
-            self = EditorSourceOffsetMap(source: resultingSource)
+            assertionFailure("The exact-source offset map received an inconsistent result length.")
             return
         }
 
@@ -102,7 +105,6 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
             retained.append(offset + completedShift)
         }
 
-        let result = resultingSource as NSString
         var cumulativeShift = 0
         var rescanned: [Int] = []
         for delta in ordered {
@@ -114,8 +116,8 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
             if scanLower <= scanUpper {
                 for offset in scanLower...scanUpper
                 where offset + 1 < resultingLength
-                    && result.character(at: offset) == 13
-                    && result.character(at: offset + 1) == 10 {
+                    && resultingCharacterAt(offset) == 13
+                    && resultingCharacterAt(offset + 1) == 10 {
                     rescanned.append(offset)
                 }
             }

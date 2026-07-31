@@ -401,7 +401,10 @@ export function semanticProjectionRanges(
           markerNames.add("TaskMarker");
         }
         if (kind === "code") markerNames.add("CodeMark");
-        if (kind === "callout") markerNames.add("CalloutQuoteMark");
+        if (kind === "callout") {
+          markerNames.add("CalloutQuoteMark");
+          markerNames.add("CalloutRoleMark");
+        }
         if (kind === "displayMath") markerNames.add("MathMark");
         const markerRanges = presentationBlockMarkerRanges(
           state,

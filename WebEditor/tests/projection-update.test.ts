@@ -4,13 +4,16 @@ import {describe, expect, it} from "vitest";
 import {
   activeProjectionSignature,
   selectionAffectedProjectionRanges,
+  selectionActivatesCallout,
   selectionIntersectsProjection,
   selectionProjectionSignature,
   transactionCanMapProjection,
+  transactionCanMapProjectionTopology,
   transactionChangedSyntaxTree,
   transactionMayCreateProjection,
 } from "../projection-update";
 import {scholiumNoteLanguage} from "../language";
+import {semanticProjectionRanges} from "../semantic-projection";
 
 function insertion(text: string) {
   const state = EditorState.create({doc: "研究文本"});
@@ -153,6 +156,56 @@ describe("construct-bearing projection update fast path", () => {
   });
 });
 
+describe("local projection-topology proof", () => {
+  function parsedState(source: string) {
+    const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
+    expect(ensureSyntaxTree(state, state.doc.length, 5_000)).not.toBeNull();
+    return state;
+  }
+
+  function syntaxFor(state: EditorState) {
+    return semanticProjectionRanges(state, [{from: 0, to: state.doc.length}], 0);
+  }
+
+  it("maps ordinary prose beside rich inline Markdown without a full catalog rebuild", () => {
+    const source = "The shrimp is *Neocaridina davidi* and **Scholium** remains stable.";
+    const state = parsedState(source);
+    const insertionPoint = source.indexOf("shrimp") + "shrimp".length;
+    const transaction = state.update({changes: {from: insertionPoint, insert: " species"}});
+
+    expect(transactionCanMapProjectionTopology(
+      transaction,
+      /[\r\n`~<>%$\[\]!*_|^:]/,
+      [],
+      syntaxFor(state),
+    )).toBe(true);
+  });
+
+  it("rebuilds when plain text completes latent inline or Callout syntax", () => {
+    const emphasisSource = "Before **** after";
+    const emphasis = parsedState(emphasisSource);
+    const emphasisTransaction = emphasis.update({
+      changes: {from: emphasisSource.indexOf("****") + 2, insert: "claim"},
+    });
+    expect(transactionCanMapProjectionTopology(
+      emphasisTransaction,
+      /[\r\n`~<>%$\[\]!*_|^:]/,
+      [],
+      syntaxFor(emphasis),
+    )).toBe(false);
+
+    const calloutSource = "> [!] Claim";
+    const callout = parsedState(calloutSource);
+    const calloutTransaction = callout.update({changes: {from: 4, insert: "state"}});
+    expect(transactionCanMapProjectionTopology(
+      calloutTransaction,
+      /[\r\n`~<>%$\[\]!*_|^:]/,
+      [],
+      syntaxFor(callout),
+    )).toBe(false);
+  });
+});
+
 describe("projection activation boundaries", () => {
   const projection = {from: 4, to: 12};
   const caret = (head: number) => ({from: head, to: head, head, empty: true});
@@ -170,6 +223,17 @@ describe("projection activation boundaries", () => {
       {from: 0, to: 5, head: 5, empty: false},
       projection,
     )).toBe(true);
+  });
+
+  it("keeps the Callout content-end insertion point editable", () => {
+    expect(selectionActivatesCallout(caret(3), projection)).toBe(false);
+    expect(selectionActivatesCallout(caret(4), projection)).toBe(true);
+    expect(selectionActivatesCallout(caret(12), projection)).toBe(true);
+    expect(selectionActivatesCallout(caret(13), projection)).toBe(false);
+    expect(selectionActivatesCallout(
+      {from: 0, to: 4, head: 4, empty: false},
+      projection,
+    )).toBe(false);
   });
 
   it("keeps one signature while the caret remains inside a construct", () => {

@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 7;
+export const EDITOR_PROTOCOL_VERSION = 8;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -94,7 +94,7 @@ export type EditorOperation =
   | {type: "queryPerformance"}
   | {type: "captureRecovery"}
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
-  | {type: "synchronizeCommittedText"; expectedText: string; committedText: string; committedFingerprint: string}
+  | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
   | {type: "markClean"} | {type: "focus"} | {type: "blur"};
 export interface EditorRequest {
@@ -103,7 +103,7 @@ export interface EditorRequest {
   sessionID: string;
   documentID: string;
   startingFingerprint: string;
-  expectedGeneration: number;
+  knownGeneration: number;
   operation: EditorOperation;
 }
 export interface EditorCommandResult {
@@ -118,6 +118,7 @@ export interface EditorCommandResult {
   recovery?: RecoverySnapshot;
   scrollAnchor?: EditorScrollAnchor;
   performanceSamples?: EditorPerformanceSample[];
+  commitSuperseded?: boolean;
   accepted: boolean;
   error?: string;
 }
@@ -125,7 +126,7 @@ export interface EditorCommandResult {
 const operationTypes = new Set([
   "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "synchronizeCommittedText", "command", "markClean", "focus", "blur",
+  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "markClean", "focus", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "standardLink", "wikilink",
@@ -236,7 +237,7 @@ function validOperation(operation: Record<string, unknown>) {
       && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
   }
   case "restoreRecovery": return validRecoverySnapshot(operation.snapshot);
-  case "synchronizeCommittedText":
+  case "acknowledgeCommittedSnapshot":
     return typeof operation.expectedText === "string" && typeof operation.committedText === "string"
       && typeof operation.committedFingerprint === "string";
   case "command":
@@ -258,13 +259,13 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
       || typeof request.sessionID !== "string" || request.sessionID.length > 128
       || typeof request.documentID !== "string" || request.documentID.length > 4096
       || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256
-      || !Number.isSafeInteger(request.expectedGeneration) || request.expectedGeneration! < 0
+      || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration! < 0
       || !request.operation || typeof request.operation !== "object") return false;
   const type = (request.operation as {type?: unknown}).type;
   if (typeof type !== "string" || !operationTypes.has(type)) return false;
   if (!validOperation(request.operation as unknown as Record<string, unknown>)) return false;
   try {
-    const sourceBearing = ["initialize", "synchronizeCommittedText", "restoreRecovery"].includes(type);
+    const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery"].includes(type);
     return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_UTF8_BYTES + 512_000 : MAX_INBOUND_BYTES);
   } catch { return false; }
 }

@@ -64,11 +64,13 @@ describe("Lezer-backed semantic projection", () => {
   });
 
   it("distinguishes semantic callout blocks from ordinary quotations", () => {
-    const source = "> [!state] Claim\n> Supported body.\n\n> Ordinary quotation.";
+    const source = "> [!state]- Claim\n> Supported body.\n\n> Ordinary quotation.";
     const ranges = completeProjection(source);
     const calloutEnd = source.indexOf("\n\n");
 
     expect(ranges.callouts).toEqual([{from: 0, to: calloutEnd}]);
+    expect(ranges.blocks.find((block) => block.kind === "callout")?.markerRanges
+      .map((range) => source.slice(range.from, range.to))).toEqual([">", "[!state]-", ">"]);
   });
 
   it("owns marker ranges and nesting for both presentation adapters", () => {

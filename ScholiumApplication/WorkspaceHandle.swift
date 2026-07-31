@@ -48,6 +48,14 @@ private struct OwnedRefreshTask: Sendable {
     let task: Task<Void, Never>
 }
 
+private enum DocumentSaveCompletion: Equatable {
+    /// Return only after the matching derived workspace generation publishes.
+    case sourceAndDerived
+    /// Return after the authoritative repository commit and refresh in the
+    /// Workspace-owned background queue.
+    case sourceOnly
+}
+
 enum RefreshPublication: Sendable {
     case sourceCommitted(VaultQualifiedNoteID, WorkspaceSourceCommitKind)
     case explicit
@@ -245,6 +253,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var isShutDown = false
     private var liveWatcherTask: Task<Void, Never>?
     private var liveIndexRefreshTask: OwnedRefreshTask?
+    private var sourceCommitRefreshTask: Task<Void, Never>?
+    private var pendingSourceCommitRefreshes: [WorkspaceRefreshPayload] = []
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     private var researchRecoveryMutationIsActive = false
     var sourceOperationGate = WorkspaceSourceOperationGate()
@@ -623,6 +633,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
+        let sourceCommitRefresh = sourceCommitRefreshTask
+        sourceCommitRefreshTask = nil
+        pendingSourceCommitRefreshes.removeAll()
+        sourceCommitRefresh?.cancel()
         await refreshCoordinator.shutdown()
         let watcher = liveWatcherTask
         let refresh = liveIndexRefreshTask?.task
@@ -634,6 +648,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         refresh?.cancel()
         await watcher?.value
         await refresh?.value
+        await sourceCommitRefresh?.value
         await events.finish(finalSnapshot: currentSnapshot)
         for lease in leases.reversed() where lease.started {
             lease.url.stopAccessingSecurityScopedResource()
@@ -981,6 +996,33 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
     ) async throws -> SaveResult {
+        try await performDocumentSave(
+            id,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision,
+            completion: .sourceAndDerived
+        )
+    }
+
+    func commitDocument(
+        _ id: VaultQualifiedNoteID,
+        changeSet: NoteChangeSet,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> SaveResult {
+        try await performDocumentSave(
+            id,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision,
+            completion: .sourceOnly
+        )
+    }
+
+    private func performDocumentSave(
+        _ id: VaultQualifiedNoteID,
+        changeSet: NoteChangeSet,
+        expectedRevision: DocumentFingerprint,
+        completion: DocumentSaveCompletion
+    ) async throws -> SaveResult {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -1029,20 +1071,27 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             throw TriptychTransactionError.recoveryRequired(record)
         }
+        if completion == .sourceOnly {
+            // Queue before releasing the mutation lease so the matching
+            // watcher event cannot start a competing refresh first.
+            scheduleSourceCommitRefresh(id: id, kind: .save)
+        }
         endSourceMutation(mutationLease)
         ownsMutation = false
-        do {
-            _ = try await refresh(
-                publication: .sourceCommitted(id, .save),
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [id.vaultID]
+        if completion == .sourceAndDerived {
+            do {
+                _ = try await refresh(
+                    publication: .sourceCommitted(id, .save),
+                    failureDisposition: .staleAfterCommittedMutation(
+                        affectedVaultIDs: [id.vaultID]
+                    )
                 )
-            )
-        } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                result.document.fingerprint,
-                error.localizedDescription
-            )
+            } catch {
+                throw ScholiumApplicationError.committedButRefreshFailed(
+                    result.document.fingerprint,
+                    error.localizedDescription
+                )
+            }
         }
         return result
     }
@@ -1679,14 +1728,61 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         guard !isShutDown,
               !sourceOperationGate.sourceMutationIsActive,
               !pendingLiveEvents.isEmpty,
+              sourceCommitRefreshTask == nil,
               liveIndexRefreshTask == nil else { return }
 
         let token = UUID()
-        let task = Task { [weak self] in
+        let task = Task(priority: .utility) { [weak self] in
             guard let self else { return }
             await self.runLiveIndexRefresh(token: token)
         }
         liveIndexRefreshTask = OwnedRefreshTask(token: token, task: task)
+    }
+
+    /// Commits and derived state intentionally have different completion
+    /// semantics. The source caller receives the revision-checked repository
+    /// result immediately; this actor retains and coalesces the disposable
+    /// refresh work until publication or a typed stale-state event.
+    private func scheduleSourceCommitRefresh(
+        id: VaultQualifiedNoteID,
+        kind: WorkspaceSourceCommitKind
+    ) {
+        pendingSourceCommitRefreshes.append(WorkspaceRefreshPayload(
+            publication: .sourceCommitted(id, kind),
+            failureDisposition: .staleAfterCommittedMutation(
+                affectedVaultIDs: [id.vaultID]
+            ),
+            sourceCatalogPreparation: .inferred(
+                from: .sourceCommitted(id, kind)
+            )
+        ))
+        guard !isShutDown, sourceCommitRefreshTask == nil else { return }
+        sourceCommitRefreshTask = Task(priority: .utility) { [weak self] in
+            await self?.runSourceCommitRefreshes()
+        }
+    }
+
+    private func runSourceCommitRefreshes() async {
+        defer {
+            sourceCommitRefreshTask = nil
+            startLiveIndexRefreshIfNeeded()
+        }
+        while !isShutDown, !Task.isCancelled,
+              !pendingSourceCommitRefreshes.isEmpty {
+            let queued = pendingSourceCommitRefreshes
+            pendingSourceCommitRefreshes.removeAll(keepingCapacity: true)
+            do {
+                let payload = try WorkspaceRefreshPayload.merged(queued)
+                _ = try await refreshCoordinator.request(payload)
+            } catch is CancellationError {
+                return
+            } catch {
+                // `performRefreshCycle` already published the typed stale
+                // state while retaining its last known-good snapshot. A
+                // derived failure never turns the committed save into a
+                // retryable source mutation.
+            }
+        }
     }
 
     private func runLiveIndexRefresh(token: UUID) async {

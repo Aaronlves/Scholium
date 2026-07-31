@@ -550,6 +550,9 @@ enum WorkspaceSnapshotBuilder {
                                 $0.code == .ambiguous || $0.code == .ambiguousHeading
                             }
                         ),
+                        headings: loaded.semantics[
+                            document.relativePath
+                        ]?.headings ?? [],
                         cachedTitleProjection: loaded.semantics[
                             document.relativePath
                         ].map {

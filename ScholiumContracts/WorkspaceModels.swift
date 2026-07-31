@@ -101,6 +101,10 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let fileMetadata: WorkspaceFileMetadata
     public let lifecycle: WorkspaceDocumentLifecycle
     public let graphCounts: WorkspaceGraphCounts
+    /// Source-bound heading projection prepared by the workspace catalog for
+    /// this exact fingerprint. Presentation consumers must not parse Markdown
+    /// again merely to build document navigation.
+    public let headings: [HeadingNode]
     package let cachedTitleProjection: WorkspaceNoteTitleProjection?
 
     public var fingerprint: DocumentFingerprint { document.fingerprint }
@@ -135,7 +139,8 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
         lifecycle: WorkspaceDocumentLifecycle,
-        graphCounts: WorkspaceGraphCounts
+        graphCounts: WorkspaceGraphCounts,
+        headings: [HeadingNode] = []
     ) {
         self.init(
             id: id,
@@ -145,6 +150,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             fileMetadata: fileMetadata,
             lifecycle: lifecycle,
             graphCounts: graphCounts,
+            headings: headings,
             cachedTitleProjection: nil
         )
     }
@@ -157,6 +163,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         fileMetadata: WorkspaceFileMetadata,
         lifecycle: WorkspaceDocumentLifecycle,
         graphCounts: WorkspaceGraphCounts,
+        headings: [HeadingNode],
         cachedTitleProjection: WorkspaceNoteTitleProjection?
     ) {
         self.id = id
@@ -166,6 +173,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.fileMetadata = fileMetadata
         self.lifecycle = lifecycle
         self.graphCounts = graphCounts
+        self.headings = headings
         self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
             ? cachedTitleProjection
             : nil

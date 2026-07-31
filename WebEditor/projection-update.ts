@@ -1,6 +1,13 @@
 import type {Text, Transaction} from "@codemirror/state";
 import {syntaxTree} from "@codemirror/language";
-import {boundedProjectionRanges} from "./semantic-projection";
+import {
+  boundedProjectionRanges,
+  semanticProjectionRanges,
+  type SemanticBlockProjection,
+  type SemanticInlineProjection,
+  type SemanticProjectionRanges,
+  type SemanticSourceRange,
+} from "./semantic-projection";
 import {
   immutableProjectionRanges,
   projectionBoundaryTouches,
@@ -31,6 +38,21 @@ export function selectionIntersectsProjection(
   return selection.empty
     ? selection.head >= projection.from && selection.head < projection.to
     : selection.from < projection.to && selection.to > projection.from;
+}
+
+/**
+ * A Callout's semantic source excludes its terminal line ending, but its
+ * content-end insertion point is still editable Callout content. This is the
+ * one block-specific inclusive caret edge; non-empty selections continue to
+ * require real half-open overlap.
+ */
+export function selectionActivatesCallout(
+  selection: ProjectionSelectionRange,
+  callout: ProjectionSourceRange,
+) {
+  return selection.empty
+    ? selection.head >= callout.from && selection.head <= callout.to
+    : selection.from < callout.to && selection.to > callout.from;
 }
 
 export function activeProjectionSignature(
@@ -165,4 +187,137 @@ export function transactionCanMapProjection(
     canMap = !projectionBoundaryTouches(ranges, fromA);
   });
   return canMap;
+}
+
+function rangesOverlap(left: ProjectionSourceRange, right: ProjectionSourceRange) {
+  return left.from < right.to && left.to > right.from;
+}
+
+function physicalLineNeighborhood(doc: Text, from: number, to: number) {
+  const startLine = doc.lineAt(Math.max(0, Math.min(from, doc.length)));
+  const endLine = doc.lineAt(Math.max(0, Math.min(to, doc.length)));
+  return {
+    from: doc.line(Math.max(1, startLine.number - 1)).from,
+    to: doc.line(Math.min(doc.lines, endLine.number + 1)).to,
+  };
+}
+
+function mappedRange(
+  range: SemanticSourceRange,
+  transaction: Transaction,
+): SemanticSourceRange {
+  return {
+    from: transaction.changes.mapPos(range.from),
+    to: transaction.changes.mapPos(range.to),
+  };
+}
+
+function mappedBlock(
+  block: SemanticBlockProjection,
+  transaction: Transaction,
+): SemanticBlockProjection {
+  return {
+    ...block,
+    ...mappedRange(block, transaction),
+    parent: block.parent ? {
+      kind: block.parent.kind,
+      ...mappedRange(block.parent, transaction),
+    } : null,
+    markerRanges: block.markerRanges.map((range) => mappedRange(range, transaction)),
+    taskMarkerRange: block.taskMarkerRange
+      ? mappedRange(block.taskMarkerRange, transaction)
+      : null,
+  };
+}
+
+function mappedInline(
+  inline: SemanticInlineProjection,
+  transaction: Transaction,
+): SemanticInlineProjection {
+  return {
+    ...inline,
+    ...mappedRange(inline, transaction),
+    markerRanges: inline.markerRanges.map((range) => mappedRange(range, transaction)),
+    visibleRanges: inline.visibleRanges.map((range) => mappedRange(range, transaction)),
+    targetRange: inline.targetRange ? mappedRange(inline.targetRange, transaction) : null,
+    aliasRange: inline.aliasRange ? mappedRange(inline.aliasRange, transaction) : null,
+  };
+}
+
+function rangeSignature(range: SemanticSourceRange | null) {
+  return range ? `${range.from}:${range.to}` : "-";
+}
+
+function projectionTopologySignature(projection: SemanticProjectionRanges) {
+  const blocks = projection.blocks.map((block) => [
+    "b", block.kind, block.nodeName, block.from, block.to, block.depth,
+    block.parent?.kind ?? "-", rangeSignature(block.parent),
+    block.headingLevel ?? "-", block.listDepth ?? "-",
+    block.markerRanges.map(rangeSignature).join(","),
+    rangeSignature(block.taskMarkerRange),
+  ].join("|"));
+  const inlines = projection.inlines.map((inline) => [
+    "i", inline.kind, inline.nodeName, inline.from, inline.to,
+    inline.markerRanges.map(rangeSignature).join(","),
+    inline.visibleRanges.map(rangeSignature).join(","),
+    rangeSignature(inline.targetRange), rangeSignature(inline.aliasRange),
+  ].join("|"));
+  const literals = projection.literals.map((literal) =>
+    ["l", literal.nodeName, literal.from, literal.to].join("|"));
+  return [...blocks, ...inlines, ...literals].sort().join("\n");
+}
+
+/**
+ * Proves that one bounded plain-text insertion preserves the local semantic
+ * catalog. This replaces marker-proximity guessing: academic prose may sit
+ * beside emphasis, links, or citations without forcing a complete-document
+ * projection rebuild, while text that actually completes latent Markdown
+ * still changes the catalog and fails closed to a rebuild.
+ */
+export function transactionCanMapProjectionTopology(
+  transaction: Transaction,
+  marker: RegExp,
+  mutationSensitiveRanges: readonly ProjectionSourceRange[],
+  previousSyntax: SemanticProjectionRanges,
+) {
+  if (!transaction.docChanged) return false;
+  const changes: Array<{
+    fromA: number;
+    toA: number;
+    fromB: number;
+    toB: number;
+    insert: string;
+  }> = [];
+  transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+    changes.push({fromA, toA, fromB, toB, insert: inserted.toString()});
+  });
+  if (changes.length !== 1) return false;
+  const {fromA, toA, fromB, toB, insert} = changes[0];
+  marker.lastIndex = 0;
+  if (toA > fromA || insert.length > 8_192 || /[\r\n]/.test(insert) || marker.test(insert)
+      || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
+    return false;
+  }
+
+  const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
+  const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
+  const previousLocal: SemanticProjectionRanges = {
+    ...previousSyntax,
+    blocks: previousSyntax.blocks
+      .filter((block) => rangesOverlap(block, oldNeighborhood))
+      .map((block) => mappedBlock(block, transaction)),
+    inlines: previousSyntax.inlines
+      .filter((inline) => rangesOverlap(inline, oldNeighborhood))
+      .map((inline) => mappedInline(inline, transaction)),
+    literals: previousSyntax.literals
+      .filter((literal) => rangesOverlap(literal, oldNeighborhood))
+      .map((literal) => ({...literal, ...mappedRange(literal, transaction)})),
+  };
+  const nextLocal = semanticProjectionRanges(
+    transaction.state,
+    [newNeighborhood],
+    0,
+  );
+  return projectionTopologySignature(previousLocal)
+    === projectionTopologySignature(nextLocal);
 }

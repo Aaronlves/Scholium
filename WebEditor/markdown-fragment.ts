@@ -1,5 +1,5 @@
-import {markdownLanguage} from "@codemirror/lang-markdown";
 import {scanMath, type MathDialect, type MathProjection} from "./math";
+import {scholiumMarkdownContentLanguage} from "./language";
 import {
   tablePresentation,
   type TablePresentation,
@@ -15,6 +15,8 @@ export interface MarkdownFragmentCallout {
 export interface MarkdownFragmentOptions {
   mathematics?: MathDialect;
   resolveCallout?: (rawKind: string) => MarkdownFragmentCallout;
+  resolveVectorLink?: (marker: string) => string;
+  sourceOffset?: (fragmentOffset: number) => number;
 }
 
 interface MarkdownTreeCursor {
@@ -37,10 +39,49 @@ function documentFor(parent: Node): Document {
   return owner;
 }
 
+function locatedOffset(options: MarkdownFragmentOptions, offset: number) {
+  return options.sourceOffset?.(offset) ?? offset;
+}
+
+function optionsAt(options: MarkdownFragmentOptions, offset: number): MarkdownFragmentOptions {
+  return {
+    ...options,
+    sourceOffset: (nestedOffset) => locatedOffset(options, offset + nestedOffset),
+  };
+}
+
+function optionsWithMap(
+  options: MarkdownFragmentOptions,
+  offsets: readonly number[],
+): MarkdownFragmentOptions {
+  return {
+    ...options,
+    sourceOffset: (nestedOffset) => locatedOffset(
+      options,
+      offsets[Math.max(0, Math.min(nestedOffset, offsets.length - 1))] ?? 0,
+    ),
+  };
+}
+
+function identifyProjectedLink(
+  element: HTMLElement,
+  target: string,
+  from: number,
+  to: number,
+  caret: number,
+  options: MarkdownFragmentOptions,
+) {
+  element.dataset.scholiumLinkTarget = target;
+  element.dataset.scholiumSourceFrom = String(locatedOffset(options, from));
+  element.dataset.scholiumSourceTo = String(locatedOffset(options, to));
+  element.dataset.scholiumSourceCaret = String(locatedOffset(options, caret));
+}
+
 function appendInlineMarkdownNode(
   cursor: MarkdownTreeCursor,
   source: string,
   parent: HTMLElement | DocumentFragment,
+  options: MarkdownFragmentOptions,
 ) {
   const document = documentFor(parent);
   const raw = source.slice(cursor.from, cursor.to);
@@ -55,11 +96,44 @@ function appendInlineMarkdownNode(
     return;
   }
   if (cursor.name === "Link") {
-    const link = /^\[([\s\S]*?)\]\([\s\S]*\)$/.exec(raw);
+    const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
     const span = document.createElement("span");
     span.className = "cm-live-link";
     span.dir = "auto";
     span.textContent = link?.[1] ?? raw;
+    if (link) {
+      identifyProjectedLink(
+        span,
+        link[2].trim().replace(/^<|>$/g, ""),
+        cursor.from,
+        cursor.to,
+        cursor.from + 1,
+        options,
+      );
+    }
+    parent.append(span);
+    return;
+  }
+  if (cursor.name === "WikiLink" || cursor.name === "VectorLink") {
+    const link = /^(!?)([+\-?]?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
+    if (!link) {
+      parent.append(document.createTextNode(raw));
+      return;
+    }
+    const span = document.createElement("span");
+    const embed = link[1] === "!";
+    const kind = options.resolveVectorLink?.(link[2]) ?? "neutral";
+    span.className = embed
+      ? "cm-live-embed"
+      : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
+    span.dir = "auto";
+    const target = link[3].trim();
+    const alias = link[4]?.trim();
+    span.textContent = alias || target;
+    const prefixLength = link[1].length + link[2].length + 2;
+    const aliasMarker = raw.indexOf("|");
+    const caret = cursor.from + (aliasMarker >= 0 ? aliasMarker + 1 : prefixLength);
+    identifyProjectedLink(span, target, cursor.from, cursor.to, caret, options);
     parent.append(span);
     return;
   }
@@ -79,7 +153,7 @@ function appendInlineMarkdownNode(
       if (cursor.from > position) {
         destination.append(document.createTextNode(source.slice(position, cursor.from)));
       }
-      appendInlineMarkdownNode(cursor, source, destination);
+      appendInlineMarkdownNode(cursor, source, destination, options);
       position = cursor.to;
     } while (cursor.nextSibling());
     cursor.parent();
@@ -92,10 +166,14 @@ function appendInlineMarkdownNode(
   if (wrapperName) parent.append(destination);
 }
 
-function appendInlineMarkdownPlain(source: string, parent: HTMLElement) {
-  const tree = markdownLanguage.parser.parse(source);
+function appendInlineMarkdownPlain(
+  source: string,
+  parent: HTMLElement,
+  options: MarkdownFragmentOptions,
+) {
+  const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
   const cursor = tree.cursor() as MarkdownTreeCursor;
-  appendInlineMarkdownNode(cursor, source, parent);
+  appendInlineMarkdownNode(cursor, source, parent, options);
 }
 
 function appendMath(
@@ -137,18 +215,24 @@ export function appendInlineMarkdown(
     ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "inline")
     : [];
   if (expressions.length === 0) {
-    appendInlineMarkdownPlain(source, parent);
+    appendInlineMarkdownPlain(source, parent, options);
     return;
   }
   let position = 0;
   for (const expression of expressions) {
     if (position < expression.from) {
-      appendInlineMarkdownPlain(source.slice(position, expression.from), parent);
+      appendInlineMarkdownPlain(
+        source.slice(position, expression.from),
+        parent,
+        optionsAt(options, position),
+      );
     }
     appendMath({...expression, from: 0, to: expression.to - expression.from}, parent);
     position = expression.to;
   }
-  if (position < source.length) appendInlineMarkdownPlain(source.slice(position), parent);
+  if (position < source.length) {
+    appendInlineMarkdownPlain(source.slice(position), parent, optionsAt(options, position));
+  }
 }
 
 function appendBlockChildren(
@@ -174,7 +258,7 @@ function tableCellDOM(
   element.dir = "auto";
   if (header) element.setAttribute("scope", "col");
   if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
-  element.dataset.sourceOffset = String(cell.sourceOffset);
+  element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
   appendInlineMarkdown(cell.source, element, options);
   return element;
 }
@@ -207,15 +291,50 @@ export function createTableDOM(
 
 function calloutParts(raw: string, options: MarkdownFragmentOptions) {
   if (!options.resolveCallout) return null;
-  const lines = raw.replaceAll("\r\n", "\n").split("\n");
-  const match = /^\s*>\s*\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(lines[0] ?? "");
+  const lines: Array<{text: string; from: number}> = [];
+  let lineFrom = 0;
+  while (lineFrom <= raw.length) {
+    const lineFeed = raw.indexOf("\n", lineFrom);
+    const rawTo = lineFeed < 0 ? raw.length : lineFeed;
+    const lineTo = rawTo > lineFrom && raw.charCodeAt(rawTo - 1) === 0x0d
+      ? rawTo - 1
+      : rawTo;
+    lines.push({text: raw.slice(lineFrom, lineTo), from: lineFrom});
+    if (lineFeed < 0) break;
+    lineFrom = lineFeed + 1;
+  }
+  const match = /^\s*>\s*\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(lines[0]?.text ?? "");
   if (!match) return null;
+  const rawTitle = match[3];
+  const title = rawTitle.trim();
+  const titleInMatch = match[0].length - rawTitle.length
+    + Math.max(0, rawTitle.indexOf(title));
+  let body = "";
+  const bodyOffsets: number[] = [];
+  for (const [index, line] of lines.slice(1).entries()) {
+    const content = /^(\s*> ?)(.*)$/.exec(line.text);
+    const prefixLength = content?.[1].length ?? 0;
+    const text = content?.[2] ?? line.text;
+    if (index > 0) {
+      body += "\n";
+      bodyOffsets.push(line.from);
+    }
+    const contentFrom = line.from + prefixLength;
+    if (bodyOffsets.length === 0) bodyOffsets.push(contentFrom);
+    else bodyOffsets[bodyOffsets.length - 1] = contentFrom;
+    body += text;
+    for (let offset = 1; offset <= text.length; offset += 1) {
+      bodyOffsets.push(contentFrom + offset);
+    }
+  }
   return {
     definition: options.resolveCallout(match[1]),
     rawKind: match[1],
     fold: match[2] === "+" ? "expanded" : match[2] === "-" ? "collapsed" : "fixed",
-    title: match[3].trim(),
-    body: lines.slice(1).map((line) => line.replace(/^\s*> ?/, "")).join("\n").trim(),
+    title,
+    titleFrom: titleInMatch,
+    body,
+    bodyOffsets,
   };
 }
 
@@ -247,7 +366,7 @@ function appendCallout(
     const title = document.createElement("span");
     title.className = "scholium-callout-title";
     title.dir = "auto";
-    appendInlineMarkdown(parts.title, title, options);
+    appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
     heading.append(title);
   }
   headingContainer.append(heading);
@@ -272,7 +391,7 @@ function appendCallout(
     destination.dir = "auto";
     content.append(destination);
   }
-  appendMarkdownBlocks(parts.body, destination, options);
+  appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
   body.append(signature, content);
   callout.append(headingContainer, body);
   parent.append(callout);
@@ -326,10 +445,12 @@ function appendMarkdownBlockNode(
     parent.append(item);
     return;
   }
+  case "Callout":
   case "Blockquote": {
-    const callout = calloutParts(raw, options);
+    const calloutOptions = optionsAt(options, cursor.from);
+    const callout = calloutParts(raw, calloutOptions);
     if (callout) {
-      appendCallout(callout, parent, options);
+      appendCallout(callout, parent, calloutOptions);
       return;
     }
     const quote = document.createElement("blockquote");
@@ -375,10 +496,13 @@ function appendMarkdownBlockNode(
     const level = Number(cursor.name.at(-1));
     const heading = document.createElement(`h${level}`);
     heading.dir = "auto";
+    const opening = /^\s*#{1,6}\s+/.exec(raw)?.[0].length ?? 0;
+    const trailing = /\s+#+\s*$/.exec(raw.slice(opening));
+    const contentTo = trailing ? opening + trailing.index : raw.length;
     appendInlineMarkdown(
-      raw.replace(/^\s*#{1,6}\s+/, "").replace(/\s+#+\s*$/, ""),
+      raw.slice(opening, contentTo),
       heading,
-      options,
+      optionsAt(options, cursor.from + opening),
     );
     parent.append(heading);
     return;
@@ -411,15 +535,21 @@ export function appendMarkdownBlocks(
     let position = 0;
     for (const expression of displays) {
       if (position < expression.from) {
-        appendMarkdownBlocks(source.slice(position, expression.from), parent, options);
+        appendMarkdownBlocks(
+          source.slice(position, expression.from),
+          parent,
+          optionsAt(options, position),
+        );
       }
       appendMath(expression, parent);
       position = expression.to;
     }
-    if (position < source.length) appendMarkdownBlocks(source.slice(position), parent, options);
+    if (position < source.length) {
+      appendMarkdownBlocks(source.slice(position), parent, optionsAt(options, position));
+    }
     return;
   }
-  const tree = markdownLanguage.parser.parse(source);
+  const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
   const cursor = tree.cursor() as MarkdownTreeCursor;
   appendBlockChildren(cursor, source, parent, options);
 }

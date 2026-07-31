@@ -10,7 +10,7 @@ const request = {
   sessionID: "session",
   documentID: "document",
   startingFingerprint: "fingerprint",
-  expectedGeneration: 4,
+  knownGeneration: 4,
   operation: {type: "queryText" as const},
 };
 
@@ -33,7 +33,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(7);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(8);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -81,7 +81,7 @@ describe("editor protocol", () => {
   });
   it("rejects stale versions, invalid generations, and unknown operations", () => {
     expect(isEditorRequest({...request, protocolVersion: 1})).toBe(false);
-    expect(isEditorRequest({...request, expectedGeneration: -1})).toBe(false);
+    expect(isEditorRequest({...request, knownGeneration: -1})).toBe(false);
     expect(isEditorRequest({...request, operation: {type: "executeAnything"}})).toBe(false);
     expect(isEditorRequest({...request, operation: {type: "setMode"}})).toBe(false);
     expect(isEditorRequest({...request, operation: {type: "command", command: "inventMeaning"}})).toBe(false);

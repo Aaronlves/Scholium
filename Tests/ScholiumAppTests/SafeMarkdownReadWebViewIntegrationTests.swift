@@ -184,6 +184,49 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review link previews update without reloading the document page")
+    func reviewLinkPreviewsConvergeInPlace() async throws {
+        let source = "[[Target]]\n"
+        let document = NoteDocument(relativePath: "PreviewSource.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let pageIdentity = try #require(try await harness.callPageJavaScript(
+            "return window.__scholiumTestingPageIdentity ??= `${Date.now()}:${Math.random()}`"
+        ) as? String)
+
+        harness.updateLinkPreviews([Self.linkPreview(atUTF16: 0)], revision: "graph-1")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        var previewTitle = ""
+        while previewTitle != "Target note" {
+            previewTitle = try await harness.callPageJavaScript(
+                """
+                const link = document.querySelector('a.wiki-link');
+                link?.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
+                return document.querySelector('.scholium-preview-title')?.textContent || '';
+                """
+            ) as? String ?? ""
+            if clock.now >= deadline {
+                Issue.record("Review did not install the updated link preview in place.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(previewTitle == "Target note")
+        let retainedIdentity = try #require(try await harness.callPageJavaScript(
+            "return window.__scholiumTestingPageIdentity"
+        ) as? String)
+        #expect(retainedIdentity == pageIdentity)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review selection remains exact after a semantic table")
     func reviewSelectionAfterTableRemainsExact() async throws {
         let source = """
@@ -215,6 +258,61 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review selection presentation excludes layout-only block space")
+    func reviewSelectionPresentationExcludesLayoutOnlyBlockSpace() async throws {
+        let source = "First paragraph text.\n\nSecond paragraph text.\n"
+        let htmlBody = """
+        <p data-source-line="1">First paragraph text.</p>
+        <p data-source-line="3">Second paragraph text.</p>
+        """
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let snapshot = try await harness.crossParagraphSelectionPresentation()
+        #expect(snapshot.supported)
+        #expect(snapshot.customHighlightInstalled)
+        #expect(snapshot.selectedText.contains("paragraph text"))
+        #expect(snapshot.presentedText == "paragraph text.Second paragraph")
+        #expect(snapshot.nativeSelectionBackground == "rgba(0, 0, 0, 0)")
+        #expect(snapshot.textRangeCount == 2)
+        #expect(!snapshot.textRectangles.isEmpty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review and Edit consume the fixed Markdown highlight role")
+    func reviewConsumesFixedMarkdownHighlightRole() async throws {
+        let source = "A ==marked passage== remains distinct from selection.\n"
+        let document = NoteDocument(relativePath: "Highlight.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const mark = document.querySelector('.scholium-highlight');
+            if (!mark) return null;
+            const style = getComputedStyle(mark);
+            return {background: style.backgroundColor, color: style.color};
+            """
+        ) as? [String: String])
+        #expect(result["background"] == "rgb(255, 154, 0)")
+        #expect(result["color"] == "rgb(40, 36, 29)")
+        await harness.closeAndDrain()
+    }
+
     struct FootnoteInteractionSnapshot: Decodable {
         let previewTitle: String
         let originID: String
@@ -223,6 +321,26 @@ extension MarkdownEditorWebViewIntegrationTests {
         let definitionFocused: Bool
         let returnedToReference: Bool
         let referenceFocused: Bool
+    }
+
+    struct ReviewSelectionPresentationSnapshot: Decodable {
+        struct Rectangle: Decodable {
+            let left: Double
+            let right: Double
+            let top: Double
+            let bottom: Double
+            let width: Double
+            let height: Double
+        }
+
+        let supported: Bool
+        let selectedText: String
+        let presentedText: String
+        let nativeSelectionBackground: String
+        let nativeRectangles: [Rectangle]
+        let textRectangles: [Rectangle]
+        let textRangeCount: Int
+        let customHighlightInstalled: Bool
     }
 
     struct TestingPresentationScenario {
@@ -510,6 +628,25 @@ extension MarkdownEditorWebViewIntegrationTests {
         """
     }
 
+    private static func linkPreview(atUTF16 offset: Int) -> DocumentLinkPreview {
+        DocumentLinkPreview(
+            sourceSpan: SourceSpan(
+                utf8LowerBound: offset,
+                utf8UpperBound: offset + 10,
+                utf16LowerBound: offset,
+                utf16UpperBound: offset + 10,
+                start: SourcePosition(line: 1, utf8Column: 1, utf16Column: 1),
+                end: SourcePosition(line: 1, utf8Column: 11, utf16Column: 11)
+            ),
+            target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
+            targetFingerprint: DocumentFingerprint(content: "Target body"),
+            title: "Target note",
+            relationship: .neutral,
+            fragment: nil,
+            htmlBody: "<p>Target body</p>"
+        )
+    }
+
     private func expectSharedPresentationParity(
         read: MarkdownEditorSession.TestingPresentationSnapshot,
         live: MarkdownEditorSession.TestingPresentationSnapshot
@@ -645,6 +782,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var surfaceIdentity = 0
         @Published var targetSourceLine: Int?
         @Published var reachedSourceLine: Int?
+        @Published var linkPreviews: [DocumentLinkPreview] = []
+        @Published var linkPreviewRevision = "no-previews"
         var selection: MarkdownReviewSelection?
         #if DEBUG
         @Published var testingForcesFinalizationFailure = false
@@ -714,6 +853,11 @@ extension MarkdownEditorWebViewIntegrationTests {
             testingForcesFinalizationFailure = false
             #endif
             failure = nil
+        }
+
+        func updateLinkPreviews(_ previews: [DocumentLinkPreview], revision: String) {
+            linkPreviews = previews
+            linkPreviewRevision = revision
         }
     }
 
@@ -876,6 +1020,11 @@ extension MarkdownEditorWebViewIntegrationTests {
             // rather than depend on a late SwiftUI update racing the failed
             // coordinator's nil load signature.
             sourceBox.surfaceIdentity += 1
+        }
+
+
+        func updateLinkPreviews(_ previews: [DocumentLinkPreview], revision: String) {
+            sourceBox.updateLinkPreviews(previews, revision: revision)
         }
 
         func recreateSurface(targetSourceLine: Int? = nil) {
@@ -1122,6 +1271,35 @@ extension MarkdownEditorWebViewIntegrationTests {
                 try await Task.sleep(for: .milliseconds(20))
             }
             return try #require(sourceBox.selection)
+        }
+
+        func crossParagraphSelectionPresentation() async throws -> ReviewSelectionPresentationSnapshot {
+            let rawResult = try await callPageJavaScript(
+                """
+                const paragraphs = Array.from(document.querySelectorAll('#scholium-document > p'));
+                if (paragraphs.length !== 2) return null;
+                const first = paragraphs[0].firstChild;
+                const second = paragraphs[1].firstChild;
+                if (!(first instanceof Text) || !(second instanceof Text)) return null;
+                const range = document.createRange();
+                range.setStart(first, 6);
+                range.setEnd(second, 16);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                document.dispatchEvent(new Event('selectionchange'));
+                return window.scholiumReviewSelection?.testingSnapshot() ?? null;
+                """
+            )
+            guard JSONSerialization.isValidJSONObject(rawResult as Any),
+                  let data = try? JSONSerialization.data(withJSONObject: rawResult as Any),
+                  let snapshot = try? JSONDecoder().decode(
+                    ReviewSelectionPresentationSnapshot.self,
+                    from: data
+                  ) else {
+                throw ReadHarnessError.invalidSnapshot
+            }
+            return snapshot
         }
 
         func scrollRegistrySnapshot() async throws -> (
@@ -1444,6 +1622,9 @@ extension MarkdownEditorWebViewIntegrationTests {
                 htmlBody: htmlBody,
                 presentationCSS: sourceBox.presentationCSS,
                 userCSS: sourceBox.userCSS,
+                configurationRevision: "read-harness:\(sourceBox.presentationCSS.hashValue):\(sourceBox.userCSS.hashValue)",
+                linkPreviews: sourceBox.linkPreviews,
+                linkPreviewRevision: sourceBox.linkPreviewRevision,
                 onLinkClick: { _ in },
                 onOpenExternalURL: { _ in },
                 onCommentSelection: nil,

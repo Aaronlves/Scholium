@@ -313,6 +313,16 @@ contract remain unchanged. The CSS `ch` unit resolves against each mode's
 current font and is a character-width unit, not an exact characters-per-line
 promise.
 
+Edit activation remains construct-scoped. A plain pointer click on projected
+inline syntax or projected block content places one collapsed CodeMirror caret
+at its mapped source position; it never constructs a text range as a side
+effect of revealing syntax. Pointer-drag selection updates the authoritative
+selection continuously but holds the visual Markdown projection stable until
+pointer release; a discrete triple-click paragraph selection may reveal its
+selected constructs immediately. A direct click on a rendered link reveals
+that link's source, while Control-click and Command-click activate the target
+without moving the caret.
+
 Rendered callouts hide generated role names visually but retain them for
 accessibility. A supplied title inherits the role heading style; an untitled
 callout adds no heading. Ordinary Body prose uses the selected Appearance's
@@ -321,12 +331,15 @@ table, code, mathematics, footnote, and ordinary-quotation composition remains
 owned by each protected object rule rather than inheriting Body alignment
 indiscriminately.
 
-An inactive Edit callout atomically projects one half-open source
-range. Selection reveals source only on actual overlap, not boundary contact.
-Down Arrow from above enters at the range start; Up Arrow from below or a
-pointer press on its rendered title/body enters at its logical end. Editing
-then resumes at that source position. Only the disclosure mark changes fold
-state by pointer; the focused summary retains keyboard disclosure.
+An inactive Edit callout atomically projects one half-open source range, but
+the insertion point immediately after its last content character remains
+editable Callout content. Down Arrow or Right Arrow from above enters at the
+range start; Up Arrow from below or a pointer press on its rendered title/body
+enters at that content-end insertion point. One further horizontal move enters
+the real authored separator line. Nested inline constructs inside an active
+Callout retain the same construct-scoped projection rules as ordinary prose.
+Only the disclosure mark changes fold state by pointer; the focused summary
+retains keyboard disclosure.
 
 Review and Edit support Obsidian-compatible inline `$…$` and display
 `$$…$$` mathematics outside YAML, code, raw HTML, comments, and escaped
@@ -2245,6 +2258,14 @@ above visual centre and preserve a calm bottom edge.
   reference only to locate the one directly editable definition under §5.1;
   the definition marker stays exact while its body uses ordinary
   construct-scoped Edit projection at that same source position.
+- Native document selection remains authoritative in Review, Edit, and Source,
+  while its visible paint uses the same resolved Accent mix on every surface;
+  Review never falls back to a system-blue block selection. Layout-only block
+  boundaries, padding, and paragraph gaps do not receive selection paint.
+  Markdown `==text==` uses one fixed, nonconfigurable **Markup highlight**
+  background `#FF9A00` with contrast-safe dark ink in Review and Edit. It is a
+  syntax role, not Accent, status, authorship, Connection meaning, or a third
+  researcher-configurable color input.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
   **Paper** `#FEF8ED`. In Light appearance Paper is the illuminated Document

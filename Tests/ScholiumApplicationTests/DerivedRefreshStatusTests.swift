@@ -104,8 +104,8 @@ struct DerivedRefreshStatusTests {
         await runtime.shutdown()
     }
 
-    @Test("A committed source mutation publishes stale state and must not be retried")
-    func committedMutationIsNotRetried() async throws {
+    @Test("A committed source mutation returns before a failing derived refresh")
+    func committedMutationReturnsBeforeDerivedFailure() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
@@ -120,30 +120,16 @@ struct DerivedRefreshStatusTests {
 
         let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
-        let applicationError: ScholiumApplicationError
-        do {
-            _ = try await handle.documents.save(
-                fixture.analysisNoteID,
-                changeSet: .body("Committed exactly once.\n"),
-                expectedRevision: original.fingerprint
-            )
-            Issue.record("The committed save unexpectedly refreshed its projection.")
-            await runtime.shutdown()
-            return
-        } catch let error as ScholiumApplicationError {
-            applicationError = error
-        }
+        let saved = try await handle.documents.commit(
+            fixture.analysisNoteID,
+            changeSet: .body("Committed exactly once.\n"),
+            expectedRevision: original.fingerprint
+        )
+        let committedRevision = saved.document.fingerprint
 
-        guard case .committedButRefreshFailed(let committedRevision, _) = applicationError else {
-            Issue.record("The post-commit refresh failure lost its committed outcome.")
-            await runtime.shutdown()
-            return
-        }
-        #expect(applicationError.durableMutationWasCommitted)
-        #expect(applicationError.mustNotRetryMutation)
-        #expect(applicationError.committedDocumentRevision == committedRevision)
-        #expect(applicationError.refreshFailureReason?.isEmpty == false)
-
+        // Save acknowledges authoritative bytes. The owned background refresh
+        // independently reports stale derived state and never converts that
+        // committed result into an Autosave Failed retry.
         let stale = try #require(await iterator.next())
         #expect(stale.generation == initial.generation + 1)
         guard case .derivedStateChanged(let event) = stale,

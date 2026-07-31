@@ -1892,11 +1892,11 @@ struct FrontendArchitectureTests {
         #expect(sourceModeExtensions.contains("EditorView.editorAttributes.of"))
         #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
         for liveOnlyExtension in [
-            "liveProjectionIndexField",
+            "liveProjectionIndex.extension",
             "liveSemanticLineField",
             "liveSemanticBlockSpacingField",
             "liveFrontmatterGuardField",
-            "liveBlockActivationField",
+            "liveSelection.extension",
             "liveTableField",
             "liveDisplayMathField",
             "liveRawHTMLField",
@@ -2014,13 +2014,17 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
 
-        func section(from start: String, to end: String) throws -> Substring {
-            let startRange = try #require(editorSource.range(of: start))
-            let endRange = try #require(editorSource.range(
+        func section(
+            in source: String = editorSource,
+            from start: String,
+            to end: String
+        ) throws -> Substring {
+            let startRange = try #require(source.range(of: start))
+            let endRange = try #require(source.range(
                 of: end,
-                range: startRange.upperBound..<editorSource.endIndex
+                range: startRange.upperBound..<source.endIndex
             ))
-            return editorSource[startRange.lowerBound..<endRange.lowerBound]
+            return source[startRange.lowerBound..<endRange.lowerBound]
         }
 
         let stateReporting = try section(
@@ -2047,6 +2051,42 @@ struct FrontendArchitectureTests {
         #expect(structuralKeymap.contains("tableTabAction(view.state.doc"))
         #expect(structuralKeymap.contains("indentList(view.state.doc"))
         #expect(!structuralKeymap.contains("doc.toString()"))
+
+        let sessionSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let nativeDeltaReceiver = try section(
+            in: sessionSource,
+            from: "func acceptEditorChanges(",
+            to: "func webContentProcessTerminated()"
+        )
+        #expect(nativeDeltaReceiver.contains("checkedSourceBuffer.apply(changes)"))
+        #expect(nativeDeltaReceiver.contains("sourceChangeHandler?()"))
+        #expect(!nativeDeltaReceiver.contains("MarkdownEditorDeltaApplier.apply"))
+        #expect(!nativeDeltaReceiver.contains("sourceChangeHandler?(nextSource)"))
+
+        let controllerSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Features/Document/DocumentController.swift"
+            ),
+            encoding: .utf8
+        )
+        let activityReceiver = try section(
+            in: controllerSource,
+            from: "func editorSourceDidChange(",
+            to: "func scheduleAutosave("
+        )
+        #expect(!activityReceiver.contains("editingSource ="))
+        let autosaveScheduler = try section(
+            in: controllerSource,
+            from: "func scheduleAutosave(",
+            to: "func persistEditingSource("
+        )
+        #expect(autosaveScheduler.contains("autosaveDeadline"))
+        #expect(!autosaveScheduler.contains("autosaveTask?.cancel"))
     }
 
     @Test("Production native surfaces consume semantic color roles")
@@ -2088,6 +2128,64 @@ struct FrontendArchitectureTests {
                 #expect(source.contains(token), "\(path) must consume \(token)")
             }
         }
+    }
+
+    @Test("Autosave commits source before derived refresh and toolbar consumes cached headings")
+    func autosaveAndHeadingProjectionOwnership() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let handleSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "ScholiumApplication/WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+        func sourceSection(
+            _ source: String,
+            from start: String,
+            to end: String
+        ) throws -> Substring {
+            let startRange = try #require(source.range(of: start))
+            let endRange = try #require(source.range(
+                of: end,
+                range: startRange.upperBound..<source.endIndex
+            ))
+            return source[startRange.lowerBound..<endRange.lowerBound]
+        }
+        let commit = try sourceSection(
+            handleSource,
+            from: "func commitDocument(\n        _ id:",
+            to: "private func performDocumentSave("
+        )
+        #expect(commit.contains("completion: .sourceOnly"))
+        #expect(handleSource.contains("completion: .sourceAndDerived"))
+        #expect(handleSource.contains("scheduleSourceCommitRefresh(id: id, kind: .save)"))
+        #expect(handleSource.contains("Task(priority: .utility)"))
+
+        let controllerSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Features/Document/DocumentController.swift"
+            ),
+            encoding: .utf8
+        )
+        let editorSave = try sourceSection(
+            controllerSource,
+            from: "private func saveDocument(",
+            to: "private func loadDocument("
+        )
+        #expect(editorSave.contains("return try await commit("))
+        #expect(!editorSave.contains("return try await save("))
+
+        let toolbarSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(toolbarSource.contains("note.workspaceSnapshot?.headings ?? []"))
+        #expect(!toolbarSource.contains("MarkdownSemanticDocument("))
     }
 
     @Test("Search results use the editorial full-row selection treatment")
@@ -2315,6 +2413,7 @@ struct FrontendArchitectureTests {
                 }
             }
         }
+        #expect(contrastRatio(0x28241D, 0xFF9A00) >= 7.0)
     }
 
     @Test("Reduce Motion removes app-defined transitions")
@@ -2422,6 +2521,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumDocumentRhythm.headingGapAfterCSSPixels == 8)
 
         let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
+        let fixedDocumentSyntax = ScholiumWebDesignTokens.fixedDocumentSyntaxCSSDeclarations
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         for declaration in ScholiumWebDesignTokens.rhythmCSSDeclarations.split(separator: "\n") {
             let normalized = declaration.trimmingCharacters(in: .whitespaces)
@@ -2429,6 +2529,11 @@ struct FrontendArchitectureTests {
         }
         #expect(editorHTML.contains(sharedCSS))
         #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
+        #expect(fixedDocumentSyntax.contains("--scholium-mark-highlight-background: #ff9a00"))
+        #expect(fixedDocumentSyntax.contains("--scholium-mark-highlight-text: #28241d"))
+        #expect(sharedCSS.contains(fixedDocumentSyntax))
+        #expect(sharedCSS.contains("background: var(--scholium-mark-highlight-background)"))
+        #expect(sharedCSS.contains("color: var(--scholium-mark-highlight-text)"))
         #expect(sharedCSS.contains("--scholium-document-line-width: 72ch"))
         #expect(sharedCSS.contains("--scholium-document-half-line-width: 36ch"))
         let sharedDocumentRoot = try #require(
@@ -2749,12 +2854,14 @@ struct FrontendArchitectureTests {
             userCSS: ""
         )
 
-        #expect(editReference.contains("addEventListener(\"mousedown\""))
-        #expect(editReference.contains("beginProjectedPointerSelection"))
-        #expect(editReference.contains("reference.definitionContentFrom"))
+        #expect(editorSource.contains("reference.definitionContentFrom"))
         #expect(!editReference.contains("showFootnotePopover"))
         #expect(!editReference.contains("footnote-return"))
-        #expect(editReference.contains("ignoreEvent() { return false; }"))
+        #expect(editReference.contains(#"ignoreEvent(event: Event) { return event.type !== "mousedown"; }"#))
+        #expect(editorSource.contains("projectedWidgetPointerStart"))
+        #expect(editorSource.contains("createLiveSelectionController"))
+        #expect(!editorSource.contains("beginProjectedPointerSelection"))
+        #expect(!editorSource.contains("liveBlockActivationField"))
         #expect(!editorSource.contains("class FootnoteSectionWidget"))
         #expect(!editorSource.contains("cm-live-footnotes-widget"))
         #expect(!editorSource.contains("cm-live-footnote-definition-source"))

@@ -272,6 +272,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(afterEditInput.utf16.count == source.utf16.count + 2)
         #expect(afterEditInput.contains("זהו "))
         #expect(harness.latestSource == afterEditInput)
+        #expect(harness.lifecycleSource == source)
+
+        harness.setPresentationCSS(".cm-editor { --qa-unrelated-update: 1; }")
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(try await harness.session.currentText(for: harness.documentID) == afterEditInput)
+        #expect(harness.lifecycleSource == source)
         await harness.closeAndDrain()
     }
 
@@ -329,6 +335,64 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.documentID == "Replacement.md")
         #expect(harness.session.errorMessage == nil)
         #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("A text snapshot remains valid when the same document advances")
+    func textSnapshotToleratesSameDocumentInput() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        let harness = EditorHarness(
+            source: "Original A\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let snapshot = Task {
+            try await harness.session.currentTextSnapshot(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+
+        // The snapshot read must not own the source-mutation lane. CodeMirror
+        // may accept a later transaction while the read is in transport.
+        try await harness.session.perform(.pastePlain, argument: "x")
+        dispatcher.resumeSuccessfully()
+
+        let captured = try await snapshot.value
+        #expect(captured.text == "xOriginal A\n")
+        #expect(captured.generation == 1)
+        #expect(harness.session.checkedSource == captured.text)
+        #expect(harness.session.errorMessage == nil)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A committed autosave snapshot never replaces newer input")
+    func committedSnapshotKeepsNewerInputDirty() async throws {
+        let source = "Original A\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let savedSnapshot = try await harness.session.currentTextSnapshot(
+            for: harness.documentID
+        )
+
+        try await harness.session.perform(.pastePlain, argument: "x")
+        let newerSource = "xOriginal A\n"
+        #expect(harness.session.checkedSource == newerSource)
+
+        let committedFingerprint = DocumentFingerprint(content: source)
+        let acknowledgement = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: savedSnapshot.text,
+            committedText: source,
+            fingerprint: committedFingerprint,
+            documentID: harness.documentID
+        )
+
+        #expect(acknowledgement == .superseded)
+        #expect(harness.session.checkedSource == newerSource)
+        #expect(harness.session.isDirty)
+        #expect(harness.session.startingFingerprint == committedFingerprint.sha256)
+        #expect(try await harness.session.currentText(for: harness.documentID) == newerSource)
         await harness.closeAndDrain()
     }
 
@@ -505,6 +569,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactive.emphasisTexts == ["Third", "Fourth"])
         #expect(inactive.strikethroughTexts == ["Fifth"])
         #expect(inactive.highlightTexts == ["Sixth"])
+        #expect(inactive.highlightBackgrounds == ["rgb(255, 154, 0)"])
+        #expect(inactive.highlightColors == ["rgb(40, 36, 29)"])
         #expect(inactive.codeTexts == ["Seventh"])
         #expect(inactive.linkTexts == ["Eighth"])
 
@@ -554,6 +620,208 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.generation == generation)
         #expect(harness.session.context?.undoLabel == undoLabel)
         #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Pointer selection defers syntax reveal until mouse-up")
+    func pointerSelectionDefersSyntaxRevealUntilMouseUp() async throws {
+        let source = "Lead **bold syntax** between *italic syntax* tail.\n\nFollowing paragraph.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        let result = try await harness.session.testingDragSelectionProjection(
+            from: "Lead",
+            to: "italic syntax",
+            lineContaining: "Lead"
+        )
+        let selection = try #require(try await harness.session.currentSelection(
+            for: harness.documentID,
+            in: source
+        ))
+        #expect(!selection.excerpt.isEmpty)
+        #expect(selection.excerpt.contains("bold syntax"))
+        #expect(selection.excerpt.contains("italic s"))
+        #expect(result.duringDragLineText == "Lead bold syntax between italic syntax tail.")
+        #expect(result.afterMouseUpLineText.contains("**bold syntax**"))
+        #expect(result.afterMouseUpLineText.contains("*italic syntax*"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A plain click on projected inline syntax inserts one caret")
+    func projectedInlineClickInsertsOneCaret() async throws {
+        let source = "Before **Obsidian** after.\n"
+        let construct = try #require(source.range(of: "**Obsidian**"))
+        let from = construct.lowerBound.utf16Offset(in: source)
+        let to = construct.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingClickVisibleText("Obsidian")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while true {
+            if let selection = harness.session.context?.selections.first,
+               selection.anchor == selection.head,
+               selection.head >= from,
+               selection.head < to {
+                break
+            }
+            if clock.now >= deadline {
+                Issue.record("A plain projected-syntax click did not publish one caret inside the construct.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor == selection.head)
+        #expect(selection.head >= from && selection.head < to)
+        let active = try await harness.session.testingInlineProjectionSnapshot(containing: "Obsidian")
+        #expect(active.lineText == "Before **Obsidian** after.")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit selection paints source characters without blank-line rectangles")
+    func editSelectionPaintsOnlySourceCharacters() async throws {
+        let source = "First paragraph text.\n\nSecond paragraph text.\n"
+        let firstFrom = try #require(source.range(of: "paragraph text"))
+            .lowerBound.utf16Offset(in: source)
+        let secondTo = try #require(source.range(of: "Second paragraph"))
+            .upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.revealSourceRange(fromUTF16: firstFrom, toUTF16: secondTo)
+        try await harness.waitUntilSelection(head: secondTo, stage: "cross-paragraph selection")
+        let snapshot = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(snapshot.selectedTexts == ["paragraph text.", "Second paragraph"])
+        #expect(snapshot.selectedRunCount == 2)
+        #expect(snapshot.selectedBlankLineRunCount == 0)
+        #expect(snapshot.stockRectangleCount == 0)
+        #expect(snapshot.nativeSelectionBackground == "rgba(0, 0, 0, 0)")
+        #expect(snapshot.selectedBackgroundsMatchAccent)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Triple-click selects one paragraph and reveals syntax immediately")
+    func tripleClickSelectsOneParagraphWithoutLayoutSpace() async throws {
+        let source = "First **bold** paragraph.\n\nSecond paragraph.\n"
+        let firstLineTo = source.firstIndex(of: "\n")?.utf16Offset(in: source) ?? 0
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingTripleClickVisibleText("bold")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.context?.selections.first?.anchor
+            == harness.session.context?.selections.first?.head
+        {
+            if clock.now >= deadline {
+                Issue.record("Triple-click did not publish a paragraph selection.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor != selection.head)
+        #expect(min(selection.anchor, selection.head) >= 0)
+        #expect(max(selection.anchor, selection.head) <= firstLineTo + 1)
+        let active = try await harness.session.testingInlineProjectionSnapshot(containing: "bold")
+        #expect(active.lineText == "First **bold** paragraph.")
+        let presentation = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(presentation.selectedBlankLineRunCount == 0)
+        #expect(presentation.stockRectangleCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Callout content boundaries, nested links, and arrows share one source projection")
+    func calloutContentBoundaryAndNestedLinksShareOneProjection() async throws {
+        let calloutSource = """
+        > [!cite]- Synthetic source boundary
+        > Body ends with [[work-031|linked note]].
+        """
+        let source = "Lead.\n\n\(calloutSource)\n\nAfter.\n"
+        let range = try #require(source.range(of: calloutSource))
+        let calloutFrom = range.lowerBound.utf16Offset(in: source)
+        let calloutTo = range.upperBound.utf16Offset(in: source)
+        let linkRange = try #require(source.range(of: "[[work-031|linked note]]"))
+        let linkFrom = linkRange.lowerBound.utf16Offset(in: source)
+        let linkTo = linkRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        do {
+            _ = try await harness.waitUntilPresentation(stage: "inactive nested-link Callout") {
+                $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+            }
+        } catch {
+            Issue.record("Inactive nested-link Callout presentation failed: \(error)")
+            throw error
+        }
+        let inactive = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Synthetic source boundary"
+        )
+        #expect(inactive.renderedLinkTexts == ["linked note"])
+        #expect(inactive.renderedLinkTargets == ["work-031"])
+
+        try await harness.session.testingClickFirstCalloutText("linked note")
+        _ = try await harness.waitUntilSelection(in: linkFrom..<linkTo)
+        let activeLink = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "linked note"
+        )
+        #expect(activeLink.lineText.contains("[[work-031|linked note]]"))
+
+        harness.session.goToLine(1)
+        _ = try await harness.waitUntilPresentation(stage: "Callout restored before modified link") {
+            $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+        }
+        try await harness.session.testingModifiedClickVisibleText(
+            "linked note",
+            modifierFlags: .control
+        )
+        let activationDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while harness.activatedLinks != ["work-031"] {
+            if ContinuousClock().now >= activationDeadline {
+                Issue.record("Control-click did not activate the projected Callout link.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.activatedLinks == ["work-031"])
+
+        try await harness.session.testingClickFirstCalloutText("Body ends")
+        try await harness.waitUntilSelection(head: calloutTo)
+        let activeHeader = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "Synthetic source boundary"
+        )
+        #expect(activeHeader.lineText.contains("> [!cite]- Synthetic source boundary"))
+        try await harness.session.perform(.pastePlain, argument: "继续")
+        let editedTo = calloutTo + 2
+        try await harness.waitUntilSelection(head: editedTo)
+        let edited = try await harness.session.currentText(for: harness.documentID)
+        #expect(edited.contains("> Body ends with [[work-031|linked note]].继续"))
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: editedTo + 1, stage: "real separator after Callout")
+        _ = try await harness.waitUntilPresentation(stage: "Callout restored after separator entry") {
+            $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+        }
+
+        harness.session.goToLine(2)
+        let blankBefore = calloutFrom - 1
+        try await harness.waitUntilSelection(head: blankBefore, stage: "real separator before Callout")
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: calloutFrom, stage: "right-arrow Callout entry")
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: calloutFrom + 1, stage: "right-arrow inside Callout")
         await harness.closeAndDrain()
     }
 
@@ -642,6 +910,31 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(active.linkTexts == ["[a standard link](https://example.test)"])
         #expect(!active.lineText.contains("**bold evidence**"))
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A caret beside Wiki syntax has no synthetic bracket selection")
+    func wikiSyntaxCaretRemainsAPlainInsertionPoint() async throws {
+        let source = "Before [[work-034]] after.\n"
+        let construct = try #require(source.range(of: "[[work-034]]"))
+        let closingMarker = construct.upperBound.utf16Offset(in: source) - 1
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.revealSourceRange(fromUTF16: closingMarker, toUTF16: closingMarker)
+        try await harness.waitUntilSelection(head: closingMarker)
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor == selection.head)
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.matchingBracketCount == 0)
+
+        try await harness.session.perform(.pastePlain, argument: "中文")
+        let expected = (source as NSString).replacingCharacters(
+            in: NSRange(location: closingMarker, length: 0),
+            with: "中文"
+        )
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
         await harness.closeAndDrain()
     }
 
@@ -970,6 +1263,26 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("An authored separator line owns semantic block spacing and pointer entry")
+    func authoredSeparatorLineOwnsSemanticBlockGap() async throws {
+        let source = "Lead paragraph.\n\n> Quoted paragraph.\n> Continued quotation.\n\nFollowing paragraph.\n"
+        let blankOffset = try #require(source.range(of: "\n\n"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.semanticGapCount == 0)
+        try await harness.session.testingClickBlankLine(
+            between: "Lead paragraph.",
+            and: "Quoted paragraph."
+        )
+        try await harness.waitUntilSelection(head: blankOffset, stage: "authored separator click")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Raw HTML switches between an inert projection and exact editable source")
     func rawHTMLProjectionRevealsExactSourceOnlyWhileActive() async throws {
         let source = """
@@ -1003,7 +1316,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("A projected Callout enters its half-open source range before Backspace")
+    @Test("A projected Callout enters its editable content-end boundary before Backspace")
     func calloutPointerBackspaceCannotDeleteThePrecedingBlock() async throws {
         let source = """
         # Interaction boundary
@@ -1019,7 +1332,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         > This synthetic note exercises the complete Scholium editing dialect.
         """
         let calloutRange = try #require(source.range(of: firstCalloutSource))
-        let calloutFrom = calloutRange.lowerBound.utf16Offset(in: source)
         let calloutTo = calloutRange.upperBound.utf16Offset(in: source)
         let harness = EditorHarness(source: source)
         defer { harness.close() }
@@ -1029,7 +1341,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         try await harness.session.testingClickFirstCalloutText("synthetic note")
-        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
+        _ = try await harness.waitUntilSelection(head: calloutTo)
         try await harness.session.testingPressBackspace()
 
         let clock = ContinuousClock()
@@ -1082,7 +1394,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Bridge v7 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
+    @Test("Bridge v8 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
         // Let their short native-window journeys finish before this suite owns
@@ -1181,9 +1493,9 @@ struct MarkdownEditorWebViewIntegrationTests {
             .utf16Offset(in: normalizedOriginal)
         try await harness.session.testingClickFirstCalloutText("same callout")
         let pointerDeadline = ContinuousClock().now.advanced(by: .seconds(3))
-        while harness.session.context?.selections.first?.head != calloutTo - 1 {
+        while harness.session.context?.selections.first?.head != calloutTo {
             if ContinuousClock().now >= pointerDeadline {
-                Issue.record("The projected Callout click did not enter its half-open source range; head=\(harness.session.context?.selections.first?.head ?? -1), expected=\(calloutTo - 1).")
+                Issue.record("The projected Callout click did not enter its editable content-end boundary; head=\(harness.session.context?.selections.first?.head ?? -1), expected=\(calloutTo).")
                 throw MarkdownEditorSession.SessionError.unavailable
             }
             try await Task.sleep(for: .milliseconds(20))
@@ -1214,7 +1526,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             stage: "up-arrow real separator line"
         )
         try await harness.session.testingPressArrow("ArrowUp")
-        try await harness.waitUntilSelection(head: calloutTo - 1, stage: "up-arrow callout entry")
+        try await harness.waitUntilSelection(head: calloutTo, stage: "up-arrow callout entry")
         _ = try await harness.waitUntilPresentation(stage: "up-arrow-revealed callout source") {
             $0.activeLiveBlockKind == "callout"
         }
@@ -1645,8 +1957,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         let session: MarkdownEditorSession
         let documentID: String
         private let sourceBox: SourceBox
-        var latestSource: String { sourceBox.source }
+        var latestSource: String { session.checkedSource }
+        var lifecycleSource: String { sourceBox.source }
         var latestScrollAnchor: EditorScrollAnchor? { sourceBox.scrollAnchor }
+        var activatedLinks: [String] { sourceBox.activatedLinks }
         private let window: NSWindow
         private var hostingController: NSViewController?
         private var isClosed = false
@@ -1965,24 +2279,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 if outcome == .failure {
                     throw ProbeError.transportFailure
                 }
-                let result = MarkdownEditorCommandResult(
-                    requestID: request.requestID,
-                    resultingGeneration: request.expectedGeneration,
-                    sourceChanged: false,
-                    selections: [MarkdownEditorSelectionRange(anchor: 0, head: 0)],
-                    undoLabel: nil,
-                    text: "Stale A\n",
-                    context: nil,
-                    selection: nil,
-                    recovery: nil,
-                    scrollAnchor: nil,
-                    performanceSamples: nil,
-                    accepted: true,
-                    error: nil
-                )
-                return try JSONSerialization.jsonObject(
-                    with: JSONEncoder().encode(result)
-                )
+                return try await production.dispatch(requestJSON: requestJSON, in: webView)
             }
             return try await production.dispatch(requestJSON: requestJSON, in: webView)
         }
@@ -2103,6 +2400,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var scrollAnchor: EditorScrollAnchor?
         @Published var presentationCSS = ""
         @Published var userCSS = ""
+        var activatedLinks: [String] = []
         let mode: MarkdownEditorMode
         init(_ source: String, mode: MarkdownEditorMode) {
             self.source = source
@@ -2154,10 +2452,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                     linkPreviews: linkPreviews,
                     initialScrollFraction: 0,
                     initialScrollAnchor: sourceBox.scrollAnchor,
-                    onDocumentChange: { sourceBox.source = $0 },
+                    onDocumentActivity: {},
                     onRequestSave: {},
                     onRequestSearch: {},
-                    onLinkActivation: { _ in },
+                    onLinkActivation: { sourceBox.activatedLinks.append($0) },
                     onScrollFractionChange: { _ in },
                     onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }
             )

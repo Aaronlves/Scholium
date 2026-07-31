@@ -101,6 +101,7 @@ extension MarkdownEditorSession {
         let liveModeClassCount: Int
         let sourceModeClassCount: Int
         let selectionMatchCount: Int
+        let matchingBracketCount: Int
         let sourceSemanticTypographyCount: Int
         let liveProjectionDOMCount: Int
         let selectionActionsCount: Int
@@ -119,6 +120,7 @@ extension MarkdownEditorSession {
         let collapsedCodeFenceVisibleHeight: Double
         let editBlankLineCount: Int
         let editBlankLineMinimumHeight: Double
+        let semanticGapCount: Int
         let liveListMarkerCount: Int
         let liveListMarkerUsesPrimaryText: Bool
         let liveListMarkerText: String
@@ -177,8 +179,31 @@ extension MarkdownEditorSession {
         let emphasisStyles: [String]
         let strikethroughTexts: [String]
         let highlightTexts: [String]
+        let highlightBackgrounds: [String]
+        let highlightColors: [String]
         let codeTexts: [String]
         let linkTexts: [String]
+        let wikiLinkTexts: [String]
+    }
+
+    struct TestingCalloutProjectionSnapshot: Decodable, Sendable {
+        let sourceLineText: String
+        let renderedLinkTexts: [String]
+        let renderedLinkTargets: [String]
+    }
+
+    struct TestingPointerProjectionResult: Sendable {
+        let duringDragLineText: String
+        let afterMouseUpLineText: String
+    }
+
+    struct TestingEditorSelectionPresentationSnapshot: Decodable, Sendable {
+        let selectedTexts: [String]
+        let selectedRunCount: Int
+        let selectedBlankLineRunCount: Int
+        let stockRectangleCount: Int
+        let nativeSelectionBackground: String
+        let selectedBackgroundsMatchAccent: Bool
     }
 
     @discardableResult
@@ -318,6 +343,7 @@ extension MarkdownEditorSession {
                 liveModeClassCount: document.querySelectorAll('.cm-editor.scholium-live-mode').length,
                 sourceModeClassCount: document.querySelectorAll('.cm-editor.scholium-source-mode').length,
                 selectionMatchCount: document.querySelectorAll('.cm-selectionMatch, .cm-selectionMatch-main').length,
+                matchingBracketCount: document.querySelectorAll('.cm-matchingBracket, .cm-nonmatchingBracket').length,
                 sourceSemanticTypographyCount: Array.from(
                     document.querySelectorAll('.cm-editor.scholium-source-mode .cm-content span')
                 ).filter(element => {
@@ -350,6 +376,7 @@ extension MarkdownEditorSession {
                         .map(line => line.getBoundingClientRect().height);
                     return heights.length > 0 ? Math.min(...heights) : 0;
                 })(),
+                semanticGapCount: document.querySelectorAll('.cm-live-semantic-gap').length,
                 liveListMarkerCount: document.querySelectorAll('.cm-live-list-marker').length,
                 liveListMarkerUsesPrimaryText: (() => {
                     const marker = document.querySelector('.cm-live-list-marker');
@@ -576,8 +603,11 @@ extension MarkdownEditorSession {
                 emphasisStyles: styles('.cm-live-emphasis', 'fontStyle'),
                 strikethroughTexts: texts('.cm-live-strike'),
                 highlightTexts: texts('.cm-live-highlight'),
+                highlightBackgrounds: styles('.cm-live-highlight', 'backgroundColor'),
+                highlightColors: styles('.cm-live-highlight', 'color'),
                 codeTexts: texts('.cm-live-code'),
-                linkTexts: texts('.cm-live-link')
+                linkTexts: texts('.cm-live-link'),
+                wikiLinkTexts: texts('.cm-live-vector-link, .cm-live-embed')
             };
             """,
             arguments: ["requestedText": requestedText],
@@ -591,256 +621,76 @@ extension MarkdownEditorSession {
         return try JSONDecoder().decode(TestingInlineProjectionSnapshot.self, from: data)
     }
 
-    func testingClickFirstCalloutText(_ requestedText: String) async throws {
+    func testingCalloutProjectionSnapshot(
+        containing requestedText: String
+    ) async throws -> TestingCalloutProjectionSnapshot {
         guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
+        let rawResult = try await webView.callAsyncJavaScript(
             """
-            for (const root of document.querySelectorAll('.cm-live-callout-widget.scholium-callout')) {
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                let node;
-                while ((node = walker.nextNode())) {
-                    const index = node.textContent?.indexOf(requestedText) ?? -1;
-                    if (index < 0) continue;
-                    const range = document.createRange();
-                    range.setStart(node, index);
-                    range.setEnd(node, Math.min(node.length, index + Math.max(1, requestedText.length)));
-                    const rect = range.getBoundingClientRect();
-                    (node.parentElement || root).dispatchEvent(new MouseEvent('mousedown', {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: rect.left + Math.min(8, rect.width / 2),
-                        clientY: (rect.top + rect.bottom) / 2
-                    }));
-                    window.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                    return true;
-                }
-            }
-            return false;
+            const line = Array.from(document.querySelectorAll('.cm-line'))
+                .find(candidate => candidate.textContent?.includes(requestedText));
+            const widget = Array.from(document.querySelectorAll('.cm-live-callout-widget'))
+                .find(candidate => candidate.textContent?.includes(requestedText));
+            const links = widget
+                ? Array.from(widget.querySelectorAll('[data-scholium-link-target]'))
+                : [];
+            return {
+                sourceLineText: line?.textContent || '',
+                renderedLinkTexts: links.map(link => link.textContent || ''),
+                renderedLinkTargets: links.map(link => link.dataset.scholiumLinkTarget || '')
+            };
             """,
             arguments: ["requestedText": requestedText],
             in: nil,
             contentWorld: .page
         )
-        guard result as? Bool == true else { throw SessionError.invalidResult }
+        guard JSONSerialization.isValidJSONObject(rawResult as Any),
+              let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
+            throw SessionError.invalidResult
+        }
+        return try JSONDecoder().decode(TestingCalloutProjectionSnapshot.self, from: data)
     }
 
-    func testingClickFirstFootnoteReference() async throws {
+    func testingEditorSelectionPresentationSnapshot() async throws
+        -> TestingEditorSelectionPresentationSnapshot
+    {
         guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
+        let rawResult = try await webView.callAsyncJavaScript(
             """
-            const marker = document.querySelector('.cm-live-footnote-reference-widget .footnote-reference');
-            if (!marker) return null;
-            marker.scrollIntoView({block: 'center', behavior: 'auto'});
-            const rect = marker.getBoundingClientRect();
+            const runs = Array.from(document.querySelectorAll('.cm-scholium-selected-text'));
+            const probe = document.createElement('span');
+            probe.style.background = 'color-mix(in srgb, var(--scholium-color-accent) 24%, transparent)';
+            document.body.appendChild(probe);
+            const expected = getComputedStyle(probe).backgroundColor;
+            probe.remove();
+            const content = document.querySelector('.cm-content');
             return {
-              x: (rect.left + rect.right) / 2,
-              y: (rect.top + rect.bottom) / 2
+                selectedTexts: runs.map(run => run.textContent || ''),
+                selectedRunCount: runs.length,
+                selectedBlankLineRunCount: document.querySelectorAll(
+                    '.cm-live-blank-line .cm-scholium-selected-text'
+                ).length,
+                stockRectangleCount: document.querySelectorAll('.cm-selectionBackground').length,
+                nativeSelectionBackground: content
+                    ? getComputedStyle(content, '::selection').backgroundColor
+                    : '',
+                selectedBackgroundsMatchAccent: runs.every(
+                    run => getComputedStyle(run).backgroundColor === expected
+                )
             };
             """,
             arguments: [:],
             in: nil,
             contentWorld: .page
         )
-        guard let position = result as? [String: Any],
-              let x = position["x"] as? Double,
-              let y = position["y"] as? Double else {
+        guard JSONSerialization.isValidJSONObject(rawResult as Any),
+              let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
             throw SessionError.invalidResult
         }
-        try await testingClickPagePoint(x: x, y: y, in: webView)
-    }
-
-    func testingClickFirstTableCell() async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            const cell = document.querySelector('.cm-live-table-widget th, .cm-live-table-widget td');
-            if (!cell) return null;
-            cell.scrollIntoView({block: 'center', behavior: 'auto'});
-            const rect = cell.getBoundingClientRect();
-            return {x: rect.left + Math.min(12, rect.width / 2), y: (rect.top + rect.bottom) / 2};
-            """,
-            arguments: [:],
-            in: nil,
-            contentWorld: .page
+        return try JSONDecoder().decode(
+            TestingEditorSelectionPresentationSnapshot.self,
+            from: data
         )
-        guard let position = result as? [String: Any],
-              let x = position["x"] as? Double,
-              let y = position["y"] as? Double else {
-            throw SessionError.invalidResult
-        }
-        try await testingClickPagePoint(x: x, y: y, in: webView)
     }
-
-    func testingClickVisibleText(_ requestedText: String) async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let scrolled = try await webView.callAsyncJavaScript(
-            """
-            for (const root of document.querySelectorAll('.cm-line')) {
-                if (root.textContent?.includes(requestedText)) {
-                    root.scrollIntoView({block: 'center', behavior: 'auto'});
-                    return true;
-                }
-            }
-            return false;
-            """,
-            arguments: ["requestedText": requestedText],
-            in: nil,
-            contentWorld: .page
-        )
-        guard scrolled as? Bool == true else { throw SessionError.invalidResult }
-        try await Task.sleep(for: .milliseconds(100))
-        let result = try await webView.callAsyncJavaScript(
-            """
-            for (const root of document.querySelectorAll('.cm-line')) {
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                let node;
-                while ((node = walker.nextNode())) {
-                    const index = node.textContent?.indexOf(requestedText) ?? -1;
-                    if (index < 0) continue;
-                    const range = document.createRange();
-                    range.setStart(node, index);
-                    range.setEnd(node, Math.min(node.length, index + Math.max(1, requestedText.length)));
-                    const rect = range.getBoundingClientRect();
-                    return {x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2};
-                }
-            }
-            return null;
-            """,
-            arguments: ["requestedText": requestedText],
-            in: nil,
-            contentWorld: .page
-        )
-        guard let position = result as? [String: Any],
-              let x = position["x"] as? Double,
-              let y = position["y"] as? Double else {
-            throw SessionError.invalidResult
-        }
-        try await testingClickPagePoint(x: x, y: y, in: webView)
-    }
-
-    private func testingClickPagePoint(x: Double, y: Double, in webView: WKWebView) async throws {
-        guard let window = webView.window else { throw SessionError.invalidResult }
-        try await Task.sleep(for: .milliseconds(100))
-
-        let webViewPoint = NSPoint(
-            x: x,
-            y: webView.isFlipped ? y : webView.bounds.height - y
-        )
-        let windowPoint = webView.convert(webViewPoint, to: nil)
-        let timestamp = ProcessInfo.processInfo.systemUptime
-        guard let mouseDown = NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 0,
-            clickCount: 1,
-            pressure: 1
-        ), let mouseUp = NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 0,
-            clickCount: 1,
-            pressure: 0
-        ) else {
-            throw SessionError.invalidResult
-        }
-        webView.mouseDown(with: mouseDown)
-        webView.mouseUp(with: mouseUp)
-    }
-
-    func testingPressArrow(_ key: String, shiftKey: Bool = false) async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            const content = document.querySelector('.cm-content');
-            if (!content) return false;
-            const event = new KeyboardEvent('keydown', {
-                key,
-                shiftKey,
-                bubbles: true,
-                cancelable: true
-            });
-            content.dispatchEvent(event);
-            return event.defaultPrevented;
-            """,
-            arguments: ["key": key, "shiftKey": shiftKey],
-            in: nil,
-            contentWorld: .page
-        )
-        guard result as? Bool == true else { throw SessionError.invalidResult }
-    }
-
-    func testingPressBackspace() async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            const content = document.querySelector('.cm-content');
-            if (!content) return false;
-            const event = new KeyboardEvent('keydown', {
-                key: 'Backspace',
-                code: 'Backspace',
-                keyCode: 8,
-                which: 8,
-                bubbles: true,
-                cancelable: true
-            });
-            content.dispatchEvent(event);
-            return event.defaultPrevented;
-            """,
-            arguments: [:],
-            in: nil,
-            contentWorld: .page
-        )
-        guard result as? Bool == true else { throw SessionError.invalidResult }
-    }
-
-    func testingDispatchCompositionEvent(_ type: String) async throws {
-        guard let webView, type == "compositionstart" || type == "compositionend" else {
-            throw SessionError.invalidResult
-        }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            const content = document.querySelector('.cm-content');
-            if (!content) return false;
-            return content.dispatchEvent(new CompositionEvent(type, {
-                bubbles: true,
-                cancelable: false,
-                data: ''
-            }));
-            """,
-            arguments: ["type": type],
-            in: nil,
-            contentWorld: .page
-        )
-        guard result as? Bool == true else { throw SessionError.invalidResult }
-    }
-
-    func testingApplyScrollAnchor(_ anchor: EditorScrollAnchor) async throws {
-        guard isReady, isLoaded, let webView,
-              let wireAnchor = wireAnchor(from: anchor, in: checkedSource) else {
-            throw SessionError.invalidResult
-        }
-        pendingScrollAnchor = anchor
-        pendingScrollFraction = anchor.fallbackFraction
-        _ = try await send(.setScrollAnchor(wireAnchor), in: webView)
-    }
-
-    func testingApplyScrollFraction(_ fraction: Double) async throws {
-        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        let normalized = min(1, max(0, fraction))
-        pendingScrollFraction = normalized
-        pendingScrollAnchor = nil
-        _ = try await send(.setScrollFraction(normalized), in: webView)
-    }
-
-    var testingRetainedScrollFraction: Double? { pendingScrollFraction }
-    var testingRetainedScrollAnchor: EditorScrollAnchor? { pendingScrollAnchor }
 }
 #endif

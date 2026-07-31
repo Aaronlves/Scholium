@@ -283,7 +283,7 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
         if let note = appState.currentNote {
             HStack(spacing: ScholiumMetrics.Workspace.headerControlSpacing) {
                 Menu {
-                    let headings = documentHeadings(for: note)
+                    let headings = note.workspaceSnapshot?.headings ?? []
                     if headings.isEmpty {
                         Text("No Headings")
                     } else {
@@ -332,14 +332,6 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
         }
     }
 
-    private func documentHeadings(for note: WindowDocumentLocation) -> [HeadingNode] {
-        MarkdownSemanticDocument(
-            parsing: NoteDocument(
-                relativePath: note.relativePath,
-                rawContent: note.rawContent
-            )
-        ).headings
-    }
 }
 
 private struct ScholiumWorkspaceDocumentActionsToolbarView: View {

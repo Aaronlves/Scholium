@@ -44,9 +44,9 @@ describe("appendMarkdownBlocks", () => {
       }),
     };
     const root = document.querySelector<HTMLElement>("#root")!;
-    appendMarkdownBlocks([
+    const source = [
       "> [!state] Main claim",
-      "> Body with $x^2$.",
+      "> Body with $x^2$ and [[work-031|a linked note]].",
       "",
       "| Formula | Status |",
       "|:---|---:|",
@@ -55,7 +55,8 @@ describe("appendMarkdownBlocks", () => {
       "$$",
       "x + y",
       "$$",
-    ].join("\n"), root, {
+    ].join("\n");
+    appendMarkdownBlocks(source, root, {
       mathematics: {
         inlineDelimiter: "$",
         displayDelimiter: "$$",
@@ -66,6 +67,8 @@ describe("appendMarkdownBlocks", () => {
         label: rawKind === "state" ? "Statement" : "Note",
         meaning: "Semantic role",
       }),
+      resolveVectorLink: () => "neutral",
+      sourceOffset: (offset) => 100 + offset,
     });
 
     expect(root.querySelector(".scholium-callout-state .scholium-callout-title")?.textContent)
@@ -74,6 +77,14 @@ describe("appendMarkdownBlocks", () => {
       .toBe("auto");
     expect(root.querySelector(".scholium-callout-content .scholium-math-rendered .katex")?.textContent)
       .toBe("x^2");
+    const calloutLink = root.querySelector<HTMLElement>(
+      ".scholium-callout-content [data-scholium-link-target]",
+    );
+    expect(calloutLink?.textContent).toBe("a linked note");
+    expect(calloutLink?.textContent).not.toContain("[[");
+    expect(calloutLink?.dataset.scholiumLinkTarget).toBe("work-031");
+    expect(Number(calloutLink?.dataset.scholiumSourceFrom))
+      .toBe(100 + source.indexOf("[[work-031|a linked note]]"));
     expect(root.querySelectorAll("table.scholium-table th")).toHaveLength(2);
     expect([...root.querySelectorAll("table.scholium-table th, table.scholium-table td")]
       .every((cell) => cell.getAttribute("dir") === "auto")).toBe(true);

@@ -32,9 +32,11 @@ const markdownBidiIsolation = {
  * content language here without creating a second parser configuration in a
  * mode adapter.
  */
+export const scholiumMarkdownContentLanguage = markdown({
+  base: markdownLanguage,
+  extensions: [scholiumMarkdownDialect, markdownBidiIsolation],
+});
+
 export const scholiumNoteLanguage = yamlFrontmatter({
-  content: markdown({
-    base: markdownLanguage,
-    extensions: [scholiumMarkdownDialect, markdownBidiIsolation],
-  }),
+  content: scholiumMarkdownContentLanguage,
 });

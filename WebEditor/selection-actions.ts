@@ -1,5 +1,6 @@
 import type {Extension} from "@codemirror/state";
 import {EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
+import type {EditorSelection} from "@codemirror/state";
 
 export type SelectionActionCommand = "bold" | "emphasis" | "inlineCode" | "standardLink";
 
@@ -15,6 +16,8 @@ export interface SelectionActionsController {
  */
 export function createSelectionActionsController(options: {
   applyCommand(view: EditorView, command: SelectionActionCommand): void;
+  selectionForPresentation?(view: EditorView): EditorSelection;
+  presentationSelectionChanged?(update: ViewUpdate): boolean;
 }): SelectionActionsController {
   let root: HTMLDivElement | null = null;
   let activeView: EditorView | null = null;
@@ -71,7 +74,7 @@ export function createSelectionActionsController(options: {
 
   function update(view: EditorView) {
     if (!root) return;
-    const selection = view.state.selection;
+    const selection = options.selectionForPresentation?.(view) ?? view.state.selection;
     const main = selection.main;
     if (view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
       hide();
@@ -98,7 +101,9 @@ export function createSelectionActionsController(options: {
     mount(view);
     return {
       update(updateEvent: ViewUpdate) {
-        if (updateEvent.docChanged || updateEvent.selectionSet || updateEvent.focusChanged) {
+        if (updateEvent.docChanged
+            || updateEvent.focusChanged
+            || (options.presentationSelectionChanged?.(updateEvent) ?? updateEvent.selectionSet)) {
           update(updateEvent.view);
         }
       },

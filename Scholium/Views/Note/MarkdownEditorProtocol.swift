@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 7
+let markdownEditorProtocolVersion = 8
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -198,9 +198,21 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setScrollAnchor(MarkdownEditorWireScrollAnchor)
     case queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance, captureRecovery
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
-    case synchronizeCommittedText(expected: String, committed: String, fingerprint: String)
+    case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
     case command(MarkdownEditorCommand, argument: String?)
     case markClean, focus, blur
+
+    /// Only operations that can replace or mutate authoritative source need
+    /// transport ordering. Snapshot reads and presentation intents must not
+    /// queue behind one another or behind an obsolete content generation.
+    var serializesSourceMutation: Bool {
+        switch self {
+        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .command:
+            true
+        default:
+            false
+        }
+    }
 
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, value, line, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
@@ -209,7 +221,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     private enum Kind: String, Codable {
         case initialize, setMode, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
-        case captureRecovery, restoreRecovery, synchronizeCommittedText, command, markClean, focus, blur
+        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, markClean, focus, blur
     }
 
     init(from decoder: any Decoder) throws {
@@ -247,8 +259,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .queryPerformance: self = .queryPerformance
         case .captureRecovery: self = .captureRecovery
         case .restoreRecovery: self = try .restoreRecovery(container.decode(MarkdownEditorRecoverySnapshot.self, forKey: .snapshot))
-        case .synchronizeCommittedText:
-            self = try .synchronizeCommittedText(
+        case .acknowledgeCommittedSnapshot:
+            self = try .acknowledgeCommittedSnapshot(
                 expected: container.decode(String.self, forKey: .expectedText),
                 committed: container.decode(String.self, forKey: .committedText),
                 fingerprint: container.decode(String.self, forKey: .committedFingerprint)
@@ -296,8 +308,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .queryPerformance: try container.encode(Kind.queryPerformance, forKey: .type)
         case .captureRecovery: try container.encode(Kind.captureRecovery, forKey: .type)
         case let .restoreRecovery(snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
-        case let .synchronizeCommittedText(expected, committed, fingerprint):
-            try container.encode(Kind.synchronizeCommittedText, forKey: .type)
+        case let .acknowledgeCommittedSnapshot(expected, committed, fingerprint):
+            try container.encode(Kind.acknowledgeCommittedSnapshot, forKey: .type)
             try container.encode(expected, forKey: .expectedText)
             try container.encode(committed, forKey: .committedText)
             try container.encode(fingerprint, forKey: .committedFingerprint)
@@ -328,12 +340,12 @@ struct MarkdownEditorRequest: Codable, Hashable, Sendable {
     let sessionID: UUID
     let documentID: String
     let startingFingerprint: String
-    let expectedGeneration: Int
+    let knownGeneration: Int
     let operation: MarkdownEditorOperation
 
     init(
         requestID: UUID = UUID(), sessionID: UUID, documentID: String,
-        startingFingerprint: String, expectedGeneration: Int,
+        startingFingerprint: String, knownGeneration: Int,
         operation: MarkdownEditorOperation
     ) {
         protocolVersion = markdownEditorProtocolVersion
@@ -341,7 +353,7 @@ struct MarkdownEditorRequest: Codable, Hashable, Sendable {
         self.sessionID = sessionID
         self.documentID = documentID
         self.startingFingerprint = startingFingerprint
-        self.expectedGeneration = expectedGeneration
+        self.knownGeneration = knownGeneration
         self.operation = operation
     }
 }
@@ -358,6 +370,7 @@ struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     let recovery: MarkdownEditorRecoverySnapshot?
     let scrollAnchor: MarkdownEditorWireScrollAnchor?
     let performanceSamples: [MarkdownEditorPerformanceSample]?
+    let commitSuperseded: Bool?
     let accepted: Bool
     let error: String?
 }

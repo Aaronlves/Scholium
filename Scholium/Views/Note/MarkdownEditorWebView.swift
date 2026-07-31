@@ -14,7 +14,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let linkPreviews: [DocumentLinkPreview]
     let initialScrollFraction: Double
     let initialScrollAnchor: EditorScrollAnchor?
-    let onDocumentChange: (String) -> Void
+    let onDocumentActivity: () -> Void
     let onRequestSave: () -> Void
     let onRequestSearch: () -> Void
     let onLinkActivation: (String) -> Void
@@ -24,7 +24,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             session: session,
-            onDocumentChange: onDocumentChange,
+            onDocumentActivity: onDocumentActivity,
             onRequestSave: onRequestSave,
             onRequestSearch: onRequestSearch,
             linkCompletionQuery: linkCompletionQuery,
@@ -35,6 +35,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
+        let attachmentSource = session.sourceForViewAttachment(
+            proposedSource: source,
+            documentID: documentID
+        )
         let contentController = WKUserContentController()
         contentController.add(context.coordinator, name: "scholium")
         contentController.addUserScript(WKUserScript(
@@ -84,8 +88,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.documentID = documentID
-        context.coordinator.source = source
-        context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
+        context.coordinator.source = attachmentSource
+        context.coordinator.startingFingerprint = DocumentFingerprint(content: attachmentSource).sha256
         context.coordinator.lastModeInput = mode
         context.coordinator.presentationCSS = presentationCSS
         context.coordinator.userCSS = userCSS
@@ -95,7 +99,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setPresentationCSS(presentationCSS)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
-        session.loadDocument(source, documentID: documentID, mode: mode)
+        session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
 
         guard let editorHTML = Self.editorHTML,
               Self.editorScript != nil else {
@@ -113,7 +117,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
         }
-        context.coordinator.onDocumentChange = onDocumentChange
+        context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
         context.coordinator.onRequestSearch = onRequestSearch
         context.coordinator.linkCompletionQuery = linkCompletionQuery
@@ -136,13 +140,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
         if context.coordinator.documentID != documentID {
             context.coordinator.documentID = documentID
-            context.coordinator.source = source
-            context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
-            context.coordinator.lastDocumentVersion = 0
-            session.loadDocument(source, documentID: documentID, mode: mode)
-            session.setLinkPreviews(linkPreviews, in: source)
-            session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
-        } else if context.coordinator.source != source {
             context.coordinator.source = source
             context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
             context.coordinator.lastDocumentVersion = 0
@@ -215,7 +212,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         let session: MarkdownEditorSession
-        var onDocumentChange: (String) -> Void
+        var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
         var onRequestSearch: () -> Void
         var linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
@@ -240,7 +237,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         init(
             session: MarkdownEditorSession,
-            onDocumentChange: @escaping (String) -> Void,
+            onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestSearch: @escaping () -> Void,
             linkCompletionQuery: @escaping @MainActor (String) async -> [EditorLinkCompletion],
@@ -249,7 +246,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onScrollAnchorChange: @escaping (EditorScrollAnchor) -> Void
         ) {
             self.session = session
-            self.onDocumentChange = onDocumentChange
+            self.onDocumentActivity = onDocumentActivity
             self.onRequestSave = onRequestSave
             self.onRequestSearch = onRequestSearch
             self.linkCompletionQuery = linkCompletionQuery
@@ -262,10 +259,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 self.source = source
                 self.startingFingerprint = fingerprint
             }
-            session.installSourceChangeHandler { [weak self] source in
+            session.installSourceChangeHandler { [weak self] in
                 guard let self else { return }
-                self.source = source
-                self.onDocumentChange(source)
+                self.onDocumentActivity()
             }
         }
 
@@ -273,8 +269,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "scholium",
-                  JSONSerialization.isValidJSONObject(message.body),
+            guard message.name == "scholium" else { return }
+            if let object = message.body as? [String: Any],
+               object["type"] as? String == "documentChanged" {
+                applyIncrementalDocumentChange(object)
+                return
+            }
+            guard JSONSerialization.isValidJSONObject(message.body),
                   let data = try? JSONSerialization.data(withJSONObject: message.body),
                   data.count <= markdownEditorMaximumInboundBytes,
                   let payload = try? JSONDecoder().decode(EditorBridgeMessage.self, from: data) else { return }
@@ -455,13 +456,61 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                   let baseGeneration = payload.baseGeneration,
                   let resultingGeneration = payload.resultingGeneration,
                   payload.documentVersion == resultingGeneration,
-                  let nextSource = session.acceptEditorChanges(
+                  session.acceptEditorChanges(
                     rawChanges,
                     baseGeneration: baseGeneration,
                     resultingGeneration: resultingGeneration
                   ) else { return }
-            source = nextSource
             lastDocumentVersion = resultingGeneration
+        }
+
+        /// The app-private WebKit bridge has already converted the JavaScript
+        /// object into Foundation values. Ordinary typing takes this checked
+        /// direct path so a small delta is not encoded back to JSON and decoded
+        /// again on every English or IME transaction. Less frequent envelopes
+        /// retain the complete Codable decoder above.
+        private func applyIncrementalDocumentChange(_ object: [String: Any]) {
+            guard integer(object["protocolVersion"]) == markdownEditorProtocolVersion,
+                  object["sessionID"] as? String == session.sessionID.uuidString,
+                  object["documentID"] as? String == documentID,
+                  object["startingFingerprint"] as? String == startingFingerprint,
+                  let documentVersion = integer(object["documentVersion"]),
+                  let baseGeneration = integer(object["baseGeneration"]),
+                  let resultingGeneration = integer(object["resultingGeneration"]),
+                  documentVersion == resultingGeneration,
+                  let rawChanges = object["changes"] as? [Any],
+                  !rawChanges.isEmpty,
+                  rawChanges.count <= 512 else { return }
+
+            var insertedUTF8Bytes = 0
+            var changes: [EditorBridgeChange] = []
+            changes.reserveCapacity(rawChanges.count)
+            for rawChange in rawChanges {
+                guard let change = rawChange as? [String: Any],
+                      let from = integer(change["from"]),
+                      let to = integer(change["to"]),
+                      let insertion = change["insert"] as? String,
+                      from >= 0,
+                      to >= from else { return }
+                insertedUTF8Bytes += insertion.utf8.count
+                guard insertedUTF8Bytes <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes else {
+                    return
+                }
+                changes.append(EditorBridgeChange(from: from, to: to, insert: insertion))
+            }
+            guard session.acceptEditorChanges(
+                changes,
+                baseGeneration: baseGeneration,
+                resultingGeneration: resultingGeneration
+            ) else { return }
+            lastDocumentVersion = resultingGeneration
+        }
+
+        private func integer(_ value: Any?) -> Int? {
+            guard let number = value as? NSNumber else { return nil }
+            let integer = number.intValue
+            guard NSNumber(value: integer) == number else { return nil }
+            return integer
         }
     }
 }

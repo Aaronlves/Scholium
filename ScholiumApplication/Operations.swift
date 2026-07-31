@@ -135,8 +135,23 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
-    /// Delegates exact-byte revision checking and source mutation to
-    /// `VaultRepository`; the application layer does not reproduce it.
+    /// Commits exact source without waiting for disposable workspace
+    /// projections. This is the editor autosave completion boundary.
+    public func commit(
+        _ id: VaultQualifiedNoteID,
+        changeSet: NoteChangeSet,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> SaveResult {
+        let handle = try await reference.requireHandle()
+        return try await handle.commitDocument(
+            id,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision
+        )
+    }
+
+    /// Delegates exact-byte revision checking and waits for the matching
+    /// derived generation required by same-generation workflow consumers.
     public func save(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,

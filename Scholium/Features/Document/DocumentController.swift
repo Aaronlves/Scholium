@@ -353,6 +353,18 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    func commit(
+        _ id: VaultQualifiedNoteID,
+        changeSet: NoteChangeSet,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> SaveResult {
+        try await requireOperations().commit(
+            id,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision
+        )
+    }
+
     func move(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
@@ -522,15 +534,6 @@ final class DocumentController: ObservableObject {
         pruneReapedSessionBookkeeping()
     }
 
-    /// Captures the selected CodeMirror state before view reconstruction, but
-    /// does not make the view itself the owner of close safety.
-    func captureSelectedEditorForReconstruction() async throws {
-        guard let selectedDocument,
-              let session = sessions.retainedSession(for: selectedDocument.editingTarget),
-              session.editorSession.hasAttachedWebView else { return }
-        try await session.editorSession.captureStateForViewReconstruction()
-    }
-
     /// Flushes every session that is still reachable from a tab or protected
     /// by a safety pin. Ordering is stable to make close/quit diagnostics and
     /// tests deterministic.
@@ -668,7 +671,7 @@ final class DocumentController: ObservableObject {
         // dirty retained buffer must retry there instead of leaving a stale
         // file-missing alert over the still-valid editor session.
         guard session.isEditing, session.hasUnsavedChanges else { return }
-        session.autosaveTask?.cancel()
+        session.cancelAutosave()
         session.autosaveTask = Task { @MainActor [weak self, weak session] in
             guard let self, let session else { return }
             if let activeSaveTask = session.activeSaveTask {
@@ -1032,13 +1035,11 @@ final class DocumentController: ObservableObject {
         }
     }
 
-    func updateEditingSource(
-        _ source: String,
+    func editorSourceDidChange(
         session: DocumentSessionModel,
         target: DocumentEditingTarget
     ) {
-        guard session.isEditing, session.editingSource != source else { return }
-        session.editingSource = source
+        guard session.isEditing else { return }
         scheduleAutosave(session: session, target: target)
     }
 
@@ -1051,12 +1052,30 @@ final class DocumentController: ObservableObject {
               session.hasUnsavedChanges else { return }
         let path = relativePath(for: target)
         guard !path.isEmpty else { return }
-        editingDocumentPath = path
-        session.autosaveTask?.cancel()
+        if editingDocumentPath != path {
+            editingDocumentPath = path
+        }
+        let clock = ContinuousClock()
+        session.autosaveDeadline = clock.now.advanced(
+            by: .milliseconds(Self.autosaveDelayMilliseconds)
+        )
+        guard session.autosaveTask == nil else { return }
         session.autosaveTask = Task { @MainActor [weak self, weak session] in
-            try? await Task.sleep(for: .milliseconds(Self.autosaveDelayMilliseconds))
-            guard !Task.isCancelled, let self, let session else { return }
-            await self.persistEditingSource(session: session, target: target)
+            guard let self, let session else { return }
+            while let deadline = session.autosaveDeadline {
+                do {
+                    try await clock.sleep(until: deadline)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                guard session.autosaveDeadline == deadline else { continue }
+                session.autosaveDeadline = nil
+                session.autosaveTask = nil
+                await self.persistEditingSource(session: session, target: target)
+                return
+            }
+            session.autosaveTask = nil
         }
     }
 
@@ -1077,9 +1096,6 @@ final class DocumentController: ObservableObject {
                 setSaveError(nil)
                 session.editError = nil
                 scheduleAutosave(session: session, target: target)
-            case .committedWithRefreshFailure(let message):
-                setSaveError(message)
-                session.editError = message
             }
         } catch is CancellationError {
             return
@@ -1117,8 +1133,7 @@ final class DocumentController: ObservableObject {
         session: DocumentSessionModel,
         target: DocumentEditingTarget
     ) async throws {
-        session.autosaveTask?.cancel()
-        session.autosaveTask = nil
+        session.cancelAutosave()
         for _ in 0..<4 {
             let outcome = try await saveEditingSource(session: session, target: target)
             if outcome != .changedDuringSave { return }
@@ -1249,29 +1264,14 @@ final class DocumentController: ObservableObject {
             )
         }
 
-        let sourceBeingSaved = try await session.editorSession.currentText(
+        let editorSnapshot = try await session.editorSession.currentTextSnapshot(
             for: session.editorSession.bridgeDocumentID
         )
+        let sourceBeingSaved = editorSnapshot.text
         try Task.checkCancellation()
         guard relativePath(for: target) == path else {
             throw DocumentControllerError.documentUnavailable
         }
-        guard DocumentFingerprint(content: sourceBeingSaved)
-                == DocumentFingerprint(content: session.editingSource) else {
-            // CodeMirror is authoritative. Recover its complete exact buffer,
-            // keep the revision gate unchanged, and let the caller's bounded
-            // save loop retry against the repaired mirror. This race is
-            // expected when a transition follows input before the incremental
-            // bridge message reaches the main actor; it is not a user-facing
-            // save failure because the complete authoritative buffer is
-            // already available and no disk mutation has happened yet.
-            session.suppressAutosave = true
-            session.editingSource = sourceBeingSaved
-            session.suppressAutosave = false
-            editingDocumentPath = path
-            return .changedDuringSave
-        }
-
         session.suppressAutosave = true
         session.editingSource = sourceBeingSaved
         defer { session.suppressAutosave = false }
@@ -1281,54 +1281,31 @@ final class DocumentController: ObservableObject {
             return .clean
         }
 
-        let saved: NoteDocument
-        let committedRefreshFailure: String?
-        do {
-            saved = try await saveDocument(
-                sourceBeingSaved,
-                target: target,
-                expectedRevision: revision
-            )
-            committedRefreshFailure = nil
-        } catch let error as ScholiumApplicationError {
-            guard error.mustNotRetryMutation,
-                  let committedRevision = error.committedDocumentRevision else {
-                throw error
-            }
-            let committedDocument = NoteDocument(
-                relativePath: path,
-                rawContent: sourceBeingSaved
-            )
-            guard committedDocument.fingerprint == committedRevision else { throw error }
-            saved = committedDocument
-            committedRefreshFailure = error.refreshFailureReason.map {
-                "The note was saved, but derived workspace state could not refresh. \($0)"
-            }
-        } catch {
-            throw error
-        }
+        let saved = try await saveDocument(
+            sourceBeingSaved,
+            target: target,
+            expectedRevision: revision
+        )
         session.editingRevision = saved.fingerprint
         session.originalEditingSource = saved.rawContent
         await documentDidCommit(saved)
 
-        let synchronized = try await session.editorSession.synchronizeCommittedText(
+        let acknowledgement = try await session.editorSession.acknowledgeCommittedSnapshot(
             expectedText: sourceBeingSaved,
             committedText: saved.rawContent,
             fingerprint: saved.fingerprint,
             documentID: session.editorSession.bridgeDocumentID
         )
-        if synchronized {
+        switch acknowledgement {
+        case .clean:
             session.editingSource = saved.rawContent
             if editingDocumentPath == path { editingDocumentPath = nil }
-            return committedRefreshFailure.map(EditorSaveOutcome.committedWithRefreshFailure)
-                ?? .clean
+            return .clean
+        case .superseded:
+            session.editingSource = session.editorSession.checkedSource
+            editingDocumentPath = path
+            return .changedDuringSave
         }
-
-        session.editingSource = try await session.editorSession.currentText(
-            for: session.editorSession.bridgeDocumentID
-        )
-        editingDocumentPath = path
-        return .changedDuringSave
     }
 
     private func saveDocument(
@@ -1340,7 +1317,7 @@ final class DocumentController: ObservableObject {
         case .workspace(let key):
             let path = relativePath(for: target)
             guard !path.isEmpty else { throw DocumentControllerError.documentUnavailable }
-            return try await save(
+            return try await commit(
                 VaultQualifiedNoteID(vaultID: key.vaultID, relativePath: path),
                 changeSet: .source(source),
                 expectedRevision: expectedRevision
@@ -1373,9 +1350,13 @@ final class DocumentController: ObservableObject {
         if case VaultRepositoryError.conflict = error,
            let diskDocument = try? await loadDocument(for: target),
            let baseRevision = session.editingRevision {
+            let editorSource = session.editorSession.isLoaded
+                ? session.editorSession.checkedSource
+                : session.editingSource
+            session.editingSource = editorSource
             session.conflict = DocumentConflictSnapshot(
                 relativePath: relativePath(for: target),
-                editorSource: session.editingSource,
+                editorSource: editorSource,
                 diskSource: diskDocument.rawContent,
                 baseRevision: baseRevision
             )
@@ -1398,7 +1379,7 @@ final class DocumentController: ObservableObject {
         return operations
     }
 
-    private static var autosaveDelayMilliseconds: Int {
+    private static let autosaveDelayMilliseconds: Int = {
 #if DEBUG
         if let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"],
            let value = Int(raw), value >= 0 {
@@ -1406,7 +1387,7 @@ final class DocumentController: ObservableObject {
         }
 #endif
         return 850
-    }
+    }()
 
     /// Applies one complete generation to this window. A clean peer converges
     /// to the new source; a dirty peer keeps its exact buffer and receives an
@@ -1427,8 +1408,7 @@ final class DocumentController: ObservableObject {
             return (vault, note)
         }).first else {
             if session.isEditing || session.hasUnsavedChanges {
-                session.autosaveTask?.cancel()
-                session.autosaveTask = nil
+                session.cancelAutosave()
                 session.conflict = nil
                 session.canRetrySave = false
                 let message = "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery."
@@ -1473,11 +1453,14 @@ final class DocumentController: ObservableObject {
         guard !session.isSavingEdit else { return }
 
         if session.hasUnsavedChanges {
-            session.autosaveTask?.cancel()
-            session.autosaveTask = nil
+            session.cancelAutosave()
+            let editorSource = session.editorSession.isLoaded
+                ? session.editorSession.checkedSource
+                : session.editingSource
+            session.editingSource = editorSource
             session.conflict = DocumentConflictSnapshot(
                 relativePath: snapshot.id.relativePath,
-                editorSource: session.editingSource,
+                editorSource: editorSource,
                 diskSource: diskSource,
                 baseRevision: baseRevision
             )

@@ -73,6 +73,7 @@ describe("Scholium Lezer Markdown dialect", () => {
     expect(sources(nodes, "Highlight")).toEqual(["==important=="]);
     expect(sources(nodes, "BlockMath")).toEqual(["$$\na^2 + b^2\n$$"]);
     expect(sources(nodes, "Callout")).toEqual(["> [!theorem] Claim\n> body"]);
+    expect(sources(nodes, "CalloutRoleMark")).toEqual(["[!theorem]"]);
     expect(sources(nodes, "UnclosedBlockMath")).toEqual(["$$\nunclosed"]);
   });
 

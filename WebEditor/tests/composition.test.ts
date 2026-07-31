@@ -8,7 +8,7 @@ describe("CompositionRequestGate synthetic bridge policy", () => {
   it("gates every source, selection, mode, and projection mutation", () => {
     expect(compositionRequestPolicy("initialize")).toBe("reject");
     for (const operation of [
-      "setMode", "goToLine", "restoreRecovery", "synchronizeCommittedText", "command",
+      "setMode", "goToLine", "restoreRecovery", "acknowledgeCommittedSnapshot", "command",
       "setPresentationCSS", "setUserCSS", "setLinkPreviews",
     ]) {
       expect(compositionRequestPolicy(operation)).toBe("defer");

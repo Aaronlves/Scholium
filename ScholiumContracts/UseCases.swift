@@ -26,6 +26,12 @@ public protocol DocumentUseCases: Sendable {
         relativePath: String
     ) async throws -> FolderMoveCommit
     func duplicate(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> NoteDocument
+    /// Commits authoritative source bytes and returns before disposable
+    /// workspace projections necessarily reach the same revision.
+    func commit(_ id: VaultQualifiedNoteID, changeSet: NoteChangeSet, expectedRevision: DocumentFingerprint) async throws -> SaveResult
+    /// Commits authoritative source bytes and waits for the matching complete
+    /// derived workspace generation. Use only when the caller immediately
+    /// consumes graph, identity, Search, or other same-generation projection.
     func save(_ id: VaultQualifiedNoteID, changeSet: NoteChangeSet, expectedRevision: DocumentFingerprint) async throws -> SaveResult
     func move(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
     func setAside(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit

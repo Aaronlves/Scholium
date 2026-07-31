@@ -1185,9 +1185,8 @@ struct NoteContentView: View {
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             initialScrollFraction: state.initialScrollFraction,
             initialScrollAnchor: editorScrollAnchor,
-            onDocumentChange: { updatedSource in
-                controller.updateEditingSource(
-                    updatedSource,
+            onDocumentActivity: {
+                controller.editorSourceDidChange(
                     session: documentSession,
                     target: target
                 )
@@ -1294,6 +1293,7 @@ struct NoteContentView: View {
             userCSS: state.readCSS,
             configurationRevision: readConfigurationRevision,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
+            linkPreviewRevision: readLinkPreviewRevision,
             onLinkClick: {
                 actions.openInternalLink($0)
             },
@@ -1349,7 +1349,10 @@ struct NoteContentView: View {
     }
 
     private var editorScrollAnchor: EditorScrollAnchor? {
-        let fingerprint = DocumentFingerprint(content: editingSource).sha256
+        if let retained = editorSession.retainedScrollAnchor {
+            return retained
+        }
+        let fingerprint = DocumentFingerprint(content: editorSession.checkedSource).sha256
         guard documentSession.scrollAnchor?.sourceFingerprint == fingerprint else { return nil }
         return documentSession.scrollAnchor
     }
@@ -1363,6 +1366,15 @@ struct NoteContentView: View {
     }
 
     private var readConfigurationRevision: String {
+        [
+            noteFingerprint.sha256,
+            String(state.documentTextScale.bitPattern),
+            String(state.appearanceCSS.hashValue),
+            String(state.readCSS.hashValue),
+        ].joined(separator: ":")
+    }
+
+    private var readLinkPreviewRevision: String {
         let previewRevision = documentSession.previewCatalog.map { catalog in
             let targets = catalog.links.map { link in
                 "\(link.sourceSpan.utf16LowerBound)-\(link.sourceSpan.utf16UpperBound):"
@@ -1370,13 +1382,7 @@ struct NoteContentView: View {
             }.joined(separator: ",")
             return "\(catalog.graphGeneration):\(catalog.sourceFingerprint.sha256):\(targets)"
         } ?? "no-previews"
-        return [
-            noteFingerprint.sha256,
-            String(state.documentTextScale.bitPattern),
-            String(state.appearanceCSS.hashValue),
-            String(state.readCSS.hashValue),
-            previewRevision,
-        ].joined(separator: ":")
+        return previewRevision
     }
 
     private var hasUnsavedChanges: Bool {

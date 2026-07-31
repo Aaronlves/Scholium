@@ -114,6 +114,17 @@ gap. Search publication applies one transactional
 `SearchIndexDelta` carrying a transactionally persisted workspace generation
 and refuses stale generations, including across index reopen or another
 process connection. A failed cycle preserves the last complete snapshot and index.
+Repository save completion is deliberately earlier than this disposable
+cycle. `DocumentOperations.commit` returns the revision-checked authoritative
+`NoteDocument` as soon as the repository commit is proven. The owning
+`WorkspaceHandle` then retains one utility-priority source-commit refresh task,
+coalesces later committed revisions, and publishes either the refreshed
+snapshot or typed stale derived state. Matching watcher work waits behind that
+owned task instead of starting a competing refresh. A graph, Search, catalog,
+or snapshot failure therefore cannot become an Autosave Failed result or ask
+the editor to replay a committed mutation. Same-generation research and
+lifecycle workflows instead call `DocumentOperations.save`, which explicitly
+waits for derived publication before returning.
 Direct Related items are publishable only when the Graph and Search manifest
 hashes agree. Privacy-safe measurements record enumerate/read/parse/source-
 projection counts and durations, identity and research-state projection,
@@ -1471,9 +1482,11 @@ Each retained `DocumentSessionModel` owns:
 - rendered Review projection state; and
 - save error, conflict, retry, and comparison presentation state.
 
-CodeMirror remains authoritative while editing. The boundary uses full-buffer
-reads, delta-mirror comparison, fingerprint-gated save, committed-text
-synchronization, conflict comparison, and flush-before-agent-work. The Swift
+CodeMirror remains authoritative while editing. The boundary uses
+generation-bound full-buffer reads at explicit lifecycle edges, an
+incrementally mutated native exact-source mirror, fingerprint-gated save,
+committed-text synchronization, conflict comparison, and
+flush-before-agent-work. The Swift
 model retains these facts across SwiftUI view reconstruction; it never
 reconstructs writable Markdown from HTML, parsed YAML, or another projection.
 
@@ -1522,15 +1535,23 @@ persistent CodeMirror `EditorState`; Review renders a fingerprint-bound
 committed revision. CodeMirror owns active editing state, selection,
 composition, and undo history. Because CodeMirror normalizes line separators,
 the Web boundary keeps one checked `ExactSourceMirror` beside that state. Its
-text preserves the loaded BOM, CRLF/LF form, Unicode, and final newline; a
+normalized editor text and exact line-ending-preserving text use CodeMirror's
+persistent `Text` rope rather than immutable JavaScript String concatenation.
+Its text preserves the loaded BOM, CRLF/LF form, Unicode, and final newline; a
 sorted derived CRLF-offset index maps CodeMirror UTF-16 positions without
 rescanning the Note. Each ordinary input transaction validates only its exact
 deleted span and applies all accepted deltas atomically. Complete-document
 reconciliation remains a save, synchronization, command, or recovery boundary,
 not a per-keystroke path. The mirror cannot initiate edits or create a second
-selection, composition, or Undo owner. Swift independently reconstructs its
-checked boundary mirror from accepted generation-ordered UTF-16 deltas and
-reconciles it against complete editor text before persistence.
+selection, composition, or Undo owner. Swift independently maintains its
+checked boundary mirror in mutable UTF-16 storage from accepted
+generation-ordered deltas, including a cached UTF-8 byte count and the derived
+CRLF index. Ordinary input therefore neither copies the complete source nor
+publishes it through SwiftUI. The document model receives only dirty/activity
+state for autosave scheduling; complete immutable source snapshots are
+materialized only for persistence, conflict, recovery, reconstruction,
+explicit commands, or diagnostics. The mirror reconciles against complete
+editor text before persistence.
 
 The native implementation preserves that single ownership while separating
 code-element responsibilities. `MarkdownEditorSession` alone owns the retained
@@ -1539,11 +1560,15 @@ requests. `MarkdownEditorBridgeAdapter` owns the typed wire envelope and
 structured JavaScript dispatcher; `MarkdownEditorNativeWebView` owns AppKit
 attachment and context-menu behavior; and `MarkdownEditorWebView` is the
 SwiftUI/WebKit composition and message-routing boundary. Debug-only WebKit
-probes live in `MarkdownEditorSessionTesting` and are absent from Release
-builds. On the Web side, `editor.ts` remains the sole composition root and
-source/identity owner, while selection actions, cached preview presentation,
-and scroll observation/restoration are bounded components around the same
-`EditorView`. None may persist Markdown or create another `EditorState`.
+snapshot probes and interaction drivers live in the two
+`MarkdownEditorSessionTesting*` files and are absent from Release builds. On
+the Web side, `editor.ts` remains the sole composition root and source/identity
+owner. The immutable semantic catalog is owned by `live-projection-index`,
+Live selection meaning and text-only paint by `live-selection`, exact Source
+line direction by `source-direction`, and selection actions, cached preview
+presentation, and scroll observation/restoration by their bounded components
+around the same `EditorView`. None may persist Markdown or create another
+`EditorState`.
 
 Edit and Source are one atomic CodeMirror configuration boundary. One
 `Compartment` owns the mode facet, root/content accessibility attributes,
@@ -1562,10 +1587,26 @@ second native mode flag may separately reconstruct presentation. Source keeps
 the common parser for exact-source navigation and editing commands but installs
 no Live Preview state field, semantic widget, projection keymap, overlay, or
 semantic typography highlighter. Selection-match highlighting is absent;
-selection belongs only to the researcher's explicit range. Live Preview
+adjacent-bracket matching highlighting is likewise absent because it would
+create a second selection-like presentation beside Markdown delimiter
+projection without changing the actual insertion point. Selection belongs
+only to the researcher's explicit range. Live Preview
 decoration invalidation follows document, viewport, selection, and presentation
 inputs, not window focus, so an inactive WebView cannot erase its semantic
 projection merely because WebKit has no visible range to report.
+
+Selection meaning and selection paint are deliberately separate. CodeMirror's
+`EditorSelection` remains the sole Edit/Source range, command, copy, IME, and
+accessibility owner. Scholium does not install CodeMirror's rectangular
+`drawSelection` layer: one mode-neutral decoration source marks only selected
+source characters on each physical line and excludes line endings, authored
+blank lines, widgets, padding, and semantic gaps. The synchronized native DOM
+selection stays visually transparent. Review likewise retains WebKit's native
+`Selection` and Comment-range semantics, while a CSS Custom Highlight mirrors
+only intersected nonempty text-node subranges. The static Review DOM is not
+mutated, copied text is unchanged, and block padding or virtual line endings
+cannot acquire selection paint. Both adapters consume the same resolved Accent
+mix; `==text==` instead consumes the fixed shared Markup-highlight token.
 
 Writing direction is content-owned at the adapter boundary. Static Review DOM
 places `dir="auto"` on researcher-authored text blocks and `dir="ltr"` on code,
@@ -1605,7 +1646,10 @@ and exact document input remain private session state. The SwiftUI adapter's
 `lastModeInput` is only a one-way diff cache that prevents an unchanged view
 input from being resent after a session publication; it never initializes or
 recovers a session and never converts a bridge acknowledgement into Document
-state. Initial exact input is staged without publishing during `makeNSView`;
+state. The parent view's source is a lifecycle snapshot, not a per-transaction
+echo. Reattaching the same retained document initializes from the session's
+exact mirror, while a different document uses the newly proposed source.
+Initial exact input is staged without publishing during `makeNSView`;
 the page-ready boundary publishes loading once and starts initialization. A
 matching recovery snapshot is selected by the session's exact document,
 starting-fingerprint, and source identity, including after Web-content process
@@ -1619,14 +1663,22 @@ without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge v7 sends source deltas immediately in generation order and includes a
-generation-checked, nonmutating exact UTF-16 source-range reveal operation. It coalesces
+Bridge v8 sends source deltas immediately in generation order and includes a
+nonmutating exact UTF-16 source-range reveal operation. Identity remains
+strict while snapshot queries may observe a later generation than the caller
+knew. A save acknowledges one immutable committed snapshot: if input advanced
+during the repository write, the newer buffer remains dirty and schedules the
+next autosave instead of being rejected as a replaced session. Source-mutating
+bridge operations remain serialized; nonmutating snapshot and presentation
+queries do not wait behind that queue. It coalesces
 selection-only reports to the latest envelope per animation frame, with a 50 ms
 offscreen watchdog. Each envelope carries exact selection and coordinates but
 includes command availability only when changed. Swift keeps coordinates as
 non-Observable session state and publishes semantic or lifecycle changes only.
-Recovery capture follows document/history and lifecycle changes, not cursor
-motion. Every awaited request binds a session epoch and revalidates WebView,
+The incremental native exact-source mirror is the live recovery authority.
+Complete CodeMirror history is captured only at an explicit view-reconstruction
+boundary, never on an idle timer during ordinary input. Every awaited request
+binds a session epoch and revalidates WebView,
 document, fingerprint, and nondecreasing generation. Selection snapshots are
 valid only for that identity and generation; a committed fingerprint rebases
 fallback recovery before scheduling bounded history capture.
@@ -1647,7 +1699,13 @@ query CodeMirror `Text` lines around the active ranges. One immutable sorted
 mutation-sensitive interval set is cached with `LiveProjectionIndex` and reused
 by every projection field. Plain edits outside raw HTML map its existing ranges;
 full source strings remain reserved for bounded semantic constructs or explicit
-whole-document commands that actually require them.
+whole-document commands that actually require them. The native receiver applies
+the same small deltas directly to `EditorExactSourceBuffer`; one
+deadline-driven autosave task moves its deadline during continued typing
+instead of being cancelled and recreated for every English or IME transaction.
+Its dirty-path publication changes only when the path changes. Document toolbar
+navigation consumes the fingerprint-bound heading projection already carried
+by `WorkspaceNoteSnapshot`; no SwiftUI `body` reparses Markdown.
 
 The retained-memory scenario uses an app-owned, run-specific handshake rather
 than inferring readiness from XCUITest timing. The initial editor load and each
@@ -1821,22 +1879,35 @@ literal, code-block, table, Callout, footnote-reference, and mathematics ranges.
 fields own semantic line classes, measured source separator lines, inter-block gaps,
 frontmatter, tables, display mathematics, raw HTML, Callouts, and footnote
 reference markers.
-Semantic gaps are zero-content block widgets placed at typed block boundaries;
-projected components themselves use no Edit-only block margins or fixed-height
-estimates. Only top-level lists participate in semantic block gaps. List-item
+At a typed block boundary that already contains an authored Markdown separator
+line, that exact line absorbs the larger of the adjacent semantic spacing roles
+and no source-less gap is emitted. Only a boundary without an authored
+separator uses a zero-content block widget. Projected components themselves
+use no Edit-only block margins or fixed-height estimates. Only top-level lists
+participate in semantic block gaps. List-item
 paragraphs and nested lists retain ordinary prose line height with no internal
 paragraph or block gap. A paragraph-separating Markdown blank line is never
 collapsed: the semantic-line field keeps it as the one exact CodeMirror line
-and sizes it from `--scholium-rhythm-paragraph-gap`; Edit paragraph lines do not
-repeat that gap as padding. Native selection, horizontal navigation, deletion,
+and sizes it from `--scholium-rhythm-paragraph-gap` or the larger adjacent
+object spacing role; Edit paragraph lines do not repeat that gap as padding.
+Pointer placement anywhere in that visible line therefore enters the authored
+empty source line. Native selection, horizontal navigation, deletion,
 composition, and Undo therefore traverse the same source offsets in both
 directions. This keeps the visible DOM, CodeMirror height map, pointer mapping,
 selection, and scrolling under one geometry owner. A prefix-maximum interval
 index handles nested half-open overlap and containment without mutating
 StateField-owned arrays. Plain bounded insertions outside constructs map
-existing positions; deletions, structural markers, and uncertain block
-boundaries rebuild conservatively. A new background Lezer tree may refresh
-structure once; selection and viewport transactions reuse it.
+existing positions only after a physical-line-local semantic-catalog
+comparison proves that Markdown topology is unchanged. This replaces
+marker-proximity guessing, so ordinary prose beside emphasis, links,
+citations, or other syntax does not rebuild the complete document projection
+merely because a marker is nearby. Deletions, structural markers,
+cached-content constructs such as mathematics, and any changed or uncertain
+local topology rebuild conservatively. The central index is the sole topology
+owner; component fields derive their table, mathematics, raw-HTML, Callout,
+and footnote projections from it rather than maintaining parallel regex
+invalidation rules. A new background Lezer tree may refresh structure once;
+selection and viewport transactions reuse it.
 
 The remaining `ViewPlugin` is an inline adapter only. It projects visible
 ranges plus a 2,000 UTF-16 buffer and never supplies block widgets, source-line
@@ -1858,6 +1929,12 @@ Read and Live Preview consume one app-owned presentation contract:
 - the Live adapter maps the same roles to bounded CodeMirror decorations and
   widgets without replacing active source, selection, composition, or undo.
 
+Review document identity excludes its asynchronously derived link-preview
+catalog. A fingerprint, CSS, or capability change may replace the static page,
+while a later graph-bound preview revision updates one bounded in-page preview
+map. It cannot reload the document DOM, disturb selection or scroll, or become
+a writable source authority.
+
 The modes need not share one DOM tree. A shared component contract plus thin
 static-Read and editable-CodeMirror adapters preserves Read semantics and
 accessibility while keeping Live Preview an editor. Layout changes may update
@@ -1876,16 +1953,22 @@ surfaces through those controlled style elements without replacing the retained
 WebView, EditorState, buffer, selection, composition, or undo history.
 
 Inactive Live callouts share Read's `.scholium-callout` DOM and stylesheet.
-`LiveBlockActivation` records the half-open range and entry edge: downward
-entry selects `from`, while upward or rendered-body entry selects the final
-source unit before CodeMirror resumes ownership. The whole-line block
-replacement retains CodeMirror's inclusive defaults so it consumes the source
-line boxes instead of leaving empty lines at its boundaries; the explicit
-activation field, not decoration inclusivity, decides when exact source is
-revealed. Its slot uses no block margin or fixed-height estimate; fold, style,
-and pointer changes measure before further coordinate mapping. Once activated,
-the Callout range is the exclusive exact-source owner: the inline adapter does
-not hide or restyle any delimiter inside its source lines.
+The Callout StateField derives activation from the same committed Live
+selection snapshot as every inline projection; no parallel block-activation
+field exists. The semantic range remains half-open, while an empty caret at
+its content-end boundary also activates it so text can be appended before the
+authored separator. Downward or forward entry selects `from`; upward or
+rendered-body entry selects that content-end boundary. One subsequent ordinary
+horizontal move reaches the real separator line. The whole-line replacement
+retains CodeMirror's inclusive defaults so it consumes the source line boxes
+instead of leaving empty lines at its boundaries. Its slot uses no block margin
+or fixed-height estimate; fold, style, and pointer changes measure before
+further coordinate mapping. Once activated, block markers are exact source,
+while nested inline constructs continue to use ordinary construct-scoped
+projection rather than becoming a second Source mode. The fragment renderer
+uses the same extended Markdown language and source-offset map, so standard,
+Wiki, and Vector links retain their roles and exact pointer destinations inside
+the inactive Callout DOM.
 
 Semantic tables follow that adapter boundary. Read emits a protected scroll
 container with a real `table`, `thead`, column-scoped `th`, `tbody`, and
@@ -1915,11 +1998,16 @@ Edit. The insertion transformation allocates one unused identifier, appends one
 exact definition, and selects its content without renumbering existing forms.
 Duplicate, undefined, and unreferenced forms are not repaired.
 
-Live inline marks own pointer-down placement before exposing their delimiters.
-A click dispatches one caret in the source construct; only movement beyond the
-pointer slop becomes a drag selection. This prevents WebKit's DOM change between
-mouse-down and mouse-up from turning an ordinary click into a constructed range
-selection while preserving real drag selection.
+One Live-selection StateField separates CodeMirror's continuously authoritative
+pointer range from the projection snapshot. Ordinary `select.pointer`
+transactions update the real range without changing syntax decorations; one
+mouse-up effect commits the final range after CodeMirror's own event handler.
+Triple-click starts in an immediate phase because paragraph selection is one
+discrete gesture. Projected widgets map pointer-down to one collapsed exact
+source position, never a constructed range. Modified projected links activate
+from this same owner before selection begins; direct links reveal source, and
+Source retains its ordinary modifier-click path. No manual mousemove range,
+timer-delayed projection, or independent Callout activation state exists.
 
 Continuation normalization removes exactly one two-space or tab ownership
 indent and preserves every deeper space. Nested lists, block quotations, and
