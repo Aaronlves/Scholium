@@ -13,9 +13,9 @@ This long ordinary paragraph compares **strong evidence**, *Neocaridina denticul
 
 中文段落检查混合排版、标点、组合字符 é 与 emoji 🧭。
 
-Arabic keeps its own direction: <span dir="rtl">هذا نص عربي اختباري لا ينسب ادعاءً إلى مصدر.</span>
+هذا نص عربي اختباري يحافظ على اتجاهه ويعزل المصطلح Scholium والعدد 2026 دون إسناد ادعاء إلى مصدر.
 
-Hebrew keeps its own direction: <span dir="rtl">זהו טקסט בדיקה סינתטי ללא טענה מחקרית.</span>
+זהו טקסט בדיקה סינתטי ששומר על כיוונו ומבודד את המונח Scholium ואת המספר 2026 ללא טענה מחקרית.
 
 ### Lists and quotation
 

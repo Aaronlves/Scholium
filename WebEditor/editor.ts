@@ -28,6 +28,7 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 import {
+  bidiIsolates,
   bracketMatching,
   foldGutter,
   foldKeymap,
@@ -1968,9 +1969,23 @@ function semanticLineDecorationRanges(
   let line = state.doc.lineAt(scanFrom);
   while (line.from <= scanTo) {
     const presentation = semanticLinePresentation(state, line, index);
-    if (presentation.classes.length > 0) {
+    const direction = presentation.codeBlock || presentation.html
+      ? "ltr"
+      : presentation.heading
+          || presentation.paragraph
+          || presentation.quote
+          || presentation.list
+          || presentation.comment
+        ? "auto"
+        : null;
+    if (presentation.classes.length > 0 || direction) {
+      const attributes: Record<string, string> = {};
+      if (presentation.classes.length > 0) {
+        attributes.class = presentation.classes.join(" ");
+      }
+      if (direction) attributes.dir = direction;
       ranges.push(Decoration.line({
-        attributes: {class: presentation.classes.join(" ")},
+        attributes,
       }).range(line.from));
     }
     if (line.number >= state.doc.lines) break;
@@ -2061,6 +2076,40 @@ const liveSemanticLineField = StateField.define<LiveSemanticLineState>({
     return previous;
   },
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+});
+
+function sourceDirectionDecorations(view: EditorView) {
+  const ranges: Range<Decoration>[] = [];
+  const decoratedLines = new Set<number>();
+  for (const visible of view.visibleRanges) {
+    let line = view.state.doc.lineAt(visible.from);
+    while (line.from <= visible.to) {
+      if (!decoratedLines.has(line.from)) {
+        decoratedLines.add(line.from);
+        ranges.push(Decoration.line({attributes: {dir: "auto"}}).range(line.from));
+      }
+      if (line.number >= view.state.doc.lines) break;
+      line = view.state.doc.line(line.number + 1);
+    }
+  }
+  return Decoration.set(ranges, true);
+}
+
+// Source remains exact Markdown. This viewport-bounded adapter adds only the
+// HTML writing-direction attribute consumed by CodeMirror's own bidi cursor
+// model; it owns no semantic typography, replacement, or vertical geometry.
+const sourceTextDirection = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+  constructor(view: EditorView) {
+    this.decorations = sourceDirectionDecorations(view);
+  }
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = sourceDirectionDecorations(update.view);
+    }
+  }
+}, {
+  decorations: (value) => value.decorations,
 });
 
 type SemanticBlockSpacing = "none" | "half" | "paragraph" | "standard" | "callout";
@@ -3140,6 +3189,7 @@ const sourceMode = [
   highlightActiveLineGutter(),
   foldGutter(),
   highlightActiveLine(),
+  sourceTextDirection,
   EditorView.lineWrapping,
 ];
 
@@ -3150,10 +3200,12 @@ const editorExtensions = [
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
+      bidiIsolates(),
       bracketMatching(),
       closeBrackets(),
       autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
       rectangularSelection(),
+      EditorView.perLineTextDirection.of(true),
       scholiumNoteLanguage,
       keymap.of([
         ...closeBracketsKeymap,

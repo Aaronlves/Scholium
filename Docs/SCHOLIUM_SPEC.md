@@ -1803,9 +1803,22 @@ inset and existing trailing scrolling space remain separate. CSS lengths never
 convert to macOS points. `ch` resolves against Review/Edit Body type or Source's
 exact-source type and therefore does not promise an exact character count.
 Shared ownership, units, and the 72ch default have passed ordinary, narrow,
-mixed-script, RTL, and 100%/200% researcher comparison. Edit and Source
+mixed-script, and 100%/200% researcher comparison. Edit and Source
 reconfigure one retained editor state; window, split, theme,
 line-width, or text-size changes never replace it or create an Editor window.
+
+Each researcher-authored semantic text block owns its base writing direction.
+Review determines that direction from the block's first strong directional
+character and directionally isolates the block from adjacent content. Edit
+applies the same automatic direction to semantic lines and projected fragment
+components; Source applies automatic direction independently to each visible
+exact source line. Code, mathematics, and inert raw-HTML source remain
+left-to-right isolated technical regions. CodeMirror's visual cursor and
+selection model must consume the same per-line direction and syntactic bidi
+isolates that produce the visible order. Interface language never forces the
+direction of document prose, all Scholium-owned spacing and boundaries use
+logical start/end edges, and user-authored raw HTML remains inert rather than
+becoming an alternate direction-control or rendering path.
 
 Appearance is machine-local configuration and never Markdown or vault state.
 It stores multiple named configurations, keeps exactly one selected, and
@@ -2338,7 +2351,7 @@ may scroll inside that measure; rendered prose reflows without page-level
 horizontal reading scroll. Source mode instead soft-wraps every exact logical
 line within its measure without changing source line breaks or line numbers.
 The 72ch default and typographic rhythm have passed ordinary, narrow,
-mixed-script, RTL, and 100%/200% visual acceptance. Screenshots and prototype
+mixed-script, and 100%/200% visual acceptance. Screenshots and prototype
 coordinates remain evidence only and never define native/CSS unit conversion.
 
 ### 19.5 Application icon

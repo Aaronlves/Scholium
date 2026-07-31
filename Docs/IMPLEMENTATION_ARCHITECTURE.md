@@ -1567,6 +1567,17 @@ decoration invalidation follows document, viewport, selection, and presentation
 inputs, not window focus, so an inactive WebView cannot erase its semantic
 projection merely because WebKit has no visible range to report.
 
+Writing direction is content-owned at the adapter boundary. Static Review DOM
+places `dir="auto"` on researcher-authored text blocks and `dir="ltr"` on code,
+mathematics, and inert raw-HTML source. Live semantic lines and every fragment
+component use the same attributes. Source has a viewport-bounded decoration
+plugin that adds only `dir="auto"` to rendered exact-source lines; it owns no
+replacement, typography, or vertical geometry. The shared editor configuration
+enables CodeMirror's per-line text-direction facet and official syntax-tree
+bidi-isolate extension, so the DOM order, visual cursor, selection, and neutral
+Markdown punctuation use one direction model. Raw HTML remains escaped or an
+inert literal projection and cannot become a parallel rendering authority.
+
 Review/Edit presentation comparison is a test-owned projection over the same
 tracked three-mode fixture, not a second renderer or source authority. Each
 catalog probe names its expected `MarkdownSemanticDocument` role; the harness

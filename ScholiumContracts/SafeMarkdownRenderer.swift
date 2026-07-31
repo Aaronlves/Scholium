@@ -31,7 +31,7 @@ public enum SafeMarkdownRenderer {
         depth: Int
     ) -> String {
         guard depth < 12 else {
-            return "<p class=\"scholium-render-warning\">Nested rendering limit reached.</p>"
+            return "<p class=\"scholium-render-warning\" dir=\"auto\">Nested rendering limit reached.</p>"
         }
 
         let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
@@ -159,9 +159,9 @@ public enum SafeMarkdownRenderer {
         let roleLabel = escapeHTML(callout.role.displayLabel)
         let purpose = escapeAttribute(callout.role.purpose)
         let accessibleRole = escapeAttribute("\(callout.role.displayLabel). \(callout.role.purpose)")
-        let roleHTML = "<span class=\"scholium-callout-role\" title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
+        let roleHTML = "<span class=\"scholium-callout-role\" dir=\"auto\" title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
         let titleHTML = callout.title.map {
-            "<span class=\"scholium-callout-title\">\(renderInlineMarkdown($0))</span>"
+            "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown($0))</span>"
         } ?? ""
         let heading = "<span class=\"scholium-callout-heading\" role=\"heading\" aria-level=\"2\">\(roleHTML)\(titleHTML)</span>"
         let fragment = NoteDocument(relativePath: "callout.md", rawContent: callout.bodySource)
@@ -171,7 +171,7 @@ public enum SafeMarkdownRenderer {
             depth: depth
         )
         let semanticBody = callout.role == .quote
-            ? "<blockquote class=\"scholium-callout-quotation\">\(renderedBody)</blockquote>"
+            ? "<blockquote class=\"scholium-callout-quotation\" dir=\"auto\">\(renderedBody)</blockquote>"
             : renderedBody
         let body = "<div class=\"scholium-callout-body\"><span class=\"scholium-callout-signature\" aria-hidden=\"true\"></span><div class=\"scholium-callout-content\">\(semanticBody)</div></div>"
         let attributes = "class=\"scholium-callout scholium-callout-\(callout.role.rawValue)\" data-callout=\"\(escapeAttribute(callout.kind))\" data-callout-source=\"\(escapeAttribute(callout.rawKind))\" data-callout-fold=\"\(callout.foldState.rawValue)\" \(sourceAttributes(callout.span)) data-scholium-protected=\"callout\""
@@ -198,7 +198,7 @@ public enum SafeMarkdownRenderer {
         let encoded = Data(expression.content.utf8).base64EncodedString()
         let kind = expression.kind.rawValue
         let tag = expression.kind == .display ? "div" : "span"
-        return "<\(tag) class=\"scholium-math scholium-math-\(kind)\" data-math-kind=\"\(kind)\" data-math-source=\"\(encoded)\" \(sourceAttributes(expression.span)) data-scholium-protected=\"math\"><code class=\"scholium-math-source\">\(escapeHTML(rawSource))</code></\(tag)>"
+        return "<\(tag) class=\"scholium-math scholium-math-\(kind)\" dir=\"ltr\" data-math-kind=\"\(kind)\" data-math-source=\"\(encoded)\" \(sourceAttributes(expression.span)) data-scholium-protected=\"math\"><code class=\"scholium-math-source\" dir=\"ltr\">\(escapeHTML(rawSource))</code></\(tag)>"
     }
 
     private static func renderInlineMarkdown(_ source: String) -> String {
@@ -206,10 +206,11 @@ public enum SafeMarkdownRenderer {
         var visitor = SafeHTMLVisitor(blockHTML: [:], inlineHTML: [:], blockSourceSpans: [:])
         visitor.visit(parsed)
         let rendered = visitor.result
-        guard rendered.hasPrefix("<p>"), rendered.hasSuffix("</p>\n") else {
+        let paragraphPrefix = "<p dir=\"auto\">"
+        guard rendered.hasPrefix(paragraphPrefix), rendered.hasSuffix("</p>\n") else {
             return escapeHTML(source)
         }
-        return String(rendered.dropFirst(3).dropLast(5))
+        return String(rendered.dropFirst(paragraphPrefix.count).dropLast(5))
     }
 
     private static func renderFootnoteSection(
@@ -226,7 +227,7 @@ public enum SafeMarkdownRenderer {
                 semantic: MarkdownSemanticDocument(parsing: fragment),
                 depth: depth
             )
-            return "<li id=\"fn-\(ordinal)\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
+            return "<li id=\"fn-\(ordinal)\" dir=\"auto\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
         }.joined()
         return "<div class=\"scholium-footnotes-slot\"><section class=\"footnotes\" data-scholium-protected=\"footnotes\" aria-label=\"Footnotes\"><hr><ol>\(items)</ol></section></div>"
     }
@@ -238,12 +239,12 @@ public enum SafeMarkdownRenderer {
         let encoded = decodedDestination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? decodedDestination
         if link.syntax == .embed {
-            return "<a class=\"wiki-link scholium-embed\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(link.span)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
+            return "<a class=\"wiki-link scholium-embed\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(link.span)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
         }
         let relation = link.relationship.map { " data-relationship=\"\(escapeAttribute($0.rawValue))\"" } ?? ""
         let vectorClass = link.vectorKind == nil ? "" : " scholium-vector"
         let vector = link.vectorKind.map { " data-vector-kind=\"\(escapeAttribute($0.rawValue))\"" } ?? ""
-        return "<a class=\"wiki-link\(vectorClass)\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(link.span))\(relation)\(vector)>\(escapeHTML(display))</a>"
+        return "<a class=\"wiki-link\(vectorClass)\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(link.span))\(relation)\(vector)>\(escapeHTML(display))</a>"
     }
 
     private static func bodyUTF16Offset(in document: NoteDocument) -> Int {
@@ -358,22 +359,22 @@ private struct SafeHTMLVisitor: MarkupWalker {
 
     mutating func visitDocument(_ document: Document) { descendInto(document) }
     mutating func visitParagraph(_ paragraph: Paragraph) {
-        result += "<p\(sourceAttributes(for: .paragraph))>"; descendInto(paragraph); result += "</p>\n"
+        result += "<p dir=\"auto\"\(sourceAttributes(for: .paragraph))>"; descendInto(paragraph); result += "</p>\n"
     }
     mutating func visitHeading(_ heading: Heading) {
         let span = nextSourceSpan(for: .heading)
         let anchor = span.map { " id=\"scholium-line-\($0.start.line)\" \(SafeMarkdownRenderer.sourceAttributes($0))" } ?? ""
-        result += "<h\(heading.level)\(anchor)>"; descendInto(heading); result += "</h\(heading.level)>\n"
+        result += "<h\(heading.level) dir=\"auto\"\(anchor)>"; descendInto(heading); result += "</h\(heading.level)>\n"
     }
     mutating func visitBlockQuote(_ blockQuote: BlockQuote) {
-        result += "<blockquote\(sourceAttributes(for: .blockQuote))>"; descendInto(blockQuote); result += "</blockquote>\n"
+        result += "<blockquote dir=\"auto\"\(sourceAttributes(for: .blockQuote))>"; descendInto(blockQuote); result += "</blockquote>\n"
     }
     mutating func visitCodeBlock(_ codeBlock: CodeBlock) {
         let language = codeBlock.language.map { " class=\"language-\(SafeMarkdownRenderer.escapeAttribute($0))\"" } ?? ""
-        result += "<pre\(sourceAttributes(for: .code))><code\(language)>\(SafeMarkdownRenderer.escapeHTML(codeBlock.code))</code></pre>\n"
+        result += "<pre dir=\"ltr\"\(sourceAttributes(for: .code))><code dir=\"ltr\"\(language)>\(SafeMarkdownRenderer.escapeHTML(codeBlock.code))</code></pre>\n"
     }
     mutating func visitInlineCode(_ inlineCode: InlineCode) {
-        result += "<code>\(SafeMarkdownRenderer.escapeHTML(inlineCode.code))</code>"
+        result += "<code dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(inlineCode.code))</code>"
     }
     mutating func visitEmphasis(_ emphasis: Emphasis) {
         result += "<em>"; descendInto(emphasis); result += "</em>"
@@ -395,7 +396,7 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "<ol\(start)\(sourceAttributes(for: .orderedList))>"; descendInto(orderedList); result += "</ol>\n"
     }
     mutating func visitListItem(_ listItem: ListItem) {
-        result += "<li\(sourceAttributes(for: .listItem))>"; descendInto(listItem); result += "</li>\n"
+        result += "<li dir=\"auto\"\(sourceAttributes(for: .listItem))>"; descendInto(listItem); result += "</li>\n"
     }
     mutating func visitLink(_ link: Link) {
         let destination = link.destination ?? ""
@@ -408,7 +409,7 @@ private struct SafeHTMLVisitor: MarkupWalker {
                 ?? decodedDestination
             href = "scholium-note:\(encoded)"
         }
-        result += "<a href=\"\(SafeMarkdownRenderer.escapeAttribute(href))\">"
+        result += "<a dir=\"auto\" href=\"\(SafeMarkdownRenderer.escapeAttribute(href))\">"
         descendInto(link)
         result += "</a>"
     }
@@ -424,11 +425,11 @@ private struct SafeHTMLVisitor: MarkupWalker {
         if let key = blockToken(in: html.rawHTML), let replacement = blockHTML[key] {
             result += replacement
         } else {
-            result += "<pre class=\"raw-html\"\(sourceAttributes(for: .html))><code>\(SafeMarkdownRenderer.escapeHTML(html.rawHTML))</code></pre>"
+            result += "<pre class=\"raw-html\" dir=\"ltr\"\(sourceAttributes(for: .html))><code dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(html.rawHTML))</code></pre>"
         }
     }
     mutating func visitInlineHTML(_ inlineHTML: InlineHTML) {
-        result += "<code class=\"raw-html-inline\">\(SafeMarkdownRenderer.escapeHTML(inlineHTML.rawHTML))</code>"
+        result += "<code class=\"raw-html-inline\" dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(inlineHTML.rawHTML))</code>"
     }
     mutating func visitTable(_ table: Table) {
         let previousAlignments = tableColumnAlignments
@@ -474,7 +475,7 @@ private struct SafeHTMLVisitor: MarkupWalker {
         if tableCell.colspan > 1 { attributes += " colspan=\"\(tableCell.colspan)\"" }
         if tableCell.rowspan > 1 { attributes += " rowspan=\"\(tableCell.rowspan)\"" }
         currentTableColumn += Int(tableCell.colspan)
-        result += "<\(tag)\(attributes)>"; descendInto(tableCell); result += "</\(tag)>"
+        result += "<\(tag) dir=\"auto\"\(attributes)>"; descendInto(tableCell); result += "</\(tag)>"
     }
 
     private mutating func appendTextReplacingTokens(_ value: String) {

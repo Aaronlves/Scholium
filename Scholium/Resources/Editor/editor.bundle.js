@@ -17926,6 +17926,108 @@
     typeArray.push(type);
     return type.id;
   }
+  function buildForLine(line) {
+    return line.length <= 4096 && /[\u0590-\u05f4\u0600-\u06ff\u0700-\u08ac\ufb50-\ufdff]/.test(line);
+  }
+  function textHasRTL(text) {
+    for (let i2 = text.iter(); !i2.next().done; )
+      if (buildForLine(i2.value))
+        return true;
+    return false;
+  }
+  function changeAddsRTL(change) {
+    let added = false;
+    change.iterChanges((fA, tA, fB, tB, ins) => {
+      if (!added && textHasRTL(ins))
+        added = true;
+    });
+    return added;
+  }
+  var alwaysIsolate = /* @__PURE__ */ Facet.define({ combine: (values2) => values2.some((x) => x) });
+  function bidiIsolates(options = {}) {
+    let extensions = [isolateMarks];
+    if (options.alwaysIsolate)
+      extensions.push(alwaysIsolate.of(true));
+    return extensions;
+  }
+  var isolateMarks = /* @__PURE__ */ ViewPlugin.fromClass(class {
+    constructor(view) {
+      this.always = view.state.facet(alwaysIsolate) || view.textDirection != Direction.LTR || view.state.facet(EditorView.perLineTextDirection);
+      this.hasRTL = !this.always && textHasRTL(view.state.doc);
+      this.tree = syntaxTree(view.state);
+      this.decorations = this.always || this.hasRTL ? buildDeco(view, this.tree, this.always) : Decoration.none;
+    }
+    update(update) {
+      let always = update.state.facet(alwaysIsolate) || update.view.textDirection != Direction.LTR || update.state.facet(EditorView.perLineTextDirection);
+      if (!always && !this.hasRTL && changeAddsRTL(update.changes))
+        this.hasRTL = true;
+      if (!always && !this.hasRTL)
+        return;
+      let tree = syntaxTree(update.state);
+      if (always != this.always || tree != this.tree || update.docChanged || update.viewportChanged) {
+        this.tree = tree;
+        this.always = always;
+        this.decorations = buildDeco(update.view, tree, always);
+      }
+    }
+  }, {
+    provide: (plugin) => {
+      function access(view) {
+        var _a2, _b;
+        return (_b = (_a2 = view.plugin(plugin)) === null || _a2 === void 0 ? void 0 : _a2.decorations) !== null && _b !== void 0 ? _b : Decoration.none;
+      }
+      return [
+        EditorView.outerDecorations.of(access),
+        Prec.lowest(EditorView.bidiIsolatedRanges.of(access))
+      ];
+    }
+  });
+  function buildDeco(view, tree, always) {
+    let deco = new RangeSetBuilder();
+    let ranges = view.visibleRanges;
+    if (!always)
+      ranges = clipRTLLines(ranges, view.state.doc);
+    for (let { from, to } of ranges) {
+      tree.iterate({
+        enter: (node) => {
+          let iso = node.type.prop(NodeProp.isolate);
+          if (iso)
+            deco.add(node.from, node.to, marks[iso]);
+        },
+        from,
+        to
+      });
+    }
+    return deco.finish();
+  }
+  function clipRTLLines(ranges, doc2) {
+    let cur2 = doc2.iter(), pos = 0, result = [], last = null;
+    for (let { from, to } of ranges) {
+      if (last && last.to > from) {
+        from = last.to;
+        if (from >= to)
+          continue;
+      }
+      if (pos + cur2.value.length < from) {
+        cur2.next(from - (pos + cur2.value.length));
+        pos = from;
+      }
+      for (; ; ) {
+        let start = pos, end = pos + cur2.value.length;
+        if (!cur2.lineBreak && buildForLine(cur2.value)) {
+          if (last && last.to > start - 10)
+            last.to = Math.min(to, end);
+          else
+            result.push(last = { from: start, to: Math.min(to, end) });
+        }
+        if (end >= to)
+          break;
+        pos = end;
+        cur2.next();
+      }
+    }
+    return result;
+  }
   var marks = {
     rtl: /* @__PURE__ */ Decoration.mark({ class: "cm-iso", inclusive: true, attributes: { dir: "rtl" }, bidiIsolate: Direction.RTL }),
     ltr: /* @__PURE__ */ Decoration.mark({ class: "cm-iso", inclusive: true, attributes: { dir: "ltr" }, bidiIsolate: Direction.LTR }),
@@ -29617,8 +29719,27 @@ ${fence}
   };
 
   // language.ts
+  var markdownBidiIsolation = {
+    props: [NodeProp.isolate.add({
+      Emphasis: "auto",
+      StrongEmphasis: "auto",
+      Strikethrough: "auto",
+      Highlight: "auto",
+      InlineFootnote: "auto",
+      InlineCode: "ltr",
+      InlineMath: "ltr",
+      Link: "ltr",
+      Autolink: "ltr",
+      WikiLink: "ltr",
+      VectorLink: "ltr",
+      FootnoteReference: "ltr"
+    })]
+  };
   var scholiumNoteLanguage = yamlFrontmatter({
-    content: markdown({ base: markdownLanguage, extensions: scholiumMarkdownDialect })
+    content: markdown({
+      base: markdownLanguage,
+      extensions: [scholiumMarkdownDialect, markdownBidiIsolation]
+    })
   });
 
   // semantic-projection.ts
@@ -30881,6 +31002,7 @@ ${preview.fragment}` : relationship;
     if (inlineMarkerNodes.has(cursor.name)) return;
     if (cursor.name === "InlineCode") {
       const code2 = document2.createElement("code");
+      code2.dir = "ltr";
       const opening = raw.match(/^`+/)?.[0] ?? "";
       const closing2 = raw.endsWith(opening) ? opening.length : 0;
       code2.textContent = raw.slice(opening.length, raw.length - closing2);
@@ -30891,6 +31013,7 @@ ${preview.fragment}` : relationship;
       const link = /^\[([\s\S]*?)\]\([\s\S]*\)$/.exec(raw);
       const span = document2.createElement("span");
       span.className = "cm-live-link";
+      span.dir = "auto";
       span.textContent = link?.[1] ?? raw;
       parent.append(span);
       return;
@@ -30928,6 +31051,7 @@ ${preview.fragment}` : relationship;
     const document2 = documentFor(parent);
     const element = document2.createElement(expression.kind === "display" ? "div" : "span");
     element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
+    element.dir = "ltr";
     element.dataset.scholiumProtected = "math";
     const runtime = document2.defaultView?.scholiumMath;
     const rendered = runtime?.version === 1 ? runtime.render({ source: expression.content, kind: expression.kind }) : null;
@@ -30938,6 +31062,7 @@ ${preview.fragment}` : relationship;
       element.classList.add("scholium-math-error");
       const exact = document2.createElement("code");
       exact.className = "scholium-math-source";
+      exact.dir = "ltr";
       const delimiter = "$".repeat(expression.delimiterLength);
       exact.textContent = expression.kind === "display" ? `${delimiter}
 ${expression.content}
@@ -30971,6 +31096,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
   function tableCellDOM(cell, header, document2, options) {
     const element = document2.createElement(header ? "th" : "td");
+    element.dir = "auto";
     if (header) element.setAttribute("scope", "col");
     if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
     element.dataset.sourceOffset = String(cell.sourceOffset);
@@ -31027,12 +31153,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     heading2.setAttribute("aria-level", "2");
     const role = document2.createElement("span");
     role.className = "scholium-callout-role";
+    role.dir = "auto";
     role.title = parts.definition.meaning;
     role.textContent = parts.definition.label;
     heading2.append(role);
     if (parts.title) {
       const title = document2.createElement("span");
       title.className = "scholium-callout-title";
+      title.dir = "auto";
       appendInlineMarkdown(parts.title, title, options);
       heading2.append(title);
     }
@@ -31053,6 +31181,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const destination = parts.definition.identifier === "quote" ? document2.createElement("blockquote") : content2;
     if (destination !== content2) {
       destination.className = "scholium-callout-quotation";
+      destination.dir = "auto";
       content2.append(destination);
     }
     appendMarkdownBlocks(parts.body, destination, options);
@@ -31076,6 +31205,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     switch (cursor.name) {
       case "Paragraph": {
         const paragraph = document2.createElement("p");
+        paragraph.dir = "auto";
         appendInlineMarkdown(raw, paragraph, options);
         parent.append(paragraph);
         return;
@@ -31096,6 +31226,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
       case "ListItem": {
         const item = document2.createElement("li");
+        item.dir = "auto";
         appendBlockChildren(cursor, source, item, options);
         parent.append(item);
         return;
@@ -31107,6 +31238,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           return;
         }
         const quote = document2.createElement("blockquote");
+        quote.dir = "auto";
         appendBlockChildren(cursor, source, quote, options);
         parent.append(quote);
         return;
@@ -31114,7 +31246,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       case "FencedCode": {
         const projection = fencedCode(raw);
         const pre = document2.createElement("pre");
+        pre.dir = "ltr";
         const code2 = document2.createElement("code");
+        code2.dir = "ltr";
         if (projection.language) code2.className = `language-${projection.language}`;
         code2.textContent = projection.code;
         pre.append(code2);
@@ -31124,7 +31258,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       case "HTMLBlock": {
         const pre = document2.createElement("pre");
         pre.className = "raw-html";
+        pre.dir = "ltr";
         const code2 = document2.createElement("code");
+        code2.dir = "ltr";
         code2.textContent = raw;
         pre.append(code2);
         parent.append(pre);
@@ -31143,6 +31279,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       case "ATXHeading6": {
         const level = Number(cursor.name.at(-1));
         const heading2 = document2.createElement(`h${level}`);
+        heading2.dir = "auto";
         appendInlineMarkdown(
           raw.replace(/^\s*#{1,6}\s+/, "").replace(/\s+#+\s*$/, ""),
           heading2,
@@ -32683,9 +32820,15 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     let line = state.doc.lineAt(scanFrom);
     while (line.from <= scanTo) {
       const presentation = semanticLinePresentation(state, line, index);
-      if (presentation.classes.length > 0) {
+      const direction = presentation.codeBlock || presentation.html ? "ltr" : presentation.heading || presentation.paragraph || presentation.quote || presentation.list || presentation.comment ? "auto" : null;
+      if (presentation.classes.length > 0 || direction) {
+        const attributes = {};
+        if (presentation.classes.length > 0) {
+          attributes.class = presentation.classes.join(" ");
+        }
+        if (direction) attributes.dir = direction;
         ranges.push(Decoration.line({
-          attributes: { class: presentation.classes.join(" ") }
+          attributes
         }).range(line.from));
       }
       if (line.number >= state.doc.lines) break;
@@ -32765,6 +32908,35 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return previous;
     },
     provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+  });
+  function sourceDirectionDecorations(view) {
+    const ranges = [];
+    const decoratedLines = /* @__PURE__ */ new Set();
+    for (const visible of view.visibleRanges) {
+      let line = view.state.doc.lineAt(visible.from);
+      while (line.from <= visible.to) {
+        if (!decoratedLines.has(line.from)) {
+          decoratedLines.add(line.from);
+          ranges.push(Decoration.line({ attributes: { dir: "auto" } }).range(line.from));
+        }
+        if (line.number >= view.state.doc.lines) break;
+        line = view.state.doc.line(line.number + 1);
+      }
+    }
+    return Decoration.set(ranges, true);
+  }
+  var sourceTextDirection = ViewPlugin.fromClass(class {
+    decorations;
+    constructor(view) {
+      this.decorations = sourceDirectionDecorations(view);
+    }
+    update(update) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = sourceDirectionDecorations(update.view);
+      }
+    }
+  }, {
+    decorations: (value) => value.decorations
   });
   function semanticBlockSpacing(block) {
     switch (block.kind) {
@@ -33650,6 +33822,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     highlightActiveLineGutter(),
     foldGutter(),
     highlightActiveLine(),
+    sourceTextDirection,
     EditorView.lineWrapping
   ];
   var editorExtensions = [
@@ -33659,10 +33832,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     dropCursor(),
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),
+    bidiIsolates(),
     bracketMatching(),
     closeBrackets(),
     autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
     rectangularSelection(),
+    EditorView.perLineTextDirection.of(true),
     scholiumNoteLanguage,
     keymap.of([
       ...closeBracketsKeymap,

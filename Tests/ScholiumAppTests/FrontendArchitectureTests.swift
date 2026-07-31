@@ -1886,6 +1886,8 @@ struct FrontendArchitectureTests {
             liveModeStart.lowerBound..<liveModeEnd.upperBound
         ]
         #expect(sourceModeExtensions.contains("EditorView.lineWrapping"))
+        #expect(sourceModeExtensions.contains("sourceTextDirection"))
+        #expect(!liveModeExtensions.contains("sourceTextDirection"))
         #expect(sourceModeExtensions.contains("editorModeFacet.of(\"source\")"))
         #expect(sourceModeExtensions.contains("EditorView.editorAttributes.of"))
         #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
@@ -1910,6 +1912,8 @@ struct FrontendArchitectureTests {
             #expect(!staticExtensions.contains(liveOnlyExtension))
         }
         #expect(staticExtensions.contains("modeCompartment.of(sourceMode)"))
+        #expect(staticExtensions.contains("bidiIsolates()"))
+        #expect(staticExtensions.contains("EditorView.perLineTextDirection.of(true)"))
         #expect(editorSource.contains(#"combine: (modes) => modes[0] ?? "source""#))
         #expect(editorSource.contains(
             "modeCompartment.reconfigure(nextMode === \"livePreview\" ? livePreviewMode : sourceMode)"

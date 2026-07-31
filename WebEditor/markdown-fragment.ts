@@ -47,6 +47,7 @@ function appendInlineMarkdownNode(
   if (inlineMarkerNodes.has(cursor.name)) return;
   if (cursor.name === "InlineCode") {
     const code = document.createElement("code");
+    code.dir = "ltr";
     const opening = raw.match(/^`+/)?.[0] ?? "";
     const closing = raw.endsWith(opening) ? opening.length : 0;
     code.textContent = raw.slice(opening.length, raw.length - closing);
@@ -57,6 +58,7 @@ function appendInlineMarkdownNode(
     const link = /^\[([\s\S]*?)\]\([\s\S]*\)$/.exec(raw);
     const span = document.createElement("span");
     span.className = "cm-live-link";
+    span.dir = "auto";
     span.textContent = link?.[1] ?? raw;
     parent.append(span);
     return;
@@ -103,6 +105,7 @@ function appendMath(
   const document = documentFor(parent);
   const element = document.createElement(expression.kind === "display" ? "div" : "span");
   element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
+  element.dir = "ltr";
   element.dataset.scholiumProtected = "math";
   const runtime = document.defaultView?.scholiumMath;
   const rendered = runtime?.version === 1
@@ -115,6 +118,7 @@ function appendMath(
     element.classList.add("scholium-math-error");
     const exact = document.createElement("code");
     exact.className = "scholium-math-source";
+    exact.dir = "ltr";
     const delimiter = "$".repeat(expression.delimiterLength);
     exact.textContent = expression.kind === "display"
       ? `${delimiter}\n${expression.content}\n${delimiter}`
@@ -167,6 +171,7 @@ function tableCellDOM(
   options: MarkdownFragmentOptions,
 ) {
   const element = document.createElement(header ? "th" : "td");
+  element.dir = "auto";
   if (header) element.setAttribute("scope", "col");
   if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
   element.dataset.sourceOffset = String(cell.sourceOffset);
@@ -234,12 +239,14 @@ function appendCallout(
   heading.setAttribute("aria-level", "2");
   const role = document.createElement("span");
   role.className = "scholium-callout-role";
+  role.dir = "auto";
   role.title = parts.definition.meaning;
   role.textContent = parts.definition.label;
   heading.append(role);
   if (parts.title) {
     const title = document.createElement("span");
     title.className = "scholium-callout-title";
+    title.dir = "auto";
     appendInlineMarkdown(parts.title, title, options);
     heading.append(title);
   }
@@ -262,6 +269,7 @@ function appendCallout(
     : content;
   if (destination !== content) {
     destination.className = "scholium-callout-quotation";
+    destination.dir = "auto";
     content.append(destination);
   }
   appendMarkdownBlocks(parts.body, destination, options);
@@ -292,6 +300,7 @@ function appendMarkdownBlockNode(
   switch (cursor.name) {
   case "Paragraph": {
     const paragraph = document.createElement("p");
+    paragraph.dir = "auto";
     appendInlineMarkdown(raw, paragraph, options);
     parent.append(paragraph);
     return;
@@ -312,6 +321,7 @@ function appendMarkdownBlockNode(
   }
   case "ListItem": {
     const item = document.createElement("li");
+    item.dir = "auto";
     appendBlockChildren(cursor, source, item, options);
     parent.append(item);
     return;
@@ -323,6 +333,7 @@ function appendMarkdownBlockNode(
       return;
     }
     const quote = document.createElement("blockquote");
+    quote.dir = "auto";
     appendBlockChildren(cursor, source, quote, options);
     parent.append(quote);
     return;
@@ -330,7 +341,9 @@ function appendMarkdownBlockNode(
   case "FencedCode": {
     const projection = fencedCode(raw);
     const pre = document.createElement("pre");
+    pre.dir = "ltr";
     const code = document.createElement("code");
+    code.dir = "ltr";
     if (projection.language) code.className = `language-${projection.language}`;
     code.textContent = projection.code;
     pre.append(code);
@@ -340,7 +353,9 @@ function appendMarkdownBlockNode(
   case "HTMLBlock": {
     const pre = document.createElement("pre");
     pre.className = "raw-html";
+    pre.dir = "ltr";
     const code = document.createElement("code");
+    code.dir = "ltr";
     code.textContent = raw;
     pre.append(code);
     parent.append(pre);
@@ -359,6 +374,7 @@ function appendMarkdownBlockNode(
   case "ATXHeading6": {
     const level = Number(cursor.name.at(-1));
     const heading = document.createElement(`h${level}`);
+    heading.dir = "auto";
     appendInlineMarkdown(
       raw.replace(/^\s*#{1,6}\s+/, "").replace(/\s+#+\s*$/, ""),
       heading,

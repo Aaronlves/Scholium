@@ -25,6 +25,11 @@ describe("appendMarkdownBlocks", () => {
     expect(root.querySelector("ul > li > ul > li em")?.textContent).toBe("item");
     expect(root.querySelector("blockquote p")?.textContent).toBe("Quoted reason.");
     expect(root.querySelector("pre code.language-swift")?.textContent).toBe("let value = 1");
+    expect(root.querySelector("p")?.getAttribute("dir")).toBe("auto");
+    expect(root.querySelector("li")?.getAttribute("dir")).toBe("auto");
+    expect(root.querySelector("blockquote")?.getAttribute("dir")).toBe("auto");
+    expect(root.querySelector("pre")?.getAttribute("dir")).toBe("ltr");
+    expect(root.querySelector("pre code")?.getAttribute("dir")).toBe("ltr");
     expect(root.querySelector("script")).toBeNull();
     expect(root.textContent).toContain("<script>alert('no')</script>");
   });
@@ -65,9 +70,13 @@ describe("appendMarkdownBlocks", () => {
 
     expect(root.querySelector(".scholium-callout-state .scholium-callout-title")?.textContent)
       .toBe("Main claim");
+    expect(root.querySelector(".scholium-callout-state .scholium-callout-title")?.getAttribute("dir"))
+      .toBe("auto");
     expect(root.querySelector(".scholium-callout-content .scholium-math-rendered .katex")?.textContent)
       .toBe("x^2");
     expect(root.querySelectorAll("table.scholium-table th")).toHaveLength(2);
+    expect([...root.querySelectorAll("table.scholium-table th, table.scholium-table td")]
+      .every((cell) => cell.getAttribute("dir") === "auto")).toBe(true);
     expect(root.querySelector("table .scholium-math-rendered .katex")?.textContent).toBe("y");
     expect(root.querySelector(".scholium-math-display .katex")?.textContent).toBe("x + y");
   });

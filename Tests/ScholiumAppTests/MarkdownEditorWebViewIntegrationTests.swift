@@ -150,6 +150,89 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Edit and Source derive bidi direction without executing raw HTML")
+    func bidiDirectionUsesTheVisibleLineAndKeepsRawHTMLInert() async throws {
+        let source = """
+        # Direction boundary
+
+        هذا نص عربي مع **دليل عربي** و[مرجع عربي](https://example.test) والعدد 2026.
+
+        זהו טקסט עברי עם Scholium והמספר 2026.
+
+        <section dir="rtl">يبقى HTML الخام نصًا حرفيًا.</section>
+        """
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let edit = try #require(try await harness.callPageJavaScript(
+            """
+            const lines = [...document.querySelectorAll('.cm-line')];
+            const find = token => lines.find(line => (line.textContent || '').includes(token));
+            const arabic = find('هذا نص عربي');
+            const hebrew = find('זהו טקסט עברי');
+            const raw = document.querySelector('.cm-live-raw-html-widget');
+            return {
+              arabicAttribute: arabic?.getAttribute('dir') || '',
+              arabicDirection: arabic ? getComputedStyle(arabic).direction : '',
+              hebrewAttribute: hebrew?.getAttribute('dir') || '',
+              hebrewDirection: hebrew ? getComputedStyle(hebrew).direction : '',
+              rawDirection: raw ? getComputedStyle(raw).direction : '',
+              executableSectionCount: document.querySelectorAll('section[dir="rtl"]').length,
+            };
+            """
+        ) as? [String: Any])
+        #expect(edit["arabicAttribute"] as? String == "auto")
+        #expect(edit["arabicDirection"] as? String == "rtl")
+        #expect(edit["hebrewAttribute"] as? String == "auto")
+        #expect(edit["hebrewDirection"] as? String == "rtl")
+        #expect(edit["rawDirection"] as? String == "ltr")
+        #expect(edit["executableSectionCount"] as? Int == 0)
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let sourceMode = try #require(try await harness.callPageJavaScript(
+            """
+            const lines = [...document.querySelectorAll('.cm-line')];
+            const find = token => lines.find(line => (line.textContent || '').includes(token));
+            const isolates = [...document.querySelectorAll('.cm-iso')];
+            const result = token => {
+              const line = find(token);
+              return {
+                attribute: line?.getAttribute('dir') || '',
+                direction: line ? getComputedStyle(line).direction : '',
+              };
+            };
+            return {
+              arabic: result('هذا نص عربي'),
+              hebrew: result('זהו טקסט עברי'),
+              raw: result('<section dir="rtl">'),
+              autoMarkdownIsolate: isolates.some(element =>
+                element.getAttribute('dir') === 'auto'
+                  && (element.textContent || '').includes('**دليل عربي**')),
+              ltrMarkdownIsolate: isolates.some(element =>
+                element.getAttribute('dir') === 'ltr'
+                  && (element.textContent || '').includes('[مرجع عربي](https://example.test)')),
+              liveProjectionCount: document.querySelectorAll('[class*="cm-live-"]').length,
+            };
+            """
+        ) as? [String: Any])
+        let sourceArabic = try #require(sourceMode["arabic"] as? [String: Any])
+        let sourceHebrew = try #require(sourceMode["hebrew"] as? [String: Any])
+        let sourceRaw = try #require(sourceMode["raw"] as? [String: Any])
+        #expect(sourceArabic["attribute"] as? String == "auto")
+        #expect(sourceArabic["direction"] as? String == "rtl")
+        #expect(sourceHebrew["attribute"] as? String == "auto")
+        #expect(sourceHebrew["direction"] as? String == "rtl")
+        #expect(sourceRaw["attribute"] as? String == "auto")
+        #expect(sourceRaw["direction"] as? String == "ltr")
+        #expect(sourceMode["autoMarkdownIsolate"] as? Bool == true)
+        #expect(sourceMode["ltrMarkdownIsolate"] as? Bool == true)
+        #expect(sourceMode["liveProjectionCount"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Selecting text does not highlight matching text elsewhere")
     func selectionDoesNotHighlightDocumentMatches() async throws {
         let source = "Repeated z appears beside z and another z.\n"

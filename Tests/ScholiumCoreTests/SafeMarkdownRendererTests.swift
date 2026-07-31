@@ -37,6 +37,41 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("data-scholium-protected=\"embed\""))
     }
 
+    @Test("Semantic text owns automatic direction while technical source stays isolated")
+    func semanticWritingDirection() {
+        let source = """
+        # عنوان عربي
+
+        هذه فقرة عربية مع Scholium والعدد 2026.
+
+        > اقتباس عربي.
+
+        - عنصر عربي.
+
+        | حقل | قيمة |
+        |:---|---:|
+        | عربي | 2 |
+
+        `exact_code()`
+
+        <section dir="rtl">يبقى HTML الخام نصًا حرفيًا.</section>
+        """
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "direction.md", rawContent: source)
+        ).htmlBody
+
+        #expect(rendered.contains("<h1 dir=\"auto\""))
+        #expect(rendered.contains("<p dir=\"auto\""))
+        #expect(rendered.contains("<blockquote dir=\"auto\""))
+        #expect(rendered.contains("<li dir=\"auto\""))
+        #expect(rendered.contains("<th dir=\"auto\""))
+        #expect(rendered.contains("<td dir=\"auto\""))
+        #expect(rendered.contains("<code dir=\"ltr\">exact_code()</code>"))
+        #expect(rendered.contains("class=\"raw-html\" dir=\"ltr\""))
+        #expect(rendered.contains("&lt;section dir=&quot;rtl&quot;&gt;"))
+        #expect(!rendered.contains("<section dir=\"rtl\">"))
+    }
+
     @Test("Obsidian embeds remain neutral navigable links without transclusion")
     func obsidianEmbedLink() {
         let source = "![[Notes/Claim#Ground|Claim ground]]"
@@ -69,7 +104,7 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("class=\"scholium-callout-heading\" role=\"heading\" aria-level=\"2\""))
         #expect(rendered.contains("class=\"scholium-callout-role\""))
         #expect(rendered.contains(">Statement</span>"))
-        #expect(rendered.contains("class=\"scholium-callout-title\"><em>Fittingness</em></span>"))
+        #expect(rendered.contains("class=\"scholium-callout-title\" dir=\"auto\"><em>Fittingness</em></span>"))
         #expect(rendered.contains("class=\"scholium-callout-signature\" aria-hidden=\"true\""))
         #expect(rendered.contains("without endorsing it"))
         #expect(rendered.contains("<strong>correct</strong>"))
@@ -114,7 +149,7 @@ struct SafeMarkdownRendererTests {
         ).htmlBody
 
         #expect(rendered.contains("scholium-callout-quote"))
-        #expect(rendered.contains("<blockquote class=\"scholium-callout-quotation\">"))
+        #expect(rendered.contains("<blockquote class=\"scholium-callout-quotation\" dir=\"auto\">"))
         #expect(rendered.contains("The wording itself does argumentative work."))
         #expect(rendered.contains("class=\"scholium-callout-signature\" aria-hidden=\"true\""))
     }
@@ -132,7 +167,7 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("data-callout=\"orient\""))
         #expect(rendered.contains("class=\"scholium-callout-role\""))
         #expect(rendered.contains(">Orientation</span>"))
-        #expect(rendered.contains("class=\"scholium-callout-title\">Reading route</span>"))
+        #expect(rendered.contains("class=\"scholium-callout-title\" dir=\"auto\">Reading route</span>"))
         #expect(rendered.contains("data-scholium-protected=\"callout\""))
     }
 
@@ -196,17 +231,17 @@ struct SafeMarkdownRendererTests {
             NoteDocument(relativePath: "nested-footnote.md", rawContent: source)
         ).htmlBody
 
-        #expect(rendered.contains("<div class=\"footnote-content\"><p>First paragraph.</p>"))
-        #expect(rendered.contains("<ul><li><p>Outer item</p>"))
-        #expect(rendered.contains("<ul><li><p>Nested item</p>"))
-        #expect(rendered.contains("<blockquote><p>Quoted reason.</p>"))
+        #expect(rendered.contains("<div class=\"footnote-content\"><p dir=\"auto\">First paragraph.</p>"))
+        #expect(rendered.contains("<ul><li dir=\"auto\"><p dir=\"auto\">Outer item</p>"))
+        #expect(rendered.contains("<ul><li dir=\"auto\"><p dir=\"auto\">Nested item</p>"))
+        #expect(rendered.contains("<blockquote dir=\"auto\"><p dir=\"auto\">Quoted reason.</p>"))
         #expect(rendered.contains("class=\"scholium-callout scholium-callout-state\""))
         #expect(rendered.contains("<table class=\"scholium-table\""))
         #expect(rendered.contains("class=\"scholium-math scholium-math-inline\""))
         #expect(rendered.contains("class=\"scholium-math scholium-math-display\""))
-        #expect(rendered.contains("<pre><code class=\"language-swift\">let value = 1"))
+        #expect(rendered.contains("<pre dir=\"ltr\"><code dir=\"ltr\" class=\"language-swift\">let value = 1"))
         #expect(rendered.contains(">Following paragraph.</p>"))
-        #expect(!rendered.contains("<div class=\"footnote-content\"><p>Following paragraph."))
+        #expect(!rendered.contains("<div class=\"footnote-content\"><p dir=\"auto\">Following paragraph."))
     }
 
     @Test("Mathematics renders inert shared-runtime placeholders with exact source fallback")
@@ -221,7 +256,7 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.htmlBody.contains("class=\"scholium-math scholium-math-display\""))
         #expect(rendered.htmlBody.contains("data-math-kind=\"inline\""))
         #expect(rendered.htmlBody.contains("data-math-source=\""))
-        #expect(rendered.htmlBody.contains("<code class=\"scholium-math-source\">$x^2 + y^2$</code>"))
+        #expect(rendered.htmlBody.contains("<code class=\"scholium-math-source\" dir=\"ltr\">$x^2 + y^2$</code>"))
         #expect(rendered.htmlBody.contains("$literal$"))
         #expect(!rendered.htmlBody.contains("<script"))
     }
@@ -241,11 +276,11 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("data-scholium-protected=\"table\""))
         #expect(rendered.contains("<table class=\"scholium-table\""))
         #expect(rendered.contains("<thead><tr>"))
-        #expect(rendered.contains("<th scope=\"col\" class=\"scholium-table-align-left\">Claim</th>"))
-        #expect(rendered.contains("<th scope=\"col\" class=\"scholium-table-align-center\">Status</th>"))
-        #expect(rendered.contains("<th scope=\"col\" class=\"scholium-table-align-right\">Count</th>"))
+        #expect(rendered.contains("<th dir=\"auto\" scope=\"col\" class=\"scholium-table-align-left\">Claim</th>"))
+        #expect(rendered.contains("<th dir=\"auto\" scope=\"col\" class=\"scholium-table-align-center\">Status</th>"))
+        #expect(rendered.contains("<th dir=\"auto\" scope=\"col\" class=\"scholium-table-align-right\">Count</th>"))
         #expect(rendered.contains("<tbody><tr>"))
-        #expect(rendered.contains("<td class=\"scholium-table-align-right\">2</td>"))
+        #expect(rendered.contains("<td dir=\"auto\" class=\"scholium-table-align-right\">2</td>"))
         #expect(!rendered.contains("<thead><td>"))
     }
 

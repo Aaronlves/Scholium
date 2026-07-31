@@ -68,7 +68,8 @@
     "[[Synthetic Note|a wikilink]]",
     "$x^2 + y^2$",
     "中文论证",
-    "dir=\"rtl\"",
+    "هذا نص عربي اختباري",
+    "זהו טקסט בדיקה סינתטי",
     "- [ ] Open synthetic task.",
     "> Ordinary quotation",
     "```swift",
@@ -127,10 +128,20 @@
       "expectation": "mustMatchReview"
     },
     {
-      "id": "rtl-paragraph",
+      "id": "rtl-arabic-paragraph",
       "semanticRole": "paragraph",
-      "sourceToken": "Arabic keeps its own direction",
-      "visibleToken": "Arabic keeps its own direction",
+      "sourceToken": "هذا نص عربي اختباري",
+      "visibleToken": "هذا نص عربي اختباري",
+      "level": "block",
+      "readSelector": ".scholium-document > p",
+      "editSelector": ".cm-line.cm-live-paragraph",
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "rtl-hebrew-paragraph",
+      "semanticRole": "paragraph",
+      "sourceToken": "זהו טקסט בדיקה סינתטי",
+      "visibleToken": "זהו טקסט בדיקה סינתטי",
       "level": "block",
       "readSelector": ".scholium-document > p",
       "editSelector": ".cm-line.cm-live-paragraph",
