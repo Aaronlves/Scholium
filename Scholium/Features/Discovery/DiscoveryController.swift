@@ -108,19 +108,19 @@ final class DiscoveryController: ObservableObject {
     private var activeLocationRequest: DiscoveryLocationRequest?
     private var activeSearchRequestID: UUID?
     private let intentHandler: IntentHandler
-    private let peripheralPresentation: WindowPeripheralPresentationState
+    private let shellState: WindowShellState
     private var operations: (any DiscoveryUseCases)?
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         initialLibraryState: DiscoveryLibraryState = DiscoveryLibraryState(),
-        peripheralPresentation: WindowPeripheralPresentationState = WindowPeripheralPresentationState(),
+        shellState: WindowShellState = WindowShellState(),
         intentHandler: @escaping IntentHandler = { _ in }
     ) {
         library = initialLibraryState
-        self.peripheralPresentation = peripheralPresentation
+        self.shellState = shellState
         self.intentHandler = intentHandler
-        peripheralPresentation.objectWillChange
+        shellState.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
     }
@@ -307,14 +307,14 @@ final class DiscoveryController: ObservableObject {
     }
 
     func expandedFolders(in scope: LibraryDisclosureScope?) -> Set<String> {
-        peripheralPresentation.expandedFolders(in: scope)
+        shellState.expandedFolders(in: scope)
     }
 
     func setExpandedFolders(
         _ folders: Set<String>,
         in scope: LibraryDisclosureScope?
     ) {
-        peripheralPresentation.setExpandedFolders(folders, in: scope)
+        shellState.setExpandedFolders(folders, in: scope)
     }
 
     func replaceSearchCriteria(_ criteria: SearchWorkspaceState) {

@@ -1,21 +1,5 @@
 import Foundation
 
-/// The only durable, researcher-meaningful milestones shown in Research
-/// Activity. These are records of completed work, never a predicted workflow.
-public enum PendingResearchStateKind: String, Codable, CaseIterable, Hashable, Sendable {
-    case responseReady = "response_ready"
-    case awaitingFidelity = "awaiting_fidelity"
-    case changedSinceSettled = "changed_since_settled"
-}
-
-/// Identifies the researcher-facing route behind a transient response. A
-/// Comment exchange and a whole-note Discuss run share the quiet
-/// `responseReady` presentation but never share completion semantics.
-public enum PendingResearchRoute: String, Codable, Hashable, Sendable {
-    case comment
-    case discuss
-}
-
 public struct ResearchActivityNoteReference: Codable, Hashable, Identifiable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
@@ -36,38 +20,6 @@ public struct ResearchActivityNoteReference: Codable, Hashable, Identifiable, Se
         self.note = note
         self.role = role
         self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-/// One projected node for one note. Multi-note work shares an `activityID`,
-/// source, target summary, and Research Record route across its nodes.
-public struct PendingResearchState: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let noteID: UUID
-    public let kind: PendingResearchStateKind
-    public let createdAt: Date
-    public let activityID: UUID?
-    /// Exact revision to which the transient state belongs when the state is
-    /// revision-bound. Response-ready states do not need a fingerprint.
-    public let fingerprint: DocumentFingerprint?
-    public let route: PendingResearchRoute?
-
-    public init(
-        id: UUID = UUID(),
-        noteID: UUID,
-        kind: PendingResearchStateKind,
-        createdAt: Date = Date(),
-        activityID: UUID? = nil,
-        fingerprint: DocumentFingerprint? = nil,
-        route: PendingResearchRoute? = nil
-    ) {
-        self.id = id
-        self.noteID = noteID
-        self.kind = kind
-        self.createdAt = createdAt
-        self.activityID = activityID
-        self.fingerprint = fingerprint
-        self.route = route
     }
 }
 

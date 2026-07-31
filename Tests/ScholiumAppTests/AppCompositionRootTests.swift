@@ -570,14 +570,8 @@ struct AppCompositionRootTests {
         await first.refreshWorkspaceAssignment(preferredTriptychID: workspaceID)
         await second.refreshWorkspaceAssignment(preferredTriptychID: workspaceID)
 
-        let firstInitial: WindowWorkspaceCapabilities = try storedOptionalValue(
-            named: "activeWorkspaceCapabilities",
-            in: first
-        )
-        let secondInitial: WindowWorkspaceCapabilities = try storedOptionalValue(
-            named: "activeWorkspaceCapabilities",
-            in: second
-        )
+        let firstInitial = try #require(first.windowWorkspaceController.activeCapabilities)
+        let secondInitial = try #require(second.windowWorkspaceController.activeCapabilities)
         #expect(firstInitial.runtimeIdentity == initiallyConfigured.runtimeIdentity)
         #expect(secondInitial.runtimeIdentity == initiallyConfigured.runtimeIdentity)
         #expect(await initialHandle.events.subscriberCount == 1)
@@ -615,13 +609,11 @@ struct AppCompositionRootTests {
             triptychName: "Rebind Fixture"
         )
         let replacementHandle = try await store.applicationRuntime.openWorkspace(id: workspaceID)
-        let firstReplacement: WindowWorkspaceCapabilities = try storedOptionalValue(
-            named: "activeWorkspaceCapabilities",
-            in: first
+        let firstReplacement = try #require(
+            first.windowWorkspaceController.activeCapabilities
         )
-        let secondReplacement: WindowWorkspaceCapabilities = try storedOptionalValue(
-            named: "activeWorkspaceCapabilities",
-            in: second
+        let secondReplacement = try #require(
+            second.windowWorkspaceController.activeCapabilities
         )
         #expect(replacement.runtimeIdentity != initiallyConfigured.runtimeIdentity)
         #expect(firstReplacement.runtimeIdentity == replacement.runtimeIdentity)
@@ -727,13 +719,11 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.currentRegisteredVault?.id == analysesVault.id)
         #expect(firstWindow!.discoveryController.library.workspaceSlot == .paperAnalysis)
 
-        let firstHandle: WindowWorkspaceCapabilities = try storedOptionalValue(
-            named: "activeWorkspaceCapabilities",
-            in: firstWindow!
+        let firstHandle = try #require(
+            firstWindow!.windowWorkspaceController.activeCapabilities
         )
-        let secondHandle: WindowWorkspaceCapabilities = try storedOptionalValue(
-            named: "activeWorkspaceCapabilities",
-            in: secondWindow
+        let secondHandle = try #require(
+            secondWindow.windowWorkspaceController.activeCapabilities
         )
         #expect(firstHandle.runtimeIdentity == configured.runtimeIdentity)
         #expect(secondHandle.runtimeIdentity == configured.runtimeIdentity)
@@ -1019,15 +1009,6 @@ struct AppCompositionRootTests {
         return value
     }
 
-    private func storedOptionalValue<T>(named name: String, in owner: Any) throws -> T {
-        guard let optional = Mirror(reflecting: owner).children.first(where: {
-            $0.label == name
-        })?.value,
-        let value = Mirror(reflecting: optional).children.first?.value as? T else {
-            throw CompositionRootTestError.missingStoredReference(name)
-        }
-        return value
-    }
 }
 
 private enum CompositionRootTestError: Error {

@@ -32,6 +32,18 @@ struct ResearchInspectorState: Equatable, Sendable {
     var isVisible = false
 }
 
+/// The narrow application ports consumed by the per-window research feature.
+/// Permission, source-access, and bibliography capabilities remain with their
+/// dedicated controllers and never enter this bundle.
+struct ResearchControllerCapabilities: Sendable {
+    let records: any ResearchRecordUseCases
+    let checkpoints: any ResearchCheckpointUseCases
+    let skills: any ResearchSkillUseCases
+    let actions: any ResearchActionUseCases
+    let skillsURL: URL
+    let recoveryRecordsURL: URL
+}
+
 /// Per-window owner for research-context data and Action presentation.
 /// Inspector visibility and mode belong to the surrounding workspace window,
 /// so changing the selected document tab doesn't change the shell.
@@ -51,17 +63,17 @@ final class ResearchController: ObservableObject {
     let bibliography = RecommendedBibliographyController()
 
     private let intentHandler: IntentHandler
-    private let peripheralPresentation: WindowPeripheralPresentationState
-    private var operations: (any ResearchUseCases)?
+    private let shellState: WindowShellState
+    private var capabilities: ResearchControllerCapabilities?
     private var cancellables: Set<AnyCancellable> = []
 
     init(
-        peripheralPresentation: WindowPeripheralPresentationState = WindowPeripheralPresentationState(),
+        shellState: WindowShellState = WindowShellState(),
         intentHandler: @escaping IntentHandler = { _ in }
     ) {
-        self.peripheralPresentation = peripheralPresentation
+        self.shellState = shellState
         self.intentHandler = intentHandler
-        peripheralPresentation.objectWillChange
+        shellState.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
         actions.objectWillChange
@@ -73,19 +85,22 @@ final class ResearchController: ObservableObject {
     }
 
     var inspector: ResearchInspectorState {
-        peripheralPresentation.inspector
+        shellState.inspector
     }
 
     /// Borrows the capabilities selected by WorkspaceStore while retaining
     /// this window's independent Inspector and Action presentation state.
-    func bind(to operations: any ResearchUseCases, snapshot: WorkspaceSnapshot? = nil) {
-        self.operations = operations
+    func bind(
+        to capabilities: ResearchControllerCapabilities,
+        snapshot: WorkspaceSnapshot? = nil
+    ) {
+        self.capabilities = capabilities
         errorMessage = nil
         if let snapshot { receive(snapshot) }
     }
 
     func unbind() {
-        operations = nil
+        capabilities = nil
         actions.unbind()
         bibliography.unbind()
         records = nil
@@ -93,11 +108,11 @@ final class ResearchController: ObservableObject {
     }
 
     func researchSnapshot() async throws -> WorkspaceResearchSnapshot {
-        try await requireOperations().snapshot()
+        try await requireRecords().snapshot()
     }
 
     func refreshResearchProjection() async throws {
-        let operations = try requireOperations()
+        let operations = try requireRecords()
         let current = try await operations.snapshot()
         let active = try await operations.activeDiscussions(noteID: nil)
         let finished = try await operations.finishedResearchRecords(noteID: nil)
@@ -105,7 +120,6 @@ final class ResearchController: ObservableObject {
             settlements: current.settlements,
             activeDiscussions: active,
             finishedResearchRecords: finished,
-            pendingResearchStates: current.pendingResearchStates,
             critiques: current.critiques,
             checkpointListing: current.checkpointListing,
             recoveryRecords: current.recoveryRecords,
@@ -120,7 +134,7 @@ final class ResearchController: ObservableObject {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord {
-        try await requireOperations().settle(
+        try await requireRecords().settle(
             note,
             expectedRevision: expectedRevision,
             rationale: rationale
@@ -128,29 +142,29 @@ final class ResearchController: ObservableObject {
     }
 
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
-        try await requireOperations().critique(workNoteID: workNoteID)
+        try await requireRecords().critique(workNoteID: workNoteID)
     }
 
     func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion] {
-        try await requireOperations().activeDiscussions(noteID: noteID)
+        try await requireRecords().activeDiscussions(noteID: noteID)
     }
 
     func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion {
-        try await requireOperations().activeDiscussion(id: id)
+        try await requireRecords().activeDiscussion(id: id)
     }
 
     func setResearchRecordPinned(
         id: UUID,
         isPinned: Bool
     ) async throws -> PortableResearchRecord {
-        try await requireOperations().setResearchRecordPinned(
+        try await requireRecords().setResearchRecordPinned(
             id: id,
             isPinned: isPinned
         )
     }
 
     func deleteResearchRecordPermanently(id: UUID) async throws {
-        let operations = try requireOperations()
+        let operations = try requireRecords()
         do {
             try await operations.deleteResearchRecordPermanently(id: id)
             try await refreshRecordProjection(
@@ -168,7 +182,7 @@ final class ResearchController: ObservableObject {
         recordID: UUID,
         noteID: UUID
     ) async throws -> ResearchRecordComparison {
-        try await requireOperations().researchRecordComparison(
+        try await requireRecords().researchRecordComparison(
             recordID: recordID,
             noteID: noteID
         )
@@ -186,7 +200,7 @@ final class ResearchController: ObservableObject {
     }
 
     func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion? {
-        try await requireOperations().activeDiscussionIfPresent(id: id)
+        try await requireRecords().activeDiscussionIfPresent(id: id)
     }
 
     @discardableResult
@@ -196,7 +210,7 @@ final class ResearchController: ObservableObject {
         passage: CommentAnchor?,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
-        try await requireOperations().createDiscussion(
+        try await requireRecords().createDiscussion(
             target: target,
             focalNotes: focalNotes,
             passage: passage,
@@ -210,7 +224,7 @@ final class ResearchController: ObservableObject {
         lineReference: ResearchLineReference,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
-        try await requireOperations().createComment(
+        try await requireRecords().createComment(
             target: target,
             lineReference: lineReference,
             researcherMessage: researcherMessage
@@ -218,7 +232,7 @@ final class ResearchController: ObservableObject {
     }
 
     func discussionAgentInstructions(id: UUID) async throws -> String {
-        try await requireOperations().actionRun(id: id).instructions
+        try await requireActions().actionRun(id: id).instructions
     }
 
     @discardableResult
@@ -229,7 +243,7 @@ final class ResearchController: ObservableObject {
         text: String,
         passage: CommentAnchor? = nil
     ) async throws -> PortableResearchDiscussion {
-        try await requireOperations().appendDiscussionStatement(
+        try await requireRecords().appendDiscussionStatement(
             discussionID: discussionID,
             author: author,
             attribution: attribution,
@@ -240,12 +254,12 @@ final class ResearchController: ObservableObject {
 
     @discardableResult
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord {
-        try await requireOperations().finishDiscussion(discussionID: discussionID)
+        try await requireRecords().finishDiscussion(discussionID: discussionID)
     }
 
     @discardableResult
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation? {
-        try await requireOperations().critique(critiqueRelativePath: critiqueRelativePath)
+        try await requireRecords().critique(critiqueRelativePath: critiqueRelativePath)
     }
 
     @discardableResult
@@ -258,7 +272,7 @@ final class ResearchController: ObservableObject {
         noTextChangeRationale: String?,
         expectedRevision: DocumentFingerprint
     ) async throws -> CritiqueAssociation {
-        try await requireOperations().setCritiqueFindingDisposition(
+        try await requireRecords().setCritiqueFindingDisposition(
             workNote: workNote,
             roundID: roundID,
             findingID: findingID,
@@ -275,7 +289,7 @@ final class ResearchController: ObservableObject {
         roundID: UUID,
         expectedRevision: DocumentFingerprint
     ) async throws -> CritiqueAssociation {
-        try await requireOperations().completeCritiqueRound(
+        try await requireRecords().completeCritiqueRound(
             workNote: workNote,
             roundID: roundID,
             expectedRevision: expectedRevision
@@ -287,30 +301,30 @@ final class ResearchController: ObservableObject {
         name: String,
         kind: TriptychCheckpointKind = .manual
     ) async throws -> TriptychCheckpoint {
-        try await requireOperations().createCheckpoint(name: name, kind: kind)
+        try await requireCheckpoints().createCheckpoint(name: name, kind: kind)
     }
 
     func checkpoints() async throws -> TriptychCheckpointListing {
-        try await requireOperations().checkpoints()
+        try await requireCheckpoints().checkpoints()
     }
 
     func noteCheckpoints(
         for note: VaultQualifiedNoteID
     ) async throws -> [TriptychCheckpoint] {
-        try await requireOperations().noteCheckpoints(for: note)
+        try await requireCheckpoints().noteCheckpoints(for: note)
     }
 
     func checkpointNoteContent(
         _ checkpointID: UUID,
         note: VaultQualifiedNoteID
     ) async throws -> String {
-        try await requireOperations().checkpointNoteContent(checkpointID, note: note)
+        try await requireCheckpoints().checkpointNoteContent(checkpointID, note: note)
     }
 
     func checkpointComparison(
         _ checkpointID: UUID
     ) async throws -> [TriptychCheckpointChange] {
-        try await requireOperations().checkpointComparison(checkpointID)
+        try await requireCheckpoints().checkpointComparison(checkpointID)
     }
 
     @discardableResult
@@ -319,7 +333,7 @@ final class ResearchController: ObservableObject {
         from checkpointID: UUID,
         expectedRevision: DocumentFingerprint
     ) async throws -> TriptychCheckpointRestoreResult {
-        try await requireOperations().restoreNote(
+        try await requireCheckpoints().restoreNote(
             note,
             from: checkpointID,
             expectedRevision: expectedRevision
@@ -331,58 +345,58 @@ final class ResearchController: ObservableObject {
         _ checkpointID: UUID,
         selection: TriptychCheckpointRestoreSelection
     ) async throws -> TriptychCheckpointRestoreResult {
-        try await requireOperations().restoreCheckpoint(checkpointID, selection: selection)
+        try await requireCheckpoints().restoreCheckpoint(checkpointID, selection: selection)
     }
 
     func settings() async throws -> TriptychSettings {
-        try await requireOperations().settings()
+        try await requireRecords().settings()
     }
 
     func saveSettings(_ settings: TriptychSettings) async throws {
-        try await requireOperations().saveSettings(settings)
+        try await requireRecords().saveSettings(settings)
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
-        try await requireOperations().recoveryRecords()
+        try await requireRecords().recoveryRecords()
     }
 
     func resolveRecoveryRecord(_ id: UUID) async throws {
-        try await requireOperations().resolveRecoveryRecord(id)
+        try await requireRecords().resolveRecoveryRecord(id)
     }
 
     var recoveryRecordsURL: URL? {
-        operations?.recoveryRecordsURL
+        capabilities?.recoveryRecordsURL
     }
 
     func prepareCheckpointsLocation() async throws -> URL {
-        try await requireOperations().prepareCheckpointsLocation()
+        try await requireCheckpoints().prepareCheckpointsLocation()
     }
 
     var skillsURL: URL? {
-        operations?.skillsURL
+        capabilities?.skillsURL
     }
 
     func skills() async throws -> [ResearchSkillPackage] {
-        try await requireOperations().skills()
+        try await requireSkills().skills()
     }
 
     func skillCatalog() async throws -> ResearchSkillCatalog {
-        try await requireOperations().skillCatalog()
+        try await requireSkills().skillCatalog()
     }
 
     func skillPackage(id: String) async throws -> ResearchSkillPackage {
-        try await requireOperations().skillPackage(id: id)
+        try await requireSkills().skillPackage(id: id)
     }
 
     func createSkill(id: String, source: String) async throws -> ResearchSkillPackage {
-        try await requireOperations().createSkill(id: id, source: source)
+        try await requireSkills().createSkill(id: id, source: source)
     }
 
     func duplicateBundledSkill(
         id: String,
         as newID: String
     ) async throws -> ResearchSkillPackage {
-        try await requireOperations().duplicateBundledSkill(id: id, as: newID)
+        try await requireSkills().duplicateBundledSkill(id: id, as: newID)
     }
 
     func saveSkill(
@@ -390,7 +404,7 @@ final class ResearchController: ObservableObject {
         source: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchSkillPackage {
-        try await requireOperations().saveSkill(
+        try await requireSkills().saveSkill(
             id: id,
             source: source,
             expectedRevision: expectedRevision
@@ -402,7 +416,7 @@ final class ResearchController: ObservableObject {
         to newID: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchSkillPackage {
-        try await requireOperations().renameSkill(
+        try await requireSkills().renameSkill(
             id: id,
             to: newID,
             expectedRevision: expectedRevision
@@ -413,15 +427,15 @@ final class ResearchController: ObservableObject {
         id: String,
         expectedRevision: DocumentFingerprint
     ) async throws {
-        try await requireOperations().deleteSkill(id: id, expectedRevision: expectedRevision)
+        try await requireSkills().deleteSkill(id: id, expectedRevision: expectedRevision)
     }
 
     func skillResourcePaths(id: String) async throws -> [String] {
-        try await requireOperations().skillResourcePaths(id: id)
+        try await requireSkills().skillResourcePaths(id: id)
     }
 
     func skillResource(id: String, relativePath: String) async throws -> String {
-        try await requireOperations().skillResource(id: id, relativePath: relativePath)
+        try await requireSkills().skillResource(id: id, relativePath: relativePath)
     }
 
     func skillInstructionAssembly(
@@ -429,7 +443,7 @@ final class ResearchController: ObservableObject {
         requestedSkillIDs: [String] = [],
         mixedPhases: [ResearchSkillAssemblyPhase] = []
     ) async throws -> String {
-        try await requireOperations().skillInstructionAssembly(
+        try await requireSkills().skillInstructionAssembly(
             mode: mode,
             requestedSkillIDs: requestedSkillIDs,
             mixedPhases: mixedPhases
@@ -439,7 +453,7 @@ final class ResearchController: ObservableObject {
     func resolveWorkflow(
         _ contract: ResearchWorkflowContract
     ) async throws -> ResolvedResearchWorkflowEnvelope {
-        try await requireOperations().resolveWorkflow(contract)
+        try await requireSkills().resolveWorkflow(contract)
     }
 
     func setActiveDocument(_ reference: VaultNoteReference?) {
@@ -448,15 +462,15 @@ final class ResearchController: ObservableObject {
     }
 
     func selectInspectorMode(_ mode: ResearchInspectorMode) {
-        peripheralPresentation.selectInspectorMode(mode)
+        shellState.selectInspectorMode(mode)
     }
 
     func showResearchInspector(_ isVisible: Bool) {
-        peripheralPresentation.showResearchInspector(isVisible)
+        shellState.showResearchInspector(isVisible)
     }
 
     func restoreInspector(storedMode: String?, isVisible: Bool?) {
-        peripheralPresentation.restoreInspector(
+        shellState.restoreInspector(
             storedMode: storedMode,
             isVisible: isVisible
         )
@@ -501,13 +515,40 @@ final class ResearchController: ObservableObject {
         errorMessage = nil
     }
 
-    private func requireOperations() throws -> any ResearchUseCases {
-        guard let operations else {
+    private func requireRecords() throws -> any ResearchRecordUseCases {
+        guard let records = capabilities?.records else {
             throw ScholiumApplicationError.researchStoreUnavailable(
                 "No workspace is active."
             )
         }
-        return operations
+        return records
+    }
+
+    private func requireCheckpoints() throws -> any ResearchCheckpointUseCases {
+        guard let checkpoints = capabilities?.checkpoints else {
+            throw ScholiumApplicationError.researchStoreUnavailable(
+                "No workspace is active."
+            )
+        }
+        return checkpoints
+    }
+
+    private func requireSkills() throws -> any ResearchSkillUseCases {
+        guard let skills = capabilities?.skills else {
+            throw ScholiumApplicationError.researchStoreUnavailable(
+                "No workspace is active."
+            )
+        }
+        return skills
+    }
+
+    private func requireActions() throws -> any ResearchActionUseCases {
+        guard let actions = capabilities?.actions else {
+            throw ScholiumApplicationError.researchStoreUnavailable(
+                "No workspace is active."
+            )
+        }
+        return actions
     }
 
 }

@@ -3,7 +3,7 @@ import ScholiumContracts
 
 /// App-wide machine integration for the bundled CLI. The frontend receives
 /// only status and install operations and never performs executable I/O.
-public actor CommandLineToolInstaller: CommandLineToolUseCases {
+public actor CommandLineToolInstaller {
     private let fileManager: FileManager
     private let environment: @Sendable () -> [String: String]
     private let homeDirectory: @Sendable () -> URL

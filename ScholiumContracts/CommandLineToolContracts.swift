@@ -36,11 +36,6 @@ public struct CommandLineToolStatus: Codable, Hashable, Sendable {
     }
 }
 
-public protocol CommandLineToolUseCases: Sendable {
-    func commandLineToolStatus() async -> CommandLineToolStatus
-    func installCommandLineTool() async throws -> CommandLineToolStatus
-}
-
 public enum CommandLineToolInstallationError: LocalizedError, Equatable, Sendable {
     case bundledToolUnavailable
     case destinationIsSymbolicLink

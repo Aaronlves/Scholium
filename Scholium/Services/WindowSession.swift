@@ -52,7 +52,22 @@ struct WindowWorkspaceCapabilities: Sendable {
     let assignment: TriptychAssignment
     let documents: any DocumentUseCases
     let discovery: any DiscoveryUseCases
-    let research: any ResearchUseCases
+    let research: WindowResearchCapabilities
+}
+
+/// The delivery-facing research capabilities for one activated Triptych.
+///
+/// This is an app composition value rather than a Contracts-owned mega-port.
+/// Feature controllers receive only the component protocols they consume.
+struct WindowResearchCapabilities: Sendable {
+    let records: any ResearchRecordUseCases
+    let checkpoints: any ResearchCheckpointUseCases
+    let skills: any ResearchSkillUseCases
+    let actions: any ResearchActionUseCases
+    let sourceAccess: any ResearchSourceAccessUseCases
+    let bibliography: any RecommendedBibliographyUseCases
+    let skillsURL: URL
+    let recoveryRecordsURL: URL
 }
 
 /// Machine-local persistence for the one app-wide agent-application choice.
@@ -1061,13 +1076,23 @@ final class WorkspaceStore: ObservableObject {
     }
 
     private func capabilities(from handle: WorkspaceHandle) -> WindowWorkspaceCapabilities {
-        WindowWorkspaceCapabilities(
+        let research = handle.research
+        return WindowWorkspaceCapabilities(
             id: handle.id,
             runtimeIdentity: handle.runtimeIdentity,
             assignment: handle.assignment,
             documents: handle.documents,
             discovery: handle.discovery,
-            research: handle.research
+            research: WindowResearchCapabilities(
+                records: research,
+                checkpoints: research,
+                skills: research,
+                actions: research,
+                sourceAccess: research,
+                bibliography: research,
+                skillsURL: research.skillsURL,
+                recoveryRecordsURL: research.recoveryRecordsURL
+            )
         )
     }
 

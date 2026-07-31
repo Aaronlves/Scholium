@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
-extension WorkspaceRuntime: ResearchSkillInstallationUseCases {
+extension WorkspaceRuntime {
     public func stageResearcherSkillInstallation(
         from directoryURL: URL
     ) async throws -> ResearchSkillInstallationPreparation {

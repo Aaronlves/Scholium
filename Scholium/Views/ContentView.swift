@@ -1024,7 +1024,7 @@ struct ToastView: View {
     let symbol: String
     let color: Color
 
-    init(toast: WindowModel.Toast) {
+    init(toast: WindowToast) {
         message = toast.message
         symbol = toast.kind.symbol
         color = toast.kind.color

@@ -259,7 +259,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let settlements: [SettlementRecord]
     public let activeDiscussions: [PortableResearchDiscussion]
     public let finishedResearchRecords: [PortableResearchRecord]
-    public let pendingResearchStates: [PendingResearchState]
     public let critiques: [CritiqueAssociation]
     public let checkpointListing: TriptychCheckpointListing
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
@@ -269,7 +268,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
         settlements: [SettlementRecord] = [],
         activeDiscussions: [PortableResearchDiscussion] = [],
         finishedResearchRecords: [PortableResearchRecord] = [],
-        pendingResearchStates: [PendingResearchState] = [],
         critiques: [CritiqueAssociation],
         checkpointListing: TriptychCheckpointListing,
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
@@ -278,7 +276,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.settlements = settlements
         self.activeDiscussions = activeDiscussions
         self.finishedResearchRecords = finishedResearchRecords
-        self.pendingResearchStates = pendingResearchStates
         self.critiques = critiques
         self.checkpointListing = checkpointListing
         self.recoveryRecords = recoveryRecords

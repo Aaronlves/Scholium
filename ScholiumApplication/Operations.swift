@@ -284,7 +284,14 @@ public actor DiscoveryOperations: DiscoveryUseCases {
     }
 }
 
-public actor ResearchOperations: ResearchUseCases {
+public actor ResearchOperations:
+    ResearchRecordUseCases,
+    ResearchCheckpointUseCases,
+    ResearchSkillUseCases,
+    ResearchActionUseCases,
+    ResearchSourceAccessUseCases,
+    RecommendedBibliographyUseCases
+{
     public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
     let reference: WorkspaceHandleReference

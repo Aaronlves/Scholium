@@ -317,9 +317,9 @@ struct WindowControllerArchitectureTests {
 
     @Test("Document tabs borrow one window peripheral presentation")
     func documentTabsBorrowWindowPeripheralPresentation() {
-        let presentation = WindowPeripheralPresentationState()
-        let firstDiscovery = DiscoveryController(peripheralPresentation: presentation)
-        let secondDiscovery = DiscoveryController(peripheralPresentation: presentation)
+        let presentation = WindowShellState()
+        let firstDiscovery = DiscoveryController(shellState: presentation)
+        let secondDiscovery = DiscoveryController(shellState: presentation)
         let scope = LibraryDisclosureScope(
             vaultID: UUID(),
             locationScope: .workspace
@@ -328,8 +328,8 @@ struct WindowControllerArchitectureTests {
         firstDiscovery.setExpandedFolders(["Ethics", "Ethics/Agency"], in: scope)
         #expect(secondDiscovery.expandedFolders(in: scope) == ["Ethics", "Ethics/Agency"])
 
-        let firstResearch = ResearchController(peripheralPresentation: presentation)
-        let secondResearch = ResearchController(peripheralPresentation: presentation)
+        let firstResearch = ResearchController(shellState: presentation)
+        let secondResearch = ResearchController(shellState: presentation)
         firstResearch.selectInspectorMode(.actions)
         firstResearch.showResearchInspector(true)
         #expect(secondResearch.inspector.mode == .actions)
@@ -379,10 +379,10 @@ struct WindowControllerArchitectureTests {
     @Test("Separate windows do not share peripheral presentation")
     func separateWindowPeripheralPresentationIsolation() {
         let first = DiscoveryController(
-            peripheralPresentation: WindowPeripheralPresentationState()
+            shellState: WindowShellState()
         )
         let second = DiscoveryController(
-            peripheralPresentation: WindowPeripheralPresentationState()
+            shellState: WindowShellState()
         )
         let scope = LibraryDisclosureScope(
             vaultID: UUID(),
@@ -1135,6 +1135,77 @@ struct WindowControllerArchitectureTests {
         #expect(windowModelSource.contains("researchController.actions"))
     }
 
+    @Test("Window composition consumes research capabilities without a mega-port")
+    func researchCapabilityCompositionIsNarrow() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let contracts = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumContracts/UseCases.swift"
+            ),
+            encoding: .utf8
+        )
+        let windowSession = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Services/WindowSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let researchController = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/ResearchContext/ResearchController.swift"
+            ),
+            encoding: .utf8
+        )
+        let commandLineContracts = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumContracts/CommandLineToolContracts.swift"
+            ),
+            encoding: .utf8
+        )
+        let researchActivityContracts = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumContracts/ResearchActivityContracts.swift"
+            ),
+            encoding: .utf8
+        )
+        let workspaceModels = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumContracts/WorkspaceModels.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!contracts.contains("protocol ResearchUseCases"))
+        for unconsumedPort in [
+            "protocol ResearchSkillInstallationUseCases",
+            "protocol ResearchPermissionUseCases",
+            "protocol SettingsUseCases",
+            "protocol WorkspaceEventStreaming",
+        ] {
+            #expect(!contracts.contains(unconsumedPort))
+        }
+        #expect(!commandLineContracts.contains("protocol CommandLineToolUseCases"))
+        #expect(!researchActivityContracts.contains("PendingResearchState"))
+        #expect(!researchActivityContracts.contains("PendingResearchRoute"))
+        #expect(!workspaceModels.contains("pendingResearchStates"))
+        #expect(windowSession.contains("struct WindowResearchCapabilities: Sendable"))
+        for capability in [
+            "let records: any ResearchRecordUseCases",
+            "let checkpoints: any ResearchCheckpointUseCases",
+            "let skills: any ResearchSkillUseCases",
+            "let actions: any ResearchActionUseCases",
+            "let sourceAccess: any ResearchSourceAccessUseCases",
+            "let bibliography: any RecommendedBibliographyUseCases",
+        ] {
+            #expect(windowSession.contains(capability))
+        }
+        #expect(!researchController.contains("ResearchUseCases"))
+        #expect(researchController.contains("struct ResearchControllerCapabilities: Sendable"))
+    }
+
     @Test("Window and document ownership boundaries cannot regress")
     func ownershipBoundaries() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -1157,6 +1228,18 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
+        let shellStateSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowShellState.swift"
+            ),
+            encoding: .utf8
+        )
+        let workspaceControllerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowWorkspaceController.swift"
+            ),
+            encoding: .utf8
+        )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(appSource.range(
             of: "private enum ClipboardWorkflowError",
@@ -1172,6 +1255,35 @@ struct WindowControllerArchitectureTests {
         #expect(windowModelSource.contains("documentController.putBack("))
         #expect(!windowModelSource.contains("if triptychSettings.properties.isEmpty"))
         #expect(windowModelSource.contains("cssSnippetStore.objectWillChange"))
+
+        for shellOwnedState in [
+            "@Published var sidebarVisible",
+            "@Published private(set) var hasCompletedInitialRestore",
+            "@Published var documentTextScale",
+            "@Published var refreshStatusText",
+            "@Published var windowSessionPersistenceError",
+        ] {
+            #expect(!windowModelSource.contains(shellOwnedState))
+        }
+        #expect(windowModelSource.contains("let shellState = WindowShellState()"))
+        #expect(shellStateSource.contains("@Published private(set) var libraryVisible"))
+        #expect(shellStateSource.contains("@Published private(set) var documentTextScale"))
+        #expect(shellStateSource.contains("@Published private(set) var refreshStatusText"))
+        for workspaceSessionState in [
+            "@Published var workspaceAssignment",
+            "@Published var registeredTriptychs",
+            "@Published var workspaceRecoveryMessage",
+            "@Published var workspaceAccessRecovery",
+            "@Published private(set) var activeTriptychServicesID",
+        ] {
+            #expect(!windowModelSource.contains(workspaceSessionState))
+        }
+        #expect(workspaceControllerSource.contains(
+            "@Published private(set) var state = WindowWorkspaceSessionState()"
+        ))
+        #expect(workspaceControllerSource.contains(
+            "private(set) var activeCapabilities: WindowWorkspaceCapabilities?"
+        ))
 
         for documentOwnedState in [
             "@Published private(set) var lifecycleMutationGeneration",

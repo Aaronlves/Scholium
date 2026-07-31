@@ -1135,40 +1135,6 @@ final class WindowModel: ObservableObject {
     private(set) var windowSessionID = UUID()
     let nativeWindowID: UUID
 
-    struct Toast: Equatable {
-        enum Kind: Equatable {
-            case success
-            case information
-            case warning
-            case error
-
-            var symbol: String {
-                switch self {
-                case .success: "checkmark.circle.fill"
-                case .information: "info.circle.fill"
-                case .warning: "exclamationmark.triangle.fill"
-                case .error: "xmark.octagon.fill"
-                }
-            }
-
-            var color: Color {
-                switch self {
-                case .success: ScholiumColorRole.confirmed.color
-                case .information: ScholiumColorRole.information.color
-                case .warning: ScholiumColorRole.attention.color
-                case .error: ScholiumColorRole.destructive.color
-                }
-            }
-        }
-
-        let message: String
-        let kind: Kind
-    }
-
-    enum ColorSchemeChoice: String, CaseIterable {
-        case dark, light, system
-    }
-
     // MARK: Published State
     @Published var vaultConfig: VaultConfig?
     @Published var currentRegisteredVault: RegisteredVault?
@@ -1176,30 +1142,15 @@ final class WindowModel: ObservableObject {
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published private(set) var isCreatingNote = false
     @Published private(set) var isMutatingFolder = false
-    @Published var sidebarVisible = true
-    @Published private(set) var hasCompletedInitialRestore = false
-    @Published var toastMessage: Toast?
-    @Published var colorScheme: ColorSchemeChoice = .system {
-        didSet {
-            UserDefaults.standard.set(colorScheme.rawValue, forKey: "colorScheme")
-        }
-    }
-    @Published var documentTextScale = ScholiumMetrics.Document.defaultTextScale
     @Published var triptychSettings = TriptychSettings()
-    @Published var workspaceAssignment: TriptychAssignment?
-    @Published var registeredTriptychs: [TriptychAssignment] = []
-    @Published var workspaceRecoveryMessage: String?
-    @Published var workspaceAccessRecovery: WorkspaceAccessRecovery?
-    @Published var refreshStatusText: String?
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
     @Published var registeredVaults: [RegisteredVault] = []
-    @Published var windowSessionPersistenceError: String?
     let presentationRouter = WindowPresentationRouter()
-    private let peripheralPresentation = WindowPeripheralPresentationState()
+    let shellState = WindowShellState()
     lazy var discoveryController = DiscoveryController(
-        peripheralPresentation: peripheralPresentation
+        shellState: shellState
     ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
@@ -1269,7 +1220,7 @@ final class WindowModel: ObservableObject {
     }
     let documentTabController = DocumentTabController()
     lazy var researchController = ResearchController(
-        peripheralPresentation: peripheralPresentation
+        shellState: shellState
     ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
@@ -1313,6 +1264,63 @@ final class WindowModel: ObservableObject {
             self?.showToast(message, kind: .error)
         }
     )
+
+    var sidebarVisible: Bool {
+        get { shellState.libraryVisible }
+        set { shellState.recordLibraryVisibility(newValue) }
+    }
+
+    var hasCompletedInitialRestore: Bool {
+        shellState.hasCompletedInitialRestore
+    }
+
+    var toastMessage: WindowToast? {
+        shellState.toastMessage
+    }
+
+    var colorScheme: WindowColorSchemeChoice {
+        get { shellState.colorScheme }
+        set { shellState.colorScheme = newValue }
+    }
+
+    var documentTextScale: Double {
+        get { shellState.documentTextScale }
+        set { shellState.setDocumentTextScale(newValue) }
+    }
+
+    var refreshStatusText: String? {
+        get { shellState.refreshStatusText }
+        set { shellState.setRefreshStatus(newValue) }
+    }
+
+    var windowSessionPersistenceError: String? {
+        shellState.windowSessionPersistenceError
+    }
+
+    var workspaceAssignment: TriptychAssignment? {
+        get { windowWorkspaceController.state.assignment }
+        set { windowWorkspaceController.setAssignment(newValue) }
+    }
+
+    var registeredTriptychs: [TriptychAssignment] {
+        get { windowWorkspaceController.state.registeredTriptychs }
+        set { windowWorkspaceController.setRegisteredTriptychs(newValue) }
+    }
+
+    var workspaceRecoveryMessage: String? {
+        get { windowWorkspaceController.state.recoveryMessage }
+        set { windowWorkspaceController.setRecoveryMessage(newValue) }
+    }
+
+    var workspaceAccessRecovery: WorkspaceAccessRecovery? {
+        get { windowWorkspaceController.state.accessRecovery }
+        set { windowWorkspaceController.setAccessRecovery(newValue) }
+    }
+
+    private(set) var activeTriptychServicesID: UUID? {
+        get { windowWorkspaceController.state.activeServicesID }
+        set { windowWorkspaceController.setActiveServicesID(newValue) }
+    }
 
     var notes: [WindowDocumentLocation] { workspaceProjectionController.notes }
     var availablePropertyFilterOptions: WindowPropertyFilterOptions {
@@ -1546,17 +1554,18 @@ final class WindowModel: ObservableObject {
     }
 
     // MARK: Services
-    private var activeWorkspaceCapabilities: WindowWorkspaceCapabilities?
+    private var activeWorkspaceCapabilities: WindowWorkspaceCapabilities? {
+        get { windowWorkspaceController.activeCapabilities }
+        set { windowWorkspaceController.setActiveCapabilities(newValue) }
+    }
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
     let agentApplicationHandoff: AgentApplicationHandoffController
-    private let requestedTriptychID: UUID?
+    private var requestedTriptychID: UUID? {
+        windowWorkspaceController.requestedTriptychID
+    }
     private let requestedInitialDocument: VaultNoteReference?
     private var didOpenRequestedInitialDocument = false
-    /// Published only after every shared Triptych service has been installed.
-    /// Settings views use this readiness boundary instead of racing the earlier
-    /// `workspaceAssignment` publication.
-    @Published private(set) var activeTriptychServicesID: UUID?
     private var editorFlushRegistration: EditorFlushRegistration?
     private let stableEditorFlushToken = UUID()
     private var stableEditorFlushTriptychID: UUID?
@@ -1566,7 +1575,7 @@ final class WindowModel: ObservableObject {
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private let documentTransitionCoordinator = DocumentTransitionCoordinator()
     private let windowSessionPersistenceCoordinator: WindowSessionPersistenceCoordinator
-    private let windowWorkspaceController: WindowWorkspaceController
+    let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var researchActionOpenTask: Task<Void, Never>?
     private var researchActionOpenRequestID: UUID?
@@ -1606,7 +1615,6 @@ final class WindowModel: ObservableObject {
             workspaceStore: workspaceStore,
             requestedTriptychID: requestedTriptychID
         )
-        self.requestedTriptychID = requestedTriptychID
         self.requestedInitialDocument = requestedInitialDocument
         cssSnippetStore = workspaceStore.cssSnippetStore
         zoteroBridge = workspaceStore.zoteroBridge
@@ -1636,6 +1644,9 @@ final class WindowModel: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
         cssSnippetStore.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &workspaceCancellables)
+        windowWorkspaceController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &workspaceCancellables)
         workspaceStore.$latestWorkspaceActivation
@@ -1689,10 +1700,6 @@ final class WindowModel: ObservableObject {
             }
         }
         #endif
-        if let saved = UserDefaults.standard.string(forKey: "colorScheme"),
-           let choice = ColorSchemeChoice(rawValue: saved) {
-            colorScheme = choice
-        }
         if let saved = UserDefaults.standard.string(forKey: "noteSortOrder"),
            let order = NoteSortOrder(rawValue: saved) {
             // Metadata filters are intentionally request-local and are not
@@ -3156,7 +3163,7 @@ final class WindowModel: ObservableObject {
         defer {
             isRestoringWindowSession = false
             didRestoreWindowSession = true
-            hasCompletedInitialRestore = true
+            shellState.completeInitialRestore()
             persistWindowSessionNow()
         }
 
@@ -3170,7 +3177,7 @@ final class WindowModel: ObservableObject {
         guard let stored else {
             // New configured windows keep the stable three-region shell.
             // Visibility changes only after a direct researcher action.
-            sidebarVisible = true
+            shellState.restoreLibraryVisibility(true)
             researchController.restoreInspector(
                 storedMode: nil,
                 isVisible: nil
@@ -3214,9 +3221,11 @@ final class WindowModel: ObservableObject {
             || restoredPresentation.selectedDocument.map {
                 restoredDocumentPaths.contains($0.relativePath)
             } == true
-        sidebarVisible = hasRestorableDocument
-            ? (restoredPresentation.libraryVisible ?? true)
-            : true
+        shellState.restoreLibraryVisibility(
+            hasRestorableDocument
+                ? (restoredPresentation.libraryVisible ?? true)
+                : true
+        )
         researchController.restoreInspector(
             storedMode: restoredPresentation.inspectorMode,
             isVisible: restoredPresentation.inspectorVisible
@@ -3224,13 +3233,9 @@ final class WindowModel: ObservableObject {
         discoveryController.replaceSearchCriteria(SearchWorkspaceState(
             scope: restoredPresentation.searchState.scope
         ))
-        documentTextScale = min(
-            ScholiumMetrics.Document.maximumTextScale,
-            max(
-                ScholiumMetrics.Document.minimumTextScale,
-                restoredPresentation.documentTextScale
-                    ?? ScholiumMetrics.Document.defaultTextScale
-            )
+        shellState.setDocumentTextScale(
+            restoredPresentation.documentTextScale
+                ?? ScholiumMetrics.Document.defaultTextScale
         )
         documentController.restorePresentationState(
             modes: restoredPresentation.documentModes,
@@ -3262,15 +3267,11 @@ final class WindowModel: ObservableObject {
                 guard let self else { return }
                 switch result {
                 case .success:
-                    if self.windowSessionPersistenceError != nil {
-                        self.windowSessionPersistenceError = nil
-                    }
-                    if self.refreshStatusText == "Window state not saved" {
-                        self.refreshStatusText = nil
-                    }
+                    self.shellState.clearWindowSessionPersistenceFailure()
                 case .failure(let error):
-                    self.windowSessionPersistenceError = error.localizedDescription
-                    self.refreshStatusText = "Window state not saved"
+                    self.shellState.recordWindowSessionPersistenceFailure(
+                        error.localizedDescription
+                    )
                 }
             }
         )
@@ -3293,14 +3294,10 @@ final class WindowModel: ObservableObject {
         )
         switch result {
         case .saved:
-            windowSessionPersistenceError = nil
-            if refreshStatusText == "Window state not saved" {
-                refreshStatusText = nil
-            }
+            shellState.clearWindowSessionPersistenceFailure()
             return nil
         case .failed(let message):
-            windowSessionPersistenceError = message
-            refreshStatusText = "Window state not saved"
+            shellState.recordWindowSessionPersistenceFailure(message)
             return message
         case .superseded:
             return nil
@@ -3330,12 +3327,16 @@ final class WindowModel: ObservableObject {
 
     private func observeWindowSessionChanges() {
         let stateChanges: [AnyPublisher<Void, Never>] = [
-            $workspaceAssignment.map { _ in () }.eraseToAnyPublisher(),
+            windowWorkspaceController.$state
+                .map { $0.assignment?.id }
+                .removeDuplicates()
+                .map { _ in () }
+                .eraseToAnyPublisher(),
             $currentRegisteredVault.map { _ in () }.eraseToAnyPublisher(),
             documentController.$selectedDocument.map { _ in () }.eraseToAnyPublisher(),
-            $sidebarVisible.map { _ in () }.eraseToAnyPublisher(),
-            $documentTextScale.map { _ in () }.eraseToAnyPublisher(),
-            peripheralPresentation.$inspector.map { _ in () }.eraseToAnyPublisher(),
+            shellState.$libraryVisible.map { _ in () }.eraseToAnyPublisher(),
+            shellState.$documentTextScale.map { _ in () }.eraseToAnyPublisher(),
+            shellState.$inspector.map { _ in () }.eraseToAnyPublisher(),
             discoveryController.$search.map { _ in () }.eraseToAnyPublisher(),
         ]
         let changes = stateChanges.map { $0.dropFirst().eraseToAnyPublisher() }
@@ -3347,19 +3348,15 @@ final class WindowModel: ObservableObject {
     }
 
     func adjustDocumentTextScale(by delta: Double) {
-        setDocumentTextScale(documentTextScale + delta)
+        shellState.setDocumentTextScale(documentTextScale + delta)
     }
 
     func setDocumentTextScale(_ requestedScale: Double) {
-        let adjusted = min(
-            ScholiumMetrics.Document.maximumTextScale,
-            max(ScholiumMetrics.Document.minimumTextScale, requestedScale)
-        )
-        documentTextScale = (adjusted * 10).rounded() / 10
+        shellState.setDocumentTextScale(requestedScale)
     }
 
     func resetDocumentTextScale() {
-        documentTextScale = ScholiumMetrics.Document.defaultTextScale
+        shellState.resetDocumentTextScale()
     }
 
     func refreshWorkspaceAssignment(preferredTriptychID: UUID? = nil) async {
@@ -3494,22 +3491,34 @@ final class WindowModel: ObservableObject {
                 _ = await self.replaceSavedDocument(document)
             }
         )
-        researchController.bind(to: capabilities.research, snapshot: snapshot)
+        researchController.bind(
+            to: ResearchControllerCapabilities(
+                records: capabilities.research.records,
+                checkpoints: capabilities.research.checkpoints,
+                skills: capabilities.research.skills,
+                actions: capabilities.research.actions,
+                skillsURL: capabilities.research.skillsURL,
+                recoveryRecordsURL: capabilities.research.recoveryRecordsURL
+            ),
+            snapshot: snapshot
+        )
         researchController.actions.bind(ResearchActionClient(
             availableActions: { target in
-                try await capabilities.research.availableActions(for: target)
+                try await capabilities.research.actions.availableActions(for: target)
             },
             materialCandidates: { target, definition in
-                try await capabilities.research.materialCandidates(
+                try await capabilities.research.actions.materialCandidates(
                     for: target,
                     actionID: definition.id
                 )
             },
             sourceAccess: { target in
-                try await capabilities.research.sourceAccess(for: target.functionTarget)
+                try await capabilities.research.sourceAccess.sourceAccess(
+                    for: target.functionTarget
+                )
             },
             bindLocalSource: { target, url in
-                try await capabilities.research.bindSourceAccess(
+                try await capabilities.research.sourceAccess.bindSourceAccess(
                     ResearchSourceBindingRequest(
                         target: target.functionTarget,
                         selection: .localFile(url)
@@ -3523,15 +3532,15 @@ final class WindowModel: ObservableObject {
                     )
                 }
                 if let resynthesisContext {
-                    return try await capabilities.research.prepareResynthesis(
+                    return try await capabilities.research.actions.prepareResynthesis(
                         request,
                         context: resynthesisContext
                     )
                 }
-                return try await capabilities.research.prepareAction(request)
+                return try await capabilities.research.actions.prepareAction(request)
             },
             cancel: { runID in
-                try await capabilities.research.cancelAction(runID: runID)
+                try await capabilities.research.actions.cancelAction(runID: runID)
             },
             openActiveDiscussion: { [weak self] discussionID in
                 guard let self else { return }
@@ -3544,7 +3553,7 @@ final class WindowModel: ObservableObject {
         ))
         researchController.bibliography.bind(RecommendedBibliographyClient(
             overview: {
-                try await capabilities.research.recommendationOverview()
+                try await capabilities.research.bibliography.recommendationOverview()
             },
             prepare: { [weak self] request in
                 guard let self, let assignment = self.workspaceAssignment else {
@@ -3553,13 +3562,14 @@ final class WindowModel: ObservableObject {
                     )
                 }
                 try await self.workspaceStore.flushEditors(in: assignment.id)
-                return try await capabilities.research.prepareRecommendation(request)
+                return try await capabilities.research.bibliography
+                    .prepareRecommendation(request)
             },
             cancel: { id in
-                try await capabilities.research.cancelRecommendation(id: id)
+                try await capabilities.research.bibliography.cancelRecommendation(id: id)
             },
             dismiss: { requestID, candidateID in
-                try await capabilities.research.dismissRecommendation(
+                try await capabilities.research.bibliography.dismissRecommendation(
                     requestID: requestID,
                     candidateID: candidateID
                 )
@@ -5256,12 +5266,8 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func showToast(_ message: String, kind: Toast.Kind = .success) {
-        let toast = Toast(message: message, kind: kind)
-        toastMessage = toast
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-            if self?.toastMessage == toast { self?.toastMessage = nil }
-        }
+    func showToast(_ message: String, kind: WindowToast.Kind = .success) {
+        shellState.showToast(message, kind: kind)
     }
 
     private func refreshIdentityState() async {

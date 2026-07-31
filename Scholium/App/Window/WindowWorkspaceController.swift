@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
@@ -11,17 +12,52 @@ enum WindowWorkspaceResolution {
     )
 }
 
-/// Resolves one window's requested Triptych and stable vault identities. The
-/// WindowModel remains the composition root that installs the returned
-/// Application capabilities and routes presentation effects.
+struct WindowWorkspaceSessionState {
+    var assignment: TriptychAssignment?
+    var registeredTriptychs: [TriptychAssignment] = []
+    var recoveryMessage: String?
+    var accessRecovery: WorkspaceAccessRecovery?
+    var activeServicesID: UUID?
+}
+
+/// Owns one window's Triptych assignment and capability-session state.
+/// `WindowModel` remains the composition root that installs capabilities into
+/// feature controllers and routes cross-feature presentation effects.
 @MainActor
-final class WindowWorkspaceController {
+final class WindowWorkspaceController: ObservableObject {
+    @Published private(set) var state = WindowWorkspaceSessionState()
+
     private let workspaceStore: WorkspaceStore
-    private let requestedTriptychID: UUID?
+    let requestedTriptychID: UUID?
+    private(set) var activeCapabilities: WindowWorkspaceCapabilities?
 
     init(workspaceStore: WorkspaceStore, requestedTriptychID: UUID?) {
         self.workspaceStore = workspaceStore
         self.requestedTriptychID = requestedTriptychID
+    }
+
+    func setAssignment(_ assignment: TriptychAssignment?) {
+        state.assignment = assignment
+    }
+
+    func setRegisteredTriptychs(_ assignments: [TriptychAssignment]) {
+        state.registeredTriptychs = assignments
+    }
+
+    func setRecoveryMessage(_ message: String?) {
+        state.recoveryMessage = message
+    }
+
+    func setAccessRecovery(_ recovery: WorkspaceAccessRecovery?) {
+        state.accessRecovery = recovery
+    }
+
+    func setActiveServicesID(_ id: UUID?) {
+        state.activeServicesID = id
+    }
+
+    func setActiveCapabilities(_ capabilities: WindowWorkspaceCapabilities?) {
+        activeCapabilities = capabilities
     }
 
     func resolveAssignment(

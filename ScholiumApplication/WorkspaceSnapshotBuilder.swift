@@ -404,7 +404,6 @@ enum WorkspaceSnapshotBuilder {
             }
         )
         var settlementStates: [String: WorkspaceSettlementState] = [:]
-        var changedSinceSettledStates: [PendingResearchState] = []
         for loaded in loadedVaults {
             for document in loaded.activeDocuments {
                 guard case .resolved(let noteID) = loaded.identityStates[document.relativePath],
@@ -415,15 +414,6 @@ enum WorkspaceSnapshotBuilder {
                     settledFingerprint: settlement.fingerprint,
                     changedSinceSettled: changedSinceSettled
                 )
-                if changedSinceSettled {
-                    changedSinceSettledStates.append(PendingResearchState(
-                        id: settlement.id,
-                        noteID: noteID,
-                        kind: .changedSinceSettled,
-                        createdAt: settlement.settledAt,
-                        fingerprint: document.fingerprint
-                    ))
-                }
             }
         }
         let loadedVaultsByID = Dictionary(
@@ -732,12 +722,6 @@ enum WorkspaceSnapshotBuilder {
                 ? activeDiscussionListing.discussions
                 : [],
             finishedResearchRecords: finishedResearchRecordListing.records,
-            pendingResearchStates: changedSinceSettledStates.sorted {
-                    if $0.createdAt != $1.createdAt {
-                        return $0.createdAt > $1.createdAt
-                    }
-                    return $0.id.uuidString < $1.id.uuidString
-                },
             critiques: critiqueAssociations,
             checkpointListing: await services.checkpointStore.listing(),
             recoveryRecords: recoveryRecords,

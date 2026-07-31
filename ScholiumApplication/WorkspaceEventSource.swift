@@ -3,7 +3,7 @@ import Foundation
 import ScholiumCore
 
 /// A bounded, cancellation-aware stream of typed workspace generations.
-public actor WorkspaceEventSource: WorkspaceEventStreaming {
+public actor WorkspaceEventSource {
     private var currentSnapshot: WorkspaceSnapshot
     private var generation: UInt64 = 0
     private var continuations: [UUID: AsyncStream<WorkspaceEvent>.Continuation] = [:]

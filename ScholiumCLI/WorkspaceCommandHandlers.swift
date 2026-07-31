@@ -423,7 +423,7 @@ extension ScholiumCLI {
                 "Usage: scholium skills <catalog|show|resources> [options]"
             )
         }
-        let workspaceResearch: (any ResearchUseCases)?
+        let workspaceResearch: (any ResearchSkillUseCases)?
         if let selector = option("--triptych", in: arguments) {
             let assignment = try await context.triptych(selector: selector)
             workspaceResearch = try await context.handle(for: assignment).research

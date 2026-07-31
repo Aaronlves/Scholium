@@ -42,7 +42,8 @@ ApplicationBootstrapController (one app-owned storage gate)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
         ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
-            │   ├── WindowWorkspaceController
+            │   ├── WindowShellState
+            │   ├── WindowWorkspaceController (assignment and capability session)
             │   ├── WindowSessionPersistenceCoordinator
             │   ├── DocumentTransitionCoordinator
             │   ├── WindowWorkspaceProjectionController
@@ -149,8 +150,11 @@ freshness validation, and serialized Saved Search persistence;
 of that window state enters the persisted search definition.
 
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
-only `DocumentUseCases`, `DiscoveryUseCases`, and `ResearchUseCases` plus
-immutable identity/assignment values. `WorkspaceStore` coalesces duplicate runtime
+`DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
+`WindowResearchCapabilities` value composed from the narrow record,
+checkpoint, Skill, Action, source-access, and bibliography ports plus immutable
+identity/assignment values. Contracts declares no aggregate Research mega-port.
+`WorkspaceStore` coalesces duplicate runtime
 installation, retains one event subscription before publishing activation,
 starts it with a complete `WorkspaceSnapshot`, and accepts only increasing
 generations. Commands remain direct capability calls, not event-bus messages.
@@ -174,8 +178,14 @@ No Application or Core use case receives the selected application or launch
 result, and no Function record treats launch as execution state.
 
 `WindowModel` is the per-window composition and focused-command root.
-`WindowWorkspaceController` resolves the requested Triptych and stable vault
-identities, `WindowSessionPersistenceCoordinator` owns replaceable and final
+`WindowShellState` is the sole owner of Library and Inspector presentation,
+folder disclosure, initial-restore completion, per-window document text scale,
+appearance choice, transient toast, and shell status. It owns no split geometry,
+Triptych capability, document buffer, or durable research state.
+`WindowWorkspaceController` owns the requested Triptych, selected assignment,
+registered-Triptych projection, access-recovery state, installed capability
+generation, and stable vault-identity resolution.
+`WindowSessionPersistenceCoordinator` owns replaceable and final
 presentation saves, and `DocumentTransitionCoordinator` owns transition
 generation plus flush/capture ordering. `AgentNoteChangeWindowController` owns
 the exact window's Agent request, display identity, expiry, decision tasks, and
@@ -184,11 +194,11 @@ cancellation, exact result-freshness validation, Search-generation reruns, and
 serialized Saved Search loading and persistence. It coordinates the
 `DiscoveryController` Search projection while borrowing only a checked current
 document snapshot and navigation/presentation effects from the window root.
-`WindowModel` composes these owners, forwards their invalidation, and routes
-focused commands and cross-feature intents; it does not own those state
-machines. `DocumentController` alone owns selection and document workflow
-state; `ResearchController` owns research generations,
-initial Dialogue projection, checkpoint-list failures, and durable-recovery
+`WindowModel` composes these owners, forwards only the observation needed by
+its compatibility facets and focused commands, and routes cross-feature
+intents; it does not own those state machines. `DocumentController` alone owns
+selection and document workflow state; `ResearchController` owns the current
+research-record projection, checkpoint-list failures, and durable-recovery
 listing. `WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable catalog, per-vault snapshots, selected Location's Notes/tags/revisions
 and property-filter options, graph, Search generation, derived-refresh status,
@@ -370,12 +380,16 @@ Core skill, checkpoint, record, and repository authorities
 The old Function controller, panel, presentation route, and public use cases are
 deleted. `ScholiumContracts` owns public Action identity, Target/Material/scope,
 Fidelity checks, availability/repair codes, runs, submissions, and fingerprints.
-Workspace `ResearchUseCases` composes record, checkpoint, Skill, Action,
-permission, source-access, and bibliography capabilities. Protected Function
-types remain only behind Application as the mechanism used by the Action
-adapter. Contracts contain no application-defined labels, symbols, package
-storage, YAML inspection, or layout. Researcher-owned Profile labels are
-declarative data, not interface code.
+`WorkspaceStore` composes `WindowResearchCapabilities` from independently
+declared record, checkpoint, Skill, Action, source-access, and bibliography
+ports. `ResearchController` receives a still smaller capability value and
+cannot reach permission, source-access, or bibliography operations. Settings-
+only and CLI-completion operations remain concrete Application capabilities
+rather than requirements of a window-facing Contracts protocol. Protected
+Function types remain only behind Application as the mechanism used by the
+Action adapter. Contracts contain no application-defined labels, symbols,
+package storage, YAML inspection, or layout. Researcher-owned Profile labels
+are declarative data, not interface code.
 
 The §8 Research Action public layer begins in `ScholiumContracts` with validated
 `ResearchActionID`, public execution kinds and Target roles, role-filtered
@@ -596,8 +610,8 @@ interrupted pre-unlink rename on startup. A
 separate `settlements/` directory stores exactly one replaceable current-state
 file per Note. Settle therefore no longer appends an application-authored
 history event, and Changed Since Settled is derived against the current
-Markdown revision during snapshot assembly without writing a pending-state
-event. Before the portable state commits, `VaultRepository` pins the exact
+Markdown revision during snapshot assembly without a parallel pending-state
+contract or event. Before the portable state commits, `VaultRepository` pins the exact
 current bytes in the existing immutable-object prewrite ledger under the stable
 Note identity. Identical fingerprints reuse one pin. The Triptych-scoped
 machine-local `ResearchRecoveryPolicyStore` revision-checks the 10/30/50/no-
@@ -907,9 +921,10 @@ failure.
   projection, and Zotero transport.
 - `Scholium/Features` contains the Discovery, Document, Research, Properties,
   and Settings delivery controllers and per-window editor sessions.
-- `Scholium/App/Window` contains mutually exclusive window presentation
-  routing plus the document-transition, presentation-persistence, and
-  workspace-resolution and immutable-projection coordinators. These
+- `Scholium/App/Window` contains `WindowShellState`, mutually exclusive window
+  presentation routing, and the document-transition,
+  presentation-persistence, workspace-session, and immutable-projection
+  coordinators. These
   coordinators do not duplicate a feature controller or writable document
   owner.
 - Feature-root view files remain inside `Scholium/Views`. The application and
@@ -2143,8 +2158,9 @@ action routing. The bounded AppKit window-shell adapters are infrastructure
 exceptions: they own native controller and split-item lifetimes, weak
 exact-window attachment, toolbar/delegate installation, explicit split
 intents, and native visibility mirroring, but no
-Triptych, document, or researcher-visible semantic state. `WindowModel` and its
-feature controllers remain those state owners. This document records that
+Triptych, document, or researcher-visible semantic state. `WindowShellState`,
+`WindowWorkspaceController`, and the feature controllers own their bounded
+state; `WindowModel` composes them and routes focused commands. This document records that
 dependency direction, while the specification owns the stable rule for when
 Scholium-specific components or distinct research surfaces are appropriate.
 

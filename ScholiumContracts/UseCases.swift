@@ -82,15 +82,6 @@ public protocol ResearchRecordUseCases: Sendable {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord
-    func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot
-    func prepareRecoveryPolicyChange(
-        _ retention: SettledSnapshotRetention,
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> ResearchRecoveryPolicyChangePreview
-    func applyRecoveryPolicyChange(
-        _ preview: ResearchRecoveryPolicyChangePreview
-    ) async throws -> ResearchRecoveryPolicyApplyOutcome
-    func settledSnapshots(noteID: UUID?) async throws -> [SettledRevisionSnapshot]
     func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion]
     func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion
     func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion?
@@ -169,66 +160,6 @@ public protocol ResearchSkillUseCases: Sendable {
     func skillResource(id: String, relativePath: String) async throws -> String
     func skillInstructionAssembly(mode: ResearchSkillMode, requestedSkillIDs: [String], mixedPhases: [ResearchSkillAssemblyPhase]) async throws -> String
     func resolveWorkflow(_ contract: ResearchWorkflowContract) async throws -> ResolvedResearchWorkflowEnvelope
-    /// Delivery-neutral draft validation. Presentation must not parse YAML or
-    /// invoke `ResearchSkillInspector` directly.
-    func inspectSkillDraft(
-        id: String,
-        source: String,
-        origin: ResearchSkillOrigin
-    ) async -> ResearchSkillPackage
-    func citationMethodStatus() async throws -> ResearchCitationMethodStatus
-    func activateCitationMethod(
-        selection: ResearchCitationMethodSelection,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus
-    func clearCitationMethod(
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus
-    func adoptBundledCitationStarter(
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus
-    func prepareSkillMaintenance(
-        _ request: ResearchSkillMaintenanceRequest
-    ) async throws -> ResearchSkillMaintenancePreparation
-    func applySkillMaintenance(
-        _ preparation: ResearchSkillMaintenancePreparation,
-        confirmationToken: ResearchSkillMaintenanceConfirmationToken
-    ) async throws -> ResearchSkillMaintenanceApplyOutcome
-    func skillMaintenanceSnapshots(
-        packageID: String?
-    ) async throws -> ResearchSkillMaintenanceSnapshotListing
-    func restoreSkillMaintenance(
-        snapshotID: UUID,
-        expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
-    ) async throws -> ResearchSkillMaintenanceRestoreOutcome
-    func actionProfiles() async throws -> ResearchActionProfileSnapshot?
-    func saveActionProfile(
-        _ binding: ResearchActionProfileBinding,
-        expectedDocumentRevision: DocumentFingerprint?
-    ) async throws -> ResearchActionProfileSnapshot
-    func removeActionProfile(
-        actionID: ResearchActionID,
-        expectedDocumentRevision: DocumentFingerprint
-    ) async throws -> ResearchActionProfileSnapshot
-    func saveActionProfileDocument(
-        _ document: ResearchActionProfileDocument,
-        expectedDocumentRevision: DocumentFingerprint?
-    ) async throws -> ResearchActionProfileSnapshot
-}
-
-/// App-wide installation spans one or more Triptychs and therefore belongs to
-/// the runtime rather than one active window's `ResearchUseCases` value.
-public protocol ResearchSkillInstallationUseCases: Sendable {
-    func stageResearcherSkillInstallation(
-        from directoryURL: URL
-    ) async throws -> ResearchSkillInstallationPreparation
-
-    func installResearcherSkill(
-        _ preparation: ResearchSkillInstallationPreparation,
-        to triptychIDs: [UUID]
-    ) async throws -> ResearchSkillInstallationOutcome
-
-    func discardResearcherSkillInstallation(preparationID: UUID) async
 }
 
 public protocol ResearchActionUseCases: Sendable {
@@ -247,45 +178,12 @@ public protocol ResearchActionUseCases: Sendable {
 
     func actionRun(id: UUID) async throws -> ResearchActionPreparation
 
-    func prepareActionFidelity(
-        parentRunID: UUID
-    ) async throws -> ResearchActionFidelityPreparation
-
-    func completeAction(
-        _ submission: ResearchActionCompletionSubmission
-    ) async throws -> ResearchActionCompletion
-
     func cancelAction(runID: UUID) async throws
 
     func prepareResynthesis(
         _ request: ResearchActionExecutionRequest,
         context: MaterialChangedSinceUseAttentionContext
     ) async throws -> ResearchActionPreparation
-}
-
-public protocol ResearchPermissionUseCases: Sendable {
-    func permissionSettings() async throws -> ResearchPermissionSettingsSnapshot
-
-    func saveTriptychPermissionPolicy(
-        _ policy: ResearchPermissionPolicy,
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> ResearchPermissionSettingsSnapshot
-
-    func saveSkillPermissionOverride(
-        packageID: String,
-        policy: ResearchPermissionPolicy,
-        expectedEnvelopeDigest: DocumentFingerprint,
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> ResearchPermissionSettingsSnapshot
-
-    func removeSkillPermissionOverride(
-        packageID: String,
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> ResearchPermissionSettingsSnapshot
-
-    func evaluateStandingPermission(
-        _ request: ResearchStandingPermissionRequest
-    ) async throws -> ResearchPermissionEvaluation
 }
 
 public protocol ResearchSourceAccessUseCases: Sendable {
@@ -297,30 +195,6 @@ public protocol ResearchSourceAccessUseCases: Sendable {
         _ request: ResearchSourceBindingRequest
     ) async throws -> ResearchSourceReference
 
-    func removeSourceAccess(
-        for target: ResearchFunctionTarget
-    ) async throws
-}
-
-/// Workspace-level research capabilities used by one window activation.
-/// Feature leaves should prefer the smallest component protocol they need.
-public protocol ResearchUseCases:
-    ResearchRecordUseCases,
-    ResearchCheckpointUseCases,
-    ResearchSkillUseCases,
-    ResearchActionUseCases,
-    ResearchPermissionUseCases,
-    ResearchSourceAccessUseCases,
-    RecommendedBibliographyUseCases
-{
-    var skillsURL: URL { get }
-    var recoveryRecordsURL: URL { get }
-}
-
-public protocol SettingsUseCases: Sendable {
-    func availableWorkspaces() async throws -> [TriptychAssignment]
-    func registeredVaults() async throws -> [RegisteredVault]
-    func defaultWorkspace() async throws -> TriptychAssignment
 }
 
 public protocol StyleUseCases: Sendable {
@@ -385,10 +259,6 @@ public protocol ZoteroUseCases: Sendable {
 /// authentication, and request execution.
 public protocol AgentBridgeUseCases: Sendable {
     func handle(requestData: Data) async -> Data?
-}
-
-public protocol WorkspaceEventStreaming: Sendable {
-    func events() async -> AsyncStream<WorkspaceEvent>
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

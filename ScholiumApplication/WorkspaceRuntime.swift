@@ -3,7 +3,7 @@ import Foundation
 import ScholiumCore
 
 /// Process-level composition root for headless Scholium workspaces.
-public actor WorkspaceRuntime: SettingsUseCases {
+public actor WorkspaceRuntime {
     public struct LiveConfiguration: Sendable {
         public let applicationSupportURL: URL
         public let workspaceRegistryStorageURL: URL
