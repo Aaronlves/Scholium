@@ -18,6 +18,8 @@ struct ContentView: View {
     @ObservedObject private var discoveryController: DiscoveryController
     @ObservedObject private var searchController: WindowSearchController
     @ObservedObject private var researchController: ResearchController
+    @ObservedObject private var researchActionController: ResearchActionController
+    @ObservedObject private var shellState: WindowShellState
     @ObservedObject private var documentController: DocumentController
     @ObservedObject private var documentTabController: DocumentTabController
     @ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController
@@ -42,6 +44,10 @@ struct ContentView: View {
         _discoveryController = ObservedObject(wrappedValue: appState.discoveryController)
         _searchController = ObservedObject(wrappedValue: appState.searchController)
         _researchController = ObservedObject(wrappedValue: appState.researchController)
+        _researchActionController = ObservedObject(
+            wrappedValue: appState.researchController.actions
+        )
+        _shellState = ObservedObject(wrappedValue: appState.shellState)
         _documentController = ObservedObject(wrappedValue: appState.documentController)
         _documentTabController = ObservedObject(wrappedValue: appState.documentTabController)
         _workspaceProjectionController = ObservedObject(
@@ -90,7 +96,7 @@ struct ContentView: View {
             )
         } document: {
             Group {
-                if !appState.hasCompletedInitialRestore {
+                if !shellState.hasCompletedInitialRestore {
                     ScholiumLaunchPlaceholderView()
                 } else {
                     detailRegion
@@ -189,10 +195,10 @@ struct ContentView: View {
             if agentRequest.record != nil {
                 windowCoordinator.restoreAgentNoteChangeFocus()
                 agentRequest.finishDismissal()
-            } else if appState.researchController.actions.isPresented {
-                let actionID = appState.researchController.actions.activeActionID
+            } else if researchActionController.isPresented {
+                let actionID = researchActionController.activeActionID
                 appState.presentationRouter.dismissSheet()
-                appState.researchController.actions.dismiss()
+                researchActionController.dismiss()
                 restoreResearchActionFocus(ifOwnedBy: actionID)
                 agentRequest.presentationBecameAvailable()
             } else {
@@ -216,17 +222,17 @@ struct ContentView: View {
     }
 
     private var shellLibraryVisible: Bool {
-        guard appState.hasCompletedInitialRestore,
+        guard shellState.hasCompletedInitialRestore,
               appState.vaultConfig != nil
         else { return true }
-        return appState.sidebarVisible
+        return shellState.libraryVisible
     }
 
     private var shellApparatusVisible: Bool {
         ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_DISABLE_INSPECTOR"] != "1"
-            && appState.hasCompletedInitialRestore
+            && shellState.hasCompletedInitialRestore
             && appState.vaultConfig != nil
-            && appState.researchInspectorVisible
+            && shellState.inspector.isVisible
     }
 
     private var presentedSheet: Binding<WindowSheetRoute?> {
@@ -671,7 +677,7 @@ struct ContentView: View {
         case .researchAction(let route):
             if note(at: route.target.relativePath) != nil {
                 ResearchActionPanelView(
-                    controller: appState.researchController.actions,
+                    controller: researchActionController,
                     context: ResearchActionPanelContext(
                         chooseLocalSource: {
                             let panel = NSOpenPanel()
@@ -714,7 +720,7 @@ struct ContentView: View {
                             // focus only after AppKit has closed the sheet.
                             return
                         }
-                        appState.researchController.actions.dismiss(
+                        researchActionController.dismiss(
                             presentationID: route.presentationID
                         )
                     }
@@ -851,7 +857,7 @@ struct ContentView: View {
         if let note = appState.currentNote {
             ResearchInspectorView(
                 note: note,
-                controller: appState.researchController,
+                shellState: appState.shellState,
                 graph: appState.relationshipGraph,
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
@@ -863,7 +869,13 @@ struct ContentView: View {
                 },
                 openResearchAction: { appState.openResearchAction($0) },
                 retryResearchActionCancellation: { runID in
-                    appState.researchController.actions.retryCancellationRecovery(runID: runID)
+                    researchActionController.retryCancellationRecovery(runID: runID)
+                },
+                openReference: { reference, sourceLine in
+                    appState.researchController.requestOpen(
+                        reference,
+                        sourceLine: sourceLine
+                    )
                 },
                 settle: { rationale in
                     guard let target = appState.currentResearchFunctionTarget else { return }
@@ -876,7 +888,7 @@ struct ContentView: View {
             )
         } else {
             VStack(spacing: 0) {
-                if appState.researchController.actions.hasCancellationBarrier {
+                if researchActionController.hasCancellationBarrier {
                     ResearchActionsInspectorView(
                         presentation: appState.researchActionsPresentation(),
                         freshness: .current,
@@ -885,7 +897,7 @@ struct ContentView: View {
                         select: { _ in },
                         retryRefresh: {},
                         retryCancellationRecovery: { runID in
-                            appState.researchController.actions
+                            researchActionController
                                 .retryCancellationRecovery(runID: runID)
                         },
                         settle: { _ in }

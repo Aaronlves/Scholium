@@ -44,7 +44,9 @@ struct ResearchControllerCapabilities: Sendable {
     let recoveryRecordsURL: URL
 }
 
-/// Per-window owner for research-context data and Action presentation.
+/// Per-window owner for research-context data and capability access. Action
+/// and Recommended Bibliography presentation remain independently observable
+/// child owners and are never republished through this controller.
 /// Inspector visibility and mode belong to the surrounding workspace window,
 /// so changing the selected document tab doesn't change the shell.
 /// Research records and checkpoints remain borrowed from Application.
@@ -65,7 +67,6 @@ final class ResearchController: ObservableObject {
     private let intentHandler: IntentHandler
     private let shellState: WindowShellState
     private var capabilities: ResearchControllerCapabilities?
-    private var cancellables: Set<AnyCancellable> = []
 
     init(
         shellState: WindowShellState = WindowShellState(),
@@ -73,15 +74,6 @@ final class ResearchController: ObservableObject {
     ) {
         self.shellState = shellState
         self.intentHandler = intentHandler
-        shellState.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-        actions.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-        bibliography.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
     }
 
     var inspector: ResearchInspectorState {

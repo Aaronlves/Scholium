@@ -279,7 +279,7 @@ private struct DocumentSessionFallback: View {
 }
 
 struct ResearchInspectorView: View {
-    @ObservedObject private var controller: ResearchController
+    @ObservedObject private var shellState: WindowShellState
 
     let note: WindowDocumentLocation
     let graph: GraphSnapshot?
@@ -291,11 +291,12 @@ struct ResearchInspectorView: View {
     let registerResearchActionFocusOwner: (ResearchActionID) -> Void
     let openResearchAction: (ResearchActionID) -> Void
     let retryResearchActionCancellation: (UUID) -> Void
+    let openReference: (VaultNoteReference, Int?) -> Void
     let settle: (String?) async throws -> Void
 
     init(
         note: WindowDocumentLocation,
-        controller: ResearchController,
+        shellState: WindowShellState,
         graph: GraphSnapshot?,
         catalog: WorkspaceCatalogSnapshot?,
         currentVaultID: UUID?,
@@ -305,10 +306,11 @@ struct ResearchInspectorView: View {
         registerResearchActionFocusOwner: @escaping (ResearchActionID) -> Void,
         openResearchAction: @escaping (ResearchActionID) -> Void,
         retryResearchActionCancellation: @escaping (UUID) -> Void,
+        openReference: @escaping (VaultNoteReference, Int?) -> Void,
         settle: @escaping (String?) async throws -> Void
     ) {
         self.note = note
-        self.controller = controller
+        _shellState = ObservedObject(wrappedValue: shellState)
         self.graph = graph
         self.catalog = catalog
         self.currentVaultID = currentVaultID
@@ -318,18 +320,19 @@ struct ResearchInspectorView: View {
         self.registerResearchActionFocusOwner = registerResearchActionFocusOwner
         self.openResearchAction = openResearchAction
         self.retryResearchActionCancellation = retryResearchActionCancellation
+        self.openReference = openReference
         self.settle = settle
     }
 
     var body: some View {
         VStack(spacing: 0) {
             ScholiumInspectorModeIndex(
-                selectedMode: controller.inspector.mode,
-                select: controller.selectInspectorMode
+                selectedMode: shellState.inspector.mode,
+                select: shellState.selectInspectorMode
             )
 
             Group {
-                switch controller.inspector.mode {
+                switch shellState.inspector.mode {
                 case .overview:
                     ResearchOverviewView(
                         note: note,
@@ -367,7 +370,7 @@ struct ResearchInspectorView: View {
             freshness: researchInspectorContentContext.freshness,
             retryRefresh: researchInspectorContentContext.retryRefresh,
             openReference: { reference, line in
-                controller.requestOpen(reference, sourceLine: line)
+                openReference(reference, line)
             }
         )
     }

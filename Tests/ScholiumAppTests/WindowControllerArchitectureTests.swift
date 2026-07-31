@@ -1092,6 +1092,62 @@ struct WindowControllerArchitectureTests {
         #expect(controller.actions.presentationID == nil)
     }
 
+    @Test("Research child owners do not invalidate the records owner")
+    func researchObservationOwnership() throws {
+        let shellState = WindowShellState()
+        let controller = ResearchController(shellState: shellState)
+        var invalidations = 0
+        let observation = controller.objectWillChange.sink { invalidations += 1 }
+
+        shellState.selectInspectorMode(.actions)
+        controller.actions.textValues = ["prompt": "Fixture"]
+        controller.bibliography.purpose = "Fixture purpose"
+        #expect(invalidations == 0)
+
+        controller.setActiveDocument(fixtureReference(path: "Topics/Owned.md"))
+        #expect(invalidations == 1)
+        observation.cancel()
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let controllerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/ResearchContext/ResearchController.swift"
+            ),
+            encoding: .utf8
+        )
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let noteSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!controllerSource.contains("shellState.objectWillChange"))
+        #expect(!controllerSource.contains("actions.objectWillChange"))
+        #expect(!controllerSource.contains("bibliography.objectWillChange"))
+        #expect(contentSource.contains(
+            "@ObservedObject private var researchActionController: ResearchActionController"
+        ))
+        #expect(contentSource.contains(
+            "@ObservedObject private var shellState: WindowShellState"
+        ))
+        #expect(noteSource.contains(
+            "@ObservedObject private var shellState: WindowShellState"
+        ))
+        #expect(!noteSource.contains(
+            "@ObservedObject private var controller: ResearchController"
+        ))
+    }
+
     @Test("Research destinations receive narrow contexts instead of the window model")
     func researchDestinationsAreLeafBoundaries() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -1568,6 +1624,8 @@ struct WindowControllerArchitectureTests {
             "@ObservedObject private var discoveryController: DiscoveryController",
             "@ObservedObject private var searchController: WindowSearchController",
             "@ObservedObject private var researchController: ResearchController",
+            "@ObservedObject private var researchActionController: ResearchActionController",
+            "@ObservedObject private var shellState: WindowShellState",
             "@ObservedObject private var documentController: DocumentController",
             "@ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController",
         ] {

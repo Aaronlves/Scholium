@@ -226,7 +226,10 @@ labels or availability. Commands still read and mutate the existing owners.
 `DocumentController` alone owns
 selection and document workflow state; `ResearchController` owns the current
 research-record projection, checkpoint-list failures, and durable-recovery
-listing. `WindowWorkspaceProjectionController` is the exact-window owner of the
+listing. Shell, Research Action, and Recommended Bibliography state remain
+independently observable owners; `ResearchController` neither republishes nor
+duplicates them. `ContentView`, Inspector, Action, and bibliography leaves
+observe only the owner whose state they render. `WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable catalog, per-vault snapshots, selected Location's Notes/tags/revisions
 and property-filter options, graph, Search generation, derived-refresh status,
 and catalog refresh lifecycle. It accepts only the active runtime and increasing
@@ -891,7 +894,8 @@ only the selected public Action/Profile, draft inputs,
 progress/cancellation/errors, presentation identity, and stale-response tokens.
 A narrow client composes document flush/selection capture with async use cases;
 the controller owns no repository, filesystem, document controller, protected
-Function identity, or authoritative research data.
+Function identity, or authoritative research data. Its published presentation
+is observed directly and is not forwarded through `ResearchController`.
 
 Recommended Bibliography follows a separate Triptych-library capability
 boundary:
@@ -916,7 +920,8 @@ store exposes one Triptych overview and permits one active request regardless
 of current Scope, Location, selected Note, or window. Application snapshots the
 complete Source Analyzer method, validates completion tokens and
 evidence, and performs conservative duplicate discrimination without note or
-Zotero mutation. Core owns portable storage,
+Zotero mutation. Bibliography views observe this controller directly; its
+changes are not forwarded through the research-record owner. Core owns portable storage,
 package resolution, path safety, and matching inputs. The App owns goals,
 purpose, focus, stale-response rejection, refresh presentation, and compact
 rows. Candidate rows route only to a matched Analysis or Dismiss; they no

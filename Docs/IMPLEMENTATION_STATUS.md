@@ -187,7 +187,6 @@ an extraction.
 
 | Batch | Evidence-backed boundary | Required invariant |
 | --- | --- | --- |
-| 18 | Remove `ResearchController`'s relays of shell, Action, and Recommended Bibliography owners; each consumer observes the exact state it renders. | Inspector, Action, record, recovery, and bibliography lifecycles remain independently owned and window-scoped. |
 | 19 | Classify every remaining direct `WindowModel` use of `WorkspaceStore`; extract only a cohesive ownership boundary supported by live dependency, lifecycle, or recovery evidence. | Composition, event ordering, window identity, exact-source preservation, editor flush ordering, and external delivery remain unchanged. |
 
 ## Completed architecture migrations
@@ -211,6 +210,7 @@ The original batch-by-batch sequence and detailed proof notes remain in Git.
 | 15 | Window root, Content, Research Record, and toolbar hosts observe their bounded owners directly; `WindowModel` no longer fans every child `objectWillChange` into all consumers. `WindowCommandObservation` invalidates only the focused window's command presentation for command-facing owner changes and stores no product state. The scene derives child observers only after SwiftUI has retained the exact root owners. | Focused menu labels and availability remain current; child presentation changes do not invalidate the composition root; toolbar topology stays stable while its hosted controls observe exact shell visibility; independent windows retain independent observation scopes. |
 | 16 | `AttentionPopoverSession` observes only the exact Workspace assignment, immutable Workspace projection, and dismissal-duration setting it renders; refresh and resynthesis remain closed borrowed effects. The adapter no longer retains or observes `WindowModel`. | Sidebar and Inspector anchors share one transient session; current Scope and Note filtering, stale-data recovery, exact navigation, and per-window isolation remain unchanged. |
 | 17 | `WindowSearchController` publishes only its Saved Search state and no longer relays `DiscoveryController.objectWillChange`; Search presentation consumers observe the exact Discovery owner directly. | Search execution, serialized Saved Search persistence, result-freshness rejection, ordinary Find scope, and one visible Search projection remain unchanged. |
+| 18 | `ResearchController` publishes only research records, checkpoint/recovery state, and its active document; it no longer republishes shell, `ResearchActionController`, or `RecommendedBibliographyController` changes. Content and leaf views observe those exact owners directly. | Inspector mode and visibility, Action presentation and cancellation, Research Record, checkpoint/recovery, and bibliography lifecycles remain independently owned and window-scoped. |
 
 ## Current verification baseline
 
