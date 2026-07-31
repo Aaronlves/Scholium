@@ -148,7 +148,7 @@ struct FileAgentApplicationPreferenceStore: AgentApplicationPreferencePersisting
 /// and workspace lifetime. This object publishes immutable GUI snapshots,
 /// coordinates editor flushes across windows, and owns app-only services.
 @MainActor
-final class WorkspaceStore: ObservableObject {
+final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     private static let publicationLogger = Logger(
         subsystem: "com.scholium.app",
         category: "WorkspacePublication"

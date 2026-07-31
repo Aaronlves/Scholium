@@ -1308,6 +1308,64 @@ struct WindowControllerArchitectureTests {
         #expect(!controllerSource.contains("sessions: DocumentSessionStore"))
     }
 
+    @Test("Editor flush registration has one exact-window coordinator")
+    func editorFlushOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let coordinatorSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowEditorFlushCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        let storeSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Services/WindowSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
+        let end = try #require(appSource.range(
+            of: "private enum ClipboardWorkflowError",
+            range: start.upperBound..<appSource.endIndex
+        ))
+        let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
+
+        #expect(windowModelSource.contains(
+            "private let editorFlushCoordinator: WindowEditorFlushCoordinator"
+        ))
+        for retiredRootResponsibility in [
+            "private struct EditorFlushRegistration",
+            "stableEditorFlushToken",
+            "stableEditorFlushTriptychID",
+            "workspaceStore.registerEditorFlush",
+            "workspaceStore.unregisterEditorFlush",
+            "workspaceStore.flushEditors",
+        ] {
+            #expect(!windowModelSource.contains(retiredRootResponsibility))
+        }
+        #expect(coordinatorSource.contains(
+            "final class WindowEditorFlushCoordinator"
+        ))
+        #expect(coordinatorSource.contains(
+            "protocol WorkspaceEditorFlushRegistry: AnyObject"
+        ))
+        #expect(coordinatorSource.contains("func activateTriptych("))
+        #expect(coordinatorSource.contains("func updateWindowID("))
+        #expect(coordinatorSource.contains("func shutdown()"))
+        #expect(storeSource.contains(
+            "WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry"
+        ))
+    }
+
     private func fixtureReference(
         vaultID: UUID = UUID(),
         path: String

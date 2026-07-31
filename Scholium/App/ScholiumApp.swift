@@ -1096,24 +1096,6 @@ final class WindowModel: ObservableObject {
         let presentationWarning: String?
     }
 
-    private struct EditorFlushRegistration {
-        let token: UUID
-        let relativePath: String
-        let flush: @MainActor () async throws -> Void
-        let captureForReconstruction: @MainActor () async throws -> Void
-    }
-
-    private enum DocumentTransitionError: LocalizedError {
-        case staleEditorRegistration(expected: String, registered: String)
-
-        var errorDescription: String? {
-            switch self {
-            case .staleEditorRegistration(let expected, let registered):
-                String(localized: "Scholium kept the document open because the active editor changed from \(registered) to \(expected) before it could be saved.", table: "Localizable", bundle: .module)
-            }
-        }
-    }
-
     private enum WindowNavigationError: LocalizedError {
         case noteUnavailable(String)
         case vaultUnavailable(String)
@@ -1566,14 +1548,12 @@ final class WindowModel: ObservableObject {
     }
     private let requestedInitialDocument: VaultNoteReference?
     private var didOpenRequestedInitialDocument = false
-    private var editorFlushRegistration: EditorFlushRegistration?
-    private let stableEditorFlushToken = UUID()
-    private var stableEditorFlushTriptychID: UUID?
     private var projectionRefreshToken: UInt64 = 0
     private var attemptedVaultRestore = false
     private let workspaceStore: WorkspaceStore
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private let documentTransitionCoordinator = DocumentTransitionCoordinator()
+    private let editorFlushCoordinator: WindowEditorFlushCoordinator
     private let windowSessionPersistenceCoordinator: WindowSessionPersistenceCoordinator
     let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
@@ -1603,6 +1583,10 @@ final class WindowModel: ObservableObject {
         windowSessionID = resolvedWindowID
         self.workspaceStore = workspaceStore
         self.lifecyclePolicy = lifecyclePolicy
+        self.editorFlushCoordinator = WindowEditorFlushCoordinator(
+            windowID: resolvedWindowID,
+            registry: workspaceStore
+        )
         let resolvedSessionSaver = finalWindowSessionSaver ?? {
             [workspaceStore] snapshot, attempt in
             try await workspaceStore.saveWindowSession(snapshot, attempt: attempt)
@@ -2172,69 +2156,34 @@ final class WindowModel: ObservableObject {
         flush: @escaping @MainActor () async throws -> Void,
         captureForReconstruction: @escaping @MainActor () async throws -> Void
     ) {
-        if let previous = editorFlushRegistration,
-           previous.token != token {
-            workspaceStore.unregisterEditorFlush(token: previous.token)
-        }
-        editorFlushRegistration = EditorFlushRegistration(
-            token: token,
+        editorFlushCoordinator.registerCurrentEditor(
             relativePath: relativePath,
+            token: token,
+            triptychID: workspaceAssignment?.id,
             flush: flush,
             captureForReconstruction: captureForReconstruction
         )
-        if let triptychID = workspaceAssignment?.id {
-            workspaceStore.registerEditorFlush(
-                token: token,
-                triptychID: triptychID,
-                windowID: windowSessionID,
-                relativePath: relativePath,
-                flush: flush
-            )
-        }
     }
 
     func unregisterEditorFlush(token: UUID) {
-        guard let registration = editorFlushRegistration,
-              registration.token == token else {
-            workspaceStore.unregisterEditorFlush(token: token)
-            return
-        }
-        // SwiftUI may detach and reattach NoteContentView while the same
-        // document session remains selected. Its stable token is also used by
-        // the replacement view, so treating that transient onDisappear as the
-        // end of ownership can unregister the newly installed flush closure.
-        // The selected session remains the owner until navigation replaces it,
-        // the last tab closes, or window shutdown explicitly clears it.
-        guard selectedDocumentPath != registration.relativePath else { return }
-        workspaceStore.unregisterEditorFlush(token: token)
-        editorFlushRegistration = nil
-    }
-
-    private func clearEditorFlushRegistration() {
-        guard let registration = editorFlushRegistration else { return }
-        workspaceStore.unregisterEditorFlush(token: registration.token)
-        editorFlushRegistration = nil
+        editorFlushCoordinator.unregisterCurrentEditor(
+            token: token,
+            selectedDocumentPath: selectedDocumentPath
+        )
     }
 
     private func flushRegisteredEditorIfNeeded(
         capturingEditorState: Bool = false
     ) async throws {
-        if let registration = editorFlushRegistration {
-            if let selectedDocumentPath,
-               selectedDocumentPath != registration.relativePath {
-                throw DocumentTransitionError.staleEditorRegistration(
-                    expected: selectedDocumentPath,
-                    registered: registration.relativePath
+        try await editorFlushCoordinator.flushCurrentEditor(
+            selectedDocumentPath: selectedDocumentPath,
+            capturingEditorState: capturingEditorState,
+            fallback: { [weak self] capturingEditorState in
+                guard let self else { return }
+                try await self.documentController.flushLeasedOrPinnedSessions(
+                    capturingEditorState: capturingEditorState
                 )
             }
-            try await registration.flush()
-            if capturingEditorState {
-                try await registration.captureForReconstruction()
-            }
-            return
-        }
-        try await documentController.flushLeasedOrPinnedSessions(
-            capturingEditorState: capturingEditorState
         )
     }
 
@@ -2243,19 +2192,16 @@ final class WindowModel: ObservableObject {
     /// preparation revalidates the frozen Target rather than saving unrelated
     /// open Notes.
     func flushCurrentEditorBeforeOpeningResearchAction() async throws {
-        if let registration = editorFlushRegistration {
-            if let selectedDocumentPath,
-               selectedDocumentPath != registration.relativePath {
-                throw DocumentTransitionError.staleEditorRegistration(
-                    expected: selectedDocumentPath,
-                    registered: registration.relativePath
-                )
+        try await editorFlushCoordinator.flushCurrentEditorForResearchAction(
+            selectedDocumentPath: selectedDocumentPath,
+            fallback: { [weak self] in
+                guard let self,
+                      let selectedDocument = self.documentController.selectedDocument else {
+                    return
+                }
+                try await self.documentController.flushBeforeClosing(selectedDocument)
             }
-            try await registration.flush()
-            return
-        }
-        guard let selectedDocument = documentController.selectedDocument else { return }
-        try await documentController.flushBeforeClosing(selectedDocument)
+        )
     }
 
     func prepareForWindowClose() async throws -> ClosePreparationOutcome {
@@ -2286,11 +2232,7 @@ final class WindowModel: ObservableObject {
         guard attempt == currentCloseAttemptID else {
             throw ScholiumWindowLifecycleError.cancelled
         }
-        clearEditorFlushRegistration()
-        if stableEditorFlushTriptychID != nil {
-            workspaceStore.unregisterEditorFlush(token: stableEditorFlushToken)
-            stableEditorFlushTriptychID = nil
-        }
+        editorFlushCoordinator.shutdown()
         return ClosePreparationOutcome(presentationWarning: presentationWarning)
     }
 
@@ -3159,6 +3101,7 @@ final class WindowModel: ObservableObject {
     func restoreWindowSession(id: UUID) async {
         guard !didRestoreWindowSession || windowSessionID != id else { return }
         windowSessionID = id
+        editorFlushCoordinator.updateWindowID(id)
         isRestoringWindowSession = true
         defer {
             isRestoringWindowSession = false
@@ -3561,7 +3504,7 @@ final class WindowModel: ObservableObject {
                         "No workspace is active."
                     )
                 }
-                try await self.workspaceStore.flushEditors(in: assignment.id)
+                try await self.editorFlushCoordinator.flushAllEditors(in: assignment.id)
                 return try await capabilities.research.bibliography
                     .prepareRecommendation(request)
             },
@@ -3607,7 +3550,10 @@ final class WindowModel: ObservableObject {
             to: activation.capabilities,
             snapshot: activation.snapshot
         )
-        installStableEditorFlushCapability(for: activation.workspaceID)
+        editorFlushCoordinator.activateTriptych(activation.workspaceID) { [weak self] in
+            guard let self else { return }
+            try await self.documentController.flushLeasedOrPinnedSessions()
+        }
         Task { [weak self] in
             await self?.workspaceStore.refreshPendingAgentNoteChangeRequests(
                 in: activation.workspaceID
@@ -3633,17 +3579,6 @@ final class WindowModel: ObservableObject {
             }
         }
 
-        if previousIdentity?.triptychID != activation.workspaceID,
-           let registration = editorFlushRegistration {
-            workspaceStore.unregisterEditorFlush(token: registration.token)
-            workspaceStore.registerEditorFlush(
-                token: registration.token,
-                triptychID: activation.workspaceID,
-                windowID: windowSessionID,
-                relativePath: registration.relativePath,
-                flush: registration.flush
-            )
-        }
         let projectionCommit = workspaceProjectionController.activate(
             snapshot: activation.snapshot,
             runtimeIdentity: activation.runtimeIdentity,
@@ -3677,7 +3612,7 @@ final class WindowModel: ObservableObject {
         guard let assignment = workspaceAssignment else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await workspaceStore.flushEditors(in: assignment.id)
+        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
         return try await researchController.createCheckpoint(name: name, kind: kind)
     }
 
@@ -3709,7 +3644,7 @@ final class WindowModel: ObservableObject {
               let assignment = workspaceAssignment else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await workspaceStore.flushEditors(in: assignment.id)
+        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
         _ = try await researchController.restoreNote(
             VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
             from: checkpointID,
@@ -3768,7 +3703,7 @@ final class WindowModel: ObservableObject {
         guard let assignment = workspaceAssignment else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await workspaceStore.flushEditors(in: assignment.id)
+        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
         let result = try await researchController.restoreCheckpoint(
             checkpointID,
             selection: selection
@@ -4406,7 +4341,7 @@ final class WindowModel: ObservableObject {
         }
         isMutatingFolder = true
         defer { isMutatingFolder = false }
-        try await workspaceStore.flushEditors(in: assignment.id)
+        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
         let commit: FolderMoveCommit
         do {
             commit = try await documentController.moveFolder(
@@ -4437,7 +4372,7 @@ final class WindowModel: ObservableObject {
         }
         isMutatingFolder = true
         defer { isMutatingFolder = false }
-        try await workspaceStore.flushEditors(in: assignment.id)
+        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
         let commit: FolderMoveCommit
         do {
             commit = try await documentController.moveFolderToTrash(
@@ -4945,23 +4880,6 @@ final class WindowModel: ObservableObject {
         documentController.reconcileSessionLeases(
             leasedDocuments: documentTabController.tabs.map(\.document),
             selectedDocument: documentTabController.selectedTab?.document
-        )
-    }
-
-    private func installStableEditorFlushCapability(for triptychID: UUID) {
-        if stableEditorFlushTriptychID != triptychID {
-            workspaceStore.unregisterEditorFlush(token: stableEditorFlushToken)
-        }
-        stableEditorFlushTriptychID = triptychID
-        workspaceStore.registerEditorFlush(
-            token: stableEditorFlushToken,
-            triptychID: triptychID,
-            windowID: windowSessionID,
-            relativePath: "",
-            flush: { [weak self] in
-                guard let self else { return }
-                try await self.documentController.flushLeasedOrPinnedSessions()
-            }
         )
     }
 

@@ -44,6 +44,7 @@ ApplicationBootstrapController (one app-owned storage gate)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowShellState
             │   ├── WindowWorkspaceController (assignment and capability session)
+            │   ├── WindowEditorFlushCoordinator
             │   ├── WindowSessionPersistenceCoordinator
             │   ├── DocumentTransitionCoordinator
             │   ├── WindowWorkspaceProjectionController
@@ -161,7 +162,13 @@ generations. Commands remain direct capability calls, not event-bus messages.
 
 `WorkspaceStore` owns the live runtime, accepted Application-event
 subscription, latest complete immutable snapshots used by direct app adapters,
-cross-window editor-flush registry, and macOS adapters. It publishes one
+cross-window editor-flush registry, and macOS adapters. The app-wide registry
+implements the client-owned `WorkspaceEditorFlushRegistry` port. One
+`WindowEditorFlushCoordinator` per exact window owns the current editor and
+aggregate-window registration identities, Triptych/window rebinding, stale
+current-editor validation, and teardown; `WindowModel` neither stores those
+registrations nor calls the concrete Store's register, unregister, or
+Triptych-wide flush methods. `WorkspaceStore` publishes one
 generation-gated `WorkspaceEvent` map to windows; derived-refresh status and
 generation remain inside that event rather than separate window-facing
 mirrors. Each window receives one atomic capability generation. CSS/App
@@ -187,7 +194,10 @@ registered-Triptych projection, access-recovery state, installed capability
 generation, and stable vault-identity resolution.
 `WindowSessionPersistenceCoordinator` owns replaceable and final
 presentation saves, and `DocumentTransitionCoordinator` owns transition
-generation plus flush/capture ordering. `AgentNoteChangeWindowController` owns
+generation. `WindowEditorFlushCoordinator` preserves current-editor
+flush-before-capture ordering, supplies the aggregate per-window registration
+used by Triptych-wide operations, and tears both registrations down only after
+content-safe close. `AgentNoteChangeWindowController` owns
 the exact window's Agent request, display identity, expiry, decision tasks, and
 sheet route. `WindowSearchController` owns Search/temporary Find execution and
 cancellation, exact result-freshness validation, Search-generation reruns, and
@@ -921,8 +931,9 @@ failure.
   projection, and Zotero transport.
 - `Scholium/Features` contains the Discovery, Document, Research, Properties,
   and Settings delivery controllers and per-window editor sessions.
-- `Scholium/App/Window` contains `WindowShellState`, mutually exclusive window
-  presentation routing, and the document-transition,
+- `Scholium/App/Window` contains `WindowShellState`,
+  `WindowEditorFlushCoordinator`, mutually exclusive window presentation
+  routing, and the document-transition,
   presentation-persistence, workspace-session, and immutable-projection
   coordinators. These
   coordinators do not duplicate a feature controller or writable document
