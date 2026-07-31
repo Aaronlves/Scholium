@@ -209,7 +209,9 @@ document snapshot and navigation/presentation effects from the window root.
 facts, and routes cross-feature intents; it does not relay child
 `objectWillChange` or own those state machines. `ScholiumWindowRoot`,
 `ContentView`, Research Record, and toolbar hosts observe their actual bounded
-owners directly. The scene root first retains `WindowModel` and
+owners directly. `AttentionPopoverSession` likewise observes the assignment
+and immutable workspace projection directly rather than using the composition
+root as an invalidation bus. The scene root first retains `WindowModel` and
 `WorkspaceWindowCoordinator` as `StateObject`s, then passes those stable
 instances into `ScholiumWindowObservedRoot`; child `ObservedObject`s are never
 derived from a newly constructed root instance that SwiftUI may discard.
@@ -1018,8 +1020,11 @@ utility panel, or always-on-top surface. Per-Workspace
 `AttentionPresentationState` owns only filter, selected item, selected Scope,
 and optional current-Note subset; `AttentionPopoverSession` adapts that state
 and the current immutable queue to the Sidebar and Inspector anchors without
-duplicating either. `AttentionScopeCounts` is a read-only projection of the
-same catalog and machine-local dismissal ledger. Sidebar consumes only the
+duplicating either. The adapter observes only the exact assignment and
+workspace-projection owners plus the single dismissal-duration setting; it
+borrows closed refresh and resynthesis effects and never observes or retains
+the complete `WindowModel`. `AttentionScopeCounts` is a read-only projection
+of the same catalog and machine-local dismissal ledger. Sidebar consumes only the
 selected Scope's conditional alert; ScopeIndex labels never consume or expose
 the count, and zero contributes no row or gap. The Document toolbar consumes
 no Attention count, observation, item, action, reserved width, or popover

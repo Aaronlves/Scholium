@@ -5,17 +5,15 @@ private struct AttentionPopoverContent: View {
     @ObservedObject var session: AttentionPopoverSession
 
     var body: some View {
-        if let presentation = session.presentation {
-            AttentionQueueView(
-                presentation: presentation,
-                session: session
-            )
-            .frame(
-                width: ScholiumMetrics.Attention.popoverWidth,
-                height: ScholiumMetrics.Attention.popoverHeight
-            )
-            .scholiumSurface(.denseEvidence)
-        }
+        AttentionQueueView(
+            presentation: session.presentation,
+            session: session
+        )
+        .frame(
+            width: ScholiumMetrics.Attention.popoverWidth,
+            height: ScholiumMetrics.Attention.popoverHeight
+        )
+        .scholiumSurface(.denseEvidence)
     }
 }
 

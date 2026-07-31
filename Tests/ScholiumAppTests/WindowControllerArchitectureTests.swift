@@ -7,6 +7,64 @@ import Testing
 @Suite("Window controller architecture")
 @MainActor
 struct WindowControllerArchitectureTests {
+    @Test("Attention observes only its exact workspace projections")
+    func attentionObservationOwnership() throws {
+        let store = makeTestWorkspaceStore()
+        let workspaceController = WindowWorkspaceController(
+            workspaceStore: store,
+            requestedTriptychID: nil
+        )
+        let discoveryController = DiscoveryController()
+        let projectionController = WindowWorkspaceProjectionController {
+            throw DiscoverySearchExecutionError.workspaceUnavailable
+        }
+        let dismissalDays = PassthroughSubject<Int, Never>()
+        let session = AttentionPopoverSession(
+            presentation: AttentionPresentationState(),
+            discoveryController: discoveryController,
+            workspaceController: workspaceController,
+            projectionController: projectionController,
+            dismissalDays: 7,
+            dependencies: .init(
+                dismissalDaysChanges: dismissalDays.eraseToAnyPublisher(),
+                refresh: {},
+                resynthesize: { _ in }
+            )
+        )
+        var invalidations = 0
+        let observation = session.objectWillChange.sink { invalidations += 1 }
+
+        workspaceController.setRecoveryMessage("Unrelated recovery state")
+        discoveryController.synchronizeLibrarySelection(
+            workspaceSlot: .output,
+            location: .setAside
+        )
+        #expect(invalidations == 0)
+
+        projectionController.reportCatalogError("Fixture catalog failure")
+        #expect(invalidations == 1)
+
+        dismissalDays.send(14)
+        #expect(session.dismissalDays == 14)
+        #expect(invalidations == 2)
+        observation.cancel()
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sessionSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/AttentionPopoverSession.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(!sessionSource.contains("WindowModel"))
+        #expect(!sessionSource.contains("workspace.objectWillChange"))
+        #expect(sessionSource.contains("workspaceController.$state"))
+        #expect(sessionSource.contains("projectionController.$state"))
+    }
+
     @Test("Search execution and Saved Search persistence have one window owner")
     func windowSearchOwnership() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

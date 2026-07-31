@@ -7,47 +7,78 @@ enum AttentionPopoverAnchor: String, Equatable, Sendable {
     case inspector
 }
 
-/// Exact-Workspace adapter for the transient Attention popover. The owning
-/// `WindowModel` supplies derived data and presentation state; this adapter
-/// never searches global windows, broadcasts notifications, or duplicates
-/// queue ownership.
+/// Exact-Workspace adapter for the transient Attention popover. It observes
+/// only the owners whose state appears in the popover and borrows closed
+/// refresh/navigation effects from the window composition root. It never
+/// searches global windows, broadcasts notifications, or duplicates queue
+/// ownership.
 @MainActor
 final class AttentionPopoverSession: ObservableObject {
-    @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
-    private weak var workspace: WindowModel?
-    private var workspaceObservation: AnyCancellable?
-
-    init(workspace: WindowModel) {
-        self.workspace = workspace
-        workspaceObservation = workspace.objectWillChange.sink { [weak self] in
-            self?.objectWillChange.send()
-        }
+    struct Dependencies {
+        let dismissalDaysChanges: AnyPublisher<Int, Never>
+        let refresh: @MainActor () async -> Void
+        let resynthesize: @MainActor (AttentionQueueItem) -> Void
     }
 
-    var presentation: AttentionPresentationState? {
-        workspace?.attentionPresentationState
+    @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
+    @Published private(set) var dismissalDays: Int
+
+    let presentation: AttentionPresentationState
+    private let discoveryController: DiscoveryController
+    private let workspaceController: WindowWorkspaceController
+    private let projectionController: WindowWorkspaceProjectionController
+    private let dependencies: Dependencies
+    private var observations: Set<AnyCancellable> = []
+
+    init(
+        presentation: AttentionPresentationState,
+        discoveryController: DiscoveryController,
+        workspaceController: WindowWorkspaceController,
+        projectionController: WindowWorkspaceProjectionController,
+        dismissalDays: Int,
+        dependencies: Dependencies
+    ) {
+        self.presentation = presentation
+        self.discoveryController = discoveryController
+        self.workspaceController = workspaceController
+        self.projectionController = projectionController
+        self.dismissalDays = AttentionPreferences.normalizedDays(dismissalDays)
+        self.dependencies = dependencies
+
+        workspaceController.$state
+            .map(\.assignment)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &observations)
+        projectionController.$state
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &observations)
+        dependencies.dismissalDaysChanges
+            .map(AttentionPreferences.normalizedDays)
+            .removeDuplicates()
+            .sink { [weak self] days in
+                guard self?.dismissalDays != days else { return }
+                self?.dismissalDays = days
+            }
+            .store(in: &observations)
     }
 
     var isRefreshing: Bool {
-        workspace?.isRefreshingWorkspaceCatalog == true
+        projectionController.isRefreshingCatalog
     }
 
     var catalogIsAvailable: Bool {
-        workspace?.workspaceCatalog != nil
+        projectionController.catalog != nil
     }
 
     var catalogError: String? {
-        workspace?.workspaceCatalogError
+        projectionController.catalogError
     }
 
     var derivedRefreshStatus: WorkspaceDerivedRefreshStatus? {
-        workspace?.derivedRefreshStatus
-    }
-
-    var dismissalDays: Int {
-        workspace.map { AttentionPreferences.normalizedDays(
-            $0.triptychSettings.attentionDismissalDays
-        ) } ?? 7
+        projectionController.derivedRefreshStatus
     }
 
     func present(
@@ -55,10 +86,9 @@ final class AttentionPopoverSession: ObservableObject {
         workspaceSlot: WorkspaceVaultSlot? = nil,
         noteScope: VaultQualifiedNoteID?
     ) {
-        guard let workspace else { return }
-        workspace.attentionPresentationState.present(
+        presentation.present(
             workspaceSlot: workspaceSlot
-                ?? workspace.discoveryController.library.workspaceSlot,
+                ?? discoveryController.library.workspaceSlot,
             noteScope: noteScope
         )
         presentedAnchor = anchor
@@ -71,7 +101,7 @@ final class AttentionPopoverSession: ObservableObject {
     func dismiss(resetFilter: Bool = false) {
         presentedAnchor = nil
         if resetFilter {
-            workspace?.attentionPresentationState.resetForWorkspaceSwitch()
+            presentation.resetForWorkspaceSwitch()
         }
     }
 
@@ -80,10 +110,9 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     func scopedItems(for presentation: AttentionPresentationState) -> [AttentionQueueItem] {
-        guard let workspace,
-              let vaultID = workspace.workspaceAssignment?
+        guard let vaultID = workspaceController.state.assignment?
                 .vault(for: presentation.workspaceSlot)?.id else { return [] }
-        return (workspace.workspaceCatalog?.attention ?? []).filter { item in
+        return (projectionController.catalog?.attention ?? []).filter { item in
             guard item.note.vaultID == vaultID else { return false }
             guard let noteScope = presentation.noteScope else { return true }
             return item.note.vaultID == noteScope.vaultID
@@ -92,7 +121,7 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     func noteTitle(for item: AttentionQueueItem) -> String {
-        if let title = workspace?.workspaceCatalog?.notes.first(where: {
+        if let title = projectionController.catalog?.notes.first(where: {
             $0.reference.vaultID == item.note.vaultID
                 && $0.reference.relativePath == item.note.relativePath
         })?.title, !title.isEmpty {
@@ -103,13 +132,13 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     func refresh() async {
-        await workspace?.refreshWorkspaceCatalog()
+        await dependencies.refresh()
     }
 
     func inspect(_ item: AttentionQueueItem) {
         dismiss()
         let reference = item.materialChangedSinceUse?.material ?? item.note
-        workspace?.discoveryController.requestOpen(
+        discoveryController.requestOpen(
             reference,
             sourceLocator: item.materialChangedSinceUse == nil ? item.locator : nil
         )
@@ -117,6 +146,6 @@ final class AttentionPopoverSession: ObservableObject {
 
     func resynthesize(_ item: AttentionQueueItem) {
         dismiss()
-        workspace?.requestResynthesis(item)
+        dependencies.resynthesize(item)
     }
 }

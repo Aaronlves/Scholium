@@ -179,11 +179,21 @@ or release acceptance.
 | 1.0 Codex handoff | Copy-first Beta handoff is separate and reachable. | Implement supported-app/root validation, new-task adapter, locator-only composer, explicit submission/copy fallback, retry/cancel/Unicode/accessibility/reactivation, and unchanged-run recovery. Do not begin Run with Codex. |
 | Distribution | Local source-first packaging, resource/signature validation, CLI execution, ZIP, and checksum smoke exist. Debug, QA, and release assembly all copy the D-097 canonical application icon named by the bundle plist. | Clean exact tag, external install, canonical-icon Finder/Dock inspection, published source/artifact provenance, and G9. Developer ID and notarization remain outside the current source-first Beta gate unless a later distribution channel adopts them. |
 
+## Active architecture migrations
+
+The approved follow-up observation and Store-boundary audit proceeds one
+reviewable owner at a time. File size or a raw call count alone cannot justify
+an extraction.
+
+| Batch | Evidence-backed boundary | Required invariant |
+| --- | --- | --- |
+| 17 | Remove `WindowSearchController`'s broad relay of `DiscoveryController` and move visible Search observation to the exact view consumer. | Search execution, Saved Search serialization, result freshness, and one visible Search projection remain unchanged. |
+| 18 | Remove `ResearchController`'s relays of shell, Action, and Recommended Bibliography owners; each consumer observes the exact state it renders. | Inspector, Action, record, recovery, and bibliography lifecycles remain independently owned and window-scoped. |
+| 19 | Classify every remaining direct `WindowModel` use of `WorkspaceStore`; extract only a cohesive ownership boundary supported by live dependency, lifecycle, or recovery evidence. | Composition, event ordering, window identity, exact-source preservation, editor flush ordering, and external delivery remain unchanged. |
+
 ## Completed architecture migrations
 
-No open architecture migration remains in the current ledger. Add a new item
-only when live ownership, dependency, lifecycle, transaction, recovery, or
-measured-performance evidence justifies it; file size alone is not an item.
+Completed items below have live ownership evidence and deterministic guards.
 The original batch-by-batch sequence and detailed proof notes remain in Git.
 
 | Former batches | Current boundary | Invariant retained |
@@ -200,6 +210,7 @@ The original batch-by-batch sequence and detailed proof notes remain in Git.
 | 13 | `WindowShellState` and `WindowWorkspaceController` own window-shell and Triptych-session facts; delivery composes narrow Research capability ports instead of the removed aggregate `ResearchUseCases`. Unconsumed protocol façades and the unused `PendingResearchState` projection are deleted. | One window identity, one Workspace capability generation, one document/source authority, and no change to durable record decoding or protected Function execution. |
 | 14 | `WindowEditorFlushCoordinator` owns one exact window's current and aggregate editor-flush registrations behind `WorkspaceEditorFlushRegistry`; the root no longer directly registers, unregisters, or initiates Triptych-wide editor flushes through `WorkspaceStore`. | Flush precedes reconstruction capture and content replacement; transient host detachment retains the selected editor; Triptych/runtime and restored-window identity changes rebind both capabilities atomically; close removes them only after content is safe. |
 | 15 | Window root, Content, Research Record, and toolbar hosts observe their bounded owners directly; `WindowModel` no longer fans every child `objectWillChange` into all consumers. `WindowCommandObservation` invalidates only the focused window's command presentation for command-facing owner changes and stores no product state. The scene derives child observers only after SwiftUI has retained the exact root owners. | Focused menu labels and availability remain current; child presentation changes do not invalidate the composition root; toolbar topology stays stable while its hosted controls observe exact shell visibility; independent windows retain independent observation scopes. |
+| 16 | `AttentionPopoverSession` observes only the exact Workspace assignment, immutable Workspace projection, and dismissal-duration setting it renders; refresh and resynthesis remain closed borrowed effects. The adapter no longer retains or observes `WindowModel`. | Sidebar and Inspector anchors share one transient session; current Scope and Note filtering, stale-data recovery, exact navigation, and per-window isolation remain unchanged. |
 
 ## Current verification baseline
 

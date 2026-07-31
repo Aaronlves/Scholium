@@ -1286,7 +1286,24 @@ final class WindowModel: ObservableObject {
         researchActionController: researchController.actions
     )
     let attentionPresentationState = AttentionPresentationState()
-    lazy var attentionPopoverSession = AttentionPopoverSession(workspace: self)
+    lazy var attentionPopoverSession = AttentionPopoverSession(
+        presentation: attentionPresentationState,
+        discoveryController: discoveryController,
+        workspaceController: windowWorkspaceController,
+        projectionController: workspaceProjectionController,
+        dismissalDays: triptychSettings.attentionDismissalDays,
+        dependencies: .init(
+            dismissalDaysChanges: $triptychSettings
+                .map(\.attentionDismissalDays)
+                .eraseToAnyPublisher(),
+            refresh: { [weak self] in
+                await self?.refreshWorkspaceCatalog()
+            },
+            resynthesize: { [weak self] item in
+                self?.requestResynthesis(item)
+            }
+        )
+    )
     lazy var agentNoteChangeWindowController = AgentNoteChangeWindowController(
         windowID: nativeWindowID,
         presentationRouter: presentationRouter,
