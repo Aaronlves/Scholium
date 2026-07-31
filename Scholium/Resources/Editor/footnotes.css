@@ -80,27 +80,12 @@
 }
 
 .cm-live-footnote-reference-widget { white-space: normal; }
-.cm-live-footnote-reference-widget .footnote-reference { cursor: text; }
+.cm-live-footnote-reference-widget .footnote-reference { cursor: pointer; }
 
 .scholium-footnotes-slot {
   box-sizing: border-box;
   inline-size: 100%;
   padding-block-start: 3em;
-}
-
-.cm-live-footnotes-widget {
-  display: flow-root;
-  inline-size: 100%;
-  box-sizing: border-box;
-  white-space: normal;
-}
-
-.cm-live-footnotes-widget li {
-  cursor: text;
-}
-
-.cm-live-footnote-definition-source {
-  color: var(--scholium-color-secondary-text);
 }
 
 @media (forced-colors: active) {

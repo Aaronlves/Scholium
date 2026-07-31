@@ -85,7 +85,9 @@ describe("footnotePresentation", () => {
     expect(projection.references.map((reference) => reference.identifier))
       .toEqual(["inline-1", "none"]);
     expect(projection.references[0].definitionFrom).toBe(projection.references[0].from);
+    expect(projection.references[0].definitionContentFrom).toBe(projection.references[0].from + 2);
     expect(projection.references[1].definitionFrom).toBeNull();
+    expect(projection.references[1].definitionContentFrom).toBeNull();
     const unused = projection.definitions.find((definition) => definition.identifier === "unused");
     expect(unused?.ordinal).toBeNull();
     expect(unused?.content).toBe("Hidden");

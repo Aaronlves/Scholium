@@ -364,8 +364,8 @@
       "visibleToken": "Synthetic footnote content",
       "level": "block",
       "readSelector": ".scholium-document > .scholium-footnotes-slot .footnotes li",
-      "editSelector": ".cm-live-footnotes-widget li",
-      "expectation": "mustMatchReview"
+      "editSelector": ".cm-line",
+      "expectation": "modeSpecificExactSource"
     },
     {
       "id": "irregular-markdown",

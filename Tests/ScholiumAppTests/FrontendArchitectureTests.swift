@@ -1901,7 +1901,7 @@ struct FrontendArchitectureTests {
             "liveDisplayMathField",
             "liveRawHTMLField",
             "liveCalloutField",
-            "liveFootnoteField",
+            "liveFootnoteReferenceField",
             "livePreview",
             "liveProjectionNavigationKeymap",
             "selectionActions.extension",
@@ -1937,6 +1937,18 @@ struct FrontendArchitectureTests {
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             "padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after)"
         ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "--scholium-rhythm-title-rule-gap: 0.5em"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-live-mode .cm-live-document-title::after"
+        ))
+        #expect(!ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".cm-editor.scholium-live-mode .cm-live-paragraph-end"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-document li > ul"
+        ))
 
         #expect(noteSource.contains("ScholiumDocumentPresentationConfiguration"))
         #expect(editorStyles.contains("var(--scholium-document-half-line-width)"))
@@ -1964,7 +1976,7 @@ struct FrontendArchitectureTests {
             "liveDisplayMathField",
             "liveRawHTMLField",
             "liveCalloutField",
-            "liveFootnoteField",
+            "liveFootnoteReferenceField",
             "liveFrontmatterGuardField",
         ] {
             #expect(editorSource.contains("const \(field) = StateField.define"))
@@ -1988,6 +2000,7 @@ struct FrontendArchitectureTests {
         #expect(!viewportProjection.contains("cm-live-heading-marker-line"))
         #expect(!viewportProjection.contains("cm-live-code-fence-line"))
         #expect(!editorSource.contains("cm-live-list-gap"))
+        #expect(!editorSource.contains("for (const nestedList of"))
     }
 
     @Test("Basic editor input paths do not materialize the complete CodeMirror document")
@@ -2642,7 +2655,8 @@ struct FrontendArchitectureTests {
 
         #expect(css.contains("--scholium-document-prose-font-size: 12pt"))
         #expect(css.contains("--scholium-rhythm-prose-line-height: 2"))
-        #expect(css.contains("--scholium-appearance-title-before: 0em"))
+        #expect(css.contains("--scholium-rhythm-title-before: 0em"))
+        #expect(css.contains("--scholium-rhythm-title-after: 2em"))
         #expect(css.contains("font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor))"))
         #expect(css.contains("letter-spacing: 0.02em"))
         #expect(css.contains("text-align: justify"))
@@ -2681,14 +2695,15 @@ struct FrontendArchitectureTests {
         ).contains(css))
     }
 
-    @Test("Read and Live Preview share semantic footnote presentation")
-    func sharedFootnotePresentation() throws {
+    @Test("Review owns rendered footnotes while Edit reuses only the reference role")
+    func footnotePresentationRespectsModeOwnership() throws {
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let css = ScholiumFootnoteStyles.css
 
         #expect(css.contains(".footnote-reference"))
         #expect(css.contains(".footnotes"))
-        #expect(css.contains(".cm-live-footnotes-widget"))
+        #expect(css.contains(".cm-live-footnote-reference-widget"))
+        #expect(!css.contains(".cm-live-footnotes-widget"))
         #expect(css.contains("padding-inline-end"))
         #expect(editorHTML.contains(css))
         #expect(SafeMarkdownReadWebView.Coordinator.documentHTML(
@@ -2704,7 +2719,7 @@ struct FrontendArchitectureTests {
         ).contains(css))
     }
 
-    @Test("Review owns footnote preview and navigation while Edit owns exact-source activation")
+    @Test("Review owns footnote preview while Edit locates one direct exact-source definition")
     func footnoteInteractionStaysWithinEachModeBoundary() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2717,19 +2732,11 @@ struct FrontendArchitectureTests {
         let referenceStart = try #require(editorSource.range(of: "class FootnoteReferenceWidget"))
         let referenceEnd = try #require(
             editorSource.range(
-                of: "const footnoteSectionPresentations",
+                of: "interface LiveFootnoteReferenceState",
                 range: referenceStart.upperBound..<editorSource.endIndex
             )
         )
-        let sectionStart = try #require(editorSource.range(of: "class FootnoteSectionWidget"))
-        let sectionEnd = try #require(
-            editorSource.range(
-                of: "interface LiveFootnoteProjectionState",
-                range: sectionStart.upperBound..<editorSource.endIndex
-            )
-        )
         let editReference = String(editorSource[referenceStart.lowerBound..<referenceEnd.lowerBound])
-        let editSection = String(editorSource[sectionStart.lowerBound..<sectionEnd.lowerBound])
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: #"<p>Claim<button class="footnote-reference" data-footnote="1">1</button>.</p><section class="footnotes"><ol><li data-footnote="1"><div class="footnote-content">Basis.</div><button class="footnote-return">Return</button></li></ol></section>"#,
             source: "Claim[^one].\n\n[^one]: Basis.\n",
@@ -2742,14 +2749,15 @@ struct FrontendArchitectureTests {
             userCSS: ""
         )
 
-        #expect(!editReference.contains("addEventListener(\"mousedown\""))
-        #expect(editSection.contains("addEventListener(\"mousedown\""))
-        #expect(editSection.contains("beginProjectedPointerSelection"))
-        #expect(editSection.contains("definition.contentFrom"))
-        #expect(!editSection.contains("showFootnotePopover"))
-        #expect(!editSection.contains("footnote-return"))
+        #expect(editReference.contains("addEventListener(\"mousedown\""))
+        #expect(editReference.contains("beginProjectedPointerSelection"))
+        #expect(editReference.contains("reference.definitionContentFrom"))
+        #expect(!editReference.contains("showFootnotePopover"))
+        #expect(!editReference.contains("footnote-return"))
         #expect(editReference.contains("ignoreEvent() { return false; }"))
-        #expect(editSection.contains("ignoreEvent() { return false; }"))
+        #expect(!editorSource.contains("class FootnoteSectionWidget"))
+        #expect(!editorSource.contains("cm-live-footnotes-widget"))
+        #expect(!editorSource.contains("cm-live-footnote-definition-source"))
         #expect(readHTML.contains("showFootnotePopover"))
         #expect(readHTML.contains("event.target.closest('.footnote-reference')"))
         #expect(readHTML.contains("event.target.closest('.footnote-return')"))

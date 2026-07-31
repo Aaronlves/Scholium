@@ -43,6 +43,7 @@ export interface FootnoteReferencePresentation extends SourceRange {
   occurrence: number;
   isInline: boolean;
   definitionFrom: number | null;
+  definitionContentFrom: number | null;
 }
 
 export interface FootnotePresentation {
@@ -219,12 +220,14 @@ export function footnotePresentation(
   const references = rawReferences.map((reference): FootnoteReferencePresentation => {
     const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
     occurrenceByIdentifier.set(reference.identifier, occurrence);
+    const definition = firstDefinitionByIdentifier.get(reference.identifier);
     return {
       identifier: reference.identifier,
       ordinal: ordinalByIdentifier.get(reference.identifier)!,
       occurrence,
       isInline: reference.isInline,
-      definitionFrom: firstDefinitionByIdentifier.get(reference.identifier)?.from ?? null,
+      definitionFrom: definition?.from ?? null,
+      definitionContentFrom: definition?.contentFrom ?? null,
       from: reference.from,
       to: reference.to,
     };

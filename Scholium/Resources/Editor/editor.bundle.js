@@ -21747,12 +21747,14 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
     const references = rawReferences.map((reference) => {
       const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
       occurrenceByIdentifier.set(reference.identifier, occurrence);
+      const definition = firstDefinitionByIdentifier.get(reference.identifier);
       return {
         identifier: reference.identifier,
         ordinal: ordinalByIdentifier.get(reference.identifier),
         occurrence,
         isInline: reference.isInline,
-        definitionFrom: firstDefinitionByIdentifier.get(reference.identifier)?.from ?? null,
+        definitionFrom: definition?.from ?? null,
+        definitionContentFrom: definition?.contentFrom ?? null,
         from: reference.from,
         to: reference.to
       };
@@ -29641,29 +29643,28 @@ ${fence}
     line.moveBase(line.pos + size);
     return null;
   }
+  function continueFootnoteDefinition(_cx, line, continuationIndent) {
+    if (line.pos === line.text.length) return true;
+    if (line.indent < line.baseIndent + continuationIndent) return false;
+    line.moveBaseColumn(line.baseIndent + continuationIndent);
+    return true;
+  }
+  function footnoteDefinitionOpening(line) {
+    return /^\[\^([^\]\r\n]+)\]:[ \t]*/.exec(line.text.slice(line.pos));
+  }
   function parseFootnoteDefinition(cx, line) {
-    const source = line.text.slice(line.pos);
-    const match = /^\[\^([^\]\r\n]+)\]:[ \t]*/.exec(source);
+    const match = footnoteDefinitionOpening(line);
     if (!match) return false;
     const from = cx.lineStart + line.pos;
     const identifierFrom = from + 2;
     const identifierTo = identifierFrom + match[1].length;
     const contentFrom = from + match[0].length;
-    let to = cx.lineStart + line.text.length;
-    while (cx.nextLine()) {
-      const continuation = line.text.slice(line.basePos);
-      if (!(continuation.length === 0 || continuation.startsWith("  ") || continuation.startsWith("	"))) break;
-      to = cx.lineStart + line.text.length;
-    }
-    if (cx.lineStart > to) to = cx.lineStart;
-    const children = [
-      cx.elt("FootnoteOpenMark", from, identifierFrom),
-      cx.elt("FootnoteIdentifier", identifierFrom, identifierTo),
-      cx.elt("FootnoteDefinitionMark", identifierTo, contentFrom)
-    ];
-    if (contentFrom < to) children.push(cx.elt("FootnoteContent", contentFrom, to));
-    cx.addElement(cx.elt("FootnoteDefinition", from, to, children));
-    return true;
+    cx.startComposite("FootnoteDefinition", line.pos, 2);
+    cx.addElement(cx.elt("FootnoteOpenMark", from, identifierFrom));
+    cx.addElement(cx.elt("FootnoteIdentifier", identifierFrom, identifierTo));
+    cx.addElement(cx.elt("FootnoteDefinitionMark", identifierTo, contentFrom));
+    line.moveBase(line.pos + match[0].length);
+    return null;
   }
   var scholiumMarkdownDialect = {
     defineNodes: [
@@ -29677,7 +29678,11 @@ ${fence}
       "WikiLinkAlias",
       "WikiLinkCloseMark",
       "FootnoteReference",
-      { name: "FootnoteDefinition", block: true },
+      {
+        name: "FootnoteDefinition",
+        block: true,
+        composite: continueFootnoteDefinition
+      },
       "InlineFootnote",
       "FootnoteOpenMark",
       "FootnoteIdentifier",
@@ -29714,7 +29719,12 @@ ${fence}
       { name: "ScholiumObsidianCommentBlock", parse: parseObsidianCommentBlock, before: "FencedCode" },
       { name: "ScholiumBlockMath", parse: parseBlockMath, before: "FencedCode" },
       { name: "ScholiumCallout", parse: parseCallout, before: "Blockquote" },
-      { name: "ScholiumFootnoteDefinition", parse: parseFootnoteDefinition, before: "LinkReference" }
+      {
+        name: "ScholiumFootnoteDefinition",
+        parse: parseFootnoteDefinition,
+        endLeaf: (_cx, line) => footnoteDefinitionOpening(line) !== null,
+        before: "LinkReference"
+      }
     ]
   };
 
@@ -31686,10 +31696,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const immutableTables = Object.freeze([...tables]);
     const immutableCallouts = Object.freeze([...callouts]);
     const immutableMathExpressions = Object.freeze([...mathExpressions]);
-    const footnoteRanges = immutableProjectionRanges([
-      ...footnotes.definitions,
-      ...footnotes.references
-    ].map(({ from, to }) => ({ from, to })));
+    const footnoteRanges = immutableProjectionRanges(
+      footnotes.references.map(({ from, to }) => ({ from, to }))
+    );
     const immutableCommandProtectedRanges = commandProtectionRanges(
       immutableExcluded,
       immutableFrontmatter ?? void 0
@@ -31722,7 +31731,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       blockRanges: immutableProjectionRanges([
         ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
         ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
-        ...footnotes.definitions.flatMap(({ from, to, isInline }) => isInline ? [] : [{ from, to, kind: "footnote" }]),
         ...immutableMathExpressions.flatMap(({ from, to, kind }) => kind === "display" ? [{ from, to, kind: "math" }] : [])
       ]),
       footnoteRanges,
@@ -31788,10 +31796,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ...syntax.literals.map(({ from, to }) => ({ from, to }))
     ];
     const inlineRanges = syntax.inlines.map(({ from, to }) => ({ from, to }));
-    const definitionRanges = new Set(syntax.blocks.filter((block) => block.kind === "footnoteDefinition").map((block) => rangeKey(block.from, block.to)));
+    const namedDefinitionStarts = new Set(syntax.blocks.filter((block) => block.kind === "footnoteDefinition").map((block) => block.from));
+    const inlineDefinitionRanges = /* @__PURE__ */ new Set();
     const referenceRanges = new Set(syntax.inlines.filter((inline) => inline.kind === "footnoteReference" || inline.kind === "inlineFootnote").map((inline) => rangeKey(inline.from, inline.to)));
     for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineFootnote")) {
-      definitionRanges.add(rangeKey(inline.from, inline.to));
+      inlineDefinitionRanges.add(rangeKey(inline.from, inline.to));
     }
     const tableRanges = syntax.blocks.filter((block) => block.kind === "table").map(({ from, to }) => ({ from, to }));
     const calloutRanges = syntax.blocks.filter((block) => block.kind === "callout").map(({ from, to }) => ({ from, to }));
@@ -31803,27 +31812,22 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     let completeSource = null;
     const source = () => completeSource ??= state.doc.toString();
     let footnotes = { definitions: [], references: [] };
-    if (definitionRanges.size > 0 || referenceRanges.size > 0) {
+    if (namedDefinitionStarts.size > 0 || inlineDefinitionRanges.size > 0 || referenceRanges.size > 0) {
       const projectedFootnotes = footnotePresentation(
         source(),
         footnoteExcluded,
         editingDialect?.footnotes
       );
       footnotes = {
-        definitions: projectedFootnotes.definitions.filter((definition) => definitionRanges.has(rangeKey(definition.from, definition.to))),
+        definitions: projectedFootnotes.definitions.filter((definition) => definition.isInline ? inlineDefinitionRanges.has(rangeKey(definition.from, definition.to)) : namedDefinitionStarts.has(definition.from)),
         references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
       };
     }
-    const insideNamedDefinition = (range) => footnotes.definitions.some(
-      (definition) => !definition.isInline && definition.from <= range.from && definition.to >= range.to
-    );
     const tables = tableRanges.flatMap((range) => {
-      if (insideNamedDefinition(range)) return [];
       const presentation = tablePresentation(source(), range.from, range.to);
       return presentation ? [presentation] : [];
     });
     const callouts = calloutRanges.flatMap((range) => {
-      if (insideNamedDefinition(range)) return [];
       return [{ ...range, source: state.doc.sliceString(range.from, range.to) }];
     });
     const mathExpressions = mathExpressionsFromCatalog(state, syntax);
@@ -31863,7 +31867,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ...reference,
         from: map(reference.from),
         to: map(reference.to),
-        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom)
+        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
+        definitionContentFrom: reference.definitionContentFrom === null ? null : map(reference.definitionContentFrom)
       }))
     };
     const tables = index.tables.map((presentation) => ({
@@ -31982,6 +31987,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   function beginProjectedPointerSelection(view, event, sourceOffset) {
     event.preventDefault();
+    const pointerOrigin = { x: event.clientX, y: event.clientY };
     const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceOffset;
     view.dispatch({ selection: { anchor, head: sourceOffset }, scrollIntoView: true });
     view.focus();
@@ -32004,6 +32010,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       });
     };
     const move = (moveEvent) => {
+      const horizontalDistance = moveEvent.clientX - pointerOrigin.x;
+      const verticalDistance = moveEvent.clientY - pointerOrigin.y;
+      if (horizontalDistance * horizontalDistance + verticalDistance * verticalDistance < 16) {
+        return;
+      }
       latestCoordinates = { x: moveEvent.clientX, y: moveEvent.clientY };
       measureLatestPosition();
     };
@@ -32016,6 +32027,32 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     window.addEventListener("mouseup", finish, true);
     view.requestMeasure();
   }
+  var liveInlinePointerPlacement = EditorView.domEventHandlers({
+    mousedown(event, view) {
+      if (event.button !== 0 || view.composing) return false;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest([
+        ".cm-live-strong",
+        ".cm-live-emphasis",
+        ".cm-live-strike",
+        ".cm-live-highlight",
+        ".cm-live-code",
+        ".cm-live-link",
+        ".cm-live-vector-link",
+        ".cm-live-embed"
+      ].join(","))) return false;
+      const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (position === null) return false;
+      const construct = projectionRangeContaining(
+        liveProjectionIndexForState(view.state).syntax.inlines,
+        Math.min(position, Math.max(0, view.state.doc.length - 1))
+      );
+      if (!construct || construct.kind === "comment") return false;
+      const sourceOffset = Math.max(construct.from, Math.min(construct.to - 1, position));
+      beginProjectedPointerSelection(view, event, sourceOffset);
+      return true;
+    }
+  });
   var tableWidgetPresentations = /* @__PURE__ */ new WeakMap();
   var TableWidget = class extends WidgetType {
     constructor(presentation) {
@@ -32491,11 +32528,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     reference;
     eq(other) {
-      const equal = other.reference.identifier === this.reference.identifier && other.reference.ordinal === this.reference.ordinal && other.reference.occurrence === this.reference.occurrence && other.reference.from === this.reference.from && other.reference.definitionFrom === this.reference.definitionFrom;
+      const equal = other.reference.identifier === this.reference.identifier && other.reference.ordinal === this.reference.ordinal && other.reference.occurrence === this.reference.occurrence && other.reference.from === this.reference.from && other.reference.definitionFrom === this.reference.definitionFrom && other.reference.definitionContentFrom === this.reference.definitionContentFrom;
       if (equal) liveWidgetReuseCounts.footnote += 1;
       return equal;
     }
-    toDOM() {
+    toDOM(view) {
       const wrapper = document.createElement("sup");
       wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
       wrapper.dataset.scholiumProtected = "footnote";
@@ -32509,13 +32546,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         marker.setAttribute("aria-disabled", "true");
         marker.classList.add("footnote-reference-missing");
       }
+      wrapper.addEventListener("mousedown", (event) => {
+        const reference = footnoteReferencePresentations.get(wrapper);
+        if (!reference || reference.definitionContentFrom === null) return;
+        beginProjectedPointerSelection(view, event, reference.definitionContentFrom);
+      });
       footnoteReferencePresentations.set(wrapper, this.reference);
       wrapper.append(marker);
       return wrapper;
     }
     updateDOM(dom) {
       const previous = footnoteReferencePresentations.get(dom);
-      const sameContent = previous && previous.identifier === this.reference.identifier && previous.ordinal === this.reference.ordinal && previous.occurrence === this.reference.occurrence && previous.definitionFrom === null === (this.reference.definitionFrom === null);
+      const sameContent = previous && previous.identifier === this.reference.identifier && previous.ordinal === this.reference.ordinal && previous.occurrence === this.reference.occurrence && previous.definitionFrom === this.reference.definitionFrom && previous.definitionContentFrom === this.reference.definitionContentFrom;
       if (!sameContent) return false;
       footnoteReferencePresentations.set(dom, this.reference);
       liveWidgetReuseCounts.footnote += 1;
@@ -32525,97 +32567,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return false;
     }
   };
-  var footnoteSectionPresentations = /* @__PURE__ */ new WeakMap();
-  var FootnoteSectionWidget = class extends WidgetType {
-    constructor(definitions) {
-      super();
-      this.definitions = definitions;
-    }
-    definitions;
-    eq(other) {
-      const equal = other.definitions.length === this.definitions.length && other.definitions.every((definition, index) => {
-        const current = this.definitions[index];
-        return definition.identifier === current.identifier && definition.ordinal === current.ordinal && definition.content === current.content && definition.from === current.from && definition.to === current.to && definition.contentFrom === current.contentFrom;
-      });
-      if (equal) liveWidgetReuseCounts.footnote += 1;
-      return equal;
-    }
-    toDOM(view) {
-      const slot = document.createElement("div");
-      slot.className = "scholium-footnotes-slot cm-live-footnotes-slot";
-      const section = document.createElement("section");
-      section.className = "footnotes cm-live-footnotes-widget";
-      section.dataset.scholiumProtected = "footnotes";
-      section.setAttribute("aria-label", "Footnotes");
-      section.append(document.createElement("hr"));
-      const list = document.createElement("ol");
-      footnoteSectionPresentations.set(slot, this.definitions);
-      for (const definition of this.definitions) {
-        const item = document.createElement("li");
-        item.dataset.footnote = String(definition.ordinal);
-        item.dataset.sourceOffset = String(definition.contentFrom);
-        const content2 = document.createElement("div");
-        content2.className = "footnote-content";
-        appendMarkdownBlocks(definition.content, content2, {
-          mathematics: editingDialect?.mathematics,
-          resolveCallout: calloutDefinition
-        });
-        item.append(content2);
-        list.append(item);
-      }
-      section.append(list);
-      section.addEventListener("mousedown", (event) => {
-        const item = event.target instanceof Element ? event.target.closest("li[data-footnote]") : null;
-        const definitions = footnoteSectionPresentations.get(slot);
-        if (!item || !definitions || !section.contains(item)) return;
-        const ordinal = Number(item.dataset.footnote);
-        const definition = definitions.find((candidate) => candidate.ordinal === ordinal);
-        if (definition) beginProjectedPointerSelection(view, event, definition.contentFrom);
-      });
-      slot.append(section);
-      return slot;
-    }
-    updateDOM(dom) {
-      const previous = footnoteSectionPresentations.get(dom);
-      const sameContent = previous?.length === this.definitions.length && this.definitions.every((definition, index) => {
-        const prior = previous[index];
-        return definition.identifier === prior.identifier && definition.ordinal === prior.ordinal && definition.content === prior.content && definition.isInline === prior.isInline && definition.contentFrom === prior.contentFrom;
-      });
-      if (!sameContent) return false;
-      const items = [...dom.querySelectorAll("li[data-footnote]")];
-      if (items.length !== this.definitions.length) return false;
-      items.forEach((item, index) => {
-        const definition = this.definitions[index];
-        item.dataset.sourceOffset = String(definition.contentFrom);
-      });
-      footnoteSectionPresentations.set(dom, this.definitions);
-      liveWidgetReuseCounts.footnote += 1;
-      return true;
-    }
-    ignoreEvent() {
-      return false;
-    }
-  };
-  function liveFootnoteDecorations(state, presentation) {
+  function liveFootnoteReferenceDecorations(state, presentation) {
     const decorations2 = [];
     const active = (from, to) => state.selection.ranges.some(
       (range) => selectionIntersectsProjection(range, { from, to })
     );
-    const activeDefinitionIdentifiers = /* @__PURE__ */ new Set();
-    for (const definition of presentation.definitions) {
-      if (definition.isInline) continue;
-      if (active(definition.from, definition.to)) {
-        activeDefinitionIdentifiers.add(definition.identifier);
-        decorations2.push(Decoration.mark({
-          class: "cm-live-footnote-definition-source"
-        }).range(definition.from, definition.to));
-      } else {
-        const hiddenTo = state.doc.lineAt(
-          Math.max(definition.from, definition.to - 1)
-        ).to;
-        decorations2.push(Decoration.replace({ block: true }).range(definition.from, hiddenTo));
-      }
-    }
     for (const reference of presentation.references) {
       const containedByDefinition = presentation.definitions.some(
         (definition) => !definition.isInline && definition.from <= reference.from && definition.to >= reference.to
@@ -32625,19 +32581,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         widget: new FootnoteReferenceWidget(reference)
       }).range(reference.from, reference.to));
     }
-    const displayedDefinitions = presentation.definitions.filter(
-      (definition) => definition.ordinal !== null && !activeDefinitionIdentifiers.has(definition.identifier) && !(definition.isInline && active(definition.from, definition.to))
-    );
-    if (displayedDefinitions.length > 0) {
-      decorations2.push(Decoration.widget({
-        widget: new FootnoteSectionWidget(displayedDefinitions),
-        block: true,
-        side: 1
-      }).range(state.doc.length));
-    }
     return Decoration.set(decorations2, true);
   }
-  function buildLiveFootnoteDecorations(state) {
+  function buildLiveFootnoteReferenceState(state) {
     const index = liveProjectionIndexForState(state);
     if (index.hasUnclosedFrontmatter) {
       return {
@@ -32649,7 +32595,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     const presentation = index.footnotes;
     return {
-      decorations: liveFootnoteDecorations(state, presentation),
+      decorations: liveFootnoteReferenceDecorations(state, presentation),
       hasConstructs: presentation.definitions.length > 0 || presentation.references.length > 0,
       presentation,
       ranges: index.footnoteRanges
@@ -32668,16 +32614,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ...reference,
         from: map(reference.from),
         to: map(reference.to),
-        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom)
+        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
+        definitionContentFrom: reference.definitionContentFrom === null ? null : map(reference.definitionContentFrom)
       }))
     };
   }
-  var liveFootnoteField = StateField.define({
-    create: buildLiveFootnoteDecorations,
+  var liveFootnoteReferenceField = StateField.define({
+    create: buildLiveFootnoteReferenceState,
     update(previous, transaction) {
       const syntaxTreeChanged = transactionChangedSyntaxTree(transaction);
       if (!transaction.docChanged && syntaxTreeChanged) {
-        return buildLiveFootnoteDecorations(transaction.state);
+        return buildLiveFootnoteReferenceState(transaction.state);
       }
       if (!previous.hasConstructs) {
         if (!transaction.docChanged) return previous;
@@ -32690,7 +32637,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
         return {
           ...previous,
-          decorations: liveFootnoteDecorations(transaction.state, previous.presentation)
+          decorations: liveFootnoteReferenceDecorations(transaction.state, previous.presentation)
         };
       }
       if (transactionCanMapProjection(transaction, /[\[\]\^:]/, previous.ranges)) {
@@ -32700,13 +32647,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           ...presentation.references
         ].map(({ from, to }) => ({ from, to })));
         return {
-          decorations: liveFootnoteDecorations(transaction.state, presentation),
+          decorations: liveFootnoteReferenceDecorations(transaction.state, presentation),
           hasConstructs: true,
           presentation,
           ranges
         };
       }
-      return buildLiveFootnoteDecorations(transaction.state);
+      return buildLiveFootnoteReferenceState(transaction.state);
     },
     provide: (field) => [
       EditorView.decorations.from(field, (value) => value.decorations),
@@ -32745,7 +32692,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const listMarker = list?.markerRanges.find((range) => range.from >= line.from && range.from <= line.to && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
     const classes = /* @__PURE__ */ new Set();
     const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
-    if (line.length === 0 && !active && outsideFrontmatter) {
+    if (line.length === 0 && outsideFrontmatter && !codeBlock) {
       classes.add("cm-live-blank-line");
     }
     if (codeBlock) {
@@ -33024,20 +32971,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }).range(previous.to));
       }
     }
-    for (const nestedList of index.syntax.blocks.filter((block) => (block.kind === "unorderedList" || block.kind === "orderedList") && block.parent !== null)) {
-      const firstLine = state.doc.lineAt(nestedList.from);
-      const lastLine = state.doc.lineAt(Math.max(nestedList.from, nestedList.to - 1));
-      ranges.push(Decoration.widget({
-        widget: new SemanticBlockGapWidget("none", "standard"),
-        block: true,
-        side: -1
-      }).range(firstLine.from));
-      ranges.push(Decoration.widget({
-        widget: new SemanticBlockGapWidget("standard", "none"),
-        block: true,
-        side: 1
-      }).range(lastLine.to));
-    }
     return ranges;
   }
   function buildLiveSemanticBlockSpacingState(state) {
@@ -33104,6 +33037,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     const literals2 = [...visibleLiterals.values()];
     const mathExpressions = visibleInlineMathExpressions(view.state, coveredRanges, index);
+    const activeBlockActivation = view.state.field(liveBlockActivationField, false);
     const addHidden = (from, to) => {
       if (to <= from) return;
       const range = hiddenSyntax.range(from, to);
@@ -33201,6 +33135,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             scanFrom,
             lineQueryTo
           )[0];
+          const activeCalloutLine = parsedCallout && (activeBlockActivation?.kind === "callout" && activeBlockActivation.from === parsedCallout.from && activeBlockActivation.to === parsedCallout.to || view.state.selection.ranges.some((range) => selectionIntersectsProjection(range, parsedCallout)));
           const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
           if (quote && !parsedCallout) {
             if (!activeLine) {
@@ -33208,6 +33143,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
                 addHidden(Math.max(line.from, marker.from), Math.min(line.to, marker.to));
               }
             }
+          }
+          if (activeCalloutLine) {
+            if (line.to === doc2.length) break;
+            line = doc2.line(line.number + 1);
+            continue;
           }
           const rule = lineFullyScanned ? semanticBlocksOnLine.find((block) => block.kind === "thematicBreak") : null;
           if (rule && !activeLine) {
@@ -33807,8 +33747,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     liveDisplayMathField,
     liveRawHTMLField,
     liveCalloutField,
-    liveFootnoteField,
+    liveFootnoteReferenceField,
     livePreview,
+    Prec.high(liveInlinePointerPlacement),
     Prec.high(liveProjectionNavigationKeymap),
     selectionActions.extension,
     previewPopover.extension,

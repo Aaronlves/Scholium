@@ -74,13 +74,6 @@ extension MarkdownEditorSession {
         let tableCellPaddingInlineStart: String
         let tableCellBorderBottomWidth: String
         let tableCellBorderBottomColor: String
-        let footnoteFontFamily: String
-        let footnoteColor: String
-        let footnoteFontSize: String
-        let footnoteLineHeight: String
-        let footnoteMarginBlockStart: String
-        let footnoteListPaddingInlineStart: String
-        let footnoteWidth: Double
         let mathOverflowX: String
         let mathColor: String
         let mathFontSize: String
@@ -124,13 +117,15 @@ extension MarkdownEditorSession {
         let h2TextAlign: String
         let collapsedCodeFenceLineCount: Int
         let collapsedCodeFenceVisibleHeight: Double
-        let collapsedBlankLineCount: Int
-        let collapsedBlankLineVisibleHeight: Double
+        let editBlankLineCount: Int
+        let editBlankLineMinimumHeight: Double
         let liveListMarkerCount: Int
         let liveListMarkerUsesPrimaryText: Bool
         let liveListMarkerText: String
+        let liveListMarkerTextGap: Double
         let liveTaskSourceTokenCount: Int
         let quotePaddingInlineStart: String
+        let quoteMarginInlineStart: String
         let visibleLineClassSummary: String
         let contentPaddingTop: String
         let contentPaddingInlineStart: String
@@ -162,15 +157,6 @@ extension MarkdownEditorSession {
         let tableFirstHeaderText: String
         let tableOverflowX: String
         let footnoteReferenceCount: Int
-        let footnoteSectionCount: Int
-        let footnoteItemCount: Int
-        let footnoteStrongCount: Int
-        let footnoteNestedListCount: Int
-        let footnoteBlockquoteCount: Int
-        let footnoteCodeBlockCount: Int
-        let footnoteCalloutCount: Int
-        let footnoteTableCount: Int
-        let footnoteRenderedMathCount: Int
         let footnoteDefinitionSourceCount: Int
         let liveCalloutWidgetCount: Int
         let liveCalloutSourceLineCount: Int
@@ -276,6 +262,10 @@ extension MarkdownEditorSession {
             const headingBlockStyle = style('.cm-live-h2');
             const headingStyle = textStyle('.cm-live-h2');
             const titleBlockStyle = style('.cm-live-document-title');
+            const titleRuleStyle = (() => {
+                const element = document.querySelector('.cm-live-document-title');
+                return element ? getComputedStyle(element, '::after') : null;
+            })();
             const titleStyle = textStyle('.cm-live-document-title');
             const calloutStyle = style('.cm-live-callout-widget.scholium-callout-state');
             const calloutRoleStyle = style('.cm-live-callout-widget.scholium-callout-state .scholium-callout-role');
@@ -283,8 +273,6 @@ extension MarkdownEditorSession {
             const orientationStyle = style('.cm-live-callout-widget.scholium-callout-orient .scholium-callout-body');
             const tableStyle = style('.cm-live-table-widget');
             const tableCellStyle = style('.cm-live-table-widget th');
-            const footnoteStyle = style('.cm-live-footnotes-widget');
-            const footnoteListStyle = style('.cm-live-footnotes-widget > ol');
             const mathStyle = style('.cm-live-math.scholium-math-display');
             const mathGeometry = (() => {
                 const display = document.querySelector('.cm-live-math.scholium-math-display');
@@ -356,9 +344,12 @@ extension MarkdownEditorSession {
                 collapsedCodeFenceLineCount: document.querySelectorAll('.cm-live-code-fence-line').length,
                 collapsedCodeFenceVisibleHeight: Array.from(document.querySelectorAll('.cm-live-code-fence-line'))
                     .reduce((height, line) => height + line.getBoundingClientRect().height, 0),
-                collapsedBlankLineCount: document.querySelectorAll('.cm-live-blank-line').length,
-                collapsedBlankLineVisibleHeight: Array.from(document.querySelectorAll('.cm-live-blank-line'))
-                    .reduce((height, line) => height + line.getBoundingClientRect().height, 0),
+                editBlankLineCount: document.querySelectorAll('.cm-live-blank-line').length,
+                editBlankLineMinimumHeight: (() => {
+                    const heights = Array.from(document.querySelectorAll('.cm-live-blank-line'))
+                        .map(line => line.getBoundingClientRect().height);
+                    return heights.length > 0 ? Math.min(...heights) : 0;
+                })(),
                 liveListMarkerCount: document.querySelectorAll('.cm-live-list-marker').length,
                 liveListMarkerUsesPrimaryText: (() => {
                     const marker = document.querySelector('.cm-live-list-marker');
@@ -375,10 +366,35 @@ extension MarkdownEditorSession {
                 liveListMarkerText: Array.from(document.querySelectorAll('.cm-live-list-marker'))
                     .map(marker => marker.textContent || '')
                     .join('|'),
+                liveListMarkerTextGap: (() => {
+                    const marker = document.querySelector('.cm-live-list-marker');
+                    if (!marker) return 0;
+                    const line = marker.closest('.cm-line');
+                    if (!line) return 0;
+                    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                    let node;
+                    let afterMarker = false;
+                    while ((node = walker.nextNode())) {
+                        if (marker.contains(node)) {
+                            afterMarker = true;
+                            continue;
+                        }
+                        if (!afterMarker || !(node.textContent || '').length) continue;
+                        const range = document.createRange();
+                        range.setStart(node, 0);
+                        range.setEnd(node, 1);
+                        return Math.max(
+                            0,
+                            range.getBoundingClientRect().left - marker.getBoundingClientRect().right
+                        );
+                    }
+                    return 0;
+                })(),
                 liveTaskSourceTokenCount: Array.from(document.querySelectorAll('.cm-live-task-list'))
                     .filter(line => /\\[[ xX]\\]/.test(line.textContent || ''))
                     .length,
                 quotePaddingInlineStart: style('.cm-live-quote')?.paddingLeft || '',
+                quoteMarginInlineStart: style('.cm-live-quote')?.marginInlineStart || '',
                 visibleLineClassSummary: Array.from(document.querySelectorAll('.cm-line'))
                     .slice(0, 16)
                     .map(line => `${line.textContent || ''} [${line.className}]`)
@@ -425,16 +441,9 @@ extension MarkdownEditorSession {
                     return scroller ? getComputedStyle(scroller).overflowX : '';
                 })(),
                 footnoteReferenceCount: document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference').length,
-                footnoteSectionCount: document.querySelectorAll('.cm-live-footnotes-widget').length,
-                footnoteItemCount: document.querySelectorAll('.cm-live-footnotes-widget > ol > li').length,
-                footnoteStrongCount: document.querySelectorAll('.cm-live-footnotes-widget strong').length,
-                footnoteNestedListCount: document.querySelectorAll('.cm-live-footnotes-widget ul ul').length,
-                footnoteBlockquoteCount: document.querySelectorAll('.cm-live-footnotes-widget blockquote').length,
-                footnoteCodeBlockCount: document.querySelectorAll('.cm-live-footnotes-widget pre code.language-swift').length,
-                footnoteCalloutCount: document.querySelectorAll('.cm-live-footnotes-widget .scholium-callout-state').length,
-                footnoteTableCount: document.querySelectorAll('.cm-live-footnotes-widget table.scholium-table').length,
-                footnoteRenderedMathCount: document.querySelectorAll('.cm-live-footnotes-widget .scholium-math-rendered').length,
-                footnoteDefinitionSourceCount: document.querySelectorAll('.cm-live-footnote-definition-source').length,
+                footnoteDefinitionSourceCount: Array.from(document.querySelectorAll('.cm-line'))
+                    .filter(line => /^\\s*\\[\\^[^\\]]+\\]:/.test(line.textContent || ''))
+                    .length,
                 liveCalloutWidgetCount: document.querySelectorAll('.cm-live-callout-widget.scholium-callout').length,
                 liveCalloutSourceLineCount: document.querySelectorAll('.cm-line.cm-live-callout').length,
                 liveRawHTMLWidgetCount: document.querySelectorAll('.cm-live-raw-html-widget').length,
@@ -482,7 +491,7 @@ extension MarkdownEditorSession {
                     headingWidth: width('.cm-live-h2'),
                     headingTextDecorationLine: headingStyle?.textDecorationLine || '',
                     titleTextDecorationLine: titleStyle?.textDecorationLine || '',
-                    titleBorderBottomWidth: titleBlockStyle?.borderBottomWidth || '',
+                    titleBorderBottomWidth: titleRuleStyle?.borderTopWidth || '',
                     titleWidth: width('.cm-live-document-title'),
                     calloutAccent: calloutStyle?.getPropertyValue('--callout-accent').trim() || '',
                     calloutBorderColor: calloutStyle?.borderInlineStartColor || '',
@@ -516,13 +525,6 @@ extension MarkdownEditorSession {
                     tableCellPaddingInlineStart: tableCellStyle?.paddingInlineStart || '',
                     tableCellBorderBottomWidth: tableCellStyle?.borderBottomWidth || '',
                     tableCellBorderBottomColor: tableCellStyle?.borderBottomColor || '',
-                    footnoteFontFamily: footnoteStyle?.fontFamily || '',
-                    footnoteColor: footnoteStyle?.color || '',
-                    footnoteFontSize: footnoteStyle?.fontSize || '',
-                    footnoteLineHeight: footnoteStyle?.lineHeight || '',
-                    footnoteMarginBlockStart: footnoteStyle?.marginBlockStart || '',
-                    footnoteListPaddingInlineStart: footnoteListStyle?.paddingInlineStart || '',
-                    footnoteWidth: width('.cm-live-footnotes-widget'),
                     mathOverflowX: mathStyle?.overflowX || '',
                     mathColor: mathStyle?.color || '',
                     mathFontSize: mathStyle?.fontSize || '',
@@ -593,25 +595,25 @@ extension MarkdownEditorSession {
         guard let webView else { throw SessionError.unavailable }
         let result = try await webView.callAsyncJavaScript(
             """
-            const root = document.querySelector('.cm-live-callout-widget.scholium-callout');
-            if (!root) return false;
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-            let node;
-            while ((node = walker.nextNode())) {
-                const index = node.textContent?.indexOf(requestedText) ?? -1;
-                if (index < 0) continue;
-                const range = document.createRange();
-                range.setStart(node, index);
-                range.setEnd(node, Math.min(node.length, index + Math.max(1, requestedText.length)));
-                const rect = range.getBoundingClientRect();
-                (node.parentElement || root).dispatchEvent(new MouseEvent('mousedown', {
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: rect.left + Math.min(8, rect.width / 2),
-                    clientY: (rect.top + rect.bottom) / 2
-                }));
-                window.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                return true;
+            for (const root of document.querySelectorAll('.cm-live-callout-widget.scholium-callout')) {
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                    const index = node.textContent?.indexOf(requestedText) ?? -1;
+                    if (index < 0) continue;
+                    const range = document.createRange();
+                    range.setStart(node, index);
+                    range.setEnd(node, Math.min(node.length, index + Math.max(1, requestedText.length)));
+                    const rect = range.getBoundingClientRect();
+                    (node.parentElement || root).dispatchEvent(new MouseEvent('mousedown', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: rect.left + Math.min(8, rect.width / 2),
+                        clientY: (rect.top + rect.bottom) / 2
+                    }));
+                    window.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                    return true;
+                }
             }
             return false;
             """,
@@ -634,28 +636,6 @@ extension MarkdownEditorSession {
               x: (rect.left + rect.right) / 2,
               y: (rect.top + rect.bottom) / 2
             };
-            """,
-            arguments: [:],
-            in: nil,
-            contentWorld: .page
-        )
-        guard let position = result as? [String: Any],
-              let x = position["x"] as? Double,
-              let y = position["y"] as? Double else {
-            throw SessionError.invalidResult
-        }
-        try await testingClickPagePoint(x: x, y: y, in: webView)
-    }
-
-    func testingClickFirstFootnoteDefinition() async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            const item = document.querySelector('.cm-live-footnotes-widget li[data-footnote]');
-            if (!item) return null;
-            item.scrollIntoView({block: 'center', behavior: 'auto'});
-            const rect = item.getBoundingClientRect();
-            return {x: rect.left + Math.min(12, rect.width / 2), y: (rect.top + rect.bottom) / 2};
             """,
             arguments: [:],
             in: nil,

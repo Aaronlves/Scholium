@@ -233,6 +233,48 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("RTL pointer placement and exact insertion remain writable in Source and Edit")
+    func rtlTextRemainsWritableAcrossEditorModes() async throws {
+        let source = """
+        هذا نص عربي للاختبار.
+
+        זהו טקסט עברי לבדיקה.
+        """
+        let harness = EditorHarness(source: source, initialMode: .source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        let arabicRange = try #require(source.range(of: "نص عربي"))
+        let arabicFrom = arabicRange.lowerBound.utf16Offset(in: source)
+        let arabicTo = arabicRange.upperBound.utf16Offset(in: source)
+        try await harness.session.testingClickVisibleText("نص عربي")
+        _ = try await harness.waitUntilSelection(in: arabicFrom..<arabicTo)
+        let sourceSelection = try #require(harness.session.context?.selections.first)
+        #expect(sourceSelection.anchor == sourceSelection.head)
+        try await harness.session.perform(.pastePlain, argument: "س")
+        let afterSourceInput = try await harness.session.currentText(for: harness.documentID)
+        #expect(afterSourceInput.utf16.count == source.utf16.count + 1)
+        #expect(afterSourceInput.hasPrefix("هذا "))
+
+        harness.session.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let hebrewRange = try #require(afterSourceInput.range(of: "טקסט עברי"))
+        let hebrewFrom = hebrewRange.lowerBound.utf16Offset(in: afterSourceInput)
+        let hebrewTo = hebrewRange.upperBound.utf16Offset(in: afterSourceInput)
+        try await harness.session.testingClickVisibleText("טקסט עברי")
+        _ = try await harness.waitUntilSelection(in: hebrewFrom..<hebrewTo)
+        let editSelection = try #require(harness.session.context?.selections.first)
+        #expect(editSelection.anchor == editSelection.head)
+        try await harness.session.perform(.pastePlain, argument: "א")
+        let afterEditInput = try await harness.session.currentText(for: harness.documentID)
+        #expect(afterEditInput.utf16.count == source.utf16.count + 2)
+        #expect(afterEditInput.contains("זהו "))
+        #expect(harness.latestSource == afterEditInput)
+        await harness.closeAndDrain()
+    }
+
     @Test("Selecting text does not highlight matching text elsewhere")
     func selectionDoesNotHighlightDocumentMatches() async throws {
         let source = "Repeated z appears beside z and another z.\n"
@@ -515,39 +557,34 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit footnote markers hand pointer placement back to CodeMirror")
-    func editFootnoteReferenceUsesOrdinaryPointerPlacement() async throws {
+    @Test("Edit footnote locators move the one CodeMirror caret to the exact definition")
+    func editFootnoteReferenceLocatesExactDefinition() async throws {
         let source = "Claim[^note].\n\n[^note]: Basis.\n"
-        let referenceRange = try #require(source.range(of: "[^note]"))
-        let referenceFrom = referenceRange.lowerBound.utf16Offset(in: source)
-        let referenceTo = referenceRange.upperBound.utf16Offset(in: source)
+        let definitionContentFrom = try #require(source.range(of: "Basis"))
+            .lowerBound.utf16Offset(in: source)
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         harness.session.focus()
         try await harness.waitUntilFocused()
 
-        let initialPresentation = try await harness.waitUntilPresentation(
-            stage: "passive Edit footnote marker"
+        _ = try await harness.waitUntilPresentation(
+            stage: "Edit footnote locator and direct definition"
         ) {
-            $0.footnoteReferenceCount == 1 && $0.footnoteDefinitionSourceCount == 0
+            $0.footnoteReferenceCount == 1 && $0.footnoteDefinitionSourceCount == 1
         }
-        #expect(initialPresentation.footnoteItemCount == 1)
 
         try await harness.session.testingClickFirstFootnoteReference()
-        _ = try await harness.waitUntilSelection(in: referenceFrom..<(referenceTo + 1))
-        let sourcePresentation = try await harness.waitUntilPresentation(
-            stage: "pointer-revealed Edit footnote source"
-        ) {
-            $0.footnoteReferenceCount == 0 && $0.footnoteDefinitionSourceCount == 0
-        }
-        #expect(sourcePresentation.footnoteItemCount == 1)
+        try await harness.waitUntilSelection(head: definitionContentFrom)
+        let sourcePresentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(sourcePresentation.footnoteReferenceCount == 1)
+        #expect(sourcePresentation.footnoteDefinitionSourceCount == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 
-    @Test("Edit footnote definitions reveal their exact Markdown content for editing")
-    func editFootnoteDefinitionActivatesEditableSource() async throws {
+    @Test("Edit footnote definitions remain direct exact Markdown after preceding edits")
+    func editFootnoteDefinitionRemainsDirectEditableSource() async throws {
         let source = "Claim[^note].\n\n[^note]: Basis for revision.\n"
         let prefix = "Preface added before projected content.\n\n"
         let harness = EditorHarness(source: source)
@@ -557,8 +594,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.setPresentationCSS(ScholiumDocumentPresentationConfiguration(textScale: 2).css)
         _ = try await harness.waitUntilPresentation(stage: "two-hundred-percent footnote") {
             $0.presentation.rootTextScale == "2.000000em"
-                && $0.footnoteItemCount == 1
-                && $0.footnoteDefinitionSourceCount == 0
+                && $0.footnoteDefinitionSourceCount == 1
         }
 
         harness.session.goToLine(1)
@@ -567,18 +603,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         let shiftedSource = prefix + source
         let contentFrom = try #require(shiftedSource.range(of: "Basis"))
             .lowerBound.utf16Offset(in: shiftedSource)
-        _ = try await harness.waitUntilPresentation(stage: "shifted projected footnote") {
-            $0.footnoteItemCount == 1 && $0.footnoteDefinitionSourceCount == 0
+        _ = try await harness.waitUntilPresentation(stage: "shifted direct footnote") {
+            $0.footnoteDefinitionSourceCount == 1
         }
 
-        try await harness.session.testingClickFirstFootnoteDefinition()
+        harness.session.revealSourceRange(fromUTF16: contentFrom, toUTF16: contentFrom)
         try await harness.waitUntilSelection(head: contentFrom)
-        let revealed = try await harness.waitUntilPresentation(
-            stage: "pointer-revealed footnote definition source"
-        ) {
-            $0.footnoteDefinitionSourceCount > 0 && $0.footnoteItemCount == 0
-        }
-        #expect(revealed.footnoteSectionCount == 0)
+        let direct = try await harness.session.testingAccessibilitySnapshot()
+        #expect(direct.footnoteDefinitionSourceCount == 1)
 
         try await harness.session.perform(.pastePlain, argument: "Revised ")
         let expected = shiftedSource.replacingOccurrences(
@@ -587,6 +619,48 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         #expect(try await harness.session.currentText(for: harness.documentID) == expected)
         #expect(harness.latestSource == expected)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A Live Preview click places one caret before exposing only that inline construct")
+    func inlineProjectionClickPlacesSingleCaret() async throws {
+        let source = "Before **bold evidence** and [a standard link](https://example.test).\n"
+        let linkRange = try #require(source.range(of: "a standard link"))
+        let linkFrom = linkRange.lowerBound.utf16Offset(in: source)
+        let linkTo = linkRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingClickVisibleText("a standard link")
+        _ = try await harness.waitUntilSelection(in: linkFrom..<linkTo)
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor == selection.head)
+        let active = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "a standard link"
+        )
+        #expect(active.linkTexts == ["[a standard link](https://example.test)"])
+        #expect(!active.lineText.contains("**bold evidence**"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Footnote definition content uses ordinary Live Preview at its sole source position")
+    func footnoteDefinitionContentUsesOrdinaryLiveProjection() async throws {
+        let source = "Claim[^note].\n\n[^note]: **Grounded** reason.\n\n  - Nested footnote item.\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let definition = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "Grounded"
+        )
+        #expect(definition.strongTexts == ["Grounded"])
+        #expect(definition.lineText.contains("[^note]:"))
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.footnoteDefinitionSourceCount == 1)
+        #expect(presentation.liveListMarkerCount == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 
@@ -659,6 +733,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             inactiveQuote.quotePaddingInlineStart.replacingOccurrences(of: "px", with: "")
         )
         #expect(quoteInset == Double(ScholiumDocumentRhythm.quoteInlineInset))
+        #expect(inactiveQuote.quoteMarginInlineStart == "0px")
 
         harness.session.goToLine(4)
         let titleFrom = try #require(source.range(of: "# Centered document title"))
@@ -737,8 +812,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(fresh.h2FontSize == "24px")
         #expect(fresh.titleTextAlign == "center")
         #expect(fresh.h2TextAlign == "start")
-        #expect(fresh.collapsedBlankLineCount > 0)
-        #expect(fresh.collapsedBlankLineVisibleHeight <= 0.5)
+        #expect(fresh.editBlankLineCount > 0)
+        #expect(fresh.editBlankLineMinimumHeight == 16)
 
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
@@ -757,8 +832,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(retained.h2FontSize == fresh.h2FontSize)
         #expect(retained.titleTextAlign == fresh.titleTextAlign)
         #expect(retained.h2TextAlign == fresh.h2TextAlign)
-        #expect(retained.collapsedBlankLineCount == fresh.collapsedBlankLineCount)
-        #expect(retained.collapsedBlankLineVisibleHeight <= 0.5)
+        #expect(retained.editBlankLineCount == fresh.editBlankLineCount)
+        #expect(retained.editBlankLineMinimumHeight == fresh.editBlankLineMinimumHeight)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -830,6 +905,23 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(inactive.liveListMarkerUsesPrimaryText)
         #expect(inactive.liveListMarkerText == "•|•|◦|1.|2.|1.|•|•")
+        #expect(inactive.liveListMarkerTextGap > 0)
+        #expect(inactive.liveListMarkerTextGap < 8)
+        let rhythm = try #require(try await harness.callPageJavaScript(
+            """
+            const lines = [...document.querySelectorAll('.cm-line.cm-live-list')].slice(0, 3);
+            return {
+              count: lines.length,
+              paddingEnds: lines.map(line => getComputedStyle(line).paddingBlockEnd),
+              gaps: lines.slice(1).map((line, index) =>
+                line.getBoundingClientRect().top - lines[index].getBoundingClientRect().bottom),
+            };
+            """
+        ) as? [String: Any])
+        #expect(rhythm["count"] as? Int == 3)
+        #expect((rhythm["paddingEnds"] as? [String]) == ["0px", "0px", "0px"])
+        let internalGaps = try #require(rhythm["gaps"] as? [Double])
+        #expect(internalGaps.allSatisfy { abs($0) <= 1 })
 
         let taskSourceFrom = try #require(source.range(of: "- [ ] Open task fixture"))
             .lowerBound.utf16Offset(in: source)
@@ -839,6 +931,41 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.liveListMarkerCount == 7 && $0.liveTaskSourceTokenCount == 1
         }
         #expect(active.liveListMarkerUsesPrimaryText)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit paragraph separators remain real symmetric source lines with Review-sized rhythm")
+    func editParagraphSeparatorsRemainEditableSourceLines() async throws {
+        let source = "First paragraph.\n\nSecond paragraph.\n"
+        let blankOffset = try #require(source.range(of: "\n\n"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let secondFrom = try #require(source.range(of: "Second paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let firstTo = try #require(source.range(of: "First paragraph."))
+            .upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.editBlankLineCount >= 1)
+        #expect(
+            presentation.editBlankLineMinimumHeight
+                == Double(ScholiumDocumentRhythm.paragraphGapCSSPixels)
+        )
+
+        harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
+        try await harness.waitUntilSelection(head: secondFrom)
+        try await harness.session.testingPressArrow("ArrowLeft")
+        try await harness.waitUntilSelection(head: blankOffset)
+        try await harness.session.testingPressArrow("ArrowLeft")
+        try await harness.waitUntilSelection(head: firstTo)
+
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: blankOffset)
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: secondFrom)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -898,7 +1025,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         _ = try await harness.waitUntilPresentation(stage: "passive Callout before Backspace") {
-            $0.liveCalloutWidgetCount == 2 && $0.collapsedBlankLineVisibleHeight <= 0.5
+            $0.liveCalloutWidgetCount == 2 && $0.editBlankLineMinimumHeight > 0
         }
 
         try await harness.session.testingClickFirstCalloutText("synthetic note")
@@ -1010,7 +1137,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(!accessibility.hasValueText)
         #expect(accessibility.spellcheck == "true")
         #expect(accessibility.mathRuntimeVersion == 1)
-        #expect(accessibility.renderedMathCount == 2)
+        #expect(accessibility.renderedMathCount == 4)
         #expect(accessibility.mathErrorCount == 0)
         #expect(accessibility.displayMathOverflowX == "auto")
         #expect(accessibility.frontmatterLineCount == 0)
@@ -1024,17 +1151,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(accessibility.tableFirstHeaderText == "Claim")
         #expect(accessibility.tableOverflowX == "auto")
         #expect(accessibility.footnoteReferenceCount == 2)
-        #expect(accessibility.footnoteSectionCount == 1)
-        #expect(accessibility.footnoteItemCount == 2)
-        #expect(accessibility.footnoteStrongCount == 1)
-        #expect(accessibility.footnoteNestedListCount == 1)
-        #expect(accessibility.footnoteBlockquoteCount == 1)
-        #expect(accessibility.footnoteCodeBlockCount == 1)
-        #expect(accessibility.footnoteCalloutCount == 1)
-        #expect(accessibility.footnoteTableCount == 1)
-        #expect(accessibility.footnoteRenderedMathCount == 3)
-        #expect(accessibility.footnoteDefinitionSourceCount == 0)
-        #expect(accessibility.liveCalloutWidgetCount == 1)
+        #expect(accessibility.footnoteDefinitionSourceCount == 1)
+        #expect(accessibility.liveCalloutWidgetCount == 2)
         #expect(accessibility.liveCalloutSourceLineCount == 0)
         #expect(accessibility.exactWikilinkSourceCount == 1)
         #expect(accessibility.incompleteWikilinkSourceCount == 0)
@@ -1048,7 +1166,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         harness.session.goToLine(displayMathLine)
         let activeMath = try await harness.waitUntilPresentation(stage: "active mathematics source") {
-            $0.renderedMathCount == 1
+            $0.renderedMathCount == 3
         }
         #expect(activeMath.mathErrorCount == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
@@ -1074,11 +1192,12 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.activeLiveBlockKind == "callout"
         }
         #expect(activeCallout.semanticTableCount == 1)
+        #expect(activeCallout.exactCalloutSourceCount > 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
 
         harness.session.goToLine(sharedCalloutLine - 1)
         _ = try await harness.waitUntilPresentation(stage: "callout restored before arrow navigation") {
-            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 1
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 2
         }
         try await harness.session.testingPressArrow("ArrowDown")
         try await harness.waitUntilSelection(head: calloutFrom, stage: "down-arrow callout entry")
@@ -1087,8 +1206,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         harness.session.goToLine(sharedCalloutLine + 3)
         _ = try await harness.waitUntilPresentation(stage: "callout restored below") {
-            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 1
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 2
         }
+        try await harness.session.testingPressArrow("ArrowUp")
+        try await harness.waitUntilSelection(
+            head: calloutTo + 1,
+            stage: "up-arrow real separator line"
+        )
         try await harness.session.testingPressArrow("ArrowUp")
         try await harness.waitUntilSelection(head: calloutTo - 1, stage: "up-arrow callout entry")
         _ = try await harness.waitUntilPresentation(stage: "up-arrow-revealed callout source") {
@@ -1104,7 +1228,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.waitUntilPresentation(stage: "active table source") {
             $0.semanticTableCount == 0
                 && $0.liveTableSourceLineCount > 0
-                && $0.footnoteItemCount == 2
         }
         let namedDefinitionLine = try #require(
             normalizedLines.firstIndex(where: { $0.hasPrefix("[^note]:") }).map { $0 + 1 }
@@ -1116,10 +1239,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             head: namedDefinitionOffset,
             stage: "named footnote definition"
         )
-        let revealedFootnote = try await harness.waitUntilPresentation(stage: "revealed footnote source") {
-            $0.footnoteItemCount == 1 && $0.footnoteDefinitionSourceCount > 0
+        let directFootnote = try await harness.waitUntilPresentation(stage: "direct footnote source") {
+            $0.footnoteDefinitionSourceCount == 1
         }
-        #expect(revealedFootnote.footnoteReferenceCount == 2)
+        #expect(directFootnote.footnoteReferenceCount == 2)
         harness.session.goToLine(4)
         try await harness.waitUntilPreviewIsAvailable()
         #expect(harness.session.canShowPreviewAtSelection)
@@ -1167,7 +1290,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(sourceMode.activeLineCount > 0)
         #expect(sourceMode.renderedMathCount == 0)
         #expect(sourceMode.semanticTableCount == 0)
-        #expect(sourceMode.footnoteSectionCount == 0)
         #expect(sourceMode.footnoteReferenceCount == 0)
         #expect(sourceMode.previewPopoverHidden)
         #expect(sourceMode.contentPaddingTop == expectedPadding)
@@ -1199,18 +1321,16 @@ struct MarkdownEditorWebViewIntegrationTests {
         let restoredLive = try await harness.waitUntilPresentation(stage: "restored Live Preview") {
             $0.label == "Markdown editor, Edit mode"
                 && $0.gutterCount == 0
-                && $0.renderedMathCount == 2
+                && $0.renderedMathCount == 4
                 && $0.semanticTableCount == 1
-                && $0.footnoteItemCount == 2
                 && $0.footnoteReferenceCount == 2
         }
         #expect(restoredLive.lineNumberCount == 0)
         #expect(restoredLive.activeLineCount == 0)
         #expect(restoredLive.contentPaddingTop == expectedPadding)
         #expect(restoredLive.isFocused)
-        #expect(restoredLive.renderedMathCount == 2)
+        #expect(restoredLive.renderedMathCount == 4)
         #expect(restoredLive.semanticTableCount == 1)
-        #expect(restoredLive.footnoteItemCount == 2)
         #expect(restoredLive.footnoteReferenceCount == 2)
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
         #expect(harness.session.context?.selections.first?.head == bodyEditorOffset)
@@ -1442,7 +1562,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(unavailableLive.frontmatterLineCount == 0)
         #expect(unavailableLive.semanticTableCount == 0)
         #expect(unavailableLive.renderedMathCount == 0)
-        #expect(unavailableLive.footnoteSectionCount == 0)
         #expect(unavailableLive.previewAnchorCount == 0)
         let unavailableLiveSource = try await unclosedHarness.session.currentText(
             for: unclosedHarness.documentID
@@ -1745,7 +1864,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let snapshot = try await session.testingAccessibilitySnapshot()
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
-                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnotes=\(snapshot.footnoteItemCount), callouts=\(snapshot.footnoteCalloutCount), title=\(snapshot.liveTitleCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
+                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutWidgetCount), title=\(snapshot.liveTitleCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))

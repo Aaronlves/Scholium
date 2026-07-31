@@ -27,8 +27,8 @@ enum DocumentAppearanceStyles {
           --scholium-document-h2-size: \(number(level1.scale * 100))%;
           --scholium-document-h3-size: \(number(level2.scale * 100))%;
           --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
-          --scholium-appearance-title-before: \(number(title.spaceBeforeEm))em;
-          --scholium-appearance-title-after: \(number(title.spaceAfterEm))em;
+          --scholium-rhythm-title-before: \(number(title.spaceBeforeEm))em;
+          --scholium-rhythm-title-after: \(number(title.spaceAfterEm))em;
           --scholium-appearance-h2-before: \(number(level1.spaceBeforeEm))em;
           --scholium-appearance-h2-after: \(number(level1.spaceAfterEm))em;
           --scholium-appearance-h3-before: \(number(level2.spaceBeforeEm))em;
@@ -54,9 +54,6 @@ enum DocumentAppearanceStyles {
         .cm-editor.scholium-live-mode .cm-live-paragraph-start {
           text-indent: \(number(body.firstLineIndentEm))em;
         }
-        .cm-editor.scholium-live-mode .cm-live-paragraph-end {
-          padding-block-end: var(--scholium-rhythm-paragraph-gap);
-        }
         .scholium-document h1,
         .scholium-document h2,
         .scholium-document h3,
@@ -73,13 +70,13 @@ enum DocumentAppearanceStyles {
         }
         .scholium-document > h1:first-child {
           margin: 0;
-          padding-block: var(--scholium-appearance-title-before) var(--scholium-appearance-title-after);
+          padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
           text-align: \(title.alignment.rawValue);
         }
         .scholium-live-mode .cm-live-document-title,
         .scholium-live-mode .cm-live-h1 {
           margin-block: 0;
-          padding-block: var(--scholium-appearance-title-before) var(--scholium-appearance-title-after);
+          padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
           text-align: \(title.alignment.rawValue);
         }
         .scholium-document h2 {

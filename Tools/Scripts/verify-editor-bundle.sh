@@ -39,7 +39,8 @@ fi
 if [[ ! -s "$footnote_styles" ]] || \
    ! rg -q '^\.footnote-reference' "$footnote_styles" || \
    ! rg -q '^\.footnotes' "$footnote_styles" || \
-   ! rg -q '^\.cm-live-footnotes-widget' "$footnote_styles"; then
+   ! rg -q '^\.cm-live-footnote-reference-widget' "$footnote_styles" || \
+   rg -q '^\.cm-live-footnotes-widget' "$footnote_styles"; then
   print -u2 "The shared semantic footnote stylesheet is missing or incomplete: $footnote_styles"
   exit 1
 fi

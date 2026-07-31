@@ -213,10 +213,13 @@ export function projectDialectSemantics(source: string, dialect: MarkdownEditing
   locatedLinks.sort((left, right) => left.from - right.from);
   const links = locatedLinks.map(({target, vectorKind}) => ({target, vectorKind}));
   const footnoteRanges = footnotePresentation(source, excluded, dialect.footnotes);
-  const definitionKeys = keyedRanges("FootnoteDefinition", "InlineFootnote");
+  const namedDefinitionStarts = new Set(ranges("FootnoteDefinition").map(({from}) => from));
+  const inlineDefinitionKeys = keyedRanges("InlineFootnote");
   const referenceKeys = keyedRanges("FootnoteReference", "InlineFootnote");
   const footnotes = {
-    definitions: footnoteRanges.definitions.filter(({from, to}) => definitionKeys.has(`${from}:${to}`)),
+    definitions: footnoteRanges.definitions.filter(({from, to, isInline}) => isInline
+      ? inlineDefinitionKeys.has(`${from}:${to}`)
+      : namedDefinitionStarts.has(from)),
     references: footnoteRanges.references.filter(({from, to}) => referenceKeys.has(`${from}:${to}`)),
   };
   const footnoteDefinitions = footnotes.definitions.map((definition) => definition.identifier);

@@ -345,10 +345,17 @@ boundary.
 Internal links and Vector Links provide bounded previews without becoming
 evidence or another source authority. Review additionally previews footnote
 references on ordinary hover; a footnote preview contains only the referenced
-definition. Footnote focus, activation, navigation, and return controls belong
-to Review only, with keyboard and accessibility-equivalent routes. Edit keeps
-the rendered marker passive: selecting it performs only ordinary cursor
-placement at the underlying Markdown. Source exposes the exact text.
+definition. Footnote preview and return controls belong to Review, with
+keyboard and accessibility-equivalent routes. Edit projects an inactive
+reference as a numbered locator; activating it moves the caret to that named
+definition. Its definition marker remains exact and directly editable at that
+one source position; its body uses the same construct-scoped Edit projection as
+ordinary Markdown and reveals only the active construct's exact syntax. It is
+never copied into a second rendered editable block. Inserting a
+named footnote appends one definition without renumbering existing identifiers
+and places the Edit selection in that definition. Undefined and duplicate
+forms remain exact source rather than being silently repaired. Source exposes
+and edits the same exact reference and definition text.
 
 Review and Edit have a direct keyboard toggle. Source is entered through
 the mode menu. It may alter protected or machine-facing YAML; the researcher
@@ -1815,7 +1822,10 @@ components; Source applies automatic direction independently to each visible
 exact source line. Code, mathematics, and inert raw-HTML source remain
 left-to-right isolated technical regions. CodeMirror's visual cursor and
 selection model must consume the same per-line direction and syntactic bidi
-isolates that produce the visible order. Interface language never forces the
+isolates that produce the visible order. Automatic direction never replaces,
+locks, or reconstructs text: pointer, keyboard, selection, deletion, insertion,
+Undo, and installed input methods edit RTL content through the same exact
+CodeMirror source in Edit and Source. Interface language never forces the
 direction of document prose, all Scholium-owned spacing and boundaries use
 logical start/end edges, and user-authored raw HTML remains inert rather than
 becoming an alternate direction-control or rendering path.
@@ -2207,7 +2217,9 @@ above visual centre and preserve a calm bottom edge.
   in **1ch** steps and is shared by Review, Edit, and Source.
 - Default headings use the Body family, upright style, **500** weight,
   **1.8** line spacing, and zero tracking. H1 is **200%**, centered, with
-  **0em** before and **2em** after; H2 is **150%**, start-aligned, with
+  **0em** before and **2em** after; its fine separator sits **0.5em** below the
+  final title line inside that after-space rather than at the space's outer
+  edge. H2 is **150%**, start-aligned, with
   **0.6em** before and after; H3–H6 are **115%**, start-aligned, with **0.5em**
   before and after. A long or mixed-script title wraps inside the same measure.
   The first paragraph after a heading retains ordinary Body rules. Scholium
@@ -2218,11 +2230,21 @@ above visual centre and preserve a calm bottom edge.
   spacing/composition parameters without acquiring a separate palette.
   Ordinary Markdown quotation remains selectable prose, uses the semantic
   Accent boundary in Review and Edit, and never becomes a Callout or card.
+  Lists retain ordinary Body line height inside each contiguous list: list
+  items and nested lists add no paragraph gap or semantic block gap between
+  rows. Only the complete top-level list participates in surrounding document
+  block spacing. Edit keeps every Markdown paragraph-separator blank line as a
+  real, keyboard-addressable exact source line. Its measured line box supplies
+  the corresponding Review paragraph gap; Edit does not collapse it or add the
+  same gap again to the preceding paragraph. Consecutive authored blank lines
+  remain distinct source lines.
   Tables, code, and mathematics keep object-local horizontal overflow; the page
   itself never gains horizontal reading scroll. Display mathematics remains
   centered and italic with its number on a separate physical-right track.
-  Footnote references and definitions retain Review-owned preview/navigation
-  and Edit-owned exact-source activation under §5.1.
+  Footnote references retain Review-owned preview/navigation; Edit uses the
+  reference only to locate the one directly editable definition under §5.1;
+  the definition marker stays exact while its body uses ordinary
+  construct-scoped Edit projection at that same source position.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
   **Paper** `#FEF8ED`. In Light appearance Paper is the illuminated Document

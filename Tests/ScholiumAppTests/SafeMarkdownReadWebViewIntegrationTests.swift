@@ -601,14 +601,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(live.tableCellBorderBottomWidth == read.tableCellBorderBottomWidth)
         #expect(live.tableCellBorderBottomColor == read.tableCellBorderBottomColor)
 
-        #expect(live.footnoteFontFamily == read.footnoteFontFamily)
-        #expect(live.footnoteColor == read.footnoteColor)
-        #expect(live.footnoteFontSize == read.footnoteFontSize)
-        #expect(live.footnoteLineHeight == read.footnoteLineHeight)
-        #expect(live.footnoteMarginBlockStart == read.footnoteMarginBlockStart)
-        #expect(live.footnoteListPaddingInlineStart == read.footnoteListPaddingInlineStart)
-        #expect(abs(live.footnoteWidth - read.footnoteWidth) <= 1)
-
         #expect(live.mathOverflowX == read.mathOverflowX)
         #expect(live.mathColor == read.mathColor)
         #expect(live.mathFontSize == read.mathFontSize)
@@ -1225,6 +1217,10 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const headingBlockStyle = style('.scholium-document > h2');
                 const headingStyle = textStyle('.scholium-document > h2');
                 const titleBlockStyle = style('.scholium-document > h1:first-child');
+                const titleRuleStyle = (() => {
+                    const element = document.querySelector('.scholium-document > h1:first-child');
+                    return element ? getComputedStyle(element, '::after') : null;
+                })();
                 const titleStyle = textStyle('.scholium-document > h1:first-child');
                 const calloutStyle = style('.scholium-document > .scholium-callout-state');
                 const calloutRoleStyle = style('.scholium-document > .scholium-callout-state .scholium-callout-role');
@@ -1232,8 +1228,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const orientationStyle = style('.scholium-document > .scholium-callout-orient .scholium-callout-body');
                 const tableStyle = style('.scholium-document > .scholium-table-scroll');
                 const tableCellStyle = style('.scholium-document > .scholium-table-scroll th');
-                const footnoteStyle = style('.scholium-document > .scholium-footnotes-slot > .footnotes');
-                const footnoteListStyle = style('.scholium-document > .scholium-footnotes-slot > .footnotes > ol');
                 const mathStyle = style('.scholium-document > .scholium-math-display');
                 const mathGeometry = (() => {
                     const display = document.querySelector('.scholium-document > .scholium-math-display');
@@ -1303,7 +1297,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                     headingWidth: width('.scholium-document > h2'),
                     headingTextDecorationLine: headingStyle?.textDecorationLine || '',
                     titleTextDecorationLine: titleStyle?.textDecorationLine || '',
-                    titleBorderBottomWidth: titleBlockStyle?.borderBottomWidth || '',
+                    titleBorderBottomWidth: titleRuleStyle?.borderTopWidth || '',
                     titleWidth: width('.scholium-document > h1:first-child'),
                     calloutAccent: calloutStyle?.getPropertyValue('--callout-accent').trim() || '',
                     calloutBorderColor: calloutStyle?.borderInlineStartColor || '',
@@ -1337,13 +1331,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                     tableCellPaddingInlineStart: tableCellStyle?.paddingInlineStart || '',
                     tableCellBorderBottomWidth: tableCellStyle?.borderBottomWidth || '',
                     tableCellBorderBottomColor: tableCellStyle?.borderBottomColor || '',
-                    footnoteFontFamily: footnoteStyle?.fontFamily || '',
-                    footnoteColor: footnoteStyle?.color || '',
-                    footnoteFontSize: footnoteStyle?.fontSize || '',
-                    footnoteLineHeight: footnoteStyle?.lineHeight || '',
-                    footnoteMarginBlockStart: footnoteStyle?.marginBlockStart || '',
-                    footnoteListPaddingInlineStart: footnoteListStyle?.paddingInlineStart || '',
-                    footnoteWidth: width('.scholium-document > .scholium-footnotes-slot > .footnotes'),
                     mathOverflowX: mathStyle?.overflowX || '',
                     mathColor: mathStyle?.color || '',
                     mathFontSize: mathStyle?.fontSize || '',

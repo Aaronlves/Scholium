@@ -527,6 +527,9 @@ enum ScholiumWebDesignTokens {
     --scholium-rhythm-heading-line-height: \(ScholiumDocumentRhythm.headingLineHeight);
     --scholium-rhythm-heading-before: \(ScholiumDocumentRhythm.headingGapBeforeCSSPixels)px;
     --scholium-rhythm-heading-after: \(ScholiumDocumentRhythm.headingGapAfterCSSPixels)px;
+    --scholium-rhythm-title-before: \(ScholiumDocumentRhythm.headingGapBeforeCSSPixels)px;
+    --scholium-rhythm-title-after: \(ScholiumDocumentRhythm.headingGapAfterCSSPixels)px;
+    --scholium-rhythm-title-rule-gap: 0.5em;
     --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
     --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
     --scholium-rhythm-semantic-block-gap: 1em;
@@ -612,16 +615,15 @@ enum ScholiumWebDesignTokens {
       margin: 0;
       padding-block: 0 var(--scholium-rhythm-paragraph-gap);
     }
-    .cm-editor.scholium-live-mode .cm-live-paragraph-end {
-      padding-block-end: var(--scholium-rhythm-paragraph-gap);
-    }
     .scholium-document > ul,
     .scholium-document > ol,
-    .scholium-document li > ul,
-    .scholium-document li > ol,
     .scholium-document > blockquote,
     .scholium-document > pre {
       margin-block: var(--scholium-rhythm-semantic-block-gap);
+    }
+    .scholium-document li > ul,
+    .scholium-document li > ol {
+      margin-block: 0;
     }
     .scholium-document > hr {
       margin-block: var(--scholium-rhythm-rule-block-gap);
@@ -640,9 +642,13 @@ enum ScholiumWebDesignTokens {
       padding-inline-start: 0;
       text-align: start;
     }
+    .scholium-document li > p {
+      padding-block-end: 0;
+    }
     .scholium-document blockquote,
     .cm-editor.scholium-live-mode .cm-live-quote {
       box-sizing: border-box;
+      margin-inline: 0;
       padding-inline-start: var(--scholium-rhythm-quote-inset);
       border-inline-start: 3px solid var(--scholium-color-accent);
       color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
@@ -788,11 +794,24 @@ enum ScholiumWebDesignTokens {
     .scholium-document > h1:first-child,
     .scholium-live-mode .cm-live-document-title,
     .scholium-live-mode .cm-live-h1 {
+      position: relative;
       margin: 0;
-      padding-top: 0;
-      padding-bottom: var(--scholium-rhythm-heading-after);
+      padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
       text-align: center;
-      border-bottom: 1px solid var(--scholium-color-separator);
+      border-block-end: 0;
+    }
+    .scholium-document > h1:first-child::after,
+    .scholium-live-mode .cm-live-document-title::after,
+    .scholium-live-mode .cm-live-h1::after {
+      content: "";
+      position: absolute;
+      inset-inline: 0;
+      inset-block-end: max(
+        0px,
+        calc(var(--scholium-rhythm-title-after) - var(--scholium-rhythm-title-rule-gap))
+      );
+      border-block-start: 1px solid var(--scholium-color-separator);
+      pointer-events: none;
     }
     .scholium-document .scholium-embed {
       color: var(--scholium-color-accent);

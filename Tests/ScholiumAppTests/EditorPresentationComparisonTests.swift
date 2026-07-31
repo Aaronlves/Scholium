@@ -297,7 +297,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         var mustMatchDifferenceCount = 0
 
         let blockIDs = Set(contract.comparisonProbes.lazy
-            .filter { $0.level == "block" }
+            .filter { $0.level == "block" && $0.expectation == "mustMatchReview" }
             .map(\.id))
         let readBlockOrder = read.probes
             .filter { blockIDs.contains($0.id) }
@@ -491,6 +491,7 @@ extension MarkdownEditorWebViewIntegrationTests {
       'font-family', 'font-size', 'font-weight', 'font-style', 'line-height',
       'letter-spacing', 'text-align', 'color', 'background-color', 'direction',
       'white-space', 'overflow-wrap', 'margin-block-start', 'margin-block-end',
+      'margin-inline-start', 'margin-inline-end',
       'padding-block-start', 'padding-block-end', 'padding-inline-start',
       'padding-inline-end', 'border-inline-start-width', 'border-inline-start-color',
       'border-radius', 'box-sizing', 'display', 'text-decoration-line',

@@ -221,13 +221,14 @@ body,
 }
 .cm-live-list-marker {
   display: inline-block;
-  min-width: 2.5em;
+  min-inline-size: 1.25em;
+  margin-inline-end: 0.35em;
   color: var(--scholium-color-primary-text);
   font-family: inherit;
   font-weight: 400;
 }
 .cm-live-list-marker-nested {
-  margin-inline-start: 2.5em;
+  margin-inline-start: 1.6em;
 }
 
 .cm-live-semantic-gap {
@@ -259,11 +260,10 @@ body,
 }
 
 .cm-line.cm-live-blank-line {
-  block-size: 0;
-  min-block-size: 0;
-  line-height: 0;
+  block-size: var(--scholium-rhythm-paragraph-gap);
+  min-block-size: var(--scholium-rhythm-paragraph-gap);
+  line-height: var(--scholium-rhythm-paragraph-gap);
   padding-block: 0;
-  overflow: hidden;
 }
 
 .cm-line.cm-live-heading-marker-line {

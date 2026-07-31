@@ -1575,7 +1575,10 @@ plugin that adds only `dir="auto"` to rendered exact-source lines; it owns no
 replacement, typography, or vertical geometry. The shared editor configuration
 enables CodeMirror's per-line text-direction facet and official syntax-tree
 bidi-isolate extension, so the DOM order, visual cursor, selection, and neutral
-Markdown punctuation use one direction model. Raw HTML remains escaped or an
+Markdown punctuation use one direction model. These decorations never replace
+or lock text; Edit and Source continue to route pointer, keyboard, selection,
+composition, insertion, deletion, and Undo through the same CodeMirror state.
+Raw HTML remains escaped or an
 inert literal projection and cannot become a parallel rendering authority.
 
 Review/Edit presentation comparison is a test-owned projection over the same
@@ -1587,8 +1590,8 @@ tall test viewport materialize the complete catalog despite CodeMirror's normal
 viewport virtualization. The report records computed presentation properties,
 line rectangles, block bounds, total content height, and the independent visual
 block order of each surface. Inter-block gaps are compared only when both
-surfaces identify the same visual predecessor, so moved projections such as the
-end-of-document footnote section cannot create a false source-order delta. The
+surfaces identify the same visual predecessor, so mode-specific exact-source
+objects cannot create a false source-order delta. The
 generated baseline remains ignored evidence under `.build/`; the fixture and
 measurement contract are tracked, while production code cannot read or depend
 on either.
@@ -1814,12 +1817,20 @@ produce fail-closed malformed diagnostics.
 
 Live vertical geometry uses direct CodeMirror `StateField` decorations. One
 immutable `LiveProjectionIndex` owns the typed catalog plus sorted frontmatter,
-literal, code-block, table, Callout, footnote, and mathematics ranges. Direct
-fields own semantic line classes, collapsed source lines, inter-block gaps,
-frontmatter, tables, display mathematics, raw HTML, Callouts, and footnotes.
+literal, code-block, table, Callout, footnote-reference, and mathematics ranges. Direct
+fields own semantic line classes, measured source separator lines, inter-block gaps,
+frontmatter, tables, display mathematics, raw HTML, Callouts, and footnote
+reference markers.
 Semantic gaps are zero-content block widgets placed at typed block boundaries;
 projected components themselves use no Edit-only block margins or fixed-height
-estimates. This keeps the visible DOM, CodeMirror height map, pointer mapping,
+estimates. Only top-level lists participate in semantic block gaps. List-item
+paragraphs and nested lists retain ordinary prose line height with no internal
+paragraph or block gap. A paragraph-separating Markdown blank line is never
+collapsed: the semantic-line field keeps it as the one exact CodeMirror line
+and sizes it from `--scholium-rhythm-paragraph-gap`; Edit paragraph lines do not
+repeat that gap as padding. Native selection, horizontal navigation, deletion,
+composition, and Undo therefore traverse the same source offsets in both
+directions. This keeps the visible DOM, CodeMirror height map, pointer mapping,
 selection, and scrolling under one geometry owner. A prefix-maximum interval
 index handles nested half-open overlap and containment without mutating
 StateField-owned arrays. Plain bounded insertions outside constructs map
@@ -1828,8 +1839,8 @@ boundaries rebuild conservatively. A new background Lezer tree may refresh
 structure once; selection and viewport transactions reuse it.
 
 The remaining `ViewPlugin` is an inline adapter only. It projects visible
-ranges plus a 2,000 UTF-16 buffer and never supplies block widgets, collapsed
-lines, or semantic gaps. Indexed literals and fenced-code ranges avoid scanning
+ranges plus a 2,000 UTF-16 buffer and never supplies block widgets, source-line
+geometry, or semantic gaps. Indexed literals and fenced-code ranges avoid scanning
 from line one. Selection changes replace only merged old/new neighborhoods
 within that margin, not the visible buffer or structural index. Widget equality
 preserves DOM; height work stays inside CodeMirror's measurement cycle.
@@ -1872,9 +1883,9 @@ replacement retains CodeMirror's inclusive defaults so it consumes the source
 line boxes instead of leaving empty lines at its boundaries; the explicit
 activation field, not decoration inclusivity, decides when exact source is
 revealed. Its slot uses no block margin or fixed-height estimate; fold, style,
-and pointer changes measure before further coordinate mapping. Footnote
-definitions remain excluded so their end-section widget is the sole
-nested-block owner.
+and pointer changes measure before further coordinate mapping. Once activated,
+the Callout range is the exclusive exact-source owner: the inline adapter does
+not hide or restyle any delimiter inside its source lines.
 
 Semantic tables follow that adapter boundary. Read emits a protected scroll
 container with a real `table`, `thead`, column-scoped `th`, `tbody`, and
@@ -1885,24 +1896,36 @@ decoration. Each displayed cell retains its source offset; pointer or keyboard
 entry removes the projection and reveals the exact Markdown table in the same
 EditorState. The table DOM is never a writable or round-trip source.
 
-Footnotes use the same projection rule. Read and Live share `footnotes.css`,
-the reference-number role, `.scholium-footnotes-slot` flow wrapper, end-section
-structure, logical-direction spacing, and contrast behavior. A direct Live `StateField` derives case-sensitive
-identifiers, first-reference ordinals, repeated occurrences, inline notes, and
-bounded two-space/tab continuations from the current buffer while excluding
-YAML, code, HTML, and comments. Inactive references become nonbutton numbered
-inline markers; the first inactive definition is hidden at its exact source
-range and appears in one semantic end-section widget. Placing the Edit caret at
-a reference or endnote reveals only the affected source projection; it does not
-preview or navigate. Duplicate, undefined, and unreferenced forms are not repaired, and
-neither the widget DOM nor its rendered inline content can become writable
-Markdown authority.
+Footnotes deliberately do not use a second Edit block projection. Review owns
+the `footnotes.css` end-section, preview, navigation, and return presentation.
+A direct Live `StateField` derives case-sensitive identifiers,
+first-reference ordinals, repeated occurrences, inline notes, and bounded
+two-space/tab continuations from the current buffer while excluding YAML,
+code, HTML, and comments. It replaces only inactive references with numbered
+locator markers. Activating a named locator moves the same CodeMirror selection
+to the definition's exact source position; inline notes reveal their own exact
+range. Named definitions remain continuously present and directly editable at
+their authoritative Markdown position. `FootnoteDefinition` is one composite
+Lezer block: its exact marker stays visible while its body continues through
+the ordinary inline and nested-block catalog, so emphasis, lists, quotations,
+Callouts, code, tables, and mathematics are projected only at this same source
+position. No hidden definition, reconstructed
+content, end-section widget, or second pointer-to-source geometry exists in
+Edit. The insertion transformation allocates one unused identifier, appends one
+exact definition, and selects its content without renumbering existing forms.
+Duplicate, undefined, and unreferenced forms are not repaired.
+
+Live inline marks own pointer-down placement before exposing their delimiters.
+A click dispatches one caret in the source construct; only movement beyond the
+pointer slop becomes a drag selection. This prevents WebKit's DOM change between
+mouse-down and mouse-up from turning an ordinary click into a constructed range
+selection while preserving real drag selection.
 
 Continuation normalization removes exactly one two-space or tab ownership
 indent and preserves every deeper space. Nested lists, block quotations, and
-fenced code therefore retain their structure in both the committed Review
-renderer and Edit's display-only `markdown-fragment` adapter. Review alone
-renders the one-definition footnote preview and owns footnote navigation; raw HTML stays inert. Shared
+fenced code therefore retain their structure in the committed Review renderer.
+Review alone renders the one-definition footnote preview and owns return
+navigation; raw HTML stays inert. Shared
 fixtures compare definition content as well as identifiers so Swift and
 TypeScript cannot silently choose different block ownership.
 

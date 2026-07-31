@@ -43,14 +43,26 @@ describe("Scholium Lezer Markdown dialect", () => {
     const nodes = locatedNodes(source);
     expect(sources(nodes, "FootnoteReference")).toEqual(["[^N]"]);
     expect(sources(nodes, "InlineFootnote")).toEqual(["^[inline note]"]);
-    expect(sources(nodes, "FootnoteDefinition")).toEqual(["[^N]: first line\n  continuation\n\n"]);
+    expect(sources(nodes, "FootnoteDefinition")).toEqual(["[^N]: first line\n  continuation"]);
     expect(sources(nodes, "FootnoteIdentifier")).toEqual(["N", "N"]);
   });
 
   it("keeps a structured multiline footnote in one exact block node", () => {
     const source = "Claim[^blocks].\n\n[^blocks]: First paragraph.\n\n  - Outer item\n    - Nested item\n\n  ```swift\n  let value = 1\n  ```\nFollowing.";
+    const nodes = locatedNodes(source);
+    expect(sources(nodes, "FootnoteDefinition")).toEqual([
+      "[^blocks]: First paragraph.\n\n  - Outer item\n    - Nested item\n\n  ```swift\n  let value = 1\n  ```",
+    ]);
+    expect(sources(nodes, "BulletList").some((value) => value.includes("Outer item"))).toBe(true);
+    expect(sources(nodes, "ListItem").some((value) => value.includes("Nested item"))).toBe(true);
+    expect(sources(nodes, "FencedCode").some((value) => value.includes("let value = 1"))).toBe(true);
+  });
+
+  it("starts an adjacent named footnote definition after a continuation", () => {
+    const source = "[^reason]: First line\n  second line\n[^unused]: Not cited.\n";
     expect(sources(locatedNodes(source), "FootnoteDefinition")).toEqual([
-      "[^blocks]: First paragraph.\n\n  - Outer item\n    - Nested item\n\n  ```swift\n  let value = 1\n  ```\n",
+      "[^reason]: First line\n  second line",
+      "[^unused]: Not cited.",
     ]);
   });
 

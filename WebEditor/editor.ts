@@ -76,7 +76,6 @@ import {
 } from "./table-presentation";
 import {
   footnotePresentation,
-  type FootnoteDefinitionPresentation,
   type FootnotePresentation,
   type FootnoteReferencePresentation,
 } from "./footnote-presentation";
@@ -558,10 +557,9 @@ function finalizedLiveProjectionIndex(
   const immutableTables = Object.freeze([...tables]);
   const immutableCallouts = Object.freeze([...callouts]);
   const immutableMathExpressions = Object.freeze([...mathExpressions]);
-  const footnoteRanges = immutableProjectionRanges([
-    ...footnotes.definitions,
-    ...footnotes.references,
-  ].map(({from, to}) => ({from, to})));
+  const footnoteRanges = immutableProjectionRanges(
+    footnotes.references.map(({from, to}) => ({from, to})),
+  );
   const immutableCommandProtectedRanges = commandProtectionRanges(
     immutableExcluded,
     immutableFrontmatter ?? undefined,
@@ -594,8 +592,6 @@ function finalizedLiveProjectionIndex(
     blockRanges: immutableProjectionRanges([
       ...immutableTables.map(({from, to}) => ({from, to, kind: "table" as const})),
       ...immutableCallouts.map(({from, to}) => ({from, to, kind: "callout" as const})),
-      ...footnotes.definitions.flatMap(({from, to, isInline}) =>
-        isInline ? [] : [{from, to, kind: "footnote" as const}]),
       ...immutableMathExpressions.flatMap(({from, to, kind}) =>
         kind === "display" ? [{from, to, kind: "math" as const}] : []),
     ]),
@@ -678,14 +674,15 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
     ...syntax.literals.map(({from, to}) => ({from, to})),
   ];
   const inlineRanges = syntax.inlines.map(({from, to}) => ({from, to}));
-  const definitionRanges = new Set(syntax.blocks
+  const namedDefinitionStarts = new Set(syntax.blocks
     .filter((block) => block.kind === "footnoteDefinition")
-    .map((block) => rangeKey(block.from, block.to)));
+    .map((block) => block.from));
+  const inlineDefinitionRanges = new Set<string>();
   const referenceRanges = new Set(syntax.inlines
     .filter((inline) => inline.kind === "footnoteReference" || inline.kind === "inlineFootnote")
     .map((inline) => rangeKey(inline.from, inline.to)));
   for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineFootnote")) {
-    definitionRanges.add(rangeKey(inline.from, inline.to));
+    inlineDefinitionRanges.add(rangeKey(inline.from, inline.to));
   }
   const tableRanges = syntax.blocks
     .filter((block) => block.kind === "table")
@@ -705,7 +702,7 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
   let completeSource: string | null = null;
   const source = () => completeSource ??= state.doc.toString();
   let footnotes: FootnotePresentation = {definitions: [], references: []};
-  if (definitionRanges.size > 0 || referenceRanges.size > 0) {
+  if (namedDefinitionStarts.size > 0 || inlineDefinitionRanges.size > 0 || referenceRanges.size > 0) {
     const projectedFootnotes = footnotePresentation(
       source(),
       footnoteExcluded,
@@ -713,22 +710,18 @@ function buildLiveProjectionIndex(state: EditorState): LiveProjectionIndex {
     );
     footnotes = {
       definitions: projectedFootnotes.definitions.filter((definition) =>
-        definitionRanges.has(rangeKey(definition.from, definition.to))),
+        definition.isInline
+          ? inlineDefinitionRanges.has(rangeKey(definition.from, definition.to))
+          : namedDefinitionStarts.has(definition.from)),
       references: projectedFootnotes.references.filter((reference) =>
         referenceRanges.has(rangeKey(reference.from, reference.to))),
     };
   }
-  const insideNamedDefinition = (range: ProjectionSourceRange) => footnotes.definitions.some(
-    (definition) => !definition.isInline
-      && definition.from <= range.from && definition.to >= range.to,
-  );
   const tables = tableRanges.flatMap((range): TablePresentation[] => {
-    if (insideNamedDefinition(range)) return [];
     const presentation = tablePresentation(source(), range.from, range.to);
     return presentation ? [presentation] : [];
   });
   const callouts = calloutRanges.flatMap((range): CalloutPresentation[] => {
-    if (insideNamedDefinition(range)) return [];
     return [{...range, source: state.doc.sliceString(range.from, range.to)}];
   });
   const mathExpressions = mathExpressionsFromCatalog(state, syntax);
@@ -770,6 +763,9 @@ function mapLiveProjectionIndex(index: LiveProjectionIndex, transaction: Transac
         from: map(reference.from),
         to: map(reference.to),
         definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
+        definitionContentFrom: reference.definitionContentFrom === null
+          ? null
+          : map(reference.definitionContentFrom),
       })),
     };
   const tables = index.tables.map((presentation) => ({
@@ -948,6 +944,7 @@ function beginProjectedPointerSelection(
   sourceOffset: number,
 ) {
   event.preventDefault();
+  const pointerOrigin = {x: event.clientX, y: event.clientY};
   const anchor = event.shiftKey ? view.state.selection.main.anchor : sourceOffset;
   view.dispatch({selection: {anchor, head: sourceOffset}, scrollIntoView: true});
   view.focus();
@@ -970,6 +967,14 @@ function beginProjectedPointerSelection(
     });
   };
   const move = (moveEvent: MouseEvent) => {
+    const horizontalDistance = moveEvent.clientX - pointerOrigin.x;
+    const verticalDistance = moveEvent.clientY - pointerOrigin.y;
+    // WebKit can emit sub-pixel mouse moves between mouse-down and mouse-up.
+    // Treat those as a click, not the beginning of a drag selection. A real
+    // pointer selection starts only after the standard small movement slop.
+    if (horizontalDistance * horizontalDistance + verticalDistance * verticalDistance < 16) {
+      return;
+    }
     latestCoordinates = {x: moveEvent.clientX, y: moveEvent.clientY};
     measureLatestPosition();
   };
@@ -984,6 +989,34 @@ function beginProjectedPointerSelection(
   // Remeasure before any subsequent pointer coordinate is interpreted.
   view.requestMeasure();
 }
+
+const liveInlinePointerPlacement = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    if (event.button !== 0 || view.composing) return false;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target?.closest([
+      ".cm-live-strong",
+      ".cm-live-emphasis",
+      ".cm-live-strike",
+      ".cm-live-highlight",
+      ".cm-live-code",
+      ".cm-live-link",
+      ".cm-live-vector-link",
+      ".cm-live-embed",
+    ].join(","))) return false;
+
+    const position = view.posAtCoords({x: event.clientX, y: event.clientY});
+    if (position === null) return false;
+    const construct = projectionRangeContaining(
+      liveProjectionIndexForState(view.state).syntax.inlines,
+      Math.min(position, Math.max(0, view.state.doc.length - 1)),
+    );
+    if (!construct || construct.kind === "comment") return false;
+    const sourceOffset = Math.max(construct.from, Math.min(construct.to - 1, position));
+    beginProjectedPointerSelection(view, event, sourceOffset);
+    return true;
+  },
+});
 
 const tableWidgetPresentations = new WeakMap<HTMLElement, TablePresentation>();
 
@@ -1541,12 +1574,13 @@ class FootnoteReferenceWidget extends WidgetType {
       && other.reference.ordinal === this.reference.ordinal
       && other.reference.occurrence === this.reference.occurrence
       && other.reference.from === this.reference.from
-      && other.reference.definitionFrom === this.reference.definitionFrom;
+      && other.reference.definitionFrom === this.reference.definitionFrom
+      && other.reference.definitionContentFrom === this.reference.definitionContentFrom;
     if (equal) liveWidgetReuseCounts.footnote += 1;
     return equal;
   }
 
-  toDOM() {
+  toDOM(view: EditorView) {
     const wrapper = document.createElement("sup");
     wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
     wrapper.dataset.scholiumProtected = "footnote";
@@ -1560,6 +1594,11 @@ class FootnoteReferenceWidget extends WidgetType {
       marker.setAttribute("aria-disabled", "true");
       marker.classList.add("footnote-reference-missing");
     }
+    wrapper.addEventListener("mousedown", (event) => {
+      const reference = footnoteReferencePresentations.get(wrapper);
+      if (!reference || reference.definitionContentFrom === null) return;
+      beginProjectedPointerSelection(view, event, reference.definitionContentFrom);
+    });
     footnoteReferencePresentations.set(wrapper, this.reference);
     wrapper.append(marker);
     return wrapper;
@@ -1571,7 +1610,8 @@ class FootnoteReferenceWidget extends WidgetType {
       && previous.identifier === this.reference.identifier
       && previous.ordinal === this.reference.ordinal
       && previous.occurrence === this.reference.occurrence
-      && (previous.definitionFrom === null) === (this.reference.definitionFrom === null);
+      && previous.definitionFrom === this.reference.definitionFrom
+      && previous.definitionContentFrom === this.reference.definitionContentFrom;
     if (!sameContent) return false;
     footnoteReferencePresentations.set(dom, this.reference);
     liveWidgetReuseCounts.footnote += 1;
@@ -1581,96 +1621,14 @@ class FootnoteReferenceWidget extends WidgetType {
   ignoreEvent() { return false; }
 }
 
-const footnoteSectionPresentations = new WeakMap<HTMLElement, readonly FootnoteDefinitionPresentation[]>();
-
-class FootnoteSectionWidget extends WidgetType {
-  constructor(readonly definitions: readonly FootnoteDefinitionPresentation[]) { super(); }
-
-  eq(other: FootnoteSectionWidget) {
-    const equal = other.definitions.length === this.definitions.length
-      && other.definitions.every((definition, index) => {
-        const current = this.definitions[index];
-        return definition.identifier === current.identifier
-          && definition.ordinal === current.ordinal
-          && definition.content === current.content
-          && definition.from === current.from
-          && definition.to === current.to
-          && definition.contentFrom === current.contentFrom;
-      });
-    if (equal) liveWidgetReuseCounts.footnote += 1;
-    return equal;
-  }
-
-  toDOM(view: EditorView) {
-    const slot = document.createElement("div");
-    slot.className = "scholium-footnotes-slot cm-live-footnotes-slot";
-    const section = document.createElement("section");
-    section.className = "footnotes cm-live-footnotes-widget";
-    section.dataset.scholiumProtected = "footnotes";
-    section.setAttribute("aria-label", "Footnotes");
-    section.append(document.createElement("hr"));
-    const list = document.createElement("ol");
-    footnoteSectionPresentations.set(slot, this.definitions);
-    for (const definition of this.definitions) {
-      const item = document.createElement("li");
-      item.dataset.footnote = String(definition.ordinal);
-      item.dataset.sourceOffset = String(definition.contentFrom);
-      const content = document.createElement("div");
-      content.className = "footnote-content";
-      appendMarkdownBlocks(definition.content, content, {
-        mathematics: editingDialect?.mathematics,
-        resolveCallout: calloutDefinition,
-      });
-      item.append(content);
-      list.append(item);
-    }
-    section.append(list);
-    section.addEventListener("mousedown", (event) => {
-      const item = event.target instanceof Element
-        ? event.target.closest<HTMLElement>("li[data-footnote]")
-        : null;
-      const definitions = footnoteSectionPresentations.get(slot);
-      if (!item || !definitions || !section.contains(item)) return;
-      const ordinal = Number(item.dataset.footnote);
-      const definition = definitions.find((candidate) => candidate.ordinal === ordinal);
-      if (definition) beginProjectedPointerSelection(view, event, definition.contentFrom);
-    });
-    slot.append(section);
-    return slot;
-  }
-
-  updateDOM(dom: HTMLElement) {
-    const previous = footnoteSectionPresentations.get(dom);
-    const sameContent = previous?.length === this.definitions.length
-      && this.definitions.every((definition, index) => {
-        const prior = previous[index];
-        return definition.identifier === prior.identifier
-          && definition.ordinal === prior.ordinal
-          && definition.content === prior.content
-          && definition.isInline === prior.isInline
-          && definition.contentFrom === prior.contentFrom;
-      });
-    if (!sameContent) return false;
-    const items = [...dom.querySelectorAll<HTMLElement>("li[data-footnote]")];
-    if (items.length !== this.definitions.length) return false;
-    items.forEach((item, index) => {
-      const definition = this.definitions[index];
-      item.dataset.sourceOffset = String(definition.contentFrom);
-    });
-    footnoteSectionPresentations.set(dom, this.definitions);
-    liveWidgetReuseCounts.footnote += 1;
-    return true;
-  }
-
-  ignoreEvent() { return false; }
-}
-
-interface LiveFootnoteProjectionState extends LiveBlockProjectionState {
+interface LiveFootnoteReferenceState {
+  decorations: DecorationSet;
+  hasConstructs: boolean;
   presentation: FootnotePresentation;
   ranges: readonly Readonly<ProjectionSourceRange>[];
 }
 
-function liveFootnoteDecorations(
+function liveFootnoteReferenceDecorations(
   state: EditorState,
   presentation: FootnotePresentation,
 ) {
@@ -1678,23 +1636,6 @@ function liveFootnoteDecorations(
   const active = (from: number, to: number) => state.selection.ranges.some((range) =>
     selectionIntersectsProjection(range, {from, to}),
   );
-  const activeDefinitionIdentifiers = new Set<string>();
-
-  for (const definition of presentation.definitions) {
-    if (definition.isInline) continue;
-    if (active(definition.from, definition.to)) {
-      activeDefinitionIdentifiers.add(definition.identifier);
-      decorations.push(Decoration.mark({
-        class: "cm-live-footnote-definition-source",
-      }).range(definition.from, definition.to));
-    } else {
-      const hiddenTo = state.doc.lineAt(
-        Math.max(definition.from, definition.to - 1),
-      ).to;
-      decorations.push(Decoration.replace({block: true}).range(definition.from, hiddenTo));
-    }
-  }
-
   for (const reference of presentation.references) {
     const containedByDefinition = presentation.definitions.some((definition) =>
       !definition.isInline && definition.from <= reference.from && definition.to >= reference.to,
@@ -1704,22 +1645,10 @@ function liveFootnoteDecorations(
       widget: new FootnoteReferenceWidget(reference),
     }).range(reference.from, reference.to));
   }
-
-  const displayedDefinitions = presentation.definitions.filter((definition) =>
-    definition.ordinal !== null && !activeDefinitionIdentifiers.has(definition.identifier)
-      && !(definition.isInline && active(definition.from, definition.to)),
-  );
-  if (displayedDefinitions.length > 0) {
-    decorations.push(Decoration.widget({
-      widget: new FootnoteSectionWidget(displayedDefinitions),
-      block: true,
-      side: 1,
-    }).range(state.doc.length));
-  }
   return Decoration.set(decorations, true);
 }
 
-function buildLiveFootnoteDecorations(state: EditorState): LiveFootnoteProjectionState {
+function buildLiveFootnoteReferenceState(state: EditorState): LiveFootnoteReferenceState {
   const index = liveProjectionIndexForState(state);
   if (index.hasUnclosedFrontmatter) {
     return {
@@ -1731,7 +1660,7 @@ function buildLiveFootnoteDecorations(state: EditorState): LiveFootnoteProjectio
   }
   const presentation = index.footnotes;
   return {
-    decorations: liveFootnoteDecorations(state, presentation),
+    decorations: liveFootnoteReferenceDecorations(state, presentation),
     hasConstructs: presentation.definitions.length > 0 || presentation.references.length > 0,
     presentation,
     ranges: index.footnoteRanges,
@@ -1755,16 +1684,19 @@ function mapFootnotePresentation(
       from: map(reference.from),
       to: map(reference.to),
       definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
+      definitionContentFrom: reference.definitionContentFrom === null
+        ? null
+        : map(reference.definitionContentFrom),
     })),
   };
 }
 
-const liveFootnoteField = StateField.define<LiveFootnoteProjectionState>({
-  create: buildLiveFootnoteDecorations,
+const liveFootnoteReferenceField = StateField.define<LiveFootnoteReferenceState>({
+  create: buildLiveFootnoteReferenceState,
   update(previous, transaction) {
     const syntaxTreeChanged = transactionChangedSyntaxTree(transaction);
     if (!transaction.docChanged && syntaxTreeChanged) {
-      return buildLiveFootnoteDecorations(transaction.state);
+      return buildLiveFootnoteReferenceState(transaction.state);
     }
     if (!previous.hasConstructs) {
       if (!transaction.docChanged) return previous;
@@ -1778,7 +1710,7 @@ const liveFootnoteField = StateField.define<LiveFootnoteProjectionState>({
       }
       return {
         ...previous,
-        decorations: liveFootnoteDecorations(transaction.state, previous.presentation),
+        decorations: liveFootnoteReferenceDecorations(transaction.state, previous.presentation),
       };
     }
     if (transactionCanMapProjection(transaction, /[\[\]\^:]/, previous.ranges)) {
@@ -1788,13 +1720,13 @@ const liveFootnoteField = StateField.define<LiveFootnoteProjectionState>({
         ...presentation.references,
       ].map(({from, to}) => ({from, to})));
       return {
-        decorations: liveFootnoteDecorations(transaction.state, presentation),
+        decorations: liveFootnoteReferenceDecorations(transaction.state, presentation),
         hasConstructs: true,
         presentation,
         ranges,
       };
     }
-    return buildLiveFootnoteDecorations(transaction.state);
+    return buildLiveFootnoteReferenceState(transaction.state);
   },
   provide: (field) => [
     EditorView.decorations.from(field, (value) => value.decorations),
@@ -1881,7 +1813,7 @@ function semanticLinePresentation(
       && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
   const classes = new Set<string>();
   const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
-  if (line.length === 0 && !active && outsideFrontmatter) {
+  if (line.length === 0 && outsideFrontmatter && !codeBlock) {
     classes.add("cm-live-blank-line");
   }
   if (codeBlock) {
@@ -2207,22 +2139,6 @@ function semanticBlockGapRanges(state: EditorState): Range<Decoration>[] {
       }).range(previous.to));
     }
   }
-  for (const nestedList of index.syntax.blocks.filter((block) =>
-    (block.kind === "unorderedList" || block.kind === "orderedList")
-      && block.parent !== null)) {
-    const firstLine = state.doc.lineAt(nestedList.from);
-    const lastLine = state.doc.lineAt(Math.max(nestedList.from, nestedList.to - 1));
-    ranges.push(Decoration.widget({
-      widget: new SemanticBlockGapWidget("none", "standard"),
-      block: true,
-      side: -1,
-    }).range(firstLine.from));
-    ranges.push(Decoration.widget({
-      widget: new SemanticBlockGapWidget("standard", "none"),
-      block: true,
-      side: 1,
-    }).range(lastLine.to));
-  }
   return ranges;
 }
 
@@ -2306,6 +2222,7 @@ function buildLiveDecorations(
   }
   const literals = [...visibleLiterals.values()];
   const mathExpressions = visibleInlineMathExpressions(view.state, coveredRanges, index);
+  const activeBlockActivation = view.state.field(liveBlockActivationField, false);
 
   /** @param {number} from @param {number} to */
   const addHidden = (from: number, to: number) => {
@@ -2419,6 +2336,13 @@ function buildLiveDecorations(
           scanFrom,
           lineQueryTo,
         )[0];
+        const activeCalloutLine = parsedCallout && (
+          activeBlockActivation?.kind === "callout"
+            && activeBlockActivation.from === parsedCallout.from
+            && activeBlockActivation.to === parsedCallout.to
+          || view.state.selection.ranges.some((range) =>
+            selectionIntersectsProjection(range, parsedCallout))
+        );
         const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
         if (quote && !parsedCallout) {
           if (!activeLine) {
@@ -2431,6 +2355,11 @@ function buildLiveDecorations(
         // An active Callout is exact editable Markdown. The block widget is
         // removed by liveCalloutField, and no Callout line styling, role
         // widget, marker hiding, or quote projection is permitted here.
+        if (activeCalloutLine) {
+          if (line.to === doc.length) break;
+          line = doc.line(line.number + 1);
+          continue;
+        }
 
         const rule = lineFullyScanned
           ? semanticBlocksOnLine.find((block) => block.kind === "thematicBreak")
@@ -3174,8 +3103,9 @@ const livePreviewMode = [
   liveDisplayMathField,
   liveRawHTMLField,
   liveCalloutField,
-  liveFootnoteField,
+  liveFootnoteReferenceField,
   livePreview,
+  Prec.high(liveInlinePointerPlacement),
   Prec.high(liveProjectionNavigationKeymap),
   selectionActions.extension,
   previewPopover.extension,

@@ -265,29 +265,30 @@ function parseCallout(cx: BlockContext, line: Line) {
   return null;
 }
 
+function continueFootnoteDefinition(_cx: BlockContext, line: Line, continuationIndent: number) {
+  if (line.pos === line.text.length) return true;
+  if (line.indent < line.baseIndent + continuationIndent) return false;
+  line.moveBaseColumn(line.baseIndent + continuationIndent);
+  return true;
+}
+
+function footnoteDefinitionOpening(line: Line) {
+  return /^\[\^([^\]\r\n]+)\]:[ \t]*/.exec(line.text.slice(line.pos));
+}
+
 function parseFootnoteDefinition(cx: BlockContext, line: Line) {
-  const source = line.text.slice(line.pos);
-  const match = /^\[\^([^\]\r\n]+)\]:[ \t]*/.exec(source);
+  const match = footnoteDefinitionOpening(line);
   if (!match) return false;
   const from = cx.lineStart + line.pos;
   const identifierFrom = from + 2;
   const identifierTo = identifierFrom + match[1].length;
   const contentFrom = from + match[0].length;
-  let to = cx.lineStart + line.text.length;
-  while (cx.nextLine()) {
-    const continuation = line.text.slice(line.basePos);
-    if (!(continuation.length === 0 || continuation.startsWith("  ") || continuation.startsWith("\t"))) break;
-    to = cx.lineStart + line.text.length;
-  }
-  if (cx.lineStart > to) to = cx.lineStart;
-  const children = [
-    cx.elt("FootnoteOpenMark", from, identifierFrom),
-    cx.elt("FootnoteIdentifier", identifierFrom, identifierTo),
-    cx.elt("FootnoteDefinitionMark", identifierTo, contentFrom),
-  ];
-  if (contentFrom < to) children.push(cx.elt("FootnoteContent", contentFrom, to));
-  cx.addElement(cx.elt("FootnoteDefinition", from, to, children));
-  return true;
+  cx.startComposite("FootnoteDefinition", line.pos, 2);
+  cx.addElement(cx.elt("FootnoteOpenMark", from, identifierFrom));
+  cx.addElement(cx.elt("FootnoteIdentifier", identifierFrom, identifierTo));
+  cx.addElement(cx.elt("FootnoteDefinitionMark", identifierTo, contentFrom));
+  line.moveBase(line.pos + match[0].length);
+  return null;
 }
 
 /**
@@ -299,7 +300,11 @@ export const scholiumMarkdownDialect: MarkdownConfig = {
   defineNodes: [
     "WikiLink", "VectorLink", "WikiLinkOpenMark", "WikiEmbedMark", "VectorLinkMark",
     "WikiLinkTarget", "WikiLinkAliasMark", "WikiLinkAlias", "WikiLinkCloseMark",
-    "FootnoteReference", {name: "FootnoteDefinition", block: true}, "InlineFootnote",
+    "FootnoteReference", {
+      name: "FootnoteDefinition",
+      block: true,
+      composite: continueFootnoteDefinition,
+    }, "InlineFootnote",
     "FootnoteOpenMark", "FootnoteIdentifier", "FootnoteDefinitionMark",
     "InlineFootnoteOpenMark", "FootnoteContent", "FootnoteCloseMark",
     "InlineMath", {name: "BlockMath", block: true}, {name: "UnclosedBlockMath", block: true},
@@ -323,6 +328,11 @@ export const scholiumMarkdownDialect: MarkdownConfig = {
     {name: "ScholiumObsidianCommentBlock", parse: parseObsidianCommentBlock, before: "FencedCode"},
     {name: "ScholiumBlockMath", parse: parseBlockMath, before: "FencedCode"},
     {name: "ScholiumCallout", parse: parseCallout, before: "Blockquote"},
-    {name: "ScholiumFootnoteDefinition", parse: parseFootnoteDefinition, before: "LinkReference"},
+    {
+      name: "ScholiumFootnoteDefinition",
+      parse: parseFootnoteDefinition,
+      endLeaf: (_cx, line) => footnoteDefinitionOpening(line) !== null,
+      before: "LinkReference",
+    },
   ],
 };
