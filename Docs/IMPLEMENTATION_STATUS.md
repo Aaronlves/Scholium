@@ -179,19 +179,11 @@ or release acceptance.
 | 1.0 Codex handoff | Copy-first Beta handoff is separate and reachable. | Implement supported-app/root validation, new-task adapter, locator-only composer, explicit submission/copy fallback, retry/cancel/Unicode/accessibility/reactivation, and unchanged-run recovery. Do not begin Run with Codex. |
 | Distribution | Local source-first packaging, resource/signature validation, CLI execution, ZIP, and checksum smoke exist. Debug, QA, and release assembly all copy the D-097 canonical application icon named by the bundle plist. | Clean exact tag, external install, canonical-icon Finder/Dock inspection, published source/artifact provenance, and G9. Developer ID and notarization remain outside the current source-first Beta gate unless a later distribution channel adopts them. |
 
-## Active architecture migrations
-
-The approved follow-up observation and Store-boundary audit proceeds one
-reviewable owner at a time. File size or a raw call count alone cannot justify
-an extraction.
-
-| Batch | Evidence-backed boundary | Required invariant |
-| --- | --- | --- |
-| 19 | Classify every remaining direct `WindowModel` use of `WorkspaceStore`; extract only a cohesive ownership boundary supported by live dependency, lifecycle, or recovery evidence. | Composition, event ordering, window identity, exact-source preservation, editor flush ordering, and external delivery remain unchanged. |
-
 ## Completed architecture migrations
 
-Completed items below have live ownership evidence and deterministic guards.
+No open architecture migration remains in the current ledger. Add a new item
+only when live ownership, dependency, lifecycle, transaction, recovery, or
+measured-performance evidence justifies it; file size alone is not an item.
 The original batch-by-batch sequence and detailed proof notes remain in Git.
 
 | Former batches | Current boundary | Invariant retained |
@@ -211,6 +203,7 @@ The original batch-by-batch sequence and detailed proof notes remain in Git.
 | 16 | `AttentionPopoverSession` observes only the exact Workspace assignment, immutable Workspace projection, and dismissal-duration setting it renders; refresh and resynthesis remain closed borrowed effects. The adapter no longer retains or observes `WindowModel`. | Sidebar and Inspector anchors share one transient session; current Scope and Note filtering, stale-data recovery, exact navigation, and per-window isolation remain unchanged. |
 | 17 | `WindowSearchController` publishes only its Saved Search state and no longer relays `DiscoveryController.objectWillChange`; Search presentation consumers observe the exact Discovery owner directly. | Search execution, serialized Saved Search persistence, result-freshness rejection, ordinary Find scope, and one visible Search projection remain unchanged. |
 | 18 | `ResearchController` publishes only research records, checkpoint/recovery state, and its active document; it no longer republishes shell, `ResearchActionController`, or `RecommendedBibliographyController` changes. Content and leaf views observe those exact owners directly. | Inspector mode and visibility, Action presentation and cancellation, Research Record, checkpoint/recovery, and bibliography lifecycles remain independently owned and window-scoped. |
+| 19 | The pre-migration audit classified all 35 direct `WindowModel` calls to `WorkspaceStore`. Three restore/save calls that bypassed the existing persistence owner now belong to `WindowSessionPersistenceCoordinator` behind `WindowSessionPersistenceStore`. The 32 retained calls are explicitly allowlisted as 12 composition/subscription, 7 window-intent/external-delivery, and 13 cross-owner Workspace activation/recovery calls; they remain in the composition root instead of gaining a pass-through facade. | Presentation restore, replaceable saves, and bounded final save share one owner; document flush and window identity ordering remain unchanged; a new direct Store call now fails the architecture guard until classified. |
 
 ## Current verification baseline
 
@@ -218,8 +211,8 @@ The original batch-by-batch sequence and detailed proof notes remain in Git.
 
 | Evidence | Current passing result | Boundary of the claim |
 | --- | --- | --- |
-| Repository gate | `verify.sh` passed 15 protected Skill packages; 143 WebEditor tests and reproducible resources; deterministic RDF-1 v2 for 800 notes; 514 Core tests plus 3 isolated performance tests; 121 Contracts; 155 Application; 12 Local Agent bridge; 1 serialized architecture measurement; 376 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 150.71 seconds. | Automated source and disposable-fixture evidence, not a release artifact or human acceptance. |
-| Search performance gate | The fixed 2,056-note mixed-script fixture recorded 723.402 ms cold rebuild, 17.033 ms incremental-publication p95, 73.157 ms warm-query p95, 52,583,296 database bytes, and 151,846,912 peak RSS bytes. | One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does not establish causation or packaged GUI latency. |
+| Repository gate | `verify.sh` passed 15 protected Skill packages; 143 WebEditor tests and reproducible resources; deterministic RDF-1 v2 for 800 notes; 514 Core tests plus 3 isolated performance tests; 121 Contracts; 155 Application; 12 Local Agent bridge; 1 serialized architecture measurement; 381 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 155.83 seconds. | Automated source and disposable-fixture evidence, not a release artifact or human acceptance. |
+| Search performance gate | The fixed 2,056-note mixed-script fixture recorded 750.949 ms cold rebuild, 18.140 ms incremental-publication p95, 75.796 ms warm-query p95, 52,583,296 database bytes, and 151,486,464 peak RSS bytes. | One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does not establish causation or packaged GUI latency. |
 | Architecture-focused UI | Current isolated journeys passed the exact-window Agent sheet (16.808 s), two-window projection convergence (51.864 s), and the stable native-toolbar Sidebar/Inspector pointer journey (24.384 s). The last journey resolves each Show/Hide state strictly beneath the real Toolbar accessibility subtree and confirms one control identifier per peripheral. | Representative Debug/QA paths only; headless tests own durable, authentication, and transaction claims. |
 | Complete UI baseline | The latest complete serial profile on 2026-07-28 enumerated all 74 then-current ordinary journeys. Three harness failures and the actionable compact-width skip passed focused revalidation; genuine VoiceOver speech remained conditionally skipped. | It predates the final architecture batches; affected boundaries received focused tests, builds, and the journeys above, but the complete UI profile was not rerun. |
 | Upgrade safety | A distinct-build disposable byte-hostile Triptych preserved path, size, SHA-256, permissions, and mtime for all 195 authoritative files; only allowlisted manifest/identity changes occurred. | QA-build evidence only; rerun for every release. |

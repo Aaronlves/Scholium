@@ -1675,13 +1675,10 @@ final class WindowModel: ObservableObject {
             windowID: resolvedWindowID,
             registry: workspaceStore
         )
-        let resolvedSessionSaver = finalWindowSessionSaver ?? {
-            [workspaceStore] snapshot, attempt in
-            try await workspaceStore.saveWindowSession(snapshot, attempt: attempt)
-        }
         self.windowSessionPersistenceCoordinator = WindowSessionPersistenceCoordinator(
+            store: workspaceStore,
             lifecyclePolicy: lifecyclePolicy,
-            finalSaver: resolvedSessionSaver
+            finalSaver: finalWindowSessionSaver
         )
         self.windowWorkspaceController = WindowWorkspaceController(
             workspaceStore: workspaceStore,
@@ -3170,7 +3167,7 @@ final class WindowModel: ObservableObject {
 
         let stored: WindowSessionSnapshot?
         do {
-            stored = try await workspaceStore.windowSession(id: id)
+            stored = try await windowSessionPersistenceCoordinator.load(id: id)
         } catch {
             showToast(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
             stored = nil
@@ -3258,12 +3255,6 @@ final class WindowModel: ObservableObject {
         let snapshot = currentWindowSessionSnapshot()
         windowSessionPersistenceCoordinator.schedule(
             snapshot: snapshot,
-            save: { [workspaceStore] snapshot, attempt in
-                try await workspaceStore.saveWindowSession(
-                    snapshot,
-                    attempt: attempt
-                )
-            },
             completion: { [weak self] result in
                 guard let self else { return }
                 switch result {

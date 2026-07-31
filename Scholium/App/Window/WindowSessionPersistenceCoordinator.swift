@@ -7,8 +7,22 @@ enum WindowSessionFinalPersistenceResult: Equatable {
     case superseded
 }
 
-/// Owns debounced-save task replacement and bounded final persistence. It
-/// persists presentation only and therefore cannot authorize window closure.
+/// Client-owned persistence port for one window's recoverable presentation
+/// snapshot. The concrete macOS adapter remains in the composition root.
+@MainActor
+protocol WindowSessionPersistenceStore: AnyObject {
+    func windowSession(id: UUID) async throws -> WindowSessionSnapshot?
+    func saveWindowSession(
+        _ snapshot: WindowSessionSnapshot,
+        attempt: LifecycleAttemptID
+    ) async throws
+}
+
+extension WorkspaceStore: WindowSessionPersistenceStore {}
+
+/// Owns presentation restore, debounced-save task replacement, and bounded
+/// final persistence. It persists presentation only and therefore cannot
+/// authorize window closure.
 @MainActor
 final class WindowSessionPersistenceCoordinator {
     typealias Saver = @MainActor (
@@ -17,22 +31,28 @@ final class WindowSessionPersistenceCoordinator {
     ) async throws -> Void
 
     private let lifecyclePolicy: ScholiumLifecyclePolicy
-    private let finalSaver: Saver
+    private let store: any WindowSessionPersistenceStore
+    private let finalSaver: Saver?
     private var saveTask: Task<Void, Never>?
     private static var processWriteSequence: UInt64 = 0
     private(set) var isFinalizing = false
 
     init(
+        store: any WindowSessionPersistenceStore,
         lifecyclePolicy: ScholiumLifecyclePolicy,
-        finalSaver: @escaping Saver
+        finalSaver: Saver? = nil
     ) {
+        self.store = store
         self.lifecyclePolicy = lifecyclePolicy
         self.finalSaver = finalSaver
     }
 
+    func load(id: UUID) async throws -> WindowSessionSnapshot? {
+        try await store.windowSession(id: id)
+    }
+
     func schedule(
         snapshot: WindowSessionSnapshot,
-        save: @escaping Saver,
         completion: @escaping @MainActor (Result<Void, Error>) -> Void
     ) {
         guard !isFinalizing else { return }
@@ -43,9 +63,9 @@ final class WindowSessionPersistenceCoordinator {
             return
         }
         saveTask?.cancel()
-        saveTask = Task {
+        saveTask = Task { [store] in
             do {
-                try await save(snapshot, attempt)
+                try await store.saveWindowSession(snapshot, attempt: attempt)
                 guard !Task.isCancelled else { return }
                 completion(.success(()))
             } catch {
@@ -71,9 +91,16 @@ final class WindowSessionPersistenceCoordinator {
             try await withScholiumLifecycleDeadline(
                 phase: .presentationSnapshot,
                 timeout: lifecyclePolicy.presentationSnapshot
-            ) { [finalSaver] in
+            ) { [store, finalSaver] in
                 _ = await pending?.result
-                try await finalSaver(snapshot, writeAttempt)
+                if let finalSaver {
+                    try await finalSaver(snapshot, writeAttempt)
+                } else {
+                    try await store.saveWindowSession(
+                        snapshot,
+                        attempt: writeAttempt
+                    )
+                }
             }
             guard attemptIsCurrent() else { return .superseded }
             return .saved

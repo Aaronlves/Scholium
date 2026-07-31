@@ -1537,6 +1537,96 @@ struct WindowControllerArchitectureTests {
         ))
     }
 
+    @Test("Remaining WindowModel Store calls are classified and allowlisted")
+    func workspaceStoreCallAudit() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let coordinatorSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowSessionPersistenceCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
+        let end = try #require(appSource.range(
+            of: "private enum ClipboardWorkflowError",
+            range: start.upperBound..<appSource.endIndex
+        ))
+        let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
+        let calls = windowModelSource
+            .components(separatedBy: "workspaceStore.")
+            .dropFirst()
+            .map { fragment in
+                String(fragment.prefix { character in
+                    character.isLetter
+                        || character.isNumber
+                        || character == "_"
+                        || character == "$"
+                })
+            }
+        let actual = Dictionary(grouping: calls, by: { $0 }).mapValues(\.count)
+
+        let compositionAndSubscription = [
+            "savedSearches": 1,
+            "saveSavedSearches": 1,
+            "agentNoteChangeClaims": 1,
+            "agentNoteChangePresentationIdentity": 1,
+            "refreshAgentNoteChangeRequest": 1,
+            "resolveAgentNoteChangeRequest": 1,
+            "snapshot": 1,
+            "cssSnippetStore": 1,
+            "zoteroBridge": 1,
+            "agentApplicationHandoff": 1,
+            "$latestWorkspaceActivation": 1,
+            "$workspaceEvents": 1,
+        ]
+        let windowIntentAndDelivery = [
+            "resolveVault": 2,
+            "revealInFinder": 4,
+            "openExternal": 1,
+        ]
+        let workspaceActivationAndRecovery = [
+            "configureTriptychCapabilities": 1,
+            "registeredVaults": 2,
+            "registeredTriptychs": 2,
+            "portableContainerURL": 2,
+            "workspaceCapabilities": 2,
+            "refreshPendingAgentNoteChangeRequests": 1,
+            "vaultConfig": 2,
+            "snapshot": 1,
+        ]
+        var approved: [String: Int] = [:]
+        for category in [
+            compositionAndSubscription,
+            windowIntentAndDelivery,
+            workspaceActivationAndRecovery,
+        ] {
+            for (name, count) in category {
+                approved[name, default: 0] += count
+            }
+        }
+
+        #expect(compositionAndSubscription.values.reduce(0, +) == 12)
+        #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
+        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 13)
+        #expect(actual == approved)
+        #expect(!windowModelSource.contains("workspaceStore.windowSession"))
+        #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))
+        #expect(coordinatorSource.contains(
+            "protocol WindowSessionPersistenceStore: AnyObject"
+        ))
+        #expect(coordinatorSource.contains("func load(id: UUID)"))
+        #expect(coordinatorSource.contains("store.saveWindowSession("))
+    }
+
     @Test("Window consumers observe bounded owners instead of one root relay")
     func windowObservationOwnership() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

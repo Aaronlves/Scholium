@@ -195,9 +195,11 @@ Triptych capability, document buffer, or durable research state.
 `WindowWorkspaceController` owns the requested Triptych, selected assignment,
 registered-Triptych projection, access-recovery state, installed capability
 generation, and stable vault-identity resolution.
-`WindowSessionPersistenceCoordinator` owns replaceable and final
-presentation saves, and `DocumentTransitionCoordinator` owns transition
-generation. `WindowEditorFlushCoordinator` preserves current-editor
+`WindowSessionPersistenceCoordinator` owns presentation restore plus
+replaceable and final saves behind its client-owned Store port;
+`WindowModel` does not call session persistence directly.
+`DocumentTransitionCoordinator` owns transition generation.
+`WindowEditorFlushCoordinator` preserves current-editor
 flush-before-capture ordering, supplies the aggregate per-window registration
 used by Triptych-wide operations, and tears both registrations down only after
 content-safe close. `AgentNoteChangeWindowController` owns
@@ -219,6 +221,12 @@ root as an invalidation bus. The scene root first retains `WindowModel` and
 `WorkspaceWindowCoordinator` as `StateObject`s, then passes those stable
 instances into `ScholiumWindowObservedRoot`; child `ObservedObject`s are never
 derived from a newly constructed root instance that SwiftUI may discard.
+Direct `WorkspaceStore` use in `WindowModel` is limited to composition and
+event subscription, exact-window intent/external delivery, and cross-owner
+Workspace activation or access recovery. Those calls remain at the composition
+root because moving them into a forwarding gateway would add no owner; an
+executable allowlist requires new call families to receive a fresh ownership
+audit.
 `WindowCommandObservation` owns no product state: it advances
 one window-local revision only for the shell, assignment, Library location,
 document/projection, and Research Action facts that affect focused command
