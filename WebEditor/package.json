@@ -18,12 +18,14 @@
     "@codemirror/view": "6.43.6",
     "@lezer/common": "1.5.2",
     "@lezer/markdown": "1.7.1",
-    "katex": "0.18.1"
+    "katex": "0.18.1",
+    "mermaid": "11.16.0"
   },
   "devDependencies": {
     "@types/node": "22.15.0",
     "esbuild": "0.28.1",
     "linkedom": "0.18.13",
+    "type-fest": "5.8.0",
     "typescript": "7.0.2",
     "vitest": "3.2.7"
   }

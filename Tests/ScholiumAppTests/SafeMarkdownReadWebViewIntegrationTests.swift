@@ -6,6 +6,168 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Review renders inert Mermaid and keeps unsupported source visible")
+    func reviewMermaidProjectionFailsClosed() async throws {
+        let source = """
+        ```MERMAID
+        flowchart LR
+        accTitle: Argument structure
+        accDescr: A reason supports a conclusion.
+        A --> B
+        ```
+
+        ```mermaid
+        not-a-diagram
+        ```
+        """
+        let htmlBody = #"""
+        <pre dir="ltr" data-source-utf16-start="0" data-source-utf16-end="117"><code dir="ltr" class="language-MERMAID">flowchart LR
+        accTitle: Argument structure
+        accDescr: A reason supports a conclusion.
+        A --&gt; B
+        </code></pre>
+        <pre dir="ltr" data-source-utf16-start="119" data-source-utf16-end="155"><code dir="ltr" class="language-mermaid">not-a-diagram
+        </code></pre>
+        """#
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const familySources = [
+              'sequenceDiagram\\nA->>B: Reason',
+              'stateDiagram-v2\\n[*] --> Draft',
+              'classDiagram\\nClaim <|-- Objection',
+              'erDiagram\\nCLAIM ||--o{ REASON : has',
+              'mindmap\\n  root((Argument))\\n    Reason\\n    Objection'
+            ];
+            let staticFamilyCount = 0;
+            for (const source of familySources) {
+              const rendered = await window.scholiumMermaid.render({source});
+              if (rendered.ok) staticFamilyCount += 1;
+            }
+            const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
+            const shadowRoots = outputs.map(output => output.shadowRoot).filter(Boolean);
+            return {
+              runtime: window.scholiumMermaid?.version || 0,
+              staticFamilyCount,
+              rendered: shadowRoots.filter(root => root.querySelector('svg')).length,
+              errors: document.querySelectorAll('.scholium-mermaid-error').length,
+              links: shadowRoots.reduce((count, root) => count + root.querySelectorAll('a').length, 0),
+              scripts: shadowRoots.reduce((count, root) => count + root.querySelectorAll('script').length, 0),
+              visibleFallbacks: [...document.querySelectorAll('.scholium-mermaid-source')]
+                .filter(element => getComputedStyle(element).display !== 'none').length,
+              mapped: document.querySelector('.scholium-mermaid-rendered')?.dataset.sourceUtf16Start || ''
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["runtime"] as? Int == 2)
+        #expect(result["staticFamilyCount"] as? Int == 5)
+        #expect(result["rendered"] as? Int == 1)
+        #expect(result["errors"] as? Int == 1)
+        #expect(result["visibleFallbacks"] as? Int == 1)
+        #expect(result["links"] as? Int == 0)
+        #expect(result["scripts"] as? Int == 0)
+        #expect(result["mapped"] as? String == "0")
+    }
+
+    @Test("Review never offers Comment for a selection intersecting Mermaid")
+    func reviewMermaidSelectionIsNotCommentable() async throws {
+        let source = """
+        Before diagram remains commentable.
+
+        ```mermaid
+        flowchart LR
+        accTitle: Comment boundary
+        accDescr: A rendered premise points to a rendered conclusion.
+        A[Rendered premise] --> B[Rendered conclusion]
+        ```
+
+        After diagram remains commentable.
+        """
+        let document = NoteDocument(relativePath: "Mermaid Comment.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            enablesComments: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const main = document.getElementById('scholium-document');
+            const actions = document.getElementById('selection-actions');
+            const before = [...main.querySelectorAll('p')]
+              .find(element => (element.textContent || '').includes('Before diagram'))?.firstChild;
+            const after = [...main.querySelectorAll('p')]
+              .find(element => (element.textContent || '').includes('After diagram'))?.firstChild;
+            const svg = document.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
+            if (!(before instanceof Text) || !(after instanceof Text) || !svg) return null;
+            const select = range => {
+              const selection = window.getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              document.dispatchEvent(new Event('selectionchange'));
+              return !actions.hidden;
+            };
+
+            const proseRange = document.createRange();
+            proseRange.setStart(before, 0);
+            proseRange.setEnd(before, 'Before diagram'.length);
+            const proseCommentVisible = select(proseRange);
+            const proseSelectionText = window.getSelection()?.toString() || '';
+
+            const walker = document.createTreeWalker(svg, NodeFilter.SHOW_TEXT);
+            let diagramText = null;
+            while (!diagramText) {
+              const candidate = walker.nextNode();
+              if (!candidate) break;
+              if ((candidate.textContent || '').trim()) diagramText = candidate;
+            }
+            if (!(diagramText instanceof Text)) return null;
+            const diagramRange = document.createRange();
+            diagramRange.selectNodeContents(diagramText);
+            const diagramCommentVisible = select(diagramRange);
+
+            const afterRange = document.createRange();
+            afterRange.setStart(after, 0);
+            afterRange.setEnd(after, 'After diagram'.length);
+            const afterCommentVisible = select(afterRange);
+            const afterSelectionText = window.getSelection()?.toString() || '';
+
+            const spanningRange = document.createRange();
+            spanningRange.setStart(before, 0);
+            spanningRange.setEnd(after, 'After diagram'.length);
+            const spanningCommentVisible = select(spanningRange);
+
+            return {
+              proseCommentVisible,
+              proseSelectionText,
+              afterCommentVisible,
+              afterSelectionText,
+              diagramCommentVisible,
+              spanningCommentVisible
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["proseCommentVisible"] as? Bool == true)
+        #expect(result["proseSelectionText"] as? String == "Before diagram")
+        #expect(result["afterCommentVisible"] as? Bool == true)
+        #expect(result["afterSelectionText"] as? String == "After diagram")
+        #expect(result["diagramCommentVisible"] as? Bool == false)
+        #expect(result["spanningCommentVisible"] as? Bool == false)
+    }
+
     @Test("Read scroll observation does not replay one-shot restoration")
     func readScrollObservationDoesNotReplayRestoration() async throws {
         let fixture = Self.longDocumentFixture()
@@ -27,6 +189,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
+        let mermaidRuntime = try await harness.callPageJavaScript(
+            "return window.scholiumMermaid?.version || 0"
+        ) as? Int
+        #expect(mermaidRuntime == 0)
         _ = try await harness.waitUntilCapturedAnchor(stage: "initial one-shot restore") {
             $0.blockUTF16LowerBound == fixture.anchorLowerBound
                 && $0.blockUTF16UpperBound == fixture.anchorUpperBound
@@ -877,6 +1043,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             fingerprint: String,
             initialAnchor: EditorScrollAnchor?,
             initialScrollFraction: Double,
+            enablesComments: Bool = false,
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0
         ) {
@@ -904,6 +1071,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 source: source,
                 htmlBody: htmlBody,
                 fingerprint: fingerprint,
+                enablesComments: enablesComments,
                 sourceBox: sourceBox
             )
             let controller = NSHostingController(rootView: root)
@@ -1612,9 +1780,13 @@ extension MarkdownEditorWebViewIntegrationTests {
         let source: String
         let htmlBody: String
         let fingerprint: String
+        let enablesComments: Bool
         @ObservedObject var sourceBox: SourceBox
 
         var body: some View {
+            let commentHandler: ((PassageCommentSubmission) -> Void)? = enablesComments
+                ? { _ in }
+                : nil
             var surface = SafeMarkdownReadWebView(
                 documentID: "ReadFixture.md",
                 fingerprint: fingerprint,
@@ -1627,7 +1799,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 linkPreviewRevision: sourceBox.linkPreviewRevision,
                 onLinkClick: { _ in },
                 onOpenExternalURL: { _ in },
-                onCommentSelection: nil,
+                onCommentSelection: commentHandler,
                 onSelectionChange: { sourceBox.selection = $0 },
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },

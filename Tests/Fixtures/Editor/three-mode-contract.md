@@ -40,6 +40,13 @@ let mixed = "范围 🧭"
 print(mixed)
 ```
 
+```Mermaid
+flowchart LR
+accTitle: Synthetic argument diagram
+accDescr: A synthetic reason points to a synthetic conclusion.
+Reason[Reason] --> Conclusion[Conclusion]
+```
+
 ---
 
 | Construct | State | Count |

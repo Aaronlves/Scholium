@@ -73,6 +73,7 @@
     "- [ ] Open synthetic task.",
     "> Ordinary quotation",
     "```swift",
+    "```Mermaid",
     "| Construct | State | Count |",
     "> [!orient]",
     "> [!state]",
@@ -293,6 +294,20 @@
         "margin-block-end",
         "border-radius",
         "padding-block-end"
+      ],
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "mermaid-diagram",
+      "semanticRole": "codeBlock",
+      "sourceToken": "```Mermaid\nflowchart LR",
+      "visibleToken": "Reason",
+      "level": "block",
+      "readSelector": ".scholium-document > .scholium-mermaid",
+      "editSelector": ".cm-live-mermaid-widget .scholium-mermaid",
+      "adapterStyleKeys": [
+        "margin-block-start",
+        "margin-block-end"
       ],
       "expectation": "mustMatchReview"
     },

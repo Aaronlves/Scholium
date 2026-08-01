@@ -77,7 +77,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 forMainFrameOnly: true
             ))
         }
-
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
         configuration.websiteDataStore = .nonPersistent()
@@ -215,6 +214,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadFinalizationTask: Task<Void, Never>?
         private var sourceLineNavigationTask: Task<Void, Never>?
         private var linkPreviewUpdateTask: Task<Void, Never>?
+        private var mermaidRuntimeLoadTask: Task<Void, Never>?
+        private var mermaidRuntimeLoadID: UUID?
         private var desiredLinkPreviewRevision = ""
         private var appliedLinkPreviewRevision = ""
         private var loadingLinkPreviewRevision = ""
@@ -502,6 +503,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   let type = payload["type"] as? String else { return }
 
             switch type {
+            case "requestMermaidRuntime":
+                guard let webView = message.webView else { return }
+                requestMermaidRuntime(in: webView)
             case "internalLink":
                 guard let target = payload["target"] as? String,
                       !target.isEmpty,
@@ -554,6 +558,25 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             default:
                 return
+            }
+        }
+
+        private func requestMermaidRuntime(in webView: WKWebView) {
+            guard mermaidRuntimeLoadTask == nil else { return }
+            let loadID = UUID()
+            mermaidRuntimeLoadID = loadID
+            mermaidRuntimeLoadTask = Task { @MainActor [weak self, weak webView] in
+                guard let self else { return }
+                defer {
+                    if self.mermaidRuntimeLoadID == loadID {
+                        self.mermaidRuntimeLoadTask = nil
+                        self.mermaidRuntimeLoadID = nil
+                    }
+                }
+                guard let webView,
+                      self.activeWebView === webView,
+                      !Task.isCancelled else { return }
+                await ScholiumMermaidRuntimeLoader.installAndNotify(in: webView)
             }
         }
 
@@ -622,6 +645,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     #endif
                     let result = try await webView.callAsyncJavaScript(
                         """
+                        if (window.scholiumReadReady) await window.scholiumReadReady;
+                        if (window.scholiumMermaidReady) await window.scholiumMermaidReady;
                         if (document.fonts?.ready) await document.fonts.ready;
                         return true;
                         """,
@@ -749,6 +774,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let expectedFingerprint = fingerprint
             let result = try? await webView.callAsyncJavaScript(
                 """
+                if (window.scholiumReadReady) await window.scholiumReadReady;
+                if (window.scholiumMermaidReady) await window.scholiumMermaidReady;
                 if (document.fonts?.ready) await document.fonts.ready;
                 let extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
                 for (let attempt = 0; attempt < 50 && extent <= 0; attempt += 1) {
@@ -982,6 +1009,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceLineNavigationTask = nil
             linkPreviewUpdateTask?.cancel()
             linkPreviewUpdateTask = nil
+            mermaidRuntimeLoadTask?.cancel()
+            mermaidRuntimeLoadTask = nil
+            mermaidRuntimeLoadID = nil
             inFlightScrollRestoreClaim = nil
             pageIsReady = false
             guard !keepingLoadIdentity else { return }
@@ -1194,7 +1224,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
               <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src data:">
-              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
+              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
               <style id="scholium-presentation-css">\(presentationCSS)</style>
               <style id="scholium-user-css">\(userCSS)</style>
             </head>
@@ -1216,7 +1246,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 </div>
               </div>
               <script>
-              (() => {
+              window.scholiumReadReady = (async () => {
                 'use strict';
                 const version = 1;
                 const documentID = \(encodedDocumentID);
@@ -1282,6 +1312,126 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   });
                 }
                 renderMathNodes();
+
+                function mermaidDiagnostic(wrapper, message) {
+                  const diagnostic = document.createElement('p');
+                  diagnostic.className = 'scholium-mermaid-diagnostic';
+                  diagnostic.textContent = message;
+                  wrapper.append(diagnostic);
+                }
+
+                function isMermaidCode(code) {
+                  return [...code.classList].some(name => name.toLowerCase() === 'language-mermaid');
+                }
+
+                let mermaidRuntimePromise = null;
+                function ensureMermaidRuntime() {
+                  const current = window.scholiumMermaid;
+                  if (current?.version === 2) return Promise.resolve(current);
+                  if (!handler) return Promise.resolve(null);
+                  if (mermaidRuntimePromise) return mermaidRuntimePromise;
+                  mermaidRuntimePromise = new Promise(resolve => {
+                    let settled = false;
+                    const finish = () => {
+                      if (settled) return;
+                      settled = true;
+                      clearTimeout(timeout);
+                      window.scholiumMermaidRuntimeDidLoad = undefined;
+                      const loaded = window.scholiumMermaid;
+                      if (loaded?.version !== 2) mermaidRuntimePromise = null;
+                      resolve(loaded?.version === 2 ? loaded : null);
+                    };
+                    const timeout = setTimeout(finish, 8000);
+                    window.scholiumMermaidRuntimeDidLoad = finish;
+                    post('requestMermaidRuntime');
+                  });
+                  return mermaidRuntimePromise;
+                }
+
+                async function renderMermaidWrapper(wrapper, source) {
+                  for (const child of [...wrapper.children]) {
+                    if (child.classList.contains('scholium-mermaid-output')
+                        || child.classList.contains('scholium-mermaid-diagnostic')
+                        || child.classList.contains('scholium-mermaid-accessible-source')) {
+                      child.remove();
+                    }
+                  }
+                  wrapper.classList.remove('scholium-mermaid-rendered', 'scholium-mermaid-error');
+                  const runtime = await ensureMermaidRuntime();
+                  if (!runtime) {
+                    wrapper.classList.add('scholium-mermaid-error');
+                    mermaidDiagnostic(wrapper, 'Diagram rendering is unavailable. Mermaid source is shown.');
+                    return;
+                  }
+                  try {
+                    const result = await runtime.render({source, themeRoot: document.documentElement});
+                    if (!result.ok) {
+                      wrapper.classList.add('scholium-mermaid-error');
+                      mermaidDiagnostic(wrapper, 'This Mermaid diagram is unsupported or could not be rendered. Source is shown.');
+                      return;
+                    }
+                    const output = document.createElement('div');
+                    output.className = 'scholium-mermaid-output';
+                    if (!runtime.mount(output, result.svg)) {
+                      wrapper.classList.add('scholium-mermaid-error');
+                      mermaidDiagnostic(wrapper, 'This Mermaid diagram could not be isolated safely. Source is shown.');
+                      return;
+                    }
+                    wrapper.prepend(output);
+                    wrapper.classList.add('scholium-mermaid-rendered');
+                    if (result.accessibilityWarning) {
+                      const accessibleSource = document.createElement('span');
+                      accessibleSource.className = 'scholium-mermaid-accessible-source';
+                      accessibleSource.textContent = 'Mermaid source: ' + source;
+                      wrapper.append(accessibleSource);
+                      mermaidDiagnostic(wrapper, 'Add accTitle and accDescr to provide a concise nonvisual account of this diagram.');
+                    }
+                  } catch (_) {
+                    wrapper.classList.add('scholium-mermaid-error');
+                    mermaidDiagnostic(wrapper, 'This Mermaid diagram could not be rendered. Source is shown.');
+                  }
+                }
+
+                async function renderMermaidNodes() {
+                  const nodes = [...document.querySelectorAll('pre > code')]
+                    .filter(code => isMermaidCode(code) && !code.closest('.scholium-mermaid'));
+                  for (const code of nodes) {
+                    const original = code.parentElement;
+                    if (!original) continue;
+                    const source = code.textContent || '';
+                    const wrapper = document.createElement('figure');
+                    wrapper.className = 'scholium-mermaid';
+                    wrapper.dataset.scholiumProtected = 'mermaid';
+                    for (const name of ['data-source-utf16-start', 'data-source-utf16-end', 'data-source-start-line', 'data-source-end-line']) {
+                      if (original.hasAttribute(name)) wrapper.setAttribute(name, original.getAttribute(name));
+                    }
+                    const fallback = original.cloneNode(true);
+                    fallback.classList.add('scholium-mermaid-source');
+                    wrapper.append(fallback);
+                    original.replaceWith(wrapper);
+                    await renderMermaidWrapper(wrapper, source);
+                  }
+                }
+
+                async function refreshMermaidNodes() {
+                  for (const wrapper of document.querySelectorAll('.scholium-mermaid')) {
+                    const source = wrapper.querySelector('.scholium-mermaid-source > code')?.textContent || '';
+                    await renderMermaidWrapper(wrapper, source);
+                  }
+                }
+
+                function scheduleMermaidRefresh() {
+                  const current = window.scholiumMermaidReady || Promise.resolve();
+                  window.scholiumMermaidReady = current.catch(() => {}).then(refreshMermaidNodes);
+                }
+                window.scholiumMermaidReady = renderMermaidNodes();
+                await window.scholiumMermaidReady;
+                for (const mediaQuery of [
+                  matchMedia('(prefers-color-scheme: dark)'),
+                  matchMedia('(prefers-contrast: more)')
+                ]) {
+                  mediaQuery.addEventListener('change', scheduleMermaidRefresh);
+                }
 
                 document.querySelectorAll('a.wiki-link[data-vector-kind]').forEach(link => {
                   const kind = link.dataset.vectorKind;
@@ -1482,6 +1632,29 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 };
 
                 if (selectionEnabled) {
+                  const clearReviewSelection = () => {
+                    commentSelectionRange = null;
+                    commentAnchorElement = null;
+                    selectionActions.hidden = true;
+                    post('selectionChanged');
+                  };
+                  const nodeBelongsToMermaid = node => {
+                    const element = node instanceof Element ? node : node?.parentElement;
+                    if (element?.closest?.('[data-scholium-protected="mermaid"]')) return true;
+                    const shadowHost = node?.getRootNode?.()?.host;
+                    return Boolean(shadowHost?.closest?.('[data-scholium-protected="mermaid"]'));
+                  };
+                  const rangeIntersectsMermaid = (range, root) => {
+                    if (nodeBelongsToMermaid(range.startContainer)
+                        || nodeBelongsToMermaid(range.endContainer)) return true;
+                    return [...root.querySelectorAll('[data-scholium-protected="mermaid"]')].some(element => {
+                      try {
+                        return range.intersectsNode(element);
+                      } catch (_) {
+                        return false;
+                      }
+                    });
+                  };
                   const updateSelectionActions = () => {
                     // Focusing the Comment textarea collapses the document
                     // selection. Keep the anchored composer stable until the
@@ -1493,16 +1666,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     reviewSelectionPresentation.update(selection, main);
                     const text = selection ? selection.toString().trim() : '';
                     if (!text) {
-                      commentSelectionRange = null;
-                      selectionActions.hidden = true;
-                      post('selectionChanged');
+                      clearReviewSelection();
                       return;
                     }
                     const range = selection.getRangeAt(0);
                     if (!main || !main.contains(range.startContainer) || !main.contains(range.endContainer)) {
-                      commentSelectionRange = null;
-                      selectionActions.hidden = true;
-                      post('selectionChanged');
+                      clearReviewSelection();
+                      return;
+                    }
+                    if (rangeIntersectsMermaid(range, main)) {
+                      clearReviewSelection();
                       return;
                     }
                     const rect = range.getBoundingClientRect();

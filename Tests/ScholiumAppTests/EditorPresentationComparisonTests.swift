@@ -216,6 +216,12 @@ extension MarkdownEditorWebViewIntegrationTests {
                 && $0.read.height > 0
                 && $0.edit.height > 0
         })
+        let mermaid = try #require(report.probes.first { $0.id == "mermaid-diagram" })
+        #expect(mermaid.styleDifferences.isEmpty)
+        #expect(abs(mermaid.heightDelta) <= 0.5)
+        #expect(mermaid.lineCountDelta == 0)
+        #expect(mermaid.precedingBlockOrderMatches == true)
+        #expect(abs(mermaid.precedingBlockGapDelta ?? 0) <= 0.5)
     }
 
     private func waitForGeometrySnapshot(

@@ -13,6 +13,10 @@ DEPLOYMENT_TARGET="26.0"
 SDK_VERSION="${SCHOLIUM_SDK_VERSION:-$(xcrun --sdk macosx --show-sdk-version)}"
 RELEASE_LABEL="${SCHOLIUM_RELEASE_LABEL:-0.1.0-beta.1}"
 LICENSE_SOURCE="${ROOT}/Tools/Packaging/Licenses"
+[[ -s "${LICENSE_SOURCE}/Mermaid-and-transitive-NOTICES.txt" ]] || {
+  print -u2 "Missing bundled Mermaid runtime notices. Run Tools/Scripts/build-editor.sh."
+  exit 66
+}
 GIT_COMMIT="$(git -C "${ROOT}" rev-parse HEAD)"
 GIT_EXACT_TAG="$(git -C "${ROOT}" describe --tags --exact-match 2>/dev/null || true)"
 if [[ -z "$(git -C "${ROOT}" status --porcelain)" ]]; then
@@ -63,7 +67,7 @@ EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle/
 if [[ ! -d "${EDITOR_RESOURCES}" ]]; then
   EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
-for editor_resource in index.html editor.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css; do
+for editor_resource in index.html editor.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
   [[ -s "${EDITOR_RESOURCES}/${editor_resource}" ]] || {
     print -u2 "Missing packaged editor resource: ${editor_resource}"
     exit 66

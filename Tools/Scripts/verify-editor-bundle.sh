@@ -13,9 +13,14 @@ renderer="$repo_root/ScholiumContracts/SafeMarkdownRenderer.swift"
 live_editor="$repo_root/WebEditor/editor.ts"
 committed_math="$repo_root/Scholium/Resources/Editor/math.bundle.js"
 committed_math_css="$repo_root/Scholium/Resources/Editor/katex.min.css"
+committed_mermaid="$repo_root/Scholium/Resources/Editor/mermaid.bundle.js"
+committed_mermaid_css="$repo_root/Scholium/Resources/Editor/mermaid.css"
+committed_mermaid_notices="$repo_root/Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt"
 temporary_root="$repo_root/.build/editor-verification-$$"
 temporary="$temporary_root/editor.bundle.js"
 temporary_math="$temporary_root/math.bundle.js"
+temporary_mermaid="$temporary_root/mermaid.bundle.js"
+temporary_mermaid_notices="$temporary_root/Mermaid-and-transitive-NOTICES.txt"
 trap 'rm -rf "$temporary_root"' EXIT INT TERM
 rm -rf "$temporary_root"
 mkdir -p "$temporary_root"
@@ -42,6 +47,17 @@ if [[ ! -s "$footnote_styles" ]] || \
    ! rg -q '^\.cm-live-footnote-reference-widget' "$footnote_styles" || \
    rg -q '^\.cm-live-footnotes-widget' "$footnote_styles"; then
   print -u2 "The shared semantic footnote stylesheet is missing or incomplete: $footnote_styles"
+  exit 1
+fi
+
+if [[ ! -s "$committed_mermaid_css" ]] || \
+   ! rg -q '^\.scholium-mermaid-output' "$committed_mermaid_css" || \
+   ! rg -q '^\.cm-live-mermaid-slot' "$committed_mermaid_css"; then
+  print -u2 "The shared Mermaid stylesheet is missing or incomplete: $committed_mermaid_css"
+  exit 1
+fi
+if [[ ! -s "$committed_mermaid_notices" ]]; then
+  print -u2 "The bundled Mermaid runtime notices are missing: $committed_mermaid_notices"
   exit 1
 fi
 
@@ -82,11 +98,23 @@ fi
 "$repo_root/Tools/Scripts/run-editor-toolchain.sh" \
   --output "$temporary" \
   --math-output "$temporary_math" \
+  --mermaid-output "$temporary_mermaid" \
+  --mermaid-notices-output "$temporary_mermaid_notices" \
   --math-assets "$temporary_root" \
   --test
 
 if ! cmp -s "$temporary" "$committed"; then
   print -u2 "The committed CodeMirror bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
+  exit 1
+fi
+
+if ! cmp -s "$temporary_mermaid" "$committed_mermaid"; then
+  print -u2 "The committed shared Mermaid bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
+  exit 1
+fi
+
+if ! cmp -s "$temporary_mermaid_notices" "$committed_mermaid_notices"; then
+  print -u2 "The committed Mermaid runtime notices are stale. Run Tools/Scripts/build-editor.sh and commit the result."
   exit 1
 fi
 

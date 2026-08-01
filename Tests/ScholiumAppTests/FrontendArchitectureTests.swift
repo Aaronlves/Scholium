@@ -1878,6 +1878,7 @@ struct FrontendArchitectureTests {
             "liveSemanticBlockSpacingField",
             "liveFrontmatterGuardField",
             "liveSelection.extension",
+            "liveMermaidField",
             "liveTableField",
             "liveDisplayMathField",
             "liveRawHTMLField",
@@ -1953,6 +1954,7 @@ struct FrontendArchitectureTests {
         for field in [
             "liveSemanticLineField",
             "liveSemanticBlockSpacingField",
+            "liveMermaidField",
             "liveTableField",
             "liveDisplayMathField",
             "liveRawHTMLField",
@@ -2732,6 +2734,52 @@ struct FrontendArchitectureTests {
         #expect(css.contains("content: \"(\" counter(scholium-equation) \")\""))
         #expect(css.contains(".scholium-math-display .katex { font-style: italic; }"))
         #expect(editorHTML.contains(css))
+    }
+
+    @Test("Review and Edit share one offline fail-closed Mermaid runtime")
+    func sharedMermaidRuntime() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let editorWebViewSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: #"<pre><code class="language-mermaid">flowchart LR\nA --&gt; B</code></pre>"#,
+            source: "```mermaid\nflowchart LR\nA --> B\n```\n",
+            documentID: "Diagram.md",
+            fingerprint: DocumentFingerprint(content: "diagram").sha256,
+            commentEnabled: false,
+            selectionEnabled: false,
+            linkPreviews: [],
+            presentationCSS: "",
+            userCSS: ""
+        )
+        let css = ScholiumMermaidAssets.css
+
+        #expect(ScholiumMermaidAssets.runtimeJavaScript.contains("scholiumMermaid"))
+        #expect(ScholiumMermaidAssets.runtimeJavaScript.contains("securityLevel"))
+        #expect(ScholiumMermaidAssets.runtimeJavaScript.contains("attachShadow"))
+        #expect(css.contains(".scholium-mermaid-output"))
+        #expect(css.contains("overflow-x: auto"))
+        #expect(css.contains("contain: paint"))
+        #expect(editorHTML.contains(css))
+        #expect(!editorWebViewSource.contains(
+            "source: ScholiumMermaidAssets.runtimeJavaScript"
+        ))
+        #expect(editorWebViewSource.contains("case \"requestMermaidRuntime\""))
+        #expect(readHTML.contains(css))
+        #expect(readHTML.contains("window.scholiumMermaidReady"))
+        #expect(readHTML.contains("post('requestMermaidRuntime')"))
+        #expect(readHTML.contains("runtime.mount(output, result.svg)"))
+        #expect(readHTML.contains("document.querySelectorAll('pre > code')"))
+        #expect(readHTML.contains("name.toLowerCase() === 'language-mermaid'"))
+        #expect(!readHTML.contains("diagnostic.setAttribute('role', 'status')"))
     }
 
     @Test("Structured Appearance CSS maps the exported typography and callout profile")

@@ -2095,6 +2095,55 @@ marginless in Edit while the shared semantic-gap field owns the equivalent
 Review flow spacing. Inactive raw HTML follows the same direct-field rule as an
 inert literal widget and reveals exact source only when active.
 
+Mermaid uses one separately bundled, exactly pinned, mode-neutral local runtime
+and one shared component stylesheet. Neither WebView injects the approximately
+3.46 MB runtime at document start. The first real Mermaid projection sends a
+versioned, document-bound request through its existing native bridge; Swift
+installs the app-owned bundle into that page world once and resolves the one
+shared page promise. A page with no Mermaid projection therefore creates no
+Mermaid runtime. Contracts Read first emits ordinary
+escaped, source-located fenced-code DOM. Its thin adapter recognizes only the
+exact `mermaid` info-string token, replaces that one block after the runtime
+settles, and preserves its source coordinates before the Read scroll registry
+and readiness boundary are finalized. Live derives the same fenced ranges from
+the central projection index and owns inactive Mermaid geometry through a
+direct `StateField` block replacement. Activation removes the widget and
+exposes the complete exact fence in the retained `EditorState`; no render is
+requested while the selection remains inside it. Leaving the whole block
+constructs one projection from the latest source. Destroying an inactive Live
+widget aborts its request; the serialized runtime skips an aborted request
+before parsing or rendering rather than accumulating stale off-screen work.
+Source has no Mermaid field.
+
+The locked Mermaid runtime, rather than a Scholium-maintained diagram-family
+list, decides which built-in static syntaxes parse. Calls are serialized because
+Mermaid configuration is process-global. The adapter enforces source and line
+bounds, an edge bound, strict security, local-only execution, deterministic identifiers, no
+HTML labels, no authored initialization directives, no links or callbacks, no
+external-resource syntax, and no diagram-local custom styling. Generated SVG
+is parsed again into a node before insertion: scripts, active or embedded
+content, links, event handlers, external URLs, shadow-host selectors, and
+unsafe CSS values reject the whole output; local fragment marker references
+alone remain. Only a node marked by that successful pass can be mounted, once,
+inside an open Shadow DOM whose app-owned sizing, paint containment, and static
+motion rules bound generated Mermaid CSS. The same boundary preserves the
+intrinsic size of narrow SVGs, proportionally caps wide or overly tall SVGs at
+the document and viewport measures, and replaces generated multicolor scales
+with protected semantic document variables plus an app-owned final Mindmap
+override in both Review and inactive Edit. Review and Edit no longer parse the
+returned SVG through a second `innerHTML` sink. The returned binding callback
+is never invoked. Failure keeps escaped source and a text diagnostic. Missing
+authored `accTitle` or `accDescr` keeps a source-based assistive alternative and
+adds an ordinary visible diagnostic, not a repeatedly announced live region,
+rather than synthesizing philosophical meaning.
+Runtime theme input comes only from the protected document-background,
+surface, primary-text, Accent, and separator semantic variables; Edit rebuilds
+its inactive widget when presentation or system appearance changes, and Read
+rerenders the retained source-backed figure on the same system changes. The
+esbuild input graph deterministically regenerates the distributed Mermaid and
+transitive-package license notice, so packaging cannot silently omit a newly
+bundled runtime dependency.
+
 Link and Vector-Link previews are revision-bound Edit requests. Review resolves
 footnote preview and navigation against its committed sanitized projection. Swift
 owns graph resolution, target selection, committed preview content, containment,

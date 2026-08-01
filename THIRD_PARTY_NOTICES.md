@@ -6,6 +6,9 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
 
 - CodeMirror 6 packages (`@codemirror/autocomplete`, `commands`, `lang-markdown`, `language`, `search`, `state`, and `view`) and their CodeMirror/Lezer runtime dependencies: MIT License.
 - KaTeX 0.18.1 and its bundled KaTeX fonts: MIT License.
+- Mermaid 11.16.0 and the runtime packages included in its offline browser
+  bundle: permissive licenses reproduced package-by-package in
+  `Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt`.
 - Yams 6.2.x: MIT License.
 - Swift Markdown 0.8.0: Apache License 2.0, including its notice and bundled
   Swift CMark attribution.

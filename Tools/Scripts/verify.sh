@@ -138,6 +138,7 @@ if rg -n --glob '*.swift' \
   --glob '!**/Styling/ScholiumTableStyles.swift' \
   --glob '!**/Styling/ScholiumFootnoteStyles.swift' \
   --glob '!**/Styling/ScholiumMathAssets.swift' \
+  --glob '!**/Styling/ScholiumMermaidAssets.swift' \
   --glob '!**/Styling/ScholiumPreviewStyles.swift' \
   '\bFileManager\b|Data\(contentsOf:|String\(contentsOf:' \
   "${ROOT}/Scholium"; then

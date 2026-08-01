@@ -347,6 +347,44 @@ delimiters. The immutable editing dialect owns exact delimiter behavior.
 Malformed or unsupported mathematics stays visible as exact source with a
 diagnostic; rendering never rewrites it.
 
+Review and Edit render a fenced code block whose case-insensitive info-string
+token is exactly `mermaid` as an authored diagram. The exactly pinned, local
+Mermaid runtime determines the supported built-in diagram families; Scholium
+does not maintain a narrower diagram-type list. Review renders on document
+load. In Edit, an inactive block renders once, a direct pointer or keyboard
+entry reveals its complete exact fenced source in the same editor state, and
+the opening delimiter and info string, complete body, and closing delimiter all
+remain visible while any selection intersects the block. The latest source
+renders again only after the selection leaves the complete block. Mermaid never
+renders incrementally while the researcher is typing in that block. Source
+always exposes the exact fence, info string, and content.
+
+Rendered Mermaid retains its intrinsic size when it is narrower than the
+document measure and scales down proportionally when it is wider or exceeds the
+bounded diagram viewport height; it does not force a narrow diagram to fill the
+measure or require document-level horizontal scrolling. Diagram fills, labels,
+borders, and relationship lines derive only from Scholium's protected semantic
+document palette rather than Mermaid's independent multicolor scales. Review
+and inactive Edit use the same projection geometry and styling.
+
+Mermaid is a static illustration projection, not evidence, a Connection, an
+argument endorsement, or a second source authority. It uses no network or
+remote resources and cannot activate links, callbacks, scripts, arbitrary
+initialization directives, diagram-local executable behavior, or injectable
+custom styles. Unsupported, malformed, over-limit, or prohibited input keeps
+its source visible with a textual diagnostic and is never repaired or
+rewritten. Authored `accTitle` and `accDescr` supply the diagram's nonvisual
+account. Their absence is a visible accessibility diagnostic; Scholium retains
+the exact source as an assistive alternative and never invents an
+interpretation of the philosophical structure. Review retains ordinary
+selection and copying for the diagram, but a selection intersecting either a
+rendered Mermaid projection or its visible source fallback is not a passage
+Comment target and exposes no Comment bar.
+The projection does not broaden, replace, or remap a precise selection in
+surrounding Review prose. In Edit, activating the block preserves ordinary
+UTF-16 source selection over the exact fence and body rather than selecting the
+generated SVG or a whole-block surrogate.
+
 Review and Edit treat Obsidian-compatible `![[Target]]` embeds, including
 aliases and heading or block fragments, as source-located neutral links.
 Inactive embeds share protected presentation, navigation, and diagnostics; the
@@ -567,6 +605,12 @@ construct. It contains no Preview command or Preview submenu. Footnote hover,
 focus, and navigation belong to Review only; Edit retains only the ordinary
 cursor-placement needed to reach the underlying Markdown, and Source exposes
 the exact text. Markdown has no bundled underline command.
+
+A Review selection intersecting a protected Mermaid projection, including its
+visible failure fallback, does not expose Comment or publish a passage target.
+The selection and ordinary copying remain available; surrounding authored prose
+remains commentable. Scholium never guesses a line anchor from generated SVG
+text or converts a diagram-node selection into a whole-fence Comment.
 
 Comment expands the contextual bar in place into a bounded multiline field.
 Return saves and closes it, Shift-Return inserts a line break, and Escape

@@ -17,6 +17,24 @@ struct SafeMarkdownRendererTests {
         #expect(html.contains("==also literal=="))
     }
 
+    @Test("Mermaid remains escaped source-located fenced code before projection")
+    func mermaidIsAnInertSourceProjectionInput() {
+        let source = """
+        ```mermaid
+        flowchart LR
+        A[<script>attack()</script>] --> B
+        ```
+        """
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "diagram.md", rawContent: source)
+        ).htmlBody
+
+        #expect(rendered.contains("class=\"language-mermaid\""))
+        #expect(rendered.contains("data-source-utf16-start="))
+        #expect(rendered.contains("&lt;script&gt;attack()&lt;/script&gt;"))
+        #expect(!rendered.contains("<script>attack()</script>"))
+    }
+
     @Test("Raw HTML and remote media remain inert")
     func hostileHTMLIsInert() {
         let source = """

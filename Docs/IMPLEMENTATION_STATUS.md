@@ -1,6 +1,6 @@
 # Scholium Implementation Status
 
-**Audited:** 2026-07-31
+**Audited:** 2026-08-01
 **Target authority:** [SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md)
 **Scope:** current reachability, remaining implementation and acceptance work,
 completed architecture boundaries, and the latest verification baseline. This
@@ -147,6 +147,75 @@ synthetic event timings are diagnostic evidence only: they do not certify a
 physical keyboard, installed Chinese IME candidate handling, user-visible p95,
 or a release threshold.
 
+The 2026-08-01 Mermaid cut adds one exactly pinned offline runtime shared by
+Review and Edit and no Mermaid projection to Source. Case-insensitive exact
+`mermaid` fences render every static family admitted by Mermaid 11.16.0 only
+while the whole block is inactive; pointer or keyboard entry reveals the exact
+fence, and the latest source renders only after exit. Source, line, edge, and
+SVG bounds, strict configuration, prohibited authored behavior, a second SVG
+sanitization pass, CSP confinement, and semantic Scholium palette inputs fail
+closed to escaped source and a textual diagnostic. Missing `accTitle` or
+`accDescr` retains exact source as an assistive alternative and adds a visible
+diagnostic. The actual bundled package graph owns a deterministic checked-in
+license notice. Focused TypeScript and real-WKWebView tests cover mixed-case
+recognition, five representative static families, invalid-source fallback,
+keyboard activation, exact-source retention, and render-after-exit.
+
+A same-day official-source follow-up removes the unconditional 3.46 MB
+Mermaid injection from both WebViews. A validated native bridge request now
+installs the complete pinned runtime only for a page that has a real diagram;
+focused WKWebView checks also observe runtime version zero on otherwise
+representative Review and Edit pages. Destroyed Edit widgets abort pending
+queue work. Sanitization returns a one-shot trusted SVG node, and both modes
+mount it inside paint-contained Shadow DOM rather than reparsing its string in
+a consumer `innerHTML` sink. Generated styling cannot select the host, active
+or external nodes still reject the whole diagram, and the ordinary visible
+accessibility diagnostic is no longer a live region. The focused editor gate
+passes 151 TypeScript tests and reproducible editor, mathematics, Mermaid, and
+license resources; the three owning real-WKWebView checks pass. The complete
+repository gate subsequently passes. Its first attempt stopped only at the
+unrelated Search v4 warm-query microbenchmark (110.92 ms against 100 ms); an
+isolated rerun passed at 95.99 ms, and the subsequent complete gate passed at
+89.29 ms without changing Search code or thresholds.
+
+That cut extends the tracked comparison catalog to 29 semantic probes and 20
+visual blocks. The Mermaid probe has no undeclared style, height, line-count,
+block-order, or preceding-gap difference between Review and inactive Edit.
+This local result does not renew the dated whole-catalog zero-difference claim
+for every other construct. Genuine researcher visual, pointer, keyboard,
+Increase Contrast, and assistive-technology acceptance of Mermaid remains a
+deliberately deferred acceptance stage rather than an implementation proof.
+
+A later same-day QA correction makes a protected Mermaid projection
+non-commentable without disabling selection, copying, or its accessible
+account. Normal prose remains commentable, while a selection inside or spanning
+Mermaid publishes no passage target and exposes no Comment bar. Edit now treats
+fenced-code activation as a whole-block transition: opening delimiter and info
+string, body, and closing delimiter are simultaneously visible, including when
+Left Arrow enters from the closing boundary on the same physical line; the
+inactive projection returns only after complete block exit. The reproducible
+151-test WebEditor gate and focused real-WKWebView Comment, fence-entry, exact-
+source, failure-fallback, and render-after-exit checks pass. Earlier complete-
+gate attempts were intentionally deferred or stopped for host thermal load;
+after final visual QA stabilized the patch, the single pre-commit repository
+gate passed completely as recorded in the current verification baseline.
+
+Final disposable QA on 2026-08-01 found and corrected three shared presentation
+defects before commit: the SVG boundary forced intrinsically narrow diagrams to
+at least 32rem, allowed wide flowcharts to exceed the document measure, and
+left Mindmap's transformed multicolor branch scale visible. The shared runtime
+now preserves narrow intrinsic size, proportionally caps wide and overly tall
+SVGs, and applies protected semantic document colors after Mermaid's Mindmap
+theme generation. Computer Use observation covered wide flowchart, sequence,
+mixed-script Mindmap, state, and accessibility-diagnostic fixtures in light and
+dark Review and inactive Edit. It also observed complete opening/body/closing
+source after Edit activation and an exact `flowchart LR` source selection with
+adjacent lines unchanged. The cross-mode geometry baseline, exact Edit source
+selection, Review prose selection after diagram interaction, and non-commentable
+projection checks pass in four focused real-WKWebView tests; 151 focused
+TypeScript tests pass. This is automated disposable-fixture evidence, not
+researcher acceptance or assistive-technology proof.
+
 The 2026-07-31 selection and Callout cut now gives pointer selection one
 CodeMirror owner and a separately committed Live-projection snapshot. A plain
 projected-syntax click remains one caret; drag projection changes only at
@@ -211,8 +280,8 @@ The original batch-by-batch sequence and detailed proof notes remain in Git.
 
 | Evidence | Current passing result | Boundary of the claim |
 | --- | --- | --- |
-| Repository gate | `verify.sh` passed 15 protected Skill packages; 143 WebEditor tests and reproducible resources; deterministic RDF-1 v2 for 800 notes; 514 Core tests plus 3 isolated performance tests; 121 Contracts; 155 Application; 12 Local Agent bridge; 1 serialized architecture measurement; 381 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 155.83 seconds. | Automated source and disposable-fixture evidence, not a release artifact or human acceptance. |
-| Search performance gate | The fixed 2,056-note mixed-script fixture recorded 750.949 ms cold rebuild, 18.140 ms incremental-publication p95, 75.796 ms warm-query p95, 52,583,296 database bytes, and 151,486,464 peak RSS bytes. | One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does not establish causation or packaged GUI latency. |
+| Repository gate | `verify.sh` passed 15 protected Skill packages; 151 WebEditor tests and reproducible editor, mathematics, Mermaid, and license resources; deterministic RDF-1 v2 for 800 notes; 515 Core tests plus 3 isolated performance tests; 121 Contracts; 155 Application; 12 Local Agent bridge; 1 serialized architecture measurement; 385 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 176.88 seconds. | Automated source and disposable-fixture evidence, not a release artifact or human acceptance. |
+| Search performance gate | The fixed 2,056-note mixed-script fixture recorded 815.174 ms cold rebuild, 19.498 ms incremental-publication p95, 84.671 ms warm-query p95, 52,587,416 database bytes, and 151,158,784 peak RSS bytes. | One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does not establish causation or packaged GUI latency. |
 | Architecture-focused UI | Current isolated journeys passed the exact-window Agent sheet (16.808 s), two-window projection convergence (51.864 s), and the stable native-toolbar Sidebar/Inspector pointer journey (24.384 s). The last journey resolves each Show/Hide state strictly beneath the real Toolbar accessibility subtree and confirms one control identifier per peripheral. | Representative Debug/QA paths only; headless tests own durable, authentication, and transaction claims. |
 | Complete UI baseline | The latest complete serial profile on 2026-07-28 enumerated all 74 then-current ordinary journeys. Three harness failures and the actionable compact-width skip passed focused revalidation; genuine VoiceOver speech remained conditionally skipped. | It predates the final architecture batches; affected boundaries received focused tests, builds, and the journeys above, but the complete UI profile was not rerun. |
 | Upgrade safety | A distinct-build disposable byte-hostile Triptych preserved path, size, SHA-256, permissions, and mtime for all 195 authoritative files; only allowlisted manifest/identity changes occurred. | QA-build evidence only; rerun for every release. |

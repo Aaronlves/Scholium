@@ -160,6 +160,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         webView.navigationDelegate = nil
         coordinator.session.removeCommittedTextSynchronizer()
         coordinator.session.removeSourceChangeHandler()
+        coordinator.cancelMermaidRuntimeLoad()
         coordinator.session.detach(webView)
     }
 
@@ -200,7 +201,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:">
-            <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
+            <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
             <style id="scholium-presentation-css"></style>
             <style id="scholium-user-css"></style>
           </head>
@@ -234,6 +235,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var initialScrollFraction: Double = 0
         var initialScrollAnchor: EditorScrollAnchor?
         private var hasSignaledReady = false
+        private var mermaidRuntimeLoadTask: Task<Void, Never>?
+        private var mermaidRuntimeLoadID: UUID?
 
         init(
             session: MarkdownEditorSession,
@@ -315,6 +318,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case "requestSearch":
                 guard validEnvelope(payload) else { return }
                 onRequestSearch()
+            case "requestMermaidRuntime":
+                guard validEnvelope(payload), let webView = message.webView else { return }
+                requestMermaidRuntime(in: webView)
             case "linkCompletionQuery":
                 guard validEnvelope(payload),
                       let requestID = payload.requestID,
@@ -391,6 +397,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             session.webContentProcessTerminated()
+            cancelMermaidRuntimeLoad()
             hasSignaledReady = false
             awaitingEditorLoad = true
             guard let editorHTML = MarkdownEditorWebView.editorHTML else {
@@ -398,6 +405,31 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 return
             }
             webView.loadHTMLString(editorHTML, baseURL: nil)
+        }
+
+        private func requestMermaidRuntime(in webView: WKWebView) {
+            guard mermaidRuntimeLoadTask == nil else { return }
+            let loadID = UUID()
+            mermaidRuntimeLoadID = loadID
+            mermaidRuntimeLoadTask = Task { @MainActor [weak self, weak webView] in
+                guard let self else { return }
+                defer {
+                    if self.mermaidRuntimeLoadID == loadID {
+                        self.mermaidRuntimeLoadTask = nil
+                        self.mermaidRuntimeLoadID = nil
+                    }
+                }
+                guard let webView,
+                      webView.navigationDelegate === self,
+                      !Task.isCancelled else { return }
+                await ScholiumMermaidRuntimeLoader.installAndNotify(in: webView)
+            }
+        }
+
+        func cancelMermaidRuntimeLoad() {
+            mermaidRuntimeLoadTask?.cancel()
+            mermaidRuntimeLoadTask = nil
+            mermaidRuntimeLoadID = nil
         }
 
         func webView(

@@ -124,6 +124,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/Styling/ScholiumTableStyles.swift",
             "Scholium/Styling/ScholiumFootnoteStyles.swift",
             "Scholium/Styling/ScholiumMathAssets.swift",
+            "Scholium/Styling/ScholiumMermaidAssets.swift",
             "Scholium/Styling/ScholiumPreviewStyles.swift",
         ]
         let prohibited = ["URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:", "FileManager"]

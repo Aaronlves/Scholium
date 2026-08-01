@@ -9,6 +9,148 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Edit renders Mermaid only after the caret leaves its exact fenced source")
+    func mermaidRendersAtFencedBlockExit() async throws {
+        let source = """
+        # Diagram
+
+        ```mermaid
+        flowchart LR
+        accTitle: Argument structure
+        accDescr: A reason supports a conclusion.
+        A --> B
+        ```
+
+        After diagram.
+        """
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func snapshot() async throws -> [String: Any] {
+            try #require(try await harness.callPageJavaScript(
+                """
+                return {
+                  runtime: window.scholiumMermaid?.version || 0,
+                  widgets: document.querySelectorAll('.cm-live-mermaid-widget').length,
+                  rendered: [...document.querySelectorAll('.cm-live-mermaid-widget .scholium-mermaid-output')]
+                    .filter(output => output.shadowRoot?.querySelector('svg')).length,
+                  sourceLines: [...document.querySelectorAll('.cm-line')]
+                    .filter(line => (line.textContent || '').includes('flowchart LR')).length,
+                  openingFenceVisible: [...document.querySelectorAll('.cm-line')]
+                    .some(line => (line.textContent || '').trim() === '```mermaid'
+                      && line.getBoundingClientRect().height > 0.5),
+                  closingFenceVisible: [...document.querySelectorAll('.cm-line')]
+                    .some(line => (line.textContent || '').trim() === '```'
+                      && line.getBoundingClientRect().height > 0.5),
+                  collapsedFenceLines: document.querySelectorAll('.cm-live-code-fence-line').length
+                };
+                """
+            ) as? [String: Any])
+        }
+
+        let clock = ContinuousClock()
+        var deadline = clock.now.advanced(by: .seconds(8))
+        var inactive = try await snapshot()
+        while inactive["rendered"] as? Int != 1 {
+            if clock.now >= deadline {
+                Issue.record("Inactive Mermaid did not render: \(inactive)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(25))
+            inactive = try await snapshot()
+        }
+        #expect(inactive["runtime"] as? Int == 2)
+        #expect(inactive["widgets"] as? Int == 1)
+        #expect(inactive["sourceLines"] as? Int == 0)
+
+        let closingFence = try #require(source.range(of: "```\n\nAfter diagram.")?.lowerBound)
+            .utf16Offset(in: source)
+        let blockTo = closingFence + 3
+        harness.session.revealSourceRange(fromUTF16: blockTo, toUTF16: blockTo)
+        try await harness.waitUntilSelection(head: blockTo, stage: "Mermaid closing boundary")
+        try await harness.session.testingPressArrow("ArrowLeft")
+        try await harness.waitUntilSelection(head: blockTo - 1, stage: "left-arrow Mermaid source entry")
+        deadline = clock.now.advanced(by: .seconds(4))
+        var arrowActive = try await snapshot()
+        while arrowActive["widgets"] as? Int != 0
+            || arrowActive["sourceLines"] as? Int != 1
+            || arrowActive["openingFenceVisible"] as? Bool != true
+            || arrowActive["closingFenceVisible"] as? Bool != true
+        {
+            if clock.now >= deadline {
+                Issue.record("Mermaid source did not expose both fences after arrow entry: \(arrowActive)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            arrowActive = try await snapshot()
+        }
+        #expect(arrowActive["collapsedFenceLines"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.goToLine(10)
+        deadline = clock.now.advanced(by: .seconds(8))
+        var arrowExited = try await snapshot()
+        while arrowExited["rendered"] as? Int != 1 {
+            if clock.now >= deadline {
+                Issue.record("Mermaid did not rerender after arrow exit: \(arrowExited)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(25))
+            arrowExited = try await snapshot()
+        }
+
+        harness.session.goToLine(4)
+        deadline = clock.now.advanced(by: .seconds(4))
+        var active = try await snapshot()
+        while active["widgets"] as? Int != 0
+            || active["sourceLines"] as? Int != 1
+            || active["openingFenceVisible"] as? Bool != true
+            || active["closingFenceVisible"] as? Bool != true
+        {
+            if clock.now >= deadline {
+                Issue.record("Mermaid source did not expose both fences after direct entry: \(active)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            active = try await snapshot()
+        }
+        #expect(active["rendered"] as? Int == 0)
+        #expect(active["collapsedFenceLines"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        let selectedBody = try #require(source.range(of: "A --> B"))
+        let selectedBodyFrom = selectedBody.lowerBound.utf16Offset(in: source)
+        let selectedBodyTo = selectedBody.upperBound.utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: selectedBodyFrom, toUTF16: selectedBodyTo)
+        try await harness.waitUntilSelection(head: selectedBodyTo, stage: "exact Mermaid source selection")
+        let exactSelection = try #require(try await harness.session.currentSelection(
+            for: harness.documentID,
+            in: source
+        ))
+        #expect(exactSelection.excerpt == "A --> B")
+        let selectedActive = try await snapshot()
+        #expect(selectedActive["widgets"] as? Int == 0)
+        #expect(selectedActive["openingFenceVisible"] as? Bool == true)
+        #expect(selectedActive["closingFenceVisible"] as? Bool == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.goToLine(10)
+        deadline = clock.now.advanced(by: .seconds(8))
+        var exited = try await snapshot()
+        while exited["rendered"] as? Int != 1 {
+            if clock.now >= deadline {
+                Issue.record("Mermaid did not rerender after direct exit: \(exited)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(25))
+            exited = try await snapshot()
+        }
+        #expect(exited["widgets"] as? Int == 1)
+        #expect(exited["sourceLines"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
     @Test("The published editor mode changes only after the Web bridge acknowledges it")
     func presentedModeWaitsForBridgeAcknowledgement() async throws {
         let dispatcher = SuspendingModeBridgeDispatcher()
@@ -18,6 +160,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
+        let mermaidRuntime = try await harness.callPageJavaScript(
+            "return window.scholiumMermaid?.version || 0"
+        ) as? Int
+        #expect(mermaidRuntime == 0)
         #expect(harness.session.presentedMode == .livePreview)
         var presentationPublications: [MarkdownEditorPresentationState] = []
         let observation = harness.session.$presentation.dropFirst().sink {

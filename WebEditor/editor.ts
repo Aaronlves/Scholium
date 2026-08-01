@@ -92,6 +92,7 @@ import {
   selectionIntersectsProjection,
   selectionProjectionSignature,
   transactionChangedSyntaxTree,
+  type ProjectionSelectionRange,
   type ProjectionSourceRange,
 } from "./projection-update";
 import {
@@ -127,6 +128,10 @@ import {
   projectionSelectionOverlaps,
 } from "./projection-index";
 import type {MathProjection} from "./math";
+import {
+  mermaidPresentation,
+  type MermaidPresentation,
+} from "./mermaid-presentation";
 import {appendMarkdownBlocks, createTableDOM} from "./markdown-fragment";
 import {validatedLinkPreviews, type LinkPreview, type VectorLinkKind} from "./previews";
 import {
@@ -192,6 +197,31 @@ const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
   ...message,
 });
 
+let mermaidRuntimePromise: Promise<NonNullable<typeof window.scholiumMermaid> | null> | null = null;
+
+function ensureMermaidRuntime() {
+  const current = window.scholiumMermaid;
+  if (current?.version === 2) return Promise.resolve(current);
+  if (!nativeHandler) return Promise.resolve(null);
+  if (mermaidRuntimePromise) return mermaidRuntimePromise;
+  mermaidRuntimePromise = new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      window.scholiumMermaidRuntimeDidLoad = undefined;
+      const loaded = window.scholiumMermaid;
+      if (loaded?.version !== 2) mermaidRuntimePromise = null;
+      resolve(loaded?.version === 2 ? loaded : null);
+    };
+    const timeout = window.setTimeout(finish, 8_000);
+    window.scholiumMermaidRuntimeDidLoad = finish;
+    post({type: "requestMermaidRuntime"});
+  });
+  return mermaidRuntimePromise;
+}
+
 function exactEditorSource() {
   return exactSourceMirror.text;
 }
@@ -206,6 +236,8 @@ const editorModeFacet = Facet.define<EditorMode, EditorMode>({
 });
 const programmaticDocumentChange = Annotation.define<boolean>();
 const refreshLivePreviewEffect = StateEffect.define<null>();
+const refreshMermaidThemeEffect = StateEffect.define<number>();
+let mermaidThemeRevision = 0;
 
 function configuredEditorMode(state: EditorState): EditorMode {
   return state.facet(editorModeFacet);
@@ -375,6 +407,28 @@ class MathWidget extends WidgetType {
 function isFencedDelimiterLine(doc: Text, block: SemanticCodeBlockRange, lineFrom: number) {
   if (!block.fenced) return false;
   return block.markerRanges.some((range) => doc.lineAt(range.from).from === lineFrom);
+}
+
+function selectionAffectedProjectionAndCodeBlockRanges(
+  state: EditorState,
+  previousSelections: readonly ProjectionSelectionRange[],
+  nextSelections: readonly ProjectionSelectionRange[],
+) {
+  const changedCodeBlocks = liveProjectionIndex.index(state).literals.codeBlocks.filter((block) => {
+    const wasActive = previousSelections.some((selection) =>
+      selectionIntersectsProjection(selection, block));
+    const isActive = nextSelections.some((selection) =>
+      selectionIntersectsProjection(selection, block));
+    return wasActive !== isActive;
+  });
+  return immutableProjectionRanges([
+    ...selectionAffectedProjectionRanges(
+      state.doc.length,
+      previousSelections,
+      nextSelections,
+    ),
+    ...changedCodeBlocks,
+  ]);
 }
 
 const legacyRelationshipPredicates = new Set([
@@ -576,6 +630,14 @@ function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
     return true;
   }
 
+  const mermaid = target.closest<HTMLElement>(".cm-live-mermaid-widget");
+  const mermaidPresentation = mermaid ? mermaidWidgetPresentations.get(mermaid) : undefined;
+  if (mermaid && mermaidPresentation) {
+    event.preventDefault();
+    dispatchProjectedPointerSelection(view, event, mermaidPresentation.contentFrom);
+    return true;
+  }
+
   const footnote = target.closest<HTMLElement>(".cm-live-footnote-reference-widget");
   const reference = footnote ? footnoteReferencePresentations.get(footnote) : undefined;
   if (reference?.definitionContentFrom !== null && reference?.definitionContentFrom !== undefined) {
@@ -592,6 +654,171 @@ const liveSelection = createLiveSelectionController({
 });
 
 const tableWidgetPresentations = new WeakMap<HTMLElement, TablePresentation>();
+const mermaidWidgetPresentations = new WeakMap<HTMLElement, MermaidPresentation>();
+const mermaidWidgetAbortControllers = new WeakMap<HTMLElement, AbortController>();
+
+function appendMermaidDiagnostic(wrapper: HTMLElement, message: string) {
+  const diagnostic = document.createElement("p");
+  diagnostic.className = "scholium-mermaid-diagnostic";
+  diagnostic.textContent = message;
+  wrapper.append(diagnostic);
+}
+
+class MermaidWidget extends WidgetType {
+  constructor(
+    readonly presentation: MermaidPresentation,
+    readonly themeRevision: number,
+  ) { super(); }
+
+  eq(other: MermaidWidget) {
+    return other.presentation.source === this.presentation.source
+      && other.themeRevision === this.themeRevision;
+  }
+
+  toDOM(view: EditorView) {
+    const slot = document.createElement("div");
+    slot.className = "cm-live-mermaid-slot cm-live-mermaid-widget";
+    mermaidWidgetPresentations.set(slot, this.presentation);
+    const wrapper = document.createElement("figure");
+    wrapper.className = "scholium-mermaid";
+    wrapper.dataset.scholiumProtected = "mermaid";
+    const fallback = document.createElement("pre");
+    fallback.className = "scholium-mermaid-source";
+    const code = document.createElement("code");
+    code.textContent = this.presentation.source;
+    fallback.append(code);
+    wrapper.append(fallback);
+    slot.append(wrapper);
+    const abortController = new AbortController();
+    mermaidWidgetAbortControllers.set(slot, abortController);
+
+    void ensureMermaidRuntime().then(async (runtime) => {
+      if (abortController.signal.aborted || !slot.isConnected) return;
+      if (!runtime) {
+        wrapper.classList.add("scholium-mermaid-error");
+        appendMermaidDiagnostic(wrapper, "Diagram rendering is unavailable. Mermaid source is shown.");
+        view.requestMeasure();
+        return;
+      }
+      const result = await runtime.render({
+        source: this.presentation.content,
+        themeRoot: document.documentElement,
+        signal: abortController.signal,
+      });
+      if (abortController.signal.aborted
+          || !slot.isConnected
+          || (!result.ok && result.reason === "cancelled")) return;
+      if (!result.ok) {
+        wrapper.classList.add("scholium-mermaid-error");
+        appendMermaidDiagnostic(wrapper, "This Mermaid diagram is unsupported or could not be rendered. Source is shown.");
+        view.requestMeasure();
+        return;
+      }
+      const output = document.createElement("div");
+      output.className = "scholium-mermaid-output";
+      if (!runtime.mount(output, result.svg)) {
+        wrapper.classList.add("scholium-mermaid-error");
+        appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be isolated safely. Source is shown.");
+        view.requestMeasure();
+        return;
+      }
+      wrapper.prepend(output);
+      wrapper.classList.add("scholium-mermaid-rendered");
+      if (result.accessibilityWarning) {
+        const accessibleSource = document.createElement("span");
+        accessibleSource.className = "scholium-mermaid-accessible-source";
+        accessibleSource.textContent = `Mermaid source: ${this.presentation.content}`;
+        wrapper.append(accessibleSource);
+        appendMermaidDiagnostic(wrapper, "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.");
+      }
+      view.requestMeasure();
+    }).catch(() => {
+      if (abortController.signal.aborted || !slot.isConnected) return;
+      wrapper.classList.add("scholium-mermaid-error");
+      appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be rendered. Source is shown.");
+      view.requestMeasure();
+    });
+    return slot;
+  }
+
+  destroy(dom: HTMLElement) {
+    mermaidWidgetAbortControllers.get(dom)?.abort();
+    mermaidWidgetAbortControllers.delete(dom);
+  }
+
+  ignoreEvent(event: Event) { return event.type !== "mousedown"; }
+}
+
+interface LiveMermaidProjectionState extends LiveBlockProjectionState {
+  readonly presentations: readonly MermaidPresentation[];
+  readonly themeRevision: number;
+}
+
+function liveMermaidDecorations(
+  state: EditorState,
+  presentations: readonly MermaidPresentation[],
+  themeRevision: number,
+) {
+  return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
+    const active = liveSelection.selection(state).ranges.some((range) =>
+      selectionIntersectsProjection(range, presentation));
+    if (active) return [];
+    return [Decoration.replace({
+      widget: new MermaidWidget(presentation, themeRevision),
+      block: true,
+    }).range(presentation.from, presentation.to)];
+  }), true);
+}
+
+function buildLiveMermaidDecorations(
+  state: EditorState,
+  themeRevision = mermaidThemeRevision,
+): LiveMermaidProjectionState {
+  const index = liveProjectionIndex.index(state);
+  if (index.hasUnclosedFrontmatter) {
+    return {decorations: Decoration.none, hasConstructs: true, presentations: [], themeRevision};
+  }
+  const presentations = index.literals.codeBlocks.flatMap((block) => {
+    const presentation = mermaidPresentation(state.doc, block);
+    return presentation ? [presentation] : [];
+  });
+  return {
+    decorations: liveMermaidDecorations(state, presentations, themeRevision),
+    hasConstructs: presentations.length > 0,
+    presentations,
+    themeRevision,
+  };
+}
+
+const liveMermaidField = StateField.define<LiveMermaidProjectionState>({
+  create: buildLiveMermaidDecorations,
+  update(previous, transaction) {
+    const refreshedTheme = transaction.effects.find((effect) => effect.is(refreshMermaidThemeEffect));
+    if (transaction.docChanged || transactionChangedSyntaxTree(transaction) || refreshedTheme) {
+      return buildLiveMermaidDecorations(
+        transaction.state,
+        refreshedTheme?.value ?? mermaidThemeRevision,
+      );
+    }
+    if (!liveSelection.changed(transaction.startState, transaction.state)) return previous;
+    if (activeProjectionSignature(liveSelection.selection(transaction.startState).ranges, previous.presentations)
+        === activeProjectionSignature(liveSelection.selection(transaction.state).ranges, previous.presentations)) {
+      return previous;
+    }
+    return {
+      ...previous,
+      decorations: liveMermaidDecorations(
+        transaction.state,
+        previous.presentations,
+        previous.themeRevision,
+      ),
+    };
+  },
+  provide: (field) => [
+    EditorView.decorations.from(field, (value) => value.decorations),
+    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
+  ],
+});
 
 class TableWidget extends WidgetType {
   constructor(readonly presentation: TablePresentation) { super(); }
@@ -1117,6 +1344,8 @@ function semanticLinePresentation(
       || !range.empty && range.from < lineQueryTo && range.to >= line.from);
   const blocks = rangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
   const codeBlock = rangesIntersecting(index.literals.codeBlocks, line.from, lineQueryTo)[0] ?? null;
+  const codeBlockActive = codeBlock !== null && liveSelection.selection(state).ranges.some((range) =>
+    selectionIntersectsProjection(range, codeBlock));
   const heading = blocks.find((block) => block.kind === "heading") ?? null;
   const headingMarkers = heading?.markerRanges.filter((range) =>
     range.from < lineQueryTo && range.to > line.from) ?? [];
@@ -1161,7 +1390,7 @@ function semanticLinePresentation(
   }
   if (codeBlock) {
     classes.add("cm-live-codeblock");
-    if (!active && isFencedDelimiterLine(state.doc, codeBlock, line.from)) {
+    if (!codeBlockActive && isFencedDelimiterLine(state.doc, codeBlock, line.from)) {
       classes.add("cm-live-code-fence-line");
     } else {
       const firstContentLine = codeBlock.fenced && codeBlock.markerRanges.length > 0
@@ -1176,8 +1405,14 @@ function semanticLinePresentation(
             state.doc.lineAt(codeBlock.markerRanges.at(-1)!.from).number - 1,
           )
         : state.doc.lineAt(codeBlock.to).number;
-      if (line.number === firstContentLine) classes.add("cm-live-codeblock-start");
-      if (line.number === lastContentLine) classes.add("cm-live-codeblock-end");
+      const firstStyledLine = codeBlockActive && codeBlock.fenced
+        ? state.doc.lineAt(codeBlock.markerRanges[0].from).number
+        : firstContentLine;
+      const lastStyledLine = codeBlockActive && codeBlock.fenced && codeBlock.markerRanges.length > 1
+        ? state.doc.lineAt(codeBlock.markerRanges.at(-1)!.from).number
+        : lastContentLine;
+      if (line.number === firstStyledLine) classes.add("cm-live-codeblock-start");
+      if (line.number === lastStyledLine) classes.add("cm-live-codeblock-end");
     }
   } else if (comment) {
     classes.add("cm-live-paragraph");
@@ -1329,8 +1564,8 @@ const liveSemanticLineField = StateField.define<LiveSemanticLineState>({
       };
     }
     if (liveSelection.changed(transaction.startState, transaction.state)) {
-      const affected = selectionAffectedProjectionRanges(
-        transaction.state.doc.length,
+      const affected = selectionAffectedProjectionAndCodeBlockRanges(
+        transaction.state,
         liveSelection.selection(transaction.startState).ranges,
         liveSelection.selection(transaction.state).ranges,
       );
@@ -1632,7 +1867,9 @@ function buildLiveDecorations(
           const fenceLine = semanticCodeBlock
             ? isFencedDelimiterLine(doc, semanticCodeBlock, line.from)
             : false;
-          if (fenceLine && !activeLine) {
+          const codeBlockActive = projectionSelections.some((range) =>
+            selectionIntersectsProjection(range, semanticCodeBlock));
+          if (fenceLine && !codeBlockActive) {
             addHidden(line.from, line.to);
           } else if (!fenceLine) {
             addMark(scanFrom, scanTo, "cm-live-code");
@@ -1906,8 +2143,17 @@ class LivePreviewPlugin {
       this.atomicRanges = projection.atomicRanges;
       this.coveredRanges = projection.coveredRanges;
     } else if (liveSelection.changed(update.startState, update.state)) {
-      const inlineRanges = liveProjectionIndex.index(update.state).inlineRanges;
+      const projectionIndex = liveProjectionIndex.index(update.state);
+      const inlineRanges = projectionIndex.inlineRanges;
+      const codeBlockActivationUnchanged = activeProjectionSignature(
+        liveSelection.selection(update.startState).ranges,
+        projectionIndex.literals.codeBlocks,
+      ) === activeProjectionSignature(
+        liveSelection.selection(update.state).ranges,
+        projectionIndex.literals.codeBlocks,
+      );
       if (!update.view.composing
+          && codeBlockActivationUnchanged
           && selectionProjectionSignature(
             update.startState.doc,
             liveSelection.selection(update.startState).ranges,
@@ -1919,8 +2165,8 @@ class LivePreviewPlugin {
           )) {
         return;
       }
-      const affected = selectionAffectedProjectionRanges(
-        update.state.doc.length,
+      const affected = selectionAffectedProjectionAndCodeBlockRanges(
+        update.state,
         liveSelection.selection(update.startState).ranges,
         liveSelection.selection(update.state).ranges,
       );
@@ -2226,6 +2472,17 @@ const structuralInteractionKeymap = keymap.of([
   },
 ]);
 
+function liveNavigationBlockRanges(state: EditorState) {
+  return [
+    ...liveProjectionIndex.index(state).blockRanges,
+    ...state.field(liveMermaidField).presentations.map(({from, to}) => ({
+      from,
+      to,
+      kind: "mermaid" as const,
+    })),
+  ].sort((left, right) => left.from - right.from || left.to - right.to);
+}
+
 function revealProjectedBlockForVerticalMove(
   view: EditorView,
   forward: boolean,
@@ -2234,18 +2491,15 @@ function revealProjectedBlockForVerticalMove(
   if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
   const selection = view.state.selection.main;
   const moved = view.moveVertically(selection, forward);
-  const index = liveProjectionIndex.index(view.state);
   const crossed = rangesIntersecting(
-    index.blockRanges,
+    liveNavigationBlockRanges(view.state),
     Math.min(selection.head, moved.head),
     Math.max(selection.head, moved.head) + 1,
   ).filter((candidate) => {
     const alreadyActive = view.state.selection.ranges.some((range) => candidate.kind === "callout"
       ? selectionActivatesCallout(range, candidate)
       : selectionIntersectsProjection(range, candidate));
-    if (alreadyActive) {
-      return false;
-    }
+    if (alreadyActive) return false;
     return forward
       ? selection.head <= candidate.from && moved.head >= candidate.to
       : selection.head >= candidate.to && moved.head <= candidate.from;
@@ -2298,7 +2552,7 @@ function revealProjectedBlockForHorizontalMove(
   if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
   const selection = view.state.selection.main;
   const projection = rangesIntersecting(
-    liveProjectionIndex.index(view.state).blockRanges,
+    liveNavigationBlockRanges(view.state),
     Math.max(0, selection.head - 1),
     selection.head + 1,
   ).find((candidate) =>
@@ -2450,6 +2704,7 @@ const livePreviewMode = [
   liveSemanticLineField,
   liveSemanticBlockSpacingField,
   liveFrontmatterGuardField,
+  liveMermaidField,
   liveTableField,
   liveDisplayMathField,
   liveRawHTMLField,
@@ -2522,6 +2777,12 @@ const scrollCoordinator = createEditorScrollCoordinator(editor, {
   onScroll: () => selectionActions.update(editor),
   flushPresentationGeometry: flushPresentationStyleAndGeometry,
 });
+for (const mediaQuery of [
+  matchMedia("(prefers-color-scheme: dark)"),
+  matchMedia("(prefers-contrast: more)"),
+]) {
+  mediaQuery.addEventListener("change", refreshMermaidTheme);
+}
 
 const allCommands = [
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode",
@@ -2890,12 +3151,20 @@ editor.contentDOM.addEventListener("drop", (event) => {
   if (pasteTransfer(event.dataTransfer, position ?? undefined)) event.preventDefault();
 }, {capture: true});
 
+function refreshMermaidTheme() {
+  mermaidThemeRevision += 1;
+  if (configuredEditorMode(editor.state) === "livePreview") {
+    editor.dispatch({effects: refreshMermaidThemeEffect.of(mermaidThemeRevision)});
+  }
+}
+
 function setDynamicStyle(id: string, css: string) {
   const style = document.getElementById(id);
-  if (!style || style.textContent === css) return;
+  if (!style || style.textContent === css) return false;
   style.textContent = css;
   scrollCoordinator.scheduleGeometryReport();
   void document.fonts.ready.then(scrollCoordinator.scheduleGeometryReport);
+  return true;
 }
 
 function flushPresentationStyleAndGeometry() {
@@ -2909,6 +3178,7 @@ function flushPresentationStyleAndGeometry() {
     ".cm-live-h1",
     ".cm-live-h2",
     ".cm-live-callout-widget",
+    ".cm-live-mermaid-widget",
     ".cm-live-list",
   ]) {
     const element = document.querySelector<HTMLElement>(selector);
@@ -3034,7 +3304,7 @@ const editorOperations = {
 
   /** @param {string} css */
   setPresentationCSS(css: string) {
-    setDynamicStyle("scholium-presentation-css", css);
+    if (setDynamicStyle("scholium-presentation-css", css)) refreshMermaidTheme();
   },
 
   /** @param {string} css */
