@@ -63,4 +63,19 @@ describe("live projection index component", () => {
     expect(rebuilt.topologyIdentity).not.toBe(mapped.topologyIdentity);
     expect(metrics).toContain("projection-index");
   });
+
+  it("owns a complete syntax catalog beyond CodeMirror's initial viewport", () => {
+    const controller = createLiveProjectionIndexController({
+      editingDialect: () => dialect,
+      recordMetric: () => {},
+    });
+    const source = `${"ordinary prose ".repeat(300)}\n\n$x$.`;
+    const state = EditorState.create({
+      doc: source,
+      extensions: [scholiumNoteLanguage, controller.extension],
+    });
+
+    expect(controller.index(state).mathExpressions.map((expression) => expression.content))
+      .toEqual(["x"]);
+  });
 });

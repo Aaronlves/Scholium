@@ -62,15 +62,25 @@ struct DocumentSessionLifecycleTests {
         #expect(firstSession.editingSource.isEmpty)
     }
 
-    @Test("Workspace and fallback targets share one retention store")
+    @Test("Fallback targets retain vault-qualified session identity")
     func unifiedTargets() {
         let store = DocumentSessionStore()
         let workspace = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
-        let fallback = DocumentEditingTarget.unavailable(relativePath: "Inbox\\literal.md")
+        let fallbackVaultID = UUID()
+        let fallback = DocumentEditingTarget.unavailable(
+            vaultID: fallbackVaultID,
+            relativePath: "Inbox\\literal.md"
+        )
+        let samePathInAnotherVault = DocumentEditingTarget.unavailable(
+            vaultID: UUID(),
+            relativePath: "Inbox\\literal.md"
+        )
 
         #expect(store.session(for: workspace) === store.session(for: workspace))
         #expect(store.session(for: fallback) === store.session(for: fallback))
-        #expect(store.retainedSessions.count == 2)
+        #expect(store.session(for: fallback) !== store.session(for: samePathInAnotherVault))
+        #expect(fallback.vaultID == fallbackVaultID)
+        #expect(store.retainedSessions.count == 3)
     }
 
     @Test(
@@ -143,7 +153,10 @@ struct DocumentSessionLifecycleTests {
     @Test("A clean detached zero-lease session is fully reaped")
     func detachedEviction() {
         let store = DocumentSessionStore()
-        let target = DocumentEditingTarget.unavailable(relativePath: "Closed.md")
+        let target = DocumentEditingTarget.unavailable(
+            vaultID: UUID(),
+            relativePath: "Closed.md"
+        )
         let session = store.session(for: target)
         session.editingSource = "large exact source"
         session.originalEditingSource = "large exact source"

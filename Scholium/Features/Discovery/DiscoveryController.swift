@@ -1,5 +1,4 @@
 import ScholiumContracts
-import Combine
 import Foundation
 
 struct DiscoveryFilterState: Equatable, Sendable {
@@ -93,6 +92,20 @@ enum DiscoveryLocationRequestPresentation: Equatable, Sendable {
     case stagedReplacement
 }
 
+struct DiscoveryLibraryRevealRequest: Equatable, Sendable {
+    enum Alignment: Equatable, Sendable {
+        /// Scroll only as much as needed to expose a navigation destination.
+        case nearest
+        /// Center a newly created row so its successful appearance is clear.
+        case center
+    }
+
+    let generation: UInt64
+    let scope: LibraryDisclosureScope
+    let relativePath: String
+    let alignment: Alignment
+}
+
 /// Per-window owner for Library and Search presentation state. Document tabs
 /// borrow one window-owned peripheral presentation so switching documents
 /// never appears to rebuild the Library tree.
@@ -103,14 +116,15 @@ final class DiscoveryController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
 
     @Published private(set) var library: DiscoveryLibraryState
+    @Published private(set) var libraryRevealRequest: DiscoveryLibraryRevealRequest?
     @Published private(set) var search = DiscoverySearchState()
 
     private var activeLocationRequest: DiscoveryLocationRequest?
     private var activeSearchRequestID: UUID?
+    private var nextLibraryRevealGeneration: UInt64 = 0
     private let intentHandler: IntentHandler
     private let shellState: WindowShellState
     private var operations: (any DiscoveryUseCases)?
-    private var cancellables: Set<AnyCancellable> = []
 
     init(
         initialLibraryState: DiscoveryLibraryState = DiscoveryLibraryState(),
@@ -120,9 +134,6 @@ final class DiscoveryController: ObservableObject {
         library = initialLibraryState
         self.shellState = shellState
         self.intentHandler = intentHandler
-        shellState.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
     }
 
     func bind(to operations: any DiscoveryUseCases) {
@@ -315,6 +326,53 @@ final class DiscoveryController: ObservableObject {
         in scope: LibraryDisclosureScope?
     ) {
         shellState.setExpandedFolders(folders, in: scope)
+    }
+
+    /// Makes one successfully created Note visible without introducing a
+    /// parallel tree or taking keyboard focus from the action's natural next
+    /// destination. Sort remains independently owned and otherwise unchanged.
+    func prepareCreatedNoteReveal(
+        relativePath: String,
+        folderAncestors: Set<String>,
+        in scope: LibraryDisclosureScope
+    ) {
+        prepareLibraryNoteReveal(
+            relativePath: relativePath,
+            folderAncestors: folderAncestors,
+            clearFilters: true,
+            alignment: .center,
+            in: scope
+        )
+    }
+
+    /// Reveals one exact selected Note after any in-app navigation without
+    /// moving keyboard focus. Filters are cleared only when they actually hide
+    /// that destination; unrelated disclosure and sort state remain intact.
+    func prepareLibraryNoteReveal(
+        relativePath: String,
+        folderAncestors: Set<String>,
+        clearFilters: Bool,
+        alignment: DiscoveryLibraryRevealRequest.Alignment = .nearest,
+        in scope: LibraryDisclosureScope
+    ) {
+        if clearFilters {
+            library.filters = DiscoveryFilterState()
+        }
+        var expanded = expandedFolders(in: scope)
+        expanded.formUnion(folderAncestors)
+        setExpandedFolders(expanded, in: scope)
+        nextLibraryRevealGeneration &+= 1
+        libraryRevealRequest = DiscoveryLibraryRevealRequest(
+            generation: nextLibraryRevealGeneration,
+            scope: scope,
+            relativePath: relativePath,
+            alignment: alignment
+        )
+    }
+
+    func consumeLibraryRevealRequest(_ request: DiscoveryLibraryRevealRequest) {
+        guard libraryRevealRequest == request else { return }
+        libraryRevealRequest = nil
     }
 
     func replaceSearchCriteria(_ criteria: SearchWorkspaceState) {
@@ -528,6 +586,7 @@ final class DiscoveryController: ObservableObject {
     func reset() {
         activeLocationRequest = nil
         activeSearchRequestID = nil
+        libraryRevealRequest = nil
         library = DiscoveryLibraryState(
             workspaceSlot: library.workspaceSlot,
             locationScope: library.locationScope,

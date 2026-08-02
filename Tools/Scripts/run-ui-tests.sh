@@ -39,6 +39,26 @@ terminate_qa_instances() {
   pkill -f "${QA_APP}/Contents/MacOS/Scholium" 2>/dev/null || true
   pkill -f "/private${QA_APP}/Contents/MacOS/Scholium" 2>/dev/null || true
   pkill -f "${REGISTERED_QA}/Contents/MacOS/Scholium" 2>/dev/null || true
+
+  # Also catch this checkout's QA image when its command was launched with a
+  # relative path and therefore does not contain QA_APP in `ps` output.
+  local qa_pid executable
+  local qa_pids=("${(@f)$(pgrep -x Scholium 2>/dev/null || true)}")
+  for qa_pid in "${qa_pids[@]}"; do
+    [[ -n "${qa_pid}" ]] || continue
+    executable="$(
+      /usr/sbin/lsof -a -p "${qa_pid}" -d txt -Fn 2>/dev/null \
+        | sed -n 's/^n//p' \
+        | head -n 1
+    )"
+    case "${executable}" in
+      "${QA_APP}/Contents/MacOS/Scholium"|\
+      "/private${QA_APP}/Contents/MacOS/Scholium"|\
+      "${REGISTERED_QA}/Contents/MacOS/Scholium")
+        kill "${qa_pid}" 2>/dev/null || true
+        ;;
+    esac
+  done
 }
 
 cleanup() {

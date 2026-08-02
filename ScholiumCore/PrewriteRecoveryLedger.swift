@@ -62,6 +62,11 @@ final class PrewriteRecoveryLedger {
         var retainedReason: String?
     }
 
+    private struct VerifiedMutation {
+        let transaction: MutationTransaction
+        let candidate: Data
+    }
+
     private let rootURL: URL
     private let objectsURL: URL
     private let transactionsURL: URL
@@ -71,6 +76,8 @@ final class PrewriteRecoveryLedger {
     private let quarantineURL: URL
     private let settledPinsURL: URL
     private let settledPinStorage: SecureRecordDirectory
+    private let mutationStorage: SecureRecordDirectory
+    private let mutationByteAccess: VaultDescriptorAccess
     private let settledPinLock: AdvisoryFileLock
     private let databaseURL: URL
     private let legacyVersionsURL: URL
@@ -105,6 +112,14 @@ final class PrewriteRecoveryLedger {
             fileMode: 0o600,
             maximumByteCount: 64 * 1024
         )
+        mutationStorage = SecureRecordDirectory(
+            trustedRootURL: storageURL,
+            components: ["recovery-v2", "transactions", "mutations"],
+            directoryMode: 0o700,
+            fileMode: 0o600,
+            maximumByteCount: .max
+        )
+        mutationByteAccess = VaultDescriptorAccess(rootURL: mutationTransactionsURL)
         settledPinLock = try AdvisoryFileLock(
             directory: settledPinStorage,
             fileName: ".settled-pins.lock"
@@ -529,6 +544,94 @@ final class PrewriteRecoveryLedger {
         }.sorted { $0.createdAt < $1.createdAt }
     }
 
+    /// Returns only transactions that startup or a failed commit explicitly
+    /// retained for researcher recovery. Exact bytes and manifest identity are
+    /// revalidated through no-follow descriptor reads before any entry becomes
+    /// delivery-visible.
+    func retainedMutations() throws -> [MutationTransaction] {
+        try pendingMutations().compactMap { transaction in
+            guard transaction.retainedReason != nil else { return nil }
+            return try verifiedMutation(matching: transaction).transaction
+        }
+    }
+
+    func retainedMutation(id: UUID) throws -> MutationTransaction {
+        guard let transaction = try pendingMutations().first(where: { $0.id == id }),
+              transaction.retainedReason != nil else {
+            throw VaultRepositoryError.recoveryEntryNotFound(id)
+        }
+        return try verifiedMutation(matching: transaction).transaction
+    }
+
+    func candidateData(for transaction: MutationTransaction) throws -> Data {
+        try verifiedMutation(matching: transaction).candidate
+    }
+
+    func retainedMutationDirectory(for transaction: MutationTransaction) throws -> URL {
+        _ = try verifiedMutation(matching: transaction)
+        return mutationTransactionURL(transaction.id)
+    }
+
+    private func verifiedMutation(
+        matching reference: MutationTransaction,
+        requiresRetention: Bool = true
+    ) throws -> VerifiedMutation {
+        let directoryName = reference.id.uuidString.lowercased()
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let manifest: MutationTransaction
+        do {
+            manifest = try decoder.decode(
+                MutationTransaction.self,
+                from: mutationStorage.read(
+                    directory: directoryName,
+                    fileName: "manifest.json"
+                )
+            )
+        } catch {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The interrupted save manifest could not be verified: \(error.localizedDescription)"
+            )
+        }
+        guard manifest.id == reference.id,
+              manifest.relativePath == reference.relativePath,
+              manifest.expected == reference.expected,
+              manifest.candidate == reference.candidate,
+              manifest.createdAt == reference.createdAt,
+              (!requiresRetention || manifest.retainedReason != nil) else {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The interrupted save manifest changed after it was listed."
+            )
+        }
+        _ = try MarkdownRelativePath(manifest.relativePath)
+        let expected: Data
+        let candidate: Data
+        do {
+            expected = try mutationByteAccess.read(
+                MarkdownRelativePath("\(directoryName)/expected.md")
+            )
+            candidate = try mutationByteAccess.read(
+                MarkdownRelativePath("\(directoryName)/candidate.md")
+            )
+        } catch {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The interrupted save bytes could not be read safely: \(error.localizedDescription)"
+            )
+        }
+        let observedExpected = DocumentFingerprint(data: expected)
+        let observedCandidate = DocumentFingerprint(data: candidate)
+        guard observedExpected == manifest.expected,
+              observedCandidate == manifest.candidate else {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The interrupted save bytes no longer match their recorded fingerprints."
+            )
+        }
+        return VerifiedMutation(
+            transaction: manifest,
+            candidate: candidate
+        )
+    }
+
     func remap(from source: String, to destination: String) throws {
         _ = try MarkdownRelativePath(source)
         _ = try MarkdownRelativePath(destination)
@@ -588,35 +691,36 @@ final class PrewriteRecoveryLedger {
 
     private func replayMutationTransactions(vaultURL: URL) throws {
         let canonicalRoot = vaultURL.resolvingSymlinksInPath().standardizedFileURL
+        let descriptorAccess = VaultDescriptorAccess(rootURL: canonicalRoot)
         for transaction in try pendingMutations() {
-            let directory = mutationTransactionURL(transaction.id)
             do {
-                let expected = try Data(contentsOf: directory.appendingPathComponent("expected.md"))
-                let candidate = try Data(contentsOf: directory.appendingPathComponent("candidate.md"))
-                guard DocumentFingerprint(data: expected) == transaction.expected,
-                      DocumentFingerprint(data: candidate) == transaction.candidate else {
-                    throw VaultRepositoryError.recoveryLedgerUnavailable(
-                        "A pending mutation's preserved bytes failed fingerprint verification."
-                    )
-                }
+                _ = try verifiedMutation(
+                    matching: transaction,
+                    requiresRetention: false
+                )
                 let path = try MarkdownRelativePath(transaction.relativePath)
-                let target = canonicalRoot.appendingPathComponent(path.rawValue).standardizedFileURL
-                let rootPrefix = canonicalRoot.path.hasSuffix("/")
-                    ? canonicalRoot.path
-                    : canonicalRoot.path + "/"
-                guard target.path.hasPrefix(rootPrefix),
-                      fileManager.fileExists(atPath: target.path) else {
+                let observedData: Data
+                do {
+                    observedData = try descriptorAccess.read(path)
+                } catch VaultRepositoryError.fileDoesNotExist {
                     healthDiagnostic = "A pending save transaction has no unambiguous canonical file and was retained."
                     continue
-                }
-                let values = try target.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
-                guard values.isSymbolicLink != true, values.isRegularFile == true else {
+                } catch VaultRepositoryError.notRegularFile {
                     healthDiagnostic = "A pending save transaction resolved to an unsafe file identity and was retained."
                     continue
                 }
-                let observed = DocumentFingerprint(data: try Data(contentsOf: target))
-                if observed == transaction.expected || observed == transaction.candidate {
+                let observed = DocumentFingerprint(data: observedData)
+                if observed == transaction.candidate {
                     try completeMutation(transaction)
+                } else if observed == transaction.expected {
+                    if transaction.expected == transaction.candidate {
+                        try completeMutation(transaction)
+                    } else {
+                        try retainMutation(
+                            transaction,
+                            reason: "The previous process ended before the candidate revision became canonical. The canonical source remains at its expected revision and the candidate bytes remain in machine-local recovery."
+                        )
+                    }
                 } else {
                     healthDiagnostic = "A pending save transaction observed bytes other than its expected or candidate revision and was retained."
                 }

@@ -5,6 +5,33 @@ import Testing
 
 @Suite("Derived refresh status")
 struct DerivedRefreshStatusTests {
+    @Test("Creation identity rollback failures are never discarded")
+    func creationIdentityRollbackFailureIsExplicit() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumApplication/WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!source.contains(
+            "try? await repository.removeCreatedFileForRollback"
+        ))
+        // Four source-producing operations (import, explicit creation,
+        // untitled creation, and duplication) plus the helper declaration
+        // must retain the same revision-checked rollback boundary.
+        #expect(source.components(
+            separatedBy: "retainedCreatedDocumentAfterIdentityFailure("
+        ).count == 6)
+        #expect(source.contains(
+            "CreatedDocumentIdentityRollbackError.sourcePresenceUncertain("
+        ))
+    }
+
     @Test("Live rebuild failure is typed and a successful retry clears it")
     func liveFailureThenCurrent() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
@@ -160,6 +187,184 @@ struct DerivedRefreshStatusTests {
         }
         #expect(evidence == WorkspaceDerivedRefreshEvidence(snapshot: recovered))
         #expect(recoveryEvent.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == committedRevision)
+        await runtime.shutdown()
+    }
+
+    @Test("A committed Folder claim returns before a failing derived refresh")
+    func committedFolderReturnsBeforeDerivedFailure() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let stream = await handle.events.events()
+        var iterator = stream.makeAsyncIterator()
+        let initial = try #require(await iterator.next())
+        let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
+        defer { try? FileManager.default.removeItem(at: invalidURL) }
+        try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
+
+        let outcome = try await handle.documents.createUntitledFolder(
+            inVault: fixture.analysisNoteID.vaultID,
+            parentRelativePath: nil
+        )
+
+        #expect(outcome.committedValue.rawValue == "Untitled Folder")
+        #expect(outcome.derivedRefreshWarning == nil)
+        #expect(FileManager.default.fileExists(atPath: fixture.analysesURL
+            .appendingPathComponent("Untitled Folder").path))
+        let stale = try #require(await iterator.next())
+        guard case .stale(let issue) = stale.derivedRefreshStatus else {
+            Issue.record("A failed background Folder refresh was not marked stale.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(issue.affectedVaultIDs == [fixture.analysisNoteID.vaultID])
+        #expect(issue.lastKnownGood == WorkspaceDerivedRefreshEvidence(
+            snapshot: initial.snapshot
+        ))
+
+        try FileManager.default.removeItem(at: invalidURL)
+        let refreshed = try await handle.discovery.refresh()
+        #expect(refreshed.vault(id: fixture.analysisNoteID.vaultID)?.folders.contains {
+            $0.rawValue == "Untitled Folder"
+        } == true)
+        _ = try #require(await iterator.next())
+        await runtime.shutdown()
+    }
+
+    @Test("A known-stale projection cannot authorize the optimized move plan")
+    func staleProjectionCannotAuthorizeMoveFastPath() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let stream = await handle.events.events()
+        var iterator = stream.makeAsyncIterator()
+        _ = try #require(await iterator.next())
+
+        let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
+        defer { try? FileManager.default.removeItem(at: invalidURL) }
+        try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
+        _ = try await handle.documents.createUntitledFolder(
+            inVault: fixture.analysisNoteID.vaultID,
+            parentRelativePath: nil
+        )
+        let stale = try #require(await iterator.next())
+        guard case .stale = stale.derivedRefreshStatus else {
+            Issue.record("The fixture did not establish a known-stale projection.")
+            await runtime.shutdown()
+            return
+        }
+
+        let source = try await handle.documents.load(fixture.analysisNoteID)
+        do {
+            _ = try await handle.documents.move(
+                fixture.analysisNoteID,
+                to: "Moved/Agency.md",
+                expectedRevision: source.fingerprint
+            )
+            Issue.record("A stale snapshot unexpectedly authorized an optimized move.")
+        } catch {
+            // The complete planner observes the invalid authoritative source
+            // and fails before the Note rename can commit.
+        }
+        #expect(FileManager.default.fileExists(atPath: fixture.analysesURL
+            .appendingPathComponent("Agency.md").path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
+            .appendingPathComponent("Moved/Agency.md").path))
+        await runtime.shutdown()
+    }
+
+    @Test("Document mutations return committed values instead of retryable refresh failures")
+    func documentMutationOutcomesPreserveCommittedAuthority() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
+        defer { try? FileManager.default.removeItem(at: invalidURL) }
+
+        func makeDerivedRefreshFail() throws {
+            try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
+        }
+
+        func recoverDerivedProjection() async throws {
+            try FileManager.default.removeItem(at: invalidURL)
+            _ = try await handle.discovery.refresh()
+        }
+
+        try makeDerivedRefreshFail()
+        let createdID = VaultQualifiedNoteID(
+            vaultID: fixture.analysisNoteID.vaultID,
+            relativePath: "Postcommit Created.md"
+        )
+        let created = try await handle.documents.create(
+            createdID,
+            content: ""
+        )
+        #expect(created.committedValue.rawContent.isEmpty)
+        #expect(created.derivedRefreshWarning?.isEmpty == false)
+        #expect(created.identityRecoveryWarning == nil)
+        #expect(try await handle.documents.load(createdID).sourceBytes.isEmpty)
+
+        try await recoverDerivedProjection()
+        try makeDerivedRefreshFail()
+        let original = try await handle.documents.load(fixture.analysisNoteID)
+        let saved = try await handle.documents.save(
+            fixture.analysisNoteID,
+            changeSet: .body("Committed once despite a failed derived refresh.\n"),
+            expectedRevision: original.fingerprint
+        )
+        #expect(saved.derivedRefreshWarning?.isEmpty == false)
+        #expect(saved.identityRecoveryWarning == nil)
+        #expect(try await handle.documents.load(fixture.analysisNoteID).fingerprint
+            == saved.committedValue.document.fingerprint)
+
+        try await recoverDerivedProjection()
+        let lifecycleEvents = await handle.events.events()
+        var lifecycleIterator = lifecycleEvents.makeAsyncIterator()
+        _ = try #require(await lifecycleIterator.next())
+        try makeDerivedRefreshFail()
+        let moveSource = try await handle.documents.load(fixture.analysisNoteID)
+        let moved = try await handle.documents.moveToTrash(
+            fixture.analysisNoteID,
+            expectedRevision: moveSource.fingerprint
+        )
+        #expect(moved.committedValue.destination.relativePath == "Trash/Agency.md")
+        #expect(moved.derivedRefreshWarning == nil)
+        #expect(moved.identityRecoveryWarning == nil)
+        let movedDocument = try await handle.documents.load(moved.committedValue.destination)
+        #expect(movedDocument.sourceBytes == moveSource.sourceBytes)
+        let lifecycleStale = try #require(await lifecycleIterator.next())
+        guard case .stale(let lifecycleIssue) = lifecycleStale.derivedRefreshStatus else {
+            Issue.record("A failed background lifecycle refresh was not marked stale.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(lifecycleIssue.affectedVaultIDs == [fixture.analysisNoteID.vaultID])
+
+        try await recoverDerivedProjection()
+        try makeDerivedRefreshFail()
+        let deleted = try await handle.documents.deletePermanently(
+            moved.committedValue.destination,
+            expectedRevision: movedDocument.fingerprint
+        )
+        #expect(deleted.committedValue.relativePath == "Trash/Agency.md")
+        #expect(deleted.derivedRefreshWarning?.isEmpty == false)
+        #expect(deleted.identityRecoveryWarning == nil)
+        await #expect(throws: VaultRepositoryError.self) {
+            _ = try await handle.documents.load(moved.committedValue.destination)
+        }
+
         await runtime.shutdown()
     }
 

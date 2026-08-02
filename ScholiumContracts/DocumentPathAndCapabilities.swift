@@ -155,6 +155,40 @@ public struct VaultPathComparisonKey: Hashable, Sendable {
     }
 }
 
+/// Immutable projection of one vault volume's filename comparison behavior.
+/// Core derives it from the mounted root; delivery consumers may use it only
+/// for conservative preflight and must leave final containment and collision
+/// authorization to the repository.
+public struct VaultPathComparisonPolicy: Codable, Hashable, Sendable {
+    public let caseSensitive: Bool
+    public let normalizationSensitive: Bool
+
+    public init(caseSensitive: Bool, normalizationSensitive: Bool) {
+        self.caseSensitive = caseSensitive
+        self.normalizationSensitive = normalizationSensitive
+    }
+
+    public func comparisonKey(
+        for path: MarkdownRelativePath
+    ) -> VaultPathComparisonKey {
+        VaultPathComparisonKey(
+            path,
+            caseSensitive: caseSensitive,
+            normalizationSensitive: normalizationSensitive
+        )
+    }
+
+    public func comparisonKey(
+        for path: VaultRelativeFolderPath
+    ) -> VaultPathComparisonKey {
+        VaultPathComparisonKey(
+            path,
+            caseSensitive: caseSensitive,
+            normalizationSensitive: normalizationSensitive
+        )
+    }
+}
+
 public enum DocumentIdentityResolution: String, Codable, Hashable, Sendable {
     case resolved
     case unresolved

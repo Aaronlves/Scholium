@@ -398,7 +398,10 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
         }
         guard let note = appState.currentNote else { return nil }
         return appState.documentController.session(
-            for: .unavailable(relativePath: note.relativePath)
+            for: .unavailable(
+                vaultID: note.vaultID,
+                relativePath: note.relativePath
+            )
         )
     }
 }

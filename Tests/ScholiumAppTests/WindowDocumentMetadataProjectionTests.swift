@@ -227,10 +227,16 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(controller.contains(
             "state.propertyFilterOptions = WindowPropertyFilterOptions(notes: notes)"
         ))
+        #expect(controller.contains("state.authors = Set(notes.flatMap(\\.authors)).sorted()"))
+        #expect(controller.contains("state.years = Set(notes.compactMap(\\.year)).sorted(by: >)"))
         #expect(app.contains(
             "var availablePropertyFilterOptions: WindowPropertyFilterOptions {"
         ))
         #expect(app.contains("workspaceProjectionController.propertyFilterOptions"))
+        #expect(app.contains("workspaceProjectionController.authors"))
+        #expect(app.contains("workspaceProjectionController.years"))
+        #expect(!app.contains("Set(notesInCurrentScope.flatMap(\\.authors)).sorted()"))
+        #expect(!app.contains("Set(notesInCurrentScope.compactMap(\\.year)).sorted(by: >)"))
         #expect(!app.contains("@Published var notes: [WindowDocumentLocation]"))
     }
 }

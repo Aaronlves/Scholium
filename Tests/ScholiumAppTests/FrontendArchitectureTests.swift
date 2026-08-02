@@ -42,6 +42,10 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("renderedReadReadyFingerprint"))
         #expect(noteSource.contains("private var readProjectionTaskIdentity: String"))
         #expect(noteSource.contains("noteFingerprint.sha256"))
+        #expect(noteSource.contains("if source.isEmpty"))
+        #expect(noteSource.contains("scholium.emptyNoteReview"))
+        #expect(noteSource.contains("This note has no content."))
+        #expect(noteSource.contains("note.relativePath):"))
         #expect(!noteSource.contains("guard presentationMode == .read else { return }"))
 
         let sessionSource = try String(
@@ -241,6 +245,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let sidebarTreeRowsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarTreeRows.swift"
+            ),
+            encoding: .utf8
+        )
         let noteSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Views/Note/NoteContentView.swift"
@@ -433,8 +443,8 @@ struct FrontendArchitectureTests {
             ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"
         ))
         #expect(!appSource.contains("Collapse Note"))
-        #expect(sidebarSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
-        #expect(sidebarSource.contains("ScholiumInterfaceTypography.libraryNoteTitle"))
+        #expect(sidebarTreeRowsSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
+        #expect(sidebarTreeRowsSource.contains("ScholiumInterfaceTypography.libraryNoteTitle"))
         #expect(sidebarSource.contains("ScholiumInterfaceTypography.metadata"))
         #expect(
             ScholiumMetrics.Library.hierarchyRowHeight
@@ -586,6 +596,54 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let filterMenuSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarLibraryFilterMenu.swift"
+            ),
+            encoding: .utf8
+        )
+        let removalFocusSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarRemovalFocus.swift"
+            ),
+            encoding: .utf8
+        )
+        let outlineSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarOutlineSourceList.swift"
+            ),
+            encoding: .utf8
+        )
+        let outlineCoordinatorSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarOutlineCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        let treeRowsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarTreeRows.swift"
+            ),
+            encoding: .utf8
+        )
+        let outlineRowsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
+            ),
+            encoding: .utf8
+        )
+        let nativeDropSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarNativeDropDestination.swift"
+            ),
+            encoding: .utf8
+        )
+        let treeProjectionSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Features/Discovery/LibraryTreeProjection.swift"
+            ),
+            encoding: .utf8
+        )
         let typographySource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Styling/ScholiumTypography.swift"
@@ -626,13 +684,11 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains("Picker(\"Location\""))
         #expect(!componentsSource.contains("Image(systemName: \"chevron"))
         #expect(sidebarSource.contains(".menuIndicator(.hidden)"))
-        #expect(sidebarSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
-        #expect(sidebarSource.contains("ScholiumInterfaceTypography.librarySelectedNoteTitle"))
+        #expect(treeRowsSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
+        #expect(treeRowsSource.contains("ScholiumInterfaceTypography.librarySelectedNoteTitle"))
         #expect(sidebarSource.contains("ScholiumEditorialIndexUnderline("))
-        #expect(sidebarSource.contains(
-            "ScholiumMotion.disclosure(reduceMotion: reduceMotion)"
-        ))
-        #expect(!sidebarSource.contains(
+        #expect(!treeRowsSource.contains("rotationEffect(.degrees(isExpanded"))
+        #expect(!treeRowsSource.contains(
             "withAnimation(.easeInOut(duration: 0.16)"
         ))
         #expect(sidebarSource.contains("if let attentionAlertState"))
@@ -673,34 +729,166 @@ struct FrontendArchitectureTests {
         let scope = try #require(sidebarSections.range(of: "scopeIndex"))
         let attention = try #require(sidebarSections.range(of: "SidebarAttentionAlert("))
         let library = try #require(sidebarSections.range(of: "locationHeader"))
-        let sourceScroll = try #require(sidebarSections.range(of: "ScrollView(.vertical)"))
+        let sourceRegion = try #require(sidebarSections.range(of: "sourceRegion"))
         let bibliography = try #require(sidebarSections.range(
             of: "recommendedBibliographyUtility"
         ))
         #expect(scope.lowerBound < attention.lowerBound)
         #expect(attention.lowerBound < library.lowerBound)
-        #expect(sourceScroll.lowerBound < bibliography.lowerBound)
-        let sourceRegion = sidebarSections[sourceScroll.lowerBound ..< bibliography.lowerBound]
-        #expect(!sourceRegion.contains("SidebarRecommendedBibliographySection("))
-        #expect(sourceRegion.contains("scholium.noteList"))
-        #expect(sidebarSections.contains(
-            "pinnedViews: [.sectionHeaders]"
+        #expect(library.lowerBound < sourceRegion.lowerBound)
+        #expect(sourceRegion.lowerBound < bibliography.lowerBound)
+        #expect(sidebarSource.contains("SidebarOutlineSourceList("))
+        #expect(
+            sidebarSource.components(separatedBy: "SidebarOutlineSourceList(").count
+                == 2
+        )
+        #expect(sidebarSource.contains(
+            "private var treeProjection: LibraryTreeProjectionVersion"
         ))
-        #expect(sidebarSource.contains("struct SidebarSourceSection"))
-        #expect(sidebarSource.contains("sidebarSourceSections("))
-        #expect(sidebarSource.contains("flattenedVisibleDescendants("))
-        #expect(!sidebarSource.contains("struct SidebarTreeBranch"))
+        #expect(sidebarSource.contains("context.treeProjection"))
+        #expect(!sidebarSource.contains("treeProjection = context.treeProjection"))
+        #expect(sidebarSource.contains("projectionRevision: treeProjection.revision"))
+        #expect(!sidebarSource.contains("notesAreOrdered"))
+        #expect(sidebarSource.contains("treeProjection.value.roots"))
+        #expect(sidebarSource.contains("treeProjection.value.visibleNotePaths("))
+        #expect(!sidebarSource.contains("return buildTree("))
+        #expect(treeProjectionSource.contains("childFoldersByParent"))
+        #expect(treeProjectionSource.contains("final class LibraryTreeProjectionCache"))
+        #expect(treeProjectionSource.contains("requestedInput == input"))
+        #expect(treeProjectionSource.contains("LibraryTreeProjection("))
+        #expect(treeProjectionSource.contains("preorderedNotes notes:"))
+        #expect(
+            treeProjectionSource.components(
+                separatedBy: ".sorted(by: notesAreOrdered)"
+            ).count == 2
+        )
+        #expect(!treeProjectionSource.contains("folderMap.keys.compactMap"))
+
+        #expect(sidebarSource.contains("libraryDisclosureButton"))
+        #expect(sidebarSource.contains("SidebarLibraryFilterMenu("))
+        #expect(sidebarSource.contains("let filterOptions: SidebarLibraryFilterOptions"))
+        #expect(sidebarSource.contains("let canMutateLibrary: Bool"))
+        #expect(!sidebarSource.contains("let canCreateNote: Bool"))
+        #expect(!sidebarSource.contains("let currentVaultID: UUID?"))
+        #expect(sidebarSource.contains("context.disclosureScope?.vaultID"))
+        #expect(filterMenuSource.contains("struct SidebarLibraryFilterMenu: View"))
+        #expect(filterMenuSource.contains("let filters: DiscoveryFilterState"))
+        #expect(filterMenuSource.contains("let replaceFilters:"))
+        #expect(!filterMenuSource.contains("@State"))
+        #expect(!filterMenuSource.contains("@ObservedObject"))
+        #expect(sidebarSource.contains(
+            "@State private var pendingRemovalFocusPlans: [SidebarRemovalFocusPlan]"
+        ))
+        #expect(!sidebarSource.contains(
+            "pendingRemovalFocusPlan: SidebarRemovalFocusPlan?"
+        ))
+        #expect(removalFocusSource.contains("let originDocumentID: VaultQualifiedNoteID"))
+        #expect(removalFocusSource.contains("func sidebarRemovalFocusAfterCompletions("))
+        #expect(removalFocusSource.contains("func sidebarRemovalFocusAfterFailure("))
+        #expect(!removalFocusSource.contains("@State"))
+        #expect(sidebarSource.contains("scholium.noteList"))
+        #expect(sidebarSource.contains(".contextMenu"))
+        #expect(sidebarSource.contains("rootCreationActions"))
+        #expect(sidebarSource.contains("scholium.libraryCreate"))
+        #expect(sidebarSource.contains("Label(\"New Note\", systemImage: \"doc.badge.plus\")"))
+        #expect(sidebarSource.contains("Label(\"New Folder\", systemImage: \"folder.badge.plus\")"))
+        #expect(sidebarSource.contains("dynamicTypeSize.isAccessibilitySize"))
+        for retiredStickyPath in [
+            "pinnedViews: [.sectionHeaders]",
+            "SidebarRootHeaderOffsetPreference",
+            ".onPreferenceChange(",
+            ".visualEffect { effect, geometry in",
+            "struct SidebarSourceSection",
+            "sidebarSourceSections(",
+            "sidebarSourceSectionHeight(",
+        ] {
+            #expect(!sidebarSource.contains(retiredStickyPath))
+        }
+
+        #expect(outlineSource.contains("struct SidebarOutlineSourceList: NSViewRepresentable"))
+        #expect(outlineSource.contains("let outlineView = SidebarOutlineView()"))
+        #expect(outlineSource.contains("outlineView.style = .sourceList"))
+        #expect(outlineSource.contains("outlineView.floatsGroupRows = false"))
+        #expect(outlineSource.contains("outlineView.usesAutomaticRowHeights = false"))
+        #expect(outlineSource.contains("static func dismantleNSView("))
+        #expect(outlineSource.contains("coordinator.detach(from: scrollView)"))
+        #expect(!outlineSource.contains("final class Coordinator"))
+        #expect(!outlineSource.contains("final class SidebarOutlineRowView"))
+
+        #expect(outlineCoordinatorSource.contains("extension SidebarOutlineSourceList"))
+        #expect(outlineCoordinatorSource.contains("NSOutlineViewDataSource"))
+        #expect(outlineCoordinatorSource.contains("NSOutlineViewDelegate"))
+        #expect(outlineCoordinatorSource.contains("configuration.accessibilityLocationName"))
+        #expect(outlineCoordinatorSource.contains("private func reconcile("))
+        #expect(outlineCoordinatorSource.contains("private func refreshAvailableRows("))
+        #expect(outlineCoordinatorSource.contains("makeIfNecessary: false"))
+        #expect(outlineCoordinatorSource.contains("pasteboardWriterForItem item: Any"))
+        #expect(outlineCoordinatorSource.contains("validateDrop info: NSDraggingInfo"))
+        #expect(outlineCoordinatorSource.contains("acceptDrop info: NSDraggingInfo"))
+        #expect(outlineCoordinatorSource.contains("NSOutlineViewDropOnItemIndex"))
+        #expect(outlineCoordinatorSource.contains("func outlineViewSelectionDidChange"))
+        #expect(outlineCoordinatorSource.contains(
+            "outlineView.action = #selector(activateOutlineClick(_:))"
+        ))
+        #expect(!outlineCoordinatorSource.contains(
+            "} else if NSApp.currentEvent?.type == .leftMouseDown"
+        ))
+
+        #expect(outlineRowsSource.contains("final class SidebarOutlineHostingCell"))
+        #expect(outlineRowsSource.contains("final class SidebarOutlineRowView"))
+        #expect(outlineRowsSource.contains("final class SidebarOutlineView"))
+        #expect(outlineRowsSource.contains("private var hoverTrackingArea: NSTrackingArea?"))
+        #expect(outlineRowsSource.components(separatedBy: "NSTrackingArea(").count == 2)
+        #expect(outlineRowsSource.contains("override func mouseMoved(with event: NSEvent)"))
+        #expect(outlineRowsSource.contains("private var hoveredItemID: String?"))
+        #expect(!outlineRowsSource.contains("for row in 0..<numberOfRows"))
+        #expect(outlineRowsSource.contains("visibleRect.contains(point)"))
+        #expect(outlineRowsSource.contains("window.mouseLocationOutsideOfEventStream"))
+        #expect(outlineRowsSource.contains("private var isSelectedDocument = false"))
+        #expect(outlineRowsSource.contains("sidebarOutlineDocumentIsSelected("))
+        #expect(outlineRowsSource.contains("width: ScholiumMetrics.Library.selectionBoundaryWidth"))
+        #expect(!outlineRowsSource.contains("NSViewRepresentable"))
+
+        #expect(treeRowsSource.contains("sidebarLibraryRowLeadingInset(depth:"))
+        #expect(!treeRowsSource.contains("SidebarPointerHoverBackground("))
+        #expect(!sidebarSource.contains("NSTrackingArea("))
+        #expect(!treeRowsSource.contains("@State private var rowIsHovering"))
+        #expect(!sidebarSource.contains(".draggable(SidebarNoteDragItem.self)"))
+        #expect(!sidebarSource.contains(".draggable(SidebarFolderDragItem.self)"))
+        #expect(!sidebarSource.contains(".dropDestination("))
+        #expect(!sidebarSource.contains(".dropConfiguration"))
+        #expect(sidebarSource.contains("SidebarLocationHeaderDropDestination("))
+        #expect(nativeDropSource.contains("guard info.draggingSource != nil"))
+        #expect(nativeDropSource.contains("override func draggingEntered("))
+        #expect(nativeDropSource.contains("override func performDragOperation("))
+        #expect(nativeDropSource.contains("commitSidebarNativeDrop("))
+        #expect(sidebarSource.contains("scholium.libraryDisclosureToggle"))
+        #expect(sidebarSource.contains("shouldCollapse ? \"chevron.down\" : \"chevron.up\""))
+        #expect(sidebarSource.contains("shouldCollapse ? \"chevron.up\" : \"chevron.down\""))
+        #expect(sidebarSource.contains(
+            "VStack(spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment)"
+        ))
+        #expect(sidebarSource.contains("visibleExpandedFolderIDs"))
+        #expect(!sidebarSource.contains("Reveal Current Note"))
+        #expect(!sidebarSource.contains("Library Navigation"))
+        #expect(treeRowsSource.contains("case .rename: \"Rename…\""))
+        #expect(!sidebarSource.contains("Move or Rename…"))
+        #expect(!treeRowsSource.contains("struct SidebarTreeBranch"))
         #expect(!sidebarSource.contains("filteredNotes.count"))
         #expect(
             sidebarSource.components(
                 separatedBy: "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
-            ).count >= 3
+            ).count >= 2
         )
+        #expect(filterMenuSource.contains(
+            "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
+        ))
         #expect(!sidebarSource.contains("Hide Sidebar"))
 
         for section in ["Integrity", "Metadata", "Properties", "Order", "Actions"] {
-            #expect(sidebarSource.contains("Section(\"\(section)\")"))
+            #expect(filterMenuSource.contains("Section(\"\(section)\")"))
         }
+        #expect(!sidebarSource.contains("Section(\"Integrity\")"))
         #expect(!sidebarSource.contains("Section(\"Review\")"))
 
         #expect(sidebarSource.contains("SidebarRecommendedBibliographySection("))
@@ -732,7 +920,7 @@ struct FrontendArchitectureTests {
         #expect(!scopeIndexSource.contains("accessibilityValue"))
     }
 
-    @Test("Lifecycle destinations reuse the Library grid without overlay chrome")
+    @Test("Lifecycle destinations reuse the Library grid with one native Put Back overlay")
     func lifecycleDestinationGridContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -750,20 +938,104 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let outlineSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarOutlineSourceList.swift"
+            ),
+            encoding: .utf8
+        )
+        let outlineRowsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
+            ),
+            encoding: .utf8
+        )
+        let outlineCoordinatorSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarOutlineCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        let treeRowsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarTreeRows.swift"
+            ),
+            encoding: .utf8
+        )
+        let lifecycleSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteLifecycleView.swift"
+            ),
+            encoding: .utf8
+        )
+        let windowDomainSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/Window/WindowDomainTypes.swift"
+            ),
+            encoding: .utf8
+        )
 
         for required in [
             "ScholiumLibraryLocationPicker(selection: locationSelection)",
-            "ScholiumMetrics.Library.hierarchyRowHeight",
             "ScholiumMetrics.Accessibility.preferredCustomTarget",
             "ScholiumGrid.Spacing.inlineControlGap",
             "ScholiumGrid.Spacing.labelAccessoryGap",
             "ScholiumGrid.Spacing.sectionSeparation",
             "ScholiumLibrarySourceState",
-            "pinnedViews: [.sectionHeaders]",
-            "scholium.lifecyclePutBack.",
         ] {
             #expect(sidebarSource.contains(required), "Missing lifecycle destination contract: \(required)")
         }
+        #expect(treeRowsSource.contains("ScholiumMetrics.Library.hierarchyRowHeight"))
+        #expect(treeRowsSource.contains("sidebarLifecyclePutBackControlIsVisible("))
+        for required in [
+            "scholium.lifecyclePutBack.",
+            "putBackDocumentsInProgress",
+            "putBackIsNativeFocused: isNativeFocused",
+        ] {
+            #expect(outlineCoordinatorSource.contains(required), "Missing native outline projection: \(required)")
+        }
+        for required in [
+            "func setHovered(_ hovering: Bool)",
+            "cell?.setHovered(item != nil)",
+            "private func makePutBackButton() -> NSButton",
+            "#selector(activatePutBack)",
+            "putBack.toolTip",
+            "putBack.setAccessibilityLabel",
+            "private var pointerHovered = false",
+            "private var nativeFocused = false",
+            "isHovered: pointerHovered",
+            "isNativeFocused: nativeFocused",
+            "private func makePutBackVeil() -> SidebarPutBackVeil",
+            "view.material = .sidebar",
+            "view.blendingMode = .withinWindow",
+            "private final class SidebarPutBackVeil: NSVisualEffectView",
+            "override func hitTest(_ point: NSPoint) -> NSView? { nil }",
+        ] {
+            #expect(outlineRowsSource.contains(required), "Missing native row projection: \(required)")
+        }
+        #expect(!outlineSource.contains("final class SidebarOutlineRowView"))
+        #expect(!outlineSource.contains("final class Coordinator"))
+        #expect(!outlineRowsSource.contains("NSViewRepresentable"))
+        #expect(!treeRowsSource.contains("usesNativePutBackAccessory"))
+        #expect(!outlineCoordinatorSource.contains("noteDragMovesInProgress"))
+        #expect(!outlineCoordinatorSource.contains("folderDragMovesInProgress"))
+        let treeRowStart = try #require(treeRowsSource.range(
+            of: "struct SidebarTreeNodeRow: View"
+        ))
+        let treeRowEnd = try #require(treeRowsSource.range(
+            of: "private struct SidebarNavigationButtonStyle",
+            range: treeRowStart.upperBound ..< treeRowsSource.endIndex
+        ))
+        let treeRowSource = treeRowsSource[
+            treeRowStart.lowerBound ..< treeRowEnd.lowerBound
+        ]
+        #expect(treeRowSource.contains("surface: .contextMenu"))
+        #expect(treeRowSource.contains("surface: .accessibility"))
+        #expect(treeRowSource.contains("noteCommandButton(command"))
+        #expect(!treeRowSource.contains("requestedFocusPath"))
+        #expect(!treeRowSource.contains("@FocusState"))
+        #expect(outlineCoordinatorSource.contains("private func handleFocusRequest("))
+        #expect(outlineCoordinatorSource.contains("makeFirstResponder(outlineView)"))
         for required in [
             "locationChoice(\"Library\", value: .workspace)",
             "locationChoice(\"Set Aside\", value: .setAside)",
@@ -778,6 +1050,9 @@ struct FrontendArchitectureTests {
         }
         #expect(!componentsSource.contains("Picker(\"Location\""))
         #expect(!componentsSource.contains(".accessibilityRepresentation"))
+        #expect(!treeRowsSource.contains("Button(\"Put Back…\")"))
+        #expect(!lifecycleSource.contains("Put Back"))
+        #expect(!windowDomainSource.contains("case putBack"))
 
         for removed in [
             "SidebarLifecycleCard",
@@ -787,7 +1062,6 @@ struct FrontendArchitectureTests {
             "sidebarBottomRegion",
             "libraryFooterHeight",
             ".boundedPanel",
-            "0.48",
             ".move(edge: .bottom)",
             ".snappy(duration: 0.2)",
             "HStack(spacing: 24)",
@@ -858,9 +1132,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let sidebarSource = try String(
+        let sidebarRowsSource = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarView.swift"
+                "Scholium/Views/Sidebar/SidebarTreeRows.swift"
             ),
             encoding: .utf8
         )
@@ -888,8 +1162,8 @@ struct FrontendArchitectureTests {
             #expect(!componentSource.contains(retiredComponent))
         }
         #expect(componentSource.contains("enum ScholiumDocumentStatusKind"))
-        #expect(sidebarSource.contains("struct SidebarNoteRow"))
-        #expect(!sidebarSource.contains("struct NoteCardRow"))
+        #expect(sidebarRowsSource.contains("struct SidebarNoteRow"))
+        #expect(!sidebarRowsSource.contains("struct NoteCardRow"))
         #expect(!workflowProofSource.contains("case actions"))
         #expect(!workflowProofSource.contains("ResearchActionsProof"))
         #expect(!workflowProofSource.contains("case stateMatrix"))
@@ -1156,7 +1430,7 @@ struct FrontendArchitectureTests {
         #expect(appSource.contains("refreshResearchActionAvailability()"))
     }
 
-    @Test("The Library is opaque and the no-note detail is a quiet semantic surface")
+    @Test("The Library plane is opaque, Liquid Glass is absent, and no-note is restrained")
     func scholarlyEditorialWorkspaceSurfaceContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1181,7 +1455,10 @@ struct FrontendArchitectureTests {
         )
         #expect(content.contains(".scholiumSurface(.navigation)"))
         #expect(content.contains("ScholiumNoDocumentDetailView()"))
-        #expect(content.contains(".accessibilityIdentifier(\"scholium.noDocumentSurface\")"))
+        #expect(content.contains("Text(\"No Document Selected\")"))
+        #expect(content.contains("Text(\"Select a note in the Library to read or edit.\")"))
+        #expect(content.contains(".accessibilityElement(children: .combine)"))
+        #expect(content.contains(".accessibilityIdentifier(\"scholium.noDocumentState\")"))
         #expect(content.contains("ScholiumWorkspaceSplitView("))
         #expect(!content.contains("NavigationSplitView("))
         #expect(!content.contains("HSplitView {"))
@@ -1225,16 +1502,10 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
 
         let productionRoot = repository.appendingPathComponent("Scholium")
-        let forbiddenSurfaceAPIs = [
+        let forbiddenLiquidGlassAPIs = [
             "glassEffect(",
             "GlassEffectContainer",
             ".buttonStyle(.glass",
-            ".regularMaterial",
-            ".ultraThinMaterial",
-            "NSVisualEffectView",
-            "backgroundExtensionEffect(",
-            "scholiumGlassSurface(",
-            "scholiumMaterialSurface(",
         ]
         let enumerator = try #require(
             FileManager.default.enumerator(
@@ -1244,13 +1515,27 @@ struct FrontendArchitectureTests {
         )
         for case let sourceURL as URL in enumerator where sourceURL.pathExtension == "swift" {
             let source = try String(contentsOf: sourceURL, encoding: .utf8)
-            for forbiddenAPI in forbiddenSurfaceAPIs {
+            for forbiddenAPI in forbiddenLiquidGlassAPIs {
                 #expect(
                     !source.contains(forbiddenAPI),
                     "\(sourceURL.lastPathComponent) must not use \(forbiddenAPI)"
                 )
             }
         }
+
+        let sidebarOutlineRows = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(sidebarOutlineRows.contains(
+            "private final class SidebarPutBackVeil: NSVisualEffectView"
+        ))
+        #expect(sidebarOutlineRows.contains("view.material = .sidebar"))
+        #expect(sidebarOutlineRows.contains(
+            "override func hitTest(_ point: NSPoint) -> NSView? { nil }"
+        ))
     }
 
     @Test("Independent windows do not share presentation or document sessions")
@@ -2145,7 +2430,45 @@ struct FrontendArchitectureTests {
         #expect(commit.contains("completion: .sourceOnly"))
         #expect(handleSource.contains("completion: .sourceAndDerived"))
         #expect(handleSource.contains("scheduleSourceCommitRefresh(id: id, kind: .save)"))
+        #expect(handleSource.contains("scheduleCommittedMutationRefresh("))
         #expect(handleSource.contains("Task(priority: .utility)"))
+
+        let folderCreation = try sourceSection(
+            handleSource,
+            from: "func createUntitledFolder(",
+            to: "func moveFolder("
+        )
+        #expect(folderCreation.contains("scheduleCommittedMutationRefresh("))
+        #expect(folderCreation.contains("refreshFolderVaultIDs: [vaultID]"))
+        #expect(!folderCreation.contains("await refreshFolderInventory"))
+
+        let documentMove = try sourceSection(
+            handleSource,
+            from: "private func coordinatedMoveDocument(",
+            to: "private func coordinatedMoveFolder("
+        )
+        #expect(documentMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
+        #expect(!documentMove.contains("await refreshCoordinator.request(refreshPayload)"))
+
+        let folderMove = try sourceSection(
+            handleSource,
+            from: "private func coordinatedMoveFolder(",
+            to: "private func workspaceFolderMovePlan("
+        )
+        #expect(folderMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
+        #expect(!folderMove.contains("try await refresh("))
+
+        let folderPlan = try sourceSection(
+            handleSource,
+            from: "private func workspaceFolderMovePlan(",
+            to: "private func workspaceMovePlan("
+        )
+        #expect(folderPlan.contains("snapshotCanAuthorizeFastPlan"))
+        #expect(folderPlan.contains("graph.sourceManifestHash == sourceManifestHash"))
+        #expect(folderPlan.contains(
+            "IncomingLinkRewriter.folderPlanUsingValidatedSnapshot("
+        ))
+        #expect(folderPlan.contains("repository.markdownRelativePaths()"))
 
         let controllerSource = try String(
             contentsOf: repository.appendingPathComponent(

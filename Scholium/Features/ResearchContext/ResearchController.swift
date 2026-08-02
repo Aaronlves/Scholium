@@ -36,6 +36,7 @@ struct ResearchInspectorState: Equatable, Sendable {
 /// Permission, source-access, and bibliography capabilities remain with their
 /// dedicated controllers and never enter this bundle.
 struct ResearchControllerCapabilities: Sendable {
+    let documents: any DocumentUseCases
     let records: any ResearchRecordUseCases
     let checkpoints: any ResearchCheckpointUseCases
     let skills: any ResearchSkillUseCases
@@ -60,6 +61,8 @@ final class ResearchController: ObservableObject {
     @Published var checkpointListingError: String?
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
     @Published var transactionRecoveryError: String?
+    @Published var interruptedSaveRecoveries: [InterruptedSaveRecovery] = []
+    @Published var interruptedSaveRecoveryError: String?
 
     let actions = ResearchActionController()
     let bibliography = RecommendedBibliographyController()
@@ -97,6 +100,10 @@ final class ResearchController: ObservableObject {
         bibliography.unbind()
         records = nil
         errorMessage = nil
+        transactionRecoveryRecords = []
+        transactionRecoveryError = nil
+        interruptedSaveRecoveries = []
+        interruptedSaveRecoveryError = nil
     }
 
     func researchSnapshot() async throws -> WorkspaceResearchSnapshot {
@@ -356,6 +363,28 @@ final class ResearchController: ObservableObject {
         try await requireRecords().resolveRecoveryRecord(id)
     }
 
+    func loadInterruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery] {
+        try await requireDocuments().interruptedSaveRecoveries()
+    }
+
+    func interruptedSaveRecoveryContent(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> InterruptedSaveRecoveryContent {
+        try await requireDocuments().interruptedSaveRecoveryContent(recovery)
+    }
+
+    func prepareInterruptedSaveRecoveryLocation(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> URL {
+        try await requireDocuments().prepareInterruptedSaveRecoveryLocation(recovery)
+    }
+
+    func restoreInterruptedSaveRecovery(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> WorkspaceMutationOutcome<InterruptedSaveRecoveryRestoreCommit> {
+        try await requireDocuments().restoreInterruptedSaveRecovery(recovery)
+    }
+
     var recoveryRecordsURL: URL? {
         capabilities?.recoveryRecordsURL
     }
@@ -498,6 +527,10 @@ final class ResearchController: ObservableObject {
 
     func reset() {
         activeDocument = nil
+        transactionRecoveryRecords = []
+        transactionRecoveryError = nil
+        interruptedSaveRecoveries = []
+        interruptedSaveRecoveryError = nil
         actions.dismiss()
         bibliography.unbind()
     }
@@ -514,6 +547,15 @@ final class ResearchController: ObservableObject {
             )
         }
         return records
+    }
+
+    private func requireDocuments() throws -> any DocumentUseCases {
+        guard let documents = capabilities?.documents else {
+            throw ScholiumApplicationError.researchStoreUnavailable(
+                "No workspace is active."
+            )
+        }
+        return documents
     }
 
     private func requireCheckpoints() throws -> any ResearchCheckpointUseCases {

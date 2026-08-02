@@ -527,6 +527,8 @@ struct ContentView: View {
 
     private var sidebarContext: SidebarContext {
         let propertyFilterOptions = appState.availablePropertyFilterOptions
+        let preorderedNotes = appState.filteredNotes
+        let folders = appState.currentLibraryFolders
         let selectedLibraryDocumentPath = appState.currentDocumentVaultID
             == appState.currentRegisteredVault?.id
             ? appState.selectedDocumentPath
@@ -537,10 +539,13 @@ struct ContentView: View {
             attentionError: appState.workspaceCatalog == nil
                 ? appState.workspaceCatalogError
                 : nil,
-            filteredNotes: appState.filteredNotes,
+            treeProjection: appState.libraryTreeProjection(
+                preorderedNotes: preorderedNotes,
+                folderRelativePaths: folders
+            ),
             allNotes: appState.notes,
-            folders: appState.currentLibraryFolders,
-            currentVaultID: appState.currentRegisteredVault?.id,
+            folders: folders,
+            pathComparisonPolicy: appState.currentLibraryPathComparisonPolicy,
             disclosureScope: appState.currentRegisteredVault.map {
                 LibraryDisclosureScope(
                     vaultID: $0.id,
@@ -551,23 +556,22 @@ struct ContentView: View {
             libraryFocusRequestGeneration: appState.libraryFocusRequestGeneration,
             currentVaultRole: appState.currentVaultRole,
             currentWorkspaceSlot: currentWorkspaceSlot,
-            noteLifecycleRequest: appState.noteLifecycleRequest,
-            canCreateNote: appState.noteLocationScope == .workspace
+            canMutateLibrary: appState.noteLocationScope == .workspace
                 && appState.currentRegisteredVault != nil
                 && !appState.isCreatingNote
                 && !appState.isMutatingFolder,
             lifecycleMutationGeneration: appState.lifecycleMutationGeneration,
-            catalogIsAvailable: appState.workspaceCatalog != nil,
-            graphIsAvailable: appState.relationshipGraph != nil,
-            tags: appState.allTags,
-            authors: appState.availableAuthors,
-            years: appState.availableYears,
-            propertyKeys: propertyFilterOptions.keys,
-            propertyValues: propertyFilterOptions.valuesByKey,
-            resolvedIdentityPaths: Set(appState.noteIdentityByPath.keys),
+            filterOptions: SidebarLibraryFilterOptions(
+                catalogIsAvailable: appState.workspaceCatalog != nil,
+                graphIsAvailable: appState.relationshipGraph != nil,
+                tags: appState.allTags,
+                authors: appState.availableAuthors,
+                years: appState.availableYears,
+                propertyKeys: propertyFilterOptions.keys,
+                propertyValues: propertyFilterOptions.valuesByKey
+            ),
             bibliographyController: appState.researchController.bibliography,
             attentionPopoverSession: appState.attentionPopoverSession,
-            notesAreOrdered: { appState.notesAreOrdered($0, $1) },
             openAttention: {
                 windowCoordinator.actions.showAttention(.sidebar, nil)
             },
@@ -577,11 +581,15 @@ struct ContentView: View {
             selectLocationScope: { appState.requestNoteLocationScope($0) },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
             selectWorkspaceVault: { appState.requestWorkspaceVault($0) },
-            prepareLifecycle: { appState.prepareLifecycleOperation($0) },
-            clearPreparedLifecycle: { appState.clearPreparedLifecycleOperation(at: $0) },
             createUntitledNote: { appState.requestUntitledNoteCreation(in: $0) },
             createUntitledFolder: {
                 appState.requestUntitledFolderCreation(in: $0)
+            },
+            moveNote: { target, destination in
+                try await appState.moveNote(target, to: destination)
+            },
+            moveFolder: { target, destination in
+                try await appState.moveFolder(target, to: destination)
             },
             requestFolderLifecycle: {
                 appState.folderLifecycleRequest = $0
@@ -606,6 +614,7 @@ struct ContentView: View {
             revealNote: { appState.showInFinder($0) },
             setAside: { try await appState.setAsideNote($0) },
             moveToTrash: { try await appState.moveNoteToTrash($0) },
+            putBack: { try await appState.putBackNote($0) },
             deletePermanently: { try await appState.deleteNotePermanently($0) },
             openRecommendedAnalysis: { reference in
                 guard let note = appState.workspaceCatalog?.notes.first(where: {
@@ -670,7 +679,6 @@ struct ContentView: View {
                         expectedRevision: revision,
                         researchUnitEdit: researchUnitEdit
                     )
-                    appState.showToast(String(localized: "Frontmatter saved", table: "Localizable", bundle: .module))
                 }
                     .frame(minWidth: 520, minHeight: 560)
             }
@@ -771,16 +779,12 @@ struct ContentView: View {
             NoteLifecycleView(
                 request: request,
                 actions: NoteLifecycleActions(
-                    putBackDestination: {
-                        appState.documentController.putBackDestination(for: $0)
-                    },
                     duplicate: { source, destination in
                         _ = try await appState.duplicateNote(source, to: destination)
                     },
                     move: { source, destination in
                         try await appState.moveNote(source, to: destination)
-                    },
-                    putBack: { try await appState.putBackNote($0) }
+                    }
                 )
             )
         case .folderLifecycle(let request):
@@ -797,12 +801,23 @@ struct ContentView: View {
             TransactionRecoveryView(
                 records: appState.transactionRecoveryRecords,
                 error: appState.transactionRecoveryError,
+                interruptedSaves: appState.interruptedSaveRecoveries,
+                interruptedSaveError: appState.interruptedSaveRecoveryError,
                 vaultNames: Dictionary(
                     uniqueKeysWithValues: appState.registeredVaults.map { ($0.id, $0.name) }
                 ),
                 refresh: { await appState.refreshTransactionRecoveryRecords() },
                 markResolved: { try await appState.markTransactionRecoveryResolved($0) },
-                revealRecords: { appState.revealTransactionRecoveryRecordsInFinder() }
+                revealRecords: { appState.revealTransactionRecoveryRecordsInFinder() },
+                loadInterruptedSave: {
+                    try await appState.interruptedSaveRecoveryContent($0)
+                },
+                revealInterruptedSave: {
+                    try await appState.revealInterruptedSaveRecoveryInFinder($0)
+                },
+                restoreInterruptedSave: {
+                    try await appState.restoreInterruptedSaveRecovery($0)
+                }
             )
         case .identityResolution(let ambiguity):
             IdentityResolutionView(
@@ -840,10 +855,15 @@ struct ContentView: View {
     @ViewBuilder
     private var detailRegion: some View {
         VStack(spacing: 0) {
-            if !appState.transactionRecoveryRecords.isEmpty || appState.transactionRecoveryError != nil {
+            if !appState.transactionRecoveryRecords.isEmpty
+                || !appState.interruptedSaveRecoveries.isEmpty
+                || appState.transactionRecoveryError != nil
+                || appState.interruptedSaveRecoveryError != nil {
                 TransactionRecoveryNotice(
-                    count: appState.transactionRecoveryRecords.count,
+                    count: appState.transactionRecoveryRecords.count
+                        + appState.interruptedSaveRecoveries.count,
                     error: appState.transactionRecoveryError
+                        ?? appState.interruptedSaveRecoveryError
                 ) {
                     appState.showTransactionRecovery = true
                 }
@@ -957,14 +977,37 @@ struct ScholiumLaunchPlaceholderView: View {
     }
 }
 
-/// The configured workspace's intentionally silent no-document state. The
-/// Library remains the only actionable interface.
+/// The configured workspace's restrained, read-only no-document state. The
+/// Library remains the only actionable interface and this view owns no focus
+/// or document state.
 private struct ScholiumNoDocumentDetailView: View {
     var body: some View {
-        ScholiumColorRole.documentBackground.color
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityHidden(true)
-        .accessibilityIdentifier("scholium.noDocumentSurface")
+        ZStack {
+            ScholiumColorRole.documentBackground.color
+                .accessibilityHidden(true)
+
+            VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                Image(systemName: "doc.text")
+                    .font(.title2)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .accessibilityHidden(true)
+
+                VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text("No Document Selected")
+                        .font(.headline)
+                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+
+                    Text("Select a note in the Library to read or edit.")
+                        .font(.subheadline)
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(ScholiumGrid.Spacing.regionContentInset)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("scholium.noDocumentState")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -349,9 +349,19 @@ extension ScholiumUITests {
             app.descendants(matching: .any)["scholium.documentToolbarIdentity"].exists,
             "An empty Triptych must not expose a stale document identity."
         )
+        let emptyState = app.descendants(matching: .any)["scholium.noDocumentState"]
+        XCTAssertTrue(emptyState.waitForExistence(timeout: 5))
+        let emptyStateText = accessibilityText(of: emptyState)
+        XCTAssertTrue(emptyStateText.contains("No Document Selected"))
+        XCTAssertTrue(emptyStateText.contains("Select a note in the Library to read or edit."))
         XCTAssertFalse(history.isEnabled)
         XCTAssertFalse(inspector.isEnabled)
         XCTAssertLessThan(history.frame.maxX, inspector.frame.minX)
+
+        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        screenshot.name = "Restrained no-document empty state"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     @MainActor

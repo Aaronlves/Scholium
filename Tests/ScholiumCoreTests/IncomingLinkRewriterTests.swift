@@ -173,6 +173,210 @@ struct IncomingLinkRewriterTests {
         #expect(plan.rewrites.first?.updatedSource == "\u{FEFF}---\r\ntitle: 'A' # keep\r\n---\r\n+[[资料/乙|别名]]\r\n")
     }
 
+    @Test("A coherent snapshot plan matches complete graph re-derivation")
+    func validatedSnapshotPlanMatchesCompletePlan() throws {
+        let analysisVault = UUID()
+        let topicVault = UUID()
+        let source = NoteDocument(
+            relativePath: "Debates/Topic.md",
+            rawContent: "See +[[Sources/Essay#Claim|source]].\n"
+        )
+        let target = NoteDocument(
+            relativePath: "Sources/Essay.md",
+            rawContent: "# Claim\n"
+        )
+        let unrelated = NoteDocument(
+            relativePath: "Unrelated.md",
+            rawContent: "No links.\n"
+        )
+        let documents = [
+            VaultQualifiedNoteID(vaultID: topicVault, relativePath: source.relativePath): source,
+            VaultQualifiedNoteID(vaultID: analysisVault, relativePath: target.relativePath): target,
+            VaultQualifiedNoteID(vaultID: topicVault, relativePath: unrelated.relativePath): unrelated,
+        ]
+        let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let catalog = documents.map { id, document in
+            LinkCatalogNote(
+                vaultID: id.vaultID,
+                document: document,
+                semantic: semantics[id]
+            )
+        }
+        let graph = LinkGraphBuilder.build(
+            generation: 19,
+            catalog: catalog,
+            documents: semantics,
+            resolutionScope: .workspace,
+            sourceManifestHash: sourceManifestHash(documents)
+        )
+        let moving = VaultQualifiedNoteID(
+            vaultID: analysisVault,
+            relativePath: target.relativePath
+        )
+        let destination = VaultQualifiedNoteID(
+            vaultID: analysisVault,
+            relativePath: "Sources/Renamed Essay.md"
+        )
+
+        let complete = IncomingLinkRewriter.plan(
+            documents: documents,
+            graph: graph,
+            moving: moving,
+            to: destination
+        )
+        let snapshot = try #require(
+            IncomingLinkRewriter.planUsingValidatedSnapshot(
+                documents: documents,
+                catalog: catalog,
+                graph: graph,
+                moving: moving,
+                to: destination
+            )
+        )
+
+        #expect(snapshot == complete)
+    }
+
+    @Test("A coherent Folder snapshot plan matches complete graph re-derivation")
+    func validatedFolderSnapshotPlanMatchesCompletePlan() throws {
+        let vaultID = UUID()
+        let sourceFolder = try VaultRelativeFolderPath("Source")
+        let destinationFolder = try VaultRelativeFolderPath("Target/Source")
+        let first = NoteDocument(
+            relativePath: "Source/First.md",
+            rawContent: "# First\n\nSee [[Source/Second]].\n"
+        )
+        let second = NoteDocument(
+            relativePath: "Source/Second.md",
+            rawContent: "# Second\n"
+        )
+        let reference = NoteDocument(
+            relativePath: "Reference.md",
+            rawContent: "See [[Source/First]].\n"
+        )
+        let documents = Dictionary(uniqueKeysWithValues: [first, second, reference].map {
+            document in
+            (
+                VaultQualifiedNoteID(
+                    vaultID: vaultID,
+                    relativePath: document.relativePath
+                ),
+                document
+            )
+        })
+        let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let catalog = documents.map { id, document in
+            LinkCatalogNote(
+                vaultID: id.vaultID,
+                document: document,
+                semantic: semantics[id]
+            )
+        }
+        let graph = LinkGraphBuilder.build(
+            generation: 23,
+            catalog: catalog,
+            documents: semantics,
+            resolutionScope: .workspace,
+            sourceManifestHash: sourceManifestHash(documents)
+        )
+        let moves = [first, second].map { document in
+            let source = VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: document.relativePath
+            )
+            return FolderNoteMovePlan(
+                stableNoteID: UUID(),
+                source: source,
+                destination: VaultQualifiedNoteID(
+                    vaultID: vaultID,
+                    relativePath: "Target/" + document.relativePath
+                ),
+                expectedRevision: document.fingerprint
+            )
+        }
+
+        let complete = IncomingLinkRewriter.folderPlan(
+            documents: documents,
+            graph: graph,
+            vaultID: vaultID,
+            sourceFolder: sourceFolder,
+            destinationFolder: destinationFolder,
+            noteMoves: moves
+        )
+        let snapshot = try #require(
+            IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
+                documents: documents,
+                catalog: catalog,
+                graph: graph,
+                vaultID: vaultID,
+                sourceFolder: sourceFolder,
+                destinationFolder: destinationFolder,
+                noteMoves: moves
+            )
+        )
+
+        #expect(snapshot == complete)
+        #expect(snapshot.rewrites.count == 2)
+    }
+
+    @Test("An incomplete snapshot catalog cannot authorize a fast move plan")
+    func incompleteSnapshotPlanFailsClosed() {
+        let vaultID = UUID()
+        let source = NoteDocument(relativePath: "A.md", rawContent: "[[B]]\n")
+        let target = NoteDocument(relativePath: "B.md", rawContent: "B\n")
+        let documents = [
+            VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath): source,
+            VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath): target,
+        ]
+        let graph = workspaceGraph(documents)
+        let incompleteCatalog = [LinkCatalogNote(
+            vaultID: vaultID,
+            document: source
+        )]
+
+        #expect(IncomingLinkRewriter.planUsingValidatedSnapshot(
+            documents: documents,
+            catalog: incompleteCatalog,
+            graph: graph,
+            moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath),
+            to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Moved/B.md")
+        ) == nil)
+    }
+
+    @Test("A graph from another source manifest cannot authorize a fast move plan")
+    func staleSnapshotGraphFailsClosed() {
+        let vaultID = UUID()
+        let source = NoteDocument(relativePath: "A.md", rawContent: "[[B]]\n")
+        let target = NoteDocument(relativePath: "B.md", rawContent: "B\n")
+        let documents = [
+            VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath): source,
+            VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath): target,
+        ]
+        let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
+        let catalog = documents.map { id, document in
+            LinkCatalogNote(
+                vaultID: id.vaultID,
+                document: document,
+                semantic: semantics[id]
+            )
+        }
+        let staleGraph = LinkGraphBuilder.build(
+            generation: 8,
+            catalog: catalog,
+            documents: semantics,
+            resolutionScope: .workspace,
+            sourceManifestHash: "not-the-current-source-manifest"
+        )
+
+        #expect(IncomingLinkRewriter.planUsingValidatedSnapshot(
+            documents: documents,
+            catalog: catalog,
+            graph: staleGraph,
+            moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath),
+            to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Moved/B.md")
+        ) == nil)
+    }
+
     private func workspaceGraph(
         _ documents: [VaultQualifiedNoteID: NoteDocument]
     ) -> GraphSnapshot {
@@ -184,8 +388,21 @@ struct IncomingLinkRewriterTests {
             generation: 7,
             catalog: catalog,
             documents: semantics,
-            resolutionScope: .workspace
+            resolutionScope: .workspace,
+            sourceManifestHash: sourceManifestHash(documents)
         )
+    }
+
+    private func sourceManifestHash(
+        _ documents: [VaultQualifiedNoteID: NoteDocument]
+    ) -> String {
+        SearchSourceManifest.hash(documents.map { id, document in
+            SearchSourceManifestEntry(
+                vaultID: id.vaultID,
+                relativePath: id.relativePath,
+                fingerprint: document.fingerprint
+            )
+        })
     }
 
     private func standalonePlan(

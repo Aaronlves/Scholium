@@ -15,6 +15,28 @@ QA_HOME="${QA_ROOT}/home"
 terminate_qa_instances() {
   pkill -f "${APP}/Contents/MacOS/Scholium" 2>/dev/null || true
   pkill -f "${QA_ROOT}/registered/Scholium-Codex-QA-Do-Not-Use.app/Contents/MacOS/Scholium" 2>/dev/null || true
+
+  # A QA process can be launched with a repository-relative command, which
+  # does not match the absolute command-line patterns above. Resolve the
+  # running image before terminating it so only this checkout's QA bundles
+  # are included.
+  local qa_pid executable
+  local qa_pids=("${(@f)$(pgrep -x Scholium 2>/dev/null || true)}")
+  for qa_pid in "${qa_pids[@]}"; do
+    [[ -n "${qa_pid}" ]] || continue
+    executable="$(
+      /usr/sbin/lsof -a -p "${qa_pid}" -d txt -Fn 2>/dev/null \
+        | sed -n 's/^n//p' \
+        | head -n 1
+    )"
+    case "${executable}" in
+      "${APP}/Contents/MacOS/Scholium"|\
+      "/private${APP}/Contents/MacOS/Scholium"|\
+      "${QA_ROOT}/registered/Scholium-Codex-QA-Do-Not-Use.app/Contents/MacOS/Scholium")
+        kill "${qa_pid}" 2>/dev/null || true
+        ;;
+    esac
+  done
 }
 
 # Rebuilding a running bundle can leave several stale QA processes alive.

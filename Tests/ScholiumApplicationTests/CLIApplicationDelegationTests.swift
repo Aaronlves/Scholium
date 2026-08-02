@@ -139,6 +139,9 @@ struct CLIApplicationDelegationTests {
         #expect(sources.document.contains("Replaced "))
         #expect(sources.document.contains("Moved "))
         #expect(sources.document.contains("Permanently deleted "))
+        #expect(sources.document.contains("let document = outcome.committedValue"))
+        #expect(sources.document.contains("writeMutationWarnings(outcome)"))
+        #expect(sources.document.contains("do not repeat the mutation"))
         #expect(sources.zotero.contains(
             #"write("Zotero MCP transport: \(report.state.rawValue)\n")"#
         ))

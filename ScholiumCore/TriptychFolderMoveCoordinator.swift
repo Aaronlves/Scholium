@@ -153,13 +153,17 @@ public actor TriptychFolderMoveCoordinator {
         var folderDidMove = false
         var recoveryMoves: [FolderNoteMovePlan] = []
         var applied: [AppliedRewrite] = []
+        var movedDocumentsByPath: [String: NoteDocument] = [:]
         do {
-            _ = try await sourceRepository.moveFolder(
+            let folderMove = try await sourceRepository.moveFolder(
                 from: plan.sourceFolder,
                 to: plan.destinationFolder,
                 expectedDocuments: expectedDocuments,
                 createMissingParents: destinationNeedsLifecycleParent(plan.destinationFolder)
             )
+            movedDocumentsByPath = Dictionary(uniqueKeysWithValues: folderMove.documents.map {
+                ($0.relativePath, $0)
+            })
             folderDidMove = true
             for move in plan.noteMoves {
                 try await sourceRepository.migrateRecoveryLedger(
@@ -193,14 +197,21 @@ public actor TriptychFolderMoveCoordinator {
         let appliedBySource = Dictionary(
             uniqueKeysWithValues: applied.map { ($0.prepared.plan.source, $0) }
         )
-        let noteCommits = plan.noteMoves.map { move in
-            FolderNoteMoveCommit(
+        let noteCommits = try plan.noteMoves.map { move in
+            guard let committedDocument = appliedBySource[move.source]?.committed
+                    ?? movedDocumentsByPath[move.destination.relativePath],
+                  committedDocument.relativePath == move.destination.relativePath else {
+                throw TriptychTransactionError.invalidPlan(
+                    "The committed source for \(move.destination.relativePath) is unavailable."
+                )
+            }
+            return FolderNoteMoveCommit(
                 stableNoteID: move.stableNoteID,
                 source: move.source,
                 destination: move.destination,
                 previousRevision: move.expectedRevision,
-                committedRevision: appliedBySource[move.source]?.committed.fingerprint
-                    ?? move.expectedRevision
+                committedRevision: committedDocument.fingerprint,
+                committedRawContent: committedDocument.rawContent
             )
         }.sorted { $0.source < $1.source }
         let rewriteCommits = applied.map { rewrite in

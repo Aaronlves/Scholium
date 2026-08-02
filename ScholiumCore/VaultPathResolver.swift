@@ -33,20 +33,19 @@ struct VaultPathResolver: Sendable {
         self.normalizationSensitive = normalizationSensitive
     }
 
-    func comparisonKey(for path: MarkdownRelativePath) -> VaultPathComparisonKey {
-        VaultPathComparisonKey(
-            path,
+    var comparisonPolicy: VaultPathComparisonPolicy {
+        VaultPathComparisonPolicy(
             caseSensitive: caseSensitive,
             normalizationSensitive: normalizationSensitive
         )
     }
 
+    func comparisonKey(for path: MarkdownRelativePath) -> VaultPathComparisonKey {
+        comparisonPolicy.comparisonKey(for: path)
+    }
+
     func comparisonKey(for path: VaultRelativeFolderPath) -> VaultPathComparisonKey {
-        VaultPathComparisonKey(
-            path,
-            caseSensitive: caseSensitive,
-            normalizationSensitive: normalizationSensitive
-        )
+        comparisonPolicy.comparisonKey(for: path)
     }
 
     func unresolvedURL(for path: MarkdownRelativePath) throws -> URL {

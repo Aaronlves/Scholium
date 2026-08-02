@@ -5,6 +5,7 @@ import {
   type Text,
   type Transaction,
 } from "@codemirror/state";
+import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
 import {
   footnotePresentation,
   type FootnotePresentation,
@@ -244,10 +245,16 @@ function buildLiveProjectionIndex(
   recordMetric: LiveProjectionIndexOptions["recordMetric"],
 ): LiveProjectionIndex {
   const startedAt = performance.now();
+  // LanguageState initially parses only the editor viewport. This index owns
+  // whole-note topology, so give CodeMirror's incremental parser its bounded
+  // completion opportunity before reading the catalog. Oversized documents
+  // retain the current tree and are rebuilt by the later parser transaction.
+  const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
   const syntax = semanticProjectionRanges(
     state,
     [{from: 0, to: state.doc.length}],
     0,
+    tree,
   );
   const codeBlocks: SemanticCodeBlockRange[] = syntax.blocks
     .filter((block) => block.kind === "code")

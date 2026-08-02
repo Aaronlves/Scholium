@@ -102,6 +102,94 @@ struct DocumentControllerConvergenceTests {
         #expect(session.selectedPresentationMode == .source)
     }
 
+    @Test("Clean deleted documents close while dirty exact buffers remain recoverable")
+    func deletedDocumentConvergence() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let original = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Deleted.md",
+            source: "# Deleted\n\nOriginal.\n"
+        )
+        let removedWorkspace = workspace(vaultID: vaultID, notes: [])
+
+        let cleanRead = DocumentController()
+        cleanRead.installOpenedDocument(
+            original,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus
+        )
+        let cleanReadDocument = try #require(cleanRead.selectedDocument)
+        let cleanReadResult = cleanRead.receive(
+            removedWorkspace,
+            openDocuments: [cleanReadDocument]
+        )
+        #expect(cleanReadResult.removedDocuments == [cleanReadDocument])
+        #expect(cleanReadResult.retainedDeletedDocuments.isEmpty)
+        #expect(cleanRead.selectedDocument == nil)
+        cleanRead.reconcileSessionLeases(
+            leasedDocuments: [],
+            selectedDocument: nil
+        )
+        #expect(cleanRead.closedPresentationCount == 0)
+
+        let cleanEditor = DocumentController()
+        cleanEditor.installOpenedDocument(
+            original,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus
+        )
+        let cleanEditorDocument = try #require(cleanEditor.selectedDocument)
+        let cleanEditorSession = cleanEditor.session(
+            for: cleanEditorDocument.editingTarget
+        )
+        cleanEditor.beginEditing(
+            session: cleanEditorSession,
+            target: cleanEditorDocument.editingTarget,
+            source: original.document.rawContent,
+            revision: original.fingerprint,
+            mode: .source
+        )
+        #expect(!cleanEditorSession.hasUnsavedChanges)
+        let cleanEditorResult = cleanEditor.receive(
+            removedWorkspace,
+            openDocuments: [cleanEditorDocument]
+        )
+        #expect(cleanEditorResult.removedDocuments == [cleanEditorDocument])
+        #expect(cleanEditorResult.retainedDeletedDocuments.isEmpty)
+        #expect(cleanEditor.selectedDocument == nil)
+
+        let dirtyEditor = DocumentController()
+        dirtyEditor.installOpenedDocument(
+            original,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus
+        )
+        let dirtyDocument = try #require(dirtyEditor.selectedDocument)
+        let dirtySession = dirtyEditor.session(for: dirtyDocument.editingTarget)
+        dirtyEditor.beginEditing(
+            session: dirtySession,
+            target: dirtyDocument.editingTarget,
+            source: original.document.rawContent,
+            revision: original.fingerprint,
+            mode: .source
+        )
+        dirtySession.suppressAutosave = true
+        let exactDirtyBuffer = "\u{FEFF}# Deleted\r\n\r\nUncommitted exact source.\r\n"
+        dirtySession.editingSource = exactDirtyBuffer
+        let dirtyResult = dirtyEditor.receive(
+            removedWorkspace,
+            openDocuments: [dirtyDocument]
+        )
+        #expect(dirtyResult.removedDocuments.isEmpty)
+        #expect(dirtyResult.retainedDeletedDocuments == [dirtyDocument])
+        #expect(dirtyEditor.selectedDocument == dirtyDocument)
+        #expect(dirtyEditor.retainedDeletedDocumentPath == "Deleted.md")
+        #expect(dirtySession.editingSource == exactDirtyBuffer)
+        #expect(dirtySession.editError?.contains("deleted outside Scholium") == true)
+    }
+
     @Test("The note view delegates editor persistence and conflicts to one controller")
     func noteViewDelegatesEditorBehavior() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -199,6 +287,65 @@ struct DocumentControllerConvergenceTests {
                 outgoing: 0,
                 broken: 0,
                 ambiguous: 0
+            )
+        )
+    }
+
+    private func workspace(
+        vaultID: UUID,
+        notes: [WorkspaceNoteSnapshot]
+    ) -> WorkspaceSnapshot {
+        let vault = RegisteredVault(
+            id: vaultID,
+            name: "Analyses",
+            role: .sourceCorpus,
+            canonicalPath: "/fixtures/Analyses"
+        )
+        let triptych = ScholiumTriptych(
+            name: "Document Convergence",
+            paperAnalysisVaultID: vaultID,
+            topicKnowledgeVaultID: UUID(),
+            outputVaultID: UUID()
+        )
+        let documents = notes.map(\.document)
+        let catalog = WorkspaceCatalogBuilder.build(
+            vaults: [vault],
+            documents: [vaultID: documents]
+        )
+        return WorkspaceSnapshot(
+            triptych: triptych,
+            mode: .live,
+            generatedAt: Date(),
+            vaults: [WorkspaceVaultSnapshot(
+                slot: .paperAnalysis,
+                vault: vault,
+                pathComparisonPolicy: VaultPathComparisonPolicy(
+                    caseSensitive: true,
+                    normalizationSensitive: true
+                ),
+                documents: notes,
+                identityRecovery: NoteIdentityRecoveryState(
+                    identities: [:],
+                    ambiguities: [],
+                    pendingRebindings: [],
+                    failures: []
+                )
+            )],
+            discovery: WorkspaceDiscoverySnapshot(
+                catalog: catalog,
+                searchGeneration: SearchGenerationID(
+                    triptychID: triptych.id,
+                    sequence: 1,
+                    sourceManifestHash: "document-convergence"
+                )
+            ),
+            research: WorkspaceResearchSnapshot(
+                critiques: [],
+                checkpointListing: TriptychCheckpointListing(
+                    checkpoints: [],
+                    unreadableEntries: []
+                ),
+                healthIssues: []
             )
         )
     }

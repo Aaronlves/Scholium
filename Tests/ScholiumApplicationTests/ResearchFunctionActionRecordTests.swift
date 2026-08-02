@@ -1044,7 +1044,7 @@ extension ResearchFunctionOperationsTests {
             secondID,
             to: "Trash/Second.md",
             expectedRevision: currentSecond.fingerprint
-        )
+        ).committedValue
         let trashedSecond = try await handle.documents.load(movedSecond.destination)
         _ = try await handle.documents.deletePermanently(
             movedSecond.destination,
@@ -1107,7 +1107,7 @@ extension ResearchFunctionOperationsTests {
                     + "Target Line: 1\n"
             ),
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
 
         let submission = ResearchFunctionCompletionSubmission(
             runID: protectedRun.runID,

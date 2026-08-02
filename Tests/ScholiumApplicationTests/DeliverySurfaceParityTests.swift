@@ -28,7 +28,7 @@ struct DeliverySurfaceParityTests {
                 \(original.document.rawContent)
                 """),
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
         _ = try await appHandle.research.settle(
             fixture.analysisNoteID,
             expectedRevision: declared.document.fingerprint,

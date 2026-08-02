@@ -230,8 +230,8 @@ struct AppCompositionRootTests {
         #expect(saved.documentTextScale == 1.7)
     }
 
-    @Test("Transient document view detachment retains close-time flush without Search saving")
-    func transientDocumentDetachmentRetainsCloseFlush() async throws {
+    @Test("Close preparation retains flush ownership until the window actually closes")
+    func closePreparationRetainsFlushOwnership() async throws {
         let store = makeTestWorkspaceStore()
         let window = WindowModel(workspaceStore: store)
         window.documentController.selectUnavailableDocument(
@@ -259,11 +259,14 @@ struct AppCompositionRootTests {
         _ = try await window.prepareForWindowClose()
         #expect(flushCount == 1)
 
-        // A successful close releases the workspace-wide registration rather
-        // than retaining the document session through the shared store.
-        window.searchController.begin(.general)
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(flushCount == 1)
+        // App termination can still be cancelled by another window. The same
+        // open window must participate in a later close attempt.
+        _ = try await window.prepareForWindowClose()
+        #expect(flushCount == 2)
+
+        window.finalizeWindowClose()
+        _ = try await window.prepareForWindowClose()
+        #expect(flushCount == 2)
     }
 
     @Test("Review requests do not enqueue a redundant Application-level editor flush")
@@ -789,6 +792,8 @@ struct AppCompositionRootTests {
             noteID: stableNoteID
         )
 
+        let revealGenerationBeforeOpen = firstWindow!.discoveryController
+            .libraryRevealRequest?.generation ?? 0
         firstWindow!.openNote("Shared.md")
         secondWindow.openNote("Shared.md")
         firstWindow!.documentController.installOpenedDocument(
@@ -810,6 +815,13 @@ struct AppCompositionRootTests {
         #expect(firstSession !== secondSession)
         #expect(firstSession.editingSource == originalSource)
         #expect(secondSession.editingSource == originalSource)
+        try await waitUntil("the current Analysis reveal completed before manual Scope browsing") {
+            guard let reveal = firstWindow?.discoveryController.libraryRevealRequest else {
+                return false
+            }
+            return reveal.generation > revealGenerationBeforeOpen
+                && reveal.relativePath == "Shared.md"
+        }
 
         firstSession.restorePresentationMode(.livePreview)
         firstSession.scrollFraction = 0.42
@@ -869,7 +881,7 @@ struct AppCompositionRootTests {
             originalID,
             changeSet: .source(cleanSource),
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
         try await waitUntil("a clean peer converged to the committed source") {
             firstSession.editingSource == cleanSource
                 && firstSession.editingRevision == cleanCommit.document.fingerprint
@@ -888,7 +900,7 @@ struct AppCompositionRootTests {
             originalID,
             changeSet: .source(externalSource),
             expectedRevision: cleanCommit.document.fingerprint
-        )
+        ).committedValue
         try await waitUntil("the dirty peer entered Conflict without losing its buffer") {
             firstSession.conflict?.diskRevision == externalCommit.document.fingerprint
                 && secondSession.editingRevision == externalCommit.document.fingerprint
@@ -919,7 +931,7 @@ struct AppCompositionRootTests {
             originalID,
             to: renamedPath,
             expectedRevision: externalCommit.document.fingerprint
-        )
+        ).committedValue
         let renamedID = VaultQualifiedNoteID(
             vaultID: analysesVault.id,
             relativePath: renamedPath
@@ -963,11 +975,20 @@ struct AppCompositionRootTests {
             renamedID,
             changeSet: .source(survivingSource),
             expectedRevision: moveCommit.committedRevision
-        )
+        ).committedValue
         try await waitUntil("the surviving window received a later live commit") {
             secondSession.editingSource == survivingSource
                 && secondSession.editingRevision == survivingCommit.document.fingerprint
         }
+
+        try fileManager.removeItem(
+            at: analyses.appendingPathComponent(renamedPath)
+        )
+        try await waitUntil("the clean externally deleted tab converged to no document") {
+            secondWindow.documentTabController.tabs.isEmpty
+                && secondWindow.selectedDocument == nil
+        }
+        #expect(secondWindow.documentController.retainedSession(for: sessionKey) == nil)
 
         await store.shutdownApplicationRuntime()
         #expect(store.workspaceSnapshots.isEmpty)

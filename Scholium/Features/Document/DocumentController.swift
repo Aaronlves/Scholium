@@ -45,7 +45,7 @@ enum WindowSelectedDocument: Hashable, Sendable {
 /// the path required for recovery presentation.
 enum DocumentEditingTarget: Hashable, Sendable {
     case workspace(DocumentSessionKey)
-    case unavailable(relativePath: String)
+    case unavailable(vaultID: UUID, relativePath: String)
 }
 
 extension DocumentEditingTarget {
@@ -54,9 +54,11 @@ extension DocumentEditingTarget {
         return true
     }
 
-    var vaultID: UUID? {
-        guard case .workspace(let key) = self else { return nil }
-        return key.vaultID
+    var vaultID: UUID {
+        switch self {
+        case .workspace(let key): key.vaultID
+        case .unavailable(let vaultID, _): vaultID
+        }
     }
 }
 
@@ -64,7 +66,8 @@ extension WindowSelectedDocument {
     var editingTarget: DocumentEditingTarget {
         switch self {
         case .workspace(let descriptor): .workspace(descriptor.sessionKey)
-        case .unavailable(_, let relativePath): .unavailable(relativePath: relativePath)
+        case .unavailable(let vaultID, let relativePath):
+            .unavailable(vaultID: vaultID, relativePath: relativePath)
         }
     }
 }
@@ -106,6 +109,19 @@ struct DocumentChromeProjection: Equatable, Sendable {
         dirtyState: .clean,
         isSaving: false,
         failureState: .none
+    )
+}
+
+/// One window's tab/session reconciliation against a complete authoritative
+/// Workspace generation. Only clean missing documents are removed; any
+/// session with recoverable source state remains explicitly retained.
+struct DocumentWorkspaceReconciliation: Equatable, Sendable {
+    let removedDocuments: Set<WindowSelectedDocument>
+    let retainedDeletedDocuments: Set<WindowSelectedDocument>
+
+    static let unchanged = DocumentWorkspaceReconciliation(
+        removedDocuments: [],
+        retainedDeletedDocuments: []
     )
 }
 
@@ -184,7 +200,7 @@ final class DocumentController: ObservableObject {
     ) {
         self.operations = operations
         self.documentDidCommit = documentDidCommit
-        if let snapshot { receive(snapshot) }
+        if let snapshot { _ = receive(snapshot) }
     }
 
     func unbind() {
@@ -229,8 +245,8 @@ final class DocumentController: ObservableObject {
         switch target {
         case .workspace(let key):
             stableTarget = "\(key.vaultID.uuidString.lowercased()):\(key.noteID.uuidString.lowercased())"
-        case .unavailable(let path):
-            stableTarget = "unavailable:\(path)"
+        case .unavailable(let vaultID, let path):
+            stableTarget = "unavailable:\(vaultID.uuidString.lowercased()):\(path)"
         }
         return await readProjectionCache.html(
             for: DocumentReadProjectionKey(
@@ -269,7 +285,7 @@ final class DocumentController: ObservableObject {
     func importMarkdown(
         at sourceURL: URL,
         intoVault vaultID: UUID
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try await requireOperations().importMarkdown(
             at: sourceURL,
             intoVault: vaultID
@@ -279,18 +295,20 @@ final class DocumentController: ObservableObject {
     func create(
         _ id: VaultQualifiedNoteID,
         content: String
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try await requireOperations().create(id, content: content)
     }
 
-    func create(_ request: DocumentCreationRequest) async throws -> NoteDocument {
+    func create(
+        _ request: DocumentCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try await requireOperations().create(request)
     }
 
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit> {
         try await requireOperations().createUntitledNote(
             inVault: vaultID,
             folderRelativePath: folderRelativePath
@@ -300,7 +318,7 @@ final class DocumentController: ObservableObject {
     func createUntitledFolder(
         inVault vaultID: UUID,
         parentRelativePath: String?
-    ) async throws -> VaultRelativeFolderPath {
+    ) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath> {
         try await requireOperations().createUntitledFolder(
             inVault: vaultID,
             parentRelativePath: parentRelativePath
@@ -311,7 +329,7 @@ final class DocumentController: ObservableObject {
         inVault vaultID: UUID,
         from sourceRelativePath: String,
         to destinationRelativePath: String
-    ) async throws -> FolderMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         try await requireOperations().moveFolder(
             inVault: vaultID,
             from: sourceRelativePath,
@@ -322,7 +340,7 @@ final class DocumentController: ObservableObject {
     func moveFolderToTrash(
         inVault vaultID: UUID,
         relativePath: String
-    ) async throws -> FolderMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         try await requireOperations().moveFolderToTrash(
             inVault: vaultID,
             relativePath: relativePath
@@ -333,7 +351,7 @@ final class DocumentController: ObservableObject {
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try await requireOperations().duplicate(
             id,
             to: destinationRelativePath,
@@ -341,11 +359,21 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    func duplicate(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        try await requireOperations().duplicate(
+            target,
+            to: destinationRelativePath
+        )
+    }
+
     func save(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
-    ) async throws -> SaveResult {
+    ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         try await requireOperations().save(
             id,
             changeSet: changeSet,
@@ -369,7 +397,7 @@ final class DocumentController: ObservableObject {
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try await requireOperations().move(
             id,
             to: destinationRelativePath,
@@ -377,43 +405,69 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    func move(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        try await requireOperations().move(
+            target,
+            to: destinationRelativePath
+        )
+    }
+
     func setAside(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try await requireOperations().setAside(id, expectedRevision: expectedRevision)
+    }
+
+    func setAside(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        try await requireOperations().setAside(target)
     }
 
     func moveToTrash(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try await requireOperations().moveToTrash(id, expectedRevision: expectedRevision)
+    }
+
+    func moveToTrash(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        try await requireOperations().moveToTrash(target)
     }
 
     func putBack(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try await requireOperations().putBack(id, expectedRevision: expectedRevision)
     }
 
-    func putBackDestination(for relativePath: String) -> String? {
-        for prefix in ["Set Aside/", "Trash/"] where relativePath.hasPrefix(prefix) {
-            let destination = String(relativePath.dropFirst(prefix.count))
-            return destination.isEmpty ? nil : destination
-        }
-        return nil
+    func putBack(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        try await requireOperations().putBack(target)
     }
 
     func deletePermanently(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> PermanentDeletionCommit {
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
         try await requireOperations().deletePermanently(
             id,
             expectedRevision: expectedRevision
         )
+    }
+
+    func deletePermanently(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
+        try await requireOperations().deletePermanently(target)
     }
 
     func recoverInterruptedTransactions() async throws -> [String] {
@@ -424,7 +478,7 @@ final class DocumentController: ObservableObject {
     func resolveIdentity(
         _ ambiguity: NoteIdentityAmbiguity,
         candidateID: UUID?
-    ) async throws -> NoteIdentityRecord {
+    ) async throws -> WorkspaceMutationOutcome<NoteIdentityRecord> {
         try await requireOperations().resolveIdentity(ambiguity, candidateID: candidateID)
     }
 
@@ -958,9 +1012,15 @@ final class DocumentController: ObservableObject {
         _ presentations: [DocumentSessionStore.ReapedPresentation]
     ) {
         for presentation in presentations {
+            let relativePath = relativePath(for: presentation.target)
+            // A clean externally deleted document deliberately removes its
+            // retained path before the zero-lease session is reaped. Do not
+            // persist an empty or stale presentation route for source that no
+            // longer exists.
+            guard !relativePath.isEmpty else { continue }
             nextClosedPresentationAccess &+= 1
             closedPresentations[presentation.target] = ClosedPresentationEntry(
-                relativePath: relativePath(for: presentation.target),
+                relativePath: relativePath,
                 mode: presentation.mode,
                 scrollPosition: presentation.scrollPosition,
                 access: nextClosedPresentationAccess
@@ -994,7 +1054,7 @@ final class DocumentController: ObservableObject {
                 ?? retainedReferences[key]?.relativePath
                 ?? snapshots[key]?.id.relativePath
                 ?? ""
-        case .unavailable(let relativePath):
+        case .unavailable(_, let relativePath):
             relativePath
         }
     }
@@ -1389,38 +1449,122 @@ final class DocumentController: ObservableObject {
         return 850
     }()
 
-    /// Applies one complete generation to this window. A clean peer converges
-    /// to the new source; a dirty peer keeps its exact buffer and receives an
-    /// immutable comparison against the published disk revision.
-    func receive(_ snapshot: WorkspaceSnapshot) {
-        apply(snapshot)
-    }
+    /// Applies one complete generation to every open document in this window.
+    /// Clean peers converge or close when their stable document disappears;
+    /// dirty, conflicted, retryable, or in-flight sessions keep their exact
+    /// recovery state and are never silently replaced.
+    @discardableResult
+    func receive(
+        _ workspace: WorkspaceSnapshot,
+        openDocuments: [WindowSelectedDocument] = []
+    ) -> DocumentWorkspaceReconciliation {
+        var documents = Set(openDocuments)
+        if let selectedDocument { documents.insert(selectedDocument) }
+        guard !documents.isEmpty else { return .unchanged }
 
-    private func apply(_ workspace: WorkspaceSnapshot) {
-        guard let descriptor = activeDocument else { return }
-        let key = descriptor.sessionKey
-        let session = session(for: key)
-        guard let located = workspace.vaults.lazy.compactMap({ vault -> (WorkspaceVaultSnapshot, WorkspaceNoteSnapshot)? in
-            guard vault.vault.id == key.vaultID,
-                  let note = vault.documents.first(where: {
-                      $0.stableIdentity.resolvedID == key.noteID
-                  }) else { return nil }
-            return (vault, note)
-        }).first else {
-            if session.isEditing || session.hasUnsavedChanges {
-                session.cancelAutosave()
-                session.conflict = nil
-                session.canRetrySave = false
-                let message = "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery."
-                session.editError = message
-                setSaveError(message)
+        var removed: Set<WindowSelectedDocument> = []
+        var retained: Set<WindowSelectedDocument> = []
+        for document in documents {
+            switch publishedLocation(of: document, in: workspace) {
+            case .located(let vault, let note):
+                recordPublishedLocation(
+                    document: document,
+                    vault: vault,
+                    note: note
+                )
+            case .identityUnavailable:
+                // The source path still exists, but the generation cannot
+                // prove the tab's stable identity. Identity recovery owns this
+                // state; it is not evidence that the document was deleted.
+                continue
+            case .missing:
+                guard let session = sessions.retainedSession(
+                    for: document.editingTarget
+                ), !sessions.pinReasons(for: session).isEmpty else {
+                    removed.insert(document)
+                    continue
+                }
+                retainDeletedDocumentForRecovery(document, session: session)
+                retained.insert(document)
             }
-            return
         }
 
-        let (vault, note) = located
+        forgetCleanDeletedDocuments(removed)
+        return DocumentWorkspaceReconciliation(
+            removedDocuments: removed,
+            retainedDeletedDocuments: retained
+        )
+    }
+
+    var retainedDeletedDocumentPath: String? {
+        guard let selectedDocument,
+              let session = sessions.retainedSession(
+                  for: selectedDocument.editingTarget
+              ), !sessions.pinReasons(for: session).isEmpty else {
+            return nil
+        }
+        return selectedDocument.relativePath
+    }
+
+    private enum PublishedDocumentLocation {
+        case located(WorkspaceVaultSnapshot, WorkspaceNoteSnapshot)
+        case identityUnavailable
+        case missing
+    }
+
+    private func publishedLocation(
+        of document: WindowSelectedDocument,
+        in workspace: WorkspaceSnapshot
+    ) -> PublishedDocumentLocation {
+        guard let vaultID = document.vaultID,
+              let vault = workspace.vault(id: vaultID) else {
+            return .missing
+        }
+        switch document {
+        case .workspace(let descriptor):
+            if let note = vault.documents.first(where: {
+                $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID
+            }) {
+                return .located(vault, note)
+            }
+            guard let pathMatch = vault.documents.first(where: {
+                $0.id.relativePath == descriptor.reference.relativePath
+            }) else {
+                return .missing
+            }
+            return switch pathMatch.stableIdentity {
+            case .resolved:
+                .missing
+            case .ambiguous(let candidateIDs):
+                candidateIDs.contains(descriptor.sessionKey.noteID)
+                    ? .identityUnavailable
+                    : .missing
+            case .pending(let pendingID):
+                pendingID == descriptor.sessionKey.noteID
+                    ? .identityUnavailable
+                    : .missing
+            case .unresolved:
+                .identityUnavailable
+            }
+        case .unavailable(_, let relativePath):
+            guard let note = vault.documents.first(where: {
+                $0.id.relativePath == relativePath
+            }) else {
+                return .missing
+            }
+            return .located(vault, note)
+        }
+    }
+
+    private func recordPublishedLocation(
+        document: WindowSelectedDocument,
+        vault: WorkspaceVaultSnapshot,
+        note: WorkspaceNoteSnapshot
+    ) {
+        guard case .workspace(let descriptor) = document else { return }
+        let key = descriptor.sessionKey
         snapshots[key] = note
-        updateDocumentProjection(WindowDocumentDescriptor(
+        let updated = WindowDocumentDescriptor(
             sessionKey: key,
             reference: VaultNoteReference(
                 vaultID: vault.vault.id,
@@ -1429,8 +1573,63 @@ final class DocumentController: ObservableObject {
                 relativePath: note.id.relativePath,
                 stableNoteID: key.noteID.uuidString
             )
-        ))
-        reconcile(session: session, with: note)
+        )
+        retainedReferences[key] = updated.reference
+        guard selectedDocument?.editingTarget == document.editingTarget else {
+            return
+        }
+        updateDocumentProjection(updated)
+        let selectedSession = session(for: key)
+        reconcile(session: selectedSession, with: note)
+        if selectedSession.editError == nil { setSaveError(nil) }
+    }
+
+    private func retainDeletedDocumentForRecovery(
+        _ document: WindowSelectedDocument,
+        session: DocumentSessionModel
+    ) {
+        session.cancelAutosave()
+        session.conflict = nil
+        session.canRetrySave = false
+        let message = String(
+            localized: "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery.",
+            table: "Localizable",
+            bundle: .module
+        )
+        session.editError = message
+        if selectedDocument?.editingTarget == document.editingTarget {
+            setSaveError(message)
+        }
+    }
+
+    private func forgetCleanDeletedDocuments(
+        _ documents: Set<WindowSelectedDocument>
+    ) {
+        guard !documents.isEmpty else { return }
+        let targets = Set(documents.map(\.editingTarget))
+        for document in documents {
+            if let key = document.sessionKey {
+                snapshots[key] = nil
+                retainedReferences[key] = nil
+            }
+            guard let session = sessions.retainedSession(
+                for: document.editingTarget
+            ) else { continue }
+            session.cancelScheduledWork()
+            session.finishEditing()
+            session.conflict = nil
+            session.editError = nil
+            session.canRetrySave = false
+        }
+        if let selectedDocument,
+           targets.contains(selectedDocument.editingTarget) {
+            if editingDocumentPath == selectedDocument.relativePath {
+                editingDocumentPath = nil
+            }
+            self.selectedDocument = nil
+            setSaveError(nil)
+            refreshChromeProjection()
+        }
     }
 
     private func reconcile(

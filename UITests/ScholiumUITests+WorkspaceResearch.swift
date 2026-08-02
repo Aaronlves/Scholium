@@ -4,6 +4,215 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    /// A completed primary click on the Folder row—not only its disclosure
+    /// triangle—must use the native outline action and toggle every time.
+    @MainActor
+    func testNativeFolderRowClickTogglesDisclosure() throws {
+        let folder = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-01"
+        ].firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 10))
+        XCTAssertEqual(folder.value as? String, "Collapsed")
+
+        folder.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            (folder.value as? String) == "Expanded"
+        })
+        let child = app.descendants(matching: .any)[
+            "scholium.noteRow.Cluster-01/analysis-007.md"
+        ].firstMatch
+        XCTAssertTrue(child.waitForExistence(timeout: 5))
+
+        folder.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            (folder.value as? String) == "Collapsed"
+                && !child.exists
+        })
+    }
+
+    /// NSOutlineView owns the populated hierarchy's process-private drag
+    /// source, destination validation, auto-scroll, native drop state, and row
+    /// reuse. The committed source-ahead move must replace the source row before
+    /// the complete Workspace refresh finishes.
+    @MainActor
+    func testNativeSidebarDropPublishesMovedNoteImmediately() throws {
+        let noteList = app.descendants(matching: .any)[
+            "scholium.noteList"
+        ].firstMatch
+        let source = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave B.md"
+        ].firstMatch
+        let target = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-10"
+        ].firstMatch
+        XCTAssertTrue(noteList.waitForExistence(timeout: 10))
+        scrollUntilHittable(source, in: noteList)
+        scrollUntilHittable(target, in: noteList)
+        XCTAssertTrue(source.isHittable)
+        XCTAssertTrue(target.isHittable)
+
+        let sourceURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/QA Autosave B.md"
+        )
+        let destinationURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Cluster-10/QA Autosave B.md"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path))
+
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .click(
+                forDuration: 0.35,
+                thenDragTo: target.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                ),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.35
+            )
+
+        let destination = app.descendants(matching: .any)[
+            "scholium.noteRow.Cluster-10/QA Autosave B.md"
+        ].firstMatch
+        XCTAssertTrue(
+            destination.waitForExistence(timeout: 5),
+            "The committed move did not publish its destination row immediately."
+        )
+        XCTAssertFalse(source.exists)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            FileManager.default.fileExists(atPath: destinationURL.path)
+                && !FileManager.default.fileExists(atPath: sourceURL.path)
+        })
+        let documentTitle = app.staticTexts["scholium.documentNoteName"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            (documentTitle.value as? String) == "QA Autosave B"
+        })
+    }
+
+    /// The fixed LocationHeader—not unoccupied outline space or a root Note
+    /// row—is the native pointer target for moving an item back to the vault
+    /// root. The source-ahead projection must publish that root row at commit.
+    @MainActor
+    func testNativeLocationHeaderDropMovesNoteToVaultRoot() throws {
+        let noteList = app.descendants(matching: .any)[
+            "scholium.noteList"
+        ].firstMatch
+        let folder = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-01"
+        ].firstMatch
+        let locationHeader = app.descendants(matching: .any)[
+            "scholium.locationPicker"
+        ].firstMatch
+        XCTAssertTrue(noteList.waitForExistence(timeout: 10))
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+        XCTAssertTrue(locationHeader.waitForExistence(timeout: 5))
+
+        if (folder.value as? String) != "Expanded" {
+            folder.click()
+            XCTAssertTrue(waitUntil(timeout: 5) {
+                (folder.value as? String) == "Expanded"
+            })
+        }
+
+        let source = app.descendants(matching: .any)[
+            "scholium.noteRow.Cluster-01/analysis-007.md"
+        ].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        scrollUntilHittable(source, in: noteList)
+        XCTAssertTrue(source.isHittable)
+        XCTAssertTrue(locationHeader.isHittable)
+
+        let sourceURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Cluster-01/analysis-007.md"
+        )
+        let destinationURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/analysis-007.md"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path))
+
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .click(
+                forDuration: 0.35,
+                thenDragTo: locationHeader.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                ),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.35
+            )
+
+        let destination = app.descendants(matching: .any)[
+            "scholium.noteRow.analysis-007.md"
+        ].firstMatch
+        XCTAssertTrue(
+            destination.waitForExistence(timeout: 5),
+            "The LocationHeader drop did not publish the root Note row."
+        )
+        XCTAssertFalse(source.exists)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            FileManager.default.fileExists(atPath: destinationURL.path)
+                && !FileManager.default.fileExists(atPath: sourceURL.path)
+        })
+    }
+
+    /// A durable Folder move must update the exact window's native outline
+    /// before the complete graph, Search, and research projections refresh.
+    @MainActor
+    func testNativeFolderDropPublishesMovedFolderImmediately() throws {
+        let noteList = app.descendants(matching: .any)[
+            "scholium.noteList"
+        ].firstMatch
+        let source = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-01"
+        ].firstMatch
+        let target = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-02"
+        ].firstMatch
+        XCTAssertTrue(noteList.waitForExistence(timeout: 10))
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+
+        if (target.value as? String) != "Expanded" {
+            target.click()
+            XCTAssertTrue(waitUntil(timeout: 5) {
+                (target.value as? String) == "Expanded"
+            })
+        }
+        scrollUntilHittable(source, in: noteList)
+        scrollUntilHittable(target, in: noteList)
+
+        let sourceURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Cluster-01"
+        )
+        let destinationURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Cluster-02/Cluster-01"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path))
+
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .click(
+                forDuration: 0.35,
+                thenDragTo: target.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                ),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.35
+            )
+
+        let destination = app.descendants(matching: .any)[
+            "scholium.folderRow.Cluster-02/Cluster-01"
+        ].firstMatch
+        XCTAssertTrue(
+            destination.waitForExistence(timeout: 5),
+            "The committed Folder move waited for disposable Workspace projections."
+        )
+        XCTAssertFalse(source.exists)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            FileManager.default.fileExists(atPath: destinationURL.path)
+                && !FileManager.default.fileExists(atPath: sourceURL.path)
+        })
+    }
+
     /// The default final QA route. It keeps one isolated application process
     /// alive for the complete journey so the researcher does not see a new QA
     /// app open for every assertion group.
@@ -260,8 +469,27 @@ extension ScholiumUITests {
 
     @MainActor
     func testNewAnalysisCreationHasNoPropertyRequirements() throws {
+        let libraryFilters = app.descendants(matching: .any)[
+            "scholium.libraryFilters"
+        ]
+        XCTAssertTrue(libraryFilters.waitForExistence(timeout: 10))
+        libraryFilters.click()
+        let connectionFilter = app.menuItems["Explicit Connections"].firstMatch
+        XCTAssertTrue(connectionFilter.waitForExistence(timeout: 5))
+        XCTAssertTrue(connectionFilter.isEnabled)
+        connectionFilter.click()
+        let filterStatus = app.descendants(matching: .any)[
+            "scholium.libraryFilterStatus"
+        ]
+        XCTAssertTrue(filterStatus.waitForExistence(timeout: 5))
+
+        let libraryCreate = app.descendants(matching: .any)["scholium.libraryCreate"]
+        XCTAssertTrue(libraryCreate.waitForExistence(timeout: 10))
+        libraryCreate.click()
         let newNote = app.descendants(matching: .any)["scholium.newNote"]
-        XCTAssertTrue(newNote.waitForExistence(timeout: 10))
+        let newFolder = app.descendants(matching: .any)["scholium.newFolder"]
+        XCTAssertTrue(newNote.waitForExistence(timeout: 3))
+        XCTAssertTrue(newFolder.exists)
         newNote.click()
 
         XCTAssertFalse(
@@ -286,12 +514,31 @@ extension ScholiumUITests {
         let source = try source(at: createdURL)
         XCTAssertEqual(source, "")
         XCTAssertFalse(source.contains("research_unit"))
+
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            !filterStatus.exists
+                && (libraryFilters.value as? String) == "No filters active"
+        })
+        let createdRow = app.descendants(matching: .any)[
+            "scholium.noteRow.Untitled.md"
+        ]
+        XCTAssertTrue(createdRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 5) { createdRow.isSelected })
+        let createdTitle = app.descendants(matching: .any)[
+            "scholium.documentNoteName"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 20) {
+            createdTitle.value as? String == "Untitled"
+        })
     }
 
     @MainActor
     func testMissingAnalysisPropertiesAreOmittedFromAbout() throws {
+        let libraryCreate = app.descendants(matching: .any)["scholium.libraryCreate"]
+        XCTAssertTrue(libraryCreate.waitForExistence(timeout: 10))
+        libraryCreate.click()
         let newNote = app.descendants(matching: .any)["scholium.newNote"]
-        XCTAssertTrue(newNote.waitForExistence(timeout: 10))
+        XCTAssertTrue(newNote.waitForExistence(timeout: 3))
         newNote.click()
 
         XCTAssertFalse(
@@ -315,6 +562,16 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 45) {
             createdTitle.value as? String == "Untitled"
         })
+        let emptyReview = app.descendants(matching: .any)[
+            "scholium.emptyNoteReview"
+        ]
+        XCTAssertTrue(
+            emptyReview.waitForExistence(timeout: 5),
+            "An exact empty note must present its completed Review state immediately."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.renderedDocument.loading"].exists
+        )
 
         selectResearchInspectorMode("overview")
         let about = app.descendants(matching: .any)["scholium.about"]
@@ -383,9 +640,7 @@ extension ScholiumUITests {
         createdFolderMenu.menuItems["Rename Folder…"].click()
         let folderName = app.textFields["scholium.folderName"]
         XCTAssertTrue(folderName.waitForExistence(timeout: 5))
-        folderName.click()
-        folderName.typeKey("a", modifierFlags: [.command])
-        folderName.typeText("Renamed Empty")
+        typeCommittedText("Renamed Empty", into: folderName, in: app)
         app.buttons["Rename"].click()
 
         let renamedFolderURL = triptychDirectory.appendingPathComponent(
@@ -422,6 +677,13 @@ extension ScholiumUITests {
                 && !FileManager.default.fileExists(atPath: renamedFolderURL.path)
         })
 
+        if folderRow.value as? String == "Expanded" {
+            folderRow.click()
+            XCTAssertTrue(waitUntil(timeout: 5) {
+                folderRow.value as? String == "Collapsed"
+            })
+        }
+        XCTAssertEqual(folderRow.value as? String, "Collapsed")
         folderRow.rightClick()
         XCTAssertTrue(folderMenu.waitForExistence(timeout: 3))
         XCTAssertTrue(newNote.waitForExistence(timeout: 3))
@@ -452,6 +714,14 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 45) {
             createdTitle.value as? String == "Untitled"
         })
+        let createdRow = app.descendants(matching: .any)[
+            "scholium.noteRow.Cluster-01/Untitled.md"
+        ]
+        XCTAssertTrue(
+            createdRow.waitForExistence(timeout: 10),
+            "Creating inside a collapsed Folder must re-expand its ancestors."
+        )
+        XCTAssertTrue(waitUntil(timeout: 5) { createdRow.isSelected })
     }
 
     @MainActor

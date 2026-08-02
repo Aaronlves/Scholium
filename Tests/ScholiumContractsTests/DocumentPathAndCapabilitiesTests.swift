@@ -45,6 +45,34 @@ struct DocumentPathAndCapabilitiesTests {
         ))
     }
 
+    @Test("A vault comparison policy projects the same rules for Notes and Folders")
+    func comparisonPolicy() throws {
+        let insensitive = VaultPathComparisonPolicy(
+            caseSensitive: false,
+            normalizationSensitive: false
+        )
+        #expect(insensitive.comparisonKey(
+            for: try MarkdownRelativePath("Draft/Café.md")
+        ) == insensitive.comparisonKey(
+            for: try MarkdownRelativePath("draft/Cafe\u{301}.md")
+        ))
+        #expect(insensitive.comparisonKey(
+            for: try VaultRelativeFolderPath("Draft/Café")
+        ) == insensitive.comparisonKey(
+            for: try VaultRelativeFolderPath("draft/Cafe\u{301}")
+        ))
+
+        let sensitive = VaultPathComparisonPolicy(
+            caseSensitive: true,
+            normalizationSensitive: true
+        )
+        #expect(sensitive.comparisonKey(
+            for: try MarkdownRelativePath("Draft.md")
+        ) != sensitive.comparisonKey(
+            for: try MarkdownRelativePath("draft.md")
+        ))
+    }
+
     @Test(
         "Unresolved identity fails closed",
         arguments: [

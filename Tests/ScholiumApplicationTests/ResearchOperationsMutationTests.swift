@@ -60,13 +60,13 @@ struct ResearchOperationsMutationTests {
             fixture.analysisID,
             to: destinationPath,
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
         let moved = try await handle.documents.load(move.destination)
         let changed = try await handle.documents.save(
             move.destination,
             changeSet: .exactContent("# Changed\n\nA later revision.\n"),
             expectedRevision: moved.fingerprint
-        )
+        ).committedValue
 
         let history = try await handle.research.noteCheckpoints(for: move.destination)
         #expect(history.contains { $0.id == checkpoint.id })
@@ -187,7 +187,7 @@ struct ResearchOperationsMutationTests {
             fixture.analysisID,
             to: "Trash/Analysis.md",
             expectedRevision: document.fingerprint
-        )
+        ).committedValue
         let trashedDocument = try await handle.documents.load(trashed.destination)
         _ = try await handle.documents.deletePermanently(
             trashed.destination,
@@ -218,7 +218,7 @@ struct ResearchOperationsMutationTests {
             fixture.analysisID,
             to: "Trash/Analysis.md",
             expectedRevision: document.fingerprint
-        )
+        ).committedValue
         let trashedDocument = try await handle.documents.load(trashed.destination)
         let bindingURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)

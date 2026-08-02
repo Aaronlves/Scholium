@@ -119,15 +119,36 @@ and refuses stale generations, including across index reopen or another
 process connection. A failed cycle preserves the last complete snapshot and index.
 Repository save completion is deliberately earlier than this disposable
 cycle. `DocumentOperations.commit` returns the revision-checked authoritative
-`NoteDocument` as soon as the repository commit is proven. The owning
-`WorkspaceHandle` then retains one utility-priority source-commit refresh task,
-coalesces later committed revisions, and publishes either the refreshed
-snapshot or typed stale derived state. Matching watcher work waits behind that
-owned task instead of starting a competing refresh. A graph, Search, catalog,
-or snapshot failure therefore cannot become an Autosave Failed result or ask
-the editor to replay a committed mutation. Same-generation research and
-lifecycle workflows instead call `DocumentOperations.save`, which explicitly
-waits for derived publication before returning.
+`NoteDocument` as soon as the repository commit is proven. Direct untitled-note
+creation likewise returns a `WorkspaceUntitledNoteCommit` after exact source
+and portable-identity setup, before complete derived publication. The owning
+`WorkspaceHandle` queues both paths into one utility-priority source-commit
+refresh task before releasing the source-mutation lease, coalesces later
+commits, and publishes either the refreshed snapshot or typed stale derived
+state. Matching watcher work waits behind that owned task instead of starting a
+competing refresh. A graph, Search, catalog, or snapshot failure therefore
+cannot become an Autosave Failed result or ask the editor to replay a committed
+mutation. Same-generation research and lifecycle workflows instead call
+`DocumentOperations.save`, which explicitly waits for derived publication.
+Every other document create, import,
+source-and-derived save, move, lifecycle mutation, folder mutation, permanent
+delete, and identity resolution returns a `WorkspaceMutationOutcome` once its
+authoritative commit is proven. Disposable refresh or post-move identity-
+recovery failures travel as nonretryable warnings beside that committed value;
+they never replace it with a generic thrown error. GUI and CLI callers
+acknowledge the committed source and direct recovery through Refresh or
+identity repair without repeating the mutation. Multi-file GUI import
+aggregates both warning classes across every committed file instead of
+discarding per-file identity recovery state, and the batch remains bound to
+its initiating Workspace so a Triptych switch stops remaining imports instead
+of routing them through replacement capabilities. Its exact Window owns the
+single batch task; an actual window close cancels remaining files without
+reclassifying prior commits as failures. Create, import, and duplicate
+also treat portable-identity setup as part of their creation transaction: an
+exact rollback failure is observed rather than discarded. A proven retained
+source becomes the committed outcome with an identity warning; unreadable
+source presence becomes an explicit uncertain error that forbids blind
+recreation.
 Direct Related items are publishable only when the Graph and Search manifest
 hashes agree. Privacy-safe measurements record enumerate/read/parse/source-
 projection counts and durations, identity and research-state projection,
@@ -202,7 +223,10 @@ replaceable and final saves behind its client-owned Store port;
 `WindowEditorFlushCoordinator` preserves current-editor
 flush-before-capture ordering, supplies the aggregate per-window registration
 used by Triptych-wide operations, and tears both registrations down only after
-content-safe close. `AgentNoteChangeWindowController` owns
+AppKit commits to closing the exact native window. Close preparation only
+flushes content and finalizes recoverable presentation; if another window
+cancels application termination, every still-open window retains its flush
+ownership for the next attempt. `AgentNoteChangeWindowController` owns
 the exact window's Agent request, display identity, expiry, decision tasks, and
 sheet route. `WindowSearchController` owns Search/temporary Find execution and
 cancellation, exact result-freshness validation, Search-generation reruns, and
@@ -238,22 +262,47 @@ listing. Shell, Research Action, and Recommended Bibliography state remain
 independently observable owners; `ResearchController` neither republishes nor
 duplicates them. `ContentView`, Inspector, Action, and bibliography leaves
 observe only the owner whose state they render. `WindowWorkspaceProjectionController` is the exact-window owner of the
-immutable catalog, per-vault snapshots, selected Location's Notes/tags/revisions
-and property-filter options, graph, Search generation, derived-refresh status,
+immutable catalog, per-vault snapshots, selected Location's
+Notes/tags/authors/years/revisions and property-filter options, graph, Search
+generation, derived-refresh status,
 and catalog refresh lifecycle. It accepts only the active runtime and increasing
 event generations, stages a complete `State`, and publishes that state once.
+The selected Location's revision map reuses each immutable document's existing
+fingerprint and never rehashes exact source merely to construct a window value.
 Research-configuration invalidation advances event order without replaying an
 unchanged projection; a deleted Note remains in the visible projection only
 while its exact dirty editor owns conflict recovery. `WindowModel` forwards
 read-only values and applies typed presentation effects, but exposes neither the
-controller's backing cache nor a second writable source authority.
+controller's backing cache nor a second writable source authority. A cached
+Note lookup treats a supplied stable Note ID as exclusive identity authority;
+only a caller that has no stable ID may resolve by path. A moved Note therefore
+cannot be replaced in the current document, tab, Search evidence, or Library
+reveal path by a different Note that later occupies its former path.
 Direct New Note requests remain focused-window commands: the Library and File
 menu send a target folder value to `WindowModel`, which flushes the current
 editor and calls the Application-owned untitled-note use case. Application
 atomically advances through occupied default paths; the view never scans or
-writes the vault and no presentation route participates. Folder disclosure and
-subtree expansion remain `DiscoveryController` state. A disclosure commits its
-flat visible-row projection without a list-wide layout animation; the row's
+writes the vault. After the source and identity commit, the exact window
+installs one `sourceAhead` `WorkspaceNoteSnapshot` for presentation and marks
+derived state stale; its graph-count values are nonauthorizing placeholders and
+Research Actions remain closed. The matching complete generation replaces this
+overlay through the ordinary event gate. The window therefore activates the
+new stable identity without blocking on Triptych-wide identity reconciliation
+or graph construction and without creating a second source authority. Only
+after activation, `DiscoveryController` clears excluding Library filters,
+unions the destination's folder ancestors into window-local disclosure, and
+publishes one generation- and scope-bound reveal request. `SidebarView` consumes
+that request by scrolling to the selected row without taking keyboard focus.
+The same presentation path follows every successful active-Note activation:
+`WindowModel` asynchronously stages the exact Note vault and Library Location,
+rejects a stale target after any newer navigation, preserves filters when the
+Note already passes them, and otherwise clears only that excluding filter set
+before requesting the minimum scroll needed to expose the row. The adjacent
+adaptive expand/collapse button mutates only the current `WindowShellState`
+disclosure scope and does not own a second reveal route.
+Folder disclosure and subtree expansion remain `DiscoveryController` state. A
+disclosure commits its flat visible-row projection without a list-wide layout
+animation; the row's
 single chevron alone consumes the shared, Reduce-Motion-aware
 `ScholiumMotion.disclosure` recipe also used by Connect. This prevents departing
 Note labels from interpolating through their owning Folder while retaining one
@@ -272,6 +321,102 @@ one control-store write and resumes existing idempotent path migrations. Other
 directory contents move with the inode and are not parsed. Copy Relative Path
 and Reveal in Finder remain delivery actions over an existing folder or note
 vault-relative path and create no Core authority.
+When the accepted Workspace source cohort and graph manifest are coherent, a
+Folder move uses that exact in-memory cohort and reparses only graph-identified
+incoming-link candidates; a pending, source-ahead, or structurally stale cohort
+falls back to the complete filesystem read and graph derivation. The repository
+still re-enumerates and fingerprint-checks every descendant immediately before
+the directory rename. After commit, the coordinator returns each descendant's
+exact committed source, including any safe link rewrite. The exact window moves
+its Folder inventory and Note snapshots as one explicit `sourceAhead`
+projection, while the Application queues the sole complete derived generation
+before releasing the source lease. Matching watcher events therefore converge
+through that owned refresh rather than delaying the native outline or starting
+a competing rebuild. Until that generation arrives, Application merges durable
+source-ahead identity records with the last complete snapshot by stable Note ID
+when it builds a Folder descendant plan. A just-created Note and Notes moved by
+an earlier Folder transaction therefore follow their current source paths;
+Core still re-enumerates the directory and rejects an incomplete inventory.
+Note and Folder rows publish distinct own-process drag identities so local drop
+sessions can advertise Move only for the matching exact vault and a valid
+destination. Folder target validation rejects its current parent, itself, and
+its descendants before calling the same Application-owned folder Move path;
+the drag layer never enumerates descendants or writes source. The populated
+hierarchy's `NSOutlineView` is the sole drag source and Folder-row destination
+owner: its data source writes the process-private pasteboard payload, AppKit
+provides autoscroll and full-row source-list feedback, and the delegate accepts
+only exact Folder-row targets. A native AppKit destination behind the stable
+LocationHeader alone accepts a vault-root move; root Note rows and outline
+whitespace reject it. The surrounding SwiftUI hierarchy does not register a
+competing drop destination. Acceptance revalidates the current
+revision, destination occupancy, and in-progress identity before dispatch. Core's
+root-scoped `VaultPathResolver` remains the sole owner of mounted-volume case and
+Unicode-normalization comparison behavior; `WorkspaceSnapshotBuilder` projects
+those immutable facts through `WorkspaceVaultSnapshot` without asking the UI to
+probe the filesystem. `SidebarTreeDropInventory` precomputes typed Note and
+Folder comparison keys from that policy and uses them for no-op, current-parent,
+self, descendant, and occupied-target preflight. A missing policy fails closed,
+while every accepted move still repeats containment, collision, identity, and
+revision checks inside Core immediately before commit. A stale or repeated
+gesture therefore cannot advertise or start a second move, and presentation
+preflight never becomes filesystem authority.
+
+`WindowModel` owns one exact-window `LibraryTreeProjectionCache`. It returns an
+immutable version whose revision advances only when the ordered Note cohort or
+Folder inventory changes; recreating a `SidebarView` for document loading,
+selection, focus, disclosure, or toolbar state reuses the prior tree. The
+projection registers each real Folder ancestor once, builds parent-child
+adjacency before recursion, and supplies the same roots, disclosure sets, and
+deterministic removal-focus order to the header and native outline. The Outline
+coordinator performs complete structure comparison and item reconciliation only
+when that projection revision changes; ordinary presentation updates still
+refresh the currently available reusable rows. Native expansion reconciliation
+likewise runs only when the desired disclosure set or outline structure changes;
+an unrelated configuration application neither rescans every item twice nor
+replays AppKit expansion. `WindowModel` filters and orders
+the Note sequence before the cache lookup. Modified-time ordering reads a Note
+title only for an actual timestamp tie; title and Debate Importance ordering
+retain their existing title fallback. The tree projection preserves
+that order within each Folder without receiving a second comparator closure.
+`SidebarContext` derives its vault identity from the disclosure scope and names
+the shared create/move/drop gate as Library mutation capability, so parallel
+immutable inputs cannot disagree about the active vault or authority.
+Populated hierarchy ownership is split by responsibility:
+`SidebarOutlineSourceList` configures the `NSOutlineView`, its coordinator owns
+data-source/delegate reconciliation, the row layer owns native reuse and hover,
+and the native-drop layer owns process-local pasteboard decoding plus the
+LocationHeader root target. AppKit-authored menus, tooltips, and accessibility
+values pass through one explicit locale projection; researcher Folder and Note
+titles remain verbatim. Library-only filtering is rendered by one stateless
+`SidebarLibraryFilterMenu` from an immutable options value plus the current
+`DiscoveryFilterState`; every change returns one complete replacement intent
+to `DiscoveryController`, which remains the sole filter and ordering owner.
+Lifecycle-row focus restoration keeps one pending plan per vault-qualified
+origin Note. Pure reconciliation retains still-running plans, discards plans
+from another disclosure scope, and lets only the most recently invoked
+completed removal choose the single native next/previous/LocationPicker target;
+a failed operation restores only its own row.
+
+An ordinary Note move flushes the registered editor only when that exact Note
+is active. Every identity-dependent interface command first captures one
+`NoteLifecycleTarget`: its vault-qualified document ID, stable Note ID, and
+exact source revision remain one value through Window, controller, use case,
+and Application. Application re-resolves the stable identity under the source
+mutation lease before a move or deletion can commit, so path reuse cannot
+retarget a stale row or sheet command. The CLI retains its explicit
+vault-qualified path plus exact-revision boundary. Context menus and
+accessibility actions are rendered from one semantic Note-command projection;
+only the surface-specific non-drag Move alternative differs.
+`WorkspaceHandle` first asks `IncomingLinkRewriter` to plan from one
+coherent exact-source Workspace snapshot and its graph: the graph supplies only
+candidate incoming occurrences, and only those source documents are reparsed
+and resolved against the current and future catalogs. An incomplete,
+source-ahead, or structurally stale snapshot cannot authorize this path and
+falls back to the complete filesystem read and graph re-derivation. After the
+source/link/identity transaction commits, the exact window installs the moved
+source at its destination as an explicit source-ahead projection, activates and
+reveals it immediately, and lets the complete derived refresh converge in the
+background.
 Document, Search, and presentation are window-local; Library hierarchy and
 selection, Sidebar/Apparatus visibility, and Apparatus mode belong to the outer
 window, never a tab. Controllers do not mutate one another. Separate
@@ -989,7 +1134,21 @@ dismissal uses the route identity, so a stale callback cannot dismiss a newer
 sheet. Route payloads carry note paths only as navigation projections; they do
 not own document sessions. Note creation is not a sheet route; lifecycle sheets
 remain only for operations that require researcher-supplied destinations or
-researcher input.
+researcher input. Put Back is a direct reversible Source List command and never
+enters the sheet router. Its immutable `NoteLifecycleTarget` is the complete
+mutation authority, so it does not flush an unrelated writable editor
+while a read-only lifecycle presentation is attaching or detaching. A committed
+category move removes the moved Note's document page; if it was selected, the
+Document controller clears selection and the native tab container presents its
+existing no-document host without implicitly activating another page. The
+native Outline cell owns the pointer-hover Put Back `NSButton` and its
+hit-test-transparent semantic Sidebar material veil above the full-width hosted
+title; SwiftUI retains only row content, context menu, and accessibility
+actions. The same
+native button remains visible while its Outline row owns keyboard focus; one
+Outline coordinator exclusively consumes row-focus requests. Hover
+reconciliation stores a stable row ID and resolves it against current Outline
+rows so removal never asks AppKit to materialize a stale row object.
 
 `ContentView` has one `.sheet(item:)`, one typed alert presentation, and one
 persistent `ScholiumWorkspaceSplitView` root for each configured workspace
@@ -1484,14 +1643,48 @@ uncertainty attempts a guarded swap-back, keeps observed staging evidence, and
 returns `commitUncertain`; Application persists a `.noteSave` Transaction
 Recovery record and never reports Saved.
 
+The public `VaultRepository` constructor always installs no mutation hooks. An
+internal-only constructor supplies deterministic phase hooks to the Core test
+target without changing the production transaction. A registered
+`NSFilePresenter` fixture can therefore replace a disposable source before the
+coordinated writer accessor is granted, proving that Scholium reports conflict,
+preserves provider bytes, and retains both expected and candidate recovery
+material. Swift Testing exit subprocesses send `SIGKILL` at the staged and
+post-swap boundaries, then reopen the same repository and verify the one
+canonical revision, exact prewrite recovery, hidden staging exclusion from the
+Library inventory, pre-swap candidate-journal retention or post-swap journal
+completion, and a subsequent save.
+These are local coordination and real process-interruption proofs; they do not
+claim a configured File Provider domain, dataless-item materialization or
+eviction, sync-server behavior, or packaged-App termination acceptance. The
+retained pre-swap candidate contributes a workspace health issue and a
+vault-qualified entry in the existing Recovery sheet. Core no-follow reads
+revalidate its manifest plus expected/candidate bytes; read-only source, Copy,
+and Finder reveal grant no write authority. Restore carries the displayed
+vault, path, revisions, creation identity, and retained reason back to Core,
+flushes all Triptych editors, and uses the ordinary revision-checked repository
+save only while canonical source remains at the expected revision. Focused
+fixtures prove this route; direct human recovery and assistive-technology
+acceptance remain open.
+
 `PrewriteRecoveryLedger` is Core-only machine state under
 `Vaults/<vault-id>/recovery-v2/`. Immutable fingerprinted objects are indexed by
 SQLite WAL with full synchronization, bounded to ten entries per path, and
 protected by remap journals and permanent-delete tombstones. A damaged database
 is quarantined and rebuilt from verified objects. Legacy `versions/` bytes stay
 unchanged during all-or-nothing v1 migration and become read-only after the
-completion marker. This ledger has no delivery-facing versions/restore API;
-Checkpoint restore remains the only visible recovery mechanism.
+completion marker. It exposes no general delivery-facing versions or history
+API. Its one bounded `InterruptedSaveRecovery` projection includes only exact
+startup-retained candidates and remains distinct from Checkpoints and settled
+versions. `DocumentOperations` vault-qualifies listing, read-only content,
+Finder location, and restore; `ResearchController` owns that listing beside the
+existing durable-recovery list, while `WindowModel` owns the cross-window editor
+flush and presentation effects. Startup reads pending canonical source through
+the descriptor boundary. A canonical
+candidate proves the interrupted save committed and completes its mutation
+journal; a still-canonical expected revision retains the distinct candidate
+bytes and publishes a health diagnostic instead of deleting the only
+structured copy of interrupted editor work.
 
 ## Shared read models and metadata
 
@@ -1536,7 +1729,10 @@ pin a session. Closing any tab flushes its target before membership removal;
 clean zero-lease, zero-pin sessions detach WebKit and discard full editor,
 source, undo, HTML, and preview state immediately. Only a 64-entry lightweight
 presentation LRU survives close; memory pressure reduces it to 16 or clears it
-without evicting leased or pinned safety state.
+without evicting leased or pinned safety state. Both stable and identity-
+unavailable session keys remain vault-qualified, so equal relative paths in two
+Triptych vaults cannot share a buffer, Read cache identity, mode, or scroll
+state.
 
 Each retained `DocumentSessionModel` owns:
 
@@ -1589,8 +1785,14 @@ revision changes even while Edit or Source is visible. Hidden Review scroll
 reports cannot mutate the shared scroll anchor, and a newly committed revision
 invalidates older Review readiness before the handoff becomes visible.
 Clean external revisions synchronize the retained editor through the same
-generation-checked path; dirty buffers still enter Conflict. Window resizing,
-split changes, theme, text scale, document measure, and ordinary SwiftUI
+generation-checked path; dirty buffers still enter Conflict. A complete
+generation also reconciles every open tab by stable identity. A clean document
+that disappeared externally releases its tab and activates a surviving
+neighbor or the no-document state, while dirty, conflicted, retryable,
+save-in-flight, or recovery-buffer sessions retain their exact bytes. The
+generation gate is checked before any document or path projection changes, so
+an older event cannot close or rename a newer tab. Window resizing, split
+changes, theme, text scale, document measure, and ordinary SwiftUI
 reconstruction may reconfigure presentation but cannot recreate the retained
 `WKWebView` or `EditorState`. Retained-surface memory remains a measured
 acceptance concern rather than permission to weaken this lifecycle contract.

@@ -12,9 +12,19 @@ enum NoteLocationScope: String, CaseIterable, Identifiable, Hashable, Sendable {
 
     var id: String { rawValue }
 
-    var prefix: String? {
+    var documentLifecycle: WorkspaceDocumentLifecycle {
         switch self {
-        case .workspace: nil
+        case .workspace: .active
+        case .setAside: .setAside
+        case .trash: .trash
+        }
+    }
+}
+
+extension WorkspaceDocumentLifecycle {
+    var libraryPathPrefix: String? {
+        switch self {
+        case .active: nil
         case .setAside: "Set Aside/"
         case .trash: "Trash/"
         }
@@ -35,62 +45,30 @@ struct WorkspaceAccessRecovery: Identifiable, Hashable, Sendable {
     var id: String { "\(kind.rawValue):\(expectedPath)" }
 }
 
-/// A lifecycle listing projection. `revision` is the authority used by the
-/// eventual application operation; the location retains the immutable shared
-/// snapshot rather than copying its writable source or derived state.
-struct LifecycleLocationItem: Identifiable, Hashable {
-    let note: WindowDocumentLocation
-    let revision: DocumentFingerprint
-    let noteID: UUID
-
-    var id: String { note.relativePath }
-}
-
-/// Immutable authority for a document-scoped lifecycle request. Library
-/// browsing can point at a different vault while a document remains open, so
-/// a path alone is never sufficient to identify Duplicate or Move targets.
-struct NoteLifecycleTarget: Identifiable, Equatable, Sendable {
-    let documentID: VaultQualifiedNoteID
-    let stableNoteID: UUID
-    let revision: DocumentFingerprint
-
-    var id: String {
-        "\(documentID.vaultID.uuidString.lowercased()):\(documentID.relativePath)"
-    }
-
-    var relativePath: String { documentID.relativePath }
-
-    init(
-        documentID: VaultQualifiedNoteID,
-        stableNoteID: UUID,
-        revision: DocumentFingerprint
-    ) {
-        self.documentID = documentID
-        self.stableNoteID = stableNoteID
-        self.revision = revision
-    }
-
+extension NoteLifecycleTarget {
     init?(_ location: WindowDocumentLocation) {
         guard let snapshot = location.workspaceSnapshot,
               let stableNoteID = snapshot.stableIdentity.resolvedID else {
             return nil
         }
-        documentID = snapshot.id
-        self.stableNoteID = stableNoteID
-        revision = snapshot.fingerprint
+        self.init(
+            documentID: snapshot.id,
+            stableNoteID: stableNoteID,
+            revision: snapshot.fingerprint
+        )
     }
 }
 
 enum NoteLifecycleRequest: Identifiable, Equatable, Sendable {
     case duplicate(NoteLifecycleTarget)
+    case rename(NoteLifecycleTarget)
     case move(NoteLifecycleTarget)
-    case putBack(String)
 
     var id: String {
         switch self {
         case .duplicate(let target): "duplicate:\(target.id)"
+        case .rename(let target): "rename:\(target.id)"
         case .move(let target): "move:\(target.id)"
-        case .putBack(let path): "put-back:\(path)"
         }
     }
 }

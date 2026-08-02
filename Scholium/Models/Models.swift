@@ -218,6 +218,11 @@ extension WindowDocumentLocation {
 }
 
 extension WindowDocumentLocation {
+  var vaultID: UUID {
+    switch self {
+    case .workspace(let snapshot): snapshot.id.vaultID
+    }
+  }
   var relativePath: String { document.relativePath }
   var fileName: String { (relativePath as NSString).lastPathComponent }
   var displayName: String {

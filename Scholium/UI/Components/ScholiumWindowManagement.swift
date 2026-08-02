@@ -520,6 +520,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         closeAttemptGeneration &+= 1
         flushInFlight = false
         closeIsAuthorized = false
+        appState.finalizeWindowClose()
         removeToolbar()
         splitController = nil
         unregisterAgentNoteChangeWindow()
@@ -603,7 +604,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     func windowWillClose(_ notification: Notification) {
         // Release App-wide claims before SwiftUI tears down the per-window
         // model so an unresolved request can move to another exact window.
+        appState.finalizeWindowClose()
         unregisterAgentNoteChangeWindow()
+        if isRegistered {
+            lifecycleRegistry.unregister(id: windowID)
+            isRegistered = false
+        }
         previousDelegate?.windowWillClose?(notification)
     }
 

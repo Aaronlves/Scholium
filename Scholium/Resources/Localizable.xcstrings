@@ -1052,6 +1052,38 @@
         }
       }
     },
+    "A Markdown import is already in progress." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A Markdown import is already in progress."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdown 导入正在进行。"
+          }
+        }
+      }
+    },
+    "Another folder operation is already in progress." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Another folder operation is already in progress."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一个文件夹操作正在进行。"
+          }
+        }
+      }
+    },
     "A Note, revision, Skill, Profile, policy subject, lifecycle state, or parent run changed. Scholium recorded no new authority." : {
       "localizations" : {
         "en" : {
@@ -1112,6 +1144,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仍由工作方法或操作配置使用的技能不能删除。请先移除其绑定。"
+          }
+        }
+      }
+    },
+    "A folder can only move within its current vault." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A folder can only move within its current vault."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹只能在当前研究库内移动。"
           }
         }
       }
@@ -3834,6 +3882,36 @@
         }
       }
     },
+    "Candidate copied." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已复制候选内容。"
+          }
+        }
+      }
+    },
+    "Candidate is already current" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选内容已是当前源文本"
+          }
+        }
+      }
+    },
+    "Candidate ready to restore" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选内容可恢复"
+          }
+        }
+      }
+    },
     "Candidate writable roles" : {
       "localizations" : {
         "en" : {
@@ -3878,6 +3956,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "候选写入当前%@"
+          }
+        }
+      }
+    },
+    "Candidate: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选版本：%@"
           }
         }
       }
@@ -5199,6 +5287,38 @@
         }
       }
     },
+    "Collapse All Folders" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Collapse All Folders"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "折叠所有文件夹"
+          }
+        }
+      }
+    },
+    "Collapse %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Collapse %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "折叠 %@"
+          }
+        }
+      }
+    },
     "Collapsed" : {
       "localizations" : {
         "en" : {
@@ -6027,6 +6147,16 @@
         }
       }
     },
+    "Copy Candidate" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制候选内容"
+          }
+        }
+      }
+    },
     "Copy Evaluation Request" : {
       "localizations" : {
         "en" : {
@@ -6668,6 +6798,22 @@
         }
       }
     },
+    "Could not move this folder. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not move this folder. %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法移动此文件夹。%@"
+          }
+        }
+      }
+    },
     "Could not move this folder to Trash. %@" : {
       "localizations" : {
         "en" : {
@@ -6696,6 +6842,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法打开 %@：%@"
+          }
+        }
+      }
+    },
+    "Could not reveal the current note. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not reveal the current note. %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法定位当前笔记。%@"
           }
         }
       }
@@ -6760,6 +6922,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建恢复点…"
+          }
+        }
+      }
+    },
+    "Create New" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create New"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建"
           }
         }
       }
@@ -7098,6 +7276,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前修订版"
+          }
+        }
+      }
+    },
+    "Current source changed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前源文本已更改"
+          }
+        }
+      }
+    },
+    "Current source is missing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前源文本缺失"
+          }
+        }
+      }
+    },
+    "Current source unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前源文本不可用"
           }
         }
       }
@@ -8828,6 +9036,22 @@
         }
       }
     },
+    "Empty Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Empty Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空笔记"
+          }
+        }
+      }
+    },
     "Empty folder" : {
       "localizations" : {
         "en" : {
@@ -9158,6 +9382,38 @@
         }
       }
     },
+    "Expand All Folders" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Expand All Folders"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开所有文件夹"
+          }
+        }
+      }
+    },
+    "Expand %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Expand %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开 %@"
+          }
+        }
+      }
+    },
     "Expanded" : {
       "localizations" : {
         "en" : {
@@ -9169,7 +9425,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "扩展"
+            "value" : "已展开"
           }
         }
       }
@@ -9218,6 +9474,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "预期修订为 %@；当前修订一致"
+          }
+        }
+      }
+    },
+    "Expected: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预期版本：%@"
           }
         }
       }
@@ -9556,6 +9822,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "结束讨论"
+          }
+        }
+      }
+    },
+    "Finish Recovery" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成恢复"
+          }
+        }
+      }
+    },
+    "Finish Recovery…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成恢复…"
           }
         }
       }
@@ -10278,6 +10564,16 @@
         }
       }
     },
+    "INTERRUPTED SAVES" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中断的保存"
+          }
+        }
+      }
+    },
     "Identifier" : {
       "localizations" : {
         "en" : {
@@ -10889,6 +11185,16 @@
         }
       }
     },
+    "Inspect exact save candidates retained after an interruption and durable records from file operations that could not finish cleanly." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查进程中断后保留的精确保存候选内容，以及未能正常完成的文件操作记录。"
+          }
+        }
+      }
+    },
     "Install" : {
       "localizations" : {
         "en" : {
@@ -11065,6 +11371,22 @@
         }
       }
     },
+    "Installed Skills Start Disabled" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Installed Skills Start Disabled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装的技能初始停用"
+          }
+        }
+      }
+    },
     "Installed Skills start disabled. A valid Action Profile and deliberate Show in Actions choice are still required." : {
       "localizations" : {
         "en" : {
@@ -11173,6 +11495,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "界面证明"
+          }
+        }
+      }
+    },
+    "Interrupted Saves Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中断保存记录不可用"
+          }
+        }
+      }
+    },
+    "Interrupted save" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中断的保存"
+          }
+        }
+      }
+    },
+    "Interrupted save candidate source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中断保存候选源文本"
+          }
+        }
+      }
+    },
+    "Interrupted save recovery completed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中断保存恢复已完成"
+          }
+        }
+      }
+    },
+    "Interrupted save restored" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已恢复中断的保存"
           }
         }
       }
@@ -11578,6 +11950,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究文档筛选"
+          }
+        }
+      }
+    },
+    "Library, Search, or other derived views may be stale. Use Refresh instead of importing the files again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Library, Search, or other derived views may be stale. Use Refresh instead of importing the files again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "资料库、搜索或其他派生视图可能尚未更新。请使用“刷新”，不要再次导入这些文件。"
           }
         }
       }
@@ -12012,6 +12400,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载文献推荐办法…"
+          }
+        }
+      }
+    },
+    "Loading candidate…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载候选内容…"
           }
         }
       }
@@ -12974,6 +13372,38 @@
         }
       }
     },
+    "Move Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Move Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动笔记"
+          }
+        }
+      }
+    },
+    "Move Note…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Move Note…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动笔记…"
+          }
+        }
+      }
+    },
     "Move Later" : {
       "localizations" : {
         "en" : {
@@ -13022,34 +13452,18 @@
         }
       }
     },
-    "Move or Rename Note…" : {
+    "Move one folder at a time." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Move or Rename Note…"
+            "value" : "Move one folder at a time."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移动或重命名笔记…"
-          }
-        }
-      }
-    },
-    "Move or Rename…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Move or Rename…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移动或重命名…"
+            "value" : "一次只能移动一个文件夹。"
           }
         }
       }
@@ -13697,6 +14111,22 @@
         }
       }
     },
+    "No Document Selected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Document Selected"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未选择文档"
+          }
+        }
+      }
+    },
     "No Headings" : {
       "localizations" : {
         "en" : {
@@ -13742,6 +14172,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此视图中没有项目"
+          }
+        }
+      }
+    },
+    "No Markdown files were imported." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Markdown files were imported."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未导入任何 Markdown 文件。"
           }
         }
       }
@@ -14200,6 +14646,16 @@
         }
       }
     },
+    "No interrupted save candidate or recorded file operation needs inspection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有需要检查的中断保存候选内容或文件操作记录。"
+          }
+        }
+      }
+    },
     "No other fields are enabled for structured editing in this vault. Change the vault-wide allowlist in Settings, or use Source mode to edit exact YAML." : {
       "localizations" : {
         "en" : {
@@ -14547,6 +15003,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "笔记身份"
+          }
+        }
+      }
+    },
+    "Note identity, revision, Skill revision, Profile, and standing policy remain current." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Note identity, revision, Skill revision, Profile, and standing policy remain current."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记身份、修订、技能修订、配置与持续有效策略均仍为当前版本。"
           }
         }
       }
@@ -15043,38 +15515,6 @@
         }
       }
     },
-    "Select an active Note to prepare new recommendations for this Triptych." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Select an active Note to prepare new recommendations for this Triptych."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一篇活跃笔记，为此研究脉络准备新的文献推荐。"
-          }
-        }
-      }
-    },
-    "Select an active Note to prepare new recommendations; existing Triptych recommendations remain available" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Select an active Note to prepare new recommendations; existing Triptych recommendations remain available"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一篇活跃笔记以准备新的推荐；现有研究脉络推荐仍然可用"
-          }
-        }
-      }
-    },
     "Open in Codex" : {
       "localizations" : {
         "zh-Hans" : {
@@ -15453,6 +15893,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作"
+          }
+        }
+      }
+    },
+    "Operation Records Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作记录不可用"
           }
         }
       }
@@ -16896,22 +17346,6 @@
         }
       }
     },
-    "Put Back…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Put Back…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "放回…"
-          }
-        }
-      }
-    },
     "QA" : {
       "localizations" : {
         "en" : {
@@ -17626,6 +18060,16 @@
         }
       }
     },
+    "Recovery could not be completed. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法完成恢复。%@"
+          }
+        }
+      }
+    },
     "Recovery record could not be updated. %@" : {
       "localizations" : {
         "en" : {
@@ -18283,6 +18727,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重命名文件夹…"
+          }
+        }
+      }
+    },
+    "Rename Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rename Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名笔记"
+          }
+        }
+      }
+    },
+    "Rename Note…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rename Note…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名笔记…"
           }
         }
       }
@@ -19192,6 +19668,26 @@
         }
       }
     },
+    "Restore Candidate" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复候选内容"
+          }
+        }
+      }
+    },
+    "Restore Candidate…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复候选内容…"
+          }
+        }
+      }
+    },
     "Restore Complete Package" : {
       "localizations" : {
         "en" : {
@@ -19272,6 +19768,16 @@
         }
       }
     },
+    "Restore Interrupted Save?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要恢复中断的保存吗？"
+          }
+        }
+      }
+    },
     "Restore Selected Notes" : {
       "localizations" : {
         "en" : {
@@ -19333,6 +19839,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从恢复点恢复…"
+          }
+        }
+      }
+    },
+    "Restore only if the current Note still matches the expected revision" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅在当前笔记仍与预期版本一致时恢复"
           }
         }
       }
@@ -19641,6 +20157,22 @@
         }
       }
     },
+    "Revalidated Before Decision" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Revalidated Before Decision"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "决定前已重新验证"
+          }
+        }
+      }
+    },
     "Revalidating request" : {
       "localizations" : {
         "en" : {
@@ -19653,6 +20185,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新验证请求"
+          }
+        }
+      }
+    },
+    "Reveal Candidate in Finder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Finder 中显示候选内容"
           }
         }
       }
@@ -19685,6 +20227,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Finder 中显示当前研究库"
+          }
+        }
+      }
+    },
+    "Reveal Operation Records in Finder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Finder 中显示操作记录"
           }
         }
       }
@@ -19893,6 +20445,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查看回复。完成会创建一条研究记录；继续跟进会让此讨论保持活跃。"
+          }
+        }
+      }
+    },
+    "Review the working Skill and its permissions before enabling its Action." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review the working Skill and its permissions before enabling its Action."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启用相应操作前，请检查当前使用的技能及其权限。"
           }
         }
       }
@@ -20923,6 +21491,26 @@
         }
       }
     },
+    "Scholium could not verify the current Note and will not write it. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法验证当前笔记，因此不会写入。%@"
+          }
+        }
+      }
+    },
+    "Scholium could not verify the interrupted save candidates. Their exact bytes remain unchanged. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法验证中断保存候选内容。其精确字节保持不变。%@"
+          }
+        }
+      }
+    },
     "Scholium does not claim that a multi-file operation is atomic across vaults or filesystems. These durable records identify what was restored and what still needs inspection." : {
       "localizations" : {
         "en" : {
@@ -20951,6 +21539,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 会先创建“恢复前”恢复点。在此恢复点之后创建的文件将移入纸篓；更改、移动或删除的文件将从所选恢复点恢复。"
+          }
+        }
+      }
+    },
+    "Scholium first saves every open editor, then restores only if this Note still has the expected revision. If the source changed, recovery stops and keeps the candidate." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会先保存所有打开的编辑器，然后仅在此笔记仍为预期版本时恢复。若源文本已更改，恢复将停止并保留候选内容。"
+          }
+        }
+      }
+    },
+    "Scholium first saves every open editor, verifies that the candidate is still the canonical source, and then removes only its completed machine-local recovery record." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会先保存所有打开的编辑器，确认候选内容仍是权威源文本，然后仅移除已完成的本机恢复记录。"
           }
         }
       }
@@ -21306,6 +21914,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 验证结构和受限路由，不判断哲学质量。"
+          }
+        }
+      }
+    },
+    "Scholium will not recreate a missing Note from temporary recovery. Inspect or copy the retained candidate instead." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 不会依据临时恢复数据重新创建缺失的笔记。请改为检查或复制保留的候选内容。"
           }
         }
       }
@@ -21700,6 +22318,22 @@
         }
       }
     },
+    "Select a note in the Library to read or edit." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Select a note in the Library to read or edit."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在研究文档中选择一则笔记，以开始阅读或编辑。"
+          }
+        }
+      }
+    },
     "Select a passage in the document, then reopen this Action from the Research menu or its Inspector row." : {
       "localizations" : {
         "en" : {
@@ -21712,6 +22346,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在文稿中选择一个段落，然后从“研究”菜单或检查器中的对应操作重新打开此操作。"
+          }
+        }
+      }
+    },
+    "Select an active Note to prepare new recommendations for this Triptych." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Select an active Note to prepare new recommendations for this Triptych."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一篇活跃笔记，为此研究脉络准备新的文献推荐。"
+          }
+        }
+      }
+    },
+    "Select an active Note to prepare new recommendations; existing Triptych recommendations remain available" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Select an active Note to prepare new recommendations; existing Triptych recommendations remain available"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一篇活跃笔记以准备新的推荐；现有研究脉络推荐仍然可用"
           }
         }
       }
@@ -22406,6 +23072,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "片段名称"
+          }
+        }
+      }
+    },
+    "Some selected files were not imported. The imported files are already committed; do not import them again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Some selected files were not imported. The imported files are already committed; do not import them again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分所选文件未能导入。已导入的文件已完成持久化，请勿再次导入。"
           }
         }
       }
@@ -23522,6 +24204,36 @@
         }
       }
     },
+    "The candidate already matched the current source; its recovery record was completed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选内容已与当前源文本一致；其恢复记录已处理完成。"
+          }
+        }
+      }
+    },
+    "The candidate already matches the canonical source. Finishing recovery removes only the completed machine-local record." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选内容已与权威源文本一致。完成恢复只会移除已完成的本机记录。"
+          }
+        }
+      }
+    },
+    "The candidate was restored, but Library, Search, or another derived view may be stale. Use Refresh instead of repeating recovery. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选内容已恢复，但研究文档、搜索或其他派生视图可能仍是旧状态。请使用“刷新”，不要重复执行恢复。%@"
+          }
+        }
+      }
+    },
     "The current Analyze run remains frozen. An allowed selection would begin a separate authorized phase." : {
       "localizations" : {
         "en" : {
@@ -23534,6 +24246,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前分析运行的范围保持冻结。获准的选择将开始一个独立授权阶段。"
+          }
+        }
+      }
+    },
+    "The current Note cannot be verified: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法验证当前笔记：%@"
+          }
+        }
+      }
+    },
+    "The current Note changed; copy or inspect the candidate instead" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前笔记已更改；请改为复制或检查候选内容"
+          }
+        }
+      }
+    },
+    "The current Note is missing; copy or inspect the candidate instead" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前笔记缺失；请改为复制或检查候选内容"
           }
         }
       }
@@ -23603,6 +24345,32 @@
         }
       }
     },
+    "The current source is now %@. Scholium will not overwrite it; inspect or copy the retained candidate instead." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前源文本现为 %@。Scholium 不会覆盖它；请改为检查或复制保留的候选内容。"
+          }
+        }
+      }
+    },
+    "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. %1$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移除被删除的笔记，但 Scholium 无法激活相邻标签页。请选择一篇文档以继续。错误：%1$@"
+          }
+        }
+      }
+    },
     "The exact Action, method revision, parameters, Target revision, and authority boundary are frozen for this run." : {
       "localizations" : {
         "en" : {
@@ -23667,6 +24435,70 @@
         }
       }
     },
+    "The file operation completed, but Library, Search, or other derived views may be stale. Use Refresh instead of repeating the action." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The file operation completed, but Library, Search, or other derived views may be stale. Use Refresh instead of repeating the action."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件操作已完成，但资料库、搜索或其他派生视图可能尚未更新。请使用“刷新”，不要重复该操作。"
+          }
+        }
+      }
+    },
+    "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件操作已完成，但稳定笔记身份的恢复尚未完成。恢复成功前，依赖身份的操作仍不可用。"
+          }
+        }
+      }
+    },
+    "The file operation completed, but this window could not refresh its document view. Use Refresh instead of repeating the action." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The file operation completed, but this window could not refresh its document view. Use Refresh instead of repeating the action."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件操作已完成，但此窗口未能刷新文档视图。请使用“刷新”，不要重复该操作。"
+          }
+        }
+      }
+    },
+    "The folder moved, but this window is waiting for the committed refresh." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The folder moved, but this window is waiting for the committed refresh."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹已移动，但此窗口仍在等待已提交内容刷新完成。"
+          }
+        }
+      }
+    },
     "The folder is only a path-based classification. Scholium preserves each descendant note’s stable identity and moves non-Markdown contents without changing their bytes." : {
       "localizations" : {
         "en" : {
@@ -23679,6 +24511,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文件夹仅用于按路径分类。Scholium 会保留每篇下属笔记的稳定身份，并在不更改内容字节的情况下移动非 Markdown 内容。"
+          }
+        }
+      }
+    },
+    "The interrupted candidate is now the current source." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中断时的候选内容现已成为当前源文本。"
           }
         }
       }
@@ -23759,6 +24601,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "笔记身份已更改；请重新打开此操作。"
+          }
+        }
+      }
+    },
+    "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该笔记已在 Scholium 外部被删除。其逐字节编辑缓冲仍保持打开，以便恢复。"
           }
         }
       }
@@ -24376,6 +25234,16 @@
         }
       }
     },
+    "This candidate is an empty document." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此候选内容是空文档。"
+          }
+        }
+      }
+    },
     "This cannot be undone. Scholium removes the note, every active Discussion containing it, its Critique association, stable identity, and every Triptych checkpoint containing it. Finished Research Records retain a tombstone for the deleted note." : {
       "localizations" : {
         "en" : {
@@ -24543,6 +25411,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这是%arg中笔记的初始状态；研究者仍可打开或关闭单篇笔记。"
+          }
+        }
+      }
+    },
+    "This note has no content." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This note has no content."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此笔记暂无内容。"
           }
         }
       }
@@ -24832,6 +25716,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这将从 %2$lld 篇笔记中移除 %1$lld 个较早的暂定版本。当前 Markdown 与操作的临时恢复数据不会被移除。"
+          }
+        }
+      }
+    },
+    "This window could not refresh the imported documents. Use Refresh instead of importing the files again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This window could not refresh the imported documents. Use Refresh instead of importing the files again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此窗口未能刷新已导入的文档。请使用“刷新”，不要再次导入这些文件。"
           }
         }
       }
@@ -26115,6 +27015,16 @@
         }
       }
     },
+    "Verify the candidate is current and remove its completed recovery record" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证候选内容为当前源文本，并移除其已完成的恢复记录"
+          }
+        }
+      }
+    },
     "Vertical padding" : {
       "localizations" : {
         "en" : {
@@ -26127,6 +27037,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "垂直内边距"
+          }
+        }
+      }
+    },
+    "View Candidate Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看候选源文本"
           }
         }
       }

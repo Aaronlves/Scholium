@@ -366,7 +366,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testSidebarCleanCutoverScopeLocationStickyPutBackAndAttentionWindowJourney() throws {
+    func testSidebarCleanCutoverScopeLocationHoverPutBackAndAttentionWindowJourney() throws {
         app.terminate()
         synthesisAttentionFixture = try seedSynthesisAttentionFixture()
         sessionID = UUID()
@@ -426,14 +426,13 @@ extension ScholiumUITests {
         let putBack = app.descendants(matching: .any)[
             "scholium.lifecyclePutBack.\(encodedTrashPath)"
         ]
+        trashedRow.hover()
         XCTAssertTrue(putBack.waitForExistence(timeout: 5))
         XCTAssertGreaterThanOrEqual(putBack.frame.width, 28)
         XCTAssertGreaterThanOrEqual(putBack.frame.height, 28)
         putBack.click()
-        XCTAssertTrue(app.windows.firstMatch.buttons[
-            "Put Back"
-        ].waitForExistence(timeout: 5))
-        app.windows.firstMatch.buttons["Put Back"].click()
+        XCTAssertFalse(app.staticTexts["Put Back Note"].exists)
+        XCTAssertFalse(app.windows.firstMatch.buttons["Put Back"].exists)
         XCTAssertTrue(waitUntil(timeout: 10) { !trashedRow.exists })
 
         selectSidebarLocation("Library")
@@ -542,6 +541,13 @@ extension ScholiumUITests {
             "Move to Trash must relocate the exact note instead of copying or deleting it."
         )
         XCTAssertEqual(try source(at: trashURL), originalSource)
+        let noDocumentState = app.descendants(matching: .any)[
+            "scholium.noDocumentState"
+        ]
+        XCTAssertTrue(
+            noDocumentState.waitForExistence(timeout: 5),
+            "Moving the presented note to Trash must return Document to its empty state."
+        )
 
         selectSidebarLocation("Trash")
         let trashedNote = app.descendants(matching: .any)[
@@ -551,6 +557,10 @@ extension ScholiumUITests {
         XCTAssertGreaterThanOrEqual(trashedNote.frame.height, 28)
 
         trashedNote.click()
+        let renderedTrashDocument = app.descendants(matching: .any)[
+            "scholium.renderedDocument.Trash/QA Autosave A.md"
+        ]
+        XCTAssertTrue(renderedTrashDocument.waitForExistence(timeout: 8))
         XCTAssertTrue(
             (app.descendants(matching: .any)["scholium.locationPicker"].value as? String) == "Trash",
             "Opening a trashed note must keep the shared LocationPicker on Trash."
@@ -564,22 +574,45 @@ extension ScholiumUITests {
         let putBackAction = app.descendants(matching: .any)[
             "scholium.lifecyclePutBack.\(encodedPath)"
         ]
+        renderedTrashDocument.click()
+        app.windows.firstMatch.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)
+        ).hover()
+        XCTAssertFalse(
+            putBackAction.exists,
+            "The quiet Put Back accessory must stay hidden while its row is at rest."
+        )
+
+        trashedNote.click()
+        app.windows.firstMatch.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)
+        ).hover()
+        XCTAssertTrue(
+            putBackAction.waitForExistence(timeout: 5),
+            "The Put Back accessory must remain visible while the lifecycle row owns native keyboard focus."
+        )
+        trashedNote.hover()
         XCTAssertTrue(putBackAction.waitForExistence(timeout: 5))
+        app.windows.firstMatch.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)
+        ).hover()
+        XCTAssertTrue(
+            putBackAction.exists,
+            "Pointer exit must not erase the lifecycle row's independent native focus state."
+        )
         XCTAssertGreaterThanOrEqual(putBackAction.frame.width, 28)
         XCTAssertGreaterThanOrEqual(putBackAction.frame.height, 28)
         let visibleActionEvidence = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        visibleActionEvidence.name = "Trash row with always-visible Put Back action"
+        visibleActionEvidence.name = "Trash row with hover-revealed Put Back action"
         visibleActionEvidence.lifetime = .keepAlways
         add(visibleActionEvidence)
 
+        putBackAction.hover()
         putBackAction.click()
-
-        XCTAssertTrue(app.staticTexts["Put Back Note"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["QA Autosave A.md"].waitForExistence(timeout: 5))
-        let putBack = app.windows.firstMatch.buttons["Put Back"]
-        XCTAssertTrue(putBack.waitForExistence(timeout: 5))
-        XCTAssertTrue(putBack.isEnabled)
-        putBack.click()
+        XCTAssertFalse(
+            app.staticTexts["Put Back Note"].exists,
+            "Put Back is reversible and must not open a destination or confirmation sheet."
+        )
         XCTAssertTrue(
             waitUntil(timeout: 10) {
                 FileManager.default.fileExists(atPath: sourceURL.path)
@@ -592,11 +625,65 @@ extension ScholiumUITests {
             waitUntil(timeout: 10) { !trashedNote.exists && !putBackAction.exists },
             "The Trash row must disappear after the coherent Location refresh completes."
         )
+        XCTAssertTrue(
+            noDocumentState.waitForExistence(timeout: 5),
+            "Putting back the presented lifecycle note must not leave its stale content visible."
+        )
 
         selectSidebarLocation("Library")
         XCTAssertTrue(
             app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
                 .waitForExistence(timeout: 8)
+        )
+    }
+
+    @MainActor
+    func testSetAsideClearsDocumentAndTheNoteRemainsBrowsable() throws {
+        let sourceURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/QA Autosave B.md"
+        )
+        let setAsideURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Set Aside/QA Autosave B.md"
+        )
+        let originalSource = try source(at: sourceURL)
+        let sourceRow = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave B.md"
+        ]
+        XCTAssertTrue(sourceRow.waitForExistence(timeout: 10))
+        sourceRow.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.renderedDocument.QA Autosave B.md"
+        ].waitForExistence(timeout: 8))
+
+        sourceRow.rightClick()
+        let setAside = app.menuItems["Set Aside…"]
+        XCTAssertTrue(setAside.waitForExistence(timeout: 3))
+        setAside.click()
+        let confirmSetAside = app.windows.firstMatch.buttons["Set Aside"]
+        XCTAssertTrue(confirmSetAside.waitForExistence(timeout: 3))
+        confirmSetAside.click()
+
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            FileManager.default.fileExists(atPath: setAsideURL.path)
+                && !FileManager.default.fileExists(atPath: sourceURL.path)
+        })
+        XCTAssertEqual(try source(at: setAsideURL), originalSource)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.noDocumentState"
+        ].waitForExistence(timeout: 5))
+
+        selectSidebarLocation("Set Aside")
+        let setAsideRow = app.descendants(matching: .any)[
+            "scholium.noteRow.Set Aside/QA Autosave B.md"
+        ]
+        XCTAssertTrue(setAsideRow.waitForExistence(timeout: 8))
+        setAsideRow.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.renderedDocument.Set Aside/QA Autosave B.md"
+        ].waitForExistence(timeout: 8))
+        XCTAssertEqual(
+            app.descendants(matching: .any)["scholium.locationPicker"].value as? String,
+            "Set Aside"
         )
     }
 
@@ -631,16 +718,17 @@ extension ScholiumUITests {
         let putBack = app.descendants(matching: .any)[
             "scholium.lifecyclePutBack.\(encodedPath)"
         ]
+        title.hover()
         XCTAssertTrue(putBack.waitForExistence(timeout: 5))
         XCTAssertGreaterThanOrEqual(title.frame.height, 28)
-        XCTAssertLessThanOrEqual(
+        XCTAssertGreaterThan(
             title.frame.maxX,
             putBack.frame.minX,
-            "The fixed Put Back track must reserve width instead of reflowing the title."
+            "Put Back must overlay the trailing title instead of shrinking or reflowing it."
         )
 
         let evidence = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        evidence.name = "Lifecycle long title truncation with visible Put Back"
+        evidence.name = "Lifecycle long title under native Put Back overlay"
         evidence.lifetime = .keepAlways
         add(evidence)
     }

@@ -26,6 +26,25 @@ struct DocumentReadProjectionCacheTests {
         #expect(await cache.entryCount(workspaceID: key.workspaceID) == 1)
     }
 
+    @Test("Empty Markdown is retained as a valid read projection")
+    func emptyMarkdownProjection() async {
+        let cache = DocumentReadProjectionCache()
+        let workspaceID = UUID()
+        let key = DocumentReadProjectionKey(
+            workspaceID: workspaceID,
+            stableTarget: "empty-note",
+            relativePath: "Untitled.md",
+            fingerprint: DocumentFingerprint(content: "")
+        )
+
+        let first = await cache.html(for: key, source: "")
+        let second = await cache.html(for: key, source: "")
+
+        #expect(first.isEmpty)
+        #expect(second == first)
+        #expect(await cache.entryCount(workspaceID: workspaceID) == 1)
+    }
+
     @Test("Each workspace evicts its least recently used projection independently")
     func boundedPerWorkspaceEviction() async {
         let cache = DocumentReadProjectionCache(

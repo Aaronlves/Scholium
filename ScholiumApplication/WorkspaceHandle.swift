@@ -48,6 +48,32 @@ private struct OwnedRefreshTask: Sendable {
     let task: Task<Void, Never>
 }
 
+private struct RetainedCreatedDocument: Sendable {
+    let document: NoteDocument
+    let identityRecoveryWarning: String
+}
+
+private enum CreatedDocumentIdentityRollbackError: LocalizedError, Sendable {
+    case sourcePresenceUncertain(
+        path: String,
+        identityFailure: String,
+        rollbackFailure: String,
+        observationFailure: String
+    )
+
+    var errorDescription: String? {
+        switch self {
+        case .sourcePresenceUncertain(
+            let path,
+            let identityFailure,
+            let rollbackFailure,
+            let observationFailure
+        ):
+            "Scholium could not determine whether the newly created note at \(path) remains after stable identity setup and rollback both failed. Do not repeat creation until the vault has been refreshed and inspected. Identity: \(identityFailure) Rollback: \(rollbackFailure) Observation: \(observationFailure)"
+        }
+    }
+}
+
 private enum DocumentSaveCompletion: Equatable {
     /// Return only after the matching derived workspace generation publishes.
     case sourceAndDerived
@@ -222,6 +248,81 @@ private struct WorkspaceRefreshPayload: Sendable {
     }
 }
 
+/// Builds the complete descendant identity plan from the last complete
+/// Workspace generation plus durable identities committed ahead of it. Folder
+/// paths have no identity of their own, so a second Folder move must follow
+/// each Note identity to its current path instead of reusing stale descendants
+/// from the earlier generation.
+func sourceAuthorizedFolderNoteMoves(
+    vaultID: UUID,
+    sourceFolder: VaultRelativeFolderPath,
+    destinationFolder: VaultRelativeFolderPath,
+    snapshotDocuments: [WorkspaceNoteSnapshot],
+    sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord]
+) throws -> [FolderNoteMovePlan] {
+    let sourcePrefix = sourceFolder.rawValue + "/"
+    let destinationPrefix = destinationFolder.rawValue + "/"
+    let sourceAhead = try sourceAheadIdentityRecords.map { location, record in
+        guard location.vaultID == record.vaultID,
+              location.relativePath == record.relativePath else {
+            throw TriptychTransactionError.invalidPlan(
+                "A source-ahead identity record does not match its current location."
+            )
+        }
+        return record
+    }.filter { $0.vaultID == vaultID }
+    let sourceAheadIDs = Set(sourceAhead.map(\.id))
+    let sourceAheadPaths = Set(sourceAhead.map(\.relativePath))
+
+    var authorizationByID: [UUID: (path: String, revision: DocumentFingerprint)] = [:]
+    for note in snapshotDocuments where note.id.vaultID == vaultID {
+        if sourceAheadPaths.contains(note.id.relativePath) { continue }
+        guard let stableNoteID = note.stableIdentity.resolvedID else {
+            if note.id.relativePath.hasPrefix(sourcePrefix) {
+                throw NoteIdentityRecoveryError.identityUnresolved(
+                    note.id.relativePath
+                )
+            }
+            continue
+        }
+        guard !sourceAheadIDs.contains(stableNoteID) else { continue }
+        authorizationByID[stableNoteID] = (
+            path: note.id.relativePath,
+            revision: note.fingerprint
+        )
+    }
+    for record in sourceAhead {
+        authorizationByID[record.id] = (
+            path: record.relativePath,
+            revision: record.fingerprint
+        )
+    }
+
+    let descendants: [FolderNoteMovePlan] = authorizationByID.compactMap {
+        stableNoteID, source -> FolderNoteMovePlan? in
+        guard source.path.hasPrefix(sourcePrefix) else { return nil }
+        let suffix = source.path.dropFirst(sourcePrefix.count)
+        return FolderNoteMovePlan(
+            stableNoteID: stableNoteID,
+            source: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: source.path
+            ),
+            destination: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: destinationPrefix + suffix
+            ),
+            expectedRevision: source.revision
+        )
+    }.sorted { $0.source < $1.source }
+    guard Set(descendants.map(\.source)).count == descendants.count else {
+        throw TriptychTransactionError.invalidPlan(
+            "Several stable Note identities claim the same Folder descendant."
+        )
+    }
+    return descendants
+}
+
 /// Per-Triptych application boundary shared by every consumer of a runtime.
 /// The actor borrows the runtime's identity-pooled vault authorities and owns
 /// only the Triptych-level composition, snapshots, and publication lifetime.
@@ -255,6 +356,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var sourceCommitRefreshTask: Task<Void, Never>?
     private var pendingSourceCommitRefreshes: [WorkspaceRefreshPayload] = []
+    /// Exact identity records from durable source moves whose complete
+    /// Workspace generation has not arrived yet. This is a bounded authority
+    /// bridge for a second revision-checked operation, not a derived cache.
+    private var sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     private var researchRecoveryMutationIsActive = false
     var sourceOperationGate = WorkspaceSourceOperationGate()
@@ -664,7 +769,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func importMarkdown(
         at sourceURL: URL,
         intoVault vaultID: UUID
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try requireActive()
         let secured = sourceURL.startAccessingSecurityScopedResource()
         defer {
@@ -698,6 +803,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             vaultID: vaultID,
             relativePath: document.relativePath
         )
+        var committedDocument = document
+        var identityRecoveryWarning: String?
         do {
             guard try await services.controlStore.identity(
                 forVaultID: vaultID,
@@ -706,39 +813,30 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             ) != nil else {
                 throw NoteIdentityRecoveryError.identityUnresolved(document.relativePath)
             }
-        } catch {
-            try? await repository.removeCreatedFileForRollback(
-                relativePath: document.relativePath,
-                createdRevision: document.fingerprint
-            )
-            throw error
+        } catch let identityError {
+            guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                repository: repository,
+                document: document,
+                identityError: identityError
+            ) else {
+                throw identityError
+            }
+            committedDocument = retained.document
+            identityRecoveryWarning = retained.identityRecoveryWarning
         }
         endSourceMutation(mutationLease)
         ownsMutation = false
-        do {
-            _ = try await refresh(
-                publication: .explicit,
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [vaultID]
-                ),
-                sourceCatalogPreparation: Self.catalogPreparation(
-                    upserts: [id],
-                    refreshFolderVaultIDs: [vaultID]
-                )
-            )
-        } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                document.fingerprint,
-                error.localizedDescription
-            )
-        }
-        return document
+        return await finishCreatedDocumentMutation(
+            id: id,
+            document: committedDocument,
+            identityRecoveryWarning: identityRecoveryWarning
+        )
     }
 
     func createDocument(
         _ id: VaultQualifiedNoteID,
         content: String
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -756,6 +854,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             relativePath: id.relativePath,
             content: content
         )
+        var committedDocument = document
+        var identityRecoveryWarning: String?
         do {
             guard try await services.controlStore.identity(
                 forVaultID: id.vaultID,
@@ -764,36 +864,29 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             ) != nil else {
                 throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
             }
-        } catch {
-            try? await repository.removeCreatedFileForRollback(
-                relativePath: id.relativePath,
-                createdRevision: document.fingerprint
-            )
-            throw error
+        } catch let identityError {
+            guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                repository: repository,
+                document: document,
+                identityError: identityError
+            ) else {
+                throw identityError
+            }
+            committedDocument = retained.document
+            identityRecoveryWarning = retained.identityRecoveryWarning
         }
         endSourceMutation(mutationLease)
         ownsMutation = false
-        do {
-            _ = try await refresh(
-                publication: .explicit,
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [id.vaultID]
-                ),
-                sourceCatalogPreparation: Self.catalogPreparation(
-                    upserts: [id],
-                    refreshFolderVaultIDs: [id.vaultID]
-                )
-            )
-        } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                document.fingerprint,
-                error.localizedDescription
-            )
-        }
-        return document
+        return await finishCreatedDocumentMutation(
+            id: id,
+            document: committedDocument,
+            identityRecoveryWarning: identityRecoveryWarning
+        )
     }
 
-    func createDocument(_ request: DocumentCreationRequest) async throws -> NoteDocument {
+    func createDocument(
+        _ request: DocumentCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try requireActive()
         let registeredVault = try vault(id: request.id.vaultID)
         let title = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -821,7 +914,30 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit> {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationLease) }
+        }
+        let repository = try repository(vaultID: vaultID)
+        let registeredVault = try vault(id: vaultID)
+        let profile: SchemaProfileID = switch registeredVault.role {
+        case .sourceCorpus: .analysis
+        case .topicKnowledge: .topicMarkdown
+        case .draftProject: .draftProject
+        case .other: .genericMarkdown
+        }
+        let issues = PropertyContractCatalog.validate(
+            frontmatter: [:],
+            profile: profile,
+            context: .creation
+        )
+        guard issues.isEmpty else {
+            throw DocumentCreationError.invalidMetadata(issues)
+        }
+
         var ordinal = 1
         while true {
             try Task.checkCancellation()
@@ -831,14 +947,61 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             } else {
                 filename
             }
+            let id = VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: relativePath
+            )
+            if registeredVault.role.allowsCritique,
+               CritiquePlacement.isManagedCritiquePath(relativePath) {
+                throw CritiquePlacementError.directCreationRequiresRequestCritique
+            }
             do {
-                return try await createDocument(DocumentCreationRequest(
-                    id: VaultQualifiedNoteID(
-                        vaultID: vaultID,
-                        relativePath: relativePath
+                let document = try await repository.create(
+                    relativePath: relativePath,
+                    content: ""
+                )
+                var committedDocument = document
+                var stableIdentity = WorkspaceNoteIdentityState.unresolved
+                var createdIdentityRecord: NoteIdentityRecord?
+                var identityRecoveryWarning: String?
+                do {
+                    guard let identity = try await services.controlStore.identity(
+                        forVaultID: vaultID,
+                        relativePath: relativePath,
+                        fingerprint: document.fingerprint
+                    ) else {
+                        throw NoteIdentityRecoveryError.identityUnresolved(relativePath)
+                    }
+                    stableIdentity = .resolved(identity.id)
+                    createdIdentityRecord = identity
+                } catch let identityError {
+                    guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                        repository: repository,
+                        document: document,
+                        identityError: identityError
+                    ) else {
+                        throw identityError
+                    }
+                    committedDocument = retained.document
+                    identityRecoveryWarning = retained.identityRecoveryWarning
+                }
+
+                sourceAheadIdentityRecords[id] = createdIdentityRecord
+                // Queue the only complete derived rebuild before releasing the
+                // source lease. A matching watcher event therefore remains
+                // behind this owned task instead of starting a duplicate cycle.
+                scheduleSourceCommitRefresh(id: id, kind: .creation)
+                endSourceMutation(mutationLease)
+                ownsMutation = false
+                return WorkspaceMutationOutcome(
+                    committedValue: WorkspaceUntitledNoteCommit(
+                        id: id,
+                        vaultRole: registeredVault.role,
+                        stableIdentity: stableIdentity,
+                        document: committedDocument
                     ),
-                    title: ""
-                ))
+                    identityRecoveryWarning: identityRecoveryWarning
+                )
             } catch VaultRepositoryError.fileAlreadyExists {
                 ordinal += 1
             } catch VaultRepositoryError.pathCollision {
@@ -852,7 +1015,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func createUntitledFolder(
         inVault vaultID: UUID,
         parentRelativePath: String?
-    ) async throws -> VaultRelativeFolderPath {
+    ) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -879,17 +1042,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             do {
                 let folder = try await repository.createFolder(relativePath: relativePath)
+                scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
+                    publication: .explicit,
+                    failureDisposition: .staleAfterCommittedMutation(
+                        affectedVaultIDs: [vaultID]
+                    ),
+                    sourceCatalogPreparation: Self.catalogPreparation(
+                        refreshFolderVaultIDs: [vaultID]
+                    )
+                ))
                 endSourceMutation(mutationLease)
                 ownsMutation = false
-                do {
-                    _ = try await refreshFolderInventory(vaultID: vaultID)
-                } catch {
-                    throw ScholiumApplicationError.operationCommittedButRefreshFailed(
-                        operation: "Folder creation at \(folder.rawValue)",
-                        reason: error.localizedDescription
-                    )
-                }
-                return folder
+                return WorkspaceMutationOutcome(committedValue: folder)
             } catch VaultRepositoryError.fileAlreadyExists {
                 ordinal += 1
             } catch VaultRepositoryError.pathCollision {
@@ -902,7 +1066,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         inVault vaultID: UUID,
         from sourceRelativePath: String,
         to destinationRelativePath: String
-    ) async throws -> FolderMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         try await coordinatedMoveFolder(
             inVault: vaultID,
             from: sourceRelativePath,
@@ -914,7 +1078,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func moveFolderToTrash(
         inVault vaultID: UUID,
         relativePath: String
-    ) async throws -> FolderMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         try await coordinatedMoveFolder(
             inVault: vaultID,
             from: relativePath,
@@ -927,7 +1091,33 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        try await duplicateDocument(
+            id,
+            to: destinationRelativePath,
+            expectedRevision: expectedRevision,
+            expectedStableNoteID: nil
+        )
+    }
+
+    func duplicateDocument(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        try await duplicateDocument(
+            target.documentID,
+            to: destinationRelativePath,
+            expectedRevision: target.revision,
+            expectedStableNoteID: target.stableNoteID
+        )
+    }
+
+    private func duplicateDocument(
+        _ id: VaultQualifiedNoteID,
+        to destinationRelativePath: String,
+        expectedRevision: DocumentFingerprint,
+        expectedStableNoteID: UUID?
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -948,54 +1138,130 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             for: id,
             expectedRevision: expectedRevision
         )
+        try requireExpectedIdentity(
+            expectedStableNoteID,
+            resolved: identity.id,
+            relativePath: id.relativePath
+        )
         let document = try await repository.duplicate(
             relativePath: id.relativePath,
             to: destinationRelativePath,
             expectedRevision: expectedRevision
         )
+        var committedDocument = document
+        var identityRecoveryWarning: String?
         do {
             _ = try await services.controlStore.duplicateIdentity(
                 from: identity.id,
                 to: destinationRelativePath,
                 fingerprint: document.fingerprint
             )
-        } catch {
-            try? await repository.removeCreatedFileForRollback(
-                relativePath: destinationRelativePath,
-                createdRevision: document.fingerprint
-            )
-            throw error
+        } catch let identityError {
+            guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                repository: repository,
+                document: document,
+                identityError: identityError
+            ) else {
+                throw identityError
+            }
+            committedDocument = retained.document
+            identityRecoveryWarning = retained.identityRecoveryWarning
         }
         endSourceMutation(mutationLease)
         ownsMutation = false
+        return await finishCreatedDocumentMutation(
+            id: VaultQualifiedNoteID(
+                vaultID: id.vaultID,
+                relativePath: destinationRelativePath
+            ),
+            document: committedDocument,
+            identityRecoveryWarning: identityRecoveryWarning
+        )
+    }
+
+    /// Creation and duplication first commit a no-replace source and then
+    /// establish portable identity. If identity setup fails, rollback is
+    /// revision checked. A failed rollback is never ignored: a proven retained
+    /// source becomes a committed outcome with an identity-recovery warning;
+    /// an unreadable presence state becomes an explicit uncertain error that
+    /// forbids blind recreation.
+    private func retainedCreatedDocumentAfterIdentityFailure(
+        repository: VaultRepository,
+        document: NoteDocument,
+        identityError: any Error
+    ) async throws -> RetainedCreatedDocument? {
+        let rollbackError: any Error
         do {
-            _ = try await refresh(
+            try await repository.removeCreatedFileForRollback(
+                relativePath: document.relativePath,
+                createdRevision: document.fingerprint
+            )
+            return nil
+        } catch {
+            rollbackError = error
+        }
+
+        do {
+            let retained = try await repository.load(
+                relativePath: document.relativePath
+            )
+            return RetainedCreatedDocument(
+                document: retained,
+                identityRecoveryWarning: "The source remains at \(document.relativePath) because stable identity setup failed and exact rollback was refused. Do not create or import it again; recover its identity instead. Identity: \(identityError.localizedDescription) Rollback: \(rollbackError.localizedDescription)"
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            // The delete may have committed before its own verification
+            // failed. A direct read now proves there is no retained source, so
+            // the original identity failure remains the correct result.
+            return nil
+        } catch {
+            throw CreatedDocumentIdentityRollbackError.sourcePresenceUncertain(
+                path: document.relativePath,
+                identityFailure: identityError.localizedDescription,
+                rollbackFailure: rollbackError.localizedDescription,
+                observationFailure: error.localizedDescription
+            )
+        }
+    }
+
+    private func finishCreatedDocumentMutation(
+        id: VaultQualifiedNoteID,
+        document: NoteDocument,
+        identityRecoveryWarning: String?
+    ) async -> WorkspaceMutationOutcome<NoteDocument> {
+        var identityRecoveryWarning = identityRecoveryWarning
+        let derivedRefreshWarning: String?
+        do {
+            let refreshed = try await refresh(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(
                     affectedVaultIDs: [id.vaultID]
                 ),
                 sourceCatalogPreparation: Self.catalogPreparation(
-                    upserts: [VaultQualifiedNoteID(
-                        vaultID: id.vaultID,
-                        relativePath: destinationRelativePath
-                    )],
+                    upserts: [id],
                     refreshFolderVaultIDs: [id.vaultID]
                 )
             )
+            if identityRecoveryWarning != nil,
+               refreshed.document(id: id)?.stableIdentity.resolvedID != nil {
+                identityRecoveryWarning = nil
+            }
+            derivedRefreshWarning = nil
         } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                document.fingerprint,
-                error.localizedDescription
-            )
+            derivedRefreshWarning = error.localizedDescription
         }
-        return document
+        return WorkspaceMutationOutcome(
+            committedValue: document,
+            derivedRefreshWarning: derivedRefreshWarning,
+            identityRecoveryWarning: identityRecoveryWarning
+        )
     }
 
     func saveDocument(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
-    ) async throws -> SaveResult {
+    ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         try await performDocumentSave(
             id,
             changeSet: changeSet,
@@ -1014,7 +1280,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             changeSet: changeSet,
             expectedRevision: expectedRevision,
             completion: .sourceOnly
-        )
+        ).committedValue
     }
 
     private func performDocumentSave(
@@ -1022,7 +1288,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint,
         completion: DocumentSaveCompletion
-    ) async throws -> SaveResult {
+    ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -1039,36 +1305,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
         } catch let error as VaultRepositoryError {
             guard case .commitUncertain = error else { throw error }
-            let observed = try? await repository.load(relativePath: id.relativePath).fingerprint
-            let state: TriptychMutationRecoveryState
-            if let observed {
-                state = observed == expectedRevision ? .restored : .externallyChanged
-            } else {
-                state = .unreadable
-            }
-            let record = TriptychMutationRecoveryRecord(
-                triptychID: self.id,
-                operation: .noteSave,
+            let record = try await recordUncertainNoteSave(
+                id: id,
+                expectedRevision: expectedRevision,
+                intendedRevision: nil,
+                repository: repository,
                 failure: error.localizedDescription,
-                files: [TriptychMutationRecoveryFile(
-                    vaultID: id.vaultID,
-                    path: id.relativePath,
-                    role: .savedNote,
-                    beforeRevision: expectedRevision,
-                    intendedRevision: nil,
-                    observedRevision: observed,
-                    state: state,
-                    detail: "The coordinated save could not prove both canonical and displaced bytes. Recovery evidence remains machine-local."
-                )]
+                detail: "The coordinated save could not prove both canonical and displaced bytes. Recovery evidence remains machine-local."
             )
-            do {
-                try await services.transactionRecoveryStore.record(record)
-            } catch {
-                throw TriptychTransactionError.recoveryPersistenceFailed(
-                    record,
-                    error.localizedDescription
-                )
-            }
             throw TriptychTransactionError.recoveryRequired(record)
         }
         if completion == .sourceOnly {
@@ -1078,6 +1322,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         endSourceMutation(mutationLease)
         ownsMutation = false
+        var derivedRefreshWarning: String?
         if completion == .sourceAndDerived {
             do {
                 _ = try await refresh(
@@ -1086,21 +1331,69 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         affectedVaultIDs: [id.vaultID]
                     )
                 )
+                derivedRefreshWarning = nil
             } catch {
-                throw ScholiumApplicationError.committedButRefreshFailed(
-                    result.document.fingerprint,
-                    error.localizedDescription
-                )
+                derivedRefreshWarning = error.localizedDescription
             }
         }
-        return result
+        return WorkspaceMutationOutcome(
+            committedValue: result,
+            derivedRefreshWarning: derivedRefreshWarning
+        )
+    }
+
+    private func recordUncertainNoteSave(
+        id: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint,
+        intendedRevision: DocumentFingerprint?,
+        repository: VaultRepository,
+        failure: String,
+        detail: String
+    ) async throws -> TriptychMutationRecoveryRecord {
+        let observed = try? await repository.load(relativePath: id.relativePath).fingerprint
+        let state: TriptychMutationRecoveryState
+        if let observed {
+            if observed == expectedRevision {
+                state = .restored
+            } else if observed == intendedRevision {
+                state = .intendedBytesRemain
+            } else {
+                state = .externallyChanged
+            }
+        } else {
+            state = .unreadable
+        }
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: self.id,
+            operation: .noteSave,
+            failure: failure,
+            files: [TriptychMutationRecoveryFile(
+                vaultID: id.vaultID,
+                path: id.relativePath,
+                role: .savedNote,
+                beforeRevision: expectedRevision,
+                intendedRevision: intendedRevision,
+                observedRevision: observed,
+                state: state,
+                detail: detail
+            )]
+        )
+        do {
+            try await services.transactionRecoveryStore.record(record)
+        } catch {
+            throw TriptychTransactionError.recoveryPersistenceFailed(
+                record,
+                error.localizedDescription
+            )
+        }
+        return record
     }
 
     func moveDocument(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try await coordinatedMoveDocument(
             id,
             to: destinationRelativePath,
@@ -1109,10 +1402,23 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
+    func moveDocument(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        try await coordinatedMoveDocument(
+            target.documentID,
+            to: destinationRelativePath,
+            expectedRevision: target.revision,
+            expectedStableNoteID: target.stableNoteID,
+            validatesCritiquePlacement: true
+        )
+    }
+
     func setAsideDocument(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let destination = id.relativePath.hasPrefix("Set Aside/")
             ? id.relativePath
             : "Set Aside/" + id.relativePath
@@ -1124,10 +1430,25 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
+    func setAsideDocument(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        let destination = target.relativePath.hasPrefix("Set Aside/")
+            ? target.relativePath
+            : "Set Aside/" + target.relativePath
+        return try await coordinatedMoveDocument(
+            target.documentID,
+            to: destination,
+            expectedRevision: target.revision,
+            expectedStableNoteID: target.stableNoteID,
+            validatesCritiquePlacement: false
+        )
+    }
+
     func moveDocumentToTrash(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let destination: String
         if id.relativePath.hasPrefix("Set Aside/") {
             destination = "Trash/" + id.relativePath.dropFirst("Set Aside/".count)
@@ -1144,10 +1465,30 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
+    func moveDocumentToTrash(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        let destination: String
+        if target.relativePath.hasPrefix("Set Aside/") {
+            destination = "Trash/" + target.relativePath.dropFirst("Set Aside/".count)
+        } else if target.relativePath.hasPrefix("Trash/") {
+            destination = target.relativePath
+        } else {
+            destination = "Trash/" + target.relativePath
+        }
+        return try await coordinatedMoveDocument(
+            target.documentID,
+            to: destination,
+            expectedRevision: target.revision,
+            expectedStableNoteID: target.stableNoteID,
+            validatesCritiquePlacement: false
+        )
+    }
+
     func putBackDocument(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let destination: String?
         if id.relativePath.hasPrefix("Set Aside/") {
             destination = String(id.relativePath.dropFirst("Set Aside/".count))
@@ -1167,10 +1508,55 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
+    func putBackDocument(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        let destination: String?
+        if target.relativePath.hasPrefix("Set Aside/") {
+            destination = String(target.relativePath.dropFirst("Set Aside/".count))
+        } else if target.relativePath.hasPrefix("Trash/") {
+            destination = String(target.relativePath.dropFirst("Trash/".count))
+        } else {
+            destination = nil
+        }
+        guard let destination, !destination.isEmpty else {
+            throw VaultRepositoryError.invalidRelativePath(target.relativePath)
+        }
+        return try await coordinatedMoveDocument(
+            target.documentID,
+            to: destination,
+            expectedRevision: target.revision,
+            expectedStableNoteID: target.stableNoteID,
+            validatesCritiquePlacement: true
+        )
+    }
+
     func deleteDocumentPermanently(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> PermanentDeletionCommit {
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
+        try await deleteDocumentPermanently(
+            id,
+            expectedRevision: expectedRevision,
+            expectedStableNoteID: nil
+        )
+    }
+
+    func deleteDocumentPermanently(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
+        try await deleteDocumentPermanently(
+            target.documentID,
+            expectedRevision: target.revision,
+            expectedStableNoteID: target.stableNoteID
+        )
+    }
+
+    private func deleteDocumentPermanently(
+        _ id: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint,
+        expectedStableNoteID: UUID?
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -1183,6 +1569,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let identity = try await resolvedIdentity(
             for: id,
             expectedRevision: expectedRevision
+        )
+        try requireExpectedIdentity(
+            expectedStableNoteID,
+            resolved: identity.id,
+            relativePath: id.relativePath
         )
         let repository = try repository(vaultID: id.vaultID)
         let coordinator = NotePermanentDeletionCoordinator(
@@ -1206,6 +1597,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
         endSourceMutation(mutationLease)
         ownsMutation = false
+        let derivedRefreshWarning: String?
         do {
             _ = try await refresh(
                 publication: .explicit,
@@ -1217,13 +1609,102 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     refreshFolderVaultIDs: [id.vaultID]
                 )
             )
+            derivedRefreshWarning = nil
         } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                commit.fingerprint,
-                error.localizedDescription
-            )
+            derivedRefreshWarning = error.localizedDescription
         }
-        return commit
+        return WorkspaceMutationOutcome(
+            committedValue: commit,
+            derivedRefreshWarning: derivedRefreshWarning
+        )
+    }
+
+    func interruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery] {
+        try requireActive()
+        var recoveries: [InterruptedSaveRecovery] = []
+        for vault in orderedVaults() {
+            let repository = try repository(vaultID: vault.id)
+            recoveries.append(contentsOf: try await repository.interruptedSaveRecoveries())
+        }
+        return recoveries.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            if $0.id.vaultID != $1.id.vaultID {
+                return $0.id.vaultID.uuidString < $1.id.vaultID.uuidString
+            }
+            return $0.id.transactionID.uuidString < $1.id.transactionID.uuidString
+        }
+    }
+
+    func interruptedSaveRecoveryContent(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> InterruptedSaveRecoveryContent {
+        try requireActive()
+        return try await repository(vaultID: recovery.id.vaultID)
+            .interruptedSaveRecoveryContent(recovery)
+    }
+
+    func prepareInterruptedSaveRecoveryLocation(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> URL {
+        try requireActive()
+        return try await repository(vaultID: recovery.id.vaultID)
+            .prepareInterruptedSaveRecoveryLocation(recovery)
+    }
+
+    func restoreInterruptedSaveRecovery(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> WorkspaceMutationOutcome<InterruptedSaveRecoveryRestoreCommit> {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationLease) }
+        }
+        let repository = try repository(vaultID: recovery.id.vaultID)
+        let commit: InterruptedSaveRecoveryRestoreCommit
+        do {
+            commit = try await repository.restoreInterruptedSaveRecovery(recovery)
+        } catch let error as VaultRepositoryError {
+            guard case .commitUncertain = error else { throw error }
+            let record = try await recordUncertainNoteSave(
+                id: VaultQualifiedNoteID(
+                    vaultID: recovery.id.vaultID,
+                    relativePath: recovery.relativePath
+                ),
+                expectedRevision: recovery.expectedRevision,
+                intendedRevision: recovery.candidateRevision,
+                repository: repository,
+                failure: error.localizedDescription,
+                detail: "Interrupted-save recovery could not prove both canonical and displaced bytes. The candidate and every available source revision remain machine-local for inspection."
+            )
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+        endSourceMutation(mutationLease)
+        ownsMutation = false
+
+        var derivedRefreshWarning: String?
+        if commit.didReplaceSource {
+            do {
+                _ = try await refresh(
+                    publication: .sourceCommitted(
+                        VaultQualifiedNoteID(
+                            vaultID: recovery.id.vaultID,
+                            relativePath: recovery.relativePath
+                        ),
+                        .save
+                    ),
+                    failureDisposition: .staleAfterCommittedMutation(
+                        affectedVaultIDs: [recovery.id.vaultID]
+                    )
+                )
+            } catch {
+                derivedRefreshWarning = error.localizedDescription
+            }
+        }
+        return WorkspaceMutationOutcome(
+            committedValue: commit,
+            derivedRefreshWarning: derivedRefreshWarning
+        )
     }
 
     func recoverInterruptedDocumentTransactions() async -> [String] {
@@ -1361,6 +1842,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try requireActive()
         let previous = currentSnapshot
         currentSnapshot = snapshot
+        sourceAheadIdentityRecords.removeAll(keepingCapacity: true)
         let confirmsEarlierFailure = derivedStateRequiresRefresh
         derivedStateRequiresRefresh = false
         let publicationStart = ContinuousClock().now
@@ -1747,7 +2229,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         id: VaultQualifiedNoteID,
         kind: WorkspaceSourceCommitKind
     ) {
-        pendingSourceCommitRefreshes.append(WorkspaceRefreshPayload(
+        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
             publication: .sourceCommitted(id, kind),
             failureDisposition: .staleAfterCommittedMutation(
                 affectedVaultIDs: [id.vaultID]
@@ -1756,6 +2238,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 from: .sourceCommitted(id, kind)
             )
         ))
+    }
+
+    /// Retains disposable projection work after a proven source mutation so
+    /// filesystem completion never waits for graph, Search, or research-state
+    /// assembly. Callers enqueue while holding the source lease; the owned
+    /// refresh task can therefore begin only after that lease is released.
+    private func scheduleCommittedMutationRefresh(
+        _ payload: WorkspaceRefreshPayload
+    ) {
+        pendingSourceCommitRefreshes.append(payload)
         guard !isShutDown, sourceCommitRefreshTask == nil else { return }
         sourceCommitRefreshTask = Task(priority: .utility) { [weak self] in
             await self?.runSourceCommitRefreshes()
@@ -2142,8 +2634,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ source: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint,
+        expectedStableNoteID: UUID? = nil,
         validatesCritiquePlacement: Bool
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -2157,6 +2650,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let identity = try await resolvedIdentity(
             for: source,
             expectedRevision: expectedRevision
+        )
+        try requireExpectedIdentity(
+            expectedStableNoteID,
+            resolved: identity.id,
+            relativePath: source.relativePath
         )
         let registeredVault = try vault(id: source.vaultID)
         if validatesCritiquePlacement, registeredVault.role.allowsCritique {
@@ -2194,8 +2692,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
 
         var identityFailure: Error?
+        var movedIdentityRecord: NoteIdentityRecord?
         do {
-            _ = try await services.controlStore.moveIdentity(
+            movedIdentityRecord = try await services.controlStore.moveIdentity(
                 id: identity.id,
                 vaultID: source.vaultID,
                 from: source.relativePath,
@@ -2214,28 +2713,37 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             identityFailure = error
         }
 
+        sourceAheadIdentityRecords[source] = nil
+        if identityFailure == nil, let movedIdentityRecord {
+            sourceAheadIdentityRecords[destination] = movedIdentityRecord
+        } else {
+            sourceAheadIdentityRecords[destination] = nil
+        }
+
+        let refreshPayload = WorkspaceRefreshPayload(
+            publication: .explicit,
+            failureDisposition: .staleAfterCommittedMutation(
+                affectedVaultIDs: Set(repositories.keys)
+            ),
+            sourceCatalogPreparation: Self.catalogPreparation(
+                upserts: [commit.destination] + commit.rewrites.map(\.note),
+                deletions: [commit.movedNote],
+                refreshFolderVaultIDs: [source.vaultID]
+            )
+        )
+        // The source rename, incoming-link rewrites, and identity rebind are
+        // already durable at this point. Graph, Search, and the complete
+        // Workspace snapshot are disposable projections, so every kind of
+        // Note move resumes them in the owned background refresh instead of
+        // holding the interaction open. The exact window installs the
+        // committed source-ahead relocation before this operation returns.
+        scheduleCommittedMutationRefresh(refreshPayload)
         endSourceMutation(mutationLease)
         ownsMutation = false
-        do {
-            _ = try await refresh(
-                publication: .explicit,
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: Set(repositories.keys)
-                ),
-                sourceCatalogPreparation: Self.catalogPreparation(
-                    upserts: [commit.destination] + commit.rewrites.map(\.note),
-                    deletions: [commit.movedNote],
-                    refreshFolderVaultIDs: [source.vaultID]
-                )
-            )
-        } catch {
-            throw ScholiumApplicationError.committedButRefreshFailed(
-                commit.committedRevision,
-                error.localizedDescription
-            )
-        }
-        if let identityFailure { throw identityFailure }
-        return commit
+        return WorkspaceMutationOutcome(
+            committedValue: commit,
+            identityRecoveryWarning: identityFailure?.localizedDescription
+        )
     }
 
     private func coordinatedMoveFolder(
@@ -2243,7 +2751,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         from sourceRelativePath: String,
         to destinationRelativePath: String,
         movesToLifecycle: Bool
-    ) async throws -> FolderMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -2289,27 +2797,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         guard let vaultSnapshot = currentSnapshot.vault(id: vaultID) else {
             throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
         }
-        let sourcePrefix = sourceFolder.rawValue + "/"
-        let destinationPrefix = destinationFolder.rawValue + "/"
-        let descendants = vaultSnapshot.documents
-            .filter { $0.id.relativePath.hasPrefix(sourcePrefix) }
-            .sorted { $0.id.relativePath < $1.id.relativePath }
-        var noteMoves: [FolderNoteMovePlan] = []
-        for note in descendants {
-            guard case .resolved(let stableNoteID) = note.stableIdentity else {
-                throw NoteIdentityRecoveryError.identityUnresolved(note.id.relativePath)
-            }
-            let suffix = note.id.relativePath.dropFirst(sourcePrefix.count)
-            noteMoves.append(FolderNoteMovePlan(
-                stableNoteID: stableNoteID,
-                source: note.id,
-                destination: VaultQualifiedNoteID(
-                    vaultID: vaultID,
-                    relativePath: destinationPrefix + suffix
-                ),
-                expectedRevision: note.fingerprint
-            ))
-        }
+        let noteMoves = try sourceAuthorizedFolderNoteMoves(
+            vaultID: vaultID,
+            sourceFolder: sourceFolder,
+            destinationFolder: destinationFolder,
+            snapshotDocuments: vaultSnapshot.documents,
+            sourceAheadIdentityRecords: sourceAheadIdentityRecords
+        )
 
         let plan: FolderIncomingLinkRewritePlan
         let repositories: [UUID: VaultRepository]
@@ -2341,8 +2835,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let commit = try await coordinator.move(plan)
 
         var identityFailure: Error?
+        var movedIdentityRecords: [NoteIdentityRecord] = []
         do {
-            _ = try await services.controlStore.moveIdentities(commit.noteMoves)
+            movedIdentityRecords = try await services.controlStore.moveIdentities(
+                commit.noteMoves
+            )
             let failures = await services.identityRecoveryCoordinator.resumePendingRebindings(
                 vaultID: vaultID,
                 repository: try repository(vaultID: vaultID),
@@ -2358,52 +2855,44 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             identityFailure = error
         }
 
+        for move in commit.noteMoves {
+            sourceAheadIdentityRecords[move.source] = nil
+            sourceAheadIdentityRecords[move.destination] = nil
+        }
+        if identityFailure == nil {
+            for record in movedIdentityRecords {
+                sourceAheadIdentityRecords[VaultQualifiedNoteID(
+                    vaultID: record.vaultID,
+                    relativePath: record.relativePath
+                )] = record
+            }
+        }
+
         let affectedVaultIDs = Set(plan.rewrites.map { $0.source.vaultID })
             .union([vaultID])
-        endSourceMutation(mutationLease)
-        ownsMutation = false
-        do {
-            if commit.noteMoves.isEmpty, plan.rewrites.isEmpty {
-                _ = try await refreshFolderInventory(vaultID: vaultID)
-            } else {
-                _ = try await refresh(
-                    publication: .explicit,
-                    failureDisposition: .staleAfterCommittedMutation(
-                        affectedVaultIDs: affectedVaultIDs
-                    ),
-                    sourceCatalogPreparation: Self.catalogPreparation(
-                        upserts: commit.noteMoves.map(\.destination)
-                            + commit.rewrites.map(\.note),
-                        deletions: commit.noteMoves.map(\.source),
-                        refreshFolderVaultIDs: [vaultID]
-                    )
-                )
-            }
-        } catch {
-            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
-                operation: "Folder move from \(sourceFolder.rawValue) to \(destinationFolder.rawValue)",
-                reason: error.localizedDescription
-            )
-        }
-        if let identityFailure { throw identityFailure }
-        return commit
-    }
-
-    /// Serially republishes directory classifications after an empty-folder
-    /// mutation. Unchanged source versions avoid Markdown reads and parses;
-    /// the correctness-first pipeline may still reassemble the in-memory graph
-    /// and synchronize an unchanged Search manifest.
-    private func refreshFolderInventory(vaultID: UUID) async throws
-        -> WorkspaceSnapshot
-    {
-        try await refresh(
+        let refreshPayload = WorkspaceRefreshPayload(
             publication: .explicit,
             failureDisposition: .staleAfterCommittedMutation(
-                affectedVaultIDs: [vaultID]
+                affectedVaultIDs: affectedVaultIDs
             ),
             sourceCatalogPreparation: Self.catalogPreparation(
+                upserts: commit.noteMoves.map(\.destination)
+                    + commit.rewrites.map(\.note),
+                deletions: commit.noteMoves.map(\.source),
                 refreshFolderVaultIDs: [vaultID]
             )
+        )
+        // The directory rename, exact link rewrites, and portable identity
+        // rebind are durable. Queue the one complete derived generation while
+        // the source lease is still held so matching watcher events cannot
+        // start a competing rebuild; the exact window installs the returned
+        // committed sources immediately.
+        scheduleCommittedMutationRefresh(refreshPayload)
+        endSourceMutation(mutationLease)
+        ownsMutation = false
+        return WorkspaceMutationOutcome(
+            committedValue: commit,
+            identityRecoveryWarning: identityFailure?.localizedDescription
         )
     }
 
@@ -2413,6 +2902,71 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         destinationFolder: VaultRelativeFolderPath,
         noteMoves: [FolderNoteMovePlan]
     ) async throws -> FolderIncomingLinkRewritePlan {
+        let snapshotCanAuthorizeFastPlan = !derivedStateRequiresRefresh
+            && pendingSourceCommitRefreshes.isEmpty
+            && sourceCommitRefreshTask == nil
+            && pendingLiveEvents.isEmpty
+            && liveIndexRefreshTask == nil
+            && sourceAheadIdentityRecords.isEmpty
+        if snapshotCanAuthorizeFastPlan,
+           let graph = currentSnapshot.discovery.catalog.graph {
+            let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
+                .filter { $0.lifecycle == .active }
+            let documents = Dictionary(uniqueKeysWithValues: activeSnapshots.map {
+                ($0.id, $0.document)
+            })
+            var catalogNotesByID: [VaultQualifiedNoteID: WorkspaceCatalogNote] = [:]
+            for note in currentSnapshot.discovery.catalog.notes {
+                let id = VaultQualifiedNoteID(
+                    vaultID: note.reference.vaultID,
+                    relativePath: note.reference.relativePath
+                )
+                catalogNotesByID[id] = note
+            }
+            var catalog: [LinkCatalogNote] = []
+            var snapshotIsCoherent = noteMoves.allSatisfy { move in
+                documents[move.source]?.fingerprint == move.expectedRevision
+            }
+            for note in activeSnapshots {
+                guard let cached = catalogNotesByID[note.id],
+                      cached.fingerprint == note.fingerprint else {
+                    snapshotIsCoherent = false
+                    break
+                }
+                catalog.append(LinkCatalogNote(
+                    id: note.id,
+                    title: cached.title,
+                    aliases: cached.aliases,
+                    headings: note.headings
+                ))
+            }
+            let sourceManifestHash = SearchSourceManifest.hash(documents.map {
+                id, document in
+                SearchSourceManifestEntry(
+                    vaultID: id.vaultID,
+                    relativePath: id.relativePath,
+                    fingerprint: document.fingerprint
+                )
+            })
+            if snapshotIsCoherent,
+               catalog.count == documents.count,
+               graph.sourceManifestHash == sourceManifestHash,
+               let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
+                    documents: documents,
+                    catalog: catalog,
+                    graph: graph,
+                    vaultID: vaultID,
+                    sourceFolder: sourceFolder,
+                    destinationFolder: destinationFolder,
+                    noteMoves: noteMoves
+               ) {
+                return plan
+            }
+        }
+
+        // A pending, source-ahead, or structurally stale generation cannot
+        // authorize link edits. Preserve the complete filesystem fallback and
+        // its exact preflight rather than weakening source coordination.
         var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
         for registeredVault in orderedVaults() {
             let repository = try repository(vaultID: registeredVault.id)
@@ -2470,6 +3024,58 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         moving source: VaultQualifiedNoteID,
         to destination: VaultQualifiedNoteID
     ) async throws -> IncomingLinkRewritePlan {
+        let snapshotCanAuthorizeFastPlan = !derivedStateRequiresRefresh
+            && pendingSourceCommitRefreshes.isEmpty
+            && sourceCommitRefreshTask == nil
+            && pendingLiveEvents.isEmpty
+            && liveIndexRefreshTask == nil
+            && sourceAheadIdentityRecords.isEmpty
+        if snapshotCanAuthorizeFastPlan,
+           let graph = currentSnapshot.discovery.catalog.graph {
+            let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
+                .filter { $0.lifecycle == .active }
+            let documents = Dictionary(uniqueKeysWithValues: activeSnapshots.map {
+                ($0.id, $0.document)
+            })
+            var catalogNotesByID: [VaultQualifiedNoteID: WorkspaceCatalogNote] = [:]
+            for note in currentSnapshot.discovery.catalog.notes {
+                let id = VaultQualifiedNoteID(
+                    vaultID: note.reference.vaultID,
+                    relativePath: note.reference.relativePath
+                )
+                catalogNotesByID[id] = note
+            }
+            var catalog: [LinkCatalogNote] = []
+            var snapshotIsCoherent = documents[source] != nil
+            for note in activeSnapshots {
+                guard let cached = catalogNotesByID[note.id],
+                      cached.fingerprint == note.fingerprint else {
+                    snapshotIsCoherent = false
+                    break
+                }
+                catalog.append(LinkCatalogNote(
+                    id: note.id,
+                    title: cached.title,
+                    aliases: cached.aliases,
+                    headings: note.headings
+                ))
+            }
+            if snapshotIsCoherent,
+               let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
+                   documents: documents,
+                   catalog: catalog,
+                   graph: graph,
+                   moving: source,
+                   to: destination
+               ) {
+                return plan
+            }
+        }
+
+        // A source-ahead, known-stale, pending-refresh, or otherwise
+        // mixed-generation snapshot cannot authorize link edits. Fall back to
+        // the complete filesystem read and graph re-derivation rather than
+        // weakening exact-source validation.
         var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
         for registeredVault in orderedVaults() {
             let repository = try repository(vaultID: registeredVault.id)
@@ -2512,6 +3118,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
+    private func requireExpectedIdentity(
+        _ expected: UUID?,
+        resolved current: UUID,
+        relativePath: String
+    ) throws {
+        guard let expected else { return }
+        guard expected == current else {
+            throw NoteIdentityRecoveryError.targetIdentityChanged(relativePath)
+        }
+    }
+
     func resolvedIdentity(
         for id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
@@ -2524,14 +3141,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 current: current.fingerprint
             )
         }
-        guard let note = currentSnapshot.document(id: id),
-              note.fingerprint == expectedRevision,
-              case .resolved(let stableID) = note.stableIdentity,
-              let record = try await services.controlStore.identityRecord(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath
-              ),
-              record.id == stableID else {
+        guard let record = try await services.controlStore.identityRecord(
+                  vaultID: id.vaultID,
+                  relativePath: id.relativePath
+              ), record.fingerprint == expectedRevision else {
+            throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
+        }
+        if let note = currentSnapshot.document(id: id),
+           note.fingerprint == expectedRevision,
+           note.stableIdentity.resolvedID == record.id {
+            return record
+        }
+        guard let sourceAhead = sourceAheadIdentityRecords[id],
+              sourceAhead.id == record.id,
+              sourceAhead.fingerprint == record.fingerprint else {
             throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
         }
         return record
@@ -2540,7 +3163,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func resolveIdentity(
         _ ambiguity: NoteIdentityAmbiguity,
         candidateID: UUID?
-    ) async throws -> NoteIdentityRecord {
+    ) async throws -> WorkspaceMutationOutcome<NoteIdentityRecord> {
         try requireActive()
         let repository = try repository(vaultID: ambiguity.vaultID)
         guard let slot = WorkspaceVaultSlot.allCases.first(where: {
@@ -2554,6 +3177,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             repository: repository,
             migrateCritiquePaths: slot == .output
         )
+        let derivedRefreshWarning: String?
         do {
             _ = try await refresh(
                 publication: .explicit,
@@ -2561,13 +3185,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     affectedVaultIDs: [ambiguity.vaultID]
                 )
             )
+            derivedRefreshWarning = nil
         } catch {
-            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
-                operation: "The note-identity resolution",
-                reason: error.localizedDescription
-            )
+            derivedRefreshWarning = error.localizedDescription
         }
-        return record
+        return WorkspaceMutationOutcome(
+            committedValue: record,
+            derivedRefreshWarning: derivedRefreshWarning
+        )
     }
 
     func checkpointArea(vaultID: UUID) throws -> TriptychCheckpointArea {

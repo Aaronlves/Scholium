@@ -7,6 +7,103 @@ import Testing
 @Suite("Window controller architecture")
 @MainActor
 struct WindowControllerArchitectureTests {
+    @Test("Lifecycle presentation clears moved notes and direct Put Back skips editor flush")
+    func lifecyclePresentationCutover() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let putBackStart = try #require(appSource.range(
+            of: "func putBackNote(_ target: NoteLifecycleTarget) async throws"
+        ))
+        let putBackEnd = try #require(appSource.range(
+            of: "func requestDocumentMode(",
+            range: putBackStart.upperBound..<appSource.endIndex
+        ))
+        let putBackSource = appSource[
+            putBackStart.lowerBound..<putBackEnd.lowerBound
+        ]
+        #expect(putBackSource.contains("documentController.putBack(target)"))
+        #expect(!putBackSource.contains("flushRegisteredEditorIfNeeded"))
+        #expect(!putBackSource.contains("currentRegisteredVault"))
+        #expect(!putBackSource.contains("documentRevisions"))
+        #expect(!putBackSource.contains("noteIdentityByPath"))
+
+        let presentationStart = try #require(appSource.range(
+            of: "private func presentCommittedLifecycleMove("
+        ))
+        let presentationEnd = try #require(appSource.range(
+            of: "private func migrateInMemoryPath(",
+            range: presentationStart.upperBound..<appSource.endIndex
+        ))
+        let presentationSource = appSource[
+            presentationStart.lowerBound..<presentationEnd.lowerBound
+        ]
+        #expect(presentationSource.contains(
+            "removePresentedDocumentAfterLifecycleMove("
+        ))
+        #expect(presentationSource.contains(
+            "documentTabController.removeTabs(withIDs: matchingTabIDs)"
+        ))
+        #expect(presentationSource.contains(
+            "documentController.clearSelectionAfterClosingLastTab()"
+        ))
+        #expect(!presentationSource.contains("activateDocument("))
+
+        let splitSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(splitSource.contains(
+            "let showsPlaceholder = tabs.isEmpty || selectedTabID == nil"
+        ))
+    }
+
+    @Test("Folder commands fail explicitly while another folder mutation owns the window")
+    func folderMutationBusyFailure() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let moveStart = try #require(appSource.range(
+            of: "func moveFolder(\n        _ target: FolderLifecycleTarget,"
+        ))
+        let trashStart = try #require(appSource.range(
+            of: "func moveFolderToTrash(_ target: FolderLifecycleTarget)",
+            range: moveStart.upperBound ..< appSource.endIndex
+        ))
+        let refreshStart = try #require(appSource.range(
+            of: "private func refreshCachedWorkspaceVaultSnapshot(",
+            range: trashStart.upperBound ..< appSource.endIndex
+        ))
+        let moveSource = appSource[moveStart.lowerBound ..< trashStart.lowerBound]
+        let trashSource = appSource[trashStart.lowerBound ..< refreshStart.lowerBound]
+
+        for source in [moveSource, trashSource] {
+            #expect(source.contains("guard !isMutatingFolder else"))
+            #expect(source.contains(
+                "throw WindowFileTreeMutationError.folderMutationInProgress"
+            ))
+            #expect(!source.contains("guard !isMutatingFolder else { return }"))
+        }
+        #expect(trashSource.contains("let vaultID = target.vaultID"))
+        #expect(trashSource.contains("relativePath: target.relativePath"))
+    }
+
     @Test("Attention observes only its exact workspace projections")
     func attentionObservationOwnership() throws {
         let store = makeTestWorkspaceStore()
@@ -559,7 +656,8 @@ struct WindowControllerArchitectureTests {
         #expect(!windowSource.contains("@Published var documentModes"))
         #expect(!windowSource.contains("@Published var documentScrollPositions"))
         #expect(windowSource.contains("documentController.selectedDocumentPath"))
-        #expect(!controllerSource.contains("openDocuments"))
+        #expect(!controllerSource.contains("@Published private(set) var openDocuments"))
+        #expect(!controllerSource.contains("@Published var openDocuments"))
         #expect(!controllerSource.contains("activeDocumentKey"))
         #expect(controllerSource.contains("@Published private(set) var selectedDocument"))
     }
@@ -698,7 +796,10 @@ struct WindowControllerArchitectureTests {
     func fallbackPresentationStateIsControllerOwned() {
         let path = "Inbox/Imported.md"
         let vaultID = UUID()
-        let target = DocumentEditingTarget.unavailable(relativePath: path)
+        let target = DocumentEditingTarget.unavailable(
+            vaultID: vaultID,
+            relativePath: path
+        )
         let controller = DocumentController()
         controller.restorePresentationState(
             modes: [path: NotePresentationMode.source.rawValue],
@@ -798,16 +899,6 @@ struct WindowControllerArchitectureTests {
         #expect(controller.editingDocumentPath == "Topics/New.md")
         #expect(session.autosaveTask != nil)
         session.cancelScheduledWork()
-    }
-
-    @Test("Document controller owns the Put Back path projection")
-    func documentControllerProjectsPutBackDestination() {
-        let controller = DocumentController()
-
-        #expect(controller.putBackDestination(for: "Set Aside/Topics/Agency.md") == "Topics/Agency.md")
-        #expect(controller.putBackDestination(for: "Trash/Agency.md") == "Agency.md")
-        #expect(controller.putBackDestination(for: "Set Aside/") == nil)
-        #expect(controller.putBackDestination(for: "Topics/Agency.md") == nil)
     }
 
     @Test("Discovery rejects a stale Search completion")
@@ -921,8 +1012,10 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
 
+        // Scope browsing, Location browsing, and automatic current-Note reveal
+        // all stage from the last accepted Workspace snapshot.
         #expect(
-            source.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 2
+            source.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 3
         )
         #expect(source.contains("private func currentWorkspaceVaultSnapshot("))
         #expect(source.contains(
@@ -1002,6 +1095,80 @@ struct WindowControllerArchitectureTests {
         #expect(controller.library.locationScope == .trash)
     }
 
+    @Test("Created Notes clear filters, preserve sort, and request one exact reveal")
+    func createdNoteRevealOwnsLibraryPresentation() throws {
+        let controller = DiscoveryController()
+        var filters = DiscoveryFilterState()
+        filters.needsAttention = true
+        filters.tag = "ethics"
+        filters.year = 2026
+        controller.replaceFilters(filters)
+        controller.selectSortOrder(.titleDescending)
+        let scope = LibraryDisclosureScope(
+            vaultID: UUID(),
+            locationScope: .workspace
+        )
+        controller.setExpandedFolders(["Existing"], in: scope)
+
+        controller.prepareCreatedNoteReveal(
+            relativePath: "Arguments/Agency/Untitled.md",
+            folderAncestors: ["Arguments", "Arguments/Agency"],
+            in: scope
+        )
+
+        #expect(controller.library.filters == DiscoveryFilterState())
+        #expect(controller.library.sortOrder == .titleDescending)
+        #expect(controller.expandedFolders(in: scope) == [
+            "Existing", "Arguments", "Arguments/Agency",
+        ])
+        let request = try #require(controller.libraryRevealRequest)
+        #expect(request.scope == scope)
+        #expect(request.relativePath == "Arguments/Agency/Untitled.md")
+        #expect(request.alignment == .center)
+        controller.consumeLibraryRevealRequest(request)
+        #expect(controller.libraryRevealRequest == nil)
+    }
+
+    @Test("Ordinary Note reveal preserves useful filters and clears only excluding filters")
+    func ordinaryNoteRevealOwnsMinimumLibraryPresentation() throws {
+        let controller = DiscoveryController()
+        var filters = DiscoveryFilterState()
+        filters.tag = "ethics"
+        controller.replaceFilters(filters)
+        controller.selectSortOrder(.titleAscending)
+        let scope = LibraryDisclosureScope(
+            vaultID: UUID(),
+            locationScope: .workspace
+        )
+        controller.setExpandedFolders(["Existing"], in: scope)
+
+        controller.prepareLibraryNoteReveal(
+            relativePath: "Arguments/Agency/Current.md",
+            folderAncestors: ["Arguments", "Arguments/Agency"],
+            clearFilters: false,
+            in: scope
+        )
+
+        #expect(controller.library.filters == filters)
+        #expect(controller.library.sortOrder == .titleAscending)
+        #expect(controller.expandedFolders(in: scope) == [
+            "Existing", "Arguments", "Arguments/Agency",
+        ])
+        let first = try #require(controller.libraryRevealRequest)
+        #expect(first.alignment == .nearest)
+        controller.consumeLibraryRevealRequest(first)
+
+        controller.prepareLibraryNoteReveal(
+            relativePath: "Other/Hidden.md",
+            folderAncestors: ["Other"],
+            clearFilters: true,
+            in: scope
+        )
+        #expect(controller.library.filters == DiscoveryFilterState())
+        #expect(controller.library.sortOrder == .titleAscending)
+        #expect(controller.expandedFolders(in: scope).contains("Other"))
+    }
+
     @Test("Discovery views share one controller instead of parallel feature models")
     func discoveryViewAdoption() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -1029,6 +1196,9 @@ struct WindowControllerArchitectureTests {
         }
         #expect(source.contains("controller: appState.discoveryController"))
         #expect(source.contains("context: sidebarContext"))
+        #expect(source.contains("scheduleLibraryReveal(for: document)"))
+        #expect(source.contains("prepareLibraryNoteReveal("))
+        #expect(!source.contains("requestRevealCurrentDocumentInLibrary"))
     }
 
     @Test("Discovery destinations receive controllers or narrow root contexts")
@@ -1146,6 +1316,36 @@ struct WindowControllerArchitectureTests {
         #expect(!noteSource.contains(
             "@ObservedObject private var controller: ResearchController"
         ))
+    }
+
+    @Test("Library disclosure does not invalidate the Discovery owner")
+    func discoveryObservationOwnership() throws {
+        let shellState = WindowShellState()
+        let controller = DiscoveryController(shellState: shellState)
+        let scope = LibraryDisclosureScope(
+            vaultID: UUID(),
+            locationScope: .workspace
+        )
+        var invalidations = 0
+        let observation = controller.objectWillChange.sink { invalidations += 1 }
+
+        shellState.setExpandedFolders(["Sources"], in: scope)
+        #expect(invalidations == 0)
+        controller.selectSortOrder(.titleAscending)
+        #expect(invalidations == 1)
+        observation.cancel()
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/Discovery/DiscoveryController.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(!source.contains("shellState.objectWillChange"))
     }
 
     @Test("Research destinations receive narrow contexts instead of the window model")
@@ -1301,9 +1501,166 @@ struct WindowControllerArchitectureTests {
             )
         }
         #expect(windowModelSource.contains("documentController.createUntitledNote("))
+        let creationStart = try #require(windowModelSource.range(
+            of: "func requestUntitledNoteCreation(in folderRelativePath: String?)"
+        ))
+        let creationEnd = try #require(windowModelSource.range(
+            of: "func requestUntitledFolderCreation(in parentRelativePath: String?)",
+            range: creationStart.upperBound..<windowModelSource.endIndex
+        ))
+        let creationSource = String(
+            windowModelSource[creationStart.lowerBound..<creationEnd.lowerBound]
+        )
+        let create = try #require(creationSource.range(
+            of: "documentController.createUntitledNote("
+        ))
+        let sourceAhead = try #require(creationSource.range(
+            of: "let sourceAheadSnapshot = commit.sourceAheadSnapshot",
+            range: create.upperBound..<creationSource.endIndex
+        ))
+        let install = try #require(creationSource.range(
+            of: "workspaceProjectionController.recordCommittedNote(",
+            range: sourceAhead.upperBound..<creationSource.endIndex
+        ))
+        let activate = try #require(creationSource.range(
+            of: "activateWorkspaceReference(",
+            range: install.upperBound..<creationSource.endIndex
+        ))
+        _ = try #require(creationSource.range(
+            of: "revealCreatedNoteInLibrary(document.relativePath, vaultID: vault.id)",
+            range: activate.upperBound..<creationSource.endIndex
+        ))
+        #expect(creationSource.contains("let commit = outcome.committedValue"))
+        #expect(creationSource.contains("let document = commit.document"))
+        #expect(!creationSource.contains("refreshCachedWorkspaceVaultSnapshot"))
+        #expect(!creationSource.contains("browseRegisteredVault"))
+        #expect(creationSource.contains("reportCommittedMutationWarnings(outcome)"))
+        let folderCreationStart = try #require(windowModelSource.range(
+            of: "func requestUntitledFolderCreation(in parentRelativePath: String?)"
+        ))
+        let folderCreationEnd = try #require(windowModelSource.range(
+            of: "func moveFolder(",
+            range: folderCreationStart.upperBound..<windowModelSource.endIndex
+        ))
+        let folderCreationSource = windowModelSource[
+            folderCreationStart.lowerBound..<folderCreationEnd.lowerBound
+        ]
+        let committedFolder = try #require(folderCreationSource.range(
+            of: "workspaceProjectionController.recordCommittedFolder("
+        ))
+        let recoveryRefresh = try #require(folderCreationSource.range(
+            of: "refreshCachedWorkspaceVaultSnapshot",
+            range: committedFolder.upperBound..<folderCreationSource.endIndex
+        ))
+        #expect(committedFolder.lowerBound < recoveryRefresh.lowerBound)
+        #expect(windowModelSource.contains(
+            "private func presentCommittedLifecycleMove("
+        ))
+        #expect(windowModelSource.contains(
+            "workspaceProjectionController.recordCommittedNoteMove("
+        ))
+        let moveStart = try #require(windowModelSource.range(
+            of: "func moveNote("
+        ))
+        let moveEnd = try #require(windowModelSource.range(
+            of: "func setAsideNote(",
+            range: moveStart.upperBound..<windowModelSource.endIndex
+        ))
+        let moveSource = windowModelSource[
+            moveStart.lowerBound..<moveEnd.lowerBound
+        ]
+        let moveProjection = try #require(moveSource.range(
+            of: "workspaceProjectionController.recordCommittedNoteMove("
+        ))
+        let moveFallbackRefresh = try #require(moveSource.range(
+            of: "refreshCachedWorkspaceVaultSnapshot(",
+            range: moveProjection.upperBound..<moveSource.endIndex
+        ))
+        #expect(moveProjection.lowerBound < moveFallbackRefresh.lowerBound)
+        #expect(moveSource.contains("if outcome.identityRecoveryWarning == nil"))
+        #expect(moveSource.contains("documentController.recordCommittedSnapshot("))
+        #expect(moveSource.contains("revealCreatedNoteInLibrary("))
+        #expect(windowModelSource.contains(
+            "let lifecycle = currentNote?.workspaceSnapshot?.lifecycle ?? .active"
+        ))
+        #expect(windowModelSource.contains(
+            "func importMarkdownFiles(_ urls: [URL]) async throws -> MarkdownImportBatchOutcome"
+        ))
+        #expect(source.contains("appState.requestMarkdownImport(urls)"))
+        #expect(windowModelSource.contains(
+            "private var markdownImportTask: Task<Void, Never>?"
+        ))
+        #expect(windowModelSource.contains("func requestMarkdownImport(_ urls: [URL])"))
+        #expect(windowModelSource.contains("try Task.checkCancellation()"))
+        #expect(windowModelSource.contains("failures.append(MarkdownImportFailure("))
+        #expect(windowModelSource.contains(
+            "identityRecoveryWarnings.append(warning)"
+        ))
+        #expect(windowModelSource.contains(
+            "let destinationWorkspaceID = workspaceAssignment?.id"
+        ))
+        #expect(windowModelSource.contains(
+            "guard workspaceAssignment?.id == destinationWorkspaceID"
+        ))
+        #expect(windowModelSource.contains("catch is CancellationError"))
+        #expect(windowModelSource.contains(
+            "if currentRegisteredVault?.id == vault.id"
+        ))
+        #expect(windowModelSource.contains(
+            "The imported files are already committed; do not import them again."
+        ))
+        #expect(!windowModelSource.contains(
+            "func importMarkdownFiles(_ urls: [URL]) async throws -> [NoteDocument]"
+        ))
+        #expect(!windowModelSource.contains("committedButRefreshFailed"))
+        #expect(windowModelSource.contains(
+            "identityResolved: outcome.identityRecoveryWarning == nil"
+        ))
         #expect(windowModelSource.contains("searchController.open("))
         #expect(searchControllerSource.contains("discoveryController.executeSearch("))
         #expect(windowModelSource.contains("researchController.actions"))
+    }
+
+    @Test("Partial Markdown import never presents committed files as retryable")
+    func markdownImportOutcomePresentation() {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let imported = NoteDocument(
+            relativePath: "Imported.md",
+            rawContent: "# Imported\n"
+        )
+
+        window.presentMarkdownImportOutcome(.init(
+            destinationName: "Topics",
+            documents: [imported],
+            failures: [.init(sourceName: "Broken.md", reason: "Invalid UTF-8")],
+            derivedRefreshWarnings: [],
+            identityRecoveryWarnings: ["Identity registry is unavailable."],
+            presentationWarning: nil
+        ))
+
+        #expect(window.vaultError == nil)
+        #expect(window.toastMessage?.kind == .warning)
+        #expect(window.toastMessage?.message.contains("already committed") == true)
+        #expect(window.toastMessage?.message.contains("do not import them again") == true)
+        #expect(window.toastMessage?.message.contains("Topics") == true)
+        #expect(window.toastMessage?.message.contains(
+            "stable note identity recovery is incomplete"
+        ) == true)
+        #expect(window.toastMessage?.message.contains(
+            "Identity registry is unavailable."
+        ) == true)
+
+        window.presentMarkdownImportOutcome(.init(
+            destinationName: "Topics",
+            documents: [],
+            failures: [.init(sourceName: "Broken.md", reason: "Invalid UTF-8")],
+            derivedRefreshWarnings: [],
+            identityRecoveryWarnings: [],
+            presentationWarning: nil
+        ))
+
+        #expect(window.vaultError?.contains("No Markdown files were imported") == true)
+        #expect(window.vaultError?.contains("Broken.md") == true)
     }
 
     @Test("Window composition consumes research capabilities without a mega-port")
@@ -1472,11 +1829,90 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("@Published var dialogueInitialNotes"))
         #expect(!windowModelSource.contains("@Published var checkpointListingError"))
         #expect(!windowModelSource.contains("@Published var transactionRecoveryRecords"))
+        #expect(!windowModelSource.contains("@Published var interruptedSaveRecoveries"))
         #expect(!researchControllerSource.contains("@Published var dialogueInitialNotes"))
         #expect(researchControllerSource.contains("@Published var transactionRecoveryRecords"))
+        #expect(researchControllerSource.contains("@Published var interruptedSaveRecoveries"))
 
         #expect(controllerSource.contains("private let sessions = DocumentSessionStore()"))
         #expect(!controllerSource.contains("sessions: DocumentSessionStore"))
+    }
+
+    @Test("Interrupted save recovery reuses one route and flushes before restore")
+    func interruptedSaveRecoveryBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
+            encoding: .utf8
+        )
+        let recoveryViewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Note/TransactionRecoveryView.swift"
+            ),
+            encoding: .utf8
+        )
+        let routerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowPresentationRouter.swift"
+            ),
+            encoding: .utf8
+        )
+        let restoreStart = try #require(appSource.range(
+            of: "func restoreInterruptedSaveRecovery("
+        ))
+        let restoreEnd = try #require(appSource.range(
+            of: "private func migrateAppOwnedState(",
+            range: restoreStart.upperBound..<appSource.endIndex
+        ))
+        let restoreSource = String(
+            appSource[restoreStart.lowerBound..<restoreEnd.lowerBound]
+        )
+        let flush = try #require(restoreSource.range(
+            of: "editorFlushCoordinator.flushAllEditors(in: assignment.id)"
+        ))
+        _ = try #require(restoreSource.range(
+            of: "researchController.restoreInterruptedSaveRecovery(recovery)",
+            range: flush.upperBound..<restoreSource.endIndex
+        ))
+
+        #expect(contentSource.contains("case .transactionRecovery:"))
+        #expect(contentSource.contains("interruptedSaves: appState.interruptedSaveRecoveries"))
+        #expect(recoveryViewSource.contains("DisclosureGroup(\"View Candidate Source\""))
+        #expect(recoveryViewSource.contains("Button(\"Copy Candidate\")"))
+        #expect(recoveryViewSource.contains("Button(restoreButtonTitle)"))
+        #expect(routerSource.contains("case transactionRecovery"))
+        #expect(!routerSource.contains("case interruptedSaveRecovery"))
+    }
+
+    @Test("Research reset cannot carry an interrupted save into another Triptych")
+    func interruptedSaveRecoveryReset() {
+        let controller = ResearchController()
+        let expected = DocumentFingerprint(content: "expected")
+        controller.interruptedSaveRecoveries = [InterruptedSaveRecovery(
+            id: InterruptedSaveRecoveryID(
+                vaultID: UUID(),
+                transactionID: UUID()
+            ),
+            relativePath: "Note.md",
+            expectedRevision: expected,
+            candidateRevision: DocumentFingerprint(content: "candidate"),
+            createdAt: Date(),
+            retainedReason: "Interrupted",
+            sourceState: .expectedRevision
+        )]
+        controller.interruptedSaveRecoveryError = "Unavailable"
+
+        controller.reset()
+
+        #expect(controller.interruptedSaveRecoveries.isEmpty)
+        #expect(controller.interruptedSaveRecoveryError == nil)
     }
 
     @Test("Editor flush registration has one exact-window coordinator")
@@ -1532,6 +1968,32 @@ struct WindowControllerArchitectureTests {
         #expect(coordinatorSource.contains("func activateTriptych("))
         #expect(coordinatorSource.contains("func updateWindowID("))
         #expect(coordinatorSource.contains("func shutdown()"))
+        #expect(windowModelSource.contains("func finalizeWindowClose()"))
+        let closePreparationStart = try #require(windowModelSource.range(
+            of: "func prepareForWindowClose() async throws -> ClosePreparationOutcome"
+        ))
+        let closeFinalizationStart = try #require(windowModelSource.range(
+            of: "func finalizeWindowClose()",
+            range: closePreparationStart.upperBound..<windowModelSource.endIndex
+        ))
+        let closePreparationSource = String(
+            windowModelSource[
+                closePreparationStart.lowerBound..<closeFinalizationStart.lowerBound
+            ]
+        )
+        #expect(!closePreparationSource.contains("editorFlushCoordinator.shutdown()"))
+        let closeFinalizationEnd = try #require(windowModelSource.range(
+            of: "private func enqueueDocumentTransition(",
+            range: closeFinalizationStart.upperBound..<windowModelSource.endIndex
+        ))
+        let closeFinalizationSource = String(
+            windowModelSource[
+                closeFinalizationStart.lowerBound..<closeFinalizationEnd.lowerBound
+            ]
+        )
+        #expect(closeFinalizationSource.contains("markdownImportTask?.cancel()"))
+        #expect(closeFinalizationSource.contains("markdownImportTask = nil"))
+        #expect(closeFinalizationSource.contains("editorFlushCoordinator.shutdown()"))
         #expect(storeSource.contains(
             "WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry"
         ))
@@ -1590,7 +2052,7 @@ struct WindowControllerArchitectureTests {
         ]
         let windowIntentAndDelivery = [
             "resolveVault": 2,
-            "revealInFinder": 4,
+            "revealInFinder": 5,
             "openExternal": 1,
         ]
         let workspaceActivationAndRecovery = [
@@ -1615,7 +2077,7 @@ struct WindowControllerArchitectureTests {
         }
 
         #expect(compositionAndSubscription.values.reduce(0, +) == 12)
-        #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
+        #expect(windowIntentAndDelivery.values.reduce(0, +) == 8)
         #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 13)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))

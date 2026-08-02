@@ -33,13 +33,13 @@ struct WindowWorkspaceProjectionContext {
     let locationScope: NoteLocationScope
     let currentDocumentVaultID: UUID?
     let selectedDocumentPath: String?
-    let editingDocumentPath: String?
+    let retainedDeletedDocumentPath: String?
 }
 
 /// One atomic result from accepting a complete Workspace generation.
 struct WindowWorkspaceProjectionCommit {
     let searchGenerationChanged: Bool
-    let retainedDeletedEditorPath: String?
+    let retainedDeletedDocumentPath: String?
     let derivedRefreshStatus: WorkspaceDerivedRefreshStatus
 }
 
@@ -48,11 +48,23 @@ struct WindowWorkspaceProjectionCommit {
 /// selects and caches one coherent read model for the exact window.
 @MainActor
 final class WindowWorkspaceProjectionController: ObservableObject {
+    struct CommittedMoveProjection {
+        let note: WorkspaceNoteSnapshot
+        let vault: RegisteredVault
+    }
+
+    struct CommittedFolderMoveProjection {
+        let notes: [WorkspaceNoteSnapshot]
+        let vault: RegisteredVault
+    }
+
     struct State {
         var catalog: WorkspaceCatalogSnapshot?
         var vaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
         var notes: [WindowDocumentLocation] = []
         var tags: [String] = []
+        var authors: [String] = []
+        var years: [Int] = []
         var documentRevisions: [String: DocumentFingerprint] = [:]
         var relationshipGraph: GraphSnapshot?
         var searchGeneration: SearchGenerationID?
@@ -94,6 +106,8 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     var vaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] { state.vaultSnapshotsByID }
     var notes: [WindowDocumentLocation] { state.notes }
     var tags: [String] { state.tags }
+    var authors: [String] { state.authors }
+    var years: [Int] { state.years }
     var documentRevisions: [String: DocumentFingerprint] { state.documentRevisions }
     var relationshipGraph: GraphSnapshot? { state.relationshipGraph }
     var searchGeneration: SearchGenerationID? { state.searchGeneration }
@@ -125,13 +139,20 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     /// Accepts only the active runtime and an increasing Application event.
     /// Research-configuration invalidation advances ordering without replaying
     /// an unchanged Workspace projection.
+    func canReceive(
+        _ event: WorkspaceEvent,
+        runtimeIdentity: TriptychRuntimeIdentity
+    ) -> Bool {
+        self.runtimeIdentity == runtimeIdentity
+            && (acceptedGeneration.map { event.generation > $0 } ?? true)
+    }
+
     func receive(
         _ event: WorkspaceEvent,
         runtimeIdentity: TriptychRuntimeIdentity,
         context: WindowWorkspaceProjectionContext
     ) -> WindowWorkspaceProjectionCommit? {
-        guard self.runtimeIdentity == runtimeIdentity,
-              acceptedGeneration.map({ event.generation > $0 }) ?? true else {
+        guard canReceive(event, runtimeIdentity: runtimeIdentity) else {
             return nil
         }
         acceptedGeneration = event.generation
@@ -168,15 +189,23 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state.vaultSnapshotsByID[id]
     }
 
+    /// Resolves by stable identity whenever the caller has one. Path lookup is
+    /// reserved for identity-unavailable routes; it must never retarget a
+    /// stable session after another Note reuses the former path.
     func cachedNote(
         vaultID: UUID,
         stableNoteID: UUID? = nil,
         relativePath: String
     ) -> WorkspaceNoteSnapshot? {
-        state.vaultSnapshotsByID[vaultID]?.documents.first { note in
-            stableNoteID.map { $0 == note.stableIdentity.resolvedID } == true
-                || note.id.relativePath == relativePath
+        guard let documents = state.vaultSnapshotsByID[vaultID]?.documents else {
+            return nil
         }
+        if let stableNoteID {
+            return documents.first {
+                $0.stableIdentity.resolvedID == stableNoteID
+            }
+        }
+        return documents.first { $0.id.relativePath == relativePath }
     }
 
     func replaceVaultSnapshots(_ snapshots: [WorkspaceVaultSnapshot]) {
@@ -223,18 +252,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state = next
     }
 
-    func recordPreparedRevision(_ revision: DocumentFingerprint, at path: String) {
-        var next = state
-        next.documentRevisions[path] = revision
-        state = next
-    }
-
-    func clearPreparedRevision(at path: String) {
-        var next = state
-        next.documentRevisions[path] = nil
-        state = next
-    }
-
     /// Updates the cached vault and visible Location as one projection commit.
     /// Returns the vault metadata needed by the Document controller projection.
     func recordCommittedNote(
@@ -260,16 +277,12 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         next.vaultSnapshotsByID[note.id.vaultID] = WorkspaceVaultSnapshot(
             slot: vaultSnapshot.slot,
             vault: vaultSnapshot.vault,
+            pathComparisonPolicy: vaultSnapshot.pathComparisonPolicy,
             documents: documents,
             folders: vaultSnapshot.folders,
             identityRecovery: vaultSnapshot.identityRecovery
         )
-        let visibleLifecycle: WorkspaceDocumentLifecycle? = switch visibleLocationScope {
-        case .workspace: .active
-        case .setAside: .setAside
-        case .trash: .trash
-        case nil: nil
-        }
+        let visibleLifecycle = visibleLocationScope?.documentLifecycle
         if visibleVaultID == note.id.vaultID,
            visibleLifecycle == note.lifecycle {
             let visible = WindowDocumentLocation.workspace(note)
@@ -284,8 +297,237 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             installVisibleNotes(notes, in: &next)
             next.documentRevisions[note.id.relativePath] = note.fingerprint
         }
+        if note.derivedProjectionState == .sourceAhead {
+            markDerivedStateStale(
+                reason: "The new note is committed while derived workspace state refreshes.",
+                affectedVaultIDs: [note.id.vaultID],
+                state: &next
+            )
+        }
         state = next
         return vaultSnapshot.vault
+    }
+
+    /// Installs a durable empty-folder claim without waiting for the complete
+    /// Workspace generation that will refresh disposable folder inventory.
+    func recordCommittedFolder(
+        _ folder: VaultRelativeFolderPath,
+        vaultID: UUID
+    ) -> RegisteredVault? {
+        guard let vaultSnapshot = state.vaultSnapshotsByID[vaultID] else {
+            return nil
+        }
+        var next = state
+        var folders = vaultSnapshot.folders
+        if !folders.contains(folder) {
+            folders.append(folder)
+            folders.sort {
+                $0.rawValue.localizedStandardCompare($1.rawValue) == .orderedAscending
+            }
+        }
+        next.vaultSnapshotsByID[vaultID] = WorkspaceVaultSnapshot(
+            slot: vaultSnapshot.slot,
+            vault: vaultSnapshot.vault,
+            pathComparisonPolicy: vaultSnapshot.pathComparisonPolicy,
+            documents: vaultSnapshot.documents,
+            folders: folders,
+            identityRecovery: vaultSnapshot.identityRecovery
+        )
+        markDerivedStateStale(
+            reason: "The new folder is committed while derived workspace state refreshes.",
+            affectedVaultIDs: [vaultID],
+            state: &next
+        )
+        state = next
+        return vaultSnapshot.vault
+    }
+
+    /// Relocates every exact source and real directory from one durable Folder
+    /// transaction. Graph, Search, and research projections intentionally stay
+    /// stale until the matching complete Workspace generation arrives.
+    func recordCommittedFolderMove(
+        _ commit: FolderMoveCommit,
+        visibleVaultID: UUID?,
+        visibleLocationScope: NoteLocationScope?
+    ) -> CommittedFolderMoveProjection? {
+        guard let vaultSnapshot = state.vaultSnapshotsByID[commit.vaultID] else {
+            return nil
+        }
+
+        var documents = vaultSnapshot.documents
+        var projectedNotes: [WorkspaceNoteSnapshot] = []
+        for move in commit.noteMoves {
+            if let current = documents.first(where: {
+                $0.id == move.destination
+                    && $0.fingerprint == move.committedRevision
+                    && $0.stableIdentity.resolvedID == move.stableNoteID
+            }) {
+                projectedNotes.append(current)
+                continue
+            }
+            guard let sourceIndex = documents.firstIndex(where: {
+                $0.id == move.source
+                    && $0.fingerprint == move.previousRevision
+                    && $0.stableIdentity.resolvedID == move.stableNoteID
+            }) else { return nil }
+            let source = documents[sourceIndex]
+            let document = NoteDocument(
+                relativePath: move.destination.relativePath,
+                rawContent: move.committedRawContent
+            )
+            guard document.fingerprint == move.committedRevision else { return nil }
+            let destination = WorkspaceNoteSnapshot(
+                id: move.destination,
+                vaultRole: source.vaultRole,
+                stableIdentity: .resolved(move.stableNoteID),
+                document: document,
+                fileMetadata: WorkspaceFileMetadata(
+                    byteCount: document.sourceBytes.count,
+                    creationDate: source.fileMetadata.creationDate,
+                    modificationDate: source.fileMetadata.modificationDate
+                ),
+                lifecycle: WorkspaceDocumentLifecycle(
+                    relativePath: move.destination.relativePath
+                ),
+                graphCounts: source.graphCounts,
+                headings: source.headings,
+                derivedProjectionState: .sourceAhead,
+                cachedTitleProjection: source.cachedTitleProjection
+            )
+            documents[sourceIndex] = destination
+            projectedNotes.append(destination)
+        }
+
+        let source = commit.sourceFolder.rawValue
+        let sourcePrefix = source + "/"
+        let destination = commit.destinationFolder.rawValue
+        var folders = vaultSnapshot.folders.map { folder in
+            guard folder.rawValue == source || folder.rawValue.hasPrefix(sourcePrefix)
+            else { return folder }
+            let suffix = folder.rawValue.dropFirst(source.count)
+            return (try? VaultRelativeFolderPath(destination + suffix)) ?? folder
+        }
+        if !folders.contains(commit.destinationFolder) {
+            folders.append(commit.destinationFolder)
+        }
+        folders.sort {
+            $0.rawValue.localizedStandardCompare($1.rawValue) == .orderedAscending
+        }
+
+        var next = state
+        next.vaultSnapshotsByID[commit.vaultID] = WorkspaceVaultSnapshot(
+            slot: vaultSnapshot.slot,
+            vault: vaultSnapshot.vault,
+            pathComparisonPolicy: vaultSnapshot.pathComparisonPolicy,
+            documents: documents,
+            folders: folders,
+            identityRecovery: vaultSnapshot.identityRecovery
+        )
+        if visibleVaultID == commit.vaultID,
+           let visibleLocationScope {
+            let lifecycle = visibleLocationScope.documentLifecycle
+            installVisibleNotes(
+                documents
+                    .filter { $0.lifecycle == lifecycle }
+                    .map(WindowDocumentLocation.workspace),
+                in: &next
+            )
+        }
+        markDerivedStateStale(
+            reason: "The folder location is committed while derived workspace state refreshes.",
+            affectedVaultIDs: [commit.vaultID],
+            state: &next
+        )
+        state = next
+        return CommittedFolderMoveProjection(
+            notes: projectedNotes,
+            vault: vaultSnapshot.vault
+        )
+    }
+
+    /// Relocates one already-cached exact source after an ordinary or category
+    /// move. The authoritative filesystem transaction has completed; this
+    /// source-ahead projection keeps the exact window responsive until the
+    /// matching complete Workspace event replaces it.
+    func recordCommittedNoteMove(
+        _ commit: TriptychMoveCommit,
+        stableIdentity: WorkspaceNoteIdentityState,
+        visibleVaultID: UUID?,
+        visibleLocationScope: NoteLocationScope?
+    ) -> CommittedMoveProjection? {
+        guard let vaultSnapshot = state.vaultSnapshotsByID[commit.movedNote.vaultID]
+        else { return nil }
+
+        if let destination = vaultSnapshot.documents.first(where: {
+            $0.id == commit.destination
+                && $0.fingerprint == commit.committedRevision
+        }) {
+            return CommittedMoveProjection(
+                note: destination,
+                vault: vaultSnapshot.vault
+            )
+        }
+
+        guard let sourceIndex = vaultSnapshot.documents.firstIndex(where: {
+            $0.id == commit.movedNote
+        }) else { return nil }
+        let source = vaultSnapshot.documents[sourceIndex]
+        guard source.fingerprint == commit.previousRevision else { return nil }
+
+        let relocatedDocument = NoteDocument(
+            relativePath: commit.destination.relativePath,
+            rawContent: source.document.rawContent
+        )
+        guard relocatedDocument.fingerprint == commit.committedRevision else {
+            return nil
+        }
+        let destination = WorkspaceNoteSnapshot(
+            id: commit.destination,
+            vaultRole: source.vaultRole,
+            stableIdentity: stableIdentity,
+            document: relocatedDocument,
+            fileMetadata: source.fileMetadata,
+            lifecycle: WorkspaceDocumentLifecycle(
+                relativePath: commit.destination.relativePath
+            ),
+            graphCounts: source.graphCounts,
+            headings: source.headings,
+            derivedProjectionState: .sourceAhead,
+            cachedTitleProjection: source.cachedTitleProjection
+        )
+
+        var next = state
+        var documents = vaultSnapshot.documents
+        documents[sourceIndex] = destination
+        next.vaultSnapshotsByID[commit.movedNote.vaultID] = WorkspaceVaultSnapshot(
+            slot: vaultSnapshot.slot,
+            vault: vaultSnapshot.vault,
+            pathComparisonPolicy: vaultSnapshot.pathComparisonPolicy,
+            documents: documents,
+            folders: vaultSnapshot.folders,
+            identityRecovery: vaultSnapshot.identityRecovery
+        )
+
+        if visibleVaultID == commit.movedNote.vaultID,
+           let visibleLocationScope {
+            let visibleLifecycle = visibleLocationScope.documentLifecycle
+            installVisibleNotes(
+                documents
+                    .filter { $0.lifecycle == visibleLifecycle }
+                    .map(WindowDocumentLocation.workspace),
+                in: &next
+            )
+        }
+        markDerivedStateStale(
+            reason: "The note location is committed while derived workspace state refreshes.",
+            affectedVaultIDs: [commit.movedNote.vaultID],
+            state: &next
+        )
+        state = next
+        return CommittedMoveProjection(
+            note: destination,
+            vault: vaultSnapshot.vault
+        )
     }
 
     func replaceCatalog(_ catalog: WorkspaceCatalogSnapshot) {
@@ -376,27 +618,23 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         }
         next.isRefreshingCatalog = false
 
-        var retainedDeletedEditorPath: String?
+        var retainedDeletedDocumentPath: String?
         if let vaultID = context.selectedVaultID,
            let vault = snapshot.vault(id: vaultID) {
-            let lifecycle: WorkspaceDocumentLifecycle = switch context.locationScope {
-            case .workspace: .active
-            case .setAside: .setAside
-            case .trash: .trash
-            }
+            let lifecycle = context.locationScope.documentLifecycle
             var notes = vault.documents
                 .filter { $0.lifecycle == lifecycle }
                 .map(WindowDocumentLocation.workspace)
             if context.locationScope == .workspace,
                context.currentDocumentVaultID == vaultID,
                let selectedPath = context.selectedDocumentPath,
-               context.editingDocumentPath == selectedPath,
+               context.retainedDeletedDocumentPath == selectedPath,
                !notes.contains(where: { $0.relativePath == selectedPath }),
                let retained = state.notes.first(where: {
                    $0.relativePath == selectedPath
-               }) {
+                }) {
                 notes.append(retained)
-                retainedDeletedEditorPath = selectedPath
+                retainedDeletedDocumentPath = selectedPath
             }
             installVisibleNotes(notes, in: &next)
         }
@@ -404,7 +642,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         return WindowWorkspaceProjectionCommit(
             searchGenerationChanged: previousSearchGeneration != nil
                 && previousSearchGeneration != snapshot.discovery.searchGeneration,
-            retainedDeletedEditorPath: retainedDeletedEditorPath,
+            retainedDeletedDocumentPath: retainedDeletedDocumentPath,
             derivedRefreshStatus: status
         )
     }
@@ -415,10 +653,30 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     ) {
         state.notes = notes
         state.tags = notes.orderedTags
+        state.authors = Set(notes.flatMap(\.authors)).sorted()
+        state.years = Set(notes.compactMap(\.year)).sorted(by: >)
         state.documentRevisions = Dictionary(uniqueKeysWithValues: notes.map {
-            ($0.relativePath, DocumentFingerprint(content: $0.rawContent))
+            ($0.relativePath, $0.document.fingerprint)
         })
         state.propertyFilterOptions = WindowPropertyFilterOptions(notes: notes)
+    }
+
+    private func markDerivedStateStale(
+        reason: String,
+        affectedVaultIDs: Set<UUID>,
+        state: inout State
+    ) {
+        let lastKnownGood: WorkspaceDerivedRefreshEvidence? = switch state.derivedRefreshStatus {
+        case .current(let evidence): evidence
+        case .stale(let issue), .failed(let issue): issue.lastKnownGood
+        case nil: nil
+        }
+        guard let lastKnownGood else { return }
+        state.derivedRefreshStatus = .stale(WorkspaceDerivedRefreshIssue(
+            reason: reason,
+            affectedVaultIDs: affectedVaultIDs,
+            lastKnownGood: lastKnownGood
+        ))
     }
 
     private func invalidateCatalogLoad() {

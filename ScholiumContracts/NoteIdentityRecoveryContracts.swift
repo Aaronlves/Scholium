@@ -38,6 +38,7 @@ public enum NoteIdentityRecoveryError: LocalizedError, Sendable {
     case vaultMismatch(expected: UUID, current: UUID)
     case staleResolution(expected: DocumentFingerprint, current: DocumentFingerprint)
     case identityUnresolved(String)
+    case targetIdentityChanged(String)
 
     public var errorDescription: String? {
         switch self {
@@ -47,6 +48,8 @@ public enum NoteIdentityRecoveryError: LocalizedError, Sendable {
             return "The note changed after the identity choices were shown. Review the refreshed choices before confirming its identity."
         case .identityUnresolved(let path):
             return "Confirm the note identity before changing, reviewing, commenting on, or putting back \(path)."
+        case .targetIdentityChanged(let path):
+            return "The note at \(path) no longer has the identity captured when this action began. Refresh Library and try again."
         }
     }
 }

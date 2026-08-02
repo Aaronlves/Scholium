@@ -104,7 +104,7 @@ struct PrewriteRecoveryLedgerTests {
         #expect(try ledger.content(entryID: entry.id) == Data("exact".utf8))
     }
 
-    @Test("Startup replay cleans only expected or candidate save transactions")
+    @Test("Startup replay retains uncommitted candidates and cleans canonical candidates")
     func mutationReplay() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -116,6 +116,23 @@ struct PrewriteRecoveryLedgerTests {
         var ledger: PrewriteRecoveryLedger? = try PrewriteRecoveryLedger(
             storageURL: fixture.storage
         )
+        let interrupted = try #require(try ledger?.beginMutation(
+            relativePath: "Note.md",
+            expected: expected,
+            candidate: candidate
+        ))
+        ledger = nil
+        ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
+        #expect(try ledger?.pendingMutations().map(\.id) == [interrupted.id])
+        #expect(ledger?.healthDiagnostic?.contains("candidate bytes remain") == true)
+        let interruptedCandidate = fixture.storage
+            .appendingPathComponent("recovery-v2/transactions/mutations", isDirectory: true)
+            .appendingPathComponent(interrupted.id.uuidString.lowercased(), isDirectory: true)
+            .appendingPathComponent("candidate.md")
+        #expect(try Data(contentsOf: interruptedCandidate) == candidate)
+
+        try ledger?.completeMutation(interrupted)
+        try candidate.write(to: note)
         _ = try ledger?.beginMutation(
             relativePath: "Note.md",
             expected: expected,
@@ -125,6 +142,7 @@ struct PrewriteRecoveryLedgerTests {
         ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
         #expect(try ledger?.pendingMutations().isEmpty == true)
 
+        try expected.write(to: note)
         let uncertain = try #require(try ledger?.beginMutation(
             relativePath: "Note.md",
             expected: expected,
@@ -135,6 +153,86 @@ struct PrewriteRecoveryLedgerTests {
         ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
         #expect(try ledger?.pendingMutations().map(\.id) == [uncertain.id])
         #expect(ledger?.healthDiagnostic != nil)
+    }
+
+    @Test("Startup replay rejects a substituted parent symlink")
+    func mutationReplayRejectsParentSymlink() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let folder = fixture.vault.appendingPathComponent("Folder", isDirectory: true)
+        let note = folder.appendingPathComponent("Note.md")
+        let detached = fixture.root.appendingPathComponent("Detached", isDirectory: true)
+        let expected = Data("expected".utf8)
+        let candidate = Data("candidate".utf8)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try expected.write(to: note)
+
+        var ledger: PrewriteRecoveryLedger? = try PrewriteRecoveryLedger(
+            storageURL: fixture.storage
+        )
+        let transaction = try #require(try ledger?.beginMutation(
+            relativePath: "Folder/Note.md",
+            expected: expected,
+            candidate: candidate
+        ))
+        ledger = nil
+        try FileManager.default.moveItem(at: folder, to: detached)
+        try candidate.write(to: detached.appendingPathComponent("Note.md"))
+        try FileManager.default.createSymbolicLink(
+            at: folder,
+            withDestinationURL: detached
+        )
+
+        let reopened = try PrewriteRecoveryLedger(
+            storageURL: fixture.storage,
+            vaultURL: fixture.vault
+        )
+        #expect(try reopened.pendingMutations().map(\.id) == [transaction.id])
+        #expect(reopened.healthDiagnostic?.contains("could not be verified") == true)
+        #expect(try Data(contentsOf: detached.appendingPathComponent("Note.md")) == candidate)
+    }
+
+    @Test("Startup replay rejects a substituted recovery candidate symlink")
+    func mutationReplayRejectsCandidateSymlink() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let note = fixture.vault.appendingPathComponent("Note.md")
+        let expected = Data("expected".utf8)
+        let candidate = Data("candidate".utf8)
+        try expected.write(to: note)
+
+        var ledger: PrewriteRecoveryLedger? = try PrewriteRecoveryLedger(
+            storageURL: fixture.storage
+        )
+        let transaction = try #require(try ledger?.beginMutation(
+            relativePath: "Note.md",
+            expected: expected,
+            candidate: candidate
+        ))
+        ledger = nil
+        let transactionDirectory = fixture.recovery
+            .appendingPathComponent("transactions/mutations", isDirectory: true)
+            .appendingPathComponent(
+                transaction.id.uuidString.lowercased(),
+                isDirectory: true
+            )
+        let candidateURL = transactionDirectory.appendingPathComponent("candidate.md")
+        let detached = fixture.root.appendingPathComponent("Detached Candidate.md")
+        try FileManager.default.moveItem(at: candidateURL, to: detached)
+        try FileManager.default.createSymbolicLink(
+            at: candidateURL,
+            withDestinationURL: detached
+        )
+
+        let reopened = try PrewriteRecoveryLedger(
+            storageURL: fixture.storage,
+            vaultURL: fixture.vault
+        )
+        #expect(try reopened.pendingMutations().map(\.id) == [transaction.id])
+        #expect(reopened.healthDiagnostic?.contains("could not be verified") == true)
+        #expect(try reopened.retainedMutations().isEmpty)
+        #expect(try Data(contentsOf: detached) == candidate)
+        #expect(try Data(contentsOf: note) == expected)
     }
 
     @Test("Verified v1 bytes migrate without modifying the legacy store")

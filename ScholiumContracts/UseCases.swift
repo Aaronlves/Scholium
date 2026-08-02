@@ -3,43 +3,108 @@ import Foundation
 public protocol DocumentUseCases: Sendable {
     func snapshot() async throws -> [WorkspaceVaultSnapshot]
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
-    func importMarkdown(at sourceURL: URL, intoVault vaultID: UUID) async throws -> NoteDocument
-    func create(_ id: VaultQualifiedNoteID, content: String) async throws -> NoteDocument
-    func create(_ request: DocumentCreationRequest) async throws -> NoteDocument
+    func importMarkdown(
+        at sourceURL: URL,
+        intoVault vaultID: UUID
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
+    func create(
+        _ id: VaultQualifiedNoteID,
+        content: String
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
+    func create(
+        _ request: DocumentCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
     /// Creates an empty note at the first unoccupied default path in `folderRelativePath`.
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?
-    ) async throws -> NoteDocument
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit>
     /// Creates the first unoccupied default folder in `parentRelativePath`.
     func createUntitledFolder(
         inVault vaultID: UUID,
         parentRelativePath: String?
-    ) async throws -> VaultRelativeFolderPath
+    ) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath>
     func moveFolder(
         inVault vaultID: UUID,
         from sourceRelativePath: String,
         to destinationRelativePath: String
-    ) async throws -> FolderMoveCommit
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit>
     func moveFolderToTrash(
         inVault vaultID: UUID,
         relativePath: String
-    ) async throws -> FolderMoveCommit
-    func duplicate(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> NoteDocument
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit>
+    func duplicate(
+        _ id: VaultQualifiedNoteID,
+        to destinationRelativePath: String,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
+    func duplicate(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
     /// Commits authoritative source bytes and returns before disposable
     /// workspace projections necessarily reach the same revision.
     func commit(_ id: VaultQualifiedNoteID, changeSet: NoteChangeSet, expectedRevision: DocumentFingerprint) async throws -> SaveResult
     /// Commits authoritative source bytes and waits for the matching complete
     /// derived workspace generation. Use only when the caller immediately
     /// consumes graph, identity, Search, or other same-generation projection.
-    func save(_ id: VaultQualifiedNoteID, changeSet: NoteChangeSet, expectedRevision: DocumentFingerprint) async throws -> SaveResult
-    func move(_ id: VaultQualifiedNoteID, to destinationRelativePath: String, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
-    func setAside(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
-    func moveToTrash(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
-    func putBack(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit
-    func deletePermanently(_ id: VaultQualifiedNoteID, expectedRevision: DocumentFingerprint) async throws -> PermanentDeletionCommit
+    func save(
+        _ id: VaultQualifiedNoteID,
+        changeSet: NoteChangeSet,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> WorkspaceMutationOutcome<SaveResult>
+    func move(
+        _ id: VaultQualifiedNoteID,
+        to destinationRelativePath: String,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func move(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func setAside(
+        _ id: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func setAside(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func moveToTrash(
+        _ id: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func moveToTrash(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func putBack(
+        _ id: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func putBack(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func deletePermanently(
+        _ id: VaultQualifiedNoteID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit>
+    func deletePermanently(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit>
+    func interruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery]
+    func interruptedSaveRecoveryContent(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> InterruptedSaveRecoveryContent
+    func prepareInterruptedSaveRecoveryLocation(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> URL
+    func restoreInterruptedSaveRecovery(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> WorkspaceMutationOutcome<InterruptedSaveRecoveryRestoreCommit>
     func recoverInterruptedTransactions() async throws -> [String]
-    func resolveIdentity(_ ambiguity: NoteIdentityAmbiguity, candidateID: UUID?) async throws -> NoteIdentityRecord
+    func resolveIdentity(
+        _ ambiguity: NoteIdentityAmbiguity,
+        candidateID: UUID?
+    ) async throws -> WorkspaceMutationOutcome<NoteIdentityRecord>
     func documentPreviewCatalog(
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,

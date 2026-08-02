@@ -55,19 +55,25 @@ public struct FolderNoteMoveCommit: Hashable, Sendable {
     public let destination: VaultQualifiedNoteID
     public let previousRevision: DocumentFingerprint
     public let committedRevision: DocumentFingerprint
+    /// Exact committed UTF-8 source after any path rewrite. The receiving
+    /// window can therefore publish the durable destination without rereading
+    /// the vault or waiting for disposable Workspace projections.
+    public let committedRawContent: String
 
     public init(
         stableNoteID: UUID,
         source: VaultQualifiedNoteID,
         destination: VaultQualifiedNoteID,
         previousRevision: DocumentFingerprint,
-        committedRevision: DocumentFingerprint
+        committedRevision: DocumentFingerprint,
+        committedRawContent: String
     ) {
         self.stableNoteID = stableNoteID
         self.source = source
         self.destination = destination
         self.previousRevision = previousRevision
         self.committedRevision = committedRevision
+        self.committedRawContent = committedRawContent
     }
 }
 

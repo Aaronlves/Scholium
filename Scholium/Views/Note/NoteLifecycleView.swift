@@ -2,10 +2,8 @@ import ScholiumContracts
 import SwiftUI
 
 struct NoteLifecycleActions {
-    let putBackDestination: @MainActor (String) -> String?
     let duplicate: @MainActor (NoteLifecycleTarget, String) async throws -> Void
     let move: @MainActor (NoteLifecycleTarget, String) async throws -> Void
-    let putBack: @MainActor (String) async throws -> Void
 }
 
 struct NoteLifecycleView: View {
@@ -27,36 +25,18 @@ struct NoteLifecycleView: View {
                     Spacer()
                 }
 
-                if case .putBack = request {
-                    adaptiveField(
-                        "Original Location",
-                        wide: {
-                            Text(destination)
-                                .textSelection(.enabled)
-                                .font(.body.monospaced())
-                                .frame(minWidth: 300, alignment: .leading)
-                        },
-                        compact: {
-                            Text(destination)
-                                .textSelection(.enabled)
-                                .font(.body.monospaced())
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    )
-                } else {
-                    adaptiveField(
-                        "Location",
-                        wide: {
-                            TextField("Folder/Note.md", text: $destination)
-                                .font(.body.monospaced())
-                                .frame(minWidth: 300)
-                        },
-                        compact: {
-                            TextField("Folder/Note.md", text: $destination)
-                                .font(.body.monospaced())
-                        }
-                    )
-                }
+                adaptiveField(
+                    fieldTitle,
+                    wide: {
+                        TextField(fieldPlaceholder, text: $destination)
+                            .font(.body.monospaced())
+                            .frame(minWidth: 300)
+                    },
+                    compact: {
+                        TextField(fieldPlaceholder, text: $destination)
+                            .font(.body.monospaced())
+                    }
+                )
 
                 Text(helpText)
                     .font(.callout)
@@ -70,10 +50,7 @@ struct NoteLifecycleView: View {
                     Spacer()
                     Button(actionTitle) { perform() }
                         .buttonStyle(.borderedProminent)
-                        .disabled(
-                            destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                || isWorking
-                        )
+                        .disabled(requestedDestinationPath == nil || isWorking)
                         .keyboardShortcut(.defaultAction)
                 }
             }
@@ -115,24 +92,24 @@ struct NoteLifecycleView: View {
     private var sheetTitle: String {
         switch request {
         case .duplicate: "Duplicate Note"
-        case .move: "Move or Rename Note"
-        case .putBack: "Put Back Note"
+        case .rename: "Rename Note"
+        case .move: "Move Note"
         }
     }
 
     private var actionTitle: String {
         switch request {
         case .duplicate: "Duplicate"
+        case .rename: "Rename"
         case .move: "Move"
-        case .putBack: "Put Back"
         }
     }
 
     private var symbol: String {
         switch request {
         case .duplicate: "plus.square.on.square"
+        case .rename: "pencil"
         case .move: "folder"
-        case .putBack: "arrow.uturn.backward"
         }
     }
 
@@ -140,10 +117,32 @@ struct NoteLifecycleView: View {
         switch request {
         case .duplicate:
             "The duplicate preserves the exact source bytes and receives a new stable note identity."
+        case .rename:
+            "Renaming preserves the note's folder, identity, Discussion, and Research Record."
         case .move:
-            "Moving or renaming preserves the note identity, Discussion, and Research Record."
-        case .putBack:
-            "Put Back returns this note to its exact original vault-relative location. Scholium never renames it or chooses another folder."
+            "Moving preserves the note identity, Discussion, and Research Record."
+        }
+    }
+
+    private var fieldTitle: String {
+        if case .rename = request { "Name" } else { "Location" }
+    }
+
+    private var fieldPlaceholder: String {
+        if case .rename = request { "Note Name" } else { "Folder/Note.md" }
+    }
+
+    private var requestedDestinationPath: String? {
+        switch request {
+        case .rename(let target):
+            guard let renamed = noteRenameDestination(
+                sourceRelativePath: target.relativePath,
+                requestedName: destination
+            ), renamed != target.relativePath else { return nil }
+            return renamed
+        case .duplicate, .move:
+            let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
         }
     }
 
@@ -152,24 +151,27 @@ struct NoteLifecycleView: View {
         case .duplicate(let target):
             let base = (target.relativePath as NSString).deletingPathExtension
             destination = base + " Copy.md"
+        case .rename(let target):
+            destination = URL(fileURLWithPath: target.relativePath)
+                .deletingPathExtension()
+                .lastPathComponent
         case .move(let target):
             destination = target.relativePath
-        case .putBack(let path):
-            destination = actions.putBackDestination(path) ?? ""
         }
     }
 
     private func perform() {
+        guard let requestedDestinationPath else { return }
         isWorking = true
         Task {
             do {
                 switch request {
                 case .duplicate(let source):
-                    try await actions.duplicate(source, destination)
+                    try await actions.duplicate(source, requestedDestinationPath)
+                case .rename(let source):
+                    try await actions.move(source, requestedDestinationPath)
                 case .move(let source):
-                    try await actions.move(source, destination)
-                case .putBack(let source):
-                    try await actions.putBack(source)
+                    try await actions.move(source, requestedDestinationPath)
                 }
                 dismiss()
             } catch {
@@ -179,4 +181,23 @@ struct NoteLifecycleView: View {
         }
     }
 
+}
+
+func noteRenameDestination(
+    sourceRelativePath: String,
+    requestedName: String
+) -> String? {
+    let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty,
+          name != ".",
+          name != "..",
+          !name.contains("/"),
+          !name.contains(":") else { return nil }
+    let fileName = URL(fileURLWithPath: name).pathExtension
+        .caseInsensitiveCompare("md") == .orderedSame
+        ? name
+        : name + ".md"
+    let parent = (sourceRelativePath as NSString).deletingLastPathComponent
+    guard parent != ".", !parent.isEmpty else { return fileName }
+    return (parent as NSString).appendingPathComponent(fileName)
 }

@@ -213,7 +213,7 @@ extension ResearchFunctionOperationsTests {
             fixture.analysisID,
             changeSet: .exactContent(original.rawContent + "\nA developed claim.\n"),
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
         let activityCompletion = try researchActivityCompletion(
             for: develop,
             candidateModifiedNotes: [fixture.analysisID],
@@ -337,7 +337,7 @@ extension ResearchFunctionOperationsTests {
             fixture.analysisID,
             changeSet: .exactContent(original.rawContent + "\nA source-bound claim.\n"),
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
         let submittedAt = Date()
         let activity = try researchActivityCompletion(
             for: parent,
@@ -1015,7 +1015,7 @@ extension ResearchFunctionOperationsTests {
                     + "- Target Line: 5\n"
             ),
             expectedRevision: critiqueDocument.fingerprint
-        )
+        ).committedValue
         #expect(try await handle.services.localResearchExecutionStore.listing().records.contains {
             $0.id == critique.runID
         })
@@ -1081,7 +1081,7 @@ extension ResearchFunctionOperationsTests {
                     + "\nAn explicit premise now supports the inference.\n"
             ),
             expectedRevision: workDocument.fingerprint
-        )
+        ).committedValue
         let reviseActivityCompletion = try researchActivityCompletion(
             for: revise,
             candidateModifiedNotes: [fixture.workID],

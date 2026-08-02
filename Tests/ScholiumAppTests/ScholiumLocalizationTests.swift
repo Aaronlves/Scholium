@@ -53,6 +53,14 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Triptych", locale: simplifiedChinese) == "脉络")
         #expect(ScholiumL10n.string("Vault", locale: simplifiedChinese) == "研究库")
         #expect(ScholiumL10n.string("Library", locale: simplifiedChinese) == "研究文档")
+        #expect(
+            ScholiumL10n.string("Expand All Folders", locale: simplifiedChinese)
+                == "展开所有文件夹"
+        )
+        #expect(
+            ScholiumL10n.string("Collapse All Folders", locale: simplifiedChinese)
+                == "折叠所有文件夹"
+        )
         #expect(ScholiumL10n.string("Analyses", locale: simplifiedChinese) == "分析")
         #expect(ScholiumL10n.string("Topics", locale: simplifiedChinese) == "议题")
         #expect(ScholiumL10n.string("Works", locale: simplifiedChinese) == "写作")
@@ -92,7 +100,23 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Details", locale: simplifiedChinese) == "详细信息")
         #expect(ScholiumL10n.string("Quit", locale: simplifiedChinese) == "退出")
         #expect(ScholiumL10n.string("Retry", locale: simplifiedChinese) == "重试")
+        #expect(
+            ScholiumL10n.string("No Document Selected", locale: simplifiedChinese)
+                == "未选择文档"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Select a note in the Library to read or edit.",
+                locale: simplifiedChinese
+            ) == "请在研究文档中选择一则笔记，以开始阅读或编辑。"
+        )
         #expect(ScholiumL10n.string("Save", locale: english) == "Save")
+        #expect(
+            ScholiumL10n.string(
+                "The folder moved, but this window is waiting for the committed refresh.",
+                locale: simplifiedChinese
+            ) == "文件夹已移动，但此窗口仍在等待已提交内容刷新完成。"
+        )
     }
 
     @Test("Appearance line-width controls use localized labels and explanations")
@@ -202,8 +226,18 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Trash", locale: simplifiedChinese) == "纸篓")
         #expect(ScholiumL10n.string("TRASH", locale: simplifiedChinese) == "纸篓")
         #expect(ScholiumL10n.string("Move to Trash…", locale: simplifiedChinese) == "移至纸篓…")
-        #expect(ScholiumL10n.string("Put Back…", locale: simplifiedChinese) == "放回…")
+        #expect(ScholiumL10n.string("Put Back", locale: simplifiedChinese) == "放回")
         #expect(ScholiumL10n.string("Back to Library", locale: simplifiedChinese) == "返回研究文档")
+        #expect(ScholiumL10n.string("Rename Note", locale: simplifiedChinese) == "重命名笔记")
+        #expect(ScholiumL10n.string("Rename Note…", locale: simplifiedChinese) == "重命名笔记…")
+        #expect(ScholiumL10n.string("Move Note", locale: simplifiedChinese) == "移动笔记")
+        #expect(ScholiumL10n.string("Move Note…", locale: simplifiedChinese) == "移动笔记…")
+        #expect(
+            ScholiumL10n.string(
+                "Another folder operation is already in progress.",
+                locale: simplifiedChinese
+            ) == "另一个文件夹操作正在进行。"
+        )
 
         let englishCount = String(
             format: ScholiumL10n.string("%lld notes", locale: english),
@@ -226,9 +260,32 @@ struct ScholiumLocalizationTests {
             researcherTitle
         )
         #expect(putBackLabel == "放回 QA 议题：Trash/Set Aside")
+
+        let nativeStrings = SidebarNativeStrings(locale: simplifiedChinese)
+        #expect(nativeStrings.locationName(.workspace) == "研究文档")
+        #expect(nativeStrings.newNote == "新建笔记")
+        #expect(nativeStrings.newFolder == "新建文件夹")
+        #expect(
+            nativeStrings.disclosureLabel(
+                isExpanded: false,
+                title: "Cluster-01"
+            ) == "展开 Cluster-01"
+        )
+        #expect(
+            nativeStrings.disclosureLabel(
+                isExpanded: true,
+                title: "Cluster-01"
+            ) == "折叠 Cluster-01"
+        )
+        #expect(
+            nativeStrings.folderAccessibilityValue(
+                isEmpty: false,
+                isExpanded: true
+            ) == "已展开"
+        )
     }
 
-    @Test("Lifecycle catalog retires alternate Trash terms and card-only keys")
+    @Test("Lifecycle catalog retires alternate terms and replaced keys")
     func lifecycleDestinationCatalogHasNoRetiredEntries() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -243,8 +300,9 @@ struct ScholiumLocalizationTests {
 
         #expect(!catalog.contains("垃圾箱"))
         #expect(!catalog.contains("废纸篓"))
+        // `Collapse %@` is now the native Folder disclosure label. It no
+        // longer denotes the retired Note-card collapse action.
         for retiredCardKey in [
-            "\"Collapse %@\" :",
             "\"Collapse %arg\" :",
             "\"Could Not Open %@\" :",
             "\"Could Not Open %arg\" :",
@@ -253,6 +311,9 @@ struct ScholiumLocalizationTests {
             "\"Open note in %arg\" :",
             "\"Opening %@…\" :",
             "\"Opening %arg…\" :",
+            "\"Move or Rename Note…\" :",
+            "\"Move or Rename…\" :",
+            "\"Put Back…\" :",
         ] {
             #expect(!catalog.contains(retiredCardKey))
         }

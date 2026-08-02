@@ -66,6 +66,106 @@ public struct PrewriteRecoveryReference: Codable, Hashable, Identifiable, Sendab
     }
 }
 
+/// Vault-qualified identity for one retained save transaction. The transaction
+/// UUID alone is not sufficient authority because every vault owns an
+/// independent machine-local recovery ledger.
+public struct InterruptedSaveRecoveryID: Codable, Hashable, Sendable {
+    public let vaultID: UUID
+    public let transactionID: UUID
+
+    public init(vaultID: UUID, transactionID: UUID) {
+        self.vaultID = vaultID
+        self.transactionID = transactionID
+    }
+}
+
+/// Last observed relationship between authoritative source and a retained
+/// interrupted-save candidate. This is presentation state only; restore always
+/// performs a fresh descriptor-relative revision check in Core.
+public enum InterruptedSaveRecoverySourceState: Hashable, Sendable {
+    case expectedRevision
+    case candidateRevision
+    case changed(DocumentFingerprint)
+    case missing
+    case unavailable(String)
+
+    public var permitsRecovery: Bool {
+        switch self {
+        case .expectedRevision, .candidateRevision:
+            true
+        case .changed, .missing, .unavailable:
+            false
+        }
+    }
+}
+
+/// Read-only metadata for exact candidate bytes retained after an interrupted
+/// save. Every field is carried back to Core when content is loaded, revealed,
+/// or restored so a stale or substituted manifest cannot change the action's
+/// target silently.
+public struct InterruptedSaveRecovery: Hashable, Identifiable, Sendable {
+    public let id: InterruptedSaveRecoveryID
+    public let relativePath: String
+    public let expectedRevision: DocumentFingerprint
+    public let candidateRevision: DocumentFingerprint
+    public let createdAt: Date
+    public let retainedReason: String
+    public let sourceState: InterruptedSaveRecoverySourceState
+
+    public init(
+        id: InterruptedSaveRecoveryID,
+        relativePath: String,
+        expectedRevision: DocumentFingerprint,
+        candidateRevision: DocumentFingerprint,
+        createdAt: Date,
+        retainedReason: String,
+        sourceState: InterruptedSaveRecoverySourceState
+    ) {
+        self.id = id
+        self.relativePath = relativePath
+        self.expectedRevision = expectedRevision
+        self.candidateRevision = candidateRevision
+        self.createdAt = createdAt
+        self.retainedReason = retainedReason
+        self.sourceState = sourceState
+    }
+}
+
+public struct InterruptedSaveRecoveryContent: Hashable, Sendable {
+    public let recoveryID: InterruptedSaveRecoveryID
+    public let exactSource: String
+    public let fingerprint: DocumentFingerprint
+
+    public init(
+        recoveryID: InterruptedSaveRecoveryID,
+        exactSource: String,
+        fingerprint: DocumentFingerprint
+    ) {
+        self.recoveryID = recoveryID
+        self.exactSource = exactSource
+        self.fingerprint = fingerprint
+    }
+}
+
+/// A successful recovery commit. Cleanup can remain incomplete after the exact
+/// source commit; callers must present that as a nonretryable warning instead
+/// of asking the researcher to repeat the write.
+public struct InterruptedSaveRecoveryRestoreCommit: Sendable {
+    public let document: NoteDocument
+    public let didReplaceSource: Bool
+    public let recoveryCleanupWarning: String?
+
+    public init(
+        document: NoteDocument,
+        didReplaceSource: Bool,
+        recoveryCleanupWarning: String?
+    ) {
+        self.document = document
+        self.didReplaceSource = didReplaceSource
+        self.recoveryCleanupWarning = recoveryCleanupWarning
+    }
+}
+
 /// One machine-local exact revision deliberately pinned by a researcher
 /// Settle action. The source bytes remain outside the Triptych; this value is
 /// metadata for recovery and never claims that the revision is true or final.

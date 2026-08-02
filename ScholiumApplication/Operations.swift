@@ -55,7 +55,7 @@ public actor DocumentOperations: DocumentUseCases {
     public func importMarkdown(
         at sourceURL: URL,
         intoVault vaultID: UUID
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         let handle = try await reference.requireHandle()
         return try await handle.importMarkdown(
             at: sourceURL,
@@ -66,12 +66,14 @@ public actor DocumentOperations: DocumentUseCases {
     public func create(
         _ id: VaultQualifiedNoteID,
         content: String
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         let handle = try await reference.requireHandle()
         return try await handle.createDocument(id, content: content)
     }
 
-    public func create(_ request: DocumentCreationRequest) async throws -> NoteDocument {
+    public func create(
+        _ request: DocumentCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         let handle = try await reference.requireHandle()
         return try await handle.createDocument(request)
     }
@@ -79,7 +81,7 @@ public actor DocumentOperations: DocumentUseCases {
     public func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.createUntitledNote(
             inVault: vaultID,
@@ -90,7 +92,7 @@ public actor DocumentOperations: DocumentUseCases {
     public func createUntitledFolder(
         inVault vaultID: UUID,
         parentRelativePath: String?
-    ) async throws -> VaultRelativeFolderPath {
+    ) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath> {
         let handle = try await reference.requireHandle()
         return try await handle.createUntitledFolder(
             inVault: vaultID,
@@ -102,7 +104,7 @@ public actor DocumentOperations: DocumentUseCases {
         inVault vaultID: UUID,
         from sourceRelativePath: String,
         to destinationRelativePath: String
-    ) async throws -> FolderMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.moveFolder(
             inVault: vaultID,
@@ -114,7 +116,7 @@ public actor DocumentOperations: DocumentUseCases {
     public func moveFolderToTrash(
         inVault vaultID: UUID,
         relativePath: String
-    ) async throws -> FolderMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.moveFolderToTrash(
             inVault: vaultID,
@@ -126,12 +128,23 @@ public actor DocumentOperations: DocumentUseCases {
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
-    ) async throws -> NoteDocument {
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         let handle = try await reference.requireHandle()
         return try await handle.duplicateDocument(
             id,
             to: destinationRelativePath,
             expectedRevision: expectedRevision
+        )
+    }
+
+    public func duplicate(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        let handle = try await reference.requireHandle()
+        return try await handle.duplicateDocument(
+            target,
+            to: destinationRelativePath
         )
     }
 
@@ -156,7 +169,7 @@ public actor DocumentOperations: DocumentUseCases {
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
-    ) async throws -> SaveResult {
+    ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         let handle = try await reference.requireHandle()
         return try await handle.saveDocument(
             id,
@@ -169,7 +182,7 @@ public actor DocumentOperations: DocumentUseCases {
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.moveDocument(
             id,
@@ -178,10 +191,21 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func move(
+        _ target: NoteLifecycleTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        let handle = try await reference.requireHandle()
+        return try await handle.moveDocument(
+            target,
+            to: destinationRelativePath
+        )
+    }
+
     public func setAside(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.setAsideDocument(
             id,
@@ -189,10 +213,17 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func setAside(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        let handle = try await reference.requireHandle()
+        return try await handle.setAsideDocument(target)
+    }
+
     public func moveToTrash(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.moveDocumentToTrash(
             id,
@@ -200,10 +231,17 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func moveToTrash(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        let handle = try await reference.requireHandle()
+        return try await handle.moveDocumentToTrash(target)
+    }
+
     public func putBack(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.putBackDocument(
             id,
@@ -211,15 +249,55 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func putBack(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+        let handle = try await reference.requireHandle()
+        return try await handle.putBackDocument(target)
+    }
+
     public func deletePermanently(
         _ id: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint
-    ) async throws -> PermanentDeletionCommit {
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
         let handle = try await reference.requireHandle()
         return try await handle.deleteDocumentPermanently(
             id,
             expectedRevision: expectedRevision
         )
+    }
+
+    public func deletePermanently(
+        _ target: NoteLifecycleTarget
+    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
+        let handle = try await reference.requireHandle()
+        return try await handle.deleteDocumentPermanently(target)
+    }
+
+    public func interruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery] {
+        let handle = try await reference.requireHandle()
+        return try await handle.interruptedSaveRecoveries()
+    }
+
+    public func interruptedSaveRecoveryContent(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> InterruptedSaveRecoveryContent {
+        let handle = try await reference.requireHandle()
+        return try await handle.interruptedSaveRecoveryContent(recovery)
+    }
+
+    public func prepareInterruptedSaveRecoveryLocation(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> URL {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareInterruptedSaveRecoveryLocation(recovery)
+    }
+
+    public func restoreInterruptedSaveRecovery(
+        _ recovery: InterruptedSaveRecovery
+    ) async throws -> WorkspaceMutationOutcome<InterruptedSaveRecoveryRestoreCommit> {
+        let handle = try await reference.requireHandle()
+        return try await handle.restoreInterruptedSaveRecovery(recovery)
     }
 
     /// Completes or reports durable lifecycle work left by an interrupted
@@ -234,7 +312,7 @@ public actor DocumentOperations: DocumentUseCases {
     public func resolveIdentity(
         _ ambiguity: NoteIdentityAmbiguity,
         candidateID: UUID?
-    ) async throws -> NoteIdentityRecord {
+    ) async throws -> WorkspaceMutationOutcome<NoteIdentityRecord> {
         let handle = try await reference.requireHandle()
         return try await handle.resolveIdentity(ambiguity, candidateID: candidateID)
     }

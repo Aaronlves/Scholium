@@ -282,6 +282,51 @@ struct WindowLifecycleTests {
         #expect(didVisitSurvivingWindow)
     }
 
+    @Test("Cancelled application termination preserves successful window flush ownership")
+    func cancelledTerminationPreservesFlushOwnership() async {
+        let registry = ScholiumWindowLifecycleRegistry()
+        let successfulWindow = WindowModel(
+            workspaceStore: makeTestWorkspaceStore()
+        )
+        successfulWindow.documentController.selectUnavailableDocument(
+            vaultID: UUID(),
+            relativePath: "Still Open.md"
+        )
+        var successfulFlushCount = 0
+        successfulWindow.registerEditorFlush(
+            for: "Still Open.md",
+            token: UUID(),
+            flush: { successfulFlushCount += 1 },
+            captureForReconstruction: {}
+        )
+        let peer = TerminationFailureProbe()
+        registry.register(id: UUID()) {
+            _ = try await successfulWindow.prepareForWindowClose()
+        }
+        registry.register(id: UUID()) {
+            if peer.shouldFail {
+                throw ScholiumWindowLifecycleError.failed("peer save failed")
+            }
+        }
+
+        do {
+            try await registry.flushAll()
+            Issue.record("A failed peer unexpectedly allowed application termination")
+        } catch {
+            // Expected: the application remains open.
+        }
+        #expect(successfulFlushCount == 1)
+
+        peer.shouldFail = false
+        do {
+            try await registry.flushAll()
+        } catch {
+            Issue.record("A later termination attempt unexpectedly failed: \(error)")
+        }
+        #expect(successfulFlushCount == 2)
+        successfulWindow.finalizeWindowClose()
+    }
+
     @Test("A hanging window flush is bounded and does not starve a healthy peer")
     func hangingFlushIsBoundedAndPeerStillRuns() async {
         var policy = ScholiumLifecyclePolicy()
@@ -572,6 +617,11 @@ private enum DeadlineTestOutcome: Equatable, Sendable {
     case succeeded
     case timedOut
     case unexpected
+}
+
+@MainActor
+private final class TerminationFailureProbe {
+    var shouldFail = true
 }
 
 @MainActor

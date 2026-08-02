@@ -23,6 +23,10 @@ struct ContractBoundaryTests {
             relativePath: "Unicode/理由.md"
         )
         let fingerprint = DocumentFingerprint(sha256: "abc123", byteCount: 42)
+        let recoveryID = InterruptedSaveRecoveryID(
+            vaultID: id.vaultID,
+            transactionID: UUID(uuidString: "00000000-0000-0000-0000-000000000456")!
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
 
@@ -34,20 +38,31 @@ struct ContractBoundaryTests {
             DocumentFingerprint.self,
             from: encoder.encode(fingerprint)
         ) == fingerprint)
+        #expect(try JSONDecoder().decode(
+            InterruptedSaveRecoveryID.self,
+            from: encoder.encode(recoveryID)
+        ) == recoveryID)
     }
 
-    @Test("Delivery errors retain committed-mutation evidence")
+    @Test("Committed source outcomes remain distinct from post-commit warnings")
     func structuredErrors() {
         let revision = DocumentFingerprint(sha256: "revision", byteCount: 8)
-        let error = ScholiumApplicationError.committedButRefreshFailed(
-            revision,
-            "index unavailable"
+        let outcome = WorkspaceMutationOutcome(
+            committedValue: revision,
+            derivedRefreshWarning: "index unavailable",
+            identityRecoveryWarning: "identity unavailable"
+        )
+        let researchError = ScholiumApplicationError.operationCommittedButRefreshFailed(
+            operation: "research completion",
+            reason: "index unavailable"
         )
 
-        #expect(error.durableMutationWasCommitted)
-        #expect(error.mustNotRetryMutation)
-        #expect(error.committedDocumentRevision == revision)
-        #expect(error.refreshFailureReason == "index unavailable")
+        #expect(outcome.committedValue == revision)
+        #expect(outcome.derivedRefreshWarning == "index unavailable")
+        #expect(outcome.identityRecoveryWarning == "identity unavailable")
+        #expect(researchError.durableMutationWasCommitted)
+        #expect(researchError.mustNotRetryMutation)
+        #expect(researchError.refreshFailureReason == "index unavailable")
     }
 
     @Test("Contract capability values remain delivery neutral")
@@ -61,6 +76,17 @@ struct ContractBoundaryTests {
         #expect(request.id == id)
         #expect(request.title == "New")
         #expect(WorkspaceRegistryError.incompleteWorkspace.localizedDescription.contains("incomplete"))
+    }
+
+    @Test("Interrupted save presentation never authorizes a changed source")
+    func interruptedSaveSourceState() {
+        #expect(InterruptedSaveRecoverySourceState.expectedRevision.permitsRecovery)
+        #expect(InterruptedSaveRecoverySourceState.candidateRevision.permitsRecovery)
+        #expect(!InterruptedSaveRecoverySourceState.changed(
+            DocumentFingerprint(content: "external")
+        ).permitsRecovery)
+        #expect(!InterruptedSaveRecoverySourceState.missing.permitsRecovery)
+        #expect(!InterruptedSaveRecoverySourceState.unavailable("permission").permitsRecovery)
     }
 
     @Test("Folder paths are relative locations rather than Markdown identities")

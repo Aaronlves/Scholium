@@ -81,7 +81,7 @@ struct DocumentLifecycleOperationsTests {
             fixture.targetID,
             to: destinationPath,
             expectedRevision: source.fingerprint
-        )
+        ).committedValue
 
         #expect(commit.destination == VaultQualifiedNoteID(
             vaultID: fixture.targetID.vaultID,
@@ -102,11 +102,14 @@ struct DocumentLifecycleOperationsTests {
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let source = try await handle.documents.load(fixture.targetID)
+        let events = await handle.events.events()
+        var iterator = events.makeAsyncIterator()
+        _ = try #require(await iterator.next())
 
         let setAside = try await handle.documents.setAside(
             fixture.targetID,
             expectedRevision: source.fingerprint
-        )
+        ).committedValue
         let setAsideID = setAside.destination
         #expect(setAsideID.relativePath == "Set Aside/Target.md")
         let setAsideDocument = try await handle.documents.load(setAsideID)
@@ -114,18 +117,60 @@ struct DocumentLifecycleOperationsTests {
         let trash = try await handle.documents.moveToTrash(
             setAsideID,
             expectedRevision: setAsideDocument.fingerprint
-        )
+        ).committedValue
 
         #expect(trash.destination.relativePath == "Trash/Target.md")
-        #expect(
-            try await handle.snapshot().document(id: trash.destination)?.lifecycle == .trash
-        )
+        var publishedTrash: WorkspaceNoteSnapshot?
+        for _ in 0..<3 where publishedTrash == nil {
+            let event = try #require(await iterator.next())
+            publishedTrash = event.snapshot.document(id: trash.destination)
+        }
+        #expect(publishedTrash?.lifecycle == .trash)
         #expect(
             try await handle.snapshot().document(id: VaultQualifiedNoteID(
                 vaultID: fixture.targetID.vaultID,
                 relativePath: "Trash/Set Aside/Target.md"
             )) == nil
         )
+        await runtime.shutdown()
+    }
+
+    @Test("A captured lifecycle target rejects a reused path with another stable identity")
+    func lifecycleTargetRejectsIdentityDrift() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let source = try await handle.documents.load(fixture.targetID)
+        let projection = try #require(
+            try await handle.snapshot().document(id: fixture.targetID)
+        )
+        let stableID = try #require(projection.stableIdentity.resolvedID)
+        let staleTarget = NoteLifecycleTarget(
+            documentID: fixture.targetID,
+            stableNoteID: UUID(),
+            revision: source.fingerprint
+        )
+
+        do {
+            _ = try await handle.documents.setAside(staleTarget)
+            Issue.record("Expected the stale stable identity to reject the move.")
+        } catch NoteIdentityRecoveryError.targetIdentityChanged(let path) {
+            #expect(path == fixture.targetID.relativePath)
+        }
+        let unchanged = try await handle.documents.load(fixture.targetID)
+        #expect(unchanged.relativePath == source.relativePath)
+        #expect(unchanged.rawContent == source.rawContent)
+        #expect(unchanged.fingerprint == source.fingerprint)
+
+        let target = NoteLifecycleTarget(
+            documentID: fixture.targetID,
+            stableNoteID: stableID,
+            revision: source.fingerprint
+        )
+        #expect(staleTarget.id != target.id)
+        let commit = try await handle.documents.setAside(target).committedValue
+        #expect(commit.destination.relativePath == "Set Aside/Target.md")
         await runtime.shutdown()
     }
 
@@ -143,7 +188,7 @@ struct DocumentLifecycleOperationsTests {
         let created = try await handle.documents.create(
             createdID,
             content: "# Created\n\nApplication-owned creation.\n"
-        )
+        ).committedValue
 
         let projected = try #require(try await handle.snapshot().document(id: createdID))
         let stableID = try #require(projected.stableIdentity.resolvedID)
@@ -178,7 +223,7 @@ struct DocumentLifecycleOperationsTests {
         let optional = try await handle.documents.create(DocumentCreationRequest(
             id: optionalID,
             title: "Optional"
-        ))
+        )).committedValue
         #expect(optional.rawContent == "# Optional\n")
         #expect(!optional.rawContent.contains("research_unit"))
 
@@ -200,22 +245,22 @@ struct DocumentLifecycleOperationsTests {
                 ---
                 # Optional
 
-                """),
+            """),
             expectedRevision: optional.fingerprint
-        )
+        ).committedValue
         #expect(declared.document.fingerprint != settlement.fingerprint)
 
         let created = try await handle.documents.create(DocumentCreationRequest(
             id: analysesID,
             title: "Analysis"
-        ))
+        )).committedValue
         #expect(created.rawContent == "# Analysis\n")
 
         let worksID = try #require(fixture.assignment.vault(for: .output)?.id)
         let untitledWork = try await handle.documents.create(DocumentCreationRequest(
             id: VaultQualifiedNoteID(vaultID: worksID, relativePath: "Untitled.md"),
             title: ""
-        ))
+        )).committedValue
         #expect(untitledWork.rawContent.isEmpty)
         await runtime.shutdown()
     }
@@ -234,14 +279,26 @@ struct DocumentLifecycleOperationsTests {
                 content: "Existing source at \(relativePath)\n"
             )
         }
+        let events = await handle.events.events()
+        var iterator = events.makeAsyncIterator()
+        _ = try #require(await iterator.next())
 
         let created = try await handle.documents.createUntitledNote(
             inVault: vaultID,
             folderRelativePath: "Sources"
-        )
+        ).committedValue
 
-        #expect(created.relativePath == "Sources/Untitled 3.md")
-        #expect(created.rawContent.isEmpty)
+        #expect(created.document.relativePath == "Sources/Untitled 3.md")
+        #expect(created.document.rawContent.isEmpty)
+        #expect(created.sourceAheadSnapshot.derivedProjectionState == .sourceAhead)
+        let publication = try #require(await iterator.next())
+        guard case .sourceCommitted(let event) = publication else {
+            Issue.record("Untitled creation did not own the first post-commit refresh publication.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(event.note.id == created.id)
+        #expect(event.kind == .creation)
         let first = try await handle.documents.load(VaultQualifiedNoteID(
             vaultID: vaultID,
             relativePath: "Sources/Untitled.md"
@@ -252,6 +309,110 @@ struct DocumentLifecycleOperationsTests {
         ))
         #expect(first.rawContent == "Existing source at Sources/Untitled.md\n")
         #expect(second.rawContent == "Existing source at Sources/Untitled 2.md\n")
+        await runtime.shutdown()
+    }
+
+    @Test("A source-ahead Note follows two immediate Folder classifications")
+    func sourceAheadNoteAuthorizesConsecutiveFolderMoves() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let vaultID = fixture.targetID.vaultID
+
+        let folder = try await handle.documents.createUntitledFolder(
+            inVault: vaultID,
+            parentRelativePath: nil
+        ).committedValue
+        let created = try await handle.documents.createUntitledNote(
+            inVault: vaultID,
+            folderRelativePath: folder.rawValue
+        ).committedValue
+        let stableNoteID = try #require(created.stableIdentity.resolvedID)
+
+        let first = try await handle.documents.moveFolder(
+            inVault: vaultID,
+            from: folder.rawValue,
+            to: "First Classification"
+        ).committedValue
+        #expect(first.noteMoves.map(\.stableNoteID) == [stableNoteID])
+        #expect(first.noteMoves.map(\.destination.relativePath)
+            == ["First Classification/Untitled.md"])
+
+        let second = try await handle.documents.moveFolder(
+            inVault: vaultID,
+            from: "First Classification",
+            to: "Second Classification"
+        ).committedValue
+        #expect(second.noteMoves.map(\.stableNoteID) == [stableNoteID])
+        #expect(second.noteMoves.map(\.destination.relativePath)
+            == ["Second Classification/Untitled.md"])
+        let moved = try await handle.documents.load(VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Second Classification/Untitled.md"
+        ))
+        #expect(moved.rawContent.isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("Folder planning overlays durable source-ahead identities by Note ID")
+    func sourceAheadFolderPlanReplacesStaleSnapshotLocations() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let snapshot = try await handle.snapshot()
+        let vault = try #require(snapshot.vault(id: fixture.targetID.vaultID))
+        let target = try #require(vault.documents.first {
+            $0.id == fixture.targetID
+        })
+        let targetID = try #require(target.stableIdentity.resolvedID)
+        let movedLocation = VaultQualifiedNoteID(
+            vaultID: fixture.targetID.vaultID,
+            relativePath: "First Classification/Target.md"
+        )
+        let createdLocation = VaultQualifiedNoteID(
+            vaultID: fixture.targetID.vaultID,
+            relativePath: "First Classification/Untitled.md"
+        )
+        let movedRecord = NoteIdentityRecord(
+            id: targetID,
+            vaultID: movedLocation.vaultID,
+            relativePath: movedLocation.relativePath,
+            fingerprint: target.fingerprint
+        )
+        let createdRecord = NoteIdentityRecord(
+            vaultID: createdLocation.vaultID,
+            relativePath: createdLocation.relativePath,
+            fingerprint: DocumentFingerprint(content: "")
+        )
+
+        let moves = try sourceAuthorizedFolderNoteMoves(
+            vaultID: fixture.targetID.vaultID,
+            sourceFolder: VaultRelativeFolderPath("First Classification"),
+            destinationFolder: VaultRelativeFolderPath("Second Classification"),
+            snapshotDocuments: vault.documents,
+            sourceAheadIdentityRecords: [
+                movedLocation: movedRecord,
+                createdLocation: createdRecord,
+            ]
+        )
+
+        let plannedIDs = moves.map(\.stableNoteID).sorted {
+            $0.uuidString < $1.uuidString
+        }
+        let expectedIDs = [targetID, createdRecord.id].sorted {
+            $0.uuidString < $1.uuidString
+        }
+        #expect(plannedIDs == expectedIDs)
+        #expect(moves.map(\.source.relativePath) == [
+            "First Classification/Target.md",
+            "First Classification/Untitled.md",
+        ])
+        #expect(moves.map(\.destination.relativePath) == [
+            "Second Classification/Target.md",
+            "Second Classification/Untitled.md",
+        ])
         await runtime.shutdown()
     }
 
@@ -268,11 +429,11 @@ struct DocumentLifecycleOperationsTests {
         let firstFolder = try await handle.documents.createUntitledFolder(
             inVault: vaultID,
             parentRelativePath: nil
-        )
+        ).committedValue
         let secondFolder = try await handle.documents.createUntitledFolder(
             inVault: vaultID,
             parentRelativePath: nil
-        )
+        ).committedValue
         #expect(firstFolder.rawValue == "Untitled Folder")
         #expect(secondFolder.rawValue == "Untitled Folder 2")
         #expect(try await handle.snapshot().discovery.searchGeneration
@@ -293,7 +454,7 @@ struct DocumentLifecycleOperationsTests {
         let first = try await handle.documents.create(
             firstID,
             content: "# First\n\nSee [[Untitled Folder/Nested/Second]].\n"
-        )
+        ).committedValue
         _ = try await handle.documents.create(secondID, content: "# Second\n")
         _ = try await handle.documents.create(
             referenceID,
@@ -316,14 +477,20 @@ struct DocumentLifecycleOperationsTests {
         let before = try await handle.snapshot()
         let firstStableID = try #require(before.document(id: firstID)?.stableIdentity.resolvedID)
         let secondStableID = try #require(before.document(id: secondID)?.stableIdentity.resolvedID)
+        let events = await handle.events.events()
+        var iterator = events.makeAsyncIterator()
+        _ = try #require(await iterator.next())
         let commit = try await handle.documents.moveFolder(
             inVault: vaultID,
             from: "Untitled Folder",
             to: "Sources"
-        )
+        ).committedValue
 
         #expect(commit.noteMoves.count == 2)
         #expect(commit.rewrites.count == 2)
+        #expect(commit.noteMoves.first(where: {
+            $0.destination.relativePath == "Sources/First.md"
+        })?.committedRawContent.contains("[[Sources/Nested/Second]]") == true)
         let movedFirstID = VaultQualifiedNoteID(
             vaultID: vaultID,
             relativePath: "Sources/First.md"
@@ -332,7 +499,15 @@ struct DocumentLifecycleOperationsTests {
             vaultID: vaultID,
             relativePath: "Sources/Nested/Second.md"
         )
-        let after = try await handle.snapshot()
+        var publishedMove: WorkspaceSnapshot?
+        for _ in 0..<3 where publishedMove == nil {
+            let event = try #require(await iterator.next())
+            if event.snapshot.document(id: movedFirstID) != nil,
+               event.snapshot.document(id: movedSecondID) != nil {
+                publishedMove = event.snapshot
+            }
+        }
+        let after = try #require(publishedMove)
         #expect(after.document(id: movedFirstID)?.stableIdentity.resolvedID == firstStableID)
         #expect(after.document(id: movedSecondID)?.stableIdentity.resolvedID == secondStableID)
         #expect(after.document(id: firstID) == nil)
@@ -353,7 +528,7 @@ struct DocumentLifecycleOperationsTests {
         let trashCommit = try await handle.documents.moveFolderToTrash(
             inVault: vaultID,
             relativePath: "Sources"
-        )
+        ).committedValue
         #expect(trashCommit.destinationFolder.rawValue == "Trash/Sources")
         let trashedFirstID = VaultQualifiedNoteID(
             vaultID: vaultID,
@@ -363,7 +538,15 @@ struct DocumentLifecycleOperationsTests {
             vaultID: vaultID,
             relativePath: "Trash/Sources/Nested/Second.md"
         )
-        let trashed = try await handle.snapshot()
+        var publishedTrash: WorkspaceSnapshot?
+        for _ in 0..<3 where publishedTrash == nil {
+            let event = try #require(await iterator.next())
+            if event.snapshot.document(id: trashedFirstID) != nil,
+               event.snapshot.document(id: trashedSecondID) != nil {
+                publishedTrash = event.snapshot
+            }
+        }
+        let trashed = try #require(publishedTrash)
         #expect(trashed.document(id: trashedFirstID)?.stableIdentity.resolvedID == firstStableID)
         #expect(trashed.document(id: trashedSecondID)?.stableIdentity.resolvedID == secondStableID)
         #expect(trashed.document(id: trashedFirstID)?.lifecycle == .trash)
@@ -405,18 +588,18 @@ struct DocumentLifecycleOperationsTests {
         let setAside = try await handle.documents.setAside(
             fixture.targetID,
             expectedRevision: source.fingerprint
-        )
+        ).committedValue
         let setAsideDocument = try await handle.documents.load(setAside.destination)
         let trash = try await handle.documents.moveToTrash(
             setAside.destination,
             expectedRevision: setAsideDocument.fingerprint
-        )
+        ).committedValue
         let trashDocument = try await handle.documents.load(trash.destination)
 
         let commit = try await handle.documents.deletePermanently(
             trash.destination,
             expectedRevision: trashDocument.fingerprint
-        )
+        ).committedValue
 
         #expect(commit.noteID == stableID)
         #expect(commit.relativePath == "Trash/Target.md")
@@ -462,7 +645,7 @@ struct DocumentLifecycleOperationsTests {
                 fixture.targetID,
                 changeSet: .exactContent("# Target\n\nRevision \(index).\n"),
                 expectedRevision: document.fingerprint
-            ).document
+            ).committedValue.document
             _ = try await handle.research.settle(
                 fixture.targetID,
                 expectedRevision: document.fingerprint,
@@ -532,7 +715,7 @@ struct DocumentLifecycleOperationsTests {
                     fixture.targetID,
                     changeSet: .exactContent("# Target\n\nInterrupted revision \(index).\n"),
                     expectedRevision: document.fingerprint
-                ).document
+                ).committedValue.document
             }
             _ = try await handle.research.settle(
                 fixture.targetID,
@@ -584,6 +767,107 @@ struct DocumentLifecycleOperationsTests {
         #expect((readback["pending_snapshot_ids_to_remove"] as? [String])?.isEmpty == true)
         await reopenedRuntime.shutdown()
     }
+
+    @Test("Interrupted save recovery stays vault-qualified and publishes its committed source")
+    func interruptedSaveRecoveryIsVaultQualified() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let expected = try Data(
+            contentsOf: fixture.analysesURL.appendingPathComponent("Target.md")
+        )
+        let candidate = Data(
+            [0xEF, 0xBB, 0xBF] + Array("# Target\r\n\r\nRecovered after interruption.\r\n".utf8)
+        )
+        let transactionID = UUID()
+        let createdAt = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
+        let transactionDirectory = fixture.applicationSupportURL
+            .appendingPathComponent("Vaults", isDirectory: true)
+            .appendingPathComponent(fixture.targetID.vaultID.uuidString, isDirectory: true)
+            .appendingPathComponent(
+                "recovery-v2/transactions/mutations",
+                isDirectory: true
+            )
+            .appendingPathComponent(
+                transactionID.uuidString.lowercased(),
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: transactionDirectory,
+            withIntermediateDirectories: true
+        )
+        try expected.write(to: transactionDirectory.appendingPathComponent("expected.md"))
+        try candidate.write(to: transactionDirectory.appendingPathComponent("candidate.md"))
+        let manifest = InterruptedSaveManifestFixture(
+            id: transactionID,
+            relativePath: fixture.targetID.relativePath,
+            expected: DocumentFingerprint(data: expected),
+            candidate: DocumentFingerprint(data: candidate),
+            createdAt: createdAt,
+            retainedReason: nil
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(manifest).write(
+            to: transactionDirectory.appendingPathComponent("manifest.json"),
+            options: .atomic
+        )
+
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let recovery = try #require(
+            try await handle.documents.interruptedSaveRecoveries().first
+        )
+        #expect(recovery.id == InterruptedSaveRecoveryID(
+            vaultID: fixture.targetID.vaultID,
+            transactionID: transactionID
+        ))
+        #expect(recovery.relativePath == fixture.targetID.relativePath)
+        #expect(recovery.sourceState == .expectedRevision)
+        let content = try await handle.documents.interruptedSaveRecoveryContent(recovery)
+        #expect(Data(content.exactSource.utf8) == candidate)
+
+        let otherVaultID = try #require(
+            fixture.assignment.vault(for: .topicKnowledge)?.id
+        )
+        let wrongVault = InterruptedSaveRecovery(
+            id: InterruptedSaveRecoveryID(
+                vaultID: otherVaultID,
+                transactionID: recovery.id.transactionID
+            ),
+            relativePath: recovery.relativePath,
+            expectedRevision: recovery.expectedRevision,
+            candidateRevision: recovery.candidateRevision,
+            createdAt: recovery.createdAt,
+            retainedReason: recovery.retainedReason,
+            sourceState: recovery.sourceState
+        )
+        await #expect(throws: VaultRepositoryError.self) {
+            _ = try await handle.documents.interruptedSaveRecoveryContent(wrongVault)
+        }
+
+        let outcome = try await handle.documents.restoreInterruptedSaveRecovery(recovery)
+        #expect(outcome.committedValue.didReplaceSource)
+        #expect(outcome.committedValue.recoveryCleanupWarning == nil)
+        #expect(outcome.derivedRefreshWarning == nil)
+        #expect(outcome.committedValue.document.sourceBytes == candidate)
+        #expect(try Data(
+            contentsOf: fixture.analysesURL.appendingPathComponent("Target.md")
+        ) == candidate)
+        #expect(try await handle.documents.interruptedSaveRecoveries().isEmpty)
+        #expect(try await handle.snapshot().document(id: fixture.targetID)?.document.sourceBytes
+            == candidate)
+        await runtime.shutdown()
+    }
+}
+
+private struct InterruptedSaveManifestFixture: Codable {
+    let id: UUID
+    let relativePath: String
+    let expected: DocumentFingerprint
+    let candidate: DocumentFingerprint
+    let createdAt: Date
+    let retainedReason: String?
 }
 
 private struct LifecycleFixture: Sendable {

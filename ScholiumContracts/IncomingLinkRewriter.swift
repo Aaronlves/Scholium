@@ -212,6 +212,186 @@ public enum IncomingLinkRewriter {
         )
     }
 
+    /// Plans one coherent Folder relocation from the accepted Workspace
+    /// source cohort without reparsing every note. The graph supplies only
+    /// candidate incoming occurrences; exact candidate sources are reparsed
+    /// and resolved against both the current and future catalogs. A caller
+    /// must use the complete filesystem planner when this returns `nil`.
+    public static func folderPlanUsingValidatedSnapshot(
+        documents: [VaultQualifiedNoteID: NoteDocument],
+        catalog: [LinkCatalogNote],
+        graph: GraphSnapshot,
+        vaultID: UUID,
+        sourceFolder: VaultRelativeFolderPath,
+        destinationFolder: VaultRelativeFolderPath,
+        noteMoves: [FolderNoteMovePlan]
+    ) -> FolderIncomingLinkRewritePlan? {
+        let sourceManifestHash = SearchSourceManifest.hash(documents.map {
+            id, document in
+            SearchSourceManifestEntry(
+                vaultID: id.vaultID,
+                relativePath: id.relativePath,
+                fingerprint: document.fingerprint
+            )
+        })
+        let sourcePrefix = sourceFolder.rawValue + "/"
+        let destinationPrefix = destinationFolder.rawValue + "/"
+        guard graph.contractVersion == GraphSnapshot.currentContractVersion,
+              graph.sourceManifestHash == sourceManifestHash,
+              catalog.count == documents.count,
+              Set(catalog.map(\.id)) == Set(documents.keys),
+              noteMoves.allSatisfy({ move in
+                  move.source.vaultID == vaultID
+                    && move.destination.vaultID == vaultID
+                    && move.source.relativePath.hasPrefix(sourcePrefix)
+                    && move.destination.relativePath
+                        == destinationPrefix
+                            + move.source.relativePath.dropFirst(sourcePrefix.count)
+                    && documents[move.source]?.fingerprint == move.expectedRevision
+              }),
+              Set(noteMoves.map(\.source)).count == noteMoves.count,
+              Set(noteMoves.map(\.destination)).count == noteMoves.count else {
+            return nil
+        }
+
+        let destinations = Dictionary(uniqueKeysWithValues: noteMoves.map {
+            ($0.source, $0.destination)
+        })
+        let suppliedKeys = Set(graph.outgoing.values.flatMap { $0 }.compactMap {
+            edge -> EligibleOccurrenceKey? in
+            guard case .resolved(let target) = edge.occurrence.resolution,
+                  destinations[target] != nil else { return nil }
+            return EligibleOccurrenceKey(
+                source: edge.source,
+                syntax: edge.occurrence.syntax,
+                target: edge.occurrence.target,
+                span: edge.occurrence.span
+            )
+        })
+        guard !suppliedKeys.isEmpty else {
+            return FolderIncomingLinkRewritePlan(
+                vaultID: vaultID,
+                sourceFolder: sourceFolder,
+                destinationFolder: destinationFolder,
+                graphGeneration: graph.generation,
+                noteMoves: noteMoves,
+                rewrites: []
+            )
+        }
+
+        let currentResolutionIndex = LinkGraphBuilder.ResolutionIndex(
+            catalog: catalog
+        )
+        var verifiedOccurrences: [VaultQualifiedNoteID: [(LinkOccurrence, VaultQualifiedNoteID)]] = [:]
+        for sourceID in Set(suppliedKeys.map(\.source)).sorted() {
+            guard let document = documents[sourceID] else { return nil }
+            let semantic = MarkdownSemanticDocument(parsing: document)
+            for occurrence in semantic.links where !occurrence.isExternal {
+                guard case .resolved(let currentTarget) = currentResolutionIndex.resolve(
+                    occurrence.target,
+                    from: sourceID,
+                    scope: .workspace
+                ), destinations[currentTarget] != nil else { continue }
+                let key = EligibleOccurrenceKey(
+                    source: sourceID,
+                    syntax: occurrence.syntax,
+                    target: occurrence.target,
+                    span: occurrence.span
+                )
+                guard suppliedKeys.contains(key) else { continue }
+                verifiedOccurrences[sourceID, default: []].append((
+                    occurrence,
+                    currentTarget
+                ))
+            }
+        }
+
+        let futureCatalog = catalog.map { note in
+            guard let destination = destinations[note.id] else { return note }
+            return LinkCatalogNote(
+                id: destination,
+                title: note.title,
+                aliases: note.aliases,
+                noteType: note.noteType,
+                headings: note.headings,
+                blockAnchors: note.blockAnchors
+            )
+        }
+        let futureResolutionIndex = LinkGraphBuilder.ResolutionIndex(
+            catalog: futureCatalog
+        )
+        var blocked: [IncomingLinkRewriteBlock] = []
+        var rewrites: [IncomingLinkRewrite] = []
+        for sourceID in verifiedOccurrences.keys.sorted() {
+            guard let document = documents[sourceID],
+                  let occurrences = verifiedOccurrences[sourceID] else {
+                return nil
+            }
+            let futureSource = destinations[sourceID] ?? sourceID
+            var replacements: [Replacement] = []
+            for (occurrence, currentTarget) in occurrences {
+                guard let destination = destinations[currentTarget] else {
+                    return nil
+                }
+                guard futureResolutionIndex.resolve(
+                    destination.relativePath,
+                    from: futureSource,
+                    scope: .workspace
+                ) == .resolved(destination) else {
+                    blocked.append(IncomingLinkRewriteBlock(
+                        source: sourceID,
+                        span: occurrence.span,
+                        reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
+                    ))
+                    continue
+                }
+                if let planned = replacement(
+                    for: occurrence,
+                    in: document.rawContent,
+                    newRelativePath: destination.relativePath
+                ) {
+                    replacements.append(planned)
+                }
+            }
+            replacements.sort { $0.range.location > $1.range.location }
+            guard !replacements.isEmpty else { continue }
+
+            let mutable = NSMutableString(string: document.rawContent)
+            var appliedRanges: Set<ReplacementKey> = []
+            var applied = 0
+            for replacement in replacements {
+                let key = ReplacementKey(
+                    location: replacement.range.location,
+                    length: replacement.range.length
+                )
+                guard appliedRanges.insert(key).inserted,
+                      NSMaxRange(replacement.range) <= mutable.length else { continue }
+                mutable.replaceCharacters(in: replacement.range, with: replacement.text)
+                applied += 1
+            }
+            guard applied > 0 else { continue }
+            rewrites.append(IncomingLinkRewrite(
+                source: sourceID,
+                expectedRevision: document.fingerprint,
+                updatedSource: mutable as String,
+                rewrittenOccurrences: applied
+            ))
+        }
+
+        return FolderIncomingLinkRewritePlan(
+            vaultID: vaultID,
+            sourceFolder: sourceFolder,
+            destinationFolder: destinationFolder,
+            graphGeneration: graph.generation,
+            noteMoves: noteMoves,
+            rewrites: rewrites.sorted { $0.source < $1.source },
+            blockedIncomingLinks: blocked.sorted {
+                if $0.source != $1.source { return $0.source < $1.source }
+                return $0.span.utf16LowerBound < $1.span.utf16LowerBound
+            }
+        )
+    }
+
     public static func plan(
         documents: [VaultQualifiedNoteID: NoteDocument],
         graph: GraphSnapshot,
@@ -326,6 +506,145 @@ public enum IncomingLinkRewriter {
                 )
             }
             .sorted { $0.source < $1.source }
+
+        return IncomingLinkRewritePlan(
+            movedNote: source,
+            destination: destination,
+            graphGeneration: graph.generation,
+            rewrites: rewrites,
+            blockedIncomingLinks: blocked.sorted {
+                if $0.source != $1.source { return $0.source < $1.source }
+                return $0.span.utf16LowerBound < $1.span.utf16LowerBound
+            }
+        )
+    }
+
+    /// Plans from one coherent Workspace source snapshot without rebuilding
+    /// the complete graph. The supplied graph contributes only candidate
+    /// occurrences; every candidate source is reparsed from its exact current
+    /// NoteDocument and resolved again against the supplied current catalog.
+    /// A caller must fall back to the complete planner when this method returns
+    /// nil because its snapshot inputs are incomplete or structurally stale.
+    public static func planUsingValidatedSnapshot(
+        documents: [VaultQualifiedNoteID: NoteDocument],
+        catalog: [LinkCatalogNote],
+        graph: GraphSnapshot,
+        moving source: VaultQualifiedNoteID,
+        to destination: VaultQualifiedNoteID
+    ) -> IncomingLinkRewritePlan? {
+        let sourceManifestHash = SearchSourceManifest.hash(documents.map { id, document in
+            SearchSourceManifestEntry(
+                vaultID: id.vaultID,
+                relativePath: id.relativePath,
+                fingerprint: document.fingerprint
+            )
+        })
+        guard source.vaultID == destination.vaultID,
+              graph.contractVersion == GraphSnapshot.currentContractVersion,
+              graph.sourceManifestHash == sourceManifestHash,
+              documents[source] != nil,
+              catalog.count == documents.count,
+              Set(catalog.map(\.id)) == Set(documents.keys) else { return nil }
+
+        let suppliedKeys = Set(graph.outgoing.values.flatMap { $0 }.compactMap { edge in
+            eligibleKey(for: edge, resolvedTo: source)
+        })
+        guard !suppliedKeys.isEmpty else {
+            return IncomingLinkRewritePlan(
+                movedNote: source,
+                destination: destination,
+                graphGeneration: graph.generation,
+                rewrites: []
+            )
+        }
+
+        let currentResolutionIndex = LinkGraphBuilder.ResolutionIndex(
+            catalog: catalog
+        )
+        let candidateSourceIDs = Set(suppliedKeys.map(\.source))
+        var verifiedOccurrences: [VaultQualifiedNoteID: [LinkOccurrence]] = [:]
+        for sourceID in candidateSourceIDs.sorted() {
+            guard let document = documents[sourceID] else { return nil }
+            let semantic = MarkdownSemanticDocument(parsing: document)
+            for occurrence in semantic.links where !occurrence.isExternal {
+                guard currentResolutionIndex.resolve(
+                    occurrence.target,
+                    from: sourceID,
+                    scope: .workspace
+                ) == .resolved(source) else { continue }
+                let key = EligibleOccurrenceKey(
+                    source: sourceID,
+                    syntax: occurrence.syntax,
+                    target: occurrence.target,
+                    span: occurrence.span
+                )
+                guard suppliedKeys.contains(key) else { continue }
+                verifiedOccurrences[sourceID, default: []].append(occurrence)
+            }
+        }
+
+        let futureCatalog = catalog.map { note in
+            guard note.id == source else { return note }
+            return LinkCatalogNote(
+                id: destination,
+                title: note.title,
+                aliases: note.aliases,
+                noteType: note.noteType,
+                headings: note.headings,
+                blockAnchors: note.blockAnchors
+            )
+        }
+        let futureResolutionIndex = LinkGraphBuilder.ResolutionIndex(
+            catalog: futureCatalog
+        )
+        var blocked: [IncomingLinkRewriteBlock] = []
+        var rewrites: [IncomingLinkRewrite] = []
+        for sourceID in verifiedOccurrences.keys.sorted() {
+            guard let document = documents[sourceID],
+                  let occurrences = verifiedOccurrences[sourceID] else {
+                return nil
+            }
+            let futureSource = sourceID == source ? destination : sourceID
+            var replacements: [Replacement] = []
+            for occurrence in occurrences {
+                guard futureResolutionIndex.resolve(
+                    destination.relativePath,
+                    from: futureSource,
+                    scope: .workspace
+                ) == .resolved(destination) else {
+                    blocked.append(IncomingLinkRewriteBlock(
+                        source: sourceID,
+                        span: occurrence.span,
+                        reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
+                    ))
+                    continue
+                }
+                if let planned = replacement(
+                    for: occurrence,
+                    in: document.rawContent,
+                    newRelativePath: destination.relativePath
+                ) {
+                    replacements.append(planned)
+                }
+            }
+            replacements.sort { $0.range.location > $1.range.location }
+            guard !replacements.isEmpty else { continue }
+
+            let mutable = NSMutableString(string: document.rawContent)
+            var applied = 0
+            for replacement in replacements {
+                guard NSMaxRange(replacement.range) <= mutable.length else { continue }
+                mutable.replaceCharacters(in: replacement.range, with: replacement.text)
+                applied += 1
+            }
+            guard applied > 0 else { continue }
+            rewrites.append(IncomingLinkRewrite(
+                source: sourceID,
+                expectedRevision: document.fingerprint,
+                updatedSource: mutable as String,
+                rewrittenOccurrences: applied
+            ))
+        }
 
         return IncomingLinkRewritePlan(
             movedNote: source,

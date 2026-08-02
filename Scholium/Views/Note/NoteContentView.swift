@@ -246,7 +246,10 @@ struct DocumentFeatureView: View {
                 DocumentSessionFallback(
                     note: note,
                     controller: controller,
-                    target: .unavailable(relativePath: note.relativePath),
+                    target: .unavailable(
+                        vaultID: note.vaultID,
+                        relativePath: note.relativePath
+                    ),
                     state: state,
                     actions: actions,
                     critiqueProvenanceContext: critiqueProvenanceContext
@@ -1044,6 +1047,18 @@ struct NoteContentView: View {
                     reason: .documentLoad
                 )
             }
+            if source.isEmpty {
+                // Exact empty Markdown is already a complete Review state. Do
+                // not start WebKit merely to render an empty body or imply that
+                // source loading is still in progress.
+                renderedReadHTML = ""
+                renderedReadFingerprint = fingerprint.sha256
+                documentSession.renderedReadReadyFingerprint = fingerprint.sha256
+                if !isEditing {
+                    PerformanceProbe.shared.markReadReady(documentID: relativePath)
+                }
+                return
+            }
             let html = await controller.readProjectionHTML(
                 target: target,
                 relativePath: relativePath,
@@ -1085,7 +1100,7 @@ struct NoteContentView: View {
     }
 
     private var readProjectionTaskIdentity: String {
-        noteFingerprint.sha256
+        "\(note.relativePath):\(noteFingerprint.sha256)"
     }
 
     private var discussionProjectionPollIdentity: String {
@@ -1223,27 +1238,54 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private var readSurface: some View {
-        let hasWebProjection = renderedReadFingerprint == noteFingerprint.sha256
-            && !renderedReadHTML.isEmpty
-            && failedReadFingerprint != noteFingerprint.sha256
-        let webProjectionIsReady = hasWebProjection
-            && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
+        if note.rawContent.isEmpty {
+            emptyReviewState
+        } else {
+            let hasWebProjection = renderedReadFingerprint == noteFingerprint.sha256
+                && failedReadFingerprint != noteFingerprint.sha256
+            let webProjectionIsReady = hasWebProjection
+                && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
 
-        ZStack {
-            readProjectionPlaceholder
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .layoutPriority(1)
-            .opacity(webProjectionIsReady ? 0 : 1)
-            .allowsHitTesting(false)
-            .accessibilityHidden(webProjectionIsReady)
+            ZStack {
+                readProjectionPlaceholder
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+                .opacity(webProjectionIsReady ? 0 : 1)
+                .allowsHitTesting(false)
+                .accessibilityHidden(webProjectionIsReady)
 
-            if hasWebProjection {
-                readDocumentSurface
-                    .opacity(webProjectionIsReady ? 1 : 0)
-                    .allowsHitTesting(webProjectionIsReady && !isEditing)
-                    .accessibilityHidden(!webProjectionIsReady)
+                if hasWebProjection {
+                    readDocumentSurface
+                        .opacity(webProjectionIsReady ? 1 : 0)
+                        .allowsHitTesting(webProjectionIsReady && !isEditing)
+                        .accessibilityHidden(!webProjectionIsReady)
+                }
             }
         }
+    }
+
+    private var emptyReviewState: some View {
+        VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
+            Image(systemName: "doc")
+                .font(.title2)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .accessibilityHidden(true)
+
+            VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text("Empty Note")
+                    .font(.headline)
+                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+
+                Text("This note has no content.")
+                    .font(.subheadline)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(ScholiumGrid.Spacing.regionContentInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("scholium.emptyNoteReview")
     }
 
     @ViewBuilder
@@ -2060,7 +2102,10 @@ private extension ResearchWriteScope {
     )
     NoteContentView(
         controller: controller,
-        target: .unavailable(relativePath: note.relativePath),
+        target: .unavailable(
+            vaultID: note.vaultID,
+            relativePath: note.relativePath
+        ),
         note: note,
         documentSession: DocumentSessionModel(key: nil),
         state: state,

@@ -56,6 +56,15 @@ public struct WorkspaceGraphCounts: Codable, Hashable, Sendable {
     }
 }
 
+/// Freshness of the disposable fields carried beside one authoritative note
+/// source. Application-owned Workspace generations publish only `current`.
+/// A window may transiently present `sourceAhead` after a proven source commit
+/// while the owning Workspace refreshes graph, Search, and other projections.
+public enum WorkspaceNoteDerivedProjectionState: String, Codable, Hashable, Sendable {
+    case current
+    case sourceAhead
+}
+
 /// Portable note identity is distinct from the note's current vault-qualified
 /// location. A resolved UUID survives a confirmed rename; every other case is
 /// explicit so presentation/session code never falls back to treating a path
@@ -90,9 +99,12 @@ package struct WorkspaceNoteTitleProjection: Hashable, Sendable {
     }
 }
 
-/// A source-fidelity-preserving note projection for one complete generation.
-/// `document` retains the exact bytes loaded by `VaultRepository`; the other
-/// fields are explicitly derived projections over that source revision.
+/// A source-fidelity-preserving note projection. `document` retains the exact
+/// bytes loaded by `VaultRepository`. Application-owned Workspace generations
+/// carry `current` derived state. An exact window may transiently overlay a
+/// committed source with `sourceAhead`; consumers must not treat its graph
+/// counts or other Workspace-wide projections as current until replacement by
+/// the matching complete generation.
 public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let id: VaultQualifiedNoteID
     public let vaultRole: VaultRole
@@ -101,6 +113,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let fileMetadata: WorkspaceFileMetadata
     public let lifecycle: WorkspaceDocumentLifecycle
     public let graphCounts: WorkspaceGraphCounts
+    public let derivedProjectionState: WorkspaceNoteDerivedProjectionState
     /// Source-bound heading projection prepared by the workspace catalog for
     /// this exact fingerprint. Presentation consumers must not parse Markdown
     /// again merely to build document navigation.
@@ -140,7 +153,8 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         fileMetadata: WorkspaceFileMetadata,
         lifecycle: WorkspaceDocumentLifecycle,
         graphCounts: WorkspaceGraphCounts,
-        headings: [HeadingNode] = []
+        headings: [HeadingNode] = [],
+        derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current
     ) {
         self.init(
             id: id,
@@ -151,6 +165,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             lifecycle: lifecycle,
             graphCounts: graphCounts,
             headings: headings,
+            derivedProjectionState: derivedProjectionState,
             cachedTitleProjection: nil
         )
     }
@@ -164,6 +179,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         lifecycle: WorkspaceDocumentLifecycle,
         graphCounts: WorkspaceGraphCounts,
         headings: [HeadingNode],
+        derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current,
         cachedTitleProjection: WorkspaceNoteTitleProjection?
     ) {
         self.id = id
@@ -174,6 +190,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.lifecycle = lifecycle
         self.graphCounts = graphCounts
         self.headings = headings
+        self.derivedProjectionState = derivedProjectionState
         self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
             ? cachedTitleProjection
             : nil
@@ -187,6 +204,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             && lhs.fileMetadata == rhs.fileMetadata
             && lhs.lifecycle == rhs.lifecycle
             && lhs.graphCounts == rhs.graphCounts
+            && lhs.derivedProjectionState == rhs.derivedProjectionState
     }
 
     public func hash(into hasher: inout Hasher) {
@@ -197,6 +215,55 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         hasher.combine(fileMetadata)
         hasher.combine(lifecycle)
         hasher.combine(graphCounts)
+        hasher.combine(derivedProjectionState)
+    }
+}
+
+/// The exact result of direct untitled-note creation before disposable
+/// Workspace projections necessarily catch up. The source and portable
+/// identity state are authoritative; graph counts are intentionally absent.
+public struct WorkspaceUntitledNoteCommit: Sendable {
+    public let id: VaultQualifiedNoteID
+    public let vaultRole: VaultRole
+    public let stableIdentity: WorkspaceNoteIdentityState
+    public let document: NoteDocument
+
+    public init(
+        id: VaultQualifiedNoteID,
+        vaultRole: VaultRole,
+        stableIdentity: WorkspaceNoteIdentityState,
+        document: NoteDocument
+    ) {
+        self.id = id
+        self.vaultRole = vaultRole
+        self.stableIdentity = stableIdentity
+        self.document = document
+    }
+
+    /// A bounded window presentation while the matching complete Workspace
+    /// generation is pending. Zero graph values are nonauthorizing placeholders
+    /// and are explicitly guarded by `sourceAhead`.
+    public var sourceAheadSnapshot: WorkspaceNoteSnapshot {
+        WorkspaceNoteSnapshot(
+            id: id,
+            vaultRole: vaultRole,
+            stableIdentity: stableIdentity,
+            document: document,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: document.sourceBytes.count,
+                creationDate: nil,
+                modificationDate: nil
+            ),
+            lifecycle: .active,
+            graphCounts: WorkspaceGraphCounts(
+                incoming: 0,
+                outgoing: 0,
+                broken: 0,
+                ambiguous: 0
+            ),
+            headings: [],
+            derivedProjectionState: .sourceAhead
+        )
     }
 }
 
@@ -220,6 +287,7 @@ public struct WorkspaceNoteMove: Hashable, Sendable {
 public struct WorkspaceVaultSnapshot: Sendable {
     public let slot: WorkspaceVaultSlot
     public let vault: RegisteredVault
+    public let pathComparisonPolicy: VaultPathComparisonPolicy
     public let documents: [WorkspaceNoteSnapshot]
     public let folders: [VaultRelativeFolderPath]
     public let identityRecovery: NoteIdentityRecoveryState
@@ -227,12 +295,14 @@ public struct WorkspaceVaultSnapshot: Sendable {
     public init(
         slot: WorkspaceVaultSlot,
         vault: RegisteredVault,
+        pathComparisonPolicy: VaultPathComparisonPolicy,
         documents: [WorkspaceNoteSnapshot],
         folders: [VaultRelativeFolderPath] = [],
         identityRecovery: NoteIdentityRecoveryState
     ) {
         self.slot = slot
         self.vault = vault
+        self.pathComparisonPolicy = pathComparisonPolicy
         self.documents = documents
         self.folders = folders
         self.identityRecovery = identityRecovery
@@ -347,6 +417,7 @@ public struct WorkspaceSnapshotEvent: Sendable {
 }
 
 public enum WorkspaceSourceCommitKind: Equatable, Sendable {
+    case creation
     case save
     case checkpointRestore(checkpointID: UUID)
 }
@@ -588,6 +659,26 @@ public enum WorkspaceEvent: Sendable {
     }
 }
 
+/// The result of a Workspace mutation whose authoritative operation is proven
+/// durable before this value is returned. Post-commit warnings describe only
+/// work that must be recovered or refreshed without repeating the mutation.
+/// A thrown error therefore never substitutes for a known committed value.
+public struct WorkspaceMutationOutcome<CommittedValue: Sendable>: Sendable {
+    public let committedValue: CommittedValue
+    public let derivedRefreshWarning: String?
+    public let identityRecoveryWarning: String?
+
+    public init(
+        committedValue: CommittedValue,
+        derivedRefreshWarning: String? = nil,
+        identityRecoveryWarning: String? = nil
+    ) {
+        self.committedValue = committedValue
+        self.derivedRefreshWarning = derivedRefreshWarning
+        self.identityRecoveryWarning = identityRecoveryWarning
+    }
+}
+
 public enum ScholiumApplicationError: LocalizedError, Sendable {
     case runtimeShutDown
     case workspaceShutDown(UUID)
@@ -597,7 +688,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case incompleteTriptych(UUID)
     case vaultNotInWorkspace(UUID)
     case manifestIdentityMismatch(expected: UUID, actual: UUID)
-    case committedButRefreshFailed(DocumentFingerprint, String)
     case operationCommittedButRefreshFailed(operation: String, reason: String)
     case noWorkspaceConfigured
     case researchStoreUnavailable(String)
@@ -608,7 +698,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     /// up; request or await a refresh instead.
     public var durableMutationWasCommitted: Bool {
         switch self {
-        case .committedButRefreshFailed, .operationCommittedButRefreshFailed:
+        case .operationCommittedButRefreshFailed:
             true
         default:
             false
@@ -619,17 +709,9 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     /// spelling is intentionally explicit for GUI and CLI error handling.
     public var mustNotRetryMutation: Bool { durableMutationWasCommitted }
 
-    public var committedDocumentRevision: DocumentFingerprint? {
-        guard case .committedButRefreshFailed(let revision, _) = self else {
-            return nil
-        }
-        return revision
-    }
-
     public var refreshFailureReason: String? {
         switch self {
-        case .committedButRefreshFailed(_, let reason),
-             .operationCommittedButRefreshFailed(_, let reason):
+        case .operationCommittedButRefreshFailed(_, let reason):
             reason
         default:
             nil
@@ -654,8 +736,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "Vault \(id.uuidString) is not part of this Scholium Triptych."
         case .manifestIdentityMismatch(let expected, let actual):
             "The portable Triptych identity is \(actual.uuidString), not \(expected.uuidString)."
-        case .committedButRefreshFailed(let fingerprint, let reason):
-            "The source commit succeeded at revision \(fingerprint.sha256), but derived workspace refresh failed: \(reason)"
         case .operationCommittedButRefreshFailed(let operation, let reason):
             "\(operation) committed successfully, but the workspace snapshot could not be refreshed: \(reason)"
         case .noWorkspaceConfigured:

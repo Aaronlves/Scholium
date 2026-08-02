@@ -212,7 +212,7 @@ extension ResearchFunctionOperationsTests {
             fixture.analysisID,
             changeSet: .exactContent(changedSource),
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
         let record = try await handle.research.finishDiscussion(
             discussionID: discussion.id
         )
@@ -462,7 +462,11 @@ extension ResearchFunctionOperationsTests {
             fixture.analysisID,
             to: "Renamed Analysis.md",
             expectedRevision: original.fingerprint
-        )
+        ).committedValue
+        // Note movement returns after the authoritative source and stable
+        // identity commit. Research Actions intentionally reopen only after
+        // the complete derived Workspace projection catches up.
+        _ = try await handle.discovery.refresh()
         let movedTarget = try await researchFunctionTarget(
             move.destination,
             role: .analysis,

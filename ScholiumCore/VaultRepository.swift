@@ -21,6 +21,25 @@ public actor VaultRepository {
         applicationSupportURL: URL,
         vaultRole: VaultRole = .other
     ) throws {
+        try self.init(
+            vaultURL: vaultURL,
+            identity: identity,
+            applicationSupportURL: applicationSupportURL,
+            vaultRole: vaultRole,
+            mutationHooks: .none
+        )
+    }
+
+    /// Internal deterministic seam for subprocess and coordination fixtures.
+    /// Production construction always uses `.none` through the public
+    /// initializer above; the authoritative transaction remains unchanged.
+    init(
+        vaultURL: URL,
+        identity: VaultIdentity,
+        applicationSupportURL: URL,
+        vaultRole: VaultRole = .other,
+        mutationHooks: VaultMutationHooks
+    ) throws {
         self.identity = identity
         self.vaultRole = vaultRole
         self.vaultURL = vaultURL.standardizedFileURL
@@ -28,7 +47,10 @@ public actor VaultRepository {
         let pathResolver = try VaultPathResolver(rootURL: vaultURL)
         self.pathResolver = pathResolver
         self.descriptorAccess = VaultDescriptorAccess(rootURL: pathResolver.canonicalRoot)
-        self.mutationCoordinator = VaultMutationCoordinator(resolver: pathResolver)
+        self.mutationCoordinator = VaultMutationCoordinator(
+            resolver: pathResolver,
+            hooks: mutationHooks
+        )
         self.storageURL = applicationSupportURL
             .appendingPathComponent("Vaults", isDirectory: true)
             .appendingPathComponent(identity.id.uuidString, isDirectory: true)
@@ -40,6 +62,13 @@ public actor VaultRepository {
 
     public func recoveryLedgerHealthDiagnostic() -> String? {
         recoveryLedger.healthDiagnostic
+    }
+
+    /// Read-only filename comparison facts for this exact mounted vault root.
+    /// Mutation methods still repeat collision and containment checks against
+    /// current filesystem state before committing.
+    public func pathComparisonPolicy() -> VaultPathComparisonPolicy {
+        pathResolver.comparisonPolicy
     }
 
     public func load(relativePath: String) throws -> NoteDocument {
@@ -766,6 +795,99 @@ public actor VaultRepository {
         (try? recoveryLedger.entries(relativePath: relativePath)) ?? []
     }
 
+    /// Lists only exact, startup-retained save candidates. The source state is
+    /// an observation for presentation; every consequential operation below
+    /// revalidates the durable manifest and canonical revision independently.
+    public func interruptedSaveRecoveries() throws -> [InterruptedSaveRecovery] {
+        try recoveryLedger.retainedMutations().map { transaction in
+            let candidateData = try recoveryLedger.candidateData(for: transaction)
+            guard NoteDocument.decodeUTF8PreservingBOM(candidateData) != nil else {
+                throw VaultRepositoryError.recoveryLedgerUnavailable(
+                    "An interrupted save candidate is not valid UTF-8 Markdown."
+                )
+            }
+            return InterruptedSaveRecovery(
+                id: InterruptedSaveRecoveryID(
+                    vaultID: identity.id,
+                    transactionID: transaction.id
+                ),
+                relativePath: transaction.relativePath,
+                expectedRevision: transaction.expected,
+                candidateRevision: transaction.candidate,
+                createdAt: transaction.createdAt,
+                retainedReason: transaction.retainedReason ?? "The interrupted save remains retained.",
+                sourceState: interruptedSaveSourceState(transaction)
+            )
+        }
+    }
+
+    public func interruptedSaveRecoveryContent(
+        _ recovery: InterruptedSaveRecovery
+    ) throws -> InterruptedSaveRecoveryContent {
+        let transaction = try retainedMutation(matching: recovery)
+        let candidateData = try recoveryLedger.candidateData(for: transaction)
+        guard let exactSource = NoteDocument.decodeUTF8PreservingBOM(candidateData) else {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The interrupted save candidate is not valid UTF-8 Markdown."
+            )
+        }
+        return InterruptedSaveRecoveryContent(
+            recoveryID: recovery.id,
+            exactSource: exactSource,
+            fingerprint: transaction.candidate
+        )
+    }
+
+    public func prepareInterruptedSaveRecoveryLocation(
+        _ recovery: InterruptedSaveRecovery
+    ) throws -> URL {
+        let transaction = try retainedMutation(matching: recovery)
+        return try recoveryLedger.retainedMutationDirectory(for: transaction)
+            .appendingPathComponent("candidate.md", isDirectory: false)
+    }
+
+    public func restoreInterruptedSaveRecovery(
+        _ recovery: InterruptedSaveRecovery
+    ) throws -> InterruptedSaveRecoveryRestoreCommit {
+        let transaction = try retainedMutation(matching: recovery)
+        let candidateData = try recoveryLedger.candidateData(for: transaction)
+        guard let candidateContent = NoteDocument.decodeUTF8PreservingBOM(candidateData) else {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The interrupted save candidate is not valid UTF-8 Markdown."
+            )
+        }
+        let currentData = try readSource(relativePath: transaction.relativePath)
+        let current = DocumentFingerprint(data: currentData)
+        if current == transaction.candidate {
+            let document = NoteDocument(
+                relativePath: transaction.relativePath,
+                rawContent: candidateContent
+            )
+            return InterruptedSaveRecoveryRestoreCommit(
+                document: document,
+                didReplaceSource: false,
+                recoveryCleanupWarning: completeInterruptedSaveRecovery(transaction)
+            )
+        }
+        guard current == transaction.expected else {
+            throw VaultRepositoryError.conflict(
+                expected: transaction.expected,
+                current: current
+            )
+        }
+
+        let result = try save(
+            relativePath: transaction.relativePath,
+            changeSet: .exactContent(candidateContent),
+            expectedRevision: transaction.expected
+        )
+        return InterruptedSaveRecoveryRestoreCommit(
+            document: result.document,
+            didReplaceSource: true,
+            recoveryCleanupWarning: completeInterruptedSaveRecovery(transaction)
+        )
+    }
+
     /// Remaps machine-local pre-write evidence after a stable-identity move.
     public func migrateRecoveryLedger(
         from sourceRelativePath: String,
@@ -793,6 +915,58 @@ public actor VaultRepository {
 
     package func recoveryData(entryID: UUID) throws -> Data {
         try recoveryLedger.content(entryID: entryID)
+    }
+
+    private func retainedMutation(
+        matching recovery: InterruptedSaveRecovery
+    ) throws -> PrewriteRecoveryLedger.MutationTransaction {
+        guard recovery.id.vaultID == identity.id else {
+            throw VaultRepositoryError.recoveryEntryNotFound(recovery.id.transactionID)
+        }
+        let transaction = try recoveryLedger.retainedMutation(
+            id: recovery.id.transactionID
+        )
+        guard transaction.relativePath == recovery.relativePath,
+              transaction.expected == recovery.expectedRevision,
+              transaction.candidate == recovery.candidateRevision,
+              transaction.createdAt == recovery.createdAt,
+              transaction.retainedReason == recovery.retainedReason else {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The interrupted save record changed after it was presented. Refresh Recovery before continuing."
+            )
+        }
+        return transaction
+    }
+
+    private func interruptedSaveSourceState(
+        _ transaction: PrewriteRecoveryLedger.MutationTransaction
+    ) -> InterruptedSaveRecoverySourceState {
+        do {
+            let observed = DocumentFingerprint(
+                data: try readSource(relativePath: transaction.relativePath)
+            )
+            if observed == transaction.expected { return .expectedRevision }
+            if observed == transaction.candidate { return .candidateRevision }
+            return .changed(observed)
+        } catch VaultRepositoryError.fileDoesNotExist {
+            return .missing
+        } catch {
+            return .unavailable(error.localizedDescription)
+        }
+    }
+
+    /// Cleanup is intentionally nonauthoritative after a proven source commit.
+    /// Returning a warning prevents a repeated restore from being presented as
+    /// the repair for bookkeeping that can be retried independently.
+    private func completeInterruptedSaveRecovery(
+        _ transaction: PrewriteRecoveryLedger.MutationTransaction
+    ) -> String? {
+        do {
+            try recoveryLedger.completeMutation(transaction)
+            return nil
+        } catch {
+            return "The candidate is canonical, but its interrupted-save record could not be removed. \(error.localizedDescription)"
+        }
     }
 
     package func pinSettledSnapshot(

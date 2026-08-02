@@ -72,6 +72,16 @@ struct WorkspaceRuntimeTests {
         #expect(initial.generation == 0)
         #expect(initial.snapshot.vaults.count == 3)
         #expect(initial.snapshot.vaults.flatMap(\.documents).count == 3)
+        let analysesSnapshot = try #require(initial.snapshot.vaults.first {
+            $0.vault.id == fixture.analysisNoteID.vaultID
+        })
+        let volumeValues = try fixture.analysesURL.resourceValues(forKeys: [
+            .volumeSupportsCaseSensitiveNamesKey,
+        ])
+        #expect(analysesSnapshot.pathComparisonPolicy == VaultPathComparisonPolicy(
+            caseSensitive: volumeValues.volumeSupportsCaseSensitiveNames ?? true,
+            normalizationSensitive: false
+        ))
         if case .snapshot(let event) = initial {
             let analysis = try #require(event.snapshot.document(id: fixture.analysisNoteID))
             #expect(analysis.document.rawContent.contains("Freedom enables action"))
@@ -134,7 +144,7 @@ struct WorkspaceRuntimeTests {
         let imported = try await handle.documents.importMarkdown(
             at: sourceURL,
             intoVault: topicsID
-        )
+        ).committedValue
 
         #expect(imported.relativePath == "Imported.md")
         #expect(try Data(contentsOf: sourceURL) == source)
@@ -258,7 +268,7 @@ struct WorkspaceRuntimeTests {
             fixture.analysisNoteID,
             changeSet: .body("A revision-gated application commit.\n"),
             expectedRevision: current.fingerprint
-        )
+        ).committedValue
         let event = try #require(await iterator.next())
         if case .sourceCommitted(let commit) = event {
             #expect(commit.note.fingerprint == saved.document.fingerprint)

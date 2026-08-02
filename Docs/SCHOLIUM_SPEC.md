@@ -200,8 +200,9 @@ visibility, Apparatus visibility, and Apparatus mode remain stable.
 **New Triptych…** and missing registration use Bootstrap. Expired access stays
 in the configured workspace under one **Restore Access** sheet. The workspace
 retains one frame and three-item split across loading/no-note/note states;
-notes never resize it. No-note Document is text-, action-, and VoiceOver-free,
-while Library remains available through the Sidebar route.
+notes never resize it. No-note Document presents one restrained, read-only,
+VoiceOver-readable empty state while Library remains available through the
+Sidebar route; it adds no duplicate action or focus target.
 
 Works folders are researcher-controlled organization, not registered projects.
 Scholium supplies no project selector, assignment, completeness check, or
@@ -479,12 +480,14 @@ Unknown source YAML remains byte-preserved but acquires no Scholium semantics.
 
 ### 5.3 Create, duplicate, rename, and identity
 
-**New Note** is an immediate, nonmodal action. The Library-header Add button
-creates an empty Markdown note at the current vault root. **File → New Note**
-and its keyboard shortcut perform the same focused-window action. A folder
-row's **New Note** context action creates inside that exact vault-relative
-folder; the folder row also exposes an accessibility action, so secondary click
-is not the only route to the contextual operation.
+**New Note** and **New Folder** are immediate, nonmodal actions. The
+Library-header Add menu offers both actions at the current vault root. A
+secondary click in unoccupied Library source-list space offers the same compact
+pair; the header menu remains their primary pointer and accessibility route, so
+secondary click is never required. **File → New Note** and its keyboard
+shortcut directly create the same empty root note. A folder row's **New Note**
+and **New Folder** context actions create inside that exact vault-relative
+folder; the folder row also exposes equivalent accessibility actions.
 
 An ordinary folder context menu is compact and ordered by semantic group:
 
@@ -495,16 +498,39 @@ An ordinary folder context menu is compact and ordered by semantic group:
 
 Expansion mutates only window-local disclosure state. Copy and Reveal expose
 the exact existing vault-relative folder without changing research source.
-Ordinary note rows likewise expose **Copy Relative Path** beside their existing
-open, lifecycle, and Finder actions; Open in New Tab, Copy, and Reveal also
-remain available as accessibility actions.
+An ordinary note row exposes **Rename…** rather than combining naming and
+placement in one command. It is a direct one-item drag source: dropping it on
+an ordinary Folder moves it into that exact folder, while dropping it on the
+Library LocationHeader moves it to the current vault root. The drop target
+highlights only while it can accept the note; a successful move keeps that note
+selected at its destination. Collision, stale revision, unresolved identity,
+cross-vault placement, managed Critique placement, or source mutation failure
+changes nothing and reports the reason. **File → Move Note…** and the named
+accessibility action remain the non-drag placement routes; drag is never the
+only way to move a note. Copy Relative Path and Reveal in Finder remain beside
+the existing open and lifecycle actions, while Open in New Tab, Rename, Move,
+Copy, and Reveal remain available without secondary click.
+
+An ordinary mutable Folder is likewise a direct one-item drag source. Dropping
+it on another ordinary Folder moves the complete source folder inside that
+destination; dropping it on the Library LocationHeader moves it to the current
+vault root. The process-private payload contains only its exact vault and path,
+and a target advertises Move only after rejecting cross-vault placement, the
+current parent, the source itself, and every source descendant. Completion uses
+the same flush-and-recheck folder Move transaction described below. A rejected
+or failed drop changes no source or disclosure. **Move Folder…** and the named
+accessibility action remain the non-drag route.
 
 A folder is only a vault-relative filesystem location used for classification.
 It has no UUID, Properties, Research Record, checkpoint identity, or independent
 lifecycle record. Empty folders remain visible in Library. **New Folder**
 immediately and atomically claims `Untitled Folder`, `Untitled Folder 2`, and so
-on inside the clicked folder; it opens no sheet. Rename and Move use one scoped
-sheet only because the researcher must supply a name or destination.
+on inside the clicked folder; it opens no sheet. Once that directory claim is
+durable, the exact window installs it immediately and the Workspace completes
+folder inventory and disposable derived projections in its owned background
+refresh. Creation never waits for graph, Search, or research-state assembly.
+Rename and Move use one scoped sheet only because the researcher must supply a
+name or destination.
 
 A confirmed folder rename or move flushes every open editor in the Triptych,
 rechecks the complete descendant Markdown path-and-fingerprint inventory, and
@@ -532,9 +558,20 @@ Successful creation selects and opens the note. Creation never presents a
 sheet, popover, naming form, or required-properties step; naming and Properties
 remain later explicit edits.
 
+Only after the source commit and latest authoritative Library projection are
+available, successful creation clears active Library filters, expands only the
+created note's folder ancestors, preserves every unrelated disclosure, and
+reveals the selected row without moving keyboard focus into Library. Ordinary
+sort order remains unchanged; **Debate Importance** falls back to **Recently
+Modified** when clearing its required explicit debate scope. A failure before
+this presentation transition preserves the prior filters, disclosure, sort,
+selection, and visible source.
+
 Paths are locations; notes have stable app-owned identities. Duplication creates
-a new identity with no inherited Settlement or Research Records. Confirmed
-moves/renames preserve records and update resolved incoming links. Ambiguous
+a new identity with no inherited Settlement or Research Records. Rename keeps
+the current containing folder; Move changes placement by drag or the explicit
+File/accessibility route. Confirmed moves and renames preserve records and
+update resolved incoming links. Ambiguous
 external rename keeps the note readable but blocks identity-dependent mutation,
 Settle, record attachment, and Discussion anchor attachment until confirmation.
 
@@ -548,8 +585,9 @@ active, Set Aside, or Trash state.
   Search, synthesis, Critique, and agent context unless explicitly included.
 - **Move to Trash** excludes the note from ordinary Search, Connect, agent
   context, and workflows without immediately erasing it.
-- **Put Back** restores the exact original vault-relative path and reports a
-  conflict rather than inventing another name or destination.
+- **Put Back** is direct and reversible. It restores the exact original
+  vault-relative path and reports a conflict rather than inventing another
+  name or destination; it requires no confirmation or destination sheet.
 - **Cancel** changes nothing.
 - **Delete Permanently** purges the note, its active Discussion drafts,
   Settlements, associated Critique, and note-specific machine state from live
@@ -561,6 +599,21 @@ Note-specific records follow stable identity into Set Aside and Trash while
 recovery remains possible. Permanent note deletion advertises no checkpoint
 recovery; a surviving record tombstone is provenance, not a way to restore the
 deleted note.
+
+Library, Set Aside, and Trash are category projections of one native file-tree
+model, not distinct browsers. They share hierarchy, indentation, disclosure,
+selection, hover, scrolling, keyboard and accessibility navigation, document
+opening, and exact-path presentation. Each category filters the same vault
+inventory and differs only where its lifecycle semantics require different
+available actions or mutation policy. A committed category move updates the
+exact window immediately and queues the complete disposable Workspace refresh;
+it never waits for graph, Search, or research-state assembly before returning.
+When Set Aside, Move to Trash, or Put Back moves the currently presented Note
+out of its visible Location, that document page closes and the Document region
+returns to the restrained no-document state. Other open pages remain available
+without being activated implicitly. Selecting the moved Note in Set Aside,
+Trash, or Library later opens its exact content normally; clearing the prior
+presentation is not deletion and does not make lifecycle content unreadable.
 
 ## 7. Settlement, annotation, and Discussion
 
@@ -1313,9 +1366,24 @@ There is no checkpoint-management screen or proprietary backup format. Finder
 manages folders. Document, HTML, PDF, and DOCX export is deferred, not
 permanently prohibited.
 
-Invisible pre-write recovery state supports exact save/conflict recovery for
-the Notes actually written; it is not an application-authored account of the
-research. Settle may pin an exact entry as a researcher-selected settled
+Ordinary pre-write recovery state remains invisible and supports exact
+save/conflict recovery for the Notes actually written; it is not an
+application-authored account of the research. When startup verifies that an
+interrupted save left the expected revision canonical and retained a distinct
+candidate, the existing **Recovery** surface lists that one vault-qualified
+candidate with its Note path, expected and candidate revisions, reason, and
+read-only exact source. The researcher may copy it or reveal its machine-local
+file without granting write authority. **Restore Candidate…** first flushes
+every open editor in the Triptych, then revalidates the exact transaction
+identity and current source revision through the repository. It replaces source
+only while the canonical Note still equals the recorded expected revision,
+using the ordinary prewrite-protected save path. A changed, missing, unsafe, or
+unverifiable source is never overwritten or recreated; the candidate remains
+available for inspection and copying. If the candidate is already canonical,
+Recovery verifies that fact and removes only the completed machine-local
+record.
+
+Settle may pin an exact entry as a researcher-selected settled
 version without turning it into a truth claim. Temporary write recovery and
 settled-version retention remain separate references over verified immutable
 bytes. Invalid recovery metadata must not cause unrelated recoverable bytes to
@@ -1568,7 +1636,7 @@ sibling items:
    Library-local Filter and Add. A fixed Triptych-wide Recommended
    Bibliography utility is its sibling below the Library source region.
    Settings is not a Library destination.
-2. **Document:** selected note or the text-free semantic background.
+2. **Document:** selected note or the restrained no-document empty state.
 3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
    projections. It never owns buffers, autosave, Undo, or conflicts;
    full chronology belongs to Research Record.
@@ -1657,13 +1725,17 @@ The Library BrandHeader sits below window controls. A static Scholium wordmark
 and a separate Triptych identity menu share the 28pt peripheral page edge;
 Triptych management never turns the wordmark into a second toolbar. Traffic-
 light alignment is visual reference only, never derived geometry. No-note is
-text/action-free and VoiceOver-hidden. No Collapse Note, custom `<<`,
+one centered `doc.text` symbol, **No Document Selected**, and the secondary
+sentence **Select a note in the Library to read or edit.** It has no card,
+button, motion, focus target, source state, or duplicate creation route. The
+symbol is decorative; the two visible strings form one VoiceOver-readable
+group. No Collapse Note, custom `<<`,
 Back/Forward, Recents, or Quick Open exists.
 
 Menus follow researcher tasks:
 
 - **File:** Triptych/window create/open; direct **New Note** at the focused
-  vault root; Import; Duplicate; Move/Rename; Reveal; Checkpoint create/restore.
+  vault root; Import; Duplicate; Rename; Move; Reveal; Checkpoint create/restore.
 - **Edit:** editing and **Edit Properties…**.
 - **View:** Search, document mode/text size, Sidebar, Research Inspector.
 - **Window:** standard window navigation plus **Attention**. The command is
@@ -1690,6 +1762,18 @@ Menus follow researcher tasks:
   redundant outer menu indicator; native submenu chevrons remain. Current
   Library rows and filters have no Review, Unreviewed, Qualified, or
   Unqualified state.
+- One icon-only disclosure button sits beside Filter. When any Folder in the
+  current tree is visibly expanded, it presents **Collapse All Folders** with
+  the collapse symbol and collapses the complete tree; otherwise it presents
+  **Expand All Folders** with the expand symbol and expands the complete tree.
+  It is unavailable when the tree contains no expandable Folder. The action
+  mutates only the current vault-and-Location disclosure set and never source, order,
+  selection, or another window. Every successful in-app active-Note navigation
+  independently switches Library to that Note's exact Triptych Scope and
+  Library Location, clears filters only when they exclude that Note, expands
+  only its ancestors, and scrolls only as much as needed without transferring
+  keyboard focus. Manually browsing a different Scope remains possible until
+  the next document navigation.
 - Notes outside folders appear at vault root as ordinary Library rows.
 - Folder/note rows form one hierarchy at one semantic callout size and a
   provisional **28pt minimum** rhythm that grows rather than clips when text
@@ -1703,8 +1787,26 @@ Menus follow researcher tasks:
   reveal, or scroll-linked title motion. At most one redundant
   state mark precedes title; selected, focused, disclosed, drop-target, and
   inactive-selected remain distinct, and selection stays visible off-focus.
-- When Library is selected, the LocationHeader Add button directly creates at
-  the current vault root.
+- Folder and Note rows scroll as one native hierarchy; no Folder becomes a
+  sticky section or floating group row. The LocationHeader and its
+  Filter/disclosure/Add controls remain outside the Source List scroll owner
+  and stay available while the hierarchy scrolls.
+- Every enabled, unselected Note and Folder row provides one restrained
+  full-row hover response. Selection remains the stronger persistent state and
+  does not change on hover; pointer feedback never becomes the only route to
+  activation or any row action.
+- A draggable ordinary Note uses one process-private identity-and-revision
+  payload, never source text. A draggable ordinary Folder uses one
+  process-private vault-and-path payload. An eligible Folder row and the
+  Library LocationHeader advertise Move and provide a restrained temporary
+  target surface; every other row and Location rejects the drop. Note
+  completion uses the ordinary revision-checked Move transaction; Folder
+  completion uses the ordinary complete-descendant flush-and-recheck Move
+  transaction. Both resume through the established derived refresh path.
+- When Library is selected, the LocationHeader Add menu offers direct **New
+  Note** and **New Folder** at the current vault root. A secondary click in
+  unoccupied Source List space offers the same two actions without becoming
+  their only route.
   Every ordinary folder row offers direct **New Note** and **New Folder**, then
   **Rename Folder…**, **Move Folder…**, conditional subtree expansion/collapse,
   Copy Relative Path, Reveal in Finder, and destructive **Move Folder and Notes
@@ -1712,6 +1814,17 @@ Menus follow researcher tasks:
   routes. Neither creation action opens a sheet. Library enumerates empty real
   directories. Protected machine-managed folders and ambiguous
   projections retain only safe nonmutating navigation.
+- After a successful New Note source-and-identity commit, Library immediately
+  installs and opens an exact source-bound row explicitly marked ahead of
+  disposable derived state. It does not wait for Triptych-wide identity
+  reconciliation, graph, Search, or research projection rebuilds, and it never
+  presents placeholder graph values as current. The Workspace queues one
+  complete background refresh before releasing its source-mutation lease;
+  matching watcher work cannot start a competing rebuild, and the resulting
+  complete generation replaces the temporary row. Library clears filters that
+  could exclude the created row, expands that row's folder ancestors, retains
+  unrelated disclosure and ordinary sorting, and scrolls the selected row into
+  view once. This reveal does not transfer keyboard focus.
 - The Library Location shows no total. Attention treats zero as the steady
   state, **1–3** unresolved items as its primary design condition, and larger
   queues as exceptional accumulation rather than a separate mode or hard cap.
@@ -1770,10 +1883,12 @@ Menus follow researcher tasks:
   control. Count updates use the same Scope and dismissal ledger as the popover.
 - The stable LocationHeader contains one title-style LocationPicker and only
   the actions applicable to the selected Location. Its current title always
-  identifies **Library**, **Set Aside**, or **Trash**. Library shows Filter and
-  Add; Set Aside and Trash omit those controls instead of retaining disabled
-  icon arrays. The header keeps the same position and height while the source
-  region changes.
+  identifies **Library**, **Set Aside**, or **Trash**. Every Location uses the
+  same adaptive Folder disclosure button when its current category projection
+  contains a hierarchy; the button remains unavailable when there is no
+  expandable Folder. Library additionally shows Filter and Add. Set Aside and
+  Trash omit only those Library-specific controls. The header keeps the same
+  position and height while the source region changes.
 - The LocationPicker is one native menu of three mutually exclusive items.
   Its title presentation is quiet and borderless: it has no enclosing fill,
   bezel, capsule, or custom disclosure glyph, and relies on the menu's one
@@ -1799,6 +1914,9 @@ Menus follow researcher tasks:
   cards, sheets, or separate Sidebar modes. Selecting one replaces only the
   source-region content; BrandHeader, ScopeIndex, conditional Attention state,
   LocationHeader, and Recommended Bibliography retain their ownership.
+  All three Locations project the same native Folder-and-Note outline and row
+  interaction grammar; lifecycle filtering and category-valid actions are the
+  only intentional differences.
   Switching Scope retains the Location and loads its content for the new Scope.
   An empty Location remains selected and shows its own short empty state rather
   than silently returning to Library. At most one Location content subtree
@@ -1815,12 +1933,19 @@ Menus follow researcher tasks:
   it does not use a shimmer, skeleton, or moving highlight. Staged replacement
   never places that loading treatment over retained trustworthy content.
 - Lifecycle rows reuse the same provisional 28pt minimum OutlineRow rhythm and
-  Note semantic slot. A single-line truncated title opens the note in place;
-  a trailing **Put Back** control keeps a preferred **28pt** target and remains
-  keyboard and VoiceOver reachable without hover. Ordinary lifecycle rows draw
-  no separator. After Put Back, Move to Trash, or permanent deletion removes a
-  row, focus moves next, previous, then LocationPicker; cancellation or failure
-  restores the originating row.
+  Note semantic slot. A single-line truncated title opens the note in place and
+  retains the complete row width. Its quiet secondary-ink **Put Back** control
+  appears as a trailing native overlay above a semantic Sidebar material veil
+  on full-row pointer hover or keyboard focus; it neither reserves title width
+  nor reflows the row. Put Back is a direct nonmodal action and opens no
+  confirmation or destination sheet. The row's context menu and named
+  accessibility action remain available without hover. Ordinary lifecycle rows
+  draw no separator. After Put Back, Move to Trash, or permanent deletion
+  removes a row, focus moves next, previous, then LocationPicker; cancellation
+  or failure restores the originating row. A successful category move of the
+  currently presented Note also removes that document page and shows the
+  no-document empty state; explicit selection in the destination Location
+  remains the route for browsing its content.
 - Compact Recommended Bibliography is an intrinsic-height fixed Sidebar
   utility below and outside the Library source scroll. It is never a Source
   List section, Location, footer navigation control, vault projection, or
@@ -1848,6 +1973,13 @@ transient Comment bar and its in-place field; Edit owns a separate formatting
 bar; Source owns neither. Each disappears when the selection clears, focus
 leaves its task, or the document mode changes. The Comment field also
 disappears when the researcher cancels or a save is acknowledged.
+
+When the selected note's exact Markdown source is zero bytes, Review presents
+one centered read-only group: decorative document symbol, **Empty Note**, and
+**This note has no content.** This is a completed source state, not Loading,
+and it starts no empty WebKit render. Whitespace, an unavailable File Provider
+source, an unresolved read, and a rendering failure are not empty notes and
+retain their distinct states.
 
 The two selection surfaces share one restrained component style: an opaque
 semantic surface background, the resolved Scholium accent boundary, semantic
@@ -2138,8 +2270,20 @@ Document confirmation, **Checkpoint Restored**, and states that Scholium
 created the Before Restore checkpoint. This completion feedback never implies
 that editor Undo became checkpoint restoration.
 
-Destructive actions use exactly **Set Aside**, **Move to Trash**, **Put Back**,
-**Delete Permanently**, and **Cancel** when applicable.
+Retained interrupted-save candidates share the existing native Recovery sheet
+with durable file-operation recovery; they do not create a version browser,
+Document mode, Research Action, or checkpoint manager. Each candidate row
+states its current source relationship in text and symbol, exposes a selectable
+read-only exact-source disclosure plus **Copy Candidate** and **Reveal Candidate
+in Finder**, and enables **Restore Candidate…** only for an observed expected or
+already-candidate revision. The confirmation states the editor-flush and final
+revision check. A later mismatch fails as Conflict, keeps the candidate, and
+updates the row on Refresh. Recovery errors remain visible without hiding valid
+entries from the other recovery class.
+
+Lifecycle and destructive actions use exactly **Set Aside**, **Move to Trash**,
+**Put Back**, **Delete Permanently**, and **Cancel** when applicable. Put Back
+remains the direct reversible exception and is never styled as destructive.
 
 ### 18.7 Simplified Chinese terminology and translation boundary
 
@@ -2168,8 +2312,10 @@ Scholium-owned translated field. Chinese prose uses full-width punctuation.
 | Research Record | 研究记录 |
 | Set Aside / SET ASIDE | 搁置 |
 | Trash / TRASH | 纸篓 |
+| No Document Selected | 未选择文档 |
+| Expand All Folders / Collapse All Folders | 展开所有文件夹 / 折叠所有文件夹 |
 | Move to Trash… | 移至纸篓… |
-| Put Back… | 放回… |
+| Put Back | 放回 |
 
 The literal `Trash/` directory, paths, stable identifiers, enum/raw values,
 and researcher-authored titles remain verbatim and are never translated.
@@ -2210,17 +2356,30 @@ Exploratory documents retain only unresolved proposals. Once a visual recipe
 enters this specification and becomes reachable, its implementation evidence
 belongs in `IMPLEMENTATION_STATUS.md`, not in a parallel design guide.
 
-### 19.1 No custom glass
+### 19.1 Liquid Glass and material boundary
 
-Scholium-owned surfaces are opaque. No custom glass, blur, vibrancy,
-translucent/material cards, image-behind-glass, large radii, text gradients, or
-decorative shadow defines the brand; depth uses tone, spacing, alignment, type,
-rules, and restrained elevation.
+Liquid Glass is not part of Scholium's interface language. Do not use
+`glassEffect`, `GlassEffectContainer`, glass button styles, refractive morphing
+chrome, or another Liquid Glass treatment to define Scholium surfaces or
+controls.
+
+Transparency, blur, vibrancy, and native or custom glass/material effects are
+not categorically prohibited. They may be used for a named local task when
+they preserve readability, contrast, focus, hit testing, adaptation, and the
+surrounding native ownership boundary. Native material is preferred when it
+fully serves the task; a custom effect still requires a concrete remaining
+gap. A local effect does not automatically become a design Variable, brand
+token, card recipe, or permission to glassify another surface.
+
+The structural Sidebar, Document, and Apparatus planes remain opaque under
+§18.2. The §18.3 Put Back veil is an explicitly approved bounded native Sidebar
+material: it transiently covers the untruncated title beneath the trailing
+control, owns no geometry or action state, and creates no card or additional
+plane.
 
 System chrome, menus, presentations, controls, focus, selection, semantic
 Sidebar/Inspector, and tracking separators stay native. Document tabs are
-ordinary Document controls, not simulated window tabs. Incidental system
-material is not a token.
+ordinary Document controls, not simulated window tabs.
 
 Research Guidance, Actions, permission sheets, and Research Record use
 continuous native planes, textual list/detail structure, editorial hierarchy,
@@ -2527,10 +2686,32 @@ complete even when it exceeds two lines.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, Action sheets, conflict comparison, and
   Research Record close.
-- Direct note creation has pointer, **File → New Note**, keyboard-shortcut, and
-  accessibility routes. A successful action moves selection to the created
-  note; a failure leaves the current selection and source unchanged and reports
-  the reason without opening a naming dialog.
+- Direct root creation has the Library Add menu's pointer and accessibility
+  routes for both **New Note** and **New Folder**; unoccupied-space context
+  actions are redundant. **New Note** additionally has **File → New Note** and
+  its keyboard shortcut. A successful note action moves selection to the created
+  note, exposes its selected Library row even when filters or collapsed
+  ancestors previously hid the destination, and leaves keyboard focus on its
+  natural post-command destination. A failure before that transition leaves the
+  current Library presentation and selection unchanged and reports the reason
+  without opening a naming dialog.
+- An ordinary Note exposes Rename and Move as distinct accessibility actions.
+  Dragging the Note to a Folder or the Library LocationHeader is a redundant
+  pointer route with a system Move operation and visible target feedback; File
+  retains **Move Note…** for keyboard and menu access. Successful placement
+  keeps the moved Note selected, while a rejected or failed drop leaves source,
+  selection, and disclosure unchanged and reports the failure.
+- An ordinary Folder exposes Move Folder as a named accessibility action.
+  Folder-to-Folder and Folder-to-LocationHeader dragging is a redundant pointer
+  route with system Move feedback; invalid self, descendant, current-parent,
+  cross-vault, protected, and ambiguous targets never advertise acceptance.
+  The adaptive disclosure button exposes its current Expand All Folders or
+  Collapse All Folders action to keyboard and VoiceOver; automatic current-Note
+  reveal moves neither Library nor Document focus.
+- With no selected document, Document exposes the title and instruction from
+  §18.2 as one read-only VoiceOver group. Its symbol stays hidden from
+  accessibility, and the state never accepts focus or duplicates a Library,
+  File-menu, keyboard, or toolbar action.
 - Library exposes the static Scholium wordmark and Triptych identity menu as
   distinct elements. ScopeIndex is one logical horizontal group with current
   selection and reading-direction-aware arrow navigation, and exposes no
@@ -2543,9 +2724,11 @@ complete even when it exceeds two lines.
   independently reachable.
   LocationPicker exposes its localized current Location, expanded state, and
   selected native menu item; optional Location counts are values, not badges or
-  selection state. Inactive Location content is accessibility-hidden. Put Back
-  remains in keyboard and VoiceOver order without hover, and row removal
-  follows the next/previous/LocationPicker focus sequence defined in §18.3.
+  selection state. Inactive Location content is accessibility-hidden. The
+  hover-revealed Put Back control is also shown for keyboard focus; the row's
+  named Put Back accessibility action remains available without hover, and row
+  removal follows the next/previous/LocationPicker focus sequence defined in
+  §18.3.
   Settings remains available through standard application routes, not as a
   Library destination.
 - Attention exposes its popover heading, filter, three group headings,

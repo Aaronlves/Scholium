@@ -58,11 +58,13 @@ extension ScholiumCLI {
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
             let content = try sourceContent(from: input)
-            let document = try await handle.documents.create(
+            let outcome = try await handle.documents.create(
                 VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
                 content: content
             )
+            let document = outcome.committedValue
             write("Created \(vault.name):\(path)\nSHA-256: \(document.fingerprint.sha256)\n")
+            writeMutationWarnings(outcome)
         case "replace":
             guard arguments.count >= 2,
                   let input = option("--from", in: arguments),
@@ -77,14 +79,16 @@ extension ScholiumCLI {
             let noteID = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
             let current = try await handle.documents.load(noteID)
             try requireExpected(expected, current: current.fingerprint)
-            let result = try await handle.documents.save(
+            let outcome = try await handle.documents.save(
                 noteID,
                 changeSet: .exactContent(try sourceContent(from: input)),
                 expectedRevision: current.fingerprint
             )
+            let result = outcome.committedValue
             write(
                 "Replaced \(vault.name):\(path)\nSHA-256: \(result.document.fingerprint.sha256)\n"
             )
+            writeMutationWarnings(outcome)
         case "move":
             guard arguments.count >= 3, let expected = option("--expected", in: arguments) else {
                 throw CLIError.usage(
@@ -97,12 +101,14 @@ extension ScholiumCLI {
             let noteID = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
             let current = try await handle.documents.load(noteID)
             try requireExpected(expected, current: current.fingerprint)
-            let result = try await handle.documents.move(
+            let outcome = try await handle.documents.move(
                 noteID,
                 to: arguments[2],
                 expectedRevision: current.fingerprint
             )
+            let result = outcome.committedValue
             write("Moved \(vault.name):\(path) -> \(result.destination.relativePath)\n")
+            writeMutationWarnings(outcome)
         case "set-aside", "trash":
             guard arguments.count >= 2, let expected = option("--expected", in: arguments) else {
                 throw CLIError.usage(
@@ -115,7 +121,7 @@ extension ScholiumCLI {
             let noteID = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
             let current = try await handle.documents.load(noteID)
             try requireExpected(expected, current: current.fingerprint)
-            let result = subcommand == "set-aside"
+            let outcome = subcommand == "set-aside"
                 ? try await handle.documents.setAside(
                     noteID,
                     expectedRevision: current.fingerprint
@@ -124,7 +130,9 @@ extension ScholiumCLI {
                     noteID,
                     expectedRevision: current.fingerprint
                 )
+            let result = outcome.committedValue
             write("Moved \(vault.name):\(path) -> \(result.destination.relativePath)\n")
+            writeMutationWarnings(outcome)
         case "delete":
             guard arguments.count >= 2,
                   arguments.contains("--permanent"),
@@ -144,13 +152,14 @@ extension ScholiumCLI {
             let noteID = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
             let current = try await handle.documents.load(noteID)
             try requireExpected(expected, current: current.fingerprint)
-            _ = try await handle.documents.deletePermanently(
+            let outcome = try await handle.documents.deletePermanently(
                 noteID,
                 expectedRevision: current.fingerprint
             )
             write(
                 "Permanently deleted \(vault.name):\(path). Recovery history was retained.\n"
             )
+            writeMutationWarnings(outcome)
         default:
             throw CLIError.usage("Unknown note command '\(subcommand)'.")
         }
@@ -171,6 +180,21 @@ extension ScholiumCLI {
         guard expectedSHA256.lowercased() == current.sha256.lowercased() else {
             throw CLIError.usage(
                 "Revision mismatch. Re-read the note and use its current SHA-256 fingerprint."
+            )
+        }
+    }
+
+    private static func writeMutationWarnings<CommittedValue: Sendable>(
+        _ outcome: WorkspaceMutationOutcome<CommittedValue>
+    ) {
+        if let warning = outcome.derivedRefreshWarning {
+            writeError(
+                "scholium: warning: The source operation committed, but derived views may be stale. Refresh them; do not repeat the mutation. \(warning)\n"
+            )
+        }
+        if let warning = outcome.identityRecoveryWarning {
+            writeError(
+                "scholium: warning: The source operation committed, but stable note identity recovery is incomplete. Do not repeat the mutation. \(warning)\n"
             )
         }
     }

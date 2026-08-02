@@ -1014,7 +1014,7 @@ extension ScholiumUITests {
             || name.contains("testLineCommentDiscussReopenAndFinish")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
             || name.contains("testResearchActionPanelFits")
-            || name.contains("testSidebarCleanCutoverScopeLocationStickyPutBackAndAttentionWindowJourney") {
+            || name.contains("testSidebarCleanCutoverScopeLocationHoverPutBackAndAttentionWindowJourney") {
             // These journeys exercise the new-Triptych Action surface. Remove
             // only the disposable copy's durable bootstrap marker so the real
             // bootstrap path installs editable Working Methods before launch.

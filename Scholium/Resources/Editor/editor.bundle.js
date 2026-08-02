@@ -31420,10 +31420,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
   function buildLiveProjectionIndex(state, dialect, recordMetric) {
     const startedAt = performance.now();
+    const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
     const syntax = semanticProjectionRanges(
       state,
       [{ from: 0, to: state.doc.length }],
-      0
+      0,
+      tree
     );
     const codeBlocks = syntax.blocks.filter((block) => block.kind === "code").map((block) => ({
       from: block.from,

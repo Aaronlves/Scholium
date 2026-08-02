@@ -147,6 +147,18 @@ final class DocumentTabController: ObservableObject {
         }
     }
 
+    /// Removes a proven-missing batch without inventing a replacement
+    /// selection. WindowModel first attempts the ordinary close plan so a
+    /// surviving adjacent tab can be activated; this is the safe fallback if
+    /// that projection can no longer be activated.
+    func removeTabs(withIDs ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        tabs.removeAll { ids.contains($0.id) }
+        if selectedTabID.map(ids.contains) == true {
+            selectedTabID = nil
+        }
+    }
+
     func updateDocumentProjection(
         _ document: WindowSelectedDocument,
         title: String,

@@ -470,7 +470,7 @@ extension ResearchFunctionOperationsTests {
                     + "\nA bounded synthesis of the selected Analysis.\n"
             ),
             expectedRevision: secondOriginal.fingerprint
-        )
+        ).committedValue
         let secondActivity = try researchActivityCompletion(
             for: secondChild,
             candidateModifiedNotes: [topicIDs[1]],
@@ -533,7 +533,7 @@ extension ResearchFunctionOperationsTests {
                 thirdOriginal.rawContent + "\nA concurrent participant changed this Topic.\n"
             ),
             expectedRevision: thirdOriginal.fingerprint
-        )
+        ).committedValue
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await handle.documents.save(
                 topicIDs[2],
@@ -1292,7 +1292,7 @@ extension ResearchFunctionOperationsTests {
                 document.rawContent + "\nChanged after the request was assembled.\n"
             ),
             expectedRevision: document.fingerprint
-        )
+        ).committedValue
         #expect(saved.document.fingerprint != oldTarget.fingerprint)
         alternativeTarget = try await researchFunctionTarget(
             alternativeID,
@@ -1377,7 +1377,7 @@ extension ResearchFunctionOperationsTests {
         let movedToTrash = try await handle.documents.moveToTrash(
             fixture.workID,
             expectedRevision: parentTarget.fingerprint
-        )
+        ).committedValue
         let trashedWork = try await handle.documents.load(movedToTrash.destination)
         let deletion = Task {
             try await handle.documents.deletePermanently(

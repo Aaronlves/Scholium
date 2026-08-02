@@ -903,6 +903,7 @@ enum ScholiumGrid {
         static let compactHierarchyRowHeight = foundationUnit * 6
         static let preferredCustomTarget = foundationUnit * 7
         static let libraryHierarchyRowHeight = foundationUnit * 7
+        static let accessibilityHierarchyRowHeight = foundationUnit * 11
         static let documentTabStripHeight = foundationUnit * 10
         static let researchFunctionTargetHeight = foundationUnit * 11
         static let regionHeaderHeight = foundationUnit * 12
@@ -1005,6 +1006,10 @@ enum ScholiumMetrics {
         /// Folder and Note rows use the preferred macOS custom-control target.
         /// The value is a minimum so enlarged interface text can grow.
         static let hierarchyRowHeight = ScholiumGrid.Dimension.libraryHierarchyRowHeight
+        /// Native outline rows remain uniform at accessibility text sizes so
+        /// AppKit retains an exact scroll extent without clipping enlarged text.
+        static let accessibilityHierarchyRowHeight =
+            ScholiumGrid.Dimension.accessibilityHierarchyRowHeight
         static let rowHorizontalInset = ScholiumGrid.Spacing.nestedContentInset
         static let hierarchyIndent = ScholiumGrid.Dimension.iconTrackWidth
         static let selectionBoundaryWidth = ScholiumGrid.Spacing.opticalAlignmentAdjustment

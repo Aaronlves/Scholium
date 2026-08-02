@@ -634,56 +634,59 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
     }
 
     private func synchronize(document: Document) {
-        if tabs.isEmpty {
+        let showsPlaceholder = tabs.isEmpty || selectedTabID == nil
+        if showsPlaceholder {
             placeholderHost.rootView = document
-            for item in tabViewController.tabViewItems where item !== placeholderItem {
-                tabViewController.removeTabViewItem(item)
-            }
             if !tabViewController.tabViewItems.contains(where: { $0 === placeholderItem }) {
                 tabViewController.addTabViewItem(placeholderItem)
             }
-            tabViewController.selectedTabViewItemIndex = 0
         } else {
             if tabViewController.tabViewItems.contains(where: { $0 === placeholderItem }) {
                 tabViewController.removeTabViewItem(placeholderItem)
             }
-            let currentIDs = Set(tabs.map(\.id))
-            for staleID in Set(pageHosts.keys).subtracting(currentIDs) {
-                if let staleItem = pageItems[staleID] {
-                    tabViewController.removeTabViewItem(staleItem)
-                }
-                pageHosts[staleID] = nil
-                pageItems[staleID] = nil
+        }
+
+        let currentIDs = Set(tabs.map(\.id))
+        for staleID in Set(pageHosts.keys).subtracting(currentIDs) {
+            if let staleItem = pageItems[staleID] {
+                tabViewController.removeTabViewItem(staleItem)
             }
-            for (index, tab) in tabs.enumerated() {
-                if pageHosts[tab.id] == nil {
-                    let host = NSHostingController(rootView: document)
-                    host.sizingOptions = []
-                    let item = NSTabViewItem(viewController: host)
-                    item.identifier = tab.id
-                    pageHosts[tab.id] = host
-                    pageItems[tab.id] = item
-                    tabViewController.insertTabViewItem(
-                        item,
-                        at: min(index, tabViewController.tabViewItems.count)
-                    )
-                } else if let item = pageItems[tab.id],
-                          let currentIndex = tabViewController.tabViewItems.firstIndex(
-                            where: { $0 === item }
-                          ), currentIndex != index {
-                    tabViewController.removeTabViewItem(item)
-                    tabViewController.insertTabViewItem(item, at: index)
-                }
-                pageItems[tab.id]?.label = tab.title
-                pageItems[tab.id]?.toolTip = tab.toolTip
+            pageHosts[staleID] = nil
+            pageItems[staleID] = nil
+        }
+        for (index, tab) in tabs.enumerated() {
+            if pageHosts[tab.id] == nil {
+                let host = NSHostingController(rootView: document)
+                host.sizingOptions = []
+                let item = NSTabViewItem(viewController: host)
+                item.identifier = tab.id
+                pageHosts[tab.id] = host
+                pageItems[tab.id] = item
+                tabViewController.insertTabViewItem(
+                    item,
+                    at: min(index, tabViewController.tabViewItems.count)
+                )
+            } else if let item = pageItems[tab.id],
+                      let currentIndex = tabViewController.tabViewItems.firstIndex(
+                        where: { $0 === item }
+                      ), currentIndex != index {
+                tabViewController.removeTabViewItem(item)
+                tabViewController.insertTabViewItem(item, at: index)
             }
-            if let selectedTabID, let selectedHost = pageHosts[selectedTabID] {
-                selectedHost.rootView = document
-            }
-            if let selectedTabID,
-               let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
-                tabViewController.selectedTabViewItemIndex = selectedIndex
-            }
+            pageItems[tab.id]?.label = tab.title
+            pageItems[tab.id]?.toolTip = tab.toolTip
+        }
+        if let selectedTabID, let selectedHost = pageHosts[selectedTabID] {
+            selectedHost.rootView = document
+        }
+        if let selectedTabID,
+           let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
+            tabViewController.selectedTabViewItemIndex = selectedIndex
+        } else if showsPlaceholder,
+                  let placeholderIndex = tabViewController.tabViewItems.firstIndex(
+                    where: { $0 === placeholderItem }
+                  ) {
+            tabViewController.selectedTabViewItemIndex = placeholderIndex
         }
         rebuildSelector()
     }

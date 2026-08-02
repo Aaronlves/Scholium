@@ -31,6 +31,7 @@ enum WorkspaceSnapshotBuilder {
     private struct LoadedVault: Sendable {
         let slot: WorkspaceVaultSlot
         let vault: RegisteredVault
+        let pathComparisonPolicy: VaultPathComparisonPolicy
         let folders: [VaultRelativeFolderPath]
         let fileMetadata: [String: WorkspaceFileMetadata]
         let allDocuments: [NoteDocument]
@@ -46,6 +47,7 @@ enum WorkspaceSnapshotBuilder {
         let order: Int
         let slot: WorkspaceVaultSlot
         let vault: RegisteredVault
+        let pathComparisonPolicy: VaultPathComparisonPolicy
         let repository: VaultRepository
         let catalog: VaultSourceCatalog
     }
@@ -81,6 +83,7 @@ enum WorkspaceSnapshotBuilder {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
             let rootURL = await repository.vaultURL
+            let pathComparisonPolicy = await repository.pathComparisonPolicy()
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(
                 atPath: rootURL.path,
@@ -92,6 +95,7 @@ enum WorkspaceSnapshotBuilder {
                 order: order,
                 slot: slot,
                 vault: vault,
+                pathComparisonPolicy: pathComparisonPolicy,
                 repository: repository,
                 catalog: sourceCatalog
             ))
@@ -205,6 +209,7 @@ enum WorkspaceSnapshotBuilder {
                 LoadedVault(
                     slot: slot,
                     vault: vault,
+                    pathComparisonPolicy: loadedSource.input.pathComparisonPolicy,
                     folders: sourceSnapshot.folders,
                     fileMetadata: sourceSnapshot.fileMetadata,
                     allDocuments: allDocuments,
@@ -510,6 +515,7 @@ enum WorkspaceSnapshotBuilder {
             WorkspaceVaultSnapshot(
                 slot: loaded.slot,
                 vault: loaded.vault,
+                pathComparisonPolicy: loaded.pathComparisonPolicy,
                 documents: try loaded.allDocuments.map { document in
                     let id = VaultQualifiedNoteID(
                         vaultID: loaded.vault.id,

@@ -162,6 +162,20 @@ struct DocumentTabControllerTests {
         #expect(controller.tabs.map(\.id) == [active])
     }
 
+    @Test("A proven-missing batch cannot leave a stale selected tab")
+    func missingBatchClearsRemovedSelection() {
+        let controller = DocumentTabController()
+        let first = add(fixtureDocument(path: "Topics/First.md"), to: controller)
+        let selected = add(fixtureDocument(path: "Topics/Deleted.md"), to: controller)
+        let surviving = add(fixtureDocument(path: "Topics/Surviving.md"), to: controller)
+        controller.selectTab(withID: selected)
+
+        controller.removeTabs(withIDs: [first, selected])
+
+        #expect(controller.tabs.map(\.id) == [surviving])
+        #expect(controller.selectedTabID == nil)
+    }
+
     @Test("A stable rename updates the retained tab projection")
     func stableRenameUpdatesRetainedTab() {
         let controller = DocumentTabController()
