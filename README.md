@@ -58,6 +58,19 @@ standing permissions, agent Note-change requests with independently bounded
 child phases, portable Research Records, Recommended Bibliography, local
 read-only Zotero context, and an optional first-party Zotero MCP transport.
 
+Library, Set Aside, and Trash share one native AppKit folder-and-note outline
+and the same browsing grammar. Library creates notes and folders and retains
+menu, keyboard, accessibility, and drag alternatives for organization; Set
+Aside and Trash remain browsable, and Put Back is direct and reversible. A
+durably created or moved source is published immediately in its owning window
+while disposable Search, graph, and diagnostic projections refresh in the
+background.
+
+Each Note has a vault-qualified stable identity distinct from its exact source
+fingerprint. Renames and folder moves can therefore preserve editor, tab, and
+research identity while every mutation still revalidates the current source
+revision and destination before commit.
+
 The public app, CLI, delivery contracts, and records use Action identity.
 Protected Local Execution v2 remains an internal containment, revision,
 completion, conflict, and recovery mechanism. Unsupported pre-production data
@@ -224,9 +237,14 @@ pre-production bytes remain machine-local under:
 
 Every authoritative write validates containment and the expected revision,
 preserves displaced bytes, validates targeted source, writes atomically, and
-reports conflicts without discarding a dirty editor buffer. Derived Search,
-graph, render, and diagnostic state is disposable and never reconstructs
-writable source.
+reports conflicts without discarding a dirty editor buffer. macOS file
+coordination negotiates access with other participants while descriptor-
+relative validation remains the write authority; prewrite recovery retains
+exact interrupted-save candidates rather than treating watcher events or an
+incomplete operation as authority. Acceptance against a configured File
+Provider domain remains explicitly open in Implementation Status. Derived
+Search, graph, render, and diagnostic state is disposable and never
+reconstructs writable source.
 
 Never use real research vaults for development tests.
 

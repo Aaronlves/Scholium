@@ -1840,6 +1840,14 @@ presentation, and scroll observation/restoration by their bounded components
 around the same `EditorView`. None may persist Markdown or create another
 `EditorState`.
 
+`live-projection-index` owns whole-Note topology rather than only the current
+viewport. Before reading its catalog, construction asks CodeMirror's native
+incremental parser for bounded completion through the document end. This keeps
+the parser's viewport-limited initialization tree from being mistaken for a
+complete catalog. If that bounded attempt cannot finish, the index temporarily
+uses the current tree and the later parser-only state transaction rebuilds it;
+there is no regex fallback or second Markdown parser.
+
 Edit and Source are one atomic CodeMirror configuration boundary. One
 `Compartment` owns the mode facet, root/content accessibility attributes,
 wrapping and gutters, and every Live Preview projection field, plugin, widget
