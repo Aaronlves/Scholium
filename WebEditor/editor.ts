@@ -6,6 +6,7 @@ import {
   Facet,
   Prec,
   Range,
+  RangeSet,
   StateEffect,
   StateField,
   Text,
@@ -15,12 +16,13 @@ import {
   Decoration,
   DecorationSet,
   EditorView,
+  GutterMarker,
   ViewPlugin,
   WidgetType,
   ViewUpdate,
+  drawSelection,
   dropCursor,
-  highlightActiveLine,
-  highlightActiveLineGutter,
+  gutterLineClass,
   highlightSpecialChars,
   keymap,
   lineNumbers,
@@ -43,11 +45,8 @@ import {
   undoDepth,
 } from "@codemirror/commands";
 import {
-  CompletionContext,
-  autocompletion,
   closeBrackets,
   closeBracketsKeymap,
-  completionKeymap,
 } from "@codemirror/autocomplete";
 import {
   EDITOR_PROTOCOL_VERSION,
@@ -66,7 +65,7 @@ import {
   rejected,
 } from "./protocol";
 import {applySourceChanges, transformMarkdown} from "./transformations";
-import {continueList, indentList} from "./interaction";
+import {continueCallout, continueList, indentList} from "./interaction";
 import {tableTabAction} from "./tables";
 import {
   type TablePresentation,
@@ -113,10 +112,14 @@ import {createMarkdownEditor} from "./bootstrap";
 import {editorPerformanceSamples, recordEditorMetric, sampleEditorMemory} from "./performance";
 import {createPreviewPopoverController} from "./preview-popover";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
+import {createEditorContextMenuExtension} from "./context-menu";
+import {createEditorInputSuggestions} from "./input-suggestions";
 import {
   createSelectionActionsController,
+  selectionActionCommands,
   type SelectionActionCommand,
 } from "./selection-actions";
+import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {
   AnimationFrameCoalescer,
   interactionAvailabilitySignature,
@@ -152,7 +155,6 @@ interface ScholiumWindow extends Window {
   webkit?: { messageHandlers?: { scholium?: { postMessage(message: unknown): void } } };
   scholiumEditor?: ScholiumEditorAPI;
 }
-interface LinkCandidate { label: string; insertion: string; detail: string; path: string; isAmbiguous: boolean }
 interface SourceDelta { from: number; to: number; insert: string }
 interface WikilinkPresentation { displayStart: number; displayEnd: number; isLegacyRelationship: boolean }
 interface ScholiumEditorAPI {
@@ -167,11 +169,6 @@ let bridgeDocumentID = "";
 let bridgeFingerprint = "";
 let documentVersion = 0;
 const exactSourceMirror = new ExactSourceMirror();
-let nextLinkCompletionRequest = 0;
-const pendingLinkCompletionQueries = new Map<
-  string,
-  (candidates: LinkCandidate[]) => void
->();
 let linkPreviews: LinkPreview[] = [];
 let linkPreviewIndexByRange = new Map<string, number>();
 let editingDialect: MarkdownEditingDialect | null = null;
@@ -314,11 +311,14 @@ class ListMarkerWidget extends WidgetType {
   ignoreEvent() { return false; }
 }
 
-const vectorLinkSemantics: Record<VectorLinkKind, {label: string; symbol: string}> = {
-  neutral: { label: "Related note", symbol: "—" },
-  supports: { label: "Supports", symbol: "+" },
-  opposes: { label: "Opposes", symbol: "−" },
-  incompatible: { label: "Incompatible", symbol: "" },
+const vectorLinkSemantics: Record<
+  VectorLinkKind,
+  {label: string; symbol: WebSystemSymbolKey}
+> = {
+  neutral: { label: "Related note", symbol: "link" },
+  supports: { label: "Supports", symbol: "plus-circle" },
+  opposes: { label: "Opposes", symbol: "minus-circle" },
+  incompatible: { label: "Incompatible", symbol: "xmark-circle" },
 };
 
 class VectorLinkIconWidget extends WidgetType {
@@ -327,22 +327,14 @@ class VectorLinkIconWidget extends WidgetType {
   eq(other: VectorLinkIconWidget) { return other.kind === this.kind; }
   toDOM() {
     const semantics = vectorLinkSemantics[this.kind];
-    const span = document.createElement("span");
-    span.className = `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`;
+    const span = systemSymbolElement(
+      semantics.symbol,
+      `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`,
+    );
     span.title = semantics.label;
+    span.removeAttribute("aria-hidden");
     span.setAttribute("role", "img");
     span.setAttribute("aria-label", semantics.label);
-    if (this.kind === "incompatible") {
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("viewBox", "0 0 20 20");
-      svg.setAttribute("aria-hidden", "true");
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", "M3.1 10.1c2.5-.2 4.5-.1 6.1.1L10 7.1M16.9 10.1c-2.5-.2-4.5-.1-6.1.1L10 13.1");
-      svg.append(path);
-      span.append(svg);
-    } else {
-      span.textContent = semantics.symbol;
-    }
     return span;
   }
   // Let CodeMirror place the caret at this replacement when it is clicked so
@@ -596,9 +588,9 @@ function modifiedProjectedLink(view: EditorView, event: MouseEvent) {
   return true;
 }
 
-function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
+function projectedWidgetSourceOffset(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
-  if (!target || target.closest(".scholium-callout-fold-mark")) return false;
+  if (!target || target.closest(".scholium-callout-fold-mark")) return null;
 
   const calloutSlot = target.closest<HTMLElement>(".cm-live-callout-slot");
   const callout = calloutSlot ? calloutWidgetPresentations.get(calloutSlot) : undefined;
@@ -608,44 +600,40 @@ function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
     const sourceOffset = Number.isSafeInteger(requested)
       ? Math.max(callout.from, Math.min(callout.to, requested))
       : callout.to;
-    event.preventDefault();
-    dispatchProjectedPointerSelection(view, event, sourceOffset);
-    return true;
+    return sourceOffset;
   }
 
   const table = target.closest<HTMLElement>(".cm-live-table-widget");
   const tablePresentation = table ? tableWidgetPresentations.get(table) : undefined;
   if (table && tablePresentation) {
-    event.preventDefault();
-    dispatchProjectedPointerSelection(
-      view,
+    return projectedSourceOffsetAt(
       event,
-      projectedSourceOffsetAt(
-        event,
-        table,
-        tablePresentation.from,
-        tablePresentation.to,
-      ),
+      table,
+      tablePresentation.from,
+      tablePresentation.to,
     );
-    return true;
   }
 
   const mermaid = target.closest<HTMLElement>(".cm-live-mermaid-widget");
   const mermaidPresentation = mermaid ? mermaidWidgetPresentations.get(mermaid) : undefined;
   if (mermaid && mermaidPresentation) {
-    event.preventDefault();
-    dispatchProjectedPointerSelection(view, event, mermaidPresentation.contentFrom);
-    return true;
+    return mermaidPresentation.contentFrom;
   }
 
   const footnote = target.closest<HTMLElement>(".cm-live-footnote-reference-widget");
   const reference = footnote ? footnoteReferencePresentations.get(footnote) : undefined;
   if (reference?.definitionContentFrom !== null && reference?.definitionContentFrom !== undefined) {
-    event.preventDefault();
-    dispatchProjectedPointerSelection(view, event, reference.definitionContentFrom);
-    return true;
+    return reference.definitionContentFrom;
   }
-  return false;
+  return null;
+}
+
+function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
+  const sourceOffset = projectedWidgetSourceOffset(event);
+  if (sourceOffset === null) return false;
+  event.preventDefault();
+  dispatchProjectedPointerSelection(view, event, sourceOffset);
+  return true;
 }
 
 const liveSelection = createLiveSelectionController({
@@ -1324,6 +1312,8 @@ interface SemanticLinePresentation {
   readonly heading: SemanticBlockProjection | null;
   readonly headingMarkers: readonly {from: number; to: number}[];
   readonly paragraph: SemanticBlockProjection | null;
+  readonly callout: SemanticBlockProjection | null;
+  readonly calloutPresentation: CalloutPresentation | null;
   readonly quote: SemanticBlockProjection | null;
   readonly quoteMarkers: readonly {from: number; to: number}[];
   readonly rule: SemanticBlockProjection | null;
@@ -1353,7 +1343,17 @@ function semanticLinePresentation(
     range.from <= line.from && range.to >= line.to);
   const paragraph = blocks.find((block) => block.kind === "paragraph") ?? null;
   const callout = blocks.find((block) => block.kind === "callout") ?? null;
-  const quote = callout ? null : blocks.find((block) => block.kind === "blockQuote") ?? null;
+  const calloutPresentation = rangesIntersecting(index.callouts, line.from, lineQueryTo)[0] ?? null;
+  const calloutActive = calloutPresentation !== null
+    && liveSelection.selection(state).ranges.some((range) =>
+      selectionActivatesCallout(range, calloutPresentation));
+  const calloutOpening = calloutPresentation
+    ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "")
+    : null;
+  const calloutIdentifier = calloutOpening ? calloutDefinition(calloutOpening[2]).identifier : null;
+  const quote = calloutPresentation
+    ? null
+    : blocks.find((block) => block.kind === "blockQuote") ?? null;
   const quoteMarkers = quote?.markerRanges.filter((range) =>
     range.from < lineQueryTo && range.to > line.from) ?? [];
   const rule = blocks.find((block) => block.kind === "thematicBreak") ?? null;
@@ -1387,6 +1387,21 @@ function semanticLinePresentation(
   if (/^\s*$/.test(state.doc.sliceString(line.from, line.to))
       && outsideFrontmatter && !codeBlock) {
     classes.add("cm-live-blank-line");
+  }
+  if (calloutPresentation && calloutActive) {
+    classes.add("cm-live-callout");
+    classes.add("cm-live-callout-source");
+    classes.add(active ? "cm-live-callout-active-line" : "cm-live-callout-projected-line");
+    if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
+      classes.add("cm-live-callout-start");
+      classes.add("cm-live-callout-header");
+    } else {
+      classes.add("cm-live-callout-body-line");
+    }
+    if (state.doc.lineAt(calloutPresentation.to).number === line.number) {
+      classes.add("cm-live-callout-end");
+    }
+    if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
   }
   if (codeBlock) {
     classes.add("cm-live-codeblock");
@@ -1452,6 +1467,8 @@ function semanticLinePresentation(
     heading,
     headingMarkers,
     paragraph,
+    callout,
+    calloutPresentation,
     quote,
     quoteMarkers,
     rule,
@@ -1483,6 +1500,7 @@ function semanticLineDecorationRanges(
       ? "ltr"
       : presentation.heading
           || presentation.paragraph
+          || presentation.calloutPresentation
           || presentation.quote
           || presentation.list
           || presentation.comment
@@ -1891,19 +1909,39 @@ function buildLiveDecorations(
         }
 
         const parsedCallout = rangesIntersecting(
-          parsedProjection.callouts,
+          index.callouts,
           scanFrom,
           lineQueryTo,
         )[0];
         const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
         const activeCallout = parsedCallout && projectionSelections.some((range) =>
           selectionActivatesCallout(range, parsedCallout));
-        if (activeCallout && semanticCallout) {
-          // The Callout role/fold token is block syntax, not an inline link.
-          // Keep that exact source visible while allowing real inline
-          // constructs in the title and body to retain their own projection.
-          structuralInlineExclusions.push(...semanticCallout.markerRanges.filter((range) =>
-            range.from < lineQueryTo && range.to > line.from));
+        if (activeCallout) {
+          const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) =>
+            range.from < lineQueryTo && range.to > line.from) ?? [];
+          const pendingPrefix = semanticLineMarkers.length === 0
+            ? /^\s*>[ \t]*/.exec(doc.sliceString(line.from, line.to))?.[0] ?? ""
+            : "";
+          const lineMarkers: ProjectionSourceRange[] = semanticLineMarkers.length > 0
+            ? semanticLineMarkers
+            : pendingPrefix.length > 0
+              ? [{from: line.from, to: line.from + pendingPrefix.length}]
+              : [];
+          // Callout markers remain excluded from inline semantics on every
+          // line. Only the line owning the current caret exposes those exact
+          // bytes; the rest of the block stays in its Live Preview shell.
+          structuralInlineExclusions.push(...lineMarkers);
+          if (!activeLine) {
+            for (const marker of lineMarkers) {
+              let markerTo = Math.min(line.to, marker.to);
+              while (markerTo < line.to) {
+                const code = doc.sliceString(markerTo, markerTo + 1);
+                if (code !== " " && code !== "\t") break;
+                markerTo += 1;
+              }
+              addHidden(Math.max(line.from, marker.from), markerTo);
+            }
+          }
         }
         const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
         if (quote && !parsedCallout) {
@@ -1914,9 +1952,8 @@ function buildLiveDecorations(
             }
           }
         }
-        // Activating a Callout reveals its block markers, while nested inline
-        // constructs retain their own construct-scoped projection. The
-        // Callout is not a second all-source mode.
+        // Nested inline constructs retain their ordinary construct-scoped
+        // projection. Activating a Callout is never a second all-source mode.
 
         const rule = lineFullyScanned
           ? semanticBlocksOnLine.find((block) => block.kind === "thematicBreak")
@@ -2439,10 +2476,16 @@ function applyInteraction(
 const structuralInteractionKeymap = keymap.of([
   {
     key: "Enter",
-    run: (view) => applyInteraction(
-      continueList(view.state.doc, editorSelections()),
-      "input.scholium.continueList",
-    ),
+    run: (view) => {
+      const selections = editorSelections(view.state);
+      return applyInteraction(
+        (configuredEditorMode(view.state) === "livePreview"
+          ? continueCallout(view.state.doc, selections)
+          : null)
+          ?? continueList(view.state.doc, selections),
+        "input.scholium.continueStructure",
+      );
+    },
   },
   {
     key: "Tab",
@@ -2584,79 +2627,6 @@ const liveProjectionNavigationKeymap = keymap.of([
   {key: "Shift-ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, true)},
 ]);
 
-/** @param {import("@codemirror/autocomplete").CompletionContext} context */
-function wikilinkCompletionSource(context: CompletionContext) {
-  const line = context.state.doc.lineAt(context.pos);
-  const scanFrom = Math.max(line.from, context.pos - 512);
-  const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
-  const match = /\[\[[^\]\n]*$/.exec(beforeCursor);
-  if (!match) return null;
-  const typed = match[0].slice(2);
-  const from = scanFrom + match.index + 2;
-  const requestID = crypto.randomUUID?.()
-    ?? `link-${Date.now()}-${nextLinkCompletionRequest++}`;
-  const candidates = new Promise<LinkCandidate[]>((resolve) => {
-    pendingLinkCompletionQueries.set(requestID, resolve);
-    const cancel = () => {
-      if (!pendingLinkCompletionQueries.delete(requestID)) return;
-      resolve([]);
-    };
-    context.addEventListener("abort", cancel, {onDocChange: true});
-    window.setTimeout(cancel, 3000);
-    post({type: "linkCompletionQuery", requestID, query: typed});
-  });
-  return candidates.then((resolved) => ({
-    from,
-    options: resolved.slice(0, 100).map((candidate) => ({
-      label: candidate.label,
-      detail: candidate.detail,
-      type: "text",
-      apply: candidate.isAmbiguous
-        ? () => undefined
-        : candidate.insertion + "]]",
-    })),
-    filter: false,
-  }));
-}
-
-function resolveLinkCompletionQuery(requestID: string, value: unknown) {
-  const resolve = pendingLinkCompletionQueries.get(requestID);
-  if (!resolve) return;
-  pendingLinkCompletionQueries.delete(requestID);
-  const candidates = Array.isArray(value)
-    ? value.slice(0, 100).filter((candidate): candidate is LinkCandidate => (
-      candidate !== null
-      && typeof candidate === "object"
-      && typeof candidate.label === "string"
-      && typeof candidate.insertion === "string"
-      && typeof candidate.detail === "string"
-      && typeof candidate.path === "string"
-      && typeof candidate.isAmbiguous === "boolean"
-    ))
-    : [];
-  resolve(candidates);
-}
-
-/** @param {import("@codemirror/autocomplete").CompletionContext} context */
-function calloutCompletionSource(context: CompletionContext) {
-  const line = context.state.doc.lineAt(context.pos);
-  if (context.pos - line.from > 512) return null;
-  const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
-  const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
-  if (!match) return null;
-  const typed = match[2].toLocaleLowerCase();
-  const dialectCallouts = editingDialect?.callouts ?? [];
-  const options = dialectCallouts
-    .filter((callout) => !typed || callout.identifier.startsWith(typed))
-    .map((callout) => ({
-      label: callout.identifier,
-      detail: `${callout.label} — ${callout.meaning}`,
-      type: "keyword",
-      apply: `${callout.identifier}] `,
-    }));
-  return { from: context.pos - match[2].length, options, filter: false };
-}
-
 function applySelectionAction(view: EditorView, command: SelectionActionCommand) {
   const transformed = transformMarkdown(
     view.state.doc.toString(),
@@ -2682,14 +2652,59 @@ function applySelectionAction(view: EditorView, command: SelectionActionCommand)
 const selectionActions = createSelectionActionsController({
   applyCommand: applySelectionAction,
   selectionForPresentation: (view) => liveSelection.selection(view.state),
-  presentationSelectionChanged: (update) => liveSelection.changed(
+  presentationInteractionChanged: (update) => liveSelection.interactionChanged(
     update.startState,
     update.state,
   ),
+  pointerSelectionIsComplete: (view) => liveSelection.pointerSelectionIsComplete(view.state),
+  selectionIsAvailable: (view) => !view.state.selection.ranges.some((selection) =>
+    projectionSelectionOverlaps(protectedCommandRanges(), selection)),
 });
 
 const previewPopover = createPreviewPopoverController({
   previews: () => linkPreviews,
+});
+
+const sourceActiveLineDecoration = Decoration.line({class: "cm-activeLine"});
+class SourceActiveLineGutterMarker extends GutterMarker {
+  elementClass = "cm-activeLineGutter";
+}
+const sourceActiveLineGutterMarker = new SourceActiveLineGutterMarker();
+
+function collapsedSelectionLineStarts(state: EditorState) {
+  return state.selection.ranges
+    .filter((range) => range.empty)
+    .map((range) => state.doc.lineAt(range.head).from)
+    .filter((lineStart, index, lineStarts) => lineStarts.indexOf(lineStart) === index)
+    .sort((left, right) => left - right);
+}
+
+// A non-empty Source selection can end immediately after a line break (for
+// example after a triple-click). That endpoint belongs to the selection, not
+// to an active caret on the following logical line.
+const sourceCollapsedActiveLine = [
+  EditorView.decorations.compute(["selection"], (state) => Decoration.set(
+    collapsedSelectionLineStarts(state).map((lineStart) =>
+      sourceActiveLineDecoration.range(lineStart)),
+  )),
+  gutterLineClass.compute(["selection"], (state) => RangeSet.of(
+    collapsedSelectionLineStarts(state).map((lineStart) =>
+      sourceActiveLineGutterMarker.range(lineStart)),
+  )),
+];
+
+const inputSuggestions = createEditorInputSuggestions({
+  mode: configuredEditorMode,
+  dialect: () => editingDialect,
+  isComposing: () => editor.composing,
+  protectedRanges: protectedCommandRanges,
+  requestLinkCompletions: (requestID, query) => {
+    post({type: "linkCompletionQuery", requestID, query});
+  },
+  didApply: (undoLabel) => {
+    lastUndoLabel = undoLabel;
+    lastRedoLabel = undoLabel;
+  },
 });
 
 // One CodeMirror compartment is the complete presentation-mode boundary.
@@ -2701,6 +2716,7 @@ const livePreviewMode = [
   EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
   Prec.high(liveSelection.extension),
   liveProjectionIndex.extension,
+  inputSuggestions.extension,
   liveSemanticLineField,
   liveSemanticBlockSpacingField,
   liveFrontmatterGuardField,
@@ -2721,23 +2737,29 @@ const sourceMode = [
   EditorView.editorAttributes.of({class: "scholium-source-mode"}),
   EditorView.contentAttributes.of(editorAccessibilityAttributes("source")),
   lineNumbers(),
-  highlightActiveLineGutter(),
+  sourceCollapsedActiveLine,
   foldGutter(),
-  highlightActiveLine(),
   sourceTextDirection,
   EditorView.lineWrapping,
 ];
+const editorContextMenu = createEditorContextMenuExtension({
+  context: (view) => currentEditorContext(view),
+  mode: (view) => configuredEditorMode(view.state),
+  positionAtEvent: (view, event) => projectedWidgetSourceOffset(event)
+    ?? view.posAtCoords({x: event.clientX, y: event.clientY}),
+  request: (request) => post({type: "contextMenuRequested", ...request}),
+});
 
 const editorExtensions = [
       highlightSpecialChars(),
       history(),
+      drawSelection({drawRangeCursor: false}),
       textSelectionPresentation,
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
       bidiIsolates(),
       closeBrackets(),
-      autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
       rectangularSelection(),
       EditorView.perLineTextDirection.of(true),
       scholiumNoteLanguage,
@@ -2746,10 +2768,10 @@ const editorExtensions = [
         ...defaultKeymap,
         ...historyKeymap,
         ...foldKeymap,
-        ...completionKeymap,
       ]),
-      structuralInteractionKeymap,
+      Prec.high(structuralInteractionKeymap),
       saveKeymap,
+      editorContextMenu,
       stateReporter,
       linkActivation,
       lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
@@ -2774,7 +2796,7 @@ const scrollCoordinator = createEditorScrollCoordinator(editor, {
     scrollFraction: scrollAnchor.fallbackFraction,
     scrollAnchor,
   }),
-  onScroll: () => selectionActions.update(editor),
+  onScroll: () => selectionActions.reposition(editor),
   flushPresentationGeometry: flushPresentationStyleAndGeometry,
 });
 for (const mediaQuery of [
@@ -2785,22 +2807,20 @@ for (const mediaQuery of [
 }
 
 const allCommands = [
-  "bold", "emphasis", "strikethrough", "highlight", "inlineCode",
-  "standardLink", "wikilink", "vectorSupports", "vectorOpposes", "vectorIncompatible",
-  "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
-  "blockQuotation", "bulletList", "numberedList", "taskList", "fencedCode", "thematicBreak",
+  ...selectionActionCommands,
+  "thematicBreak",
   "calloutOrient", "calloutCite", "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
   "insertFootnote", "insertTable", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
   "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown", "linkSelectedText",
 ] as const;
 
-function editorSelections() {
-  return editor.state.selection.ranges.map((range) => ({anchor: range.anchor, head: range.head}));
+function editorSelections(state = editor.state) {
+  return state.selection.ranges.map((range) => ({anchor: range.anchor, head: range.head}));
 }
 
-function protectedCommandRanges() {
-  return liveProjectionIndex.index(editor.state).commandProtectedRanges;
+function protectedCommandRanges(state = editor.state) {
+  return liveProjectionIndex.index(state).commandProtectedRanges;
 }
 
 function indexedTablePositionAt(state: EditorState, offset: number) {
@@ -2810,25 +2830,26 @@ function indexedTablePositionAt(state: EditorState, offset: number) {
   )?.position;
 }
 
-function currentEditorContext(): EditorContext {
+function currentEditorContext(view = editor): EditorContext {
+  const state = view.state;
   const inline = new Set<string>();
   const block = new Set<string>();
   const selectionLinePrefixes: string[] = [];
-  for (const selection of editor.state.selection.ranges) {
-    const linePrefix = boundedLinePrefix(editor.state.doc, selection.head);
+  for (const selection of state.selection.ranges) {
+    const linePrefix = boundedLinePrefix(state.doc, selection.head);
     selectionLinePrefixes.push(linePrefix);
-    for (let node = syntaxTree(editor.state).resolveInner(selection.head, -1); node; node = node.parent!) {
+    for (let node = syntaxTree(state).resolveInner(selection.head, -1); node; node = node.parent!) {
       if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
       if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
       if (!node.parent) break;
     }
     if (calloutHeader(linePrefix)) block.add("Callout");
   }
-  const protectedRanges = protectedCommandRanges();
-  const protectedSelection = editor.state.selection.ranges.some((selection) =>
+  const protectedRanges = protectedCommandRanges(state);
+  const protectedSelection = state.selection.ranges.some((selection) =>
     projectionSelectionOverlaps(protectedRanges, selection));
-  const currentTablePosition = editor.state.selection.ranges.length === 1
-    ? indexedTablePositionAt(editor.state, editor.state.selection.main.head)
+  const currentTablePosition = state.selection.ranges.length === 1
+    ? indexedTablePositionAt(state, state.selection.main.head)
     : undefined;
   const tableOnlyCommands = new Set([
     "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
@@ -2840,18 +2861,18 @@ function currentEditorContext(): EditorContext {
     if (command === "toggleTask") {
       return selectionLinePrefixes.every((linePrefix) => /^\s*-\s+\[[ xX]\]/.test(linePrefix));
     }
-    if (command === "linkSelectedText") return editor.state.selection.ranges.every((selection) => !selection.empty);
+    if (command === "linkSelectedText") return state.selection.ranges.every((selection) => !selection.empty);
     return true;
   });
   return {
-    selections: editorSelections(),
+    selections: editorSelections(state),
     activeInlineConstructs: [...inline],
     activeBlockConstructs: [...block],
     tablePosition: currentTablePosition,
-    composing: editor.composing,
-    availableCommands: editor.composing || protectedSelection ? [] : availableCommands,
-    undoLabel: undoDepth(editor.state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
-    redoLabel: redoDepth(editor.state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
+    composing: view.composing,
+    availableCommands: view.composing || protectedSelection ? [] : availableCommands,
+    undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
+    redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
   };
 }
 
@@ -3406,7 +3427,7 @@ const editorOperations = {
 
 webkitWindow.scholiumEditor = {
   dispatch: dispatchEditorRequest,
-  resolveLinkCompletionQuery,
+  resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
 };
 
 recordEditorMetric("startup", editorStartupStartedAt, {documentLength: editor.state.doc.length});

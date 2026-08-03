@@ -10,6 +10,11 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   or bold text; audit every important custom target below 28 × 28pt.
 - Preserve hierarchy under Increase Contrast, Reduce Transparency, Reduce
   Motion, inactive windows, 200% document text, and accent changes.
+- Treat custom elevation only as a secondary depth cue. Increase Contrast
+  removes its soft shadow and strengthens the semantic boundary; Reduce
+  Transparency and inactive-window presentation may weaken it. The surface,
+  boundary, label, focus, and placement must keep every floating action or
+  presentation distinguishable when elevation is absent.
 - Give every important state two suitable channels; never rely only on color,
   motion, sound, location, or arrow direction.
 - Actions exposes every official and researcher-enabled operation as a linear
@@ -28,9 +33,9 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   keyboard- and VoiceOver-reachable **Open in Zotero** button inside About;
   neither the key nor metadata enters the accessibility tree. Each Connect
   Note row is one primary button whose accessible name
-  states its relationship; its cluster glyph is decorative and hidden from
+  states its relationship; its cluster symbol is decorative and hidden from
   accessibility. A distinct source anchor remains a named accessibility action
-  after the visual trailing glyph is removed.
+  after the visual trailing symbol is removed.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, Action sheets, conflict comparison, and
   Research Record close.
@@ -108,6 +113,15 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   reachable and expose every visible command by name. Review's Comment field announces the inclusive line
   range, Return-to-save, Shift-Return-to-insert-line, and Escape-to-cancel
   behavior without moving or erasing the underlying document selection.
+- Edit input suggestions retain document focus and expose one current listbox
+  selection: Up/Down Arrow moves through results, Return accepts, Escape closes,
+  and primary click accepts the pointed row. Closing or accepting returns to the
+  same CodeMirror caret; scrolling keeps the list attached to it. Note title and
+  path remain distinguishable at enlarged interface text, long paths truncate
+  without hiding the title, and empty or ambiguous results never trap focus.
+  Completion names, roles, selected state, and result count remain available to
+  VoiceOver without exposing SF Symbols as duplicate labels. Marked-text
+  composition opens no suggestion list and receives no forced selection.
 - The Appearance Line width slider has a localized label and help text, exposes
   its current value in character-width units, and supports standard keyboard
   adjustment and VoiceOver without requiring pointer dragging.

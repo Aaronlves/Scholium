@@ -1,12 +1,12 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 8
+let markdownEditorProtocolVersion = 9
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
-    case bold, emphasis, strikethrough, highlight, inlineCode
+    case bold, emphasis, strikethrough, highlight, inlineCode, markdownComment
     case standardLink, wikilink, vectorSupports, vectorOpposes, vectorIncompatible
     case paragraph, heading1, heading2, heading3, heading4, heading5, heading6
     case blockQuotation, bulletList, numberedList, taskList, fencedCode, thematicBreak

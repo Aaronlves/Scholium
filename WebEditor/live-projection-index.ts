@@ -122,6 +122,24 @@ function indexedTablePositionRanges(
   return immutableProjectionRanges(ranges);
 }
 
+function calloutRangeIncludingPendingQuoteLines(
+  doc: Text,
+  range: ProjectionSourceRange,
+) {
+  let line = doc.lineAt(range.to);
+  let to = range.to;
+  if (range.to > line.from && /^\s*>[ \t]*$/.test(line.text)) {
+    to = line.to;
+  }
+  while (line.number < doc.lines) {
+    const next = doc.line(line.number + 1);
+    if (!/^\s*>[ \t]*$/.test(next.text)) break;
+    to = next.to;
+    line = next;
+  }
+  return {from: range.from, to};
+}
+
 function finalizedLiveProjectionIndex(
   doc: Text,
   topologyIdentity: object,
@@ -290,7 +308,7 @@ function buildLiveProjectionIndex(
     .map(({from, to}) => ({from, to}));
   const calloutRanges = syntax.blocks
     .filter((block) => block.kind === "callout")
-    .map(({from, to}) => ({from, to}));
+    .map(({from, to}) => calloutRangeIncludingPendingQuoteLines(state.doc, {from, to}));
   const yamlBoundary = frontmatterBoundary(state.doc);
   const yamlBodyFrom = yamlBoundary.endLine === 0
     ? 0

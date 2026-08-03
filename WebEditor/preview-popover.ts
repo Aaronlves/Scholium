@@ -1,6 +1,7 @@
 import type {Extension} from "@codemirror/state";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
+import {floatingSurfacePosition} from "./floating-surface-geometry";
 import {recordEditorMetric} from "./performance";
 import type {LinkPreview, VectorLinkKind} from "./previews";
 
@@ -63,13 +64,17 @@ export function createPreviewPopoverController(
       }),
       write: ({measured, viewportWidth, viewportHeight}) => {
         if (activeRoot.hidden || editor !== activeEditor || root !== activeRoot) return;
-        const left = Math.max(inset, Math.min(anchor.left, viewportWidth - measured.width - inset));
-        const below = anchor.bottom + gap;
-        const top = below + measured.height <= viewportHeight - inset
-          ? below
-          : Math.max(inset, anchor.top - measured.height - gap);
-        activeRoot.style.left = `${left}px`;
-        activeRoot.style.top = `${top}px`;
+        const resolved = floatingSurfacePosition({
+          anchor,
+          surface: measured,
+          viewport: {width: viewportWidth, height: viewportHeight},
+          horizontal: "start",
+          preferredPlacement: "below",
+          inset,
+          gap,
+        });
+        activeRoot.style.left = `${resolved.left}px`;
+        activeRoot.style.top = `${resolved.top}px`;
         activeRoot.style.visibility = "visible";
         window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
           documentLength: activeEditor.state.doc.length,
@@ -165,6 +170,7 @@ export function createPreviewPopoverController(
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && root && !root.hidden) hide();
   };
+  const handleViewportExit = () => hide();
 
   function mount(view: EditorView) {
     if (editor) return;
@@ -190,6 +196,9 @@ export function createPreviewPopoverController(
     document.addEventListener("pointermove", handlePointerMove, {passive: true});
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("keydown", handleKeyDown);
+    view.scrollDOM.addEventListener("scroll", handleViewportExit, {passive: true});
+    window.addEventListener("resize", handleViewportExit);
+    window.addEventListener("blur", handleViewportExit);
   }
 
   function unmount(view: EditorView) {
@@ -198,6 +207,9 @@ export function createPreviewPopoverController(
     document.removeEventListener("pointermove", handlePointerMove);
     document.removeEventListener("keyup", handleKeyUp);
     document.removeEventListener("keydown", handleKeyDown);
+    view.scrollDOM.removeEventListener("scroll", handleViewportExit);
+    window.removeEventListener("resize", handleViewportExit);
+    window.removeEventListener("blur", handleViewportExit);
     root?.remove();
     root = null;
     title = null;

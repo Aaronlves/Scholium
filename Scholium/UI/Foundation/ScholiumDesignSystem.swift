@@ -491,14 +491,12 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Hashable, Identifiable, 
         }
     }
 
-    var glyphKind: ScholiumConnectionGlyphKind {
+    var systemSymbol: ScholiumSystemSymbol {
         switch self {
-        case .supports: .supports
-        case .supportsThisNote: .supportedBy
-        case .opposes: .opposes
-        case .opposesThisNote: .opposedBy
-        case .incompatible: .incompatible
-        case .neutral: .neutral
+        case .supports, .supportsThisNote: .plusCircle
+        case .opposes, .opposesThisNote: .minusCircle
+        case .incompatible: .xmarkCircle
+        case .neutral: .link
         }
     }
 }
@@ -516,6 +514,9 @@ enum ScholiumWebDesignTokens {
     """
     static let resolvedColorRoleCSSVariableNames = Set(
         ScholiumColorRole.allCases.map(\.cssVariableName)
+    )
+    static let resolvedElevationRoleCSSVariableNames = Set(
+        ScholiumElevationRole.allCases.map(\.cssVariableName)
     )
 
     static let rhythmCSSDeclarations = """
@@ -567,6 +568,18 @@ enum ScholiumWebDesignTokens {
         isDark: true,
         increasedContrast: true
     )
+    static let elevationCSSDeclarations = elevationDeclarations(
+        increasedContrast: false,
+        reduceTransparency: false
+    )
+    static let reducedTransparencyElevationCSSDeclarations = elevationDeclarations(
+        increasedContrast: false,
+        reduceTransparency: true
+    )
+    static let increasedContrastElevationCSSDeclarations = elevationDeclarations(
+        increasedContrast: true,
+        reduceTransparency: false
+    )
 
     private static func colorDeclarations(
         isDark: Bool,
@@ -582,6 +595,19 @@ enum ScholiumWebDesignTokens {
         }.joined(separator: "\n")
     }
 
+    private static func elevationDeclarations(
+        increasedContrast: Bool,
+        reduceTransparency: Bool
+    ) -> String {
+        ScholiumElevationRole.allCases.map { role in
+            let value = role.cssBoxShadow(
+                increasedContrast: increasedContrast,
+                reduceTransparency: reduceTransparency
+            )
+            return "\(role.cssVariableName): \(value);"
+        }.joined(separator: "\n")
+    }
+
     /// One runtime presentation contract for every WebKit-backed document
     /// surface. Read and CodeMirror both append this Swift-owned block; the
     /// resource stylesheet consumes these variables rather than duplicating
@@ -590,6 +616,7 @@ enum ScholiumWebDesignTokens {
     :root {
       color-scheme: light dark;
       \(rootCSSDeclarations)
+      \(elevationCSSDeclarations)
       \(fixedDocumentSyntaxCSSDeclarations)
       \(rhythmCSSDeclarations)
     }
@@ -830,49 +857,265 @@ enum ScholiumWebDesignTokens {
       text-decoration: none;
     }
     .scholium-selection-actions {
+      --scholium-selection-glyph-size: 16px;
       position: fixed;
       z-index: 110;
       box-sizing: border-box;
       padding: 4px;
-      border: 1px solid var(--scholium-color-accent);
-      border-radius: 8px;
+      border: 1px solid var(--scholium-color-separator);
+      border-radius: 9px;
       color: var(--scholium-color-primary-text);
       background: var(--scholium-color-surface-background);
-      font: 13px/1.3 -apple-system, BlinkMacSystemFont, sans-serif;
+      box-shadow: var(--scholium-elevation-floating-control);
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1;
     }
     .scholium-selection-actions[hidden] {
       display: none;
     }
     .scholium-selection-toolbar {
       display: flex;
-      gap: 4px;
+      align-items: center;
+      gap: 1px;
     }
-    .scholium-selection-toolbar button {
+    .scholium-selection-control {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      box-sizing: border-box;
       min-width: 28px;
       min-height: 28px;
-      padding: 4px 7px;
+      padding: 3px 6px;
       border: 0;
       border-radius: 5px;
       color: inherit;
       background: transparent;
       font: inherit;
+      cursor: default;
     }
-    .scholium-selection-toolbar button:hover {
-      color: var(--scholium-color-accent-hover);
-      background: var(--scholium-color-document-background);
+    .scholium-selection-control:hover,
+    .scholium-selection-menu-item:hover {
+      color: var(--scholium-color-primary-text);
+      background: var(--scholium-color-surface-background);
     }
-    .scholium-selection-toolbar button:focus-visible {
-      color: var(--scholium-color-accent-hover);
-      background: var(--scholium-color-document-background);
+    .scholium-selection-control:active,
+    .scholium-selection-menu-item:active {
+      color: var(--scholium-color-primary-text);
+      background: var(--scholium-color-surface-background);
+    }
+    .scholium-selection-control:focus-visible,
+    .scholium-selection-menu-item:focus-visible {
+      color: var(--scholium-color-primary-text);
+      background: var(--scholium-color-surface-background);
       outline: 2px solid var(--scholium-color-accent);
       outline-offset: 1px;
+    }
+    .scholium-selection-symbol {
+      inline-size: var(--scholium-selection-glyph-size);
+      block-size: var(--scholium-selection-glyph-size);
+    }
+    .scholium-selection-icon-style {
+      inline-size: 18px;
+    }
+    .scholium-selection-chevron {
+      inline-size: 10px;
+      block-size: 10px;
+    }
+    .scholium-selection-highlight-icon,
+    .scholium-selection-link-icon,
+    .scholium-selection-more-icon {
+      inline-size: var(--scholium-selection-glyph-size);
+      block-size: var(--scholium-selection-glyph-size);
+    }
+    .scholium-selection-menu-symbol {
+      inline-size: 14px;
+      block-size: 14px;
+    }
+    .scholium-selection-label,
+    .scholium-selection-menu-label {
+      font-size: 12px;
+      line-height: 16px;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+    .scholium-selection-style-trigger {
+      padding-inline: 6px 4px;
+    }
+    .scholium-selection-wiki-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 0;
+    }
+    .scholium-selection-wiki-primary {
+      min-width: 0;
+      padding-inline: 7px 3px;
+      border-start-end-radius: 3px;
+      border-end-end-radius: 3px;
+    }
+    .scholium-selection-wiki-menu-trigger {
+      min-width: 22px;
+      padding-inline: 2px 5px;
+      border-start-start-radius: 3px;
+      border-end-start-radius: 3px;
+    }
+    .scholium-selection-separator {
+      inline-size: 1px;
+      block-size: 18px;
+      margin-inline: 2px;
+      background: var(--scholium-color-separator);
+    }
+    .scholium-selection-menu {
+      position: fixed;
+      z-index: 112;
+      box-sizing: border-box;
+      inline-size: max-content;
+      max-inline-size: calc(100vw - 16px);
+      max-block-size: calc(100vh - 16px);
+      padding: 4px;
+      overflow: auto;
+      border: 1px solid var(--scholium-color-separator);
+      border-radius: 8px;
+      color: var(--scholium-color-primary-text);
+      background: var(--scholium-color-surface-background);
+      box-shadow: var(--scholium-elevation-bounded-panel);
+    }
+    .scholium-selection-menu[hidden] {
+      display: none;
+    }
+    .scholium-selection-menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 6px;
+      box-sizing: border-box;
+      inline-size: 100%;
+      min-block-size: 28px;
+      padding: 4px 8px;
+      border: 0;
+      border-radius: 5px;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+      text-align: start;
+      cursor: default;
+    }
+    .scholium-selection-menu-check {
+      inline-size: 12px;
+      block-size: 12px;
+      color: transparent;
+    }
+    .scholium-selection-menu-check-active {
+      color: currentColor;
+    }
+    .scholium-selection-submenu-trigger {
+      justify-content: space-between;
+    }
+    .scholium-selection-menu-leading {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .scholium-selection-submenu-chevron {
+      inline-size: 12px;
+      block-size: 12px;
+      transform: rotate(-90deg);
+    }
+    .scholium-selection-compact-only {
+      display: none;
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions {
+      z-index: 112;
+      box-sizing: border-box;
+      min-inline-size: 220px;
+      inline-size: max-content;
+      max-inline-size: min(360px, calc(100vw - 16px));
+      padding: 4px;
+      overflow: hidden;
+      border: 1px solid var(--scholium-color-separator);
+      border-radius: 8px;
+      color: var(--scholium-color-primary-text);
+      background: var(--scholium-color-surface-background);
+      box-shadow: var(--scholium-elevation-bounded-panel);
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+      line-height: 16px;
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul {
+      min-inline-size: 0;
+      max-block-size: min(200px, calc(100vh - 24px));
+      margin: 0;
+      padding: 0;
+      border: 0;
+      font-family: inherit;
+      font-size: inherit;
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-sizing: border-box;
+      min-block-size: 28px;
+      max-inline-size: 352px;
+      padding: 4px 8px;
+      overflow: hidden;
+      border-radius: 5px;
+      color: inherit;
+      background: transparent;
+      white-space: nowrap;
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li[aria-selected="true"] {
+      color: var(--scholium-color-primary-text);
+      background: var(--scholium-color-surface-background);
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions .scholium-completion-symbol {
+      flex: 0 0 14px;
+      inline-size: 14px;
+      block-size: 14px;
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionLabel {
+      min-inline-size: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionMatchedText {
+      color: inherit;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionDetail {
+      min-inline-size: 0;
+      max-inline-size: 168px;
+      margin-inline-start: auto;
+      overflow: hidden;
+      color: var(--scholium-color-secondary-text);
+      font-size: 11px;
+      font-style: normal;
+      text-overflow: ellipsis;
+      unicode-bidi: plaintext;
+    }
+    @media (max-width: 520px) {
+      .scholium-selection-wide-only {
+        display: none;
+      }
+      .scholium-selection-menu-item.scholium-selection-compact-only {
+        display: flex;
+      }
     }
     @media (prefers-color-scheme: dark) {
       :root { \(darkAppearanceCSSDeclarations) }
     }
+    @media (prefers-reduced-transparency: reduce) {
+      :root { \(reducedTransparencyElevationCSSDeclarations) }
+    }
     @media (prefers-contrast: more) {
-      :root { \(increasedContrastCSSDeclarations) }
-      .scholium-selection-actions { border-width: 2px; }
+      :root {
+        \(increasedContrastCSSDeclarations)
+        \(increasedContrastElevationCSSDeclarations)
+      }
+      .scholium-selection-actions,
+      .scholium-selection-menu,
+      .cm-tooltip-autocomplete.scholium-editor-suggestions { border-width: 2px; }
     }
     @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
       :root { \(darkIncreasedContrastCSSDeclarations) }
@@ -942,7 +1185,7 @@ enum ScholiumGrid {
         static let iconColumnWidth = foundationUnit * 4
         static let iconToTextGap = foundationUnit * 2
         static let relationGlyphColumnWidth = foundationUnit * 6
-        static let relationGlyphSize = foundationUnit * 5
+        static let relationGlyphSize = foundationUnit * 3.5
         static let relationGlyphToTextGap = foundationUnit
         static let relationClusterGap = foundationUnit * 3
         static let relationPinnedGlyphTop = foundationUnit * 9
@@ -1243,22 +1486,60 @@ enum ScholiumElevationRole: CaseIterable, Sendable {
     case boundedPanel
     case searchOverlay
 
-    func style(reduceTransparency: Bool, appearsActive: Bool) -> ScholiumElevationStyle {
+    var cssVariableName: String {
+        switch self {
+        case .floatingControl: "--scholium-elevation-floating-control"
+        case .boundedPanel: "--scholium-elevation-bounded-panel"
+        case .searchOverlay: "--scholium-elevation-search-overlay"
+        }
+    }
+
+    func style(
+        increasedContrast: Bool,
+        reduceTransparency: Bool,
+        appearsActive: Bool
+    ) -> ScholiumElevationStyle {
         let recipe: ScholiumElevationStyle = switch self {
         case .floatingControl:
             .init(opacity: 0.04, radius: 4, x: 0, y: 2)
         case .boundedPanel:
-            .init(opacity: 0.03, radius: 4, x: 0, y: 2)
+            .init(opacity: 0.08, radius: 8, x: 0, y: 4)
         case .searchOverlay:
             .init(opacity: 0.12, radius: 12, x: 0, y: 6)
         }
+        let contrastMultiplier = increasedContrast ? 0.0 : 1.0
         let transparencyMultiplier = reduceTransparency ? 0.5 : 1.0
         let activityMultiplier = appearsActive ? 1.0 : 0.6
         return .init(
-            opacity: recipe.opacity * transparencyMultiplier * activityMultiplier,
+            opacity: recipe.opacity
+                * contrastMultiplier
+                * transparencyMultiplier
+                * activityMultiplier,
             radius: recipe.radius,
             x: recipe.x,
             y: recipe.y
+        )
+    }
+
+    /// WebKit consumes the same semantic recipe in CSS pixels. This is a
+    /// renderer-specific resolution, not a macOS-point-to-CSS-pixel conversion.
+    func cssBoxShadow(
+        increasedContrast: Bool,
+        reduceTransparency: Bool
+    ) -> String {
+        let style = style(
+            increasedContrast: increasedContrast,
+            reduceTransparency: reduceTransparency,
+            appearsActive: true
+        )
+        guard style.opacity > 0 else { return "none" }
+        return String(
+            format: "%gpx %gpx %gpx rgb(0 0 0 / %.4f)",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(style.x),
+            Double(style.y),
+            Double(style.radius),
+            style.opacity
         )
     }
 }
@@ -1408,11 +1689,13 @@ private struct ScholiumSurfaceModifier: ViewModifier {
 
 private struct ScholiumElevationModifier: ViewModifier {
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     @Environment(\.scholiumAppearsActive) private var appearsActive
     let role: ScholiumElevationRole
 
     func body(content: Content) -> some View {
         let style = role.style(
+            increasedContrast: increasedContrast,
             reduceTransparency: reduceTransparency,
             appearsActive: appearsActive
         )

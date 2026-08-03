@@ -50,23 +50,22 @@ enum ReviewSelectionPresentation {
             const reviewSelectionPresentation = {
               supported: reviewSelectionSupported,
               clear() {
+                const hadRanges = reviewSelectionTextRanges.length > 0;
                 reviewSelectionTextRanges = [];
-                if (this.supported) CSS.highlights.delete('scholium-review-selection');
+                if (this.supported && hadRanges) CSS.highlights.delete('scholium-review-selection');
               },
-              update(selection, main) {
+              update(selection, main, textNodesInRange) {
                 this.clear();
-                if (!this.supported || !main || !selection || selection.rangeCount !== 1 || selection.isCollapsed) return;
+                if (!this.supported
+                    || !main
+                    || !selection
+                    || selection.rangeCount !== 1
+                    || selection.isCollapsed
+                    || typeof textNodesInRange !== 'function') return;
                 const sourceRange = selection.getRangeAt(0);
                 if (!main.contains(sourceRange.startContainer) || !main.contains(sourceRange.endContainer)) return;
-                const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
-                let node;
-                while ((node = walker.nextNode())) {
+                for (const node of textNodesInRange(sourceRange, main)) {
                   if (!node.textContent?.trim() || node.parentElement?.closest('[aria-hidden="true"], script, style')) continue;
-                  try {
-                    if (!sourceRange.intersectsNode(node)) continue;
-                  } catch (_) {
-                    continue;
-                  }
                   const from = sourceRange.startContainer === node ? sourceRange.startOffset : 0;
                   const to = sourceRange.endContainer === node ? sourceRange.endOffset : node.length;
                   if (from >= to) continue;

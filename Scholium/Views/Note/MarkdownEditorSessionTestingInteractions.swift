@@ -5,6 +5,37 @@ import WebKit
 
 @MainActor
 extension MarkdownEditorSession {
+    func testingScrollEditor(by delta: Double) async throws -> Double {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const scroller = document.querySelector('.cm-scroller');
+            if (!scroller) return null;
+            const before = scroller.scrollTop;
+            scroller.scrollTop = before + delta;
+            scroller.dispatchEvent(new Event('scroll'));
+            await new Promise(resolve => {
+              let settled = false;
+              const finish = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+              };
+              requestAnimationFrame(() => requestAnimationFrame(finish));
+              setTimeout(finish, 100);
+            });
+            return scroller.scrollTop - before;
+            """,
+            arguments: ["delta": delta],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let applied = (result as? NSNumber)?.doubleValue else {
+            throw SessionError.invalidResult
+        }
+        return applied
+    }
+
     func testingClickFirstCalloutText(_ requestedText: String) async throws {
         guard let webView else { throw SessionError.unavailable }
         let result = try await webView.callAsyncJavaScript(
@@ -25,8 +56,10 @@ extension MarkdownEditorSession {
                         clientX: rect.left + Math.min(8, rect.width / 2),
                         clientY: (rect.top + rect.bottom) / 2
                     }));
+                    const revealedOnMouseDown = !root.isConnected
+                        && document.querySelectorAll('.cm-line.cm-live-callout').length > 0;
                     window.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                    return true;
+                    return revealedOnMouseDown;
                 }
             }
             return false;
@@ -270,6 +303,9 @@ extension MarkdownEditorSession {
                 detail: 1
             }));
             const duringDragLineText = lineTextValue();
+            const toolbarHiddenDuringDrag = document.getElementById(
+                'scholium-selection-actions'
+            )?.hidden !== false;
             document.dispatchEvent(new MouseEvent('mouseup', {
                 view: window,
                 bubbles: true,
@@ -282,7 +318,15 @@ extension MarkdownEditorSession {
             }));
             await Promise.resolve();
             const afterMouseUpLineText = lineTextValue();
-            return {duringDragLineText, afterMouseUpLineText};
+            const toolbarVisibleAfterMouseUp = document.getElementById(
+                'scholium-selection-actions'
+            )?.hidden === false;
+            return {
+                duringDragLineText,
+                afterMouseUpLineText,
+                toolbarHiddenDuringDrag,
+                toolbarVisibleAfterMouseUp
+            };
             """,
             arguments: [
                 "startText": startText,
@@ -294,10 +338,17 @@ extension MarkdownEditorSession {
         )
         guard let payload = rawResult as? [String: Any],
               let during = payload["duringDragLineText"] as? String,
-              let after = payload["afterMouseUpLineText"] as? String else {
+              let after = payload["afterMouseUpLineText"] as? String,
+              let hiddenDuring = payload["toolbarHiddenDuringDrag"] as? Bool,
+              let visibleAfter = payload["toolbarVisibleAfterMouseUp"] as? Bool else {
             throw SessionError.invalidResult
         }
-        return TestingPointerProjectionResult(duringDragLineText: during, afterMouseUpLineText: after)
+        return TestingPointerProjectionResult(
+            duringDragLineText: during,
+            afterMouseUpLineText: after,
+            toolbarHiddenDuringDrag: hiddenDuring,
+            toolbarVisibleAfterMouseUp: visibleAfter
+        )
     }
 
     func testingClickBlankLine(between precedingText: String, and followingText: String) async throws {
@@ -463,6 +514,30 @@ extension MarkdownEditorSession {
                 code: 'Backspace',
                 keyCode: 8,
                 which: 8,
+                bubbles: true,
+                cancelable: true
+            });
+            content.dispatchEvent(event);
+            return event.defaultPrevented;
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        guard result as? Bool == true else { throw SessionError.invalidResult }
+    }
+
+    func testingPressEnter() async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            if (!content) return false;
+            const event = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                code: 'Enter',
+                keyCode: 13,
+                which: 13,
                 bubbles: true,
                 cancelable: true
             });

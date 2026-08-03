@@ -171,6 +171,51 @@ extension MarkdownEditorSession {
         let presentation: TestingPresentationSnapshot
     }
 
+    struct TestingSelectionToolbarSnapshot: Decodable, Sendable {
+        let hidden: Bool
+        let toolbarRole: String
+        let toolbarLabel: String
+        let visibleControlLabels: [String]
+        let visibleMenuLabels: [String]
+        let visibleMenuCommands: [String]
+        let openMenuCount: Int
+        let wikiSeparatorCount: Int
+        let containsMarkdownSyntax: Bool
+        let focusedLabel: String
+        let rootWidth: Double
+        let rootHeight: Double
+        let rootLeft: Double
+        let rootTop: Double
+        let rootBottom: Double
+        let selectionLeft: Double
+        let selectionRight: Double
+        let selectionTop: Double
+        let selectionBottom: Double
+        let viewportWidth: Double
+        let viewportHeight: Double
+        let minimumControlHeight: Double
+        let minimumMenuRowHeight: Double
+        let interfaceLabelFontSize: String
+        let documentFontSize: String
+        let rootBorderColor: String
+        let menuBorderColor: String
+        let separatorColor: String
+        let accentColor: String
+        let toolbarSystemSymbolNames: [String]
+        let visibleMenuSystemSymbolNames: [String]
+        let toolbarSystemSymbolWidths: [Double]
+        let toolbarSystemSymbolHeights: [Double]
+        let toolbarSystemSymbolMaskCount: Int
+        let inlineSVGCount: Int
+    }
+
+    struct TestingSelectionToolbarPerformanceSnapshot: Decodable, Sendable {
+        let iterationCount: Int
+        let measureReadCount: Int
+        let attributeMutationCount: Int
+        let durationMilliseconds: Double
+    }
+
     struct TestingInlineProjectionSnapshot: Decodable, Sendable {
         let lineText: String
         let strongTexts: [String]
@@ -188,6 +233,12 @@ extension MarkdownEditorSession {
 
     struct TestingCalloutProjectionSnapshot: Decodable, Sendable {
         let sourceLineText: String
+        let activeSourceLineTexts: [String]
+        let activeSourceLineClassNames: [String]
+        let activeSourceLineBackgrounds: [String]
+        let renderedText: String
+        let renderedTitleText: String
+        let renderedBodyText: String
         let renderedLinkTexts: [String]
         let renderedLinkTargets: [String]
     }
@@ -195,15 +246,21 @@ extension MarkdownEditorSession {
     struct TestingPointerProjectionResult: Sendable {
         let duringDragLineText: String
         let afterMouseUpLineText: String
+        let toolbarHiddenDuringDrag: Bool
+        let toolbarVisibleAfterMouseUp: Bool
     }
 
     struct TestingEditorSelectionPresentationSnapshot: Decodable, Sendable {
         let selectedTexts: [String]
         let selectedRunCount: Int
         let selectedBlankLineRunCount: Int
-        let stockRectangleCount: Int
+        let visibleStockRectangleCount: Int
         let nativeSelectionBackground: String
+        let nativeCaretIsTransparent: Bool
+        let drawnCursorCount: Int
         let selectedBackgroundsMatchAccent: Bool
+        let activeLineTexts: [String]
+        let activeLineGutterCount: Int
     }
 
     @discardableResult
@@ -634,8 +691,19 @@ extension MarkdownEditorSession {
             const links = widget
                 ? Array.from(widget.querySelectorAll('[data-scholium-link-target]'))
                 : [];
+            const activeSourceLines = Array.from(
+                document.querySelectorAll('.cm-line.cm-live-callout')
+            );
             return {
                 sourceLineText: line?.textContent || '',
+                activeSourceLineTexts: activeSourceLines.map(candidate => candidate.textContent || ''),
+                activeSourceLineClassNames: activeSourceLines.map(candidate => candidate.className),
+                activeSourceLineBackgrounds: activeSourceLines.map(
+                    candidate => getComputedStyle(candidate).backgroundColor
+                ),
+                renderedText: widget?.textContent || '',
+                renderedTitleText: widget?.querySelector('.scholium-callout-title')?.textContent || '',
+                renderedBodyText: widget?.querySelector('.scholium-callout-body')?.textContent || '',
                 renderedLinkTexts: links.map(link => link.textContent || ''),
                 renderedLinkTargets: links.map(link => link.dataset.scholiumLinkTarget || '')
             };
@@ -651,6 +719,223 @@ extension MarkdownEditorSession {
         return try JSONDecoder().decode(TestingCalloutProjectionSnapshot.self, from: data)
     }
 
+    func testingSelectionToolbarSnapshot(
+        opening triggerLabel: String? = nil,
+        submenu submenuLabel: String? = nil
+    ) async throws -> TestingSelectionToolbarSnapshot {
+        guard let webView else { throw SessionError.unavailable }
+        let rawResult = try await webView.callAsyncJavaScript(
+            """
+            const visible = element => element && element.getClientRects().length > 0;
+            const root = document.getElementById('scholium-selection-actions');
+            document.body.dispatchEvent(new MouseEvent('mousedown', {
+                bubbles: true,
+                cancelable: true
+            }));
+            if (triggerLabel && root) {
+                Array.from(root.querySelectorAll('.scholium-selection-control'))
+                    .find(button => button.getAttribute('aria-label') === triggerLabel)
+                    ?.click();
+            }
+            if (submenuLabel && root) {
+                Array.from(root.querySelectorAll('.scholium-selection-menu:not([hidden]) > button'))
+                    .find(button => (button.textContent || '').trim() === submenuLabel)
+                    ?.click();
+            }
+            const toolbar = root?.querySelector('.scholium-selection-toolbar');
+            const controls = root
+                ? Array.from(toolbar?.querySelectorAll('.scholium-selection-control') || [])
+                    .filter(visible)
+                : [];
+            const openMenus = root
+                ? Array.from(root.querySelectorAll('.scholium-selection-menu:not([hidden])'))
+                    .filter(visible)
+                : [];
+            const activeMenu = openMenus.at(-1);
+            const menuRows = activeMenu
+                ? Array.from(activeMenu.children).filter(element =>
+                    element instanceof HTMLButtonElement && visible(element)
+                )
+                : [];
+            const toolbarBounds = root?.getBoundingClientRect();
+            const selectionBounds = Array.from(
+                document.querySelectorAll('.cm-scholium-selected-text')
+            ).map(element => element.getBoundingClientRect());
+            const selectionUnion = selectionBounds.length ? {
+                left: Math.min(...selectionBounds.map(bounds => bounds.left)),
+                right: Math.max(...selectionBounds.map(bounds => bounds.right)),
+                top: Math.min(...selectionBounds.map(bounds => bounds.top)),
+                bottom: Math.max(...selectionBounds.map(bounds => bounds.bottom))
+            } : {left: 0, right: 0, top: 0, bottom: 0};
+            const label = root?.querySelector('.scholium-selection-label');
+            const toolbarSymbols = root
+                ? Array.from(toolbar?.querySelectorAll('.scholium-system-symbol') || [])
+                    .filter(visible)
+                : [];
+            const menuSymbols = activeMenu
+                ? Array.from(activeMenu.querySelectorAll('.scholium-system-symbol'))
+                    .filter(visible)
+                : [];
+            const firstMenu = root?.querySelector('.scholium-selection-menu');
+            const separator = root?.querySelector('.scholium-selection-separator');
+            const accentProbe = document.createElement('span');
+            accentProbe.style.color = 'var(--scholium-color-accent)';
+            document.body.append(accentProbe);
+            const accentColor = getComputedStyle(accentProbe).color;
+            accentProbe.remove();
+            const documentContent = document.querySelector('.cm-content');
+            const rootText = root?.textContent || '';
+            return {
+                hidden: root?.hidden !== false || getComputedStyle(root).visibility !== 'visible',
+                toolbarRole: toolbar?.getAttribute('role') || '',
+                toolbarLabel: toolbar?.getAttribute('aria-label') || '',
+                visibleControlLabels: controls.map(control => control.getAttribute('aria-label') || ''),
+                visibleMenuLabels: menuRows.map(row =>
+                    (row.querySelector('.scholium-selection-menu-label')?.textContent || '').trim()
+                ),
+                visibleMenuCommands: menuRows.map(row => row.dataset.scholiumCommand || ''),
+                openMenuCount: openMenus.length,
+                wikiSeparatorCount: root?.querySelectorAll(
+                    '.scholium-selection-wiki-group .scholium-selection-separator'
+                ).length || 0,
+                containsMarkdownSyntax: /\\[\\[|\\]\\]|%%|~~|==/.test(rootText),
+                focusedLabel: document.activeElement?.getAttribute('aria-label')
+                    || (document.activeElement?.textContent || '').trim(),
+                rootWidth: toolbarBounds?.width || 0,
+                rootHeight: toolbarBounds?.height || 0,
+                rootLeft: toolbarBounds?.left || 0,
+                rootTop: toolbarBounds?.top || 0,
+                rootBottom: toolbarBounds?.bottom || 0,
+                selectionLeft: selectionUnion.left,
+                selectionRight: selectionUnion.right,
+                selectionTop: selectionUnion.top,
+                selectionBottom: selectionUnion.bottom,
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+                minimumControlHeight: controls.length
+                    ? Math.min(...controls.map(control => control.getBoundingClientRect().height))
+                    : 0,
+                minimumMenuRowHeight: menuRows.length
+                    ? Math.min(...menuRows.map(row => row.getBoundingClientRect().height))
+                    : 0,
+                interfaceLabelFontSize: label ? getComputedStyle(label).fontSize : '',
+                documentFontSize: documentContent ? getComputedStyle(documentContent).fontSize : '',
+                rootBorderColor: root ? getComputedStyle(root).borderTopColor : '',
+                menuBorderColor: firstMenu ? getComputedStyle(firstMenu).borderTopColor : '',
+                separatorColor: separator ? getComputedStyle(separator).backgroundColor : '',
+                accentColor,
+                toolbarSystemSymbolNames: toolbarSymbols.map(
+                    symbol => symbol.dataset.scholiumSystemSymbol || ''
+                ),
+                visibleMenuSystemSymbolNames: menuSymbols.map(
+                    symbol => symbol.dataset.scholiumSystemSymbol || ''
+                ),
+                toolbarSystemSymbolWidths: toolbarSymbols.map(
+                    symbol => symbol.getBoundingClientRect().width
+                ),
+                toolbarSystemSymbolHeights: toolbarSymbols.map(
+                    symbol => symbol.getBoundingClientRect().height
+                ),
+                toolbarSystemSymbolMaskCount: toolbarSymbols.filter(symbol => {
+                    const style = getComputedStyle(symbol);
+                    return [style.webkitMaskImage, style.maskImage].some(
+                        value => Boolean(value) && value !== 'none'
+                    );
+                }).length,
+                inlineSVGCount: root?.querySelectorAll('svg').length || 0
+            };
+            """,
+            arguments: [
+                "triggerLabel": triggerLabel ?? "",
+                "submenuLabel": submenuLabel ?? "",
+            ],
+            in: nil,
+            contentWorld: .page
+        )
+        guard JSONSerialization.isValidJSONObject(rawResult as Any),
+              let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
+            throw SessionError.invalidResult
+        }
+        return try JSONDecoder().decode(TestingSelectionToolbarSnapshot.self, from: data)
+    }
+
+    func testingFocusSelectionToolbar() async throws -> String {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            content?.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'F5',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true
+            }));
+            return document.activeElement?.getAttribute('aria-label')
+                || (document.activeElement?.textContent || '').trim();
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        return result as? String ?? ""
+    }
+
+    func testingSelectionToolbarRepeatedUpdateSnapshot(
+        iterations: Int
+    ) async throws -> TestingSelectionToolbarPerformanceSnapshot {
+        guard let webView else { throw SessionError.unavailable }
+        let rawResult = try await webView.callAsyncJavaScript(
+            """
+            const root = document.getElementById('scholium-selection-actions');
+            if (!root || root.hidden) return null;
+            const iterationCount = Math.max(1, Number(iterations) || 1);
+            const originalBounds = root.getBoundingClientRect.bind(root);
+            let measureReadCount = 0;
+            root.getBoundingClientRect = () => {
+                measureReadCount += 1;
+                return originalBounds();
+            };
+            let attributeMutationCount = 0;
+            const countRecords = records => {
+                attributeMutationCount += records.filter(
+                    record => record.type === 'attributes'
+                ).length;
+            };
+            const observer = new MutationObserver(countRecords);
+            observer.observe(root, {attributes: true, subtree: true});
+            const startedAt = performance.now();
+            try {
+                for (let index = 0; index < iterationCount; index += 1) {
+                    window.dispatchEvent(new Event('focus'));
+                }
+                const durationMilliseconds = performance.now() - startedAt;
+                await new Promise(resolve => setTimeout(resolve, 50));
+                countRecords(observer.takeRecords());
+                return {
+                    iterationCount,
+                    measureReadCount,
+                    attributeMutationCount,
+                    durationMilliseconds
+                };
+            } finally {
+                observer.disconnect();
+                delete root.getBoundingClientRect;
+            }
+            """,
+            arguments: ["iterations": iterations],
+            in: nil,
+            contentWorld: .page
+        )
+        guard JSONSerialization.isValidJSONObject(rawResult as Any),
+              let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
+            throw SessionError.invalidResult
+        }
+        return try JSONDecoder().decode(
+            TestingSelectionToolbarPerformanceSnapshot.self,
+            from: data
+        )
+    }
+
     func testingEditorSelectionPresentationSnapshot() async throws
         -> TestingEditorSelectionPresentationSnapshot
     {
@@ -664,19 +949,41 @@ extension MarkdownEditorSession {
             const expected = getComputedStyle(probe).backgroundColor;
             probe.remove();
             const content = document.querySelector('.cm-content');
+            const transparentProbe = document.createElement('span');
+            transparentProbe.style.color = 'transparent';
+            document.body.appendChild(transparentProbe);
+            const transparentColor = getComputedStyle(transparentProbe).color;
+            transparentProbe.remove();
+            const drawnCursors = Array.from(document.querySelectorAll(
+                '.cm-cursorLayer .cm-cursor'
+            ));
+            const stockRectangles = Array.from(document.querySelectorAll(
+                '.cm-selectionLayer .cm-selectionBackground'
+            ));
+            const visiblyDisplayed = element => {
+                const style = getComputedStyle(element);
+                return style.display !== 'none' && style.visibility !== 'hidden';
+            };
             return {
                 selectedTexts: runs.map(run => run.textContent || ''),
                 selectedRunCount: runs.length,
                 selectedBlankLineRunCount: document.querySelectorAll(
                     '.cm-live-blank-line .cm-scholium-selected-text'
                 ).length,
-                stockRectangleCount: document.querySelectorAll('.cm-selectionBackground').length,
+                visibleStockRectangleCount: stockRectangles.filter(visiblyDisplayed).length,
                 nativeSelectionBackground: content
                     ? getComputedStyle(content, '::selection').backgroundColor
                     : '',
+                nativeCaretIsTransparent: content
+                    ? getComputedStyle(content).caretColor === transparentColor
+                    : false,
+                drawnCursorCount: drawnCursors.length,
                 selectedBackgroundsMatchAccent: runs.every(
                     run => getComputedStyle(run).backgroundColor === expected
-                )
+                ),
+                activeLineTexts: Array.from(document.querySelectorAll('.cm-line.cm-activeLine'))
+                    .map(line => line.textContent || ''),
+                activeLineGutterCount: document.querySelectorAll('.cm-activeLineGutter').length
             };
             """,
             arguments: [:],

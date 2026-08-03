@@ -1,10 +1,10 @@
-export const EDITOR_PROTOCOL_VERSION = 8;
+export const EDITOR_PROTOCOL_VERSION = 9;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
 export type EditorMode = "livePreview" | "source";
 export type MarkdownEditorCommand =
-  | "bold" | "emphasis" | "strikethrough" | "highlight" | "inlineCode"
+  | "bold" | "emphasis" | "strikethrough" | "highlight" | "inlineCode" | "markdownComment"
   | "standardLink" | "wikilink" | "vectorSupports"
   | "vectorOpposes" | "vectorIncompatible"
   | "paragraph" | "heading1" | "heading2" | "heading3" | "heading4"
@@ -129,7 +129,7 @@ const operationTypes = new Set([
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "markClean", "focus", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
-  "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "standardLink", "wikilink",
+  "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
   "vectorSupports", "vectorOpposes", "vectorIncompatible", "paragraph", "heading1",
   "heading2", "heading3", "heading4", "heading5", "heading6", "blockQuotation", "bulletList",
   "numberedList", "taskList", "fencedCode", "thematicBreak", "calloutOrient", "calloutCite",

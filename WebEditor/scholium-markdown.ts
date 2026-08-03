@@ -250,7 +250,8 @@ function isCalloutOpening(line: Line) {
 function continueCallout(cx: BlockContext, line: Line) {
   const size = quoteMarkerSize(line);
   if (size < 0) return false;
-  line.addMarker(cx.elt("CalloutQuoteMark", cx.lineStart + line.pos, cx.lineStart + line.pos + 1));
+  const from = cx.lineStart + line.pos;
+  line.addMarker(cx.elt("CalloutQuoteMark", from, from + 1));
   line.moveBase(line.pos + size);
   return true;
 }

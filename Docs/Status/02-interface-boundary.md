@@ -12,8 +12,8 @@ This chapter owns current interface implementation, bounded evidence, and open a
 D-118 is reachable end to end: Markdown dialect 4 and editor protocol 7 expose neutral, support,
 opposition, and undirected incompatibility; Graph contract 5 canonicalizes reciprocal
 incompatibility without rewriting source; Related Search and Read use the same meaning. The native
-Connect projection groups rows by relationship, places one custom glyph in a shared leading track
-per cluster, keeps counts only on major role headings, and bounds the current glyph below the pinned
+Connect projection groups rows by relationship, places one direct SF Symbol in a shared leading track
+per cluster, keeps counts only on major role headings, and bounds the current symbol below the pinned
 original group header in the existing single scroll owner. The current repository gate covers the
 locked WebEditor, graph/rendering, dialect, bridge, and frontend architecture contracts. One
 isolated Light QA opened a 70-relation disposable Analysis and visually exercised top position plus
@@ -21,8 +21,8 @@ support, incompatibility, and neutral sticky handoff.
 
 **Still open**
 
-Researcher visual approval remains open. Also pending: 278pt, long localization, RTL directional
-mirroring, Dark, Increase Contrast, inactive window, 200% readability, physical Full Keyboard
+Researcher visual approval remains open. Also pending: 278pt, long localization, RTL layout,
+Dark, Increase Contrast, inactive window, 200% readability, physical Full Keyboard
 Access, and genuine spoken VoiceOver. The isolated screenshot and synthetic AX tree are bounded
 evidence, not human or assistive-technology acceptance.
 
@@ -329,7 +329,11 @@ icon-aligned Paper `#FEF8ED` remain the only color inputs; Light Document uses P
 one resolver supplies every remaining native/WebKit role across Light, Dark, and Increase Contrast.
 The complete Sidebar uses Navigation while Inspector retains a distinct but Document-adjacent
 Apparatus tone. Feature views consume semantic roles; the accepted QA board retains no local
-palette. Mapping, renderer parity, and contrast are covered by the focused palette contract.
+palette. The preexisting native Elevation family is now closed over three purpose roles and exported
+through the same WebKit design-token owner: selection bars use floating control, custom menus and
+link previews use bounded panel, and Search uses search overlay. Increase Contrast removes custom
+soft shadows while strengthening boundaries; native presentations keep system elevation without a
+second Scholium shadow. Mapping, renderer parity, and contrast are covered by focused contracts.
 Disposable journeys cover the default window, 1380/1180/1080/900/720 widths, Inspector visibility,
 all three modes, 72→73 keyboard adjustment, save persistence, mixed English/Chinese, local
 long-token overflow, and 100%/200% text. D-097 adopts one researcher-approved parchment-and-ink

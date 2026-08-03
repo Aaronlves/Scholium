@@ -2976,8 +2976,8 @@
         return _RangeSet.empty;
       let result = sets[sets.length - 1];
       for (let i2 = sets.length - 2; i2 >= 0; i2--) {
-        for (let layer = sets[i2]; layer != _RangeSet.empty; layer = layer.nextLayer)
-          result = new _RangeSet(layer.chunkPos, layer.chunk, result, Math.max(layer.maxPoint, result.maxPoint));
+        for (let layer2 = sets[i2]; layer2 != _RangeSet.empty; layer2 = layer2.nextLayer)
+          result = new _RangeSet(layer2.chunkPos, layer2.chunk, result, Math.max(layer2.maxPoint, result.maxPoint));
       }
       return result;
     }
@@ -3108,8 +3108,8 @@
     return shared;
   }
   var LayerCursor = class {
-    constructor(layer, skip, minPoint, rank = 0) {
-      this.layer = layer;
+    constructor(layer2, skip, minPoint, rank = 0) {
+      this.layer = layer2;
       this.skip = skip;
       this.minPoint = minPoint;
       this.rank = rank;
@@ -12027,6 +12027,333 @@
     currentKeyEvent = null;
     return handled;
   }
+  var RectangleMarker = class _RectangleMarker {
+    /**
+    Create a marker with the given class and dimensions. If `width`
+    is null, the DOM element will get no width style.
+    */
+    constructor(className, left, top2, width, height) {
+      this.className = className;
+      this.left = left;
+      this.top = top2;
+      this.width = width;
+      this.height = height;
+    }
+    draw() {
+      let elt2 = document.createElement("div");
+      elt2.className = this.className;
+      this.adjust(elt2);
+      return elt2;
+    }
+    update(elt2, prev) {
+      if (prev.className != this.className)
+        return false;
+      this.adjust(elt2);
+      return true;
+    }
+    adjust(elt2) {
+      elt2.style.left = this.left + "px";
+      elt2.style.top = this.top + "px";
+      if (this.width != null)
+        elt2.style.width = this.width + "px";
+      elt2.style.height = this.height + "px";
+    }
+    eq(p) {
+      return this.left == p.left && this.top == p.top && this.width == p.width && this.height == p.height && this.className == p.className;
+    }
+    /**
+    Create a set of rectangles for the given selection range,
+    assigning them theclass`className`. Will create a single
+    rectangle for empty ranges, and a set of selection-style
+    rectangles covering the range's content (in a bidi-aware
+    way) for non-empty ones.
+    */
+    static forRange(view, className, range) {
+      if (range.empty) {
+        let pos = view.coordsAtPos(range.head, range.assoc || 1);
+        if (!pos)
+          return [];
+        let base2 = getBase(view);
+        return [new _RectangleMarker(className, pos.left - base2.left, pos.top - base2.top, null, pos.bottom - pos.top)];
+      } else {
+        return rectanglesForRange(view, className, range);
+      }
+    }
+  };
+  function getBase(view) {
+    let rect = view.scrollDOM.getBoundingClientRect();
+    let left = view.textDirection == Direction.LTR ? rect.left : rect.right - view.scrollDOM.clientWidth * view.scaleX;
+    return { left: left - view.scrollDOM.scrollLeft * view.scaleX, top: rect.top - view.scrollDOM.scrollTop * view.scaleY };
+  }
+  function wrappedLine(view, pos, side, inside) {
+    let coords = view.coordsAtPos(pos, side * 2);
+    if (!coords)
+      return inside;
+    let editorRect = view.dom.getBoundingClientRect();
+    let y = (coords.top + coords.bottom) / 2;
+    let left = view.posAtCoords({ x: editorRect.left + 1, y });
+    let right = view.posAtCoords({ x: editorRect.right - 1, y });
+    if (left == null || right == null)
+      return inside;
+    return { from: Math.max(inside.from, Math.min(left, right)), to: Math.min(inside.to, Math.max(left, right)) };
+  }
+  function rectanglesForRange(view, className, range) {
+    if (range.to <= view.viewport.from || range.from >= view.viewport.to)
+      return [];
+    let from = Math.max(range.from, view.viewport.from), to = Math.min(range.to, view.viewport.to);
+    let ltr = view.textDirection == Direction.LTR;
+    let content2 = view.contentDOM, contentRect = content2.getBoundingClientRect(), base2 = getBase(view);
+    let lineElt = content2.querySelector(".cm-line"), lineStyle = lineElt && window.getComputedStyle(lineElt);
+    let leftSide = contentRect.left + (lineStyle ? parseInt(lineStyle.paddingLeft) + Math.min(0, parseInt(lineStyle.textIndent)) : 0);
+    let rightSide = contentRect.right - (lineStyle ? parseInt(lineStyle.paddingRight) : 0);
+    let startBlock = blockAt(view, from, 1), endBlock = blockAt(view, to, -1);
+    let visualStart = startBlock.type == BlockType.Text ? startBlock : null;
+    let visualEnd = endBlock.type == BlockType.Text ? endBlock : null;
+    if (visualStart && (view.lineWrapping || startBlock.widgetLineBreaks))
+      visualStart = wrappedLine(view, from, 1, visualStart);
+    if (visualEnd && (view.lineWrapping || endBlock.widgetLineBreaks))
+      visualEnd = wrappedLine(view, to, -1, visualEnd);
+    if (visualStart && visualEnd && visualStart.from == visualEnd.from && visualStart.to == visualEnd.to) {
+      return pieces(drawForLine(range.from, range.to, visualStart));
+    } else {
+      let top2 = visualStart ? drawForLine(range.from, null, visualStart) : drawForWidget(startBlock, false);
+      let bottom = visualEnd ? drawForLine(null, range.to, visualEnd) : drawForWidget(endBlock, true);
+      let between = [];
+      if ((visualStart || startBlock).to < (visualEnd || endBlock).from - (visualStart && visualEnd ? 1 : 0) || startBlock.widgetLineBreaks > 1 && top2.bottom + view.defaultLineHeight / 2 < bottom.top)
+        between.push(piece(leftSide, top2.bottom, rightSide, bottom.top));
+      else if (top2.bottom < bottom.top && view.elementAtHeight((top2.bottom + bottom.top) / 2).type == BlockType.Text)
+        top2.bottom = bottom.top = (top2.bottom + bottom.top) / 2;
+      return pieces(top2).concat(between).concat(pieces(bottom));
+    }
+    function piece(left, top2, right, bottom) {
+      return new RectangleMarker(className, left - base2.left, top2 - base2.top, Math.max(0, right - left), bottom - top2);
+    }
+    function pieces({ top: top2, bottom, horizontal }) {
+      let pieces2 = [];
+      for (let i2 = 0; i2 < horizontal.length; i2 += 2)
+        pieces2.push(piece(horizontal[i2], top2, horizontal[i2 + 1], bottom));
+      return pieces2;
+    }
+    function drawForLine(from2, to2, line) {
+      let top2 = 1e9, bottom = -1e9, horizontal = [];
+      function addSpan(from3, fromOpen, to3, toOpen, dir) {
+        let fromCoords = view.coordsAtPos(from3, from3 == line.to ? -2 : 2);
+        let toCoords = view.coordsAtPos(to3, to3 == line.from ? 2 : -2);
+        if (!fromCoords || !toCoords)
+          return;
+        top2 = Math.min(fromCoords.top, toCoords.top, top2);
+        bottom = Math.max(fromCoords.bottom, toCoords.bottom, bottom);
+        if (dir == Direction.LTR)
+          horizontal.push(ltr && fromOpen ? leftSide : fromCoords.left, ltr && toOpen ? rightSide : toCoords.right);
+        else
+          horizontal.push(!ltr && toOpen ? leftSide : toCoords.left, !ltr && fromOpen ? rightSide : fromCoords.right);
+      }
+      let start = from2 !== null && from2 !== void 0 ? from2 : line.from, end = to2 !== null && to2 !== void 0 ? to2 : line.to;
+      for (let r of view.visibleRanges)
+        if (r.to > start && r.from < end) {
+          for (let pos = Math.max(r.from, start), endPos = Math.min(r.to, end); ; ) {
+            let docLine = view.state.doc.lineAt(pos);
+            for (let span of view.bidiSpans(docLine)) {
+              let spanFrom = span.from + docLine.from, spanTo = span.to + docLine.from;
+              if (spanFrom >= endPos)
+                break;
+              if (spanTo > pos)
+                addSpan(Math.max(spanFrom, pos), from2 == null && spanFrom <= start, Math.min(spanTo, endPos), to2 == null && spanTo >= end, span.dir);
+            }
+            pos = docLine.to + 1;
+            if (pos >= endPos)
+              break;
+          }
+        }
+      if (horizontal.length == 0)
+        addSpan(start, from2 == null, end, to2 == null, view.textDirection);
+      return { top: top2, bottom, horizontal };
+    }
+    function drawForWidget(block, top2) {
+      let y = contentRect.top + (top2 ? block.top : block.bottom);
+      return { top: y, bottom: y, horizontal: [] };
+    }
+  }
+  function sameMarker(a, b) {
+    return a.constructor == b.constructor && a.eq(b);
+  }
+  var LayerView = class {
+    constructor(view, layer2) {
+      this.view = view;
+      this.layer = layer2;
+      this.drawn = [];
+      this.scaleX = 1;
+      this.scaleY = 1;
+      this.measureReq = { read: this.measure.bind(this), write: this.draw.bind(this) };
+      this.dom = view.scrollDOM.appendChild(document.createElement("div"));
+      this.dom.classList.add("cm-layer");
+      if (layer2.above)
+        this.dom.classList.add("cm-layer-above");
+      if (layer2.class)
+        this.dom.classList.add(layer2.class);
+      this.scale();
+      this.dom.setAttribute("aria-hidden", "true");
+      this.setOrder(view.state);
+      view.requestMeasure(this.measureReq);
+      if (layer2.mount)
+        layer2.mount(this.dom, view);
+    }
+    update(update) {
+      if (update.startState.facet(layerOrder) != update.state.facet(layerOrder))
+        this.setOrder(update.state);
+      if (this.layer.update(update, this.dom) || update.geometryChanged) {
+        this.scale();
+        update.view.requestMeasure(this.measureReq);
+      }
+    }
+    docViewUpdate(view) {
+      if (this.layer.updateOnDocViewUpdate !== false)
+        view.requestMeasure(this.measureReq);
+    }
+    setOrder(state) {
+      let pos = 0, order = state.facet(layerOrder);
+      while (pos < order.length && order[pos] != this.layer)
+        pos++;
+      this.dom.style.zIndex = String((this.layer.above ? 150 : -1) - pos);
+    }
+    measure() {
+      return this.layer.markers(this.view);
+    }
+    scale() {
+      let { scaleX, scaleY } = this.view;
+      if (scaleX != this.scaleX || scaleY != this.scaleY) {
+        this.scaleX = scaleX;
+        this.scaleY = scaleY;
+        this.dom.style.transform = `scale(${1 / scaleX}, ${1 / scaleY})`;
+      }
+    }
+    draw(markers) {
+      if (markers.length != this.drawn.length || markers.some((p, i2) => !sameMarker(p, this.drawn[i2]))) {
+        let old = this.dom.firstChild, oldI = 0;
+        for (let marker of markers) {
+          if (marker.update && old && marker.constructor && this.drawn[oldI].constructor && marker.update(old, this.drawn[oldI])) {
+            old = old.nextSibling;
+            oldI++;
+          } else {
+            this.dom.insertBefore(marker.draw(), old);
+          }
+        }
+        while (old) {
+          let next = old.nextSibling;
+          old.remove();
+          old = next;
+        }
+        this.drawn = markers;
+        if (browser.webkit)
+          this.dom.style.display = this.dom.firstChild ? "" : "none";
+      }
+    }
+    destroy() {
+      if (this.layer.destroy)
+        this.layer.destroy(this.dom, this.view);
+      this.dom.remove();
+    }
+  };
+  var layerOrder = /* @__PURE__ */ Facet.define();
+  function layer(config2) {
+    return [
+      ViewPlugin.define((v) => new LayerView(v, config2)),
+      layerOrder.of(config2)
+    ];
+  }
+  var selectionConfig = /* @__PURE__ */ Facet.define({
+    combine(configs) {
+      return combineConfig(configs, {
+        cursorBlinkRate: 1200,
+        drawRangeCursor: true,
+        iosSelectionHandles: true
+      }, {
+        cursorBlinkRate: (a, b) => Math.min(a, b),
+        drawRangeCursor: (a, b) => a || b
+      });
+    }
+  });
+  function drawSelection(config2 = {}) {
+    return [
+      selectionConfig.of(config2),
+      cursorLayer,
+      selectionLayer,
+      hideNativeSelection,
+      nativeSelectionHidden.of(true)
+    ];
+  }
+  function configChanged(update) {
+    return update.startState.facet(selectionConfig) != update.state.facet(selectionConfig);
+  }
+  var cursorLayer = /* @__PURE__ */ layer({
+    above: true,
+    markers(view) {
+      let { state } = view, conf = state.facet(selectionConfig);
+      let cursors = [];
+      for (let r of state.selection.ranges) {
+        let prim = r == state.selection.main;
+        if (r.empty || conf.drawRangeCursor && !(prim && browser.ios && conf.iosSelectionHandles)) {
+          let className = prim ? "cm-cursor cm-cursor-primary" : "cm-cursor cm-cursor-secondary";
+          let cursor = r.empty ? r : EditorSelection.cursor(r.head, r.assoc);
+          for (let piece of RectangleMarker.forRange(view, className, cursor))
+            cursors.push(piece);
+        }
+      }
+      return cursors;
+    },
+    update(update, dom) {
+      if (update.transactions.some((tr) => tr.selection))
+        dom.style.animationName = dom.style.animationName == "cm-blink" ? "cm-blink2" : "cm-blink";
+      let confChange = configChanged(update);
+      if (confChange)
+        setBlinkRate(update.state, dom);
+      return update.docChanged || update.selectionSet || confChange;
+    },
+    mount(dom, view) {
+      setBlinkRate(view.state, dom);
+    },
+    class: "cm-cursorLayer"
+  });
+  function setBlinkRate(state, dom) {
+    dom.style.animationDuration = state.facet(selectionConfig).cursorBlinkRate + "ms";
+  }
+  var selectionLayer = /* @__PURE__ */ layer({
+    above: false,
+    markers(view) {
+      let markers = [], { main, ranges } = view.state.selection;
+      for (let r of ranges)
+        if (!r.empty) {
+          for (let marker of RectangleMarker.forRange(view, "cm-selectionBackground", r))
+            markers.push(marker);
+        }
+      if (browser.ios && !main.empty && view.state.facet(selectionConfig).iosSelectionHandles) {
+        for (let piece of RectangleMarker.forRange(view, "cm-selectionHandle cm-selectionHandle-start", EditorSelection.cursor(main.from, 1)))
+          markers.push(piece);
+        for (let piece of RectangleMarker.forRange(view, "cm-selectionHandle cm-selectionHandle-end", EditorSelection.cursor(main.to, 1)))
+          markers.push(piece);
+      }
+      return markers;
+    },
+    update(update, dom) {
+      return update.docChanged || update.selectionSet || update.viewportChanged || configChanged(update);
+    },
+    class: "cm-selectionLayer"
+  });
+  var hideNativeSelection = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ EditorView.theme({
+    ".cm-line": {
+      "& ::selection, &::selection": { backgroundColor: "transparent !important" },
+      caretColor: "transparent !important"
+    },
+    ".cm-content": {
+      caretColor: "transparent !important",
+      "& :focus": {
+        caretColor: "initial !important",
+        "&::selection, & ::selection": {
+          backgroundColor: "Highlight !important"
+        }
+      }
+    }
+  }));
   var setDropCursorPos = /* @__PURE__ */ StateEffect.define({
     map(pos, mapping) {
       return pos == null ? null : mapping.mapPos(pos);
@@ -12375,32 +12702,6 @@
       return false;
     }
   };
-  function highlightActiveLine() {
-    return activeLineHighlighter;
-  }
-  var lineDeco = /* @__PURE__ */ Decoration.line({ class: "cm-activeLine" });
-  var activeLineHighlighter = /* @__PURE__ */ ViewPlugin.fromClass(class {
-    constructor(view) {
-      this.decorations = this.getDeco(view);
-    }
-    update(update) {
-      if (update.docChanged || update.selectionSet)
-        this.decorations = this.getDeco(update.view);
-    }
-    getDeco(view) {
-      let lastLineStart = -1, deco = [];
-      for (let r of view.state.selection.ranges) {
-        let line = view.lineBlockAt(r.head);
-        if (line.from > lastLineStart) {
-          deco.push(lineDeco.range(line.from));
-          lastLineStart = line.from;
-        }
-      }
-      return Decoration.set(deco);
-    }
-  }, {
-    decorations: (v) => v.decorations
-  });
   var MaxOff = 2e3;
   function rectangleFor(state, a, b) {
     let startLine = Math.min(a.line, b.line), endLine = Math.max(a.line, b.line);
@@ -13309,26 +13610,6 @@
     while (last < lines)
       last = last * 10 + 9;
     return last;
-  }
-  var activeLineGutterMarker = /* @__PURE__ */ new class extends GutterMarker {
-    constructor() {
-      super(...arguments);
-      this.elementClass = "cm-activeLineGutter";
-    }
-  }();
-  var activeLineGutterHighlighter = /* @__PURE__ */ gutterLineClass.compute(["selection"], (state) => {
-    let marks2 = [], last = -1;
-    for (let range of state.selection.ranges) {
-      let linePos = state.doc.lineAt(range.head).from;
-      if (linePos > last) {
-        last = linePos;
-        marks2.push(activeLineGutterMarker.range(linePos));
-      }
-    }
-    return RangeSet.of(marks2);
-  });
-  function highlightActiveLineGutter() {
-    return activeLineGutterHighlighter;
   }
 
   // node_modules/@lezer/common/dist/index.js
@@ -20575,7 +20856,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 8;
+  var EDITOR_PROTOCOL_VERSION = 9;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -20610,6 +20891,7 @@
     "strikethrough",
     "highlight",
     "inlineCode",
+    "markdownComment",
     "standardLink",
     "wikilink",
     "vectorSupports",
@@ -20912,9 +21194,10 @@ ${blankRow(table.position.columnCount)}`;
   // transformations.ts
   var inlineMarkers = {
     bold: ["**", "**", "Bold"],
-    emphasis: ["*", "*", "Emphasis"],
+    emphasis: ["*", "*", "Italic"],
     strikethrough: ["~~", "~~", "Strikethrough"],
     highlight: ["==", "==", "Highlight"],
+    markdownComment: ["%% ", " %%", "Markdown Comment"],
     wikilink: ["[[", "]]", "Wikilink"],
     vectorSupports: ["+[[", "]]", "Supports Link"],
     vectorOpposes: ["-[[", "]]", "Opposes Link"],
@@ -21064,7 +21347,7 @@ ${fence}`;
       let definitions = separator;
       const definitionSelections = [];
       for (let index = 0; index < ranges.length; index += 1) {
-        const content2 = source.slice(ranges[index].from, ranges[index].to);
+        const content2 = options.argument ?? source.slice(ranges[index].from, ranges[index].to);
         const prefix = `[^${allocated[index]}]: `;
         const anchor = bodyLength + definitions.length + prefix.length;
         definitions += `${prefix}${content2}
@@ -21121,6 +21404,55 @@ ${fence}`;
   }
   function listPrefix(line) {
     return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
+  }
+  function calloutQuotePrefix(line) {
+    return /^(\s*>[ \t]?)/.exec(line);
+  }
+  function lineBelongsToCallout(document2, lineNumber) {
+    for (let number2 = lineNumber; number2 >= 1; number2 -= 1) {
+      const line = document2.line(number2).text;
+      if (!calloutQuotePrefix(line)) return false;
+      if (/^\s*>[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]|$)/.test(line)) return true;
+    }
+    return false;
+  }
+  function continueCallout(source, selections) {
+    const document2 = interactionDocument(source);
+    if (selections.some((selection) => selection.anchor !== selection.head)) return null;
+    const entries = selections.map((selection) => {
+      const bounds = document2.lineAt(selection.head);
+      const prefix = calloutQuotePrefix(bounds.text)?.[1];
+      if (!prefix || !lineBelongsToCallout(document2, bounds.number)) return null;
+      if (bounds.text.slice(prefix.length).trim().length === 0) {
+        return {
+          change: { from: bounds.from, to: bounds.from + prefix.length, insert: "" },
+          localSelection: bounds.from,
+          undoLabel: "Exit Callout"
+        };
+      }
+      const continued = `${prefix}
+`;
+      return {
+        change: { from: selection.head, to: selection.head, insert: `
+${prefix}` },
+        localSelection: selection.head + continued.length,
+        undoLabel: "Continue Callout"
+      };
+    });
+    if (entries.some((entry) => entry === null)) return null;
+    const accepted = entries;
+    const sorted = [...accepted].sort((left, right) => left.change.from - right.change.from);
+    let shift2 = 0;
+    const mapped = sorted.map((entry) => {
+      const position = entry.localSelection + shift2;
+      shift2 += entry.change.insert.length - (entry.change.to - entry.change.from);
+      return { anchor: position, head: position };
+    });
+    return {
+      changes: sorted.map((entry) => entry.change),
+      selections: mapped,
+      undoLabel: accepted.every((entry) => entry.undoLabel === "Exit Callout") ? "Exit Callout" : "Continue Callout"
+    };
   }
   function continueList(source, selections) {
     const document2 = interactionDocument(source);
@@ -29201,10 +29533,11 @@ ${fence}
     const content2 = line.text.slice(line.pos + size);
     return /^\[![^\]\r\n]+\]/.test(content2);
   }
-  function continueCallout(cx, line) {
+  function continueCallout2(cx, line) {
     const size = quoteMarkerSize(line);
     if (size < 0) return false;
-    line.addMarker(cx.elt("CalloutQuoteMark", cx.lineStart + line.pos, cx.lineStart + line.pos + 1));
+    const from = cx.lineStart + line.pos;
+    line.addMarker(cx.elt("CalloutQuoteMark", from, from + 1));
     line.moveBase(line.pos + size);
     return true;
   }
@@ -29275,7 +29608,7 @@ ${fence}
       "Highlight",
       "HighlightMark",
       "HighlightContent",
-      { name: "Callout", block: true, composite: continueCallout },
+      { name: "Callout", block: true, composite: continueCallout2 },
       "CalloutQuoteMark",
       "CalloutRoleMark",
       "ObsidianComment",
@@ -30182,6 +30515,36 @@ ${fence}
     });
   }
 
+  // floating-surface-geometry.ts
+  function clamped(value, minimum, maximum) {
+    return Math.max(minimum, Math.min(value, Math.max(minimum, maximum)));
+  }
+  function floatingSurfacePosition(options) {
+    const { anchor, surface, viewport, inset, gap } = options;
+    const desiredLeft = options.horizontal === "center" ? (anchor.left + anchor.right - surface.width) / 2 : anchor.left;
+    const left = clamped(desiredLeft, inset, viewport.width - surface.width - inset);
+    const above = anchor.top - surface.height - gap;
+    const below = anchor.bottom + gap;
+    const fitsAbove = above >= inset;
+    const fitsBelow = below + surface.height <= viewport.height - inset;
+    if (options.preferredPlacement === "above") {
+      if (fitsAbove) return { left, top: above, placement: "above" };
+      if (fitsBelow) return { left, top: below, placement: "below" };
+      return {
+        left,
+        top: clamped(above, inset, viewport.height - surface.height - inset),
+        placement: "above"
+      };
+    }
+    if (fitsBelow) return { left, top: below, placement: "below" };
+    if (fitsAbove) return { left, top: above, placement: "above" };
+    return {
+      left,
+      top: clamped(below, inset, viewport.height - surface.height - inset),
+      placement: "below"
+    };
+  }
+
   // preview-popover.ts
   var relationshipLabels = {
     neutral: "Related note",
@@ -30225,11 +30588,17 @@ ${fence}
         }),
         write: ({ measured, viewportWidth, viewportHeight }) => {
           if (activeRoot.hidden || editor2 !== activeEditor || root !== activeRoot) return;
-          const left = Math.max(inset, Math.min(anchor.left, viewportWidth - measured.width - inset));
-          const below = anchor.bottom + gap;
-          const top2 = below + measured.height <= viewportHeight - inset ? below : Math.max(inset, anchor.top - measured.height - gap);
-          activeRoot.style.left = `${left}px`;
-          activeRoot.style.top = `${top2}px`;
+          const resolved = floatingSurfacePosition({
+            anchor,
+            surface: measured,
+            viewport: { width: viewportWidth, height: viewportHeight },
+            horizontal: "start",
+            preferredPlacement: "below",
+            inset,
+            gap
+          });
+          activeRoot.style.left = `${resolved.left}px`;
+          activeRoot.style.top = `${resolved.top}px`;
           activeRoot.style.visibility = "visible";
           window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
             documentLength: activeEditor.state.doc.length
@@ -30319,6 +30688,7 @@ ${preview.fragment}` : relationship;
     const handleKeyDown = (event) => {
       if (event.key === "Escape" && root && !root.hidden) hide();
     };
+    const handleViewportExit = () => hide();
     function mount(view) {
       if (editor2) return;
       editor2 = view;
@@ -30342,6 +30712,9 @@ ${preview.fragment}` : relationship;
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
       document.addEventListener("keyup", handleKeyUp);
       document.addEventListener("keydown", handleKeyDown);
+      view.scrollDOM.addEventListener("scroll", handleViewportExit, { passive: true });
+      window.addEventListener("resize", handleViewportExit);
+      window.addEventListener("blur", handleViewportExit);
     }
     function unmount(view) {
       if (editor2 !== view) return;
@@ -30349,6 +30722,9 @@ ${preview.fragment}` : relationship;
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("keyup", handleKeyUp);
       document.removeEventListener("keydown", handleKeyDown);
+      view.scrollDOM.removeEventListener("scroll", handleViewportExit);
+      window.removeEventListener("resize", handleViewportExit);
+      window.removeEventListener("blur", handleViewportExit);
       root?.remove();
       root = null;
       title = null;
@@ -30490,21 +30866,735 @@ ${preview.fragment}` : relationship;
     return { currentAnchor, postCurrent, scheduleGeometryReport, setAnchor, setFraction };
   }
 
+  // context-menu.ts
+  function selectionForContextClick(selection, position) {
+    const belongsToSelection = selection.ranges.some(
+      (range) => !range.empty && position >= range.from && position < range.to
+    );
+    return belongsToSelection ? selection : EditorSelection.single(position);
+  }
+  function createEditorContextMenuExtension(options) {
+    return ViewPlugin.define((view) => {
+      const handleContextMenu = (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const isPointerInvocation = event.button === 2 || event.button === 0 && event.ctrlKey || event.detail > 0;
+        if (isPointerInvocation) {
+          const position = options.positionAtEvent?.(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY });
+          if (position !== null) {
+            const selection = selectionForContextClick(view.state.selection, position);
+            if (!selection.eq(view.state.selection)) {
+              view.dispatch({
+                selection,
+                annotations: Transaction.userEvent.of("select.pointer.context-menu")
+              });
+            }
+          }
+        }
+        view.focus();
+        const caretBounds = view.coordsAtPos(view.state.selection.main.head);
+        options.request({
+          clientX: isPointerInvocation ? event.clientX : caretBounds?.left ?? event.clientX,
+          clientY: isPointerInvocation ? event.clientY : caretBounds?.bottom ?? event.clientY,
+          mode: options.mode(view),
+          context: options.context(view)
+        });
+      };
+      view.dom.addEventListener("contextmenu", handleContextMenu, { capture: true });
+      return {
+        destroy() {
+          view.dom.removeEventListener("contextmenu", handleContextMenu, { capture: true });
+        }
+      };
+    });
+  }
+
+  // system-symbols.ts
+  function systemSymbolElement(key, className = "") {
+    const symbol = document.createElement("span");
+    symbol.className = `scholium-system-symbol ${className}`.trim();
+    symbol.dataset.scholiumSystemSymbol = key;
+    symbol.style.setProperty(
+      "--scholium-system-symbol-image",
+      `var(--scholium-system-symbol-${key})`
+    );
+    symbol.setAttribute("aria-hidden", "true");
+    return symbol;
+  }
+
+  // input-suggestions.ts
+  var suggestionSymbolByType = {
+    "scholium-note": "doc-text",
+    "scholium-callout-role": "text-quote",
+    "scholium-command-callout": "text-quote",
+    "scholium-command-date": "calendar",
+    "scholium-command-math": "function",
+    "scholium-command-mermaid": "flowchart",
+    "scholium-command-table": "tablecells",
+    "scholium-command-footnote": "textformat-superscript",
+    "scholium-command-code": "curlybraces-square",
+    "scholium-command-divider": "minus"
+  };
+  function isLiveSuggestionContext(options, state) {
+    return options.mode(state) === "livePreview" && !options.isComposing() && state.selection.ranges.length === 1 && state.selection.main.empty;
+  }
+  function positionIsProtected(options, state, position) {
+    return options.protectedRanges(state).some(
+      (range) => position >= range.from && position < range.to
+    );
+  }
+  function boundedUUID() {
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = bytes[6] & 15 | 64;
+    bytes[8] = bytes[8] & 63 | 128;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+    return [
+      hex.slice(0, 4).join(""),
+      hex.slice(4, 6).join(""),
+      hex.slice(6, 8).join(""),
+      hex.slice(8, 10).join(""),
+      hex.slice(10, 16).join("")
+    ].join("-");
+  }
+  function localISODate(date = /* @__PURE__ */ new Date()) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+  function replaceSlashWithText(insertedText, undoLabel, didApply) {
+    return (view, completion, from, to) => {
+      const slashFrom = from - 1;
+      if (slashFrom < 0 || view.state.sliceDoc(slashFrom, from) !== "/") return;
+      const insert2 = typeof insertedText === "function" ? insertedText() : insertedText;
+      view.dispatch({
+        changes: { from: slashFrom, to, insert: insert2 },
+        selection: { anchor: slashFrom + insert2.length },
+        annotations: [
+          pickedCompletion.of(completion),
+          Transaction.userEvent.of("input.complete.scholium")
+        ]
+      });
+      didApply(undoLabel);
+    };
+  }
+  function replaceSlashWithSnippet(template, undoLabel, didApply) {
+    const applySnippet = snippet(template);
+    return (view, completion, from, to) => {
+      const slashFrom = from - 1;
+      if (slashFrom < 0 || view.state.sliceDoc(slashFrom, from) !== "/") return;
+      applySnippet(view, completion, slashFrom, to);
+      didApply(undoLabel);
+    };
+  }
+  function replaceSlashWithFootnote(options) {
+    return (view, completion, from, to) => {
+      const slashFrom = from - 1;
+      if (slashFrom < 0 || view.state.sliceDoc(slashFrom, from) !== "/") return;
+      const source = view.state.doc.toString();
+      const transformed = transformMarkdown(
+        source,
+        [{ anchor: slashFrom, head: to }],
+        "insertFootnote",
+        {
+          argument: "",
+          protectedRanges: options.protectedRanges(view.state)
+        }
+      );
+      if (!transformed) return;
+      const transformedSource = applySourceChanges(source, transformed.changes);
+      if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) return;
+      view.dispatch({
+        changes: transformed.changes,
+        selection: EditorSelection.create(
+          transformed.selections.map(
+            (range) => EditorSelection.range(range.anchor, range.head)
+          )
+        ),
+        annotations: [
+          pickedCompletion.of(completion),
+          Transaction.userEvent.of("input.complete.scholium.insertFootnote")
+        ]
+      });
+      options.didApply(transformed.undoLabel);
+    };
+  }
+  function fuzzyCommandMatch(label, query) {
+    if (!query) return true;
+    const normalizedLabel = label.toLocaleLowerCase();
+    const normalizedQuery = query.toLocaleLowerCase();
+    let queryIndex = 0;
+    for (const character of normalizedLabel) {
+      if (character === normalizedQuery[queryIndex]) queryIndex += 1;
+      if (queryIndex === normalizedQuery.length) return true;
+    }
+    return false;
+  }
+  function slashCommandOptions(options, blockContext, query) {
+    const commands = [
+      {
+        label: "Callout",
+        type: "scholium-command-callout",
+        apply: replaceSlashWithText("> [!", "Insert Callout", options.didApply),
+        boost: 20,
+        blockOnly: true
+      },
+      {
+        label: "Date",
+        type: "scholium-command-date",
+        apply: replaceSlashWithText(localISODate, "Insert Date", options.didApply),
+        boost: 18
+      },
+      {
+        label: "Inline Math",
+        type: "scholium-command-math",
+        apply: replaceSlashWithSnippet("$${}$", "Insert Inline Math", options.didApply),
+        boost: 16
+      },
+      {
+        label: "Display Math",
+        type: "scholium-command-math",
+        apply: replaceSlashWithSnippet("$$\n${}\n$$", "Insert Display Math", options.didApply),
+        boost: 14,
+        blockOnly: true
+      },
+      {
+        label: "Mermaid",
+        type: "scholium-command-mermaid",
+        apply: replaceSlashWithSnippet("```mermaid\n${}\n```", "Insert Mermaid", options.didApply),
+        boost: 12,
+        blockOnly: true
+      },
+      {
+        label: "Table",
+        type: "scholium-command-table",
+        apply: replaceSlashWithSnippet(
+          "| ${1:Column 1} | ${2:Column 2} |\n| --- | --- |\n| ${3} | ${4} |",
+          "Insert Table",
+          options.didApply
+        ),
+        boost: 10,
+        blockOnly: true
+      },
+      {
+        label: "Footnote",
+        type: "scholium-command-footnote",
+        apply: replaceSlashWithFootnote(options),
+        boost: 8
+      },
+      {
+        label: "Code Block",
+        type: "scholium-command-code",
+        apply: replaceSlashWithSnippet(
+          "```${1:language}\n${2}\n```",
+          "Insert Code Block",
+          options.didApply
+        ),
+        boost: 6,
+        blockOnly: true
+      },
+      {
+        label: "Divider",
+        type: "scholium-command-divider",
+        apply: replaceSlashWithText("---", "Insert Divider", options.didApply),
+        boost: 4,
+        blockOnly: true
+      }
+    ];
+    const available = commands.filter((command2) => blockContext || !command2.blockOnly);
+    if (!query) {
+      const featured = blockContext ? /* @__PURE__ */ new Set(["Callout", "Date", "Inline Math", "Mermaid"]) : /* @__PURE__ */ new Set(["Date", "Inline Math", "Footnote"]);
+      return available.filter((command2) => featured.has(command2.label));
+    }
+    return available.filter((command2) => fuzzyCommandMatch(command2.label, query)).slice(0, 7);
+  }
+  function applyWikilinkCandidate(candidate, didApply) {
+    return (view, completion, from, to) => {
+      let closingLength = 0;
+      while (closingLength < 2 && view.state.sliceDoc(to + closingLength, to + closingLength + 1) === "]") {
+        closingLength += 1;
+      }
+      const insert2 = `${candidate.insertion}]]`;
+      view.dispatch({
+        changes: { from, to: to + closingLength, insert: insert2 },
+        selection: { anchor: from + insert2.length },
+        annotations: [
+          pickedCompletion.of(completion),
+          Transaction.userEvent.of("input.complete.scholium.wikilink")
+        ]
+      });
+      didApply("Insert Wikilink");
+    };
+  }
+  function validLinkCandidate(value) {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value;
+    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && typeof candidate.isAmbiguous === "boolean";
+  }
+  function suggestionSymbol(completion) {
+    const key = suggestionSymbolByType[completion.type];
+    return key ? systemSymbolElement(key, "scholium-completion-symbol") : null;
+  }
+  function createEditorInputSuggestions(options) {
+    const pendingLinkQueries = /* @__PURE__ */ new Map();
+    const wikilinkCompletionSource = (context) => {
+      if (!isLiveSuggestionContext(options, context.state)) return null;
+      const line = context.state.doc.lineAt(context.pos);
+      const scanFrom = Math.max(line.from, context.pos - 512);
+      const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
+      const match = /\[\[([^\]\n|#]{0,510})$/.exec(beforeCursor);
+      if (!match) return null;
+      const typed = match[1];
+      const from = scanFrom + match.index + 2;
+      if (positionIsProtected(options, context.state, from - 2)) return null;
+      const requestID = boundedUUID();
+      const candidates = new Promise((resolve) => {
+        const cancel = () => {
+          const pending = pendingLinkQueries.get(requestID);
+          if (!pending) return;
+          pendingLinkQueries.delete(requestID);
+          globalThis.clearTimeout(pending.timeout);
+          resolve([]);
+        };
+        context.addEventListener("abort", cancel, { onDocChange: true });
+        const timeout = globalThis.setTimeout(cancel, 3e3);
+        pendingLinkQueries.set(requestID, { resolve, timeout });
+        options.requestLinkCompletions(requestID, typed);
+      });
+      return candidates.then((resolved) => ({
+        from,
+        options: resolved.filter((candidate) => !candidate.isAmbiguous && candidate.insertion.length > 0).slice(0, 100).map((candidate) => ({
+          label: candidate.label,
+          detail: candidate.path,
+          type: "scholium-note",
+          apply: applyWikilinkCandidate(candidate, options.didApply)
+        })),
+        filter: false
+      }));
+    };
+    const slashCompletionSource = (context) => {
+      if (!isLiveSuggestionContext(options, context.state)) return null;
+      const line = context.state.doc.lineAt(context.pos);
+      const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
+      const match = /\/([\p{L}\p{N}_-]*)$/u.exec(beforeCursor);
+      if (!match) return null;
+      const slashFrom = line.from + match.index;
+      if (slashFrom > line.from && !/\s/u.test(context.state.doc.sliceString(slashFrom - 1, slashFrom))) return null;
+      if (positionIsProtected(options, context.state, slashFrom)) return null;
+      const prefix = context.state.doc.sliceString(line.from, slashFrom);
+      const blockContext = /^\s*$/u.test(prefix);
+      return {
+        from: slashFrom + 1,
+        options: slashCommandOptions(options, blockContext, match[1]),
+        filter: false
+      };
+    };
+    const calloutCompletionSource = (context) => {
+      if (!isLiveSuggestionContext(options, context.state)) return null;
+      const line = context.state.doc.lineAt(context.pos);
+      if (context.pos - line.from > 512) return null;
+      const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
+      const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
+      if (!match || positionIsProtected(options, context.state, context.pos - match[2].length)) {
+        return null;
+      }
+      const typed = match[2].toLocaleLowerCase();
+      const dialectCallouts = options.dialect()?.callouts ?? [];
+      return {
+        from: context.pos - match[2].length,
+        options: dialectCallouts.filter((callout) => !typed || callout.identifier.startsWith(typed)).map((callout) => ({
+          label: callout.label,
+          type: "scholium-callout-role",
+          apply: (view, completion, from, to) => {
+            const insert2 = `${callout.identifier}] `;
+            view.dispatch({
+              changes: { from, to, insert: insert2 },
+              selection: { anchor: from + insert2.length },
+              annotations: [
+                pickedCompletion.of(completion),
+                Transaction.userEvent.of("input.complete.scholium.callout")
+              ]
+            });
+            options.didApply("Insert Callout");
+          }
+        })),
+        filter: false
+      };
+    };
+    return {
+      extension: autocompletion({
+        override: [calloutCompletionSource, wikilinkCompletionSource, slashCompletionSource],
+        activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
+        maxRenderedOptions: 7,
+        icons: false,
+        tooltipClass: () => "scholium-editor-suggestions",
+        addToOptions: [{ render: suggestionSymbol, position: 20 }]
+      }),
+      wikilinkCompletionSource,
+      slashCompletionSource,
+      calloutCompletionSource,
+      resolveLinkCompletionQuery(requestID, value) {
+        const pending = pendingLinkQueries.get(requestID);
+        if (!pending) return;
+        pendingLinkQueries.delete(requestID);
+        globalThis.clearTimeout(pending.timeout);
+        pending.resolve(Array.isArray(value) ? value.slice(0, 100).filter(validLinkCandidate) : []);
+      }
+    };
+  }
+
   // selection-actions.ts
+  var selectionActionCommands = [
+    "paragraph",
+    "heading1",
+    "heading2",
+    "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
+    "bold",
+    "emphasis",
+    "strikethrough",
+    "highlight",
+    "standardLink",
+    "wikilink",
+    "vectorSupports",
+    "vectorOpposes",
+    "vectorIncompatible",
+    "inlineCode",
+    "fencedCode",
+    "bulletList",
+    "numberedList",
+    "taskList",
+    "blockQuotation",
+    "markdownComment"
+  ];
+  function selectionSymbol(key, className = "") {
+    return systemSymbolElement(
+      key,
+      `scholium-selection-symbol ${className}`.trim()
+    );
+  }
+  function chevronIcon(className = "") {
+    return selectionSymbol("chevron-down", className);
+  }
+  function directMenuButtons(menu) {
+    return Array.from(menu.children).filter(
+      (child) => child instanceof HTMLButtonElement
+    );
+  }
   function createSelectionActionsController(options) {
     let root = null;
     let activeView = null;
-    function addButton(commandBar, title, label, command2) {
+    let focusExitTimer = null;
+    let presentedDocument = null;
+    let presentedSelection = null;
+    let activeTextStyle = null;
+    const positionMeasureKey = {};
+    let positionGeneration = 0;
+    let positionWatchdog = null;
+    const menus = [];
+    const styleChecks = /* @__PURE__ */ new Map();
+    const menuByTrigger = /* @__PURE__ */ new Map();
+    function clearFocusExitTimer() {
+      if (focusExitTimer === null) return;
+      window.clearTimeout(focusExitTimer);
+      focusExitTimer = null;
+    }
+    function supersedePositionRequest() {
+      positionGeneration += 1;
+      if (positionWatchdog !== null) {
+        window.clearTimeout(positionWatchdog);
+        positionWatchdog = null;
+      }
+      return positionGeneration;
+    }
+    function hideMenu(menu) {
+      if (!menu.element.hidden) menu.element.hidden = true;
+      if (menu.trigger.getAttribute("aria-expanded") !== "false") {
+        menu.trigger.setAttribute("aria-expanded", "false");
+      }
+      for (const child of menus) {
+        if (child.parent === menu) hideMenu(child);
+      }
+    }
+    function closeMenus() {
+      for (const menu of menus) {
+        if (!menu.parent) hideMenu(menu);
+      }
+    }
+    function visibleToolbarControls() {
+      if (!root) return [];
+      return Array.from(root.querySelectorAll(
+        ".scholium-selection-toolbar .scholium-selection-control"
+      )).filter((button) => button.getClientRects().length > 0);
+    }
+    function visibleMenuButtons(menu) {
+      return directMenuButtons(menu).filter((button) => button.getClientRects().length > 0);
+    }
+    function topMenu(menu) {
+      let current = menu;
+      while (current.parent) current = current.parent;
+      return current;
+    }
+    function positionMenu(menu) {
+      if (menu.element.hidden) return;
+      menu.element.style.visibility = "hidden";
+      const triggerBounds = menu.trigger.getBoundingClientRect();
+      const menuBounds = menu.element.getBoundingClientRect();
+      const viewportInset = 8;
+      let left = menu.parent ? triggerBounds.right + 4 : triggerBounds.left;
+      let top2 = menu.parent ? triggerBounds.top - 4 : triggerBounds.bottom + 5;
+      if (left + menuBounds.width > window.innerWidth - viewportInset) {
+        left = menu.parent ? triggerBounds.left - menuBounds.width - 4 : window.innerWidth - menuBounds.width - viewportInset;
+      }
+      if (top2 + menuBounds.height > window.innerHeight - viewportInset) {
+        top2 = menu.parent ? window.innerHeight - menuBounds.height - viewportInset : triggerBounds.top - menuBounds.height - 5;
+      }
+      menu.element.style.left = `${Math.max(viewportInset, left)}px`;
+      menu.element.style.top = `${Math.max(viewportInset, top2)}px`;
+      menu.element.style.visibility = "";
+    }
+    function positionOpenMenus() {
+      for (const menu of menus) positionMenu(menu);
+    }
+    function openMenu(menu, focusFirstItem) {
+      if (!menu.parent) {
+        closeMenus();
+      } else {
+        for (const sibling of menus) {
+          if (sibling.parent === menu.parent && sibling !== menu) hideMenu(sibling);
+        }
+      }
+      menu.element.hidden = false;
+      menu.trigger.setAttribute("aria-expanded", "true");
+      positionMenu(menu);
+      if (focusFirstItem) {
+        window.queueMicrotask(() => visibleMenuButtons(menu.element)[0]?.focus());
+      }
+    }
+    function apply(command2) {
+      closeMenus();
+      const view = activeView;
+      if (view) options.applyCommand(view, command2);
+    }
+    function createToolbarButton(label, title, className = "") {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = title;
+      button.className = `scholium-selection-control ${className}`.trim();
       button.setAttribute("aria-label", label);
-      button.title = label;
-      button.addEventListener("mousedown", (event) => event.preventDefault());
-      button.addEventListener("click", () => {
-        if (activeView) options.applyCommand(activeView, command2);
+      if (title) button.title = title;
+      return button;
+    }
+    function bindCommand(button, command2) {
+      button.dataset.scholiumCommand = command2;
+      button.addEventListener("click", () => apply(command2));
+    }
+    function createMenu(trigger, className, parent) {
+      const element = document.createElement("div");
+      element.className = `scholium-selection-menu ${className}`;
+      element.setAttribute("role", "menu");
+      element.hidden = true;
+      const menu = { element, trigger, parent };
+      menus.push(menu);
+      menuByTrigger.set(trigger, menu);
+      trigger.setAttribute("aria-haspopup", "menu");
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.addEventListener("click", (event) => {
+        if (element.hidden) openMenu(menu, event.detail === 0);
+        else hideMenu(menu);
       });
-      commandBar.append(button);
+      trigger.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        event.preventDefault();
+        openMenu(menu, false);
+        const items = visibleMenuButtons(element);
+        (event.key === "ArrowUp" ? items.at(-1) : items[0])?.focus();
+      });
+      element.addEventListener("keydown", (event) => handleMenuKeydown(menu, event));
+      root?.append(element);
+      return menu;
+    }
+    function addMenuItem(menu, label, command2, className = "", radio = false, symbol) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `scholium-selection-menu-item ${className}`.trim();
+      item.dataset.scholiumCommand = command2;
+      item.tabIndex = -1;
+      item.setAttribute("role", radio ? "menuitemradio" : "menuitem");
+      if (radio) {
+        item.setAttribute("aria-checked", "false");
+        const check = selectionSymbol("checkmark", "scholium-selection-menu-check");
+        styleChecks.set(command2, check);
+        item.append(check);
+      }
+      if (symbol) {
+        item.append(selectionSymbol(symbol, "scholium-selection-menu-symbol"));
+      }
+      const text = document.createElement("span");
+      text.className = "scholium-selection-menu-label";
+      text.textContent = label;
+      item.append(text);
+      item.addEventListener("click", () => apply(command2));
+      menu.element.append(item);
+      return item;
+    }
+    function addSubmenuItem(menu, label, symbol) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "scholium-selection-menu-item scholium-selection-submenu-trigger";
+      item.tabIndex = -1;
+      item.setAttribute("role", "menuitem");
+      const text = document.createElement("span");
+      text.className = "scholium-selection-menu-label";
+      text.textContent = label;
+      const leading = document.createElement("span");
+      leading.className = "scholium-selection-menu-leading";
+      if (symbol) {
+        leading.append(selectionSymbol(symbol, "scholium-selection-menu-symbol"));
+      }
+      leading.append(text);
+      item.append(leading, chevronIcon("scholium-selection-submenu-chevron"));
+      menu.element.append(item);
+      return item;
+    }
+    function handleMenuKeydown(menu, event) {
+      const items = visibleMenuButtons(menu.element);
+      const current = event.target instanceof HTMLButtonElement ? items.indexOf(event.target) : -1;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        items[(current + delta + items.length) % items.length]?.focus();
+        return;
+      }
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        (event.key === "Home" ? items[0] : items.at(-1))?.focus();
+        return;
+      }
+      if (event.key === "ArrowRight" && event.target instanceof HTMLButtonElement) {
+        const submenu = menuByTrigger.get(event.target);
+        if (submenu) {
+          event.preventDefault();
+          openMenu(submenu, true);
+        }
+        return;
+      }
+      if (event.key === "ArrowLeft" && menu.parent) {
+        event.preventDefault();
+        hideMenu(menu);
+        menu.trigger.focus();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        const top2 = topMenu(menu);
+        closeMenus();
+        top2.trigger.focus();
+        return;
+      }
+      if (event.key === "Tab") {
+        const controls = visibleToolbarControls();
+        const trigger = topMenu(menu).trigger;
+        const index = controls.indexOf(trigger);
+        const destination = controls[index + (event.shiftKey ? -1 : 1)];
+        closeMenus();
+        if (destination) {
+          event.preventDefault();
+          destination.focus();
+        }
+      }
+    }
+    function refreshTextStyle(view) {
+      const line = view.state.doc.lineAt(view.state.selection.main.head);
+      const heading2 = /^ {0,3}(#{1,6})[ \t]+/.exec(line.text);
+      const active = heading2 ? `heading${heading2[1].length}` : "paragraph";
+      if (active === activeTextStyle) return;
+      activeTextStyle = active;
+      for (const [command2, check] of styleChecks) {
+        const selected = command2 === active;
+        check.parentElement?.setAttribute("aria-checked", String(selected));
+        check.classList.toggle("scholium-selection-menu-check-active", selected);
+      }
+    }
+    function requestPosition(view) {
+      if (!root || root.hidden) return;
+      const generation = supersedePositionRequest();
+      let settled = false;
+      const read = () => {
+        if (settled || generation !== positionGeneration || !root || root.hidden) return null;
+        const selection = options.selectionForPresentation?.(view) ?? view.state.selection;
+        const main = selection.main;
+        const from = Math.min(main.anchor, main.head);
+        const to = Math.max(main.anchor, main.head);
+        const start = view.coordsAtPos(from, 1) ?? view.coordsAtPos(Math.min(to, from + 1), -1);
+        const end = view.coordsAtPos(to, -1) ?? view.coordsAtPos(Math.max(from, to - 1), 1) ?? start;
+        if (!start || !end) return null;
+        const bounds = root.getBoundingClientRect();
+        return floatingSurfacePosition({
+          anchor: {
+            left: Math.min(start.left, end.left),
+            right: Math.max(start.right, end.right),
+            top: Math.min(start.top, end.top),
+            bottom: Math.max(start.bottom, end.bottom)
+          },
+          surface: bounds,
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          horizontal: "center",
+          preferredPlacement: "above",
+          inset: 8,
+          gap: 6
+        });
+      };
+      const write = (measured) => {
+        if (settled || generation !== positionGeneration || !root || root.hidden) return;
+        settled = true;
+        if (positionWatchdog !== null) {
+          window.clearTimeout(positionWatchdog);
+          positionWatchdog = null;
+        }
+        if (!measured) {
+          hide();
+          return;
+        }
+        const left = `${measured.left}px`;
+        const top2 = `${measured.top}px`;
+        if (root.style.left !== left) root.style.left = left;
+        if (root.style.top !== top2) root.style.top = top2;
+        root.style.visibility = "visible";
+        if (menus.some((menu) => !menu.element.hidden)) {
+          window.queueMicrotask(positionOpenMenus);
+        }
+      };
+      view.requestMeasure({
+        read,
+        write,
+        key: positionMeasureKey
+      });
+      positionWatchdog = window.setTimeout(() => write(read()), 50);
+    }
+    function scheduleFocusExit(view) {
+      clearFocusExitTimer();
+      focusExitTimer = window.setTimeout(() => {
+        focusExitTimer = null;
+        if (root?.contains(document.activeElement) || view.hasFocus || view.contentDOM.contains(document.activeElement)) return;
+        hide();
+      }, 0);
+    }
+    function handleToolbarKeydown(event) {
+      const controls = visibleToolbarControls();
+      const current = event.target instanceof HTMLButtonElement ? controls.indexOf(event.target) : -1;
+      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        const delta = event.key === "ArrowRight" ? 1 : -1;
+        controls[(current + delta + controls.length) % controls.length]?.focus();
+      } else if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        (event.key === "Home" ? controls[0] : controls.at(-1))?.focus();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenus();
+        activeView?.focus();
+      }
     }
     function mount(view) {
       if (root) return;
@@ -30513,58 +31603,220 @@ ${preview.fragment}` : relationship;
       root.className = "scholium-selection-actions";
       root.hidden = true;
       root.dataset.scholiumProtected = "selection-actions";
+      root.addEventListener("mousedown", (event) => event.preventDefault());
+      root.addEventListener("focusin", clearFocusExitTimer);
+      root.addEventListener("focusout", () => {
+        if (activeView) scheduleFocusExit(activeView);
+      });
       const commandBar = document.createElement("div");
       commandBar.className = "scholium-selection-toolbar";
       commandBar.setAttribute("role", "toolbar");
       commandBar.setAttribute("aria-label", "Formatting actions");
+      commandBar.addEventListener("keydown", handleToolbarKeydown);
       root.append(commandBar);
-      addButton(commandBar, "B", "Bold", "bold");
-      addButton(commandBar, "I", "Italic", "emphasis");
-      addButton(commandBar, "</>", "Inline Code", "inlineCode");
-      addButton(commandBar, "\u2197", "Link", "standardLink");
+      const styleButton = createToolbarButton("Text Style", "Text Style", "scholium-selection-style-trigger");
+      styleButton.append(
+        selectionSymbol("textformat", "scholium-selection-icon-style"),
+        chevronIcon("scholium-selection-chevron")
+      );
+      commandBar.append(styleButton);
+      const styleMenu = createMenu(styleButton, "scholium-selection-style-menu");
+      addMenuItem(styleMenu, "Paragraph", "paragraph", "", true);
+      for (let level = 1; level <= 6; level += 1) {
+        addMenuItem(
+          styleMenu,
+          `Heading ${level}`,
+          `heading${level}`,
+          "",
+          true
+        );
+      }
+      const bold = createToolbarButton("Bold", "Bold (\u2318B)");
+      bold.append(selectionSymbol("bold", "scholium-selection-icon-bold"));
+      bindCommand(bold, "bold");
+      commandBar.append(bold);
+      const italic = createToolbarButton("Italic", "Italic (\u2318I)");
+      italic.append(selectionSymbol("italic", "scholium-selection-icon-italic"));
+      bindCommand(italic, "emphasis");
+      commandBar.append(italic);
+      const strike = createToolbarButton(
+        "Strikethrough",
+        "Strikethrough",
+        "scholium-selection-wide-only"
+      );
+      strike.append(selectionSymbol("strikethrough", "scholium-selection-icon-strike"));
+      bindCommand(strike, "strikethrough");
+      commandBar.append(strike);
+      const highlight = createToolbarButton(
+        "Highlight",
+        "Highlight",
+        "scholium-selection-wide-only"
+      );
+      highlight.append(selectionSymbol("highlighter", "scholium-selection-highlight-icon"));
+      bindCommand(highlight, "highlight");
+      commandBar.append(highlight);
+      const firstSeparator = document.createElement("span");
+      firstSeparator.className = "scholium-selection-separator";
+      firstSeparator.setAttribute("role", "separator");
+      commandBar.append(firstSeparator);
+      const link = createToolbarButton("Link", "Link (\u2318K)");
+      link.append(selectionSymbol("link", "scholium-selection-link-icon"));
+      bindCommand(link, "standardLink");
+      commandBar.append(link);
+      const wikiGroup = document.createElement("div");
+      wikiGroup.className = "scholium-selection-wiki-group";
+      wikiGroup.setAttribute("role", "group");
+      wikiGroup.setAttribute("aria-label", "Wiki links");
+      const wiki = createToolbarButton("Wiki", null, "scholium-selection-wiki-primary");
+      const wikiLabel = document.createElement("span");
+      wikiLabel.className = "scholium-selection-label";
+      wikiLabel.textContent = "Wiki";
+      wiki.append(wikiLabel);
+      bindCommand(wiki, "wikilink");
+      const vector = createToolbarButton(
+        "Vector Link Options",
+        "Vector Link",
+        "scholium-selection-wiki-menu-trigger"
+      );
+      vector.append(chevronIcon("scholium-selection-chevron"));
+      wikiGroup.append(wiki, vector);
+      commandBar.append(wikiGroup);
+      const vectorMenu = createMenu(vector, "scholium-selection-vector-menu");
+      addMenuItem(vectorMenu, "Supports", "vectorSupports", "", false, "plus-circle");
+      addMenuItem(vectorMenu, "Opposes", "vectorOpposes", "", false, "minus-circle");
+      addMenuItem(vectorMenu, "Incompatible", "vectorIncompatible", "", false, "xmark-circle");
+      const secondSeparator = document.createElement("span");
+      secondSeparator.className = "scholium-selection-separator";
+      secondSeparator.setAttribute("role", "separator");
+      commandBar.append(secondSeparator);
+      const more = createToolbarButton("More Formatting", "More Formatting");
+      more.append(selectionSymbol("ellipsis", "scholium-selection-more-icon"));
+      commandBar.append(more);
+      const moreMenu = createMenu(more, "scholium-selection-more-menu");
+      addMenuItem(
+        moreMenu,
+        "Strikethrough",
+        "strikethrough",
+        "scholium-selection-compact-only",
+        false,
+        "strikethrough"
+      );
+      addMenuItem(
+        moreMenu,
+        "Highlight",
+        "highlight",
+        "scholium-selection-compact-only",
+        false,
+        "highlighter"
+      );
+      addMenuItem(moreMenu, "Inline Code", "inlineCode", "", false, "curlybraces");
+      addMenuItem(moreMenu, "Code Block", "fencedCode", "", false, "curlybraces-square");
+      const lists = addSubmenuItem(moreMenu, "Lists", "list-bullet");
+      const listsMenu = createMenu(lists, "scholium-selection-lists-menu", moreMenu);
+      addMenuItem(listsMenu, "Bullet List", "bulletList", "", false, "list-bullet");
+      addMenuItem(listsMenu, "Numbered List", "numberedList", "", false, "list-number");
+      addMenuItem(listsMenu, "Checkbox List", "taskList", "", false, "checklist");
+      addMenuItem(moreMenu, "Blockquote", "blockQuotation", "", false, "text-quote");
+      addMenuItem(moreMenu, "Comment", "markdownComment", "", false, "eye-slash");
+      const handleDocumentMouseDown = (event) => {
+        if (root && event.target instanceof Node && !root.contains(event.target)) closeMenus();
+      };
+      const handleContentKeydown = (event) => {
+        if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.key !== "F5") return;
+        if (!root || root.hidden) return;
+        event.preventDefault();
+        visibleToolbarControls()[0]?.focus();
+      };
+      const handleResize = () => {
+        if (activeView) reposition(activeView);
+      };
+      const handleContentFocusOut = () => scheduleFocusExit(view);
+      const handleWindowFocus = () => {
+        if (!root || root.hidden || activeView !== view) update(view);
+      };
+      const handleWindowBlur = () => hide();
+      document.addEventListener("mousedown", handleDocumentMouseDown, true);
+      view.contentDOM.addEventListener("keydown", handleContentKeydown);
+      view.contentDOM.addEventListener("focusout", handleContentFocusOut);
+      window.addEventListener("resize", handleResize);
+      window.addEventListener("focus", handleWindowFocus);
+      window.addEventListener("blur", handleWindowBlur);
+      cleanup = () => {
+        document.removeEventListener("mousedown", handleDocumentMouseDown, true);
+        view.contentDOM.removeEventListener("keydown", handleContentKeydown);
+        view.contentDOM.removeEventListener("focusout", handleContentFocusOut);
+        window.removeEventListener("resize", handleResize);
+        window.removeEventListener("focus", handleWindowFocus);
+        window.removeEventListener("blur", handleWindowBlur);
+      };
       document.body.append(root);
       update(view);
     }
+    let cleanup = null;
     function unmount(view) {
+      clearFocusExitTimer();
+      supersedePositionRequest();
+      cleanup?.();
+      cleanup = null;
       if (activeView === view) activeView = null;
       root?.remove();
       root = null;
+      menus.length = 0;
+      styleChecks.clear();
+      menuByTrigger.clear();
+      presentedDocument = null;
+      presentedSelection = null;
+      activeTextStyle = null;
     }
     function hide() {
-      if (root) root.hidden = true;
+      clearFocusExitTimer();
+      supersedePositionRequest();
+      if (!root || root.hidden && activeView === null) return;
+      closeMenus();
+      root.hidden = true;
       activeView = null;
+      presentedDocument = null;
+      presentedSelection = null;
+    }
+    function reposition(view) {
+      if (activeView !== view || !root || root.hidden) return;
+      requestPosition(view);
     }
     function update(view) {
       if (!root) return;
       const selection = options.selectionForPresentation?.(view) ?? view.state.selection;
       const main = selection.main;
-      if (view.composing || !view.hasFocus || selection.ranges.length !== 1 || main.empty) {
+      if (view.composing || selection.ranges.length !== 1 || main.empty || options.pointerSelectionIsComplete?.(view) === false || options.selectionIsAvailable?.(view) === false) {
         hide();
         return;
       }
-      const from = Math.min(main.anchor, main.head);
-      const to = Math.max(main.anchor, main.head);
-      const start = view.coordsAtPos(from);
-      const end = view.coordsAtPos(to);
-      if (!start || !end) {
-        hide();
+      if (!view.hasFocus && !view.contentDOM.contains(document.activeElement) && !root.contains(document.activeElement)) {
+        scheduleFocusExit(view);
         return;
       }
+      if (!root.hidden && activeView === view && presentedDocument === view.state.doc && presentedSelection?.eq(selection)) {
+        reposition(view);
+        return;
+      }
+      clearFocusExitTimer();
       activeView = view;
-      root.hidden = false;
-      const measured = root.getBoundingClientRect();
-      root.style.left = `${Math.max(12, Math.min(
-        Math.min(start.left, end.left),
-        window.innerWidth - measured.width - 12
-      ))}px`;
-      root.style.top = `${Math.max(8, Math.min(start.top, end.top) - measured.height - 6)}px`;
+      presentedDocument = view.state.doc;
+      presentedSelection = selection;
+      if (root.hidden) {
+        root.style.visibility = "hidden";
+        root.hidden = false;
+      }
+      refreshTextStyle(view);
+      requestPosition(view);
     }
     const extension = ViewPlugin.define((view) => {
       mount(view);
       return {
         update(updateEvent) {
-          if (updateEvent.docChanged || updateEvent.focusChanged || (options.presentationSelectionChanged?.(updateEvent) ?? updateEvent.selectionSet)) {
+          if (updateEvent.docChanged || updateEvent.focusChanged || (options.presentationInteractionChanged?.(updateEvent) ?? updateEvent.selectionSet)) {
             update(updateEvent.view);
+          } else if (updateEvent.geometryChanged || updateEvent.viewportChanged) {
+            reposition(updateEvent.view);
           }
         },
         destroy() {
@@ -30575,6 +31827,7 @@ ${preview.fragment}` : relationship;
     return {
       extension,
       hide,
+      reposition,
       update
     };
   }
@@ -30961,13 +32214,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     heading2.className = "scholium-callout-heading";
     heading2.setAttribute("role", "heading");
     heading2.setAttribute("aria-level", "2");
+    const orientationTitleBecomesBody = parts.definition.identifier === "orient" && parts.title.length > 0 && parts.body.trim().length === 0;
     const role = document2.createElement("span");
     role.className = "scholium-callout-role";
     role.dir = "auto";
     role.title = parts.definition.meaning;
     role.textContent = parts.definition.label;
     heading2.append(role);
-    if (parts.title) {
+    if (parts.title && !orientationTitleBecomesBody) {
       const title = document2.createElement("span");
       title.className = "scholium-callout-title";
       title.dir = "auto";
@@ -30994,7 +32248,15 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       destination.dir = "auto";
       content2.append(destination);
     }
-    appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
+    if (orientationTitleBecomesBody) {
+      const paragraph = document2.createElement("p");
+      paragraph.className = "scholium-callout-orient-title-body";
+      paragraph.dir = "auto";
+      appendInlineMarkdown(parts.title, paragraph, optionsAt(options, parts.titleFrom));
+      destination.append(paragraph);
+    } else {
+      appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
+    }
     body.append(signature, content2);
     callout.append(headingContainer, body);
     parent.append(callout);
@@ -31243,13 +32505,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       mousedown(event) {
         if (event.button !== 0 || this.view.composing) return false;
         if (options.handleModifiedLink(this.view, event)) return true;
+        if (options.handleProjectedPointerStart(this.view, event)) return true;
         this.removeWindowListeners();
         this.gestureActive = true;
         this.addWindowListeners();
         this.view.dispatch({
           effects: beginPointerSelection.of(event.detail >= 3 ? "immediate" : "deferred")
         });
-        return options.handleProjectedPointerStart(this.view, event);
+        return false;
       }
       destroy() {
         this.destroyed = true;
@@ -31264,11 +32527,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
     });
     const selection = (state) => state.field(field, false)?.selection ?? state.selection;
+    const interaction = (state) => state.field(field, false) ?? { selection: state.selection, pointerPhase: "idle" };
     return {
       extension: [field, pointer],
       selection,
       changed(startState, state) {
         return !selection(startState).eq(selection(state));
+      },
+      interactionChanged(startState, state) {
+        const start = interaction(startState);
+        const current = interaction(state);
+        return start.pointerPhase !== current.pointerPhase || !start.selection.eq(current.selection);
+      },
+      pointerSelectionIsComplete(state) {
+        return interaction(state).pointerPhase === "idle";
       }
     };
   }
@@ -31326,6 +32598,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       });
     }
     return immutableProjectionRanges(ranges);
+  }
+  function calloutRangeIncludingPendingQuoteLines(doc2, range) {
+    let line = doc2.lineAt(range.to);
+    let to = range.to;
+    if (range.to > line.from && /^\s*>[ \t]*$/.test(line.text)) {
+      to = line.to;
+    }
+    while (line.number < doc2.lines) {
+      const next = doc2.line(line.number + 1);
+      if (!/^\s*>[ \t]*$/.test(next.text)) break;
+      to = next.to;
+      line = next;
+    }
+    return { from: range.from, to };
   }
   function finalizedLiveProjectionIndex(doc2, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter) {
     const immutableExcluded = immutableProjectionRanges(excluded);
@@ -31447,7 +32733,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       inlineDefinitionRanges.add(rangeKey(inline.from, inline.to));
     }
     const tableRanges = syntax.blocks.filter((block) => block.kind === "table").map(({ from, to }) => ({ from, to }));
-    const calloutRanges = syntax.blocks.filter((block) => block.kind === "callout").map(({ from, to }) => ({ from, to }));
+    const calloutRanges = syntax.blocks.filter((block) => block.kind === "callout").map(({ from, to }) => calloutRangeIncludingPendingQuoteLines(state.doc, { from, to }));
     const yamlBoundary = frontmatterBoundary(state.doc);
     const yamlBodyFrom = yamlBoundary.endLine === 0 ? 0 : yamlBoundary.endLine < state.doc.lines ? state.doc.line(yamlBoundary.endLine + 1).from : state.doc.line(yamlBoundary.endLine).to;
     const frontmatterRange = yamlBodyFrom > 0 ? { from: 0, to: yamlBodyFrom } : null;
@@ -31610,8 +32896,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var bridgeFingerprint = "";
   var documentVersion = 0;
   var exactSourceMirror = new ExactSourceMirror();
-  var nextLinkCompletionRequest = 0;
-  var pendingLinkCompletionQueries = /* @__PURE__ */ new Map();
   var linkPreviews = [];
   var linkPreviewIndexByRange = /* @__PURE__ */ new Map();
   var editingDialect = null;
@@ -31736,10 +33020,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
   };
   var vectorLinkSemantics = {
-    neutral: { label: "Related note", symbol: "\u2014" },
-    supports: { label: "Supports", symbol: "+" },
-    opposes: { label: "Opposes", symbol: "\u2212" },
-    incompatible: { label: "Incompatible", symbol: "" }
+    neutral: { label: "Related note", symbol: "link" },
+    supports: { label: "Supports", symbol: "plus-circle" },
+    opposes: { label: "Opposes", symbol: "minus-circle" },
+    incompatible: { label: "Incompatible", symbol: "xmark-circle" }
   };
   var VectorLinkIconWidget = class extends WidgetType {
     kind;
@@ -31752,22 +33036,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     toDOM() {
       const semantics = vectorLinkSemantics[this.kind];
-      const span = document.createElement("span");
-      span.className = `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`;
+      const span = systemSymbolElement(
+        semantics.symbol,
+        `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`
+      );
       span.title = semantics.label;
+      span.removeAttribute("aria-hidden");
       span.setAttribute("role", "img");
       span.setAttribute("aria-label", semantics.label);
-      if (this.kind === "incompatible") {
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.setAttribute("viewBox", "0 0 20 20");
-        svg.setAttribute("aria-hidden", "true");
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", "M3.1 10.1c2.5-.2 4.5-.1 6.1.1L10 7.1M16.9 10.1c-2.5-.2-4.5-.1-6.1.1L10 13.1");
-        svg.append(path);
-        span.append(svg);
-      } else {
-        span.textContent = semantics.symbol;
-      }
       return span;
     }
     // Let CodeMirror place the caret at this replacement when it is clicked so
@@ -31992,50 +33268,45 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     event.preventDefault();
     return true;
   }
-  function projectedWidgetPointerStart(view, event) {
+  function projectedWidgetSourceOffset(event) {
     const target = event.target instanceof Element ? event.target : null;
-    if (!target || target.closest(".scholium-callout-fold-mark")) return false;
+    if (!target || target.closest(".scholium-callout-fold-mark")) return null;
     const calloutSlot = target.closest(".cm-live-callout-slot");
     const callout = calloutSlot ? calloutWidgetPresentations.get(calloutSlot) : void 0;
     if (callout) {
       const projectedLink = target.closest("[data-scholium-source-caret]");
       const requested = Number(projectedLink?.dataset.scholiumSourceCaret);
       const sourceOffset = Number.isSafeInteger(requested) ? Math.max(callout.from, Math.min(callout.to, requested)) : callout.to;
-      event.preventDefault();
-      dispatchProjectedPointerSelection(view, event, sourceOffset);
-      return true;
+      return sourceOffset;
     }
     const table = target.closest(".cm-live-table-widget");
     const tablePresentation2 = table ? tableWidgetPresentations.get(table) : void 0;
     if (table && tablePresentation2) {
-      event.preventDefault();
-      dispatchProjectedPointerSelection(
-        view,
+      return projectedSourceOffsetAt(
         event,
-        projectedSourceOffsetAt(
-          event,
-          table,
-          tablePresentation2.from,
-          tablePresentation2.to
-        )
+        table,
+        tablePresentation2.from,
+        tablePresentation2.to
       );
-      return true;
     }
     const mermaid = target.closest(".cm-live-mermaid-widget");
     const mermaidPresentation2 = mermaid ? mermaidWidgetPresentations.get(mermaid) : void 0;
     if (mermaid && mermaidPresentation2) {
-      event.preventDefault();
-      dispatchProjectedPointerSelection(view, event, mermaidPresentation2.contentFrom);
-      return true;
+      return mermaidPresentation2.contentFrom;
     }
     const footnote = target.closest(".cm-live-footnote-reference-widget");
     const reference = footnote ? footnoteReferencePresentations.get(footnote) : void 0;
     if (reference?.definitionContentFrom !== null && reference?.definitionContentFrom !== void 0) {
-      event.preventDefault();
-      dispatchProjectedPointerSelection(view, event, reference.definitionContentFrom);
-      return true;
+      return reference.definitionContentFrom;
     }
-    return false;
+    return null;
+  }
+  function projectedWidgetPointerStart(view, event) {
+    const sourceOffset = projectedWidgetSourceOffset(event);
+    if (sourceOffset === null) return false;
+    event.preventDefault();
+    dispatchProjectedPointerSelection(view, event, sourceOffset);
+    return true;
   }
   var liveSelection = createLiveSelectionController({
     handleModifiedLink: modifiedProjectedLink,
@@ -32600,7 +33871,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const headingMarkerOnly = line.length > 0 && headingMarkers.some((range) => range.from <= line.from && range.to >= line.to);
     const paragraph = blocks.find((block) => block.kind === "paragraph") ?? null;
     const callout = blocks.find((block) => block.kind === "callout") ?? null;
-    const quote = callout ? null : blocks.find((block) => block.kind === "blockQuote") ?? null;
+    const calloutPresentation = projectionRangesIntersecting(index.callouts, line.from, lineQueryTo)[0] ?? null;
+    const calloutActive = calloutPresentation !== null && liveSelection.selection(state).ranges.some((range) => selectionActivatesCallout(range, calloutPresentation));
+    const calloutOpening = calloutPresentation ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "") : null;
+    const calloutIdentifier = calloutOpening ? calloutDefinition(calloutOpening[2]).identifier : null;
+    const quote = calloutPresentation ? null : blocks.find((block) => block.kind === "blockQuote") ?? null;
     const quoteMarkers = quote?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
     const rule = blocks.find((block) => block.kind === "thematicBreak") ?? null;
     const html2 = blocks.find((block) => block.kind === "html") ?? null;
@@ -32624,6 +33899,21 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
     if (/^\s*$/.test(state.doc.sliceString(line.from, line.to)) && outsideFrontmatter && !codeBlock) {
       classes.add("cm-live-blank-line");
+    }
+    if (calloutPresentation && calloutActive) {
+      classes.add("cm-live-callout");
+      classes.add("cm-live-callout-source");
+      classes.add(active ? "cm-live-callout-active-line" : "cm-live-callout-projected-line");
+      if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
+        classes.add("cm-live-callout-start");
+        classes.add("cm-live-callout-header");
+      } else {
+        classes.add("cm-live-callout-body-line");
+      }
+      if (state.doc.lineAt(calloutPresentation.to).number === line.number) {
+        classes.add("cm-live-callout-end");
+      }
+      if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
     }
     if (codeBlock) {
       classes.add("cm-live-codeblock");
@@ -32681,6 +33971,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       heading: heading2,
       headingMarkers,
       paragraph,
+      callout,
+      calloutPresentation,
       quote,
       quoteMarkers,
       rule,
@@ -32699,7 +33991,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     let line = state.doc.lineAt(scanFrom);
     while (line.from <= scanTo) {
       const presentation = semanticLinePresentation(state, line, index);
-      const direction = presentation.codeBlock || presentation.html ? "ltr" : presentation.heading || presentation.paragraph || presentation.quote || presentation.list || presentation.comment ? "auto" : null;
+      const direction = presentation.codeBlock || presentation.html ? "ltr" : presentation.heading || presentation.paragraph || presentation.calloutPresentation || presentation.quote || presentation.list || presentation.comment ? "auto" : null;
       if (presentation.classes.length > 0 || direction) {
         const attributes = {};
         if (presentation.classes.length > 0) {
@@ -33043,14 +34335,28 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             }
           }
           const parsedCallout = projectionRangesIntersecting(
-            parsedProjection.callouts,
+            index.callouts,
             scanFrom,
             lineQueryTo
           )[0];
           const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
           const activeCallout = parsedCallout && projectionSelections.some((range) => selectionActivatesCallout(range, parsedCallout));
-          if (activeCallout && semanticCallout) {
-            structuralInlineExclusions.push(...semanticCallout.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from));
+          if (activeCallout) {
+            const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
+            const pendingPrefix = semanticLineMarkers.length === 0 ? /^\s*>[ \t]*/.exec(doc2.sliceString(line.from, line.to))?.[0] ?? "" : "";
+            const lineMarkers = semanticLineMarkers.length > 0 ? semanticLineMarkers : pendingPrefix.length > 0 ? [{ from: line.from, to: line.from + pendingPrefix.length }] : [];
+            structuralInlineExclusions.push(...lineMarkers);
+            if (!activeLine) {
+              for (const marker of lineMarkers) {
+                let markerTo = Math.min(line.to, marker.to);
+                while (markerTo < line.to) {
+                  const code2 = doc2.sliceString(markerTo, markerTo + 1);
+                  if (code2 !== " " && code2 !== "	") break;
+                  markerTo += 1;
+                }
+                addHidden(Math.max(line.from, marker.from), markerTo);
+              }
+            }
           }
           const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
           if (quote && !parsedCallout) {
@@ -33476,10 +34782,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var structuralInteractionKeymap = keymap.of([
     {
       key: "Enter",
-      run: (view) => applyInteraction(
-        continueList(view.state.doc, editorSelections()),
-        "input.scholium.continueList"
-      )
+      run: (view) => {
+        const selections = editorSelections(view.state);
+        return applyInteraction(
+          (configuredEditorMode(view.state) === "livePreview" ? continueCallout(view.state.doc, selections) : null) ?? continueList(view.state.doc, selections),
+          "input.scholium.continueStructure"
+        );
+      }
     },
     {
       key: "Tab",
@@ -33595,59 +34904,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     { key: "ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, false) },
     { key: "Shift-ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, true) }
   ]);
-  function wikilinkCompletionSource(context) {
-    const line = context.state.doc.lineAt(context.pos);
-    const scanFrom = Math.max(line.from, context.pos - 512);
-    const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
-    const match = /\[\[[^\]\n]*$/.exec(beforeCursor);
-    if (!match) return null;
-    const typed = match[0].slice(2);
-    const from = scanFrom + match.index + 2;
-    const requestID = crypto.randomUUID?.() ?? `link-${Date.now()}-${nextLinkCompletionRequest++}`;
-    const candidates = new Promise((resolve) => {
-      pendingLinkCompletionQueries.set(requestID, resolve);
-      const cancel = () => {
-        if (!pendingLinkCompletionQueries.delete(requestID)) return;
-        resolve([]);
-      };
-      context.addEventListener("abort", cancel, { onDocChange: true });
-      window.setTimeout(cancel, 3e3);
-      post({ type: "linkCompletionQuery", requestID, query: typed });
-    });
-    return candidates.then((resolved) => ({
-      from,
-      options: resolved.slice(0, 100).map((candidate) => ({
-        label: candidate.label,
-        detail: candidate.detail,
-        type: "text",
-        apply: candidate.isAmbiguous ? () => void 0 : candidate.insertion + "]]"
-      })),
-      filter: false
-    }));
-  }
-  function resolveLinkCompletionQuery(requestID, value) {
-    const resolve = pendingLinkCompletionQueries.get(requestID);
-    if (!resolve) return;
-    pendingLinkCompletionQueries.delete(requestID);
-    const candidates = Array.isArray(value) ? value.slice(0, 100).filter((candidate) => candidate !== null && typeof candidate === "object" && typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && typeof candidate.isAmbiguous === "boolean") : [];
-    resolve(candidates);
-  }
-  function calloutCompletionSource(context) {
-    const line = context.state.doc.lineAt(context.pos);
-    if (context.pos - line.from > 512) return null;
-    const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
-    const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
-    if (!match) return null;
-    const typed = match[2].toLocaleLowerCase();
-    const dialectCallouts = editingDialect?.callouts ?? [];
-    const options = dialectCallouts.filter((callout) => !typed || callout.identifier.startsWith(typed)).map((callout) => ({
-      label: callout.identifier,
-      detail: `${callout.label} \u2014 ${callout.meaning}`,
-      type: "keyword",
-      apply: `${callout.identifier}] `
-    }));
-    return { from: context.pos - match[2].length, options, filter: false };
-  }
   function applySelectionAction(view, command2) {
     const transformed = transformMarkdown(
       view.state.doc.toString(),
@@ -33672,13 +34928,44 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var selectionActions = createSelectionActionsController({
     applyCommand: applySelectionAction,
     selectionForPresentation: (view) => liveSelection.selection(view.state),
-    presentationSelectionChanged: (update) => liveSelection.changed(
+    presentationInteractionChanged: (update) => liveSelection.interactionChanged(
       update.startState,
       update.state
-    )
+    ),
+    pointerSelectionIsComplete: (view) => liveSelection.pointerSelectionIsComplete(view.state),
+    selectionIsAvailable: (view) => !view.state.selection.ranges.some((selection) => projectionSelectionOverlaps(protectedCommandRanges(), selection))
   });
   var previewPopover = createPreviewPopoverController({
     previews: () => linkPreviews
+  });
+  var sourceActiveLineDecoration = Decoration.line({ class: "cm-activeLine" });
+  var SourceActiveLineGutterMarker = class extends GutterMarker {
+    elementClass = "cm-activeLineGutter";
+  };
+  var sourceActiveLineGutterMarker = new SourceActiveLineGutterMarker();
+  function collapsedSelectionLineStarts(state) {
+    return state.selection.ranges.filter((range) => range.empty).map((range) => state.doc.lineAt(range.head).from).filter((lineStart, index, lineStarts) => lineStarts.indexOf(lineStart) === index).sort((left, right) => left - right);
+  }
+  var sourceCollapsedActiveLine = [
+    EditorView.decorations.compute(["selection"], (state) => Decoration.set(
+      collapsedSelectionLineStarts(state).map((lineStart) => sourceActiveLineDecoration.range(lineStart))
+    )),
+    gutterLineClass.compute(["selection"], (state) => RangeSet.of(
+      collapsedSelectionLineStarts(state).map((lineStart) => sourceActiveLineGutterMarker.range(lineStart))
+    ))
+  ];
+  var inputSuggestions = createEditorInputSuggestions({
+    mode: configuredEditorMode,
+    dialect: () => editingDialect,
+    isComposing: () => editor.composing,
+    protectedRanges: protectedCommandRanges,
+    requestLinkCompletions: (requestID, query) => {
+      post({ type: "linkCompletionQuery", requestID, query });
+    },
+    didApply: (undoLabel) => {
+      lastUndoLabel = undoLabel;
+      lastRedoLabel = undoLabel;
+    }
   });
   var livePreviewMode = [
     editorModeFacet.of("livePreview"),
@@ -33686,6 +34973,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
     Prec.high(liveSelection.extension),
     liveProjectionIndex.extension,
+    inputSuggestions.extension,
     liveSemanticLineField,
     liveSemanticBlockSpacingField,
     liveFrontmatterGuardField,
@@ -33706,22 +34994,27 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     EditorView.editorAttributes.of({ class: "scholium-source-mode" }),
     EditorView.contentAttributes.of(editorAccessibilityAttributes("source")),
     lineNumbers(),
-    highlightActiveLineGutter(),
+    sourceCollapsedActiveLine,
     foldGutter(),
-    highlightActiveLine(),
     sourceTextDirection,
     EditorView.lineWrapping
   ];
+  var editorContextMenu = createEditorContextMenuExtension({
+    context: (view) => currentEditorContext(view),
+    mode: (view) => configuredEditorMode(view.state),
+    positionAtEvent: (view, event) => projectedWidgetSourceOffset(event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }),
+    request: (request) => post({ type: "contextMenuRequested", ...request })
+  });
   var editorExtensions = [
     highlightSpecialChars(),
     history(),
+    drawSelection({ drawRangeCursor: false }),
     textSelectionPresentation,
     dropCursor(),
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),
     bidiIsolates(),
     closeBrackets(),
-    autocompletion({ override: [calloutCompletionSource, wikilinkCompletionSource] }),
     rectangularSelection(),
     EditorView.perLineTextDirection.of(true),
     scholiumNoteLanguage,
@@ -33729,11 +35022,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...historyKeymap,
-      ...foldKeymap,
-      ...completionKeymap
+      ...foldKeymap
     ]),
-    structuralInteractionKeymap,
+    Prec.high(structuralInteractionKeymap),
     saveKeymap,
+    editorContextMenu,
     stateReporter,
     linkActivation,
     lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
@@ -33760,7 +35053,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       scrollFraction: scrollAnchor.fallbackFraction,
       scrollAnchor
     }),
-    onScroll: () => selectionActions.update(editor),
+    onScroll: () => selectionActions.reposition(editor),
     flushPresentationGeometry: flushPresentationStyleAndGeometry
   });
   for (const mediaQuery of [
@@ -33770,28 +35063,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     mediaQuery.addEventListener("change", refreshMermaidTheme);
   }
   var allCommands = [
-    "bold",
-    "emphasis",
-    "strikethrough",
-    "highlight",
-    "inlineCode",
-    "standardLink",
-    "wikilink",
-    "vectorSupports",
-    "vectorOpposes",
-    "vectorIncompatible",
-    "paragraph",
-    "heading1",
-    "heading2",
-    "heading3",
-    "heading4",
-    "heading5",
-    "heading6",
-    "blockQuotation",
-    "bulletList",
-    "numberedList",
-    "taskList",
-    "fencedCode",
+    ...selectionActionCommands,
     "thematicBreak",
     "calloutOrient",
     "calloutCite",
@@ -33816,11 +35088,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     "pasteMarkdown",
     "linkSelectedText"
   ];
-  function editorSelections() {
-    return editor.state.selection.ranges.map((range) => ({ anchor: range.anchor, head: range.head }));
+  function editorSelections(state = editor.state) {
+    return state.selection.ranges.map((range) => ({ anchor: range.anchor, head: range.head }));
   }
-  function protectedCommandRanges() {
-    return liveProjectionIndex.index(editor.state).commandProtectedRanges;
+  function protectedCommandRanges(state = editor.state) {
+    return liveProjectionIndex.index(state).commandProtectedRanges;
   }
   function indexedTablePositionAt(state, offset) {
     return projectionRangeContaining(
@@ -33828,23 +35100,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       offset
     )?.position;
   }
-  function currentEditorContext() {
+  function currentEditorContext(view = editor) {
+    const state = view.state;
     const inline = /* @__PURE__ */ new Set();
     const block = /* @__PURE__ */ new Set();
     const selectionLinePrefixes = [];
-    for (const selection of editor.state.selection.ranges) {
-      const linePrefix = boundedLinePrefix(editor.state.doc, selection.head);
+    for (const selection of state.selection.ranges) {
+      const linePrefix = boundedLinePrefix(state.doc, selection.head);
       selectionLinePrefixes.push(linePrefix);
-      for (let node = syntaxTree(editor.state).resolveInner(selection.head, -1); node; node = node.parent) {
+      for (let node = syntaxTree(state).resolveInner(selection.head, -1); node; node = node.parent) {
         if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
         if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
         if (!node.parent) break;
       }
       if (calloutHeader(linePrefix)) block.add("Callout");
     }
-    const protectedRanges = protectedCommandRanges();
-    const protectedSelection = editor.state.selection.ranges.some((selection) => projectionSelectionOverlaps(protectedRanges, selection));
-    const currentTablePosition = editor.state.selection.ranges.length === 1 ? indexedTablePositionAt(editor.state, editor.state.selection.main.head) : void 0;
+    const protectedRanges = protectedCommandRanges(state);
+    const protectedSelection = state.selection.ranges.some((selection) => projectionSelectionOverlaps(protectedRanges, selection));
+    const currentTablePosition = state.selection.ranges.length === 1 ? indexedTablePositionAt(state, state.selection.main.head) : void 0;
     const tableOnlyCommands = /* @__PURE__ */ new Set([
       "tableInsertRowBefore",
       "tableInsertRowAfter",
@@ -33861,18 +35134,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (command2 === "toggleTask") {
         return selectionLinePrefixes.every((linePrefix) => /^\s*-\s+\[[ xX]\]/.test(linePrefix));
       }
-      if (command2 === "linkSelectedText") return editor.state.selection.ranges.every((selection) => !selection.empty);
+      if (command2 === "linkSelectedText") return state.selection.ranges.every((selection) => !selection.empty);
       return true;
     });
     return {
-      selections: editorSelections(),
+      selections: editorSelections(state),
       activeInlineConstructs: [...inline],
       activeBlockConstructs: [...block],
       tablePosition: currentTablePosition,
-      composing: editor.composing,
-      availableCommands: editor.composing || protectedSelection ? [] : availableCommands,
-      undoLabel: undoDepth(editor.state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
-      redoLabel: redoDepth(editor.state) > 0 ? lastRedoLabel || "Redo Editing" : void 0
+      composing: view.composing,
+      availableCommands: view.composing || protectedSelection ? [] : availableCommands,
+      undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
+      redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : void 0
     };
   }
   function scheduleEditorInteractionReport(forceContext = false) {
@@ -34400,7 +35673,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   };
   webkitWindow.scholiumEditor = {
     dispatch: dispatchEditorRequest,
-    resolveLinkCompletionQuery
+    resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery
   };
   recordEditorMetric("startup", editorStartupStartedAt, { documentLength: editor.state.doc.length });
   post({ type: "ready" });

@@ -38,6 +38,9 @@ struct EditorBridgeMessage: Codable {
     let requestID: String?
     let query: String?
     let context: MarkdownEditorContext?
+    let clientX: Double?
+    let clientY: Double?
+    let mode: MarkdownEditorMode?
 }
 
 @MainActor

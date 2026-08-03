@@ -13,13 +13,18 @@ describe("exact Markdown transformations", () => {
       ["bold", "**claim**"], ["emphasis", "*claim*"], ["strikethrough", "~~claim~~"],
       ["highlight", "==claim=="], ["inlineCode", "`claim`"], ["wikilink", "[[claim]]"],
       ["vectorSupports", "+[[claim]]"], ["vectorOpposes", "-[[claim]]"],
-      ["vectorIncompatible", "?[[claim]]"],
+      ["vectorIncompatible", "?[[claim]]"], ["markdownComment", "%% claim %%"],
     ] as const;
     for (const [command, expected] of cases) expect(apply("claim", command, 0, 5).source).toBe(expected);
   });
   it("wraps and unwraps only the selected range", () => {
     expect(apply("before thesis after", "bold", 7, 13).source).toBe("before **thesis** after");
     expect(apply("before **thesis** after", "bold", 9, 15).source).toBe("before thesis after");
+  });
+  it("wraps a multiline Obsidian comment without touching adjacent bytes", () => {
+    expect(apply("before\nfirst\nsecond\nafter", "markdownComment", 7, 19).source).toBe(
+      "before\n%% first\nsecond %%\nafter",
+    );
   });
   it("uses a safe inline and fenced-code delimiter", () => {
     expect(apply("a`b", "inlineCode", 0, 3).source).toBe("``a`b``");

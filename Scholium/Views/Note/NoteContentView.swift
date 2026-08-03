@@ -196,6 +196,39 @@ enum ResearchFunctionSelectionCapture {
             in: document
         )
     }
+
+    /// Comments persist a fingerprint-bound line reference, not a passage
+    /// anchor. Prefer the precise rendered-to-source match, but retain the
+    /// safe renderer's source-block range when identical visible passages make
+    /// exact quotation matching intentionally ambiguous. Research Actions
+    /// continue to use `anchor` and therefore keep their stricter policy.
+    static func commentLineRange(
+        for selection: MarkdownReviewSelection?,
+        in source: String,
+        relativePath: String
+    ) -> ClosedRange<Int>? {
+        guard let selection,
+              !selection.excerpt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        if let anchor = anchor(
+            for: selection,
+            in: source,
+            relativePath: relativePath
+        ) {
+            return anchor.line ... anchor.endLine
+        }
+
+        let lowerBound = min(selection.startLine, selection.endLine)
+        let upperBound = max(selection.startLine, selection.endLine)
+        let lineCount = source.reduce(into: 1) { count, character in
+            if character.isNewline { count += 1 }
+        }
+        guard lowerBound >= 1,
+              upperBound >= lowerBound,
+              upperBound <= lineCount else { return nil }
+        return lowerBound ... upperBound
+    }
 }
 
 // MARK: - Note Content Container
@@ -1334,6 +1367,7 @@ struct NoteContentView: View {
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
             },
+            selectionSurfaceIsActive: !isEditing,
             onRenderingFailure: { reason in
                 actions.enterCSSSafeMode(reason)
                 failedReadFingerprint = noteFingerprint.sha256

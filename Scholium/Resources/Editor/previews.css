@@ -6,28 +6,27 @@
   max-block-size: min(22rem, calc(100vh - 24px));
   overflow: auto;
   padding: 0.85rem 1rem;
-  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border: 1px solid var(--scholium-color-separator);
   border-radius: 0.75rem;
-  color: CanvasText;
-  background: color-mix(in srgb, Canvas 94%, transparent);
-  box-shadow: 0 0.75rem 2.25rem color-mix(in srgb, CanvasText 20%, transparent);
-  backdrop-filter: blur(20px);
+  color: var(--scholium-color-primary-text);
+  background: var(--scholium-color-surface-background);
+  box-shadow: var(--scholium-elevation-bounded-panel);
   overflow-wrap: anywhere;
   pointer-events: none;
 }
 .scholium-preview-popover[hidden] { display: none; }
 .scholium-preview-title {
   margin: 0;
-  color: CanvasText;
+  color: var(--scholium-color-primary-text);
   font: 600 0.95rem/1.25 system-ui;
 }
 .scholium-preview-metadata {
   margin: 0.25rem 0 0.7rem;
-  color: GrayText;
+  color: var(--scholium-color-secondary-text);
   font: 500 0.75rem/1.3 system-ui;
 }
 .scholium-preview-body {
-  color: CanvasText;
+  color: var(--scholium-color-primary-text);
   font: 0.95rem/1.45 Alegreya, Georgia, serif;
 }
 .scholium-preview-body > :first-child { margin-block-start: 0; }
@@ -37,8 +36,5 @@
 .scholium-preview-body video,
 .scholium-preview-body svg { max-inline-size: 100%; block-size: auto; }
 @media (prefers-contrast: more) {
-  .scholium-preview-popover { border-width: 2px; box-shadow: none; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .scholium-preview-popover { background: Canvas; backdrop-filter: none; }
+  .scholium-preview-popover { border-width: 2px; }
 }

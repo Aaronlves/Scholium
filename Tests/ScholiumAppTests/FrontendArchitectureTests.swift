@@ -1312,7 +1312,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.factLabelMinimumWidth == 78)
         #expect(ScholiumMetrics.Apparatus.factColumnSpacing == 14)
         #expect(ScholiumMetrics.Apparatus.relationGlyphColumnWidth == 24)
-        #expect(ScholiumMetrics.Apparatus.relationGlyphSize == 20)
+        #expect(ScholiumMetrics.Apparatus.relationGlyphSize == 14)
         #expect(ScholiumMetrics.Apparatus.relationGlyphToTextSpacing == 4)
         #expect(ScholiumMetrics.Apparatus.relationClusterSpacing == 12)
         #expect(ScholiumMetrics.Apparatus.relationPinnedGlyphTop == 36)
@@ -1328,7 +1328,7 @@ struct FrontendArchitectureTests {
         #expect(sharedComponentsSource.contains("struct ScholiumQuietRowButtonStyle"))
         #expect(componentsSource.contains("struct ScholiumApparatusSectionHeaderButton"))
         #expect(componentsSource.contains("struct ScholiumInspectorModeIndex"))
-        #expect(componentsSource.contains("struct ScholiumConnectionGlyph"))
+        #expect(!componentsSource.contains("struct ScholiumConnectionGlyph"))
         #expect(!componentsSource.contains("select(mode)\n        focusedMode = mode"))
         #expect(componentsSource.contains("select(nextMode)\n        focusedMode = nextMode"))
         #expect(componentsSource.contains("ViewThatFits(in: .horizontal)"))
@@ -1361,6 +1361,9 @@ struct FrontendArchitectureTests {
         #expect(researchSource.contains("ScholiumApparatusStateView("))
         #expect(connectionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
+        ))
+        #expect(connectionsSource.contains(
+            "Image(systemName: cluster.presentation.systemSymbol.systemName)"
         ))
         #expect(connectionsSource.contains("Image(systemName: \"chevron.right\")"))
         #expect(connectionsSource.contains(
@@ -2131,13 +2134,14 @@ struct FrontendArchitectureTests {
         ]
         for sourceOnlyExtension in [
             "lineNumbers()",
-            "highlightActiveLineGutter()",
+            "sourceCollapsedActiveLine",
             "foldGutter()",
-            "highlightActiveLine()",
         ] {
             #expect(!staticExtensions.contains(sourceOnlyExtension))
             #expect(editorSource.contains(sourceOnlyExtension))
         }
+        #expect(!editorSource.contains("highlightActiveLineGutter()"))
+        #expect(!editorSource.contains("highlightActiveLine()"))
         #expect(editorSource.contains("const sourceMode = ["))
         let sourceModeStart = try #require(editorSource.range(of: "const sourceMode = ["))
         let sourceModeSuffix = editorSource[sourceModeStart.upperBound...]
@@ -2771,21 +2775,62 @@ struct FrontendArchitectureTests {
             .floatingControl, .boundedPanel, .searchOverlay,
         ]))
         #expect(ScholiumElevationRole.floatingControl.style(
+            increasedContrast: false,
             reduceTransparency: false,
             appearsActive: true
         ) == .init(opacity: 0.04, radius: 4, x: 0, y: 2))
         #expect(ScholiumElevationRole.boundedPanel.style(
+            increasedContrast: false,
             reduceTransparency: false,
             appearsActive: true
-        ) == .init(opacity: 0.03, radius: 4, x: 0, y: 2))
+        ) == .init(opacity: 0.08, radius: 8, x: 0, y: 4))
         #expect(ScholiumElevationRole.searchOverlay.style(
+            increasedContrast: false,
             reduceTransparency: false,
             appearsActive: true
         ) == .init(opacity: 0.12, radius: 12, x: 0, y: 6))
         #expect(ScholiumElevationRole.searchOverlay.style(
+            increasedContrast: false,
             reduceTransparency: true,
             appearsActive: false
         ).opacity == 0.036)
+        #expect(ScholiumElevationRole.searchOverlay.style(
+            increasedContrast: true,
+            reduceTransparency: false,
+            appearsActive: true
+        ).opacity == 0)
+
+        let elevationVariableNames = Set(
+            ScholiumElevationRole.allCases.map(\.cssVariableName)
+        )
+        #expect(
+            ScholiumWebDesignTokens.resolvedElevationRoleCSSVariableNames
+                == elevationVariableNames
+        )
+        for name in elevationVariableNames {
+            #expect(ScholiumWebDesignTokens.elevationCSSDeclarations.contains(name))
+            #expect(
+                ScholiumWebDesignTokens.reducedTransparencyElevationCSSDeclarations
+                    .contains(name)
+            )
+            #expect(
+                ScholiumWebDesignTokens.increasedContrastElevationCSSDeclarations
+                    .contains("\(name): none;")
+            )
+        }
+        let webPresentationCSS = ScholiumWebDesignTokens.documentPresentationCSS
+        #expect(webPresentationCSS.contains(
+            "box-shadow: var(--scholium-elevation-floating-control)"
+        ))
+        #expect(webPresentationCSS.contains(
+            "box-shadow: var(--scholium-elevation-bounded-panel)"
+        ))
+        #expect(ScholiumPreviewStyles.css.contains(
+            "box-shadow: var(--scholium-elevation-bounded-panel)"
+        ))
+        #expect(!ScholiumPreviewStyles.css.contains(
+            "box-shadow: 0 0.75rem 2.25rem"
+        ))
 
         #expect(ScholiumBoundaryRole.floatingBoundary.style(
             increasedContrast: false,
@@ -3236,7 +3281,12 @@ struct FrontendArchitectureTests {
         let css = ScholiumPreviewStyles.css
         #expect(css.contains(".scholium-preview-popover"))
         #expect(css.contains("prefers-contrast: more"))
-        #expect(css.contains("prefers-reduced-transparency: reduce"))
+        #expect(css.contains("background: var(--scholium-color-surface-background)"))
+        #expect(css.contains("border: 1px solid var(--scholium-color-separator)"))
+        #expect(css.contains("box-shadow: var(--scholium-elevation-bounded-panel)"))
+        #expect(!css.contains("Canvas"))
+        #expect(!css.contains("backdrop-filter"))
+        #expect(!css.contains("prefers-reduced-transparency: reduce"))
         #expect(editorHTML.contains(css))
 
         let preview = DocumentLinkPreview(
@@ -3272,6 +3322,10 @@ struct FrontendArchitectureTests {
         #expect(readHTML.contains("showFootnotePopover"))
         #expect(previewControllerSource.contains("ViewPlugin.define"))
         #expect(previewControllerSource.contains("document.removeEventListener"))
+        #expect(previewControllerSource.contains("floatingSurfacePosition"))
+        #expect(previewControllerSource.contains(#"addEventListener("scroll", handleViewportExit"#))
+        #expect(previewControllerSource.contains(#"addEventListener("resize", handleViewportExit"#))
+        #expect(previewControllerSource.contains(#"addEventListener("blur", handleViewportExit"#))
         #expect(previewControllerSource.contains("root?.remove()"))
         #expect(!previewControllerSource.contains("mode()"))
     }
@@ -3288,6 +3342,10 @@ struct FrontendArchitectureTests {
         )
         let selectionActionsSource = try String(
             contentsOf: repository.appendingPathComponent("WebEditor/selection-actions.ts"),
+            encoding: .utf8
+        )
+        let contextMenuSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/context-menu.ts"),
             encoding: .utf8
         )
         let editorMenuSource = try String(
@@ -3308,32 +3366,59 @@ struct FrontendArchitectureTests {
             userCSS: ""
         )
 
-        #expect(readHTML.contains("Return saves. Shift-Return inserts a line. Escape cancels."))
+        #expect(readHTML.contains("Return saves · Shift-Return adds a line · Escape cancels"))
         #expect(readHTML.contains("commentSubmitted"))
         #expect(readHTML.contains("Comment for"))
         #expect(readHTML.contains(#"class="scholium-selection-actions""#))
         #expect(readHTML.contains(#"class="scholium-selection-toolbar""#))
+        #expect(readHTML.contains(
+            #"id="comment-selection" class="scholium-selection-control""#
+        ))
+        #expect(readHTML.contains(#"class="scholium-selection-label">Comment"#))
         #expect(readHTML.contains("ResolveCommentSubmission"))
         #expect(readHTML.contains("Your Comment is still here"))
+        #expect(readHTML.contains(
+            "#comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-color-accent); }"
+        ))
+        #expect(!readHTML.contains(
+            "#comment-text:focus-visible { outline: 2px solid var(--scholium-color-accent)"
+        ))
         #expect(readHTML.contains("TextEncoder"))
         #expect(readHTML.contains("makeRequestID"))
         #expect(readHTML.contains("globalThis.crypto.getRandomValues"))
         #expect(readHTML.contains("commentSelectionRange = range.cloneRange()"))
-        #expect(readHTML.contains("selection.addRange(commentSelectionRange)"))
+        #expect(readHTML.contains("const range = commentSelectionRange?.cloneRange()"))
+        #expect(readHTML.contains("selection.addRange(range)"))
         #expect(!readHTML.contains("Copy and Open Agent App"))
         #expect(!readHTML.contains("Copy Only"))
         #expect(readHTML.contains("startLine"))
         #expect(readHTML.contains("endLine"))
         #expect(!readHTML.contains("quotation:"))
         #expect(!readHTML.contains("utf16Range"))
-        #expect(selectionActionsSource.contains("view.composing || !view.hasFocus"))
+        #expect(selectionActionsSource.contains("view.composing"))
+        #expect(selectionActionsSource.contains("scheduleFocusExit(view)"))
+        #expect(selectionActionsSource.contains("root?.contains(document.activeElement)"))
         #expect(selectionActionsSource.contains("ViewPlugin.define"))
         #expect(selectionActionsSource.contains("destroy()"))
         #expect(selectionActionsSource.contains("root?.remove()"))
         #expect(!selectionActionsSource.contains("mode()"))
+        #expect(selectionActionsSource.contains("selectionActionCommands"))
+        #expect(selectionActionsSource.contains("floatingSurfacePosition"))
+        #expect(selectionActionsSource.contains("reposition(view"))
+        #expect(selectionActionsSource.contains("wikiGroup.append(wiki, vector)"))
         #expect(selectionActionsSource.contains(
-            #"addButton(commandBar, "B", "Bold", "bold")"#
+            #"createMenu(vector, "scholium-selection-vector-menu")"#
         ))
+        #expect(selectionActionsSource.contains(
+            #"createMenu(more, "scholium-selection-more-menu")"#
+        ))
+        #expect(selectionActionsSource.contains(
+            #"addMenuItem(moreMenu, "Comment", "markdownComment", "", false, "eye-slash")"#
+        ))
+        #expect(selectionActionsSource.contains("systemSymbolElement"))
+        #expect(!selectionActionsSource.contains("createElementNS"))
+        #expect(!selectionActionsSource.contains("[["))
+        #expect(!selectionActionsSource.contains("%%"))
         #expect(selectionActionsSource.contains(#"root.className = "scholium-selection-actions""#))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             ".scholium-selection-actions"
@@ -3342,25 +3427,29 @@ struct FrontendArchitectureTests {
             "background: var(--scholium-color-surface-background)"
         ))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
-            "border: 1px solid var(--scholium-color-accent)"
+            "border: 1px solid var(--scholium-color-separator)"
         ))
         #expect(!ScholiumWebDesignTokens.documentPresentationCSS.contains(
             ".scholium-selection-actions {\n      backdrop-filter"
         ))
         #expect(!editorSource.contains("commentSubmitted"))
         #expect(!editorSource.contains("showCommentComposer"))
-        #expect(!selectionActionsSource.contains(#"addButton("Comment", "Comment""#))
+        #expect(selectionActionsSource.contains(#"wikiLabel.textContent = "Wiki""#))
         #expect(!editorMenuSource.contains("Comment on Selection"))
         #expect(!editorMenuSource.contains("commentSubmitted"))
         #expect(!editorMenuSource.contains("onRequestComment"))
-        #expect(!editorMenuSource.contains(#"ScholiumL10n.string("Bold"), MarkdownEditorCommand.bold"#))
-        #expect(editorMenuSource.contains("genericPreviewTitles"))
-        #expect(editorMenuSource.contains(#""Show Preview""#))
-        #expect(editorMenuSource.contains(
-            #"ScholiumL10n.string("Show Preview")"#
-        ))
-        #expect(!editorMenuSource.contains("String(describing: item.action)"))
-        #expect(!editorMenuSource.contains("scholium.editor.preview"))
+        #expect(!editorMenuSource.contains("rightMouseMonitor"))
+        #expect(!editorMenuSource.contains("handleRightMouseDown"))
+        #expect(!editorMenuSource.contains("popUpContextMenu"))
+        #expect(!editorMenuSource.contains("override func menu(for"))
+        #expect(editorMenuSource.contains("presentEditorContextMenu"))
+        #expect(editorMenuSource.contains("#selector(NSText.cut(_:))"))
+        #expect(editorMenuSource.contains("#selector(NSText.copy(_:))"))
+        #expect(editorMenuSource.contains("#selector(NSText.paste(_:))"))
+        #expect(editorSource.contains(#"type: "contextMenuRequested""#))
+        #expect(contextMenuSource.contains("event.preventDefault()"))
+        #expect(contextMenuSource.contains("selectionForContextClick"))
+        #expect(contextMenuSource.contains("view.focus()"))
     }
 
     @Test("Relationship colors provide increased-contrast variants")
@@ -3421,18 +3510,18 @@ struct FrontendArchitectureTests {
     @Test("The live Connections inspector uses one semantic presentation")
     func sharedConnectionPresentation() throws {
         let expected: [
-            (ScholiumConnectionPresentation, String, ScholiumConnectionGlyphKind)
+            (ScholiumConnectionPresentation, String, ScholiumSystemSymbol)
         ] = [
-            (.supports, "Supports", .supports),
-            (.supportsThisNote, "Supports This Note", .supportedBy),
-            (.opposes, "Opposes", .opposes),
-            (.opposesThisNote, "Opposes This Note", .opposedBy),
-            (.incompatible, "Incompatible", .incompatible),
-            (.neutral, "Related", .neutral),
+            (.supports, "Supports", .plusCircle),
+            (.supportsThisNote, "Supports This Note", .plusCircle),
+            (.opposes, "Opposes", .minusCircle),
+            (.opposesThisNote, "Opposes This Note", .minusCircle),
+            (.incompatible, "Incompatible", .xmarkCircle),
+            (.neutral, "Related", .link),
         ]
-        for (presentation, title, glyphKind) in expected {
+        for (presentation, title, systemSymbol) in expected {
             #expect(presentation.title == title)
-            #expect(presentation.glyphKind == glyphKind)
+            #expect(presentation.systemSymbol == systemSymbol)
         }
 
         #expect(ScholiumConnectionPresentation(

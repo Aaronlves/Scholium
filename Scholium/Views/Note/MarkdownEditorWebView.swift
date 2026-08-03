@@ -139,6 +139,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.setLinkPreviews(linkPreviews, in: source)
         }
         if context.coordinator.documentID != documentID {
+            context.coordinator.cancelLinkCompletionQuery()
             context.coordinator.documentID = documentID
             context.coordinator.source = source
             context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
@@ -147,6 +148,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.setLinkPreviews(linkPreviews, in: source)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.lastModeInput != mode {
+            context.coordinator.cancelLinkCompletionQuery()
             context.coordinator.lastModeInput = mode
             session.setMode(mode)
         }
@@ -161,6 +163,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.session.removeCommittedTextSynchronizer()
         coordinator.session.removeSourceChangeHandler()
         coordinator.cancelMermaidRuntimeLoad()
+        coordinator.cancelLinkCompletionQuery()
         coordinator.session.detach(webView)
     }
 
@@ -201,7 +204,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:">
-            <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
+            <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebSymbolAssets.cssVariables)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
             <style id="scholium-presentation-css"></style>
             <style id="scholium-user-css"></style>
           </head>
@@ -237,6 +240,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private var hasSignaledReady = false
         private var mermaidRuntimeLoadTask: Task<Void, Never>?
         private var mermaidRuntimeLoadID: UUID?
+        private var linkCompletionQueryTask: Task<Void, Never>?
+        private var linkCompletionQueryTaskID: UUID?
 
         init(
             session: MarkdownEditorSession,
@@ -330,10 +335,20 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 let requestedDocumentID = documentID
                 let requestedFingerprint = startingFingerprint
                 let requestedVersion = lastDocumentVersion
-                Task { @MainActor [weak self, weak webView = message.webView] in
+                let taskID = UUID()
+                cancelLinkCompletionQuery()
+                linkCompletionQueryTaskID = taskID
+                linkCompletionQueryTask = Task { @MainActor [weak self, weak webView = message.webView] in
                     guard let self, let webView else { return }
+                    defer {
+                        if self.linkCompletionQueryTaskID == taskID {
+                            self.linkCompletionQueryTask = nil
+                            self.linkCompletionQueryTaskID = nil
+                        }
+                    }
                     let candidates = await linkCompletionQuery(query)
-                    guard requestedDocumentID == documentID,
+                    guard !Task.isCancelled,
+                          requestedDocumentID == documentID,
                           requestedFingerprint == startingFingerprint,
                           requestedVersion == lastDocumentVersion,
                           webView.navigationDelegate === self else { return }
@@ -359,6 +374,26 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case "linkActivated":
                 guard validEnvelope(payload), let target = payload.target, !target.isEmpty else { return }
                 onLinkActivation(target)
+            case "contextMenuRequested":
+                guard validEnvelope(payload),
+                      let clientX = payload.clientX,
+                      let clientY = payload.clientY,
+                      clientX.isFinite,
+                      clientY.isFinite,
+                      let context = payload.context,
+                      markdownEditorSelectionRangesAreValid(
+                          context.selections,
+                          forEditorUTF16Length: source.utf16.count
+                      ),
+                      let mode = payload.mode,
+                      mode == lastModeInput,
+                      let webView = message.webView as? WindowAttachedWebView else { return }
+                webView.presentEditorContextMenu(
+                    clientX: clientX,
+                    clientY: clientY,
+                    context: context,
+                    mode: mode
+                )
             case "scrollChanged":
                 guard validEnvelope(payload),
                       let fraction = payload.scrollFraction,
@@ -398,6 +433,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             session.webContentProcessTerminated()
             cancelMermaidRuntimeLoad()
+            cancelLinkCompletionQuery()
             hasSignaledReady = false
             awaitingEditorLoad = true
             guard let editorHTML = MarkdownEditorWebView.editorHTML else {
@@ -430,6 +466,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             mermaidRuntimeLoadTask?.cancel()
             mermaidRuntimeLoadTask = nil
             mermaidRuntimeLoadID = nil
+        }
+
+        func cancelLinkCompletionQuery() {
+            linkCompletionQueryTask?.cancel()
+            linkCompletionQueryTask = nil
+            linkCompletionQueryTaskID = nil
         }
 
         func webView(

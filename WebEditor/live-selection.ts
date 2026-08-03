@@ -19,6 +19,8 @@ export interface LiveSelectionController {
   readonly extension: Extension;
   selection(state: EditorState): EditorSelection;
   changed(startState: EditorState, state: EditorState): boolean;
+  interactionChanged(startState: EditorState, state: EditorState): boolean;
+  pointerSelectionIsComplete(state: EditorState): boolean;
 }
 
 const selectedTextMark = Decoration.mark({class: "cm-scholium-selected-text"});
@@ -134,13 +136,20 @@ export function createLiveSelectionController(options: {
       if (event.button !== 0 || this.view.composing) return false;
       if (options.handleModifiedLink(this.view, event)) return true;
 
+      // A semantic block widget maps one discrete press directly to an exact
+      // source position. Commit that selection while the projection phase is
+      // still idle so the widget and its boundary cursor cannot coexist for
+      // one frame before mouse-up. Ordinary source dragging still defers
+      // projection until its gesture completes below.
+      if (options.handleProjectedPointerStart(this.view, event)) return true;
+
       this.removeWindowListeners();
       this.gestureActive = true;
       this.addWindowListeners();
       this.view.dispatch({
         effects: beginPointerSelection.of(event.detail >= 3 ? "immediate" : "deferred"),
       });
-      return options.handleProjectedPointerStart(this.view, event);
+      return false;
     }
 
     destroy() {
@@ -157,11 +166,22 @@ export function createLiveSelectionController(options: {
   });
 
   const selection = (state: EditorState) => state.field(field, false)?.selection ?? state.selection;
+  const interaction = (state: EditorState) => state.field(field, false)
+    ?? {selection: state.selection, pointerPhase: "idle" as const};
   return {
     extension: [field, pointer],
     selection,
     changed(startState, state) {
       return !selection(startState).eq(selection(state));
+    },
+    interactionChanged(startState, state) {
+      const start = interaction(startState);
+      const current = interaction(state);
+      return start.pointerPhase !== current.pointerPhase
+        || !start.selection.eq(current.selection);
+    },
+    pointerSelectionIsComplete(state) {
+      return interaction(state).pointerPhase === "idle";
     },
   };
 }

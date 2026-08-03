@@ -7119,6 +7119,22 @@
         }
       }
     },
+    "Cut" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cut"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剪切"
+          }
+        }
+      }
+    },
     "Current" : {
       "localizations" : {
         "en" : {
@@ -11614,6 +11630,22 @@
         }
       }
     },
+    "Italic" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Italic"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "斜体"
+          }
+        }
+      }
+    },
     "JUDGMENT" : {
       "localizations" : {
         "en" : {
@@ -12790,6 +12822,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标记恢复完成…"
+          }
+        }
+      }
+    },
+    "Markdown Comment" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Markdown Comment"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdown 注释"
           }
         }
       }
@@ -16688,6 +16736,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "过去 7 天"
+          }
+        }
+      }
+    },
+    "Paste" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Paste"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴"
           }
         }
       }

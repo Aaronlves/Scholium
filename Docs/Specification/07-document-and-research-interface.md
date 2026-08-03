@@ -10,7 +10,17 @@ scrolling space clears initial editor content from chrome. Review owns a
 transient Comment bar and its in-place field; Edit owns a separate formatting
 bar; Source owns neither. Each disappears when the selection clears, focus
 leaves its task, or the document mode changes. The Comment field also
-disappears when the researcher cancels or a save is acknowledged.
+disappears when the researcher cancels or a save is acknowledged. Neither bar
+appears during a pointer-selection gesture: it is evaluated only after
+primary-button release, while a completed keyboard selection remains immediate.
+At ordinary widths, each compact bar is horizontally centered above its
+completed selection and clamped to the viewport, moving below only when there
+is insufficient space above. While visible, the bar and an expanded Comment
+field retain the same document-coordinate anchor as the document scrolls
+instead of remaining fixed at an obsolete viewport coordinate. Cancelling an
+empty Review Comment releases its input focus and retained action anchor, so
+the next pointer or keyboard selection is immediately available without
+erasing the current visible selection.
 
 When the selected note's exact Markdown source is zero bytes, Review presents
 one centered read-only group: decorative document symbol, **Empty Note**, and
@@ -20,10 +30,42 @@ source, an unresolved read, and a rendering failure are not empty notes and
 retain their distinct states.
 
 The two selection surfaces share one restrained component style: an opaque
-semantic surface background, the resolved Scholium accent boundary, semantic
-text, and the same focus treatment. They consume only resolved roles derived
-from Variables and do not introduce independent colors, blur, glass, or
-shadow recipes.
+document-adjacent semantic surface, a neutral semantic separator boundary,
+semantic text, and the same Accent focus treatment. Accent does not outline the
+resting bar or its menus. They consume only resolved roles derived from
+Variables. Both bars use the shallow **floating control** Elevation role;
+Edit's custom menus and submenu use the **bounded panel** role. Each visible
+container paints at most one role-owned shadow, and shadow remains secondary to
+its surface and boundary. These surfaces introduce no independent colors,
+blur, glass, or shadow recipes.
+
+Edit's formatting bar keeps the frequent commands visible in this order:
+**Text Style** (Paragraph and Heading 1–6), **Bold**, **Italic**,
+**Strikethrough**, **Highlight**, **Link**, a **Wiki** split control, and
+**More**. Wiki applies a Wikilink directly; its adjacent, undivided chevron
+opens **Supports**, **Opposes**, and **Incompatible** Vector Link actions.
+More contains **Inline Code**, **Code Block**, one **Lists** submenu for bullet,
+numbered, and checkbox lists, **Blockquote**, and **Comment** (the Markdown
+Comment wrapper). A
+constrained-width presentation may also move Strikethrough and Highlight into
+More without changing command availability. Familiar formatting actions and
+all Vector Link relationship actions use direct monochrome SF Symbols with one
+quiet optical weight; Scholium does not redraw equivalent marks. Wiki remains
+a short text label. Menu rows show action names, never Markdown delimiters or
+syntax examples, and no submenu nests beyond the single Lists level.
+
+Edit's Wikilink and slash-command suggestions use one caret-anchored bounded
+panel rather than a window, sheet, toolbar, or second text field. It follows the
+CodeMirror caret as the document scrolls and flips above only when space below
+is insufficient. The neutral boundary, opaque Document-adjacent surface,
+**bounded panel** Elevation role, 12 CSS px interface labels, direct 14 CSS px
+monochrome SF Symbols, 28 CSS px minimum rows, and Accent-free resting boundary
+match the selection-menu grammar. Note rows may add one quiet, ellipsized path;
+command and Callout-role rows show only names, never delimiters or syntax
+previews. A bare block-safe slash shows four frequent entries; subsequent input
+searches the complete command set while rendering at most seven visible
+matches. The list remains content-fitting and viewport-bounded rather than
+reserving width for absent detail.
 
 All modes use one adaptive editorial-grid configuration for insets, responsive
 threshold, trailing space, text scale, and semantic typography. The selected
@@ -157,17 +199,17 @@ Connect begins with three expanded, independently collapsible groups:
 Within a group, links form ordered relationship clusters: Supports, Supports
 This Note, Opposes, Opposes This Note, Incompatible, then neutral Related.
 Counts appear only on the three major group headings. A cluster shows one
-custom 20pt relationship glyph in a 24pt leading track with a 4pt gap to the
-shared title axis; individual Note rows repeat neither symbol, relationship
-label, nor count. Support uses mirrored open/fork marks, opposition uses
-mirrored terminal/blocking marks, incompatibility uses one undirected pair of
-strokes repelling at the center, and neutral uses one quiet undirected
-connection. These marks share one restrained semantic text color and never
-encode truth, force, or value by hue. Titles wrap. Do not open a second panel
-merely to show a title. Preserve source anchors. An empty group retains its
-heading and `0` without **None**. Connect shows the same freshness state before
-its groups. Stale or failed state keeps the last complete graph readable and
-offers a full-row Retry action.
+direct monochrome SF Symbol at 14pt in a 24pt leading track with a 4pt gap to
+the shared title axis; individual Note rows repeat neither symbol, relationship
+label, nor count. Supports and Supports This Note use `plus.circle`; Opposes
+and Opposes This Note use `minus.circle`; Incompatible uses `xmark.circle`;
+neutral Related uses `link`. Text owns relationship direction and meaning, so
+inverse forms reuse the same decorative symbol. These symbols share one
+restrained semantic text color and never encode truth, force, or value by hue.
+Titles wrap. Do not open a second panel merely to show a title. Preserve source
+anchors. An empty group retains its heading and `0` without **None**. Connect
+shows the same freshness state before its groups. Stale or failed state keeps
+the last complete graph readable and offers a full-row Retry action.
 
 Relation rows remain single full-row native buttons with a provisional 36pt
 minimum rhythm, no default separators, and no trailing diagonal-open glyph.

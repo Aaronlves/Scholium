@@ -168,6 +168,657 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(result["spanningCommentVisible"] as? Bool == false)
     }
 
+    @Test("Review Comment waits, centers, and releases empty cancellation")
+    func reviewCommentWaitsForPointerSelectionCompletion() async throws {
+        let source = "An opening line creates room above.\n\nA quiet preface completed may be commented.\n"
+        let document = NoteDocument(relativePath: "Selection completion.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            enablesComments: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const main = document.getElementById('scholium-document');
+            const actions = document.getElementById('selection-actions');
+            const toolbar = document.getElementById('selection-toolbar');
+            const button = document.getElementById('comment-selection');
+            const label = button?.querySelector('.scholium-selection-label');
+            const paragraph = [...main.querySelectorAll('p')].find(
+              element => (element.textContent || '').includes('quiet preface')
+            );
+            const text = paragraph?.firstChild;
+            if (!(text instanceof Text)) return null;
+            paragraph.dispatchEvent(new PointerEvent('pointerdown', {
+              bubbles: true,
+              cancelable: true,
+              button: 0,
+              buttons: 1,
+              pointerType: 'mouse'
+            }));
+            const firstText = 'completed';
+            const firstStart = text.data.indexOf(firstText);
+            const range = document.createRange();
+            range.setStart(text, firstStart);
+            range.setEnd(text, firstStart + firstText.length);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            const hiddenDuringSelection = actions.hidden;
+            window.dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true,
+              button: 0,
+              buttons: 0,
+              pointerType: 'mouse'
+            }));
+            await Promise.resolve();
+            const visibleAfterFirstPointerUp = !actions.hidden;
+            const actionsBounds = actions.getBoundingClientRect();
+            const buttonBounds = button.getBoundingClientRect();
+            const selectedBounds = range.getBoundingClientRect();
+            const centeredDelta = Math.abs(
+              actionsBounds.left + actionsBounds.width / 2
+                - selectedBounds.left - selectedBounds.width / 2
+            );
+            button.click();
+            const commentText = document.getElementById('comment-text');
+            const composer = document.getElementById('comment-composer');
+            void composer.offsetWidth;
+            const composerOpened = !composer.hidden && document.activeElement === commentText;
+            const composingActionsBounds = actions.getBoundingClientRect();
+            const composerBounds = composer.getBoundingClientRect();
+            const initialTextHeight = commentText.getBoundingClientRect().height;
+            const rootStyle = getComputedStyle(actions);
+            const textStyle = getComputedStyle(commentText);
+            const helpStyle = getComputedStyle(document.getElementById('comment-help'));
+            commentText.value = 'First line\\nSecond line\\nThird line\\nFourth line\\nFifth line\\nSixth line';
+            commentText.dispatchEvent(new InputEvent('input', {
+              bubbles: true,
+              inputType: 'insertText'
+            }));
+            const grownTextHeight = commentText.getBoundingClientRect().height;
+            commentText.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Escape',
+              code: 'Escape',
+              bubbles: true,
+              cancelable: true
+            }));
+            await Promise.resolve();
+            const composerClosed = composer.hidden;
+            const anchorTabIndexReleased = !paragraph.hasAttribute('tabindex');
+
+            paragraph.dispatchEvent(new PointerEvent('pointerdown', {
+              bubbles: true,
+              cancelable: true,
+              button: 0,
+              buttons: 1,
+              pointerType: 'mouse'
+            }));
+            const nextText = 'may be commented';
+            const nextStart = text.data.indexOf(nextText);
+            const nextRange = document.createRange();
+            nextRange.setStart(text, nextStart);
+            nextRange.setEnd(text, nextStart + nextText.length);
+            selection.removeAllRanges();
+            selection.addRange(nextRange);
+            document.dispatchEvent(new Event('selectionchange'));
+            window.dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true,
+              button: 0,
+              buttons: 0,
+              pointerType: 'mouse'
+            }));
+            await Promise.resolve();
+            return {
+              hiddenDuringSelection,
+              visibleAfterFirstPointerUp,
+              selectedText: selection.toString(),
+              actionCenter: actionsBounds.left + actionsBounds.width / 2,
+              selectionCenter: selectedBounds.left + selectedBounds.width / 2,
+              firstStart,
+              actionLeft: actionsBounds.left,
+              selectionLeft: selectedBounds.left,
+              actionWidth: actionsBounds.width,
+              selectionWidth: selectedBounds.width,
+              viewportWidth: window.innerWidth,
+              assignedLeft: actions.style.left,
+              positionedAboveSelection: actionsBounds.bottom <= selectedBounds.top,
+              composerOpened,
+              composingRootWidth: composingActionsBounds.width,
+              composerWidth: composerBounds.width,
+              initialTextHeight,
+              grownTextHeight,
+              rootBackground: rootStyle.backgroundColor,
+              textBackground: textStyle.backgroundColor,
+              textBorderWidth: textStyle.borderTopWidth,
+              textOutlineWidth: textStyle.outlineWidth,
+              textResize: textStyle.resize,
+              textFontSize: textStyle.fontSize,
+              helpFontSize: helpStyle.fontSize,
+              helpLineHeight: helpStyle.lineHeight,
+              composerClosed,
+              anchorTabIndexReleased,
+              secondSelectionVisible: !actions.hidden,
+              secondSelectionPayload: button.dataset.selection || '',
+              sharedControlClass: button.classList.contains('scholium-selection-control'),
+              sharedLabelClass: Boolean(label),
+              rootHeight: actionsBounds.height,
+              controlHeight: buttonBounds.height,
+              toolbarGap: getComputedStyle(toolbar).gap,
+              labelFontSize: getComputedStyle(label).fontSize,
+              controlBorderWidth: getComputedStyle(button).borderTopWidth,
+              controlBackground: getComputedStyle(button).backgroundColor
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["hiddenDuringSelection"] as? Bool == true)
+        #expect(result["visibleAfterFirstPointerUp"] as? Bool == true)
+        #expect(result["selectedText"] as? String == "may be commented")
+        let actionCenter = try #require(result["actionCenter"] as? Double)
+        let selectionCenter = try #require(result["selectionCenter"] as? Double)
+        let firstStart = try #require(result["firstStart"] as? Int)
+        let actionLeft = try #require(result["actionLeft"] as? Double)
+        let actionWidth = try #require(result["actionWidth"] as? Double)
+        let selectionLeft = try #require(result["selectionLeft"] as? Double)
+        let viewportWidth = try #require(result["viewportWidth"] as? Double)
+        #expect(firstStart > 0)
+        #expect(selectionLeft >= 0)
+        let expectedLeft = max(
+            12,
+            min(selectionCenter - actionWidth / 2, viewportWidth - actionWidth - 12)
+        )
+        #expect(abs(actionLeft - expectedLeft) <= 1)
+        #expect(actionCenter >= selectionCenter)
+        #expect(result["positionedAboveSelection"] as? Bool == true)
+        #expect(result["composerOpened"] as? Bool == true)
+        #expect((result["composingRootWidth"] as? Double).map { 234 ... 302 ~= $0 } == true)
+        #expect((result["composerWidth"] as? Double).map { 220 ... 288 ~= $0 } == true)
+        #expect((result["initialTextHeight"] as? Double) == 64)
+        #expect((result["grownTextHeight"] as? Double).map { 64 < $0 && $0 <= 132 } == true)
+        #expect((result["rootBackground"] as? String) != (result["textBackground"] as? String))
+        #expect(result["textBorderWidth"] as? String == "0px")
+        #expect(result["textOutlineWidth"] as? String == "0px")
+        #expect(result["textResize"] as? String == "none")
+        #expect(result["textFontSize"] as? String == "13px")
+        #expect(result["helpFontSize"] as? String == "10px")
+        #expect(result["helpLineHeight"] as? String == "13px")
+        #expect(result["composerClosed"] as? Bool == true)
+        #expect(result["anchorTabIndexReleased"] as? Bool == true)
+        #expect(result["secondSelectionVisible"] as? Bool == true)
+        #expect(result["secondSelectionPayload"] as? String == "may be commented")
+        #expect(result["sharedControlClass"] as? Bool == true)
+        #expect(result["sharedLabelClass"] as? Bool == true)
+        #expect((result["rootHeight"] as? Double).map { 37 ... 40 ~= $0 } == true)
+        #expect((result["controlHeight"] as? Double) == 28)
+        #expect(result["toolbarGap"] as? String == "1px")
+        #expect(result["labelFontSize"] as? String == "12px")
+        #expect(result["controlBorderWidth"] as? String == "0px")
+        #expect(result["controlBackground"] as? String == "rgba(0, 0, 0, 0)")
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let readWebViewSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(readWebViewSource.contains(
+            "const centeredLeft = anchorBounds.left\n"
+                + "                    + (anchorBounds.width - bounds.width) / 2;"
+        ))
+        #expect(!readWebViewSource.contains("rect.right - 175"))
+    }
+
+    @Test("Review Comment suspends across mode changes without trapping the next selection")
+    func reviewCommentSuspendsAcrossModeChanges() async throws {
+        let source = "A retained Comment draft belongs here.\n\nAnother passage remains selectable.\n"
+        let document = NoteDocument(relativePath: "Comment mode handoff.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            enablesComments: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let opened = try await harness.callPageJavaScript(
+            """
+            const paragraph = document.querySelector('#scholium-document p');
+            const text = paragraph?.firstChild;
+            if (!(text instanceof Text)) return false;
+            paragraph.dispatchEvent(new PointerEvent('pointerdown', {
+              bubbles: true, cancelable: true, button: 0, buttons: 1, pointerType: 'mouse'
+            }));
+            const range = document.createRange();
+            range.setStart(text, 2);
+            range.setEnd(text, 20);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            window.dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true, button: 0, buttons: 0, pointerType: 'mouse'
+            }));
+            await Promise.resolve();
+            document.getElementById('comment-selection').click();
+            const field = document.getElementById('comment-text');
+            field.value = 'Retained draft';
+            field.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            return document.activeElement === field;
+            """
+        ) as? Bool
+        #expect(opened == true)
+
+        func snapshot() async throws -> [String: Any] {
+            try #require(try await harness.callPageJavaScript(
+                """
+                const actions = document.getElementById('selection-actions');
+                const composer = document.getElementById('comment-composer');
+                const field = document.getElementById('comment-text');
+                return {
+                  actionsHidden: actions.hidden,
+                  composerHidden: composer.hidden,
+                  value: field.value,
+                  fieldFocused: document.activeElement === field
+                };
+                """
+            ) as? [String: Any])
+        }
+
+        let clock = ContinuousClock()
+        harness.setSelectionSurfaceActive(false)
+        let suspendedDeadline = clock.now.advanced(by: .seconds(3))
+        var suspended = try await snapshot()
+        while suspended["actionsHidden"] as? Bool != true
+                || suspended["fieldFocused"] as? Bool != false {
+            if clock.now >= suspendedDeadline {
+                Issue.record("Review Comment did not suspend when Review became inactive.")
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            suspended = try await snapshot()
+        }
+        #expect(suspended["composerHidden"] as? Bool == false)
+        #expect(suspended["value"] as? String == "Retained draft")
+
+        harness.setSelectionSurfaceActive(true)
+        let resumedDeadline = clock.now.advanced(by: .seconds(3))
+        var resumed = try await snapshot()
+        while resumed["actionsHidden"] as? Bool != false
+                || resumed["fieldFocused"] as? Bool != true {
+            if clock.now >= resumedDeadline {
+                Issue.record("Review Comment did not resume its retained draft in Review.")
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            resumed = try await snapshot()
+        }
+        #expect(resumed["composerHidden"] as? Bool == false)
+        #expect(resumed["value"] as? String == "Retained draft")
+
+        let nextSelection = try #require(try await harness.callPageJavaScript(
+            """
+            const field = document.getElementById('comment-text');
+            field.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Escape', code: 'Escape', bubbles: true, cancelable: true
+            }));
+            const paragraph = [...document.querySelectorAll('#scholium-document p')][1];
+            const text = paragraph?.firstChild;
+            if (!(text instanceof Text)) return null;
+            paragraph.dispatchEvent(new PointerEvent('pointerdown', {
+              bubbles: true, cancelable: true, button: 0, buttons: 1, pointerType: 'mouse'
+            }));
+            const range = document.createRange();
+            range.setStart(text, 0);
+            range.setEnd(text, 'Another passage'.length);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            window.dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true, button: 0, buttons: 0, pointerType: 'mouse'
+            }));
+            await Promise.resolve();
+            return {
+              selectedText: selection.toString(),
+              actionsVisible: !document.getElementById('selection-actions').hidden
+            };
+            """
+        ) as? [String: Any])
+        #expect(nextSelection["selectedText"] as? String == "Another passage")
+        #expect(nextSelection["actionsVisible"] as? Bool == true)
+    }
+
+    @Test("Review Comment stays anchored while its selection scrolls")
+    func reviewCommentTracksSelectionDuringScroll() async throws {
+        let source = (1 ... 48).map { index in
+            index == 18
+                ? "The anchored passage remains attached to its Comment control."
+                : "Synthetic paragraph \(index) provides disposable scrolling space."
+        }.joined(separator: "\n\n")
+        let document = NoteDocument(relativePath: "Comment scroll anchor.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            enablesComments: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const main = document.getElementById('scholium-document');
+            const actions = document.getElementById('selection-actions');
+            const paragraph = [...main.querySelectorAll('p')].find(
+              element => (element.textContent || '').includes('anchored passage')
+            );
+            const text = paragraph?.firstChild;
+            if (!(text instanceof Text)) return null;
+            paragraph.scrollIntoView({block: 'center', behavior: 'auto'});
+            await Promise.resolve();
+
+            paragraph.dispatchEvent(new PointerEvent('pointerdown', {
+              bubbles: true,
+              cancelable: true,
+              button: 0,
+              buttons: 1,
+              pointerType: 'mouse'
+            }));
+            const selectedText = 'anchored passage';
+            const start = text.data.indexOf(selectedText);
+            const range = document.createRange();
+            range.setStart(text, start);
+            range.setEnd(text, start + selectedText.length);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            window.dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true,
+              button: 0,
+              buttons: 0,
+              pointerType: 'mouse'
+            }));
+            await Promise.resolve();
+
+            const beforeAction = actions.getBoundingClientRect();
+            const beforeSelection = range.getBoundingClientRect();
+            const beforeScrollY = window.scrollY;
+            window.scrollBy({top: 72, behavior: 'auto'});
+            await Promise.resolve();
+            const afterAction = actions.getBoundingClientRect();
+            const afterSelection = range.getBoundingClientRect();
+            return {
+              visibleBefore: !actions.hidden,
+              visibleAfter: !actions.hidden,
+              scrollDelta: window.scrollY - beforeScrollY,
+              beforeOffset: beforeAction.top - beforeSelection.top,
+              afterOffset: afterAction.top - afterSelection.top,
+              actionDelta: afterAction.top - beforeAction.top,
+              selectionDelta: afterSelection.top - beforeSelection.top
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["visibleBefore"] as? Bool == true)
+        #expect(result["visibleAfter"] as? Bool == true)
+        #expect((result["scrollDelta"] as? Double).map { $0 >= 60 } == true)
+        let beforeOffset = try #require(result["beforeOffset"] as? Double)
+        let afterOffset = try #require(result["afterOffset"] as? Double)
+        let actionDelta = try #require(result["actionDelta"] as? Double)
+        let selectionDelta = try #require(result["selectionDelta"] as? Double)
+        #expect(abs(beforeOffset - afterOffset) <= 1)
+        #expect(abs(actionDelta - selectionDelta) <= 1)
+    }
+
+    @Test("Review Comment bounds large-document selection work")
+    func reviewCommentLargeDocumentSelectionWork() async throws {
+        let filler = String(repeating: "deterministic disposable context ", count: 20)
+        let source = (1 ... 320).map { index in
+            index == 160
+                ? "Target prefix anchored performance phrase target suffix."
+                : "Synthetic paragraph \(index) \(filler)"
+        }.joined(separator: "\n\n")
+        let document = NoteDocument(relativePath: "Comment performance.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            enablesComments: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const main = document.getElementById('scholium-document');
+            const button = document.getElementById('comment-selection');
+            const paragraph = [...main.querySelectorAll('p')].find(
+              element => (element.textContent || '').includes('anchored performance phrase')
+            );
+            const text = paragraph?.firstChild;
+            if (!(text instanceof Text)) return null;
+
+            const selectionPrototype = Object.getPrototypeOf(window.getSelection());
+            const originalSelectionToString = selectionPrototype.toString;
+            const originalRangeToString = Range.prototype.toString;
+            let selectionStringCalls = 0;
+            let selectionStringCharacters = 0;
+            let rangeStringCalls = 0;
+            let rangeStringCharacters = 0;
+            selectionPrototype.toString = function() {
+              const value = originalSelectionToString.call(this);
+              selectionStringCalls += 1;
+              selectionStringCharacters += value.length;
+              return value;
+            };
+            Range.prototype.toString = function() {
+              const value = originalRangeToString.call(this);
+              rangeStringCalls += 1;
+              rangeStringCharacters += value.length;
+              return value;
+            };
+
+            try {
+              const selectedText = 'anchored performance phrase';
+              const start = text.data.indexOf(selectedText);
+              const completeText = main.textContent || '';
+              const completeSelectionStart = completeText.indexOf(selectedText);
+              const expectedContextBefore = completeText
+                .slice(0, completeSelectionStart).slice(-80);
+              const expectedContextAfter = completeText
+                .slice(completeSelectionStart + selectedText.length).slice(0, 80);
+              const range = document.createRange();
+              range.setStart(text, start);
+              range.setEnd(text, start + selectedText.length);
+              const selection = window.getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              const startedAt = performance.now();
+              document.dispatchEvent(new Event('selectionchange'));
+              const durationMilliseconds = performance.now() - startedAt;
+              return {
+                durationMilliseconds,
+                selectionStringCalls,
+                selectionStringCharacters,
+                rangeStringCalls,
+                rangeStringCharacters,
+                selectedText: button.dataset.selection || '',
+                contextBeforeLength: (button.dataset.contextBefore || '').length,
+                contextAfterLength: (button.dataset.contextAfter || '').length,
+                contextBeforeMatches: (button.dataset.contextBefore || '') === expectedContextBefore,
+                contextAfterMatches: (button.dataset.contextAfter || '') === expectedContextAfter
+              };
+            } finally {
+              selectionPrototype.toString = originalSelectionToString;
+              Range.prototype.toString = originalRangeToString;
+            }
+            """
+        ) as? [String: Any])
+        #expect(result["selectedText"] as? String == "anchored performance phrase")
+        #expect((result["contextBeforeLength"] as? Int).map { $0 <= 80 } == true)
+        #expect((result["contextAfterLength"] as? Int).map { $0 <= 80 } == true)
+        #expect(result["contextBeforeMatches"] as? Bool == true)
+        #expect(result["contextAfterMatches"] as? Bool == true)
+        #expect(result["selectionStringCalls"] as? Int == 0)
+        #expect(result["selectionStringCharacters"] as? Int == 0)
+        #expect(result["rangeStringCalls"] as? Int == 0)
+        #expect(result["rangeStringCharacters"] as? Int == 0)
+        print("Review toolbar bounded-work result: \(result)")
+    }
+
+    @Test("Review Comment falls back to its source block when rendered context is ambiguous")
+    func reviewCommentUsesSourceBlockForAmbiguousRenderedWord() async throws {
+        let repeatedParagraph = String(
+            repeating: "same deterministic prefix ",
+            count: 5
+        ) + "target" + String(
+            repeating: " same deterministic suffix",
+            count: 5
+        )
+        let source = """
+        # First section
+
+        \(repeatedParagraph)
+
+        # Second section
+
+        \(repeatedParagraph)
+        """
+        let document = NoteDocument(relativePath: "Repeated Comment.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            enablesComments: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const main = document.getElementById('scholium-document');
+            const actions = document.getElementById('selection-actions');
+            const button = document.getElementById('comment-selection');
+            const paragraphs = [...main.querySelectorAll('p')].filter(
+              element => (element.textContent || '').includes('target')
+            );
+            const paragraph = paragraphs[1];
+            const text = paragraph?.firstChild;
+            if (!(text instanceof Text)) return null;
+
+            paragraph.dispatchEvent(new PointerEvent('pointerdown', {
+              bubbles: true,
+              cancelable: true,
+              button: 0,
+              buttons: 1,
+              pointerType: 'mouse'
+            }));
+            const selectedText = 'target';
+            const selectionStart = text.data.indexOf(selectedText);
+            const range = document.createRange();
+            range.setStart(text, selectionStart);
+            range.setEnd(text, selectionStart + selectedText.length);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            window.dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true,
+              button: 0,
+              buttons: 0,
+              pointerType: 'mouse'
+            }));
+            await Promise.resolve();
+            if (actions.hidden) return null;
+
+            button.click();
+            const commentText = document.getElementById('comment-text');
+            commentText.value = 'A focused regression Comment.';
+            commentText.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Enter',
+              code: 'Enter',
+              bubbles: true,
+              cancelable: true
+            }));
+            const composer = document.getElementById('comment-composer');
+            const help = document.getElementById('comment-help');
+            return {
+              selectedText: button.dataset.selection || '',
+              startLine: Number(button.dataset.startLine || '0'),
+              contextBefore: button.dataset.contextBefore || '',
+              contextAfter: button.dataset.contextAfter || '',
+              fieldReadOnly: commentText.readOnly,
+              fieldFocused: document.activeElement === commentText,
+              composerBusy: composer.getAttribute('aria-busy'),
+              helpRole: help.getAttribute('role'),
+              helpLive: help.getAttribute('aria-live'),
+              helpAtomic: help.getAttribute('aria-atomic'),
+              helpText: help.textContent || ''
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["selectedText"] as? String == "target")
+        #expect(result["startLine"] as? Int == 7)
+        #expect(result["fieldReadOnly"] as? Bool == true)
+        #expect(result["fieldFocused"] as? Bool == true)
+        #expect(result["composerBusy"] as? String == "true")
+        #expect(result["helpRole"] as? String == "status")
+        #expect(result["helpLive"] as? String == "polite")
+        #expect(result["helpAtomic"] as? String == "true")
+        #expect(result["helpText"] as? String == "Saving…")
+
+        let submission = try await harness.waitUntilCommentSubmission()
+        #expect(submission.startLine == 7)
+        #expect(submission.endLine == 7)
+        #expect(submission.text == "A focused regression Comment.")
+
+        let failure = try #require(try await harness.callPageJavaScript(
+            """
+            const resolved = window.scholiumResolveCommentSubmission(requestID, false);
+            const composer = document.getElementById('comment-composer');
+            const field = document.getElementById('comment-text');
+            const help = document.getElementById('comment-help');
+            return {
+              resolved,
+              value: field.value,
+              fieldReadOnly: field.readOnly,
+              fieldFocused: document.activeElement === field,
+              composerBusy: composer.getAttribute('aria-busy'),
+              state: composer.dataset.state || '',
+              helpText: help.textContent || ''
+            };
+            """,
+            arguments: ["requestID": submission.requestID]
+        ) as? [String: Any])
+        #expect(failure["resolved"] as? Bool == true)
+        #expect(failure["value"] as? String == "A focused regression Comment.")
+        #expect(failure["fieldReadOnly"] as? Bool == false)
+        #expect(failure["fieldFocused"] as? Bool == true)
+        #expect(failure["composerBusy"] as? String == "false")
+        #expect(failure["state"] as? String == "error")
+        #expect(failure["helpText"] as? String == "Could not save. Your Comment is still here.")
+    }
+
     @Test("Read scroll observation does not replay one-shot restoration")
     func readScrollObservationDoesNotReplayRestoration() async throws {
         let fixture = Self.longDocumentFixture()
@@ -343,6 +994,11 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(interaction.previewTitle == "Footnote 1")
         #expect(interaction.originID == "fnref-1-2")
         #expect(!interaction.previewHiddenAfterHover)
+        #expect(interaction.previewHiddenAfterScroll)
+        #expect(!interaction.previewBackground.isEmpty)
+        #expect(interaction.previewBackground != "rgba(0, 0, 0, 0)")
+        #expect(!interaction.previewBorderColor.isEmpty)
+        #expect(interaction.previewBackdropFilter == "none")
         #expect(interaction.navigatedToDefinition)
         #expect(interaction.definitionFocused)
         #expect(interaction.returnedToReference)
@@ -390,6 +1046,46 @@ extension MarkdownEditorWebViewIntegrationTests {
             "return window.__scholiumTestingPageIdentity"
         ) as? String)
         #expect(retainedIdentity == pageIdentity)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review Vector Links use only native SF Symbol masks")
+    func reviewVectorLinksUseSystemSymbols() async throws {
+        let source = "+[[Support]] -[[Oppose]] ?[[Conflict]] [[Related]]\n"
+        let document = NoteDocument(relativePath: "Vectors.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let snapshot = try #require(try await harness.callPageJavaScript(
+            """
+            const icons = [...document.querySelectorAll('.scholium-vector-icon')];
+            return {
+              names: icons.map(icon => icon.dataset.scholiumSystemSymbol || ''),
+              maskCount: icons.filter(icon => {
+                const style = getComputedStyle(icon);
+                return [style.webkitMaskImage, style.maskImage].some(
+                  value => Boolean(value) && value !== 'none'
+                );
+              }).length,
+              svgCount: icons.reduce((count, icon) => count + icon.querySelectorAll('svg').length, 0)
+            };
+            """
+        ) as? [String: Any])
+        #expect(snapshot["names"] as? [String] == [
+            "plus-circle",
+            "minus-circle",
+            "xmark-circle",
+            "link",
+        ])
+        #expect(snapshot["maskCount"] as? Int == 4)
+        #expect(snapshot["svgCount"] as? Int == 0)
         await harness.closeAndDrain()
     }
 
@@ -483,6 +1179,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         let previewTitle: String
         let originID: String
         let previewHiddenAfterHover: Bool
+        let previewHiddenAfterScroll: Bool
+        let previewBackground: String
+        let previewBorderColor: String
+        let previewBackdropFilter: String
         let navigatedToDefinition: Bool
         let definitionFocused: Bool
         let returnedToReference: Bool
@@ -950,7 +1650,9 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var reachedSourceLine: Int?
         @Published var linkPreviews: [DocumentLinkPreview] = []
         @Published var linkPreviewRevision = "no-previews"
+        @Published var selectionSurfaceIsActive = true
         var selection: MarkdownReviewSelection?
+        var commentSubmission: PassageCommentSubmission?
         #if DEBUG
         @Published var testingForcesFinalizationFailure = false
         let testingScrollRestoreDelayMilliseconds: Int
@@ -1179,6 +1881,16 @@ extension MarkdownEditorWebViewIntegrationTests {
             sourceBox.isReady
         }
 
+        func waitUntilCommentSubmission() async throws -> PassageCommentSubmission {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(2))
+            while sourceBox.commentSubmission == nil {
+                if clock.now >= deadline { throw ReadHarnessError.timedOut }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+            return try #require(sourceBox.commentSubmission)
+        }
+
         func retryAfterFinalizationFailure() {
             sourceBox.retryAfterFinalizationFailure()
             // Recreate the failed native surface explicitly. Production
@@ -1193,6 +1905,10 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func updateLinkPreviews(_ previews: [DocumentLinkPreview], revision: String) {
             sourceBox.updateLinkPreviews(previews, revision: revision)
+        }
+
+        func setSelectionSurfaceActive(_ active: Bool) {
+            sourceBox.selectionSurfaceIsActive = active
         }
 
         func recreateSurface(targetSourceLine: Int? = nil) {
@@ -1373,6 +2089,14 @@ extension MarkdownEditorWebViewIntegrationTests {
                 reference.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
                 const previewTitle = title.textContent || '';
                 const previewHiddenAfterHover = popover.hidden;
+                const previewStyle = getComputedStyle(popover);
+                const previewBackground = previewStyle.backgroundColor;
+                const previewBorderColor = previewStyle.borderTopColor;
+                const previewBackdropFilter = previewStyle.backdropFilter
+                  || previewStyle.webkitBackdropFilter
+                  || 'none';
+                window.dispatchEvent(new Event('scroll'));
+                const previewHiddenAfterScroll = popover.hidden;
 
                 reference.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
                 const definitionFocused = document.activeElement === definition;
@@ -1382,6 +2106,10 @@ extension MarkdownEditorWebViewIntegrationTests {
                   previewTitle,
                   originID: origin.id,
                   previewHiddenAfterHover,
+                  previewHiddenAfterScroll,
+                  previewBackground,
+                  previewBorderColor,
+                  previewBackdropFilter,
                   navigatedToDefinition,
                   definitionFocused,
                   returnedToReference,
@@ -1785,7 +2513,7 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         var body: some View {
             let commentHandler: ((PassageCommentSubmission) -> Void)? = enablesComments
-                ? { _ in }
+                ? { sourceBox.commentSubmission = $0 }
                 : nil
             var surface = SafeMarkdownReadWebView(
                 documentID: "ReadFixture.md",
@@ -1801,6 +2529,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onOpenExternalURL: { _ in },
                 onCommentSelection: commentHandler,
                 onSelectionChange: { sourceBox.selection = $0 },
+                selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },

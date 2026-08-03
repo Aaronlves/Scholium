@@ -78,4 +78,47 @@ describe("live projection index component", () => {
     expect(controller.index(state).mathExpressions.map((expression) => expression.content))
       .toEqual(["x"]);
   });
+
+  it("extends a proven Callout across its trailing quote-only edit line", () => {
+    const controller = createLiveProjectionIndexController({
+      editingDialect: () => dialect,
+      recordMetric: () => {},
+    });
+    const source = "> [!state] Claim\n> ";
+    const state = EditorState.create({
+      doc: source,
+      extensions: [scholiumNoteLanguage, controller.extension],
+    });
+    const index = controller.index(state);
+
+    expect(index.syntax.blocks.find((block) => block.kind === "callout")?.to)
+      .toBeLessThan(source.length);
+    expect(index.callouts).toEqual([{from: 0, to: source.length, source}]);
+  });
+
+  it("rebuilds cached Callout source when Return appends a quote-only line", () => {
+    const controller = createLiveProjectionIndexController({
+      editingDialect: () => dialect,
+      recordMetric: () => {},
+    });
+    const source = "> [!state] Claim";
+    const state = EditorState.create({
+      doc: source,
+      selection: {anchor: source.length},
+      extensions: [scholiumNoteLanguage, controller.extension],
+    });
+    const initial = controller.index(state);
+    const continued = source + "\n> ";
+    const transaction = state.update({
+      changes: {from: source.length, insert: "\n> "},
+      selection: {anchor: continued.length},
+    });
+    const next = controller.index(transaction.state);
+
+    expect(next.topologyIdentity).not.toBe(initial.topologyIdentity);
+    expect(next.callouts).toEqual([{from: 0, to: continued.length, source: continued}]);
+    expect(next.syntax.blocks.find((block) => block.kind === "callout")?.markerRanges
+      .map((range) => continued.slice(range.from, range.to)))
+      .toEqual([">", "[!state]", ">"]);
+  });
 });

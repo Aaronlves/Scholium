@@ -33,7 +33,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(8);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(9);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -67,6 +67,12 @@ describe("editor protocol", () => {
       ...request,
       operation: {type: "showPreviewAt", x: Number.NaN, y: 80.25},
     })).toBe(false);
+  });
+  it("accepts the Markdown comment formatting command", () => {
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "command", command: "markdownComment"},
+    })).toBe(true);
   });
   it("accepts only the complete immutable editing dialect", () => {
     const initialize = {type: "initialize", text: "Body", mode: "livePreview", dialect};

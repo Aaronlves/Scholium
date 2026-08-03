@@ -60,7 +60,8 @@ Baseline.
 **Required next evidence or work**
 
 Researcher reacceptance of corrected Arabic/Hebrew Review/Edit/Source behavior; real pointer and
-keyboard experiential acceptance of bidi cursor and selection behavior, construct-scoped syntax, the
+keyboard experiential acceptance of bidi cursor and selection behavior, completed-selection toolbar
+timing, standard Edit/Source secondary-click editing, construct-scoped syntax, the
 direct footnote-definition workflow, compact list rhythm, H1 rule placement, and the post-migration
 mode handoff; speech, text-service, installed CJK/RTL/IME, composition recovery, inactive Edit
 researcher review, and retained-memory journeys remain open. Syntax/parser changes must extend
@@ -91,7 +92,7 @@ RDF-1 v2 exist. Editor hot paths use one incrementally maintained exact-source/C
 cached immutable mutation-sensitive projection index, bounded inline updates,
 construct/physical-line selection signatures that skip decoration work while the visible projection
 is unchanged, direct CodeMirror `Text` line access for Enter/Tab/Backtab/link activation, coalesced
-bridge v8 reports, nonpublished selection, and one-shot Read restore. A 2026-07-31 input cut
+bridge v9 reports, nonpublished selection, and one-shot Read restore. A 2026-07-31 input cut
 uses a physical-line-local semantic-topology proof without component-local regex/mapping
 authorities; ordinary prose beside rich inline Markdown maps the central index, while deletions,
 structural markers,
@@ -105,6 +106,18 @@ approximately 100k source reported 4.960–9.871 ms across current observations.
 scenario samples and structural regressions are not visible-latency
 measurements or release thresholds. Three Debug launch samples and incomplete 3/5-sample memory
 prefixes remain nonrelease evidence.
+
+The 2026-08-03 selection-surface cut bounds Review excerpt/context extraction
+at the DOM Range instead of stringifying the whole preceding and following
+document; it also skips equivalent Edit-toolbar state writes and keys
+CodeMirror position measurement for replacement. In one Mac16,12 / macOS 27.0 /
+Xcode 27.0 Debug real-WKWebView diagnostic with 320 synthetic paragraphs and
+a 27-character selection, counted
+Selection/Range string output fell from 218,118 characters to zero and one
+observed completion fell from approximately 4 ms to 2 ms. Twenty-four
+equivalent Edit-toolbar updates fell from 168 observed attribute mutations to
+zero. These are regression diagnostics for that fixture and build, not visible
+latency acceptance or a product gate.
 
 **Required next evidence or work**
 

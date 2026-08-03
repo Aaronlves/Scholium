@@ -356,13 +356,16 @@ function appendCallout(
   heading.className = "scholium-callout-heading";
   heading.setAttribute("role", "heading");
   heading.setAttribute("aria-level", "2");
+  const orientationTitleBecomesBody = parts.definition.identifier === "orient"
+    && parts.title.length > 0
+    && parts.body.trim().length === 0;
   const role = document.createElement("span");
   role.className = "scholium-callout-role";
   role.dir = "auto";
   role.title = parts.definition.meaning;
   role.textContent = parts.definition.label;
   heading.append(role);
-  if (parts.title) {
+  if (parts.title && !orientationTitleBecomesBody) {
     const title = document.createElement("span");
     title.className = "scholium-callout-title";
     title.dir = "auto";
@@ -391,7 +394,15 @@ function appendCallout(
     destination.dir = "auto";
     content.append(destination);
   }
-  appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
+  if (orientationTitleBecomesBody) {
+    const paragraph = document.createElement("p");
+    paragraph.className = "scholium-callout-orient-title-body";
+    paragraph.dir = "auto";
+    appendInlineMarkdown(parts.title, paragraph, optionsAt(options, parts.titleFrom));
+    destination.append(paragraph);
+  } else {
+    appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
+  }
   body.append(signature, content);
   callout.append(headingContainer, body);
   parent.append(callout);

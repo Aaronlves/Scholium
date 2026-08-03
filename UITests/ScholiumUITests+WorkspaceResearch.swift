@@ -1760,6 +1760,10 @@ extension ScholiumUITests {
         editor.rightClick()
         let editorContextMenu = app.menus["scholium.editor.contextMenu"]
         XCTAssertTrue(editorContextMenu.waitForExistence(timeout: 3))
+        XCTAssertTrue(editorContextMenu.menuItems["Cut"].exists)
+        XCTAssertTrue(editorContextMenu.menuItems["Copy"].exists)
+        XCTAssertTrue(editorContextMenu.menuItems["Paste"].exists)
+        XCTAssertTrue(editorContextMenu.menuItems["Select All"].exists)
         XCTAssertFalse(editorContextMenu.menuItems["Bold"].exists)
         XCTAssertFalse(editorContextMenu.menuItems["Emphasis"].exists)
         XCTAssertFalse(editorContextMenu.menuItems["Underline"].exists)
@@ -1778,7 +1782,10 @@ extension ScholiumUITests {
         XCTAssertTrue(addComment.exists)
         XCTAssertFalse(addComment.isEnabled)
         app.typeKey(.escape, modifierFlags: [])
+        editor.typeKey("a", modifierFlags: [.command])
         editor.rightClick()
+        XCTAssertTrue(editorContextMenu.menuItems["Cut"].isEnabled)
+        XCTAssertTrue(editorContextMenu.menuItems["Copy"].isEnabled)
         XCTAssertFalse(editorContextMenu.menuItems[
             "scholium.editor.agentComment"
         ].exists)

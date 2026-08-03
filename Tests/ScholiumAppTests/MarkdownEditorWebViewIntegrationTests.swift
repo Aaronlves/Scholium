@@ -793,6 +793,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(result.duringDragLineText == "Lead bold syntax between italic syntax tail.")
         #expect(result.afterMouseUpLineText.contains("**bold syntax**"))
         #expect(result.afterMouseUpLineText.contains("*italic syntax*"))
+        #expect(result.toolbarHiddenDuringDrag)
+        #expect(result.toolbarVisibleAfterMouseUp)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -849,10 +851,44 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot.selectedTexts == ["paragraph text.", "Second paragraph"])
         #expect(snapshot.selectedRunCount == 2)
         #expect(snapshot.selectedBlankLineRunCount == 0)
-        #expect(snapshot.stockRectangleCount == 0)
+        #expect(snapshot.visibleStockRectangleCount == 0)
         #expect(snapshot.nativeSelectionBackground == "rgba(0, 0, 0, 0)")
         #expect(snapshot.selectedBackgroundsMatchAccent)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Deleting a block-safe date retains one cursor owner across Edit and Source")
+    func deletingDateRetainsOneCursorOwner() async throws {
+        let date = "2026-08-03"
+        let source = "Before.\n\n\(date)\n\nAfter.\n"
+        let dateEnd = try #require(source.range(of: date)?.upperBound.utf16Offset(in: source))
+        let expected = source.replacingOccurrences(of: date, with: "")
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        harness.session.revealSourceRange(fromUTF16: dateEnd, toUTF16: dateEnd)
+        try await harness.waitUntilSelection(head: dateEnd, stage: "date insertion point")
+        for _ in date {
+            try await harness.session.testingPressBackspace()
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+
+        let snapshot = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(snapshot.nativeCaretIsTransparent)
+        #expect(snapshot.drawnCursorCount == 1)
+        #expect(snapshot.visibleStockRectangleCount == 0)
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let sourceSnapshot = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(sourceSnapshot.nativeCaretIsTransparent)
+        #expect(sourceSnapshot.drawnCursorCount == 1)
+        #expect(sourceSnapshot.visibleStockRectangleCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
         await harness.closeAndDrain()
     }
 
@@ -884,7 +920,61 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(active.lineText == "First **bold** paragraph.")
         let presentation = try await harness.session.testingEditorSelectionPresentationSnapshot()
         #expect(presentation.selectedBlankLineRunCount == 0)
-        #expect(presentation.stockRectangleCount == 0)
+        #expect(presentation.visibleStockRectangleCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source triple-click does not paint the next logical line as active")
+    func sourceTripleClickDoesNotActivateFollowingLine() async throws {
+        let source = """
+        This is deterministic, disposable, nonprivate test material. It contains no real
+        source claims and makes no philosophical attribution.
+        > [!orient] Reading route
+        """
+        let harness = EditorHarness(
+            source: source,
+            initialMode: .source,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        try await harness.session.testingTripleClickVisibleText("nonprivate")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.context?.selections.first?.anchor
+            == harness.session.context?.selections.first?.head
+        {
+            if clock.now >= deadline {
+                Issue.record("Source triple-click did not publish a logical-line selection.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let selected = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(selected.selectedTexts.joined() == String(source.split(separator: "\n")[0]))
+        #expect(selected.activeLineTexts.isEmpty)
+        #expect(selected.activeLineGutterCount == 0)
+
+        let secondLineStart = try #require(source.range(of: "source claims"))
+            .lowerBound.utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: secondLineStart, toUTF16: secondLineStart)
+        let collapseDeadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.context?.selections.first.map({ selection in
+            selection.anchor == secondLineStart && selection.head == secondLineStart
+        }) != true {
+            if clock.now >= collapseDeadline {
+                Issue.record("Source selection did not collapse after triple-click.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let collapsed = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(collapsed.activeLineTexts == ["source claims and makes no philosophical attribution."])
+        #expect(collapsed.activeLineGutterCount > 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -946,10 +1036,15 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         try await harness.session.testingClickFirstCalloutText("Body ends")
         try await harness.waitUntilSelection(head: calloutTo)
-        let activeHeader = try await harness.session.testingInlineProjectionSnapshot(
+        let projectedHeader = try await harness.session.testingInlineProjectionSnapshot(
             containing: "Synthetic source boundary"
         )
-        #expect(activeHeader.lineText.contains("> [!cite]- Synthetic source boundary"))
+        #expect(projectedHeader.lineText.contains("Synthetic source boundary"))
+        #expect(!projectedHeader.lineText.contains("> [!cite]"))
+        let activeBody = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "Body ends"
+        )
+        #expect(activeBody.lineText.contains("> Body ends"))
         try await harness.session.perform(.pastePlain, argument: "继续")
         let editedTo = calloutTo + 2
         try await harness.waitUntilSelection(head: editedTo)
@@ -968,6 +1063,89 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: calloutFrom, stage: "right-arrow Callout entry")
         try await harness.session.testingPressArrow("ArrowRight")
         try await harness.waitUntilSelection(head: calloutFrom + 1, stage: "right-arrow inside Callout")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Callout Return continues one visible block and a second Return exits")
+    func calloutReturnContinuesOneVisibleBlockThenExits() async throws {
+        let calloutHeader = "> [!orient] Reading **route**"
+        let source = "Lead.\n\n" + calloutHeader
+        let headerEnd = source.utf16.count
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        _ = try await harness.waitUntilPresentation(stage: "title-only Orient projection") {
+            $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+        }
+        let titleOnly = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Reading route"
+        )
+        #expect(titleOnly.renderedTitleText.isEmpty)
+        #expect(titleOnly.renderedBodyText.contains("Reading route"))
+
+        harness.session.revealSourceRange(fromUTF16: headerEnd, toUTF16: headerEnd)
+        try await harness.waitUntilSelection(head: headerEnd, stage: "active Orient header")
+        try await harness.session.testingPressEnter()
+        let continuedSource = source + "\n> "
+        try await harness.waitUntilSelection(
+            head: continuedSource.utf16.count,
+            stage: "continued Callout line"
+        )
+        let continueDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while try await harness.session.currentText(for: harness.documentID) != continuedSource {
+            if ContinuousClock().now >= continueDeadline {
+                Issue.record("Return did not continue the Callout with one quote prefix.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.undoLabel == "Continue Callout")
+
+        let active = try await harness.waitUntilPresentation(stage: "line-scoped Callout source") {
+            $0.activeLiveBlockKind == "callout" && $0.liveCalloutSourceLineCount == 2
+        }
+        #expect(active.exactCalloutSourceCount == 0)
+        let activeProjection = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Reading route"
+        )
+        #expect(activeProjection.activeSourceLineTexts.count == 2)
+        #expect(activeProjection.activeSourceLineClassNames[0]
+            .contains("cm-live-callout-projected-line"))
+        #expect(activeProjection.activeSourceLineClassNames[1]
+            .contains("cm-live-callout-active-line"))
+        #expect(activeProjection.activeSourceLineTexts[0]
+            .trimmingCharacters(in: .whitespaces) == "Reading route")
+        #expect(activeProjection.activeSourceLineTexts[1].trimmingCharacters(in: .whitespaces) == ">")
+        #expect(Set(activeProjection.activeSourceLineBackgrounds).count == 1)
+        #expect(activeProjection.activeSourceLineBackgrounds.allSatisfy {
+            $0 != "transparent" && $0 != "rgba(0, 0, 0, 0)"
+        })
+        try await harness.session.testingPressEnter()
+        let exitedSource = source + "\n"
+        try await harness.waitUntilSelection(
+            head: exitedSource.utf16.count,
+            stage: "Callout exit line"
+        )
+        let exitDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while try await harness.session.currentText(for: harness.documentID) != exitedSource {
+            if ContinuousClock().now >= exitDeadline {
+                Issue.record("A second Return retained an empty Callout quote prefix.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.undoLabel == "Exit Callout")
+        _ = try await harness.waitUntilPresentation(stage: "title-only Orient restored") {
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 1
+        }
+        let restored = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Reading route"
+        )
+        #expect(restored.renderedBodyText.contains("Reading route"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == exitedSource)
         await harness.closeAndDrain()
     }
 
@@ -1540,7 +1718,455 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Bridge v8 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
+    @Test("The WebKit symbol catalog resolves every direct SF Symbol")
+    func webSymbolCatalogResolvesDirectSystemSymbols() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let catalogSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/system-symbols.ts"),
+            encoding: .utf8
+        )
+        let catalogStart = try #require(
+            catalogSource.range(of: "export const webSystemSymbolKeys = [")
+        )
+        let catalogEnd = try #require(
+            catalogSource.range(of: "] as const;", range: catalogStart.upperBound..<catalogSource.endIndex)
+        )
+        let catalogBody = String(catalogSource[catalogStart.upperBound..<catalogEnd.lowerBound])
+        let catalogExpression = try NSRegularExpression(pattern: #""([^"]+)""#)
+        let catalogNSString = catalogBody as NSString
+        let webTokens = Set<String>(catalogExpression.matches(
+            in: catalogBody,
+            range: NSRange(location: 0, length: catalogNSString.length)
+        ).compactMap { match in
+            guard match.numberOfRanges == 2 else { return nil }
+            return catalogNSString.substring(with: match.range(at: 1))
+        })
+        #expect(webTokens == Set(ScholiumSystemSymbol.allCases.map(\.webToken)))
+
+        let css = ScholiumWebSymbolAssets.cssVariables
+        for symbol in ScholiumSystemSymbol.allCases {
+            let image = try #require(NSImage(
+                systemSymbolName: symbol.systemName,
+                accessibilityDescription: nil
+            )?.withSymbolConfiguration(.init(pointSize: 16, weight: .regular)))
+            let prefix = "data:image/png;base64,"
+            let dataURI = ScholiumWebSymbolAssets.dataURI(for: symbol)
+            #expect(dataURI.hasPrefix(prefix))
+            let data = try #require(Data(base64Encoded: String(dataURI.dropFirst(prefix.count))))
+            let bitmap = try #require(NSBitmapImageRep(data: data))
+            #expect(CGFloat(bitmap.pixelsWide) >= image.size.width * 4 - 1)
+            #expect(CGFloat(bitmap.pixelsHigh) >= image.size.height * 4 - 1)
+            #expect(css.contains("--scholium-system-symbol-\(symbol.webToken):"))
+        }
+    }
+
+    @Test("Edit Vector Links use only the shared SF Symbol masks")
+    func editVectorLinksUseSystemSymbols() async throws {
+        let source = "Intro.\n\n+[[Support]] -[[Oppose]] ?[[Conflict]] [[Related]]\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        var snapshot: [String: Any] = [:]
+        while true {
+            snapshot = try #require(try await harness.callPageJavaScript(
+                """
+                const icons = [...document.querySelectorAll('.cm-live-vector-icon')];
+                return {
+                  names: icons.map(icon => icon.dataset.scholiumSystemSymbol || ''),
+                  maskCount: icons.filter(icon => {
+                    const style = getComputedStyle(icon);
+                    return [style.webkitMaskImage, style.maskImage].some(
+                      value => Boolean(value) && value !== 'none'
+                    );
+                  }).length,
+                  svgCount: icons.reduce((count, icon) => count + icon.querySelectorAll('svg').length, 0),
+                  visibleText: icons.map(icon => icon.textContent || '').join('')
+                };
+                """
+            ) as? [String: Any])
+            if (snapshot["names"] as? [String])?.count == 4 { break }
+            if clock.now >= deadline {
+                Issue.record("Edit did not project all Vector Link symbols: \(snapshot).")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        #expect(snapshot["names"] as? [String] == [
+            "plus-circle",
+            "minus-circle",
+            "xmark-circle",
+            "link",
+        ])
+        #expect(snapshot["maskCount"] as? Int == 4)
+        #expect(snapshot["svgCount"] as? Int == 0)
+        #expect(snapshot["visibleText"] as? String == "")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit selection toolbar exposes the approved hierarchy and exact Markdown comment action")
+    func editSelectionToolbarHierarchy() async throws {
+        let source = "Toolbar claim remains exact.\n"
+        let selectedText = "Toolbar claim"
+        let selectedRange = try #require(source.range(of: selectedText))
+        let from = selectedRange.lowerBound.utf16Offset(in: source)
+        let to = selectedRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        try await harness.waitUntilSelection(head: to, stage: "formatting toolbar selection")
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        let accessibility = try await harness.session.testingAccessibilitySnapshot()
+        #expect(harness.session.errorMessage == nil)
+        #expect(accessibility.liveModeClassCount == 1)
+        #expect(accessibility.selectionActionsCount == 1)
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        var toolbar = try await harness.session.testingSelectionToolbarSnapshot()
+        while toolbar.hidden {
+            if clock.now >= deadline {
+                Issue.record("The Edit formatting toolbar did not become visible: \(toolbar).")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            toolbar = try await harness.session.testingSelectionToolbarSnapshot()
+        }
+
+        #expect(toolbar.toolbarRole == "toolbar")
+        #expect(toolbar.toolbarLabel == "Formatting actions")
+        #expect(toolbar.visibleControlLabels == [
+            "Text Style",
+            "Bold",
+            "Italic",
+            "Strikethrough",
+            "Highlight",
+            "Link",
+            "Wiki",
+            "Vector Link Options",
+            "More Formatting",
+        ])
+        #expect(toolbar.wikiSeparatorCount == 0)
+        #expect(!toolbar.containsMarkdownSyntax)
+        #expect(toolbar.rootWidth > 0 && toolbar.rootWidth < 360)
+        #expect(toolbar.rootHeight >= 37 && toolbar.rootHeight <= 40)
+        let selectionCenter = (toolbar.selectionLeft + toolbar.selectionRight) / 2
+        let expectedToolbarLeft = max(
+            8,
+            min(
+                selectionCenter - toolbar.rootWidth / 2,
+                toolbar.viewportWidth - toolbar.rootWidth - 8
+            )
+        )
+        #expect(abs(toolbar.rootLeft - expectedToolbarLeft) <= 1)
+        #expect(toolbar.rootTop >= toolbar.selectionBottom + 5)
+        #expect(toolbar.minimumControlHeight >= 28)
+        #expect(toolbar.interfaceLabelFontSize == "12px")
+        #expect(toolbar.rootBorderColor == toolbar.separatorColor)
+        #expect(toolbar.menuBorderColor == toolbar.separatorColor)
+        #expect(toolbar.rootBorderColor != toolbar.accentColor)
+        #expect(toolbar.toolbarSystemSymbolNames == [
+            "textformat",
+            "chevron-down",
+            "bold",
+            "italic",
+            "strikethrough",
+            "highlighter",
+            "link",
+            "chevron-down",
+            "ellipsis",
+        ])
+        #expect(toolbar.toolbarSystemSymbolMaskCount == toolbar.toolbarSystemSymbolNames.count)
+        #expect(toolbar.toolbarSystemSymbolWidths.allSatisfy { $0 >= 10 && $0 <= 18 })
+        #expect(toolbar.toolbarSystemSymbolHeights.allSatisfy { $0 >= 10 && $0 <= 16 })
+        #expect(toolbar.inlineSVGCount == 0)
+        let labelSize = Double(toolbar.interfaceLabelFontSize.dropLast(2)) ?? 0
+        let documentSize = Double(toolbar.documentFontSize.dropLast(2)) ?? 0
+        #expect(labelSize > 0 && labelSize < documentSize)
+
+        let textStyle = try await harness.session.testingSelectionToolbarSnapshot(
+            opening: "Text Style"
+        )
+        #expect(textStyle.openMenuCount == 1)
+        #expect(textStyle.visibleMenuLabels == [
+            "Paragraph",
+            "Heading 1",
+            "Heading 2",
+            "Heading 3",
+            "Heading 4",
+            "Heading 5",
+            "Heading 6",
+        ])
+        #expect(textStyle.visibleMenuSystemSymbolNames == Array(
+            repeating: "checkmark",
+            count: 7
+        ))
+        #expect(textStyle.minimumMenuRowHeight >= 28)
+
+        let vector = try await harness.session.testingSelectionToolbarSnapshot(
+            opening: "Vector Link Options"
+        )
+        #expect(vector.visibleMenuLabels == ["Supports", "Opposes", "Incompatible"])
+        #expect(vector.visibleMenuSystemSymbolNames == [
+            "plus-circle",
+            "minus-circle",
+            "xmark-circle",
+        ])
+
+        let more = try await harness.session.testingSelectionToolbarSnapshot(
+            opening: "More Formatting"
+        )
+        #expect(more.visibleMenuLabels == [
+            "Inline Code",
+            "Code Block",
+            "Lists",
+            "Blockquote",
+            "Comment",
+        ])
+        #expect(more.visibleMenuCommands == [
+            "inlineCode",
+            "fencedCode",
+            "",
+            "blockQuotation",
+            "markdownComment",
+        ])
+        #expect(more.visibleMenuSystemSymbolNames == [
+            "curlybraces",
+            "curlybraces-square",
+            "list-bullet",
+            "chevron-down",
+            "text-quote",
+            "eye-slash",
+        ])
+        let lists = try await harness.session.testingSelectionToolbarSnapshot(
+            opening: "More Formatting",
+            submenu: "Lists"
+        )
+        #expect(lists.openMenuCount == 2)
+        #expect(lists.visibleMenuLabels == ["Bullet List", "Numbered List", "Checkbox List"])
+        #expect(lists.visibleMenuSystemSymbolNames == [
+            "list-bullet",
+            "list-number",
+            "checklist",
+        ])
+
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        #expect(try await harness.session.testingFocusSelectionToolbar() == "Text Style")
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(!(try await harness.session.testingSelectionToolbarSnapshot()).hidden)
+
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        try await harness.session.perform(.markdownComment)
+        let expected = "%% Toolbar claim %% remains exact.\n"
+        let mutationDeadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.session.currentText(for: harness.documentID) != expected {
+            if clock.now >= mutationDeadline {
+                Issue.record("The toolbar Markdown Comment action did not apply its exact transform.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.latestSource == expected)
+        #expect(harness.session.context?.undoLabel == "Markdown Comment")
+        #expect(harness.session.generation == 1)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit selection toolbar skips equivalent repeated updates")
+    func editSelectionToolbarRepeatedUpdateWork() async throws {
+        let source = "Repeated toolbar update remains exact.\n"
+        let selectedRange = try #require(source.range(of: "Repeated toolbar update"))
+        let from = selectedRange.lowerBound.utf16Offset(in: source)
+        let to = selectedRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        try await harness.waitUntilSelection(head: to, stage: "toolbar performance selection")
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.session.testingSelectionToolbarSnapshot().hidden {
+            if clock.now >= deadline {
+                Issue.record("The Edit toolbar did not appear for its performance diagnostic.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let snapshot = try await harness.session.testingSelectionToolbarRepeatedUpdateSnapshot(
+            iterations: 24
+        )
+        #expect(snapshot.iterationCount == 24)
+        #expect(snapshot.attributeMutationCount == 0)
+        #expect(snapshot.measureReadCount <= 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        print("Edit toolbar bounded-work result: \(snapshot)")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit selection toolbar follows its selection through scroll and resize")
+    func editSelectionToolbarTracksGeometryChanges() async throws {
+        let target = "Anchored toolbar selection"
+        let source = (1 ... 48).map { index in
+            index == 24
+                ? "\(target) remains exact."
+                : "Synthetic editor paragraph \(index) provides disposable scrolling space."
+        }.joined(separator: "\n\n")
+        let range = try #require(source.range(of: target))
+        let from = range.lowerBound.utf16Offset(in: source)
+        let to = range.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        try await harness.waitUntilSelection(head: to, stage: "scroll-anchored toolbar selection")
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        let clock = ContinuousClock()
+        let visibleDeadline = clock.now.advanced(by: .seconds(3))
+        var before = try await harness.session.testingSelectionToolbarSnapshot()
+        while before.hidden {
+            if clock.now >= visibleDeadline {
+                Issue.record("The Edit toolbar did not appear for its geometry regression.")
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            before = try await harness.session.testingSelectionToolbarSnapshot()
+        }
+
+        let scrollDelta = try await harness.session.testingScrollEditor(by: 56)
+        #expect(scrollDelta >= 40)
+        let afterScroll = try await harness.session.testingSelectionToolbarSnapshot()
+        #expect(!afterScroll.hidden)
+        #expect(abs(
+            (afterScroll.rootTop - before.rootTop)
+                - (afterScroll.selectionTop - before.selectionTop)
+        ) <= 1.5)
+        #expect(abs(
+            (afterScroll.rootTop - afterScroll.selectionTop)
+                - (before.rootTop - before.selectionTop)
+        ) <= 1.5)
+
+        harness.resize(width: 900)
+        let resizeDeadline = clock.now.advanced(by: .seconds(3))
+        var resized = try await harness.session.testingSelectionToolbarSnapshot()
+        var resizedSelectionCenter = (resized.selectionLeft + resized.selectionRight) / 2
+        var resizedExpectedLeft = max(
+            8,
+            min(
+                resizedSelectionCenter - resized.rootWidth / 2,
+                resized.viewportWidth - resized.rootWidth - 8
+            )
+        )
+        while resized.viewportWidth <= afterScroll.viewportWidth
+                || abs(resized.rootLeft - resizedExpectedLeft) > 1 {
+            if clock.now >= resizeDeadline {
+                Issue.record("The Edit toolbar did not converge after the viewport resize.")
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            resized = try await harness.session.testingSelectionToolbarSnapshot()
+            resizedSelectionCenter = (resized.selectionLeft + resized.selectionRight) / 2
+            resizedExpectedLeft = max(
+                8,
+                min(
+                    resizedSelectionCenter - resized.rootWidth / 2,
+                    resized.viewportWidth - resized.rootWidth - 8
+                )
+            )
+        }
+        #expect(abs(resized.rootLeft - resizedExpectedLeft) <= 1)
+        #expect(resized.rootLeft >= 8)
+        #expect(resized.rootLeft + resized.rootWidth <= resized.viewportWidth - 8 + 1)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Editor context menu starts with standard editing and adds only clicked-construct actions")
+    func editorContextMenuOwnsOneCompactCommandProjection() {
+        let webView = WindowAttachedWebView(
+            frame: NSRect(x: 0, y: 0, width: 640, height: 480),
+            configuration: WKWebViewConfiguration()
+        )
+        func context(
+            selection: MarkdownEditorSelectionRange,
+            available: [MarkdownEditorCommand]
+        ) -> MarkdownEditorContext {
+            MarkdownEditorContext(
+                selections: [selection],
+                activeInlineConstructs: [],
+                activeBlockConstructs: [],
+                tablePosition: nil,
+                composing: false,
+                availableCommands: available,
+                undoLabel: nil,
+                redoLabel: nil
+            )
+        }
+
+        let selectedMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 2, head: 8),
+                available: [.bold, .toggleTask, .tableInsertRowAfter]
+            ),
+            mode: .livePreview,
+            canPaste: true
+        )
+        #expect(Array(selectedMenu.items.prefix(5)).map(\.identifier?.rawValue) == [
+            "scholium.editor.cut",
+            "scholium.editor.copy",
+            "scholium.editor.paste",
+            nil,
+            "scholium.editor.selectAll",
+        ])
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Cut"))?.isEnabled == true)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == true)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == true)
+        #expect(selectedMenu.item(withTitle: "Autofill") == nil)
+        #expect(selectedMenu.item(withTitle: "Services") == nil)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Bold")) == nil)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) == nil)
+
+        let constructMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 4, head: 4),
+                available: [.toggleTask, .tableInsertRowAfter]
+            ),
+            mode: .livePreview,
+            canPaste: false
+        )
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Cut"))?.isEnabled == false)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == false)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == false)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) != nil)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Table"))?.submenu != nil)
+
+        let sourceMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 4, head: 4),
+                available: [.toggleTask, .tableInsertRowAfter]
+            ),
+            mode: .source,
+            canPaste: true
+        )
+        #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) == nil)
+        #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Table")) == nil)
+    }
+
+    @Test("Bridge v9 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
         // Let their short native-window journeys finish before this suite owns
@@ -1650,7 +2276,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.activeLiveBlockKind == "callout"
         }
         #expect(activeCallout.semanticTableCount == 1)
-        #expect(activeCallout.exactCalloutSourceCount > 0)
+        #expect(activeCallout.liveCalloutSourceLineCount == 2)
+        #expect(activeCallout.exactCalloutSourceCount == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
 
         harness.session.goToLine(sharedCalloutLine - 1)

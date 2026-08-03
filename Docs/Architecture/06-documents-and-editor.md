@@ -116,7 +116,8 @@ code-element responsibilities. `MarkdownEditorSession` alone owns the retained
 WebView lifecycle, checked source mirror, generation, recovery, and pending
 requests. `MarkdownEditorBridgeAdapter` owns the typed wire envelope and
 structured JavaScript dispatcher; `MarkdownEditorNativeWebView` owns AppKit
-attachment and context-menu behavior; and `MarkdownEditorWebView` is the
+attachment and the single native context-menu presentation; and
+`MarkdownEditorWebView` is the
 SwiftUI/WebKit composition and message-routing boundary. Debug-only WebKit
 snapshot probes and interaction drivers live in the two
 `MarkdownEditorSessionTesting*` files and are absent from Release builds. On
@@ -124,9 +125,19 @@ the Web side, `editor.ts` remains the sole composition root and source/identity
 owner. The immutable semantic catalog is owned by `live-projection-index`,
 Live selection meaning and text-only paint by `live-selection`, exact Source
 line direction by `source-direction`, and selection actions, cached preview
-presentation, and scroll observation/restoration by their bounded components
-around the same `EditorView`. None may persist Markdown or create another
-`EditorState`.
+presentation, caret-triggered input suggestions, and scroll
+observation/restoration by their bounded components around the same
+`EditorView`. None may persist Markdown or create another `EditorState`.
+
+Secondary click follows one public event path. A CodeMirror DOM `contextmenu`
+handler preserves an existing clicked selection or moves the sole
+`EditorSelection` to the clicked exact-source position, prevents WebKit's
+generic menu, and posts the finalized mode, context, and viewport anchor.
+`MarkdownEditorNativeWebView` then presents one compact AppKit menu containing
+standard Cut, Copy, Paste, and Select All selectors followed, only for a
+collapsed Edit caret, by available clicked-construct commands. It never installs
+an `NSEvent` right-mouse monitor, queries WebKit private descendant views for a
+premature menu, or opens a replacement menu beside WebKit's own menu.
 
 `live-projection-index` owns whole-Note topology rather than only the current
 viewport. Before reading its catalog, construction asks CodeMirror's native
@@ -163,16 +174,24 @@ projection merely because WebKit has no visible range to report.
 
 Selection meaning and selection paint are deliberately separate. CodeMirror's
 `EditorSelection` remains the sole Edit/Source range, command, copy, IME, and
-accessibility owner. Scholium does not install CodeMirror's rectangular
-`drawSelection` layer: one mode-neutral decoration source marks only selected
-source characters on each physical line and excludes line endings, authored
-blank lines, widgets, padding, and semantic gaps. The synchronized native DOM
-selection stays visually transparent. Review likewise retains WebKit's native
-`Selection` and Comment-range semantics, while a CSS Custom Highlight mirrors
-only intersected nonempty text-node subranges. The static Review DOM is not
-mutated, copied text is unchanged, and block padding or virtual line endings
-cannot acquire selection paint. Both adapters consume the same resolved Accent
-mix; `==text==` instead consumes the fixed shared Markup-highlight token.
+accessibility owner. CodeMirror's cursor layer is the sole Edit/Source caret
+painter; WebKit's native caret remains transparent so projection remeasurement
+cannot leave a compositor ghost at an obsolete baseline. CodeMirror's stock
+selection rectangles remain suppressed: one mode-neutral decoration source
+marks only selected source characters on each physical line and excludes line
+endings, authored blank lines, widgets, padding, and semantic gaps. The
+synchronized native DOM selection stays visually transparent. Source adds
+active-line and gutter markers only for collapsed selections, so a triple-click
+range ending after a line break cannot mark the next logical line. Review
+likewise retains WebKit's
+native `Selection` and Comment-range semantics, while a CSS Custom Highlight
+mirrors only intersected nonempty text-node subranges. Its contextual action
+converts the retained DOM Range to a document-coordinate anchor and remeasures
+that anchor on viewport resize. The
+static Review DOM is not mutated, copied text is unchanged, and block padding
+or virtual line endings cannot acquire selection paint. Both adapters consume
+the same resolved Accent mix; `==text==` instead consumes the fixed shared
+Markup-highlight token.
 
 Writing direction is content-owned at the adapter boundary. Static Review DOM
 places `dir="auto"` on researcher-authored text blocks and `dir="ltr"` on code,
@@ -229,7 +248,7 @@ without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge v8 sends source deltas immediately in generation order and includes a
+Bridge v9 sends source deltas immediately in generation order and includes a
 nonmutating exact UTF-16 source-range reveal operation. Identity remains
 strict while snapshot queries may observe a later generation than the caller
 knew. A save acknowledges one immutable committed snapshot: if input advanced
@@ -367,12 +386,42 @@ Written annotation is authoritative Markdown, including an ordinary semantic
 Callout when a separate visible note is useful; Scholium owns no parallel
 annotation store or CodeMirror margin widget. Review and Edit own separate
 transient selection toolbars: Review exposes only the in-place Comment
-textarea, while Edit exposes common Markdown formatting and no Comment. Return
+textarea, while Edit exposes common Markdown formatting, including the
+source-owned Markdown Comment wrapper, and no Review Comment composer. Return
 saves and closes a Review Comment, Shift-Return inserts a line, and Escape
-cancels. Source exposes neither toolbar. Saving appends a line-only researcher statement to the
-current active Discussion without opening a sheet, copying instructions, or
-contacting an agent. Discuss later collects and presents these statements; its
-agent request identifies their lines but never sends retained selected prose.
+cancels. Source exposes neither toolbar. Native `ScholiumSystemSymbol` names
+are the single icon catalog; `ScholiumWebSymbolAssets` renders those symbols
+once and injects data-URI CSS masks for the Edit toolbar and Review/Edit Vector
+Links, so WebKit owns no duplicate SVG drawings. Saving appends a line-only
+researcher statement to the current active Discussion without opening a sheet,
+copying instructions, or contacting an agent. Discuss later collects and
+presents these statements; its agent request identifies their lines but never
+sends retained selected prose.
+
+Transient surfaces do no whole-Note work. Review extracts at most a 2,000-unit
+excerpt and two 80-unit contexts from native Range boundaries and reuses the
+Mermaid-protection inventory. Edit caches document, selection, and Text Style;
+equivalent updates write no DOM, while geometry changes still remeasure. One
+keyed CodeMirror measure replaces earlier requests; a 50 ms same-path watchdog
+covers throttled animation frames, and the bar stays hidden until positioned.
+Pure `floating-surface-geometry` maps anchor, surface, viewport, alignment, and
+side without owning DOM or lifecycle. The Edit bar and preview reuse it while
+remaining separate owners: the bar tracks and flips; the preview dismisses on
+scroll, resize, or blur.
+
+`NoteContentView` derives Review-surface activity from document mode.
+Deactivation hides, clears transient paint, and blurs. Empty composers cancel;
+authored or pending drafts suspend only in the retained page and resume there.
+Saving uses a read-only focused field and polite live status.
+
+`input-suggestions` owns the Edit-only CodeMirror Wikilink, slash, and chained
+Callout-role completion. Slash filtering is local. Bounded Wikilink queries use
+the typed bridge and generation-owned `EditorLinkCompletionIndex`; CodeMirror
+alone owns listbox, transaction, caret, and Undo. Superseding query, document,
+mode, WebKit termination, or teardown cancels native work; identity gates reject
+stale replies, and Source removes the extension. No catalog, registry, DOM menu
+state, or writable source is duplicated.
+
 `Command-F` opens Scholium's shared **This Note** Search;
 the embedded CodeMirror Find panel is not part of the product.
 
@@ -531,12 +580,18 @@ horizontal move reaches the real separator line. The whole-line replacement
 retains CodeMirror's inclusive defaults so it consumes the source line boxes
 instead of leaving empty lines at its boundaries. Its slot uses no block margin
 or fixed-height estimate; fold, style, and pointer changes measure before
-further coordinate mapping. Once activated, block markers are exact source,
-while nested inline constructs continue to use ordinary construct-scoped
-projection rather than becoming a second Source mode. The fragment renderer
-uses the same extended Markdown language and source-offset map, so standard,
-Wiki, and Vector links retain their roles and exact pointer destinations inside
-the inactive Callout DOM.
+further coordinate mapping. Once activated, the semantic-line StateField keeps
+one continuous Callout source surface over the exact source lines. The inline
+projection exposes block markers only on the caret-owning physical line, or on
+the lines intersected by a nonempty selection, while every remaining line and
+nested inline construct retains ordinary construct-scoped projection. The
+`interaction` transformation continues the proven quote prefix on Return and
+removes an otherwise empty quote prefix on the next Return; each path is one
+CodeMirror transaction. The fragment renderer uses the same extended Markdown
+language and source-offset map, moves a title-only Orient title into Body
+presentation without source mutation or accessible duplication, and retains
+standard, Wiki, and Vector link roles and exact pointer destinations inside the
+inactive Callout DOM.
 
 Semantic tables follow that adapter boundary. Read emits a protected scroll
 container with a real `table`, `thead`, column-scoped `th`, `tbody`, and
@@ -571,11 +626,18 @@ pointer range from the projection snapshot. Ordinary `select.pointer`
 transactions update the real range without changing syntax decorations; one
 mouse-up effect commits the final range after CodeMirror's own event handler.
 Triple-click starts in an immediate phase because paragraph selection is one
-discrete gesture. Projected widgets map pointer-down to one collapsed exact
-source position, never a constructed range. Modified projected links activate
-from this same owner before selection begins; direct links reveal source, and
-Source retains its ordinary modifier-click path. No manual mousemove range,
-timer-delayed projection, or independent Callout activation state exists.
+discrete projection gesture, but the same phase remains non-idle until mouse-up,
+so Edit's formatting bar cannot appear before the pointer selection completes.
+Review mirrors this completion boundary with one pointer-active flag around its
+native DOM Selection; selection paint may follow the gesture, while Comment is
+evaluated only after pointer-up. Keyboard selection has no pending pointer phase
+and remains immediate. Projected widgets map pointer-down to one collapsed exact
+source position and commit the matching projection snapshot in that same
+pointer-down transaction, never a constructed range or a deferred boundary
+caret. Modified projected links activate from this same owner before selection
+begins; direct links reveal source, and Source retains its ordinary
+modifier-click path. No manual mousemove range, timer-delayed projection, or
+independent Callout activation state exists.
 
 Continuation normalization removes exactly one two-space or tab ownership
 indent and preserves every deeper space. Nested lists, block quotations, and

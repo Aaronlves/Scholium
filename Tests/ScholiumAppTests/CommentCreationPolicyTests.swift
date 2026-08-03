@@ -86,4 +86,44 @@ struct CommentCreationPolicyTests {
         #expect(anchor.line == 4)
         #expect(anchor.endLine == 4)
     }
+
+    @Test("An ambiguous Comment selection retains its safe rendered source block")
+    func ambiguousCommentSelectionUsesSourceBlock() throws {
+        let repeated = String(repeating: "same context ", count: 8) + "target"
+        let source = "# Topic\n\n\(repeated)\n\n\(repeated)\n"
+        let selection = MarkdownReviewSelection(
+            startLine: 5,
+            endLine: 5,
+            excerpt: "target",
+            contextBefore: String(repeating: "same context ", count: 6),
+            contextAfter: ""
+        )
+
+        #expect(ResearchFunctionSelectionCapture.anchor(
+            for: selection,
+            in: source,
+            relativePath: "Topic.md"
+        ) == nil)
+        #expect(ResearchFunctionSelectionCapture.commentLineRange(
+            for: selection,
+            in: source,
+            relativePath: "Topic.md"
+        ) == 5 ... 5)
+    }
+
+    @Test("A Comment source-block fallback cannot exceed the current document")
+    func invalidCommentSourceBlockIsRejected() {
+        let source = "# Topic\n\nA claim.\n"
+        let selection = MarkdownReviewSelection(
+            startLine: 99,
+            endLine: 99,
+            excerpt: "ambiguous"
+        )
+
+        #expect(ResearchFunctionSelectionCapture.commentLineRange(
+            for: selection,
+            in: source,
+            relativePath: "Topic.md"
+        ) == nil)
+    }
 }

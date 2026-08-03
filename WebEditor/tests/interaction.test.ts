@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {continueList, indentList} from "../interaction";
+import {continueCallout, continueList, indentList} from "../interaction";
 import {applySourceChanges} from "../transformations";
 import {Text} from "@codemirror/state";
 
@@ -32,5 +32,35 @@ describe("guarded list interaction", () => {
     expect(applySourceChanges(source, continued!.changes)).toBe("intro\n- one\n- two\n- ");
     const indented = indentList(document, [{anchor: 6, head: source.length}], false);
     expect(applySourceChanges(source, indented!.changes)).toBe("intro\n  - one\n  - two");
+  });
+});
+
+describe("guarded Callout interaction", () => {
+  it("continues a semantic Callout with its exact quote prefix", () => {
+    const source = "> [!orient] Reading route";
+    const result = continueCallout(source, [{anchor: source.length, head: source.length}]);
+
+    expect(applySourceChanges(source, result!.changes))
+      .toBe("> [!orient] Reading route\n> ");
+    expect(result!.selections).toEqual([{anchor: source.length + 3, head: source.length + 3}]);
+    expect(result!.undoLabel).toBe("Continue Callout");
+  });
+
+  it("exits on Return from an empty quoted Callout line", () => {
+    const source = "> [!orient] Reading route\n> ";
+    const result = continueCallout(source, [{anchor: source.length, head: source.length}]);
+
+    expect(applySourceChanges(source, result!.changes))
+      .toBe("> [!orient] Reading route\n");
+    expect(result!.selections).toEqual([{anchor: source.length - 2, head: source.length - 2}]);
+    expect(result!.undoLabel).toBe("Exit Callout");
+  });
+
+  it("does not continue ordinary quotations or nonempty selections", () => {
+    const quotation = "> Ordinary quotation.";
+    expect(continueCallout(quotation, [{anchor: quotation.length, head: quotation.length}]))
+      .toBeNull();
+    const callout = "> [!state] Claim";
+    expect(continueCallout(callout, [{anchor: 2, head: callout.length}])).toBeNull();
   });
 });

@@ -91,4 +91,26 @@ describe("appendMarkdownBlocks", () => {
     expect(root.querySelector("table .scholium-math-rendered .katex")?.textContent).toBe("y");
     expect(root.querySelector(".scholium-math-display .katex")?.textContent).toBe("x + y");
   });
+
+  it("keeps title-only Callouts visible and treats an Orient title as body prose", () => {
+    const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
+    const root = document.querySelector<HTMLElement>("#root")!;
+    const resolveCallout = (rawKind: string) => ({
+      identifier: rawKind,
+      label: rawKind === "orient" ? "Orient" : "Statement",
+      meaning: "Semantic role",
+    });
+
+    appendMarkdownBlocks("> [!state] Title only", root, {resolveCallout});
+    appendMarkdownBlocks("> [!orient] Reading **route**", root, {resolveCallout});
+
+    expect(root.querySelector(".scholium-callout-state .scholium-callout-title")?.textContent)
+      .toBe("Title only");
+    expect(root.querySelector(".scholium-callout-orient .scholium-callout-title"))
+      .toBeNull();
+    expect(root.querySelector(".scholium-callout-orient-title-body")?.textContent)
+      .toBe("Reading route");
+    expect(root.querySelector(".scholium-callout-orient-title-body strong")?.textContent)
+      .toBe("route");
+  });
 });

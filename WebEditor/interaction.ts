@@ -12,6 +12,66 @@ function listPrefix(line: string) {
   return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
 }
 
+function calloutQuotePrefix(line: string) {
+  return /^(\s*>[ \t]?)/.exec(line);
+}
+
+function lineBelongsToCallout(document: Text, lineNumber: number) {
+  for (let number = lineNumber; number >= 1; number -= 1) {
+    const line = document.line(number).text;
+    if (!calloutQuotePrefix(line)) return false;
+    if (/^\s*>[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]|$)/.test(line)) return true;
+  }
+  return false;
+}
+
+/**
+ * Continues the exact quote prefix inside a semantic Callout. Pressing Return
+ * on the resulting empty quoted line removes that prefix and exits the block,
+ * matching the ordinary two-Return Markdown authoring path.
+ */
+export function continueCallout(
+  source: InteractionSource,
+  selections: SelectionRange[],
+): Transformation | null {
+  const document = interactionDocument(source);
+  if (selections.some((selection) => selection.anchor !== selection.head)) return null;
+  const entries = selections.map((selection) => {
+    const bounds = document.lineAt(selection.head);
+    const prefix = calloutQuotePrefix(bounds.text)?.[1];
+    if (!prefix || !lineBelongsToCallout(document, bounds.number)) return null;
+    if (bounds.text.slice(prefix.length).trim().length === 0) {
+      return {
+        change: {from: bounds.from, to: bounds.from + prefix.length, insert: ""},
+        localSelection: bounds.from,
+        undoLabel: "Exit Callout",
+      };
+    }
+    const continued = `${prefix}\n`;
+    return {
+      change: {from: selection.head, to: selection.head, insert: `\n${prefix}`},
+      localSelection: selection.head + continued.length,
+      undoLabel: "Continue Callout",
+    };
+  });
+  if (entries.some((entry) => entry === null)) return null;
+  const accepted = entries as NonNullable<(typeof entries)[number]>[];
+  const sorted = [...accepted].sort((left, right) => left.change.from - right.change.from);
+  let shift = 0;
+  const mapped = sorted.map((entry) => {
+    const position = entry.localSelection + shift;
+    shift += entry.change.insert.length - (entry.change.to - entry.change.from);
+    return {anchor: position, head: position};
+  });
+  return {
+    changes: sorted.map((entry) => entry.change),
+    selections: mapped,
+    undoLabel: accepted.every((entry) => entry.undoLabel === "Exit Callout")
+      ? "Exit Callout"
+      : "Continue Callout",
+  };
+}
+
 export function continueList(source: InteractionSource, selections: SelectionRange[]): Transformation | null {
   const document = interactionDocument(source);
   if (selections.some((selection) => selection.anchor !== selection.head)) return null;

@@ -14,9 +14,10 @@ export interface TransformOptions {
 
 const inlineMarkers: Partial<Record<MarkdownEditorCommand, [string, string, string]>> = {
   bold: ["**", "**", "Bold"],
-  emphasis: ["*", "*", "Emphasis"],
+  emphasis: ["*", "*", "Italic"],
   strikethrough: ["~~", "~~", "Strikethrough"],
   highlight: ["==", "==", "Highlight"],
+  markdownComment: ["%% ", " %%", "Markdown Comment"],
   wikilink: ["[[", "]]", "Wikilink"],
   vectorSupports: ["+[[", "]]", "Supports Link"],
   vectorOpposes: ["-[[", "]]", "Opposes Link"],
@@ -180,7 +181,7 @@ export function transformMarkdown(
     let definitions = separator;
     const definitionSelections: SelectionRange[] = [];
     for (let index = 0; index < ranges.length; index += 1) {
-      const content = source.slice(ranges[index].from, ranges[index].to);
+      const content = options.argument ?? source.slice(ranges[index].from, ranges[index].to);
       const prefix = `[^${allocated[index]}]: `;
       const anchor = bodyLength + definitions.length + prefix.length;
       definitions += `${prefix}${content}\n`;

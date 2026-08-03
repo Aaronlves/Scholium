@@ -151,7 +151,7 @@ private struct InspectorRelationshipCluster: Identifiable {
 private let connectionScrollCoordinateSpace = "scholium.connect.scroll"
 
 /// One scrollable Connections page. Its major groups describe the other note's
-/// Triptych role. Each relationship cluster owns one quiet glyph; individual
+/// Triptych role. Each relationship cluster owns one quiet symbol; individual
 /// rows remain text-first navigation targets.
 struct ConnectionsInspectorView: View {
     let context: RelationshipInspectorContext
@@ -308,7 +308,13 @@ private struct ConnectionRelationshipCluster: View {
                         - ScholiumMetrics.Apparatus.relationRowMinimumHeight
                 )
 
-                ScholiumConnectionGlyph(kind: cluster.presentation.glyphKind)
+                Image(systemName: cluster.presentation.systemSymbol.systemName)
+                    .font(.system(
+                        size: ScholiumMetrics.Apparatus.relationGlyphSize,
+                        weight: .regular
+                    ))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(ScholiumColorRole.mutedText.color)
                     .frame(
                         width: ScholiumMetrics.Apparatus.relationGlyphSize,
                         height: ScholiumMetrics.Apparatus.relationGlyphSize

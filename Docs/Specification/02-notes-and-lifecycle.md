@@ -37,7 +37,9 @@ editable Markdown; Scholium does not set filesystem read-only permissions.
   numbers, and retains the same document session, viewport, measure, and
   semantic colors while using exact-source typography. Exact text soft-wraps
   within the available measure: visual continuation rows never insert or
-  remove source line breaks and never acquire independent line numbers.
+  remove source line breaks and never acquire independent line numbers. The
+  active-line treatment belongs only to a collapsed caret; a nonempty
+  selection never paints an unselected following logical line as active.
 
 All three modes consume the selected Appearance's one shared line-width value.
 It changes only layout in Source: Victor Mono and the exact-source typography
@@ -47,13 +49,33 @@ promise.
 
 Edit activation remains construct-scoped. A plain pointer click on projected
 inline syntax or projected block content places one collapsed CodeMirror caret
-at its mapped source position; it never constructs a text range as a side
+at its mapped source position during pointer-down; it never first paints a
+caret at the projected range boundary or constructs a text range as a side
 effect of revealing syntax. Pointer-drag selection updates the authoritative
 selection continuously but holds the visual Markdown projection stable until
 pointer release; a discrete triple-click paragraph selection may reveal its
 selected constructs immediately. A direct click on a rendered link reveals
 that link's source, while Control-click and Command-click activate the target
 without moving the caret.
+
+Edit alone owns two caret-triggered input suggestion lists. Typing `[[` opens
+the current Workspace note catalog and filters it again as the researcher types;
+each insertable result shows its resolved title and quiet path context. Accepting
+one unique result completes exactly one Wikilink, reusing rather than duplicating
+any auto-inserted closing brackets. Ambiguous cross-vault targets remain
+nonauthorizing and are not offered as insertable results. Typing `/` at the
+start of a line or after whitespace opens structured insertion. A bare slash on
+a block-safe line shows only **Callout**, **Date**, **Inline Math**, and
+**Mermaid**; further characters fuzzy-match the complete bounded set:
+**Callout**, **Date**, **Inline Math**, **Display Math**, **Mermaid**, **Table**,
+**Footnote**, **Code Block**, and **Divider**. In ordinary prose, the bare slash
+offers only Date, Inline Math, and Footnote. Date inserts the local calendar date
+as `YYYY-MM-DD`; Callout continues into the canonical role chooser. These lists
+never run during marked-text composition or inside frontmatter, code, raw HTML,
+comments, mathematics, or another protected construct. Source owns neither
+input list. Each accepted suggestion is one CodeMirror transaction and one
+Undo event; it never creates another buffer, selection, focus owner, or
+writable projection.
 
 Rendered callouts hide generated role names visually but retain them for
 accessibility. A supplied title inherits the role heading style; an untitled
@@ -62,6 +84,21 @@ alignment; the canonical default is justified without hyphenation. Callout,
 table, code, mathematics, footnote, and ordinary-quotation composition remains
 owned by each protected object rule rather than inheriting Body alignment
 indiscriminately.
+
+A title-only Callout remains visibly rendered rather than disappearing when a
+following line is created or the caret leaves it. Because **Orient** has no
+visible role heading, an author-supplied Orient title becomes its Body prose
+when no authored Body exists; it is neither duplicated nor replaced by the
+generated role name. In Edit, an active Callout retains one quiet block surface.
+Only the physical line containing a collapsed caret exposes its exact quote and
+role markers; a nonempty selection exposes only the physical lines it intersects.
+Every other line keeps its construct-scoped projection.
+
+Return on a nonempty Callout line inserts a newline with that line's exact
+quote prefix. Return on an otherwise empty line containing only `>` plus
+optional spacing removes that prefix and exits the Callout. Each operation is
+one CodeMirror transaction and one Undo event. Source remains ordinary exact
+text and applies neither continuation rule nor Edit projection.
 
 An inactive Edit callout atomically projects one half-open source range, but
 the insertion point immediately after its last content character remains
@@ -382,10 +419,15 @@ Restore does not Settle the restored revision.
 Review exposes **Comment** for a nonempty passage selection; Edit and Source do
 not. Review selection reveals one compact contextual Comment bar near the
 text. Edit selection instead reveals only the common formatting commands valid
-for that exact selection. The Format menu and keyboard retain equivalent
-formatting routes; the secondary-click menu does not duplicate these common
-commands and contains only operations whose meaning depends on the clicked
-construct. It contains no Preview command or Preview submenu. Footnote hover,
+for that exact selection. A pointer-created Comment or formatting bar remains
+hidden throughout selection and appears only after the primary-button gesture
+finishes; a completed keyboard selection may reveal it immediately. The Format
+menu and keyboard retain equivalent formatting routes. The editor's
+secondary-click menu consumes that same finalized CodeMirror selection and
+starts with **Cut**, **Copy**, **Paste**, and **Select All**; it then adds only
+operations whose meaning depends on one collapsed clicked construct. It does
+not duplicate common formatting, inherit generic Autofill or Services
+hierarchies, or contain a Preview command or Preview submenu. Footnote hover,
 focus, and navigation belong to Review only; Edit retains only the ordinary
 cursor-placement needed to reach the underlying Markdown, and Source exposes
 the exact text. Markdown has no bundled underline command.

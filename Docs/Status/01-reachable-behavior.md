@@ -308,8 +308,8 @@ One workspace `GraphSnapshot` owns Vector-Link v3 resolution: bare links remain 
 mean the containing Note supports or opposes the target, and `?` records undirected incompatibility.
 Graph contract 5 preserves exact markers and anchors, derives only support/opposition inverse views,
 and invalidates the retired directed-Questions projection. Connect groups each Triptych-role section
-by relationship, shows one custom glyph per cluster rather than per Note, and keeps both the major
-heading and bounded current-cluster glyph sticky in its single scroll owner. Major headings alone
+by relationship, shows one direct SF Symbol per cluster rather than per Note, and keeps both the
+major heading and bounded current-cluster symbol sticky in its single scroll owner. Major headings alone
 carry counts; rows retain pointer help, keyboard activation, VoiceOver relationship names, and the
 named source-anchor alternative. Neutral/transitive paths never become evidence and retired syntax
 remains exact with diagnostics. Search contract v4 uses one normal-content SQLite FTS5 corpus per
@@ -342,23 +342,58 @@ retained-surface lifetime; the Web bridge accepts only the editor-specific Edit/
 `MarkdownEditorSession` publishes one readiness/document-phase snapshot, serializes mode
 convergence, and stages initial input without publishing during WebView construction. Its adapter
 retains only a one-way input diff cache and no longer initializes or recovers mode from a parallel
-field. Bridge v8 preserves exact source, identity, recovery, focus, scroll, and nonmutating UTF-16
+field. Bridge v9 preserves exact source, identity, recovery, focus, scroll, and nonmutating UTF-16
 Search-result reveal while coalescing selection reports. An established editor remains visible
 during Edit/Source reconfiguration, and CodeMirror applies the complete mode compartment atomically.
 Source retains exact-source typography without semantic rich styling; explicit selection no longer
 highlights matching text elsewhere, and adjacent Markdown brackets no longer acquire a
-selection-like match background; losing window focus no longer rebuilds Live Preview from a hidden
-viewport. Edit's restrained selection toolbar exposes only common Markdown formatting. Review owns a
-separate direct line-only Comment bar; Return saves, Shift-Return inserts a line, Escape cancels,
-and Edit/Source have no Comment surface. Review alone owns footnote hover preview, navigation, and
+selection-like match background. Its active-line treatment now applies only to a collapsed caret,
+so a triple-click selection ending after a line break does not paint the following logical line;
+losing window focus no longer rebuilds Live Preview from a hidden viewport. Edit's compact selection toolbar exposes the approved common Markdown hierarchy through a
+neutral separator boundary, shallow shared floating-control elevation, and direct, quiet monochrome
+SF Symbols; its custom menus use the deeper bounded-panel role. Both it and Review's separate direct
+line-only Comment bar remain hidden until pointer selection finishes. Review remeasures the retained
+Comment selection into a document-coordinate anchor so its bar or open field remains attached to the
+passage while scrolling, and remeasures that anchor on viewport resize. Leaving Review now
+deactivates that surface explicitly: an empty composer clears, while an authored or pending draft is
+suspended in the retained page without focus and can resume on return. Saving remains read-only and
+live-announced rather than disabling the focused field. Edit separates toolbar content equality from
+geometry equality, so scroll and viewport changes remeasure an unchanged selection; one pure geometry
+owner centers, clamps, and flips the bar, and is also reused by the separately dismissed Edit preview.
+Shared Read/Edit previews now use one opaque bounded-panel surface and close on scroll, resize, or blur.
+Edit now also mounts one CodeMirror-owned bounded-panel suggestion surface:
+`[[` queries the generation-owned Workspace catalog as characters are typed,
+shows title plus bounded path context, excludes ambiguous noninsertable targets,
+and consumes existing closing brackets without duplication. A bare block-safe
+`/` shows only Callout, Date, Inline Math, and Mermaid; further input fuzzy-filters
+the complete nine-command insertion catalog, while prose limits the initial list
+to Date, Inline Math, and Footnote. Source, marked-text composition, and protected
+syntax own no suggestion overlay. The same Arrow/Return/Escape and pointer paths
+retain the CodeMirror caret; each accepted result is one Undo transaction.
+Edit and Source hide WebKit's native caret and use one CodeMirror cursor layer,
+while source-character marks remain the only range paint; deleting a
+structurally inserted line cannot leave a second caret at its obsolete Live
+Preview baseline.
+Return saves, Shift-Return inserts a line, Escape cancels, and Edit/Source have no Review Comment
+surface. The editor's one DOM-to-AppKit secondary-click path preserves a clicked selection, moves an
+outside click through CodeMirror, and presents Cut, Copy, Paste, and Select All before any available
+collapsed-construct action; the retired local right-mouse monitor, private-view menu query, Autofill,
+Services, common formatting, and Preview routes are absent. Review alone owns footnote hover preview,
+navigation, and
 return. Edit projects inactive references as locators; one composite definition remains at its
 authoritative source, keeps its marker exact, and applies ordinary construct-scoped projection only
 to its body. Paragraph separator lines remain real measured source lines rather than collapsed
 geometry; an authored separator now owns any larger adjacent semantic block spacing and its complete
 visible area maps to that exact empty line, while source-less gap widgets remain only where no
-authored separator exists. Inline clicks place one caret before delimiter exposure; Callout
-activation derives from the shared Live-selection snapshot, keeps the structural role token exact,
-and permits construct-scoped projection inside editable Callout content. Source remains exact text.
+authored separator exists. Inline clicks place one caret before delimiter exposure; a projected
+Callout click commits that exact source caret and removes its widget during pointer-down, so no
+intermediate boundary caret is painted below the block. Activation derives from the shared
+Live-selection snapshot and keeps one quiet block surface over the complete Callout. Only the
+caret-owning or selected physical lines expose exact structural markers; the other lines and nested
+constructs remain projected. Return continues the exact quote prefix, while Return on an empty
+quoted line removes that prefix and exits. Title-only Callouts stay visible, and a title-only Orient
+projects its author-supplied title as Body without rewriting source. Source remains exact text and
+owns none of these Edit-only continuation or projection behaviors.
 Automated TypeScript, Swift, and real-WKWebView checks cover implemented semantics; human visual,
 assistive-technology, IME, retained-memory, sustained-performance, and the current post-migration
 mode-handoff experience remain open.

@@ -24,6 +24,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var commentComposerRequestID: UUID? = nil
     var commentResolution: PassageCommentResolution? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
+    /// Derived visibility only. Review remains the sole selection-surface
+    /// owner; the coordinator transports mode changes to its retained page.
+    var selectionSurfaceIsActive = true
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
@@ -49,6 +52,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentComposerRequestID: commentComposerRequestID,
             commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
+            selectionSurfaceIsActive: selectionSurfaceIsActive,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
@@ -116,6 +120,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentComposerRequestID: commentComposerRequestID,
             commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
+            selectionSurfaceIsActive: selectionSurfaceIsActive,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
@@ -141,6 +146,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.evaluateJavaScript(
+            "window.scholiumSetReviewSelectionSurfaceActive?.(false)"
+        )
         webView.configuration.userContentController.removeScriptMessageHandler(
             forName: Coordinator.messageHandlerName
         )
@@ -173,20 +181,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         /// WebView-rebuild request has completed. Keep a small, fixed history
         /// so that old one-shot IDs cannot become restoration commands again.
         private static let consumedScrollRestoreHistoryLimit = 64
-        private static let vectorSymbolDataURIs = Dictionary(
-            uniqueKeysWithValues: [
-                "link", "plus.circle", "minus.circle",
-            ].map { ($0, symbolDataURI(named: $0)) }
-                + [("incompatible", incompatibleVectorSymbolDataURI)]
-        )
-        private static let incompatibleVectorSymbolDataURI: String = {
-            let svg = """
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-              <path d="M3.1 10.1c2.5-.2 4.5-.1 6.1.1L10 7.1M16.9 10.1c-2.5-.2-4.5-.1-6.1.1L10 13.1" fill="none" stroke="black" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            """
-            return "data:image/svg+xml;base64,\(Data(svg.utf8).base64EncodedString())"
-        }()
+        private static let vectorSymbolDataURIs: [String: String] = [
+            "neutral": ScholiumWebSymbolAssets.dataURI(for: .link),
+            "supports": ScholiumWebSymbolAssets.dataURI(for: .plusCircle),
+            "opposes": ScholiumWebSymbolAssets.dataURI(for: .minusCircle),
+            "incompatible": ScholiumWebSymbolAssets.dataURI(for: .xmarkCircle),
+        ]
 
         private var documentID: String
         private var fingerprint: String
@@ -196,6 +196,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var commentComposerRequestID: UUID?
         private var commentResolution: PassageCommentResolution?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
+        private var selectionSurfaceIsActive: Bool
+        private var appliedSelectionSurfaceIsActive: Bool?
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
@@ -214,6 +216,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadFinalizationTask: Task<Void, Never>?
         private var sourceLineNavigationTask: Task<Void, Never>?
         private var linkPreviewUpdateTask: Task<Void, Never>?
+        private var selectionSurfaceUpdateTask: Task<Void, Never>?
         private var mermaidRuntimeLoadTask: Task<Void, Never>?
         private var mermaidRuntimeLoadID: UUID?
         private var desiredLinkPreviewRevision = ""
@@ -246,6 +249,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentComposerRequestID: UUID?,
             commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
+            selectionSurfaceIsActive: Bool,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -265,6 +269,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.commentComposerRequestID = commentComposerRequestID
             self.commentResolution = commentResolution
             self.onSelectionChange = onSelectionChange
+            self.selectionSurfaceIsActive = selectionSurfaceIsActive
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
@@ -287,6 +292,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentComposerRequestID: UUID?,
             commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
+            selectionSurfaceIsActive: Bool,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -306,6 +312,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 loadingLinkPreviewRevision = ""
                 lastReachedSourceLine = nil
                 pageIsReady = false
+                appliedSelectionSurfaceIsActive = nil
                 hasLoadedPage = false
                 cancelPendingPageWork()
                 webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
@@ -317,6 +324,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
             self.onSelectionChange = onSelectionChange
+            self.selectionSurfaceIsActive = selectionSurfaceIsActive
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
@@ -331,6 +339,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.targetSourceLine = targetSourceLine
             self.onSourceLineReached = onSourceLineReached
             schedulePostLoadPositioningIfNeeded(in: webView)
+            applySelectionSurfaceActivityIfNeeded(in: webView)
             requestCommentComposerIfNeeded(commentComposerRequestID, in: webView)
             resolveCommentIfNeeded(commentResolution, in: webView)
         }
@@ -417,6 +426,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             desiredLinkPreviewRevision = previewRevision
             guard loadedSignature != signature else {
                 applyLinkPreviewsIfNeeded(in: webView)
+                applySelectionSurfaceActivityIfNeeded(in: webView)
                 return
             }
             self.source = source
@@ -434,6 +444,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadedSignature = signature
             loadingLinkPreviewRevision = previewRevision
             pageIsReady = false
+            appliedSelectionSurfaceIsActive = nil
             activeWebView = webView
             let html = Self.documentHTML(
                 body: body,
@@ -490,6 +501,37 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
         }
 
+        private func applySelectionSurfaceActivityIfNeeded(in webView: WKWebView) {
+            guard pageIsReady,
+                  appliedSelectionSurfaceIsActive != selectionSurfaceIsActive,
+                  activeWebView === webView,
+                  let signature = activeLoadSignature else { return }
+            let requestedActive = selectionSurfaceIsActive
+            let requestedGeneration = loadGeneration
+            selectionSurfaceUpdateTask?.cancel()
+            selectionSurfaceUpdateTask = Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView else { return }
+                let result = try? await webView.callAsyncJavaScript(
+                    """
+                    if (window.scholiumReadReady) await window.scholiumReadReady;
+                    return window.scholiumSetReviewSelectionSurfaceActive?.(active) === true;
+                    """,
+                    arguments: ["active": requestedActive],
+                    in: nil,
+                    contentWorld: .page
+                )
+                guard !Task.isCancelled,
+                      result as? Bool == true,
+                      self.isCurrentLoad(
+                          generation: requestedGeneration,
+                          signature: signature,
+                          in: webView
+                      ),
+                      self.selectionSurfaceIsActive == requestedActive else { return }
+                self.appliedSelectionSurfaceIsActive = requestedActive
+            }
+        }
+
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
@@ -518,7 +560,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       comment.utf8.count <= 16_384,
                       let selection = reviewSelection(from: payload),
-                      let anchor = ResearchFunctionSelectionCapture.anchor(
+                      let lineRange = ResearchFunctionSelectionCapture.commentLineRange(
                           for: selection,
                           in: source,
                           relativePath: documentID
@@ -541,8 +583,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         sha256: fingerprint,
                         byteCount: sourceUTF8Length
                     ),
-                    startLine: anchor.line,
-                    endLine: anchor.endLine,
+                    startLine: lineRange.lowerBound,
+                    endLine: lineRange.upperBound,
                     text: comment
                 ))
             case "selectionChanged":
@@ -609,6 +651,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
             applyLinkPreviewsIfNeeded(in: webView)
+            applySelectionSurfaceActivityIfNeeded(in: webView)
             let restoreClaim = claimScrollRestoreRequest()
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
@@ -1009,6 +1052,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceLineNavigationTask = nil
             linkPreviewUpdateTask?.cancel()
             linkPreviewUpdateTask = nil
+            selectionSurfaceUpdateTask?.cancel()
+            selectionSurfaceUpdateTask = nil
             mermaidRuntimeLoadTask?.cancel()
             mermaidRuntimeLoadTask = nil
             mermaidRuntimeLoadID = nil
@@ -1237,11 +1282,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               </aside>
               <div id="selection-actions" class="scholium-selection-actions" hidden>
                 <div id="selection-toolbar" class="scholium-selection-toolbar" role="toolbar" aria-label="Selection actions">
-                  <button id="comment-selection" type="button">Comment</button>
+                  <button id="comment-selection" class="scholium-selection-control" type="button">
+                    <span class="scholium-selection-label">Comment</span>
+                  </button>
                 </div>
-                <div id="comment-composer" hidden>
-                  <textarea id="comment-text" rows="2" maxlength="16384" aria-label="Comment" aria-describedby="comment-help"></textarea>
-                  <span id="comment-help">Return saves. Shift-Return inserts a line. Escape cancels.</span>
+                <div id="comment-composer" aria-busy="false" hidden>
+                  <textarea id="comment-text" rows="2" maxlength="16384" placeholder="Comment" aria-label="Comment" aria-describedby="comment-help"></textarea>
+                  <span id="comment-help" role="status" aria-live="polite" aria-atomic="true">Return saves · Shift-Return adds a line · Escape cancels</span>
                   \(qaCommentSubmitControl)
                 </div>
               </div>
@@ -1270,20 +1317,55 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const commentText = document.getElementById('comment-text');
                 const commentHelp = document.getElementById('comment-help');
                 const qaCommentSubmit = document.getElementById('qa-submit-comment');
+                const defaultCommentHelpText = 'Return saves · Shift-Return adds a line · Escape cancels';
+                const resizeCommentText = () => {
+                  commentText.style.height = 'auto';
+                  commentText.style.height = Math.min(
+                    Math.max(commentText.scrollHeight, 64),
+                    132
+                  ) + 'px';
+                  if (!commentComposer.hidden && commentSelectionRange) {
+                    positionSelectionActions(commentSelectionRange.getBoundingClientRect());
+                  }
+                };
+                \(ReviewSelectionTextExtraction.script)
                 \(ReviewSelectionPresentation.script)
                 let pendingCommentRequestID = null;
                 let commentAnchorElement = null;
                 let commentSelectionRange = null;
+                let reviewPointerSelectionActive = false;
+                let reviewSelectionSurfaceActive = true;
+                let suspendedCommentComposer = false;
+                const positionSelectionActions = anchorBounds => {
+                  selectionActions.hidden = false;
+                  const bounds = selectionActions.getBoundingClientRect();
+                  const viewportInset = 12;
+                  const verticalInset = 8;
+                  const gap = 6;
+                  const centeredLeft = anchorBounds.left
+                    + (anchorBounds.width - bounds.width) / 2;
+                  const aboveTop = anchorBounds.top - bounds.height - gap;
+                  const belowTop = anchorBounds.bottom + gap;
+                  const preferredTop = aboveTop >= verticalInset ? aboveTop : belowTop;
+                  selectionActions.style.left = window.scrollX + Math.max(
+                    viewportInset,
+                    Math.min(centeredLeft, window.innerWidth - bounds.width - viewportInset)
+                  ) + 'px';
+                  selectionActions.style.top = window.scrollY + Math.max(
+                    verticalInset,
+                    Math.min(preferredTop, window.innerHeight - bounds.height - verticalInset)
+                  ) + 'px';
+                };
                 let previewByRange = new Map(linkPreviews.map(preview => [
                   preview.utf16LowerBound + ':' + preview.utf16UpperBound,
                   preview
                 ]));
                 const origins = new Map();
                 const vectorSemantics = {
-                  neutral: {label: 'Related note', symbol: \(jsonLiteral(vectorSymbolDataURIs["link"] ?? ""))},
-                  supports: {label: 'Supports', symbol: \(jsonLiteral(vectorSymbolDataURIs["plus.circle"] ?? ""))},
-                  opposes: {label: 'Opposes', symbol: \(jsonLiteral(vectorSymbolDataURIs["minus.circle"] ?? ""))},
-                  incompatible: {label: 'Incompatible', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
+                  neutral: {label: 'Related note', symbolName: 'link', symbol: \(jsonLiteral(vectorSymbolDataURIs["neutral"] ?? ""))},
+                  supports: {label: 'Supports', symbolName: 'plus-circle', symbol: \(jsonLiteral(vectorSymbolDataURIs["supports"] ?? ""))},
+                  opposes: {label: 'Opposes', symbolName: 'minus-circle', symbol: \(jsonLiteral(vectorSymbolDataURIs["opposes"] ?? ""))},
+                  incompatible: {label: 'Incompatible', symbolName: 'xmark-circle', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
                 };
 
                 function renderMathNodes() {
@@ -1445,6 +1527,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   const icon = document.createElement('span');
                   icon.className = 'scholium-vector-icon';
                   icon.setAttribute('aria-hidden', 'true');
+                  icon.dataset.scholiumSystemSymbol = semantics.symbolName;
                   icon.style.webkitMaskImage = `url("${semantics.symbol}")`;
                   icon.style.maskImage = `url("${semantics.symbol}")`;
                   link.prepend(icon);
@@ -1532,6 +1615,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 document.addEventListener('pointerout', event => {
                   if (event.target.closest && event.target.closest('.footnote-reference, a.wiki-link')) hidePopover();
                 });
+                window.addEventListener('scroll', hidePopover, {passive: true});
+                window.addEventListener('resize', hidePopover);
+                window.addEventListener('blur', hidePopover);
 
                 document.addEventListener('click', event => {
                   const reference = event.target.closest && event.target.closest('.footnote-reference');
@@ -1583,7 +1669,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 });
 
                 function showCommentComposer() {
-                  if (!commentEnabled || selectionActions.hidden || !commentButton.dataset.startLine) return false;
+                  if (!reviewSelectionSurfaceActive
+                      || !commentEnabled
+                      || selectionActions.hidden
+                      || !commentButton.dataset.startLine) return false;
                   const startLine = Number(commentButton.dataset.startLine);
                   const endLine = Number(commentButton.dataset.endLine || commentButton.dataset.startLine);
                   const lineLabel = startLine === endLine
@@ -1592,46 +1681,131 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   commentText.setAttribute('aria-label', 'Comment for ' + lineLabel);
                   selectionToolbar.hidden = true;
                   commentComposer.hidden = false;
-                  const measured = selectionActions.getBoundingClientRect();
-                  const anchorLeft = Number(commentButton.dataset.anchorLeft || '12');
-                  const anchorTop = Number(commentButton.dataset.anchorTop || '12');
-                  selectionActions.style.left = Math.max(12, Math.min(anchorLeft, window.innerWidth - measured.width - 12)) + 'px';
-                  selectionActions.style.top = Math.max(8, Math.min(anchorTop, window.innerHeight - measured.height - 12)) + 'px';
+                  suspendedCommentComposer = false;
+                  selectionActions.classList.add('scholium-comment-composing');
+                  commentComposer.removeAttribute('data-state');
+                  commentComposer.setAttribute('aria-busy', 'false');
+                  commentHelp.textContent = defaultCommentHelpText;
+                  resizeCommentText();
+                  const anchorBounds = commentSelectionRange?.getBoundingClientRect();
+                  if (anchorBounds) positionSelectionActions(anchorBounds);
                   commentText.focus();
                   return true;
                 }
                 window.scholiumShowCommentComposer = showCommentComposer;
 
                 function restoreCommentFocus() {
-                  if (!commentAnchorElement) return;
-                  commentAnchorElement.tabIndex = -1;
-                  commentAnchorElement.focus({preventScroll: true});
-                  if (commentSelectionRange) {
+                  const anchor = commentAnchorElement;
+                  const range = commentSelectionRange?.cloneRange();
+                  if (anchor instanceof HTMLElement) {
+                    const previousTabIndex = anchor.getAttribute('tabindex');
+                    anchor.tabIndex = -1;
+                    anchor.focus({preventScroll: true});
+                    if (previousTabIndex === null) anchor.removeAttribute('tabindex');
+                    else anchor.setAttribute('tabindex', previousTabIndex);
+                  }
+                  if (range) {
                     const selection = window.getSelection();
                     selection.removeAllRanges();
-                    selection.addRange(commentSelectionRange);
+                    selection.addRange(range);
                   }
                 }
+
+                function cancelComment(restoreSelection, onlyWhenEmpty) {
+                  if (pendingCommentRequestID
+                      || (onlyWhenEmpty && commentText.value.trim())) return false;
+                  commentText.value = '';
+                  commentText.style.height = '';
+                  commentText.readOnly = false;
+                  commentComposer.removeAttribute('data-state');
+                  commentComposer.setAttribute('aria-busy', 'false');
+                  commentHelp.textContent = defaultCommentHelpText;
+                  commentComposer.hidden = true;
+                  suspendedCommentComposer = false;
+                  selectionToolbar.hidden = false;
+                  selectionActions.hidden = true;
+                  selectionActions.classList.remove('scholium-comment-composing');
+                  if (restoreSelection) {
+                    restoreCommentFocus();
+                  } else {
+                    commentText.blur();
+                    commentSelectionRange = null;
+                    commentAnchorElement = null;
+                  }
+                  return true;
+                }
+
+                window.scholiumSetReviewSelectionSurfaceActive = active => {
+                  const nextActive = Boolean(active);
+                  if (nextActive === reviewSelectionSurfaceActive) return true;
+                  reviewSelectionSurfaceActive = nextActive;
+                  reviewPointerSelectionActive = false;
+                  if (!nextActive) {
+                    const retainsDraft = !commentComposer.hidden
+                      && (Boolean(pendingCommentRequestID) || Boolean(commentText.value.trim()));
+                    suspendedCommentComposer = retainsDraft;
+                    selectionActions.hidden = true;
+                    reviewSelectionPresentation.clear();
+                    commentText.blur();
+                    if (!retainsDraft) cancelComment(false, false);
+                    return true;
+                  }
+                  if (suspendedCommentComposer && commentSelectionRange) {
+                    suspendedCommentComposer = false;
+                    selectionToolbar.hidden = true;
+                    commentComposer.hidden = false;
+                    selectionActions.hidden = false;
+                    selectionActions.classList.add('scholium-comment-composing');
+                    positionSelectionActions(commentSelectionRange.getBoundingClientRect());
+                    if (!pendingCommentRequestID) commentText.focus();
+                  } else {
+                    suspendedCommentComposer = false;
+                  }
+                  return true;
+                };
 
                 window.scholiumResolveCommentSubmission = (requestID, succeeded) => {
                   if (!pendingCommentRequestID || requestID !== pendingCommentRequestID) return false;
                   pendingCommentRequestID = null;
-                  commentText.disabled = false;
+                  commentText.readOnly = false;
+                  commentComposer.setAttribute('aria-busy', 'false');
                   if (!succeeded) {
                     commentHelp.textContent = 'Could not save. Your Comment is still here.';
-                    commentText.focus();
+                    commentComposer.dataset.state = 'error';
+                    if (reviewSelectionSurfaceActive) commentText.focus();
                     return true;
                   }
                   commentText.value = '';
-                  commentHelp.textContent = 'Return saves. Shift-Return inserts a line. Escape cancels.';
+                  commentText.style.height = '';
+                  commentComposer.removeAttribute('data-state');
+                  commentHelp.textContent = defaultCommentHelpText;
                   commentComposer.hidden = true;
                   selectionToolbar.hidden = false;
                   selectionActions.hidden = true;
-                  restoreCommentFocus();
+                  selectionActions.classList.remove('scholium-comment-composing');
+                  suspendedCommentComposer = false;
+                  if (reviewSelectionSurfaceActive) {
+                    restoreCommentFocus();
+                  } else {
+                    commentText.blur();
+                    commentSelectionRange = null;
+                    commentAnchorElement = null;
+                  }
                   return true;
                 };
 
                 if (selectionEnabled) {
+                  const reviewDocument = document.getElementById('scholium-document');
+                  const reviewMermaidElements = reviewDocument
+                    ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')]
+                    : [];
+                  const repositionReviewSelectionActions = () => {
+                    if (!reviewSelectionSurfaceActive
+                        || reviewPointerSelectionActive
+                        || !commentSelectionRange
+                        || selectionActions.hidden) return;
+                    positionSelectionActions(commentSelectionRange.getBoundingClientRect());
+                  };
                   const clearReviewSelection = () => {
                     commentSelectionRange = null;
                     commentAnchorElement = null;
@@ -1644,10 +1818,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     const shadowHost = node?.getRootNode?.()?.host;
                     return Boolean(shadowHost?.closest?.('[data-scholium-protected="mermaid"]'));
                   };
-                  const rangeIntersectsMermaid = (range, root) => {
+                  const rangeIntersectsMermaid = range => {
                     if (nodeBelongsToMermaid(range.startContainer)
                         || nodeBelongsToMermaid(range.endContainer)) return true;
-                    return [...root.querySelectorAll('[data-scholium-protected="mermaid"]')].some(element => {
+                    return reviewMermaidElements.some(element => {
                       try {
                         return range.intersectsNode(element);
                       } catch (_) {
@@ -1660,42 +1834,50 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     // selection. Keep the anchored composer stable until the
                     // researcher saves or cancels it; that focus transition is
                     // not a request to discard the marginal note.
+                    if (!reviewSelectionSurfaceActive) {
+                      selectionActions.hidden = true;
+                      return;
+                    }
                     if (!commentComposer.hidden) return;
                     const selection = window.getSelection();
-                    const main = document.getElementById('scholium-document');
-                    reviewSelectionPresentation.update(selection, main);
-                    const text = selection ? selection.toString().trim() : '';
-                    if (!text) {
+                    const main = reviewDocument;
+                    reviewSelectionPresentation.update(selection, main, reviewRangeTextNodes);
+                    if (reviewPointerSelectionActive) {
+                      selectionActions.hidden = true;
+                      return;
+                    }
+                    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed || !main) {
                       clearReviewSelection();
                       return;
                     }
                     const range = selection.getRangeAt(0);
-                    if (!main || !main.contains(range.startContainer) || !main.contains(range.endContainer)) {
+                    if (!main.contains(range.startContainer) || !main.contains(range.endContainer)) {
                       clearReviewSelection();
                       return;
                     }
-                    if (rangeIntersectsMermaid(range, main)) {
+                    if (rangeIntersectsMermaid(range)) {
+                      clearReviewSelection();
+                      return;
+                    }
+                    const text = boundedReviewRangeText(range, main, 2000);
+                    if (!text) {
                       clearReviewSelection();
                       return;
                     }
                     const rect = range.getBoundingClientRect();
                     commentSelectionRange = range.cloneRange();
-                    const beforeRange = document.createRange();
-                    beforeRange.selectNodeContents(main);
-                    beforeRange.setEnd(range.startContainer, range.startOffset);
-                    const afterRange = document.createRange();
-                    afterRange.selectNodeContents(main);
-                    afterRange.setStart(range.endContainer, range.endOffset);
                     const sourceElement = (range.startContainer.parentElement || range.startContainer)
                       .closest && (range.startContainer.parentElement || range.startContainer).closest('[data-source-line]');
                     const endSourceElement = (range.endContainer.parentElement || range.endContainer)
                       .closest && (range.endContainer.parentElement || range.endContainer).closest('[data-source-line]');
                     const startLine = Number(sourceElement ? sourceElement.dataset.sourceLine : '1');
-                    const endLine = Number(endSourceElement ? endSourceElement.dataset.sourceLine : String(startLine));
+                    const endLine = Number(endSourceElement
+                      ? (endSourceElement.dataset.sourceEndLine || endSourceElement.dataset.sourceLine)
+                      : String(startLine));
                     const payload = {
-                      text: text.slice(0, 2000),
-                      contextBefore: beforeRange.toString().slice(-80),
-                      contextAfter: afterRange.toString().slice(0, 80),
+                      text,
+                      contextBefore: reviewContextBefore(range, main, 80),
+                      contextAfter: reviewContextAfter(range, main, 80),
                       startLine: Math.min(startLine, endLine),
                       endLine: Math.max(startLine, endLine)
                     };
@@ -1709,16 +1891,39 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     commentButton.dataset.selection = payload.text;
                     commentButton.dataset.contextBefore = payload.contextBefore;
                     commentButton.dataset.contextAfter = payload.contextAfter;
-                    commentButton.dataset.anchorLeft = String(rect.left);
-                    commentButton.dataset.anchorTop = String(rect.top - 38);
                     commentAnchorElement = sourceElement;
                     commentButton.hidden = !commentEnabled;
-                    selectionActions.style.left = Math.max(12, Math.min(rect.right - 175, window.innerWidth - 200)) + 'px';
-                    selectionActions.style.top = Math.max(8, rect.top - 38) + 'px';
-                    selectionActions.hidden = false;
+                    positionSelectionActions(rect);
                   };
                   document.addEventListener('selectionchange', updateSelectionActions);
+                  reviewDocument?.addEventListener('pointerdown', event => {
+                    if (!reviewSelectionSurfaceActive || event.button !== 0) return;
+                    if (!commentComposer.hidden && !cancelComment(false, true)) {
+                      event.preventDefault();
+                      commentText.focus();
+                      return;
+                    }
+                    if (commentAnchorElement instanceof HTMLElement
+                        && document.activeElement === commentAnchorElement) {
+                      commentAnchorElement.blur();
+                    }
+                    commentSelectionRange = null;
+                    commentAnchorElement = null;
+                    reviewPointerSelectionActive = true;
+                    selectionActions.hidden = true;
+                  }, true);
+                  window.addEventListener('pointerup', event => {
+                    if (!reviewPointerSelectionActive || event.button !== 0) return;
+                    reviewPointerSelectionActive = false;
+                    queueMicrotask(updateSelectionActions);
+                  }, true);
+                  window.addEventListener('pointercancel', () => {
+                    reviewPointerSelectionActive = false;
+                    selectionActions.hidden = true;
+                  }, true);
+                  window.addEventListener('resize', repositionReviewSelectionActions);
                   window.addEventListener('blur', () => {
+                    reviewPointerSelectionActive = false;
                     if (commentComposer.hidden) selectionActions.hidden = true;
                   });
                 }
@@ -1753,11 +1958,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     if (!comment || pendingCommentRequestID) return;
                     if (new TextEncoder().encode(comment).byteLength > 16384) {
                       commentHelp.textContent = 'This Comment is too long to save here.';
+                      commentComposer.dataset.state = 'error';
                       return;
                     }
                     pendingCommentRequestID = makeRequestID();
-                    commentText.disabled = true;
+                    commentText.readOnly = true;
+                    commentComposer.setAttribute('aria-busy', 'true');
                     commentHelp.textContent = 'Saving…';
+                    commentComposer.dataset.state = 'saving';
                     post('commentSubmitted', {
                       requestID: pendingCommentRequestID,
                       comment,
@@ -1769,17 +1977,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     });
                   };
                   qaCommentSubmit && qaCommentSubmit.addEventListener('click', submitComment);
+                  commentText.addEventListener('input', () => {
+                    resizeCommentText();
+                    if (commentComposer.dataset.state === 'error') {
+                      commentComposer.removeAttribute('data-state');
+                      commentHelp.textContent = defaultCommentHelpText;
+                    }
+                  });
                   commentText.addEventListener('keydown', event => {
                     if (event.key === 'Escape') {
                       event.preventDefault();
                       event.stopPropagation();
-                      if (pendingCommentRequestID) return;
-                      commentText.value = '';
-                      commentHelp.textContent = 'Return saves. Shift-Return inserts a line. Escape cancels.';
-                      commentComposer.hidden = true;
-                      selectionToolbar.hidden = false;
-                      selectionActions.hidden = true;
-                      restoreCommentFocus();
+                      cancelComment(true, false);
                       return;
                     }
                     const isReturn = event.key === 'Enter'
@@ -2080,23 +2289,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             return data.base64EncodedString()
         }
 
-        private static func symbolDataURI(named name: String) -> String {
-            guard let image = NSImage(
-                systemSymbolName: name,
-                accessibilityDescription: nil
-            )?.withSymbolConfiguration(.init(pointSize: 18, weight: .medium)),
-            let tiff = image.tiffRepresentation,
-            let bitmap = NSBitmapImageRep(data: tiff),
-            let data = bitmap.representation(using: .png, properties: [:]) else {
-                return ""
-            }
-            return "data:image/png;base64,\(data.base64EncodedString())"
-        }
-
         static let baseCSS = """
         html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
         \(ReviewSelectionPresentation.css)
+        #selection-actions { position: absolute; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
         .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }
         .scholium-document .scholium-vector-supports { color: var(--scholium-color-connection-support); }
@@ -2106,14 +2303,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         code { font-family: "Victor Mono", ui-monospace, monospace; }
         img, video, svg { max-width: 100%; height: auto; }
         \(ScholiumCalloutStyles.css)
-        #comment-composer { display: grid; gap: 4px; width: min(320px, calc(100vw - 32px)); }
+        #selection-actions.scholium-comment-composing { padding: 6px; }
+        #comment-composer { position: relative; display: grid; gap: 5px; width: clamp(220px, calc(100vw - 28px), 288px); }
         #comment-composer[hidden], #selection-toolbar[hidden] { display: none; }
-        #comment-text { box-sizing: border-box; width: 100%; min-height: 58px; max-height: 132px; resize: vertical; padding: 7px 8px; border: 1px solid var(--scholium-color-separator); border-radius: 5px; color: var(--scholium-color-primary-text); background: var(--scholium-color-document-background); font: 13px/1.35 -apple-system, BlinkMacSystemFont, sans-serif; }
-        #comment-text:focus-visible { outline: 2px solid var(--scholium-color-accent); outline-offset: 1px; }
-        #comment-help { color: var(--scholium-color-muted-text); font: 11px/1.25 -apple-system, BlinkMacSystemFont, sans-serif; }
-        .scholium-qa-only-control { justify-self: end; font: 10px -apple-system, BlinkMacSystemFont, sans-serif; }
+        #comment-text { appearance: none; box-sizing: border-box; width: 100%; min-height: 64px; max-height: 132px; resize: none; overflow-y: auto; padding: 8px 9px; border: 0; border-radius: 5px; outline: 0; color: var(--scholium-color-primary-text); caret-color: var(--scholium-color-accent); background: var(--scholium-color-document-background); font: 13px/17px -apple-system, BlinkMacSystemFont, sans-serif; }
+        #comment-text::placeholder { color: var(--scholium-color-muted-text); opacity: .72; }
+        #comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-color-accent); }
+        #comment-text:read-only { opacity: .72; }
+        #comment-help { padding-inline: 2px; color: var(--scholium-color-muted-text); font: 10px/13px -apple-system, BlinkMacSystemFont, sans-serif; white-space: nowrap; }
+        #comment-composer[data-state="error"] #comment-help { color: var(--scholium-color-destructive); }
+        #comment-composer[data-state="saving"] #comment-help { color: var(--scholium-color-secondary-text); }
+        .scholium-qa-only-control { position: absolute; inset-inline-end: 0; inset-block-end: 0; box-sizing: border-box; inline-size: 20px; block-size: 20px; padding: 0; overflow: hidden; border: 0; color: transparent; background: transparent; font: 0/0 -apple-system, BlinkMacSystemFont, sans-serif; }
+        .scholium-qa-only-control:focus-visible { outline: 1px solid var(--scholium-color-accent); outline-offset: 0; }
         .raw-html, .raw-html-inline { color: GrayText; }
-        @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } }
+        @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } #comment-text:focus-visible { box-shadow: inset 0 0 0 2px var(--scholium-color-accent); } }
         \(ScholiumWebDesignTokens.documentPresentationCSS)
         """
     }

@@ -841,7 +841,7 @@ private struct ScholiumCommands: Commands {
             Button("Bold") { editorActions?.perform(.bold) }
                 .keyboardShortcut("b", modifiers: [.command])
                 .disabled(editorActions?.isAvailable(.bold) != true)
-            Button("Emphasis") { editorActions?.perform(.emphasis) }
+            Button("Italic") { editorActions?.perform(.emphasis) }
                 .keyboardShortcut("i", modifiers: [.command])
                 .disabled(editorActions?.isAvailable(.emphasis) != true)
             Button("Strikethrough") { editorActions?.perform(.strikethrough) }
@@ -905,6 +905,8 @@ private struct ScholiumCommands: Commands {
                 .disabled(editorActions?.isAvailable(.blockQuotation) != true)
             Button("Fenced Code") { editorActions?.perform(.fencedCode) }
                 .disabled(editorActions?.isAvailable(.fencedCode) != true)
+            Button("Markdown Comment") { editorActions?.perform(.markdownComment) }
+                .disabled(editorActions?.isAvailable(.markdownComment) != true)
         }
         CommandMenu("Insert") {
             Button("Link") { editorActions?.perform(.standardLink) }

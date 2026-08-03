@@ -207,10 +207,25 @@ radius, shadow, border, gradient, or paper scales.
   new ones. Apparatus sections, ordinary rows, and Action rows default to no
   boundary; a consumer must explicitly request a boundary for a named semantic
   distinction.
+- Elevation is a purpose mapping, never a numbered depth or shadow scale.
+  System-owned windows, panels, menus, popovers, sheets, and alerts retain
+  their native elevation and receive no Scholium shadow wrapper. A
+  Scholium-owned transient surface uses exactly one of three roles:
+  **floating control** for compact selection, status, and loading controls;
+  **bounded panel** for a larger custom menu, preview, or locally bounded
+  presentation above content; and **search overlay** for the centered Search
+  command surface. Structural Sidebar, Document, Apparatus, and ordinary
+  content surfaces have no elevation. A child does not accumulate its parent's
+  shadow, and a leaf view never supplies shadow color, opacity, blur, or offset.
+  The role resolver may weaken elevation for inactive windows or Reduce
+  Transparency and removes the soft shadow under Increase Contrast, where the
+  strengthened semantic boundary preserves separation. Surface, boundary,
+  text, and position must communicate ownership when shadow is absent.
 - Native controls own interaction states. Custom targets prefer **28pt** and
   never fall below **20pt**; this does not redefine native sizes.
-- Standard actions use direct SF Symbols. Domain symbols may centralize
-  Scholium meaning, but text remains primary.
+- Standard actions and Vector Link relationship marks use direct SF Symbols.
+  Text remains primary; Scholium owns no parallel custom Vector Link glyph
+  family.
 - Grid roles are optical alignment **2pt**, label/accessory **4pt**, inline
   control **8pt**, nested content **12pt**, section separation **16pt**, and
   region content **20pt**. The two peripheral planes share a separate **28pt**

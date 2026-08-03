@@ -17,11 +17,30 @@ Light Document anchor; one resolver derives every other appearance role for
 native and generated WebKit CSS. The complete Sidebar uses the Navigation
 surface; Inspector uses a distinct Apparatus role whose tone is deliberately
 much closer to Document than Navigation. Sticky Inspector headers and
-relationship-glyph occlusion reuse that exact Apparatus role rather than a
+relationship-symbol occlusion reuse that exact Apparatus role rather than a
 floating-control surface. Matching `editor.css`
 fallbacks preserve deterministic first paint. Functional/status anchors stay
 private. Tests enforce the input boundary, mappings, parity, contrast, and
 relationship variants; no static appearance palette or JSON mirror exists.
+`ScholiumSystemSymbol` centralizes native symbol names, while
+`ScholiumWebSymbolAssets` transports the same SF Symbols into WebKit as CSS
+masks without introducing a second path catalog.
+
+`ScholiumSurfaceRole` maps a Scholium-owned surface to its default semantic
+boundary and, where applicable, one purpose-named `ScholiumElevationRole`.
+`floatingControl`, `boundedPanel`, and `searchOverlay` are the complete custom
+elevation set; structural surfaces resolve to none. The native modifier uses
+AppKit's semantic shadow color, while `ScholiumWebDesignTokens` exports the same
+role names as CSS shadow declarations without converting points to CSS pixels.
+Selection bars consume `floatingControl`; custom selection menus, the shared
+link preview, and Edit input-suggestion lists consume `boundedPanel`; Search
+consumes `searchOverlay`. The shared preview uses the complete opaque bounded-
+panel surface, separator, semantic text, and elevation roles; it owns no Canvas
+fallback, backdrop blur, or local transparency recipe. Increase
+Contrast resolves custom shadows to none while the semantic boundary
+strengthens, and Reduce Transparency or an inactive native window reduces
+opacity. Native menus, popovers, sheets, panels, alerts, and windows retain
+their system-owned elevation and are never double-shadowed.
 
 `ScholiumLibraryLocationPicker` owns the borderless native Location menu and
 its single indicator without owning Location state. ScopeIndex and ModeIndex

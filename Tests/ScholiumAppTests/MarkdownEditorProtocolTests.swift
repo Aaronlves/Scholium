@@ -50,7 +50,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 8")
+    @Test("Request envelope and operation round trip with protocol version 9")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -66,10 +66,55 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 8)
+        #expect(object["protocolVersion"] as? Int == 9)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
+    }
+
+    @Test("Markdown comment is a typed formatting command")
+    func markdownCommentCommandRoundTrip() throws {
+        let operation = MarkdownEditorOperation.command(.markdownComment, argument: nil)
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "command")
+        #expect(object["command"] as? String == "markdownComment")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+    }
+
+    @Test("Context-menu message carries finalized selection, mode, and viewport anchor")
+    func contextMenuMessageDecoding() throws {
+        let data = try #require(
+            """
+            {
+              "type": "contextMenuRequested",
+              "protocolVersion": 9,
+              "sessionID": "11111111-2222-3333-4444-555555555555",
+              "documentID": "topics:Scope.md",
+              "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "documentVersion": 3,
+              "clientX": 120.5,
+              "clientY": 88,
+              "mode": "livePreview",
+              "context": {
+                "selections": [{"anchor": 4, "head": 12}],
+                "activeInlineConstructs": [],
+                "activeBlockConstructs": [],
+                "composing": false,
+                "availableCommands": ["toggleTask"]
+              }
+            }
+            """.data(using: .utf8)
+        )
+        let message = try JSONDecoder().decode(EditorBridgeMessage.self, from: data)
+        #expect(message.type == "contextMenuRequested")
+        #expect(message.clientX == 120.5)
+        #expect(message.clientY == 88)
+        #expect(message.mode == .livePreview)
+        #expect(message.context?.selections == [
+            MarkdownEditorSelectionRange(anchor: 4, head: 12)
+        ])
+        #expect(message.context?.availableCommands == [.toggleTask])
     }
 
     @Test("Exact source-range reveal round trips as a nonmutating bridge operation")
