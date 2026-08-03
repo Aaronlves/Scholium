@@ -1,0 +1,188 @@
+# Specification: Release and Open Decisions
+
+Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
+This chapter owns Sections 21–22: release requirements, acceptance, and unresolved target decisions; sibling chapters do not restate it.
+
+## 21. Release requirements and acceptance
+
+### 21.1 Evidence hierarchy
+
+Evidence order is live source/construction; executable tests; isolated QA on
+disposable fixtures; dated status; this target; then history/memory as context.
+Target prose, previews, and compilation prove no workflow, accessibility,
+package, signing, or performance result.
+
+### 21.2 Primary acceptance journeys
+
+**Usable Core** covers:
+
+- Bootstrap success/failure, registration/restoration, and independent windows;
+- create/open/read/edit/save/Search and explicit cross-vault navigation;
+- Edit/Source fidelity, formatting, Review passage Comment, and Markdown
+  Callout authoring,
+  and mode changes;
+- About/Properties, optional Research Unit, Settle, and simplified Actions;
+- native split resize/visibility, Document tabs without shell reconstruction,
+  focus, keyboard, light/dark, scaling, minimum width, and core VoiceOver; and
+- external edits, conflicts, stable rename, Set Aside, Trash, checkpoints,
+  restore/interruption, and cross-window dirty-peer behavior.
+
+Later Beta/1.0 additionally cover applicable Research Actions, Working and
+Researcher Skills, staged installation, permissions and change requests,
+portable Research Records, hierarchical Materials, Research Guidance/Recovery,
+Connections, Attention, Zotero unavailable/read-only behavior, CLI parity,
+deletion/restore, adaptations, and 1380/1080/900/minimum-width workspaces.
+
+Beta handoff evidence includes copy-before-chooser ordering, explicit app
+selection and machine-local persistence, choose/forget/cancel/failure paths,
+keyboard/VoiceOver, and no auto-paste/submission. 1.0 Codex evidence includes a
+new task, exact root, locator-only composer, explicit submission, unavailable
+fallback, Unicode/space paths, keyboard/VoiceOver, and unchanged-run recovery.
+
+For material evidence, use disposable fixtures and retain command, source
+revision, Xcode/SDK, build, fixture identity, result, and artifact location.
+
+### 21.3 Release gates
+
+| Gate | Required condition |
+| --- | --- |
+| **G1 Functional completeness** | Every in-scope requirement has evidence or waiver. |
+| **G2 Workflow independence** | Manual core works without Obsidian, Zotero, agents, or manual filesystem work. |
+| **G3 Source integrity** | Exact-source tests cover malformed YAML, unknown fields, BOM/newlines, comments, targeted edits, atomic failure, and readback. |
+| **G4 Recovery and deletion** | Conflict, checkpoints/restore, Trash/purge, external rename, and derived failures pass fixture journeys. |
+| **G5 Scholarly transparency** | Authoritative Markdown, Discussion turns, Action outputs, Settle, Critique, Fidelity, provenance, authority, agent feedback, and uncertainty remain visibly distinct. |
+| **G6 Accessibility/i18n** | Section 20's declared threshold is met. |
+| **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |
+| **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
+| **G9 Distribution integrity** | External binaries use a clean exact tag, corresponding GPL source/licenses, no private state, accurate signing/architecture, checksum, and clean-account smoke test. |
+| **G10 Agent skill architecture** | Protected mechanism, editable Working Methods, Researcher Skills, declarative Action Profiles, staged installation, permissions, change requests, records, bootstrap, and Zotero/agent bridges pass declared journeys. |
+
+Usable Core/0.1 require G1–G4, G6, and G8; G9 applies to any distributed
+artifact. G6/G7 baselines and gaps must not be misrepresented as Beta passes.
+Beta requires every applicable gate including G10. 1.0 additionally requires
+the full **Open in Codex** journey; **Run with Codex** is not a gate. Current
+evidence belongs only in [Implementation Status](../IMPLEMENTATION_STATUS.md).
+
+### 21.4 Packaged performance gate
+
+Performance evidence has three noninterchangeable classes:
+
+1. regression microbenchmarks detect internal slowdowns;
+2. scenario measurements exercise an incomplete fixture, fewer than 30
+   retained samples, or a nonrelease artifact; and
+3. product-gate measurements exercise the exact packaged Release app, frozen
+   RDF-1, complete visible boundaries, and the full retained sample set.
+
+Only the third class can satisfy G7. Debug builds, unit tests, internal timers,
+human stopwatches, and partial memory series are never substitutes.
+
+The candidate Beta thresholds remain subject to explicit release-owner
+approval. Once approved, use nearest-rank p95 over exactly 30 valid samples
+after five excluded warm-ups:
+
+| Interaction | Candidate p95 limit |
+| --- | ---: |
+| Warm library launch to a usable note list | `< 1,000 ms` |
+| Indexed Search query to complete visible results | `< 100 ms` |
+| Warm Review-note activation to interactive rendering | `< 300 ms` |
+| Application-cold 5,000-word Review-note activation to interactive rendering | `< 1,000 ms` |
+
+Editor candidate limits remain separately unapproved: `< 100 ms` for key to
+first painted edit, visible Edit/Source transition, and cached preview;
+`< 300 ms` for warm Edit activation; `< 1,000 ms` for application-cold
+5,000-word Edit activation; and `< 5 ms` for one visible-range projection.
+Continuous scrolling must add no uninterrupted Editor task longer than one
+display refresh interval, and neither native nor Web UI work may add an
+uninterrupted task over 100 ms.
+
+`Tools/Scripts/generate-rdf1.py` owns the deterministic no-RNG RDF-1 fixture.
+Its verified manifest fixes exactly 800 synthetic Markdown notes, complete
+path/size/SHA-256 inventory and tree hash, role and malformed-frontmatter
+counts, link/folder coverage, one 5,000-word Work, one 100,000-CJK-character
+Work, fixed navigation targets, and fixed English/CJK Search queries with
+expected identities. RDF-1 is disposable test data, never a research source.
+
+The gate must use the exact app produced by the release packager from one clean,
+reviewed, exactly tagged commit. App provenance, tag, commit, source-clean
+state, architecture, and fixture manifest must match. One unchanged machine
+record covers macOS, hardware, power mode, display, foreground applications,
+window size, accessibility settings, and logging. Each metric uses isolated
+Application Support, preferences, bookmarks, and derived state.
+
+The measured boundary is user-visible and accessible: a selectable, unblocked
+library; complete visible Search results; or rendered, interactive Review/Edit
+content after native publication and editor-renderer readiness. Semantic
+projection or an internal callback alone is insufficient. Retain raw durations, p50, p95,
+maximum, mean, valid and invalid sample counts with reasons, correctness,
+machine record, artifact identity, fixture identity, and raw outputs outside
+every research vault. Missing process roles, changed process sets, provenance
+mismatch, incomplete samples, or unapproved thresholds fail closed.
+
+The 100,000-CJK fixture must remain editable at beginning, middle, and end with
+working undo, mode switching, and byte-exact save. After 50 note/mode switches,
+retained editor-renderer counts and total app-plus-renderer memory must converge
+rather than grow monotonically. These are correctness and stability conditions,
+not percentile results. Current measurements and remaining activation work
+belong only in [Implementation Status](../IMPLEMENTATION_STATUS.md).
+
+### 21.5 Source-first Beta distribution
+
+The first external release identity is:
+
+- tag and public label `v0.1.0-beta.1`;
+- app marketing version `0.1.0`, build `1`, minimum macOS 26;
+- exact tagged source under `GPL-3.0-or-later`; and
+- an optional architecture-labelled, ad-hoc-signed Scholium app ZIP plus its
+  SHA-256 checksum on the same release page.
+
+The app bundle includes its version-matched `scholium` helper. There is no
+separate public CLI asset. The release also includes applicable license texts
+and notices, identifies verified architectures without overstating universal
+support, and contains no real vault, Application Support state, bookmark,
+credential, index, absolute private path, or research content.
+
+Ad-hoc signing is not Developer ID signing, notarization, publisher
+verification, or Gatekeeper acceptance. Testers may approve the trusted GitHub
+download through **System Settings → Privacy & Security → Open Anyway** after
+the first launch attempt. Documentation must never advise disabling Gatekeeper,
+recursively removing quarantine, or installing an untrusted root certificate.
+
+Before tagging or upload, freeze a reviewed clean commit; audit the tree and
+history for private material; run complete repository verification with
+disposable fixtures; package with the clean-source requirement; inspect app and
+helper metadata, resources, entitlements, architecture, signatures, icon, ZIP,
+checksum, and licenses; pass G7; and exercise the exact expanded ZIP in a clean
+macOS account through first launch, Triptych setup, read/edit/save, Search,
+conflict/recovery, Inspector/Action, restoration, and unavailable integrations.
+No real research vault may be opened during release verification.
+
+Developer ID signing, notarization, and stapling are optional future channel
+improvements. If adopted, rebuild from the exact release commit and repeat the
+complete external smoke test; never re-sign an already tested artifact or
+share a certificate private key outside its responsible organization.
+
+### 21.6 Change control
+
+Every approved target change updates the affected canonical rule and removes
+the text it replaces in the same patch. Git owns prior versions; this document
+does not preserve supersession chains or compatibility narratives for an
+unreleased product. Architecture records structural consequences, and status
+records implementation, migration, verification, acceptance, and release
+evidence. Temporary code or visuals never become authority accidentally.
+
+## 22. Unresolved target decisions
+
+Sections 1–21 are the complete current contract. Git history owns replaced
+rules and decision chronology; decision IDs that remain in dated status or
+test names are historical locators, not independent product authority.
+Implementation and acceptance gaps belong in
+[Implementation Status](../IMPLEMENTATION_STATUS.md).
+
+Only questions that can still change the target remain here:
+
+- promote or revise provisional interface metrics only after the complete
+  adaptation and human visual-acceptance matrix; and
+- approve the packaged G7 p95 thresholds before they become release limits.
+
+Resolving an item updates its owning canonical section and removes the item
+from this list in the same patch.

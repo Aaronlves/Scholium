@@ -11,6 +11,8 @@ rm -rf "${SCRATCH}" "${RELEASE_SCRATCH}" "${TEST_TEMP}"
 mkdir -p "${TEST_TEMP}"
 export TMPDIR="${TEST_TEMP}"
 
+python3 "${ROOT}/Tools/Scripts/validate-documentation-authority.py"
+
 # The Core resource tree is the sole repository authority for release-shipped
 # product Skills. Every package must ship the local reference files named by
 # its SKILL.md before SwiftPM accepts it as a bundled Beta resource.

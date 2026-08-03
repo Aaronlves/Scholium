@@ -1,0 +1,111 @@
+# Architecture: Source Storage and Read Models
+
+Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
+This chapter owns descriptor-relative writes, recovery, immutable read models, and metadata; sibling chapters do not restate it.
+
+## Vault write and prewrite-recovery boundary
+
+`MarkdownRelativePath` is the typed authorization input for research Markdown.
+It preserves display spelling, treats backslash as a literal character, and
+rejects absolute paths, empty or dot components, NUL, and non-Markdown targets.
+`VaultPathResolver` scopes lookup to one canonical root and uses a
+volume-sensitive `VaultPathComparisonKey` only for case/Unicode collision
+decisions; neither rewrites Markdown or stored display paths.
+
+`VaultDescriptorAccess` opens one root descriptor for each top-level operation,
+walks every parent with `openat` plus `O_NOFOLLOW`, and opens leaves with
+`O_NOFOLLOW | O_NONBLOCK`. Immediate `fstat` accepts regular files only.
+Enumeration supplies candidates, never final authorization. Vault loads,
+fingerprints, precommit checks, postcommit readback, and recovery verification
+all use this descriptor-relative boundary. `FilePresence` distinguishes
+present, `ENOENT` absence, and inaccessible/error; only confirmed absence may
+complete deletion.
+
+`VaultMutationCoordinator` performs short `NSFileCoordinator` accessors around
+that descriptor authority. Create and move use exclusive rename. Existing-file
+update holds the original descriptor, writes and synchronizes a same-directory
+candidate, copies metadata with descriptor APIs, preserves the candidate
+content mtime, rechecks the exact preimage, uses displaced-byte-preserving swap,
+and verifies bytes, mode, owner/group, ACL/xattrs, flags, birth metadata, and
+the parent-directory synchronization boundary. Ordinary xattrs and Finder tags
+remain byte-exact. For the LaunchServices-managed `com.apple.quarantine`
+attribute only, verification accepts a valid system normalization when its
+security flags and event identifier are unchanged and its timestamp does not
+move backward; malformed values or authority changes still fail closed.
+Unsupported swap fails closed.
+Any post-swap identity, readback, metadata, permission, or synchronization
+uncertainty attempts a guarded swap-back, keeps observed staging evidence, and
+returns `commitUncertain`; Application persists a `.noteSave` Transaction
+Recovery record and never reports Saved.
+
+The public `VaultRepository` constructor always installs no mutation hooks. An
+internal-only constructor supplies deterministic phase hooks to the Core test
+target without changing the production transaction. A registered
+`NSFilePresenter` fixture can therefore replace a disposable source before the
+coordinated writer accessor is granted, proving that Scholium reports conflict,
+preserves provider bytes, and retains both expected and candidate recovery
+material. Swift Testing exit subprocesses send `SIGKILL` at the staged and
+post-swap boundaries, then reopen the same repository and verify the one
+canonical revision, exact prewrite recovery, hidden staging exclusion from the
+Library inventory, pre-swap candidate-journal retention or post-swap journal
+completion, and a subsequent save.
+These are local coordination and real process-interruption proofs; they do not
+claim a configured File Provider domain, dataless-item materialization or
+eviction, sync-server behavior, or packaged-App termination acceptance. The
+retained pre-swap candidate contributes a workspace health issue and a
+vault-qualified entry in the existing Recovery sheet. Core no-follow reads
+revalidate its manifest plus expected/candidate bytes; read-only source, Copy,
+and Finder reveal grant no write authority. Restore carries the displayed
+vault, path, revisions, creation identity, and retained reason back to Core,
+flushes all Triptych editors, and uses the ordinary revision-checked repository
+save only while canonical source remains at the expected revision. Focused
+fixtures prove this route; direct human recovery and assistive-technology
+acceptance remain open.
+
+`PrewriteRecoveryLedger` is Core-only machine state under
+`Vaults/<vault-id>/recovery-v2/`. Immutable fingerprinted objects are indexed by
+SQLite WAL with full synchronization, bounded to ten entries per path, and
+protected by remap journals and permanent-delete tombstones. A damaged database
+is quarantined and rebuilt from verified objects. Legacy `versions/` bytes stay
+unchanged during all-or-nothing v1 migration and become read-only after the
+completion marker. It exposes no general delivery-facing versions or history
+API. Its one bounded `InterruptedSaveRecovery` projection includes only exact
+startup-retained candidates and remains distinct from Checkpoints and settled
+versions. `DocumentOperations` vault-qualifies listing, read-only content,
+Finder location, and restore; `ResearchController` owns that listing beside the
+existing durable-recovery list, while `WindowModel` owns the cross-window editor
+flush and presentation effects. Startup reads pending canonical source through
+the descriptor boundary. A canonical
+candidate proves the interrupted save committed and completes its mutation
+journal; a still-canonical expected revision retains the distinct candidate
+bytes and publishes a health diagnostic instead of deleting the only
+structured copy of interrupted editor work.
+
+## Shared read models and metadata
+
+`WorkspaceNoteSnapshot` is the shared immutable read model for a workspace
+note. It carries vault-qualified identity, exact `NoteDocument`,
+descriptor-observed file metadata, a fingerprint-bound title projection, and
+graph counts. The app does not maintain a second mutable `Note` or YAML value
+model; the app wrapper carries only the Application-owned workspace snapshot
+without copying its exact source.
+
+Contracts' `PropertyContract` catalog is the sole canonical vocabulary and
+ownership authority. It defines role-specific keys, value kinds, empty
+creation requirements, allowed values, cross-field constraints, and validation.
+`ResearchUnitDeclaration` separately parses Analysis Completion versus
+Topic/Work Scope, and `ResearchNoteTitleResolver` supplies one role-aware
+identity fallback to Workspace, Search, Link Graph, and Research Actions.
+App's independent `AboutProfileCatalog` owns default display choices and order;
+`PropertyPresentation` adds labels, help, grouping, and control style only.
+Property edits are validated through Contracts and applied by Application as targeted
+`NoteDocument` changes. `FrontmatterPatchPlanner` first validates complete YAML
+with Yams, then proves a unique bounded plain key. Ordinary scalar edits replace
+only the value token; the role-aware Research Unit uses bounded member and array
+replacements; and a missing key is appended only at a proven top-level or child
+block-mapping boundary. Flow roots, quoted/duplicate or complex keys,
+merge/anchor/alias involvement, block scalars, structured scalar continuations,
+and ambiguous indentation return a typed refusal that directs the researcher
+to Source. Refusal leaves every Markdown byte unchanged; successful patches
+preserve BOM, newline/final-newline style, comments, unknown YAML, formatting,
+and all bytes outside the proven range.

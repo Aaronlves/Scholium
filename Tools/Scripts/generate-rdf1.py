@@ -236,7 +236,7 @@ def generate(output: Path) -> dict[str, object]:
         f"{entry['vault']}:{entry['relative_path']}:{entry['sha256']}" for entry in entries
     ).encode("utf-8")
     script_path = Path(__file__).resolve()
-    protocol_path = project_file("Docs/SCHOLIUM_SPEC.md")
+    protocol_path = project_file("Docs/Specification/10-release-and-open-decisions.md")
     protocol_section = "21.4 Packaged performance gate"
     manifest: dict[str, object] = {
         "fixture": "Scholium Reference Data Fixture 1",
@@ -247,7 +247,7 @@ def generate(output: Path) -> dict[str, object]:
             "sha256": sha256_file(script_path),
         },
         "protocol": {
-            "path": "Docs/SCHOLIUM_SPEC.md",
+            "path": "Docs/Specification/10-release-and-open-decisions.md",
             "section": "21.4",
             "sha256": (
                 sha256_bytes(markdown_section_bytes(protocol_path, protocol_section))

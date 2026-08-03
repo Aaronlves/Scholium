@@ -17,12 +17,12 @@ Markdown 始终是研究者所选文件夹中普通、可检查的文本。阅�
 
 请使用足以回答问题的最小权威集合：
 
-1. [Scholium 规格](Docs/SCHOLIUM_SPEC.md)是产品行为、界面设计、辅助功能、发布
-   要求和现行决策的唯一目标权威。
-2. [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)说明模块、运行时、状态所有权
-   与编辑器边界。
-3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)记录当前可达行为、剩余工作、已完成的
-   架构迁移、最新验证基线和尚未完成的验收。
+1. [Scholium 规格](Docs/SCHOLIUM_SPEC.md)是唯一目标权威清单；由它声明的章节分别
+   负责产品行为、界面设计、辅助功能、发布要求和现行决策。
+2. [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)将任务路由到负责模块、运行时、
+   状态与编辑器边界的章节。
+3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)将任务路由到当前可达行为、剩余工作、
+   已完成迁移、最新验证基线和尚未完成的验收。
 4. 本 README、实际构建、测试和脚本提供设置方法与当前实现证据。
 
 目标文字不等于实现证明。已经完成使命的迁移 Roadmap 与被取代的决策记录保留在
@@ -103,6 +103,12 @@ UI runner 使用一次性 TestVault 副本和仓库内被忽略的 `.build/` 状
 ./Tools/Scripts/verify-editor-bundle.sh
 ```
 
+修改文档清单、规范性章节或 README 链接后，请验证闭合权威集合与本地链接：
+
+```bash
+python3 Tools/Scripts/validate-documentation-authority.py
+```
+
 升级安全 runner 使用不同的一次性 QA 构建，不接触研究库：
 
 ```bash
@@ -129,7 +135,7 @@ Documents、CloudStorage 和其他 File Provider 管理路径之外。
 删除源码、应用状态、打包构建、脉络文件或便携式 `.scholium/` 数据。
 
 打包性能属于独立发布门禁。规范性阈值、fixture、采样、provenance 与证据要求位于
-[规格 §21.4](Docs/SCHOLIUM_SPEC.md#214-packaged-performance-gate)；当前结果和缺口
+[规格 §21.4](Docs/Specification/10-release-and-open-decisions.md#214-packaged-performance-gate)；当前结果和缺口
 位于实现状态。
 
 ## 源码优先的 Beta 分发
@@ -148,7 +154,7 @@ SHA-256 校验值。应用包含版本匹配的 CLI helper，不单独发布 CLI
 
 不要关闭 Gatekeeper，也不要递归移除 quarantine。准确发布门禁、产物内容、干净
 账户验证与未来签名渠道规则维护在
-[规格 §21.5](Docs/SCHOLIUM_SPEC.md#215-source-first-beta-distribution)。
+[规格 §21.5](Docs/Specification/10-release-and-open-decisions.md#215-source-first-beta-distribution)。
 
 ## 脉络设置
 
@@ -225,11 +231,14 @@ ScholiumCLI/               CLI 解析、格式化与交付适配
 WebEditor/                 TypeScript 与 CodeMirror 源码
 Tests/                     Contracts、Core、Application 与 App 测试
 UITests/                   隔离的一次性 macOS UI 旅程
-Docs/SCHOLIUM_SPEC.md      产品、界面、辅助功能与发布目标
+Docs/SCHOLIUM_SPEC.md      目标权威清单与阅读路由
+Docs/Specification/       规范性产品、界面、辅助功能与发布章节
 Docs/IMPLEMENTATION_ARCHITECTURE.md
-                           模块、运行时、状态与编辑器所有权
+                           从属架构清单与阅读路由
+Docs/Architecture/        模块、运行时、状态、编辑器与交付章节
 Docs/IMPLEMENTATION_STATUS.md
-                           当前证据、债务与开放验收
+                           当前证据清单与阅读路由
+Docs/Status/              可达行为、债务、迁移、证据与开放验收
 Docs/CSS_SNIPPETS.md       高级文档样式自定义合同
 Docs/ZOTERO_MCP.md         可选的第一方 Zotero 传输指南
 Tools/Scripts/             构建、验证、QA、性能与发布工具

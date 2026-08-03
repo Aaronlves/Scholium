@@ -34,11 +34,16 @@ struct EditorModeContractTests {
             from: Data(contentsOf: fixtureDirectory.appendingPathComponent("three-mode-contract.json"))
         )
         let specification = try String(
-            contentsOf: repository.appendingPathComponent("Docs/SCHOLIUM_SPEC.md"),
+            contentsOf: repository.appendingPathComponent(
+                "Docs/Specification/02-notes-and-lifecycle.md"
+            ),
             encoding: .utf8
         )
 
-        #expect(contract.authority == "Docs/SCHOLIUM_SPEC.md section 5.1")
+        #expect(
+            contract.authority
+                == "Docs/Specification/02-notes-and-lifecycle.md section 5.1"
+        )
         #expect(contract.referenceMode == "Review")
         #expect(sourceData.starts(with: [0xEF, 0xBB, 0xBF]))
         #expect(Set(contract.comparisons.map(\.classification)) == Set([

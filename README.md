@@ -21,14 +21,14 @@ bounded, attributable, reviewable, and recoverable.
 
 Use the smallest authority set that answers the question:
 
-1. [Scholium Specification](Docs/SCHOLIUM_SPEC.md) is the sole target authority
-   for product behavior, interface design, accessibility, release requirements,
-   and active decisions.
-2. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) describes
-   modules, runtimes, state ownership, and the editor boundary.
-3. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) records current
-   reachability, remaining work, completed architecture migrations, the latest
-   verification baseline, and open acceptance.
+1. [Scholium Specification](Docs/SCHOLIUM_SPEC.md) is the sole target-authority
+   manifest. Its declared chapters own product behavior, interface design,
+   accessibility, release requirements, and active decisions.
+2. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) routes to
+   the chapters that own modules, runtimes, state, and editor boundaries.
+3. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) routes to current
+   reachability, remaining work, completed migrations, the latest verification
+   baseline, and open acceptance.
 4. This README, live construction, tests, and scripts provide setup and current
    implementation evidence.
 
@@ -123,6 +123,13 @@ When `WebEditor/` changes, rebuild and verify its checked-in bundle:
 ./Tools/Scripts/verify-editor-bundle.sh
 ```
 
+When a documentation manifest, canonical chapter, or README link changes,
+validate the closed authority sets and local links:
+
+```bash
+python3 Tools/Scripts/validate-documentation-authority.py
+```
+
 The upgrade-safety runner compares distinct disposable QA builds without using
 a research vault:
 
@@ -153,7 +160,7 @@ Triptych files, or portable `.scholium/` data.
 
 Packaged performance is a separate release gate. Its normative thresholds,
 fixture, sampling, provenance, and evidence requirements are in
-[Specification §21.4](Docs/SCHOLIUM_SPEC.md#214-packaged-performance-gate);
+[Specification §21.4](Docs/Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
 current results and gaps are in Implementation Status.
 
 ## Source-first Beta distribution
@@ -174,7 +181,7 @@ from the trusted project release and verifying the checksum:
 Never disable Gatekeeper or recursively remove quarantine. Exact release gates,
 artifact contents, clean-account verification, and future signed-channel rules
 are maintained in
-[Specification §21.5](Docs/SCHOLIUM_SPEC.md#215-source-first-beta-distribution).
+[Specification §21.5](Docs/Specification/10-release-and-open-decisions.md#215-source-first-beta-distribution).
 
 ## Triptych setup
 
@@ -266,11 +273,14 @@ ScholiumCLI/               CLI parsing, formatting, and delivery adapters
 WebEditor/                 TypeScript and CodeMirror source
 Tests/                     Contract, Core, Application, and App tests
 UITests/                   Isolated disposable macOS UI journeys
-Docs/SCHOLIUM_SPEC.md      Product, interface, accessibility, and release target
+Docs/SCHOLIUM_SPEC.md      Canonical target-authority manifest and reading routes
+Docs/Specification/       Normative product, interface, accessibility, and release chapters
 Docs/IMPLEMENTATION_ARCHITECTURE.md
-                           Module, runtime, state, and editor ownership
+                           Subordinate architecture manifest and reading routes
+Docs/Architecture/        Module, runtime, state, editor, and delivery chapters
 Docs/IMPLEMENTATION_STATUS.md
-                           Current evidence, debt, and open acceptance
+                           Current-evidence manifest and reading routes
+Docs/Status/              Reachability, debt, migrations, proof, and open acceptance
 Docs/CSS_SNIPPETS.md       Advanced document-style customization contract
 Docs/ZOTERO_MCP.md         Optional first-party Zotero transport guide
 Tools/Scripts/             Build, verification, QA, performance, and release tools

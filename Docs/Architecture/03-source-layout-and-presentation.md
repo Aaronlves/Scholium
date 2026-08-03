@@ -1,0 +1,242 @@
+# Architecture: Source Layout and Presentation
+
+Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
+This chapter owns source layout, native presentation, interface ownership, and localization; sibling chapters do not restate it.
+
+## Source layout
+
+- `Scholium/UI/Foundation` contains semantic color roles, metrics, shapes,
+  motion, and accessibility-aware surface modifiers.
+- `Scholium/UI/Components` contains stateless Scholium building blocks plus
+  the bounded native window-shell adapters described below.
+- `Scholium/UI/PreviewCatalog` contains the retained deterministic Debug-only
+  research-workflow catalog for the modular Skill-run sheet, staged installer,
+  categorized Skill settings, Agent change request, and fixed-size secondary
+  Research Record. It resolves or mutates no production
+  state and is reachable only through one suppressed Debug window and an
+  explicitly enabled QA command. Completed Sidebar, Inspector, generic-state,
+  complete-window, and paired-window acceptance harnesses are removed after
+  their approved target deltas and current adoption evidence are recorded.
+  Preview code is development-only and does not enter the released interface.
+- `ScholiumContracts` contains boundary values, capability protocols,
+  deterministic source transformations, immutable snapshots, events, and
+  delivery-safe errors. It has no filesystem, database, network, UI, watcher,
+  store, or global mutable authority.
+- `ScholiumCore` contains internal I/O and persistence implementations plus the
+  protected Skill resource bundle; it is not a public SwiftPM product.
+- `ScholiumApplication` contains runtime configuration and pooling, capability
+  actors, the typed event stream, CSS/App Support I/O, Obsidian appearance
+  projection, and Zotero transport.
+- `Scholium/Features` contains the Discovery, Document, Research, Properties,
+  and Settings delivery controllers and per-window editor sessions.
+- `Scholium/App/Window` contains `WindowShellState`,
+  `WindowCommandObservation`, `WindowEditorFlushCoordinator`, mutually
+  exclusive window presentation
+  routing, and the document-transition,
+  presentation-persistence, workspace-session, and immutable-projection
+  coordinators. These
+  coordinators do not duplicate a feature controller or writable document
+  owner.
+- Feature-root view files remain inside `Scholium/Views`. The application and
+  window roots may receive the complete `WindowModel`; feature roots receive
+  their one controller, and reusable leaves receive immutable values and
+  closures.
+
+## Presentation
+
+`WindowPresentationRouter` owns four typed channels:
+
+- one mutually exclusive `WindowSheetRoute`;
+- composable `WindowOverlayRoute` values for loading and Search;
+- one `WindowAlertRoute`; and
+- one typed `WindowFileImportRequest`.
+
+Replacing a sheet route replaces its complete payload atomically. Conditional
+dismissal uses the route identity, so a stale callback cannot dismiss a newer
+sheet. Route payloads carry note paths only as navigation projections; they do
+not own document sessions. Note creation is not a sheet route; lifecycle sheets
+remain only for operations that require researcher-supplied destinations or
+researcher input. Put Back is a direct reversible Source List command and never
+enters the sheet router. Its immutable `NoteLifecycleTarget` is the complete
+mutation authority, so it does not flush an unrelated writable editor
+while a read-only lifecycle presentation is attaching or detaching. A committed
+category move removes the moved Note's document page; if it was selected, the
+Document controller clears selection and the native tab container presents its
+existing no-document host without implicitly activating another page. The
+native Outline cell owns the pointer-hover Put Back `NSButton` and its
+hit-test-transparent semantic Sidebar material veil above the full-width hosted
+title; SwiftUI retains only row content, context menu, and accessibility
+actions. The same
+native button remains visible while its Outline row owns keyboard focus; one
+Outline coordinator exclusively consumes row-focus requests. Hover
+reconciliation stores a stable row ID and resolves it against current Outline
+rows so removal never asks AppKit to materialize a stale row object.
+
+`ContentView` has one `.sheet(item:)`, one typed alert presentation, and one
+persistent `ScholiumWorkspaceSplitView` root for each configured workspace
+window. Its bounded AppKit bridge creates the three-item split described above;
+role-owned backgrounds fill each container while Library, Document, and
+Apparatus content stays foreground in the live safe area. Bootstrap never
+constructs this split. Loading and document states replace hosted content, not
+the shell. The composition root passes the complete `WindowModel` explicitly;
+`ContentView` observes the presentation, Search, Research, Document, tab,
+projection, Agent-request, CSS, and workspace-session owners it actually
+reads, while reusable feature leaves remain on narrow values/controllers.
+`WorkspaceWindowCoordinator` receives the exact window and split,
+installs toolbar/delegate state, and registers readiness/flushing. No singleton,
+window search, notification, polling, delayed correction, or width calculation
+participates.
+
+Research Record is a separate, nonrestored SwiftUI `UtilityWindow`. Its root
+receives the current native focused object observed at the app scene boundary;
+each Workspace supplies its `WindowModel` and its read-only
+`WindowCommandObservation` with `focusedSceneObject`. Research Record then
+observes the focused window's workspace-session, Document, and Research owners
+directly. No model
+registry, notification, presentation coordinator, custom focused key, or
+manually retained window model participates. Each presentation owns one
+`ResearchRecordBrowserModel`: one disposable deterministic in-memory index plus
+search, Note/date/Skill/Action/participant filters, selection, and at most one
+cancellable comparison task. Reopening
+resets to the current Note when available and the
+researcher can remove that scope to browse the complete Triptych. The window
+renders finished portable Discussion and nonconversational Action records,
+preserves attribution and evidence-class qualifications, exposes tombstones,
+and deep-links live participating Notes through the focused Workspace. Pin
+replaces only `is_pinned`; **Delete Record…** requires a second confirmation
+before Core permanently removes only the selected portable record under the
+same descriptor-relative coordination boundary. Ordinary Markdown
+annotations remain in the document and never become separate chronology. The
+fixed 760 × 680 window never enters the trailing split item and never owns checkpoints, a
+document buffer, autosave, undo, conflict, or retained trash state. Its diff is
+disposable presentation over retained exact bytes, not a second writable source.
+Closing Research Record therefore cannot reveal or resize Research Inspector.
+
+Attention is one native transient SwiftUI popover owned by each exact
+`WindowModel`, not an app-wide Scene, sheet, inline Library destination,
+utility panel, or always-on-top surface. Per-Workspace
+`AttentionPresentationState` owns only filter, selected item, selected Scope,
+and optional current-Note subset; `AttentionPopoverSession` adapts that state
+and the current immutable queue to the Sidebar and Inspector anchors without
+duplicating either. The adapter observes only the exact assignment and
+workspace-projection owners plus the single dismissal-duration setting; it
+borrows closed refresh and resynthesis effects and never observes or retains
+the complete `WindowModel`. `AttentionScopeCounts` is a read-only projection
+of the same catalog and machine-local dismissal ledger. Sidebar consumes only the
+selected Scope's conditional alert; ScopeIndex labels never consume or expose
+the count, and zero contributes no row or gap. The Document toolbar consumes
+no Attention count, observation, item, action, reserved width, or popover
+anchor. A missing first catalog remains checking, and a failed first load
+presents Attention Unavailable with Retry rather than zero. Inspector may add
+the active Note, and a Sidebar Scope change clears that Note subset. SwiftUI's
+transient popover behavior owns outside-click and Escape dismissal; Inspect and
+Resynthesize dismiss before routing through the same exact `WindowModel`.
+**Window → Attention** asks the exact `WorkspaceWindowCoordinator` for a visible
+contextual route: the nonzero selected-Scope Sidebar alert first, then the
+nonempty current-Note Inspector summary. Without either visible anchor the
+command is disabled; it never synthesizes a toolbar or detached presentation
+route. The application-wide lifecycle registry records exact Workspace focus
+changes so the newly active Workspace resets query, kind, Note subset, and
+selected task without treating popover key-window changes or app deactivation
+as Workspace switches. No global window search, notification, model registry,
+detached Attention Scene, NSWindow attachment, or toolbar compatibility state
+participates. Recommended Bibliography is the fixed, intrinsic-height sibling
+below the Library Source List scroll. It shares the Sidebar's navigation
+surface and adds one structural boundary but owns no Scope, Location, selection,
+filter, sort, disclosure, or lifecycle state. Inspector alone consumes the
+document-adjacent apparatus surface. Changing the current Note may change the
+focal source for a later request, but does not replace or hide the current
+Triptych result or active request.
+
+Ordinary Scope and Location navigation uses a
+`DiscoveryLocationRequest(.stagedReplacement)`. `DiscoveryController` retains
+the last committed Scope/Location pair until completion and still rejects late
+request identities. `WindowModel.currentWorkspaceVaultSnapshot` first consumes
+the narrow `WindowWorkspaceProjectionController.vaultSnapshot(id:)` query; the
+Application operation is only an initial-construction fallback. A complete
+target pair and Source List commit together, while staged failure retains the
+prior projection and reports through the existing toast path. Explicit refresh
+continues to use the content-loading/error presentation.
+
+Snapshot assembly derives Material Changed Since Use only from the latest
+completed Synthesize Action record for a Topic/Material pair whose
+agent-reported, Application-validated actually-used set contains that Analysis.
+It compares the recorded exact revision with the current active, resolved
+Analysis revision; selected-but-unused, deleted-record, tombstoned, deleted,
+and identity-unresolved inputs create no condition. Each item ID also
+distinguishes its affected Topic. The dismissal key includes the Triptych and
+binds only Material identity, recorded revision, and current revision within
+it. Inspect opens the current Analysis; Resynthesize rechecks that latest
+record before opening the ordinary Synthesize sheet with the Analysis
+preselected; Leave Unchanged stores only that exact condition key in
+machine-local presentation preferences. A later current revision therefore
+becomes visible again, and Settings can explicitly restore the decision. None
+of these projections mutates Markdown or the portable record, and the warning
+expresses no philosophical verdict.
+
+The Research Inspector receives immutable `ResearchOverviewPresentation` and
+`ResearchActionsPresentation` values composed at the window root. It owns no
+workspace refresh, Comment, Critique, availability, or run state. Its Overview,
+Connect, and Actions modes share the one native trailing split
+item and one per-window `ResearchInspectorMode`; legacy stored strings are
+normalized only while restoring that window. Mode changes and note/tab changes
+never reconstruct the retained Document host. `ResearchOverviewPresentation`
+contains at most one normalized Zotero navigation key for the current Analysis;
+the view neither derives nor displays protected machine data.
+
+The public Action panel uses one typed `researchAction` sheet route carrying
+only a stable Target reference, Action ID, and presentation ID. The router owns
+sheet exclusivity; `ResearchActionController` owns transient Profile-module
+values and rejects stale availability or preparation results. `NoteContentView`
+retains only the focused `openResearchAction(id:selection:)` action for menu and
+keyboard invocation; it contains no Action presentation or bottom inset. The
+sheet always exposes the app-owned Target, revision, authority, checkpoint,
+conflict, and recovery boundary before rendering the Profile's closed native
+modules. Copy Only and Copy and Open remain fixed footer actions. Either first
+revalidates and freezes the Action internally, then performs the chosen
+handoff; a prepared run keeps both actions available to retry the exact frozen
+instructions. Launcher availability and the sheet's fresh Profile resolution
+are separate: cancelling or failing a sheet cannot erase the Inspector, while
+only the fresh Profile can prepare. The sheet cannot dismiss while preparation
+is crossing its durable boundary. A late noncooperative result is reclaimed
+through typed cancellation. Interrupted preparation and cancellation retain a
+per-run cleanup barrier; no later Action can begin until each late result has
+either cancelled successfully or become its own visible, retryable recovery
+entry in Actions. One recovery can therefore never overwrite another. When a
+window temporarily has no current Note, a recovery-only Apparatus keeps those
+window-owned cleanup entries reachable without inventing a Target or Action.
+Protected Function mapping occurs only in Application composition. The public
+route and controller are Action-owned. Neither leaf receives `WindowModel`,
+Core, or Application authority.
+
+### Interface localization
+
+The application target owns interface localization. `Package.swift` declares
+English as the default localization. `Localizable.xcstrings` stores ordinary
+SwiftUI interface copy and compiler-derived format keys; `Interface.xcstrings`
+stores stable operational keys whose meaning must not depend on English copy.
+`ScholiumL10n` resolves both tables from the target resource bundle. SwiftUI
+consumes resources directly; AppKit adapters, status/error delivery, and
+`String` presentation properties localize at their application-owned
+delivery boundary.
+
+Translation keys and stable application identities are distinct. Persistence
+keys, accessibility identifiers, command IDs, enum raw values, vault-relative
+paths, and internal execution IDs never change with locale. Researcher-authored
+prose, note titles, quotations, citations, imported text, exact source, and
+filesystem paths bypass the interface catalog and render verbatim. Purely
+internal vocabulary that has no researcher-facing presentation is not a
+translation surface. Product Skill package names and researcher-owned Skill
+names also render verbatim; surrounding application labels and explanations
+remain localizable. Translator comments record interface context without
+becoming product authority.
+
+`sync-interface-localization.sh` builds the application and synchronizes the
+catalogs from the compiler's `.stringsdata`; lightweight `%arg` extraction is
+never treated as the runtime interpolation key. `validate-interface-localization.sh`
+checks semantic-key parity, normalized source coverage, format-placeholder
+preservation, complete Simplified Chinese state, and catalog compilation.
+Because literal SwiftUI controls resolve against the outer app bundle, QA and
+release packaging mirror the compiled localization folders from the SwiftPM
+resource bundle into `Contents/Resources` while retaining the package bundle
+for explicit `Bundle.module` lookups. `Info.plist` declares `en` and `zh-Hans`.

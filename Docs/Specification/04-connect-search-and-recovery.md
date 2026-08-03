@@ -1,0 +1,185 @@
+# Specification: Connect, Search, and Recovery
+
+Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
+This chapter owns Sections 12–14: Connections, Search, Attention, checkpoints, versions, and recovery; sibling chapters do not restate it.
+
+## 12. Connect and Connection syntax
+
+| Markdown in A | Meaning |
+| --- | --- |
+| `[[B]]` | neutral, undirected A—B |
+| `+[[B]]` | A supports B |
+| `-[[B]]` | A opposes B |
+| `?[[B]]` | undirected incompatibility A—B |
+
+`+` and `-` describe the containing Note's stance toward the target: support
+is favorable argumentative direction, while opposition is an authored
+negative stance without a claim of strict contradiction. `?` instead records
+one mutual incompatibility: both Notes cannot be retained together in the
+researcher's current account, without asserting which should be rejected or
+that either is false. None certifies that the relation succeeds, counts as
+evidence, or is accepted beyond its explicit authoring. The inverse phrases
+**Supports This Note** and **Opposes This Note** are derived only when the
+current Note is the object; incompatibility has no direction or inverse label.
+
+These are the only Vector-Link forms. Aliases, headings, and fragments remain
+valid. Scholium has no reverse-support or directed-question relation. Preserve
+research-file bytes and never rewrite or reinterpret a marker through
+heuristics. Never infer support, opposition, or incompatibility from keywords,
+proximity, folders, or multi-hop paths. Incoming and Outgoing views show
+direction and exact source without permanent badge clutter.
+
+## 13. Search and Attention
+
+One Search field has exactly three scopes:
+
+- **This Note**: occurrences in the open note;
+- **This Vault**: the selected Analyses, Topics, or Works vault;
+- **Triptych**: all three vaults.
+
+There is no All Workspace, Selected Roles, separate in-note Find, advanced
+Search workspace, Quick Open, Recents, or Back/Forward history. Exact title,
+alias, filename, and path matches rank above body matches, so Search also owns
+known-note navigation. Library, Document tabs, and windows support ordinary or
+parallel navigation.
+
+Search is a centered, compact Spotlight-style command surface. Scope is visible
+before typing; empty Search shows no results sheet. Text expands a bounded
+native result list vertically, not into a workspace-scale panel. It follows
+appearance and accessibility settings without copying Spotlight categories or
+Finder actions. Opening Search does not dim, tint, or blur the retained
+workspace or native toolbar. A transparent outside-click target may cover the
+workspace content; the opaque Search surface, focus, boundary, and restrained
+elevation establish its foreground hierarchy.
+
+The transient keyboard or pointer result target is not document selection. It
+uses one full-width warm opaque row with a narrow accent leading rule, exposes
+the native selected accessibility trait, and retains native scrolling, focus,
+and keyboard mechanics. Search never layers a partial dark system-selection
+slab behind only part of a result row.
+
+Each window remembers its ordinary scope. `Command-F` requires an open note and
+temporarily selects **This Note**. Dismissal restores the prior scope unless the
+researcher explicitly changed it, cancels work, rejects stale results, and
+clears query/results while retaining scope and saved searches.
+
+Beta Search uses one deterministic local SQLite FTS5 corpus for
+the active Triptych. **This Vault** is a predicate over that corpus and
+**Triptych** uses it without a vault predicate, so BM25 statistics remain
+comparable across Analyses, Topics, and Works. **This Note** instead searches
+the current editor's exact in-memory revision and returns one row per
+non-overlapping occurrence after the complete query is satisfied; invoking
+Search never saves or indexes that buffer. Vault and Triptych results remain
+one row per active note. Set Aside and Trash are excluded from the persisted
+corpus but remain searchable while they are the open **This Note**.
+
+The finite expert syntax is space-as-AND, escaped exact phrases, trailing
+prefix `*`, clause exclusion, lexical fields `title`, `alias`, `heading`,
+`body`, `author`, `year`, `tag`, `footnote`, and `path`, and structured fields
+`callout` and `has:broken-link`. Structured filter-only queries are valid. A
+query containing only excluded free text is invalid. `status` produces an
+explicit unsupported-field diagnostic because it is not a Scholium property.
+Unknown fields or canonical values, `vault`, `role`, or `metadata` fields,
+malformed escapes, CJK prefix `*`, and unsupported OR, grouping, NEAR,
+regular-expression, fuzzy, range, or nested syntax produce an inline query
+diagnostic and never silently broaden retrieval. Scope is selected only by the
+visible interface or CLI option.
+
+Search indexes only visible semantic text and derived identity/filter fields,
+never raw Markdown source or link destinations. Title, alias, heading, author,
+year, tag, path, canonical callout, footnote, and residual body text are
+separate projections; the same heading, callout, or footnote content is not
+also weighted as body. Links contribute displayed text and images contribute
+alt text. Source mappings preserve exact UTF-16 ranges through Unicode
+normalization. Production CJK retrieval uses the same deterministic
+character-and-overlapping-bigram projection at index and query time, followed
+by contiguous-substring verification; Apple language tokenization is not a
+persisted Search contract.
+
+Complete normalized title, alias, filename stem, and relative-path identity
+precede one-corpus BM25, then normalized title, fixed Analyses/Topics/Works
+order, and normalized path break ties. Exact identity candidates come directly
+from ordinary tables and cannot be lost to a lexical candidate cutoff. Public
+results explain matched field and rank reason without exposing raw BM25. The
+interface caps at 100 rows and reports only `N Results` or `N+ Results`; Search
+does not perform an expensive exact total count.
+
+Each response binds a versioned query contract, Triptych generation, sorted
+source-manifest hash, source fingerprint or editor revision, and freshness
+token. A stale result must refresh rather than navigate. Building, refreshing,
+stale, failed, and query-invalid are distinct states; cancellation is not a
+failure. A failed routine refresh continues serving the last complete
+generation, while a first or incompatible build never serves results from a
+different ranking contract. One generation publishes atomically or not at
+all and its disposable index stores no writable research authority.
+
+An exact Topic match may show its direct resolved Connections in a separately
+loaded **Related** section only when its graph manifest matches the lexical
+manifest. Related failure never removes lexical results; relations neither
+alter ranking nor imply evidence and never expand transitively here. Vector
+search, embeddings, AI query interpretation/ranking, and chat-style Search are
+excluded. **Vector-Link** means only researcher-authored relation markers.
+
+Attention may report possible-orphan conditions, Changed Since Settled, Broken
+Connections, malformed metadata, unresolved identity, or **Material Changed
+Since Use**. The latter requires one completed Synthesize record whose
+agent-reported actually used Analysis set and exact recorded revision were
+validated; selecting a Material is insufficient. If that Analysis later
+changes, Attention may offer **Inspect**, **Resynthesize**, and **Leave
+Unchanged**. Dismissal binds the material identity and revision pair, so a later
+change may appear again.
+
+Attention never says the Topic is wrong, outdated, or Superseded; uses age
+alone; or issues an automatic philosophical verdict. Warnings are dismissible;
+Settings controls duration, default seven days. The researcher retains
+judgment.
+
+## 14. Checkpoints, versions, and recovery
+
+Autosaves create no visible versions. Current Actions create no automatic
+whole-Triptych checkpoint. The researcher may choose **Create Checkpoint…** at
+any time when a self-contained Triptych milestone is genuinely useful.
+
+Every checkpoint is self-contained; includes all vaults and portable control
+state needed to interpret them; lives outside the vaults; and never depends on
+another checkpoint, even if filesystem cloning is used internally. Manual
+checkpoints remain until the researcher deletes them.
+
+File offers **Create Checkpoint…**, **Restore from Checkpoint…**, and **Reveal
+Checkpoints in Finder**. Restore compares created, changed, moved, and deleted
+files and supports selected-note or whole-Triptych restore. A full rollback
+moves post-checkpoint files to Trash instead of permanently deleting them.
+Restore writes new current source through the conflict-aware repository path;
+Undo remains editor-session only.
+
+There is no checkpoint-management screen or proprietary backup format. Finder
+manages folders. Document, HTML, PDF, and DOCX export is deferred, not
+permanently prohibited.
+
+Ordinary pre-write recovery state remains invisible and supports exact
+save/conflict recovery for the Notes actually written; it is not an
+application-authored account of the research. When startup verifies that an
+interrupted save left the expected revision canonical and retained a distinct
+candidate, the existing **Recovery** surface lists that one vault-qualified
+candidate with its Note path, expected and candidate revisions, reason, and
+read-only exact source. The researcher may copy it or reveal its machine-local
+file without granting write authority. **Restore Candidate…** first flushes
+every open editor in the Triptych, then revalidates the exact transaction
+identity and current source revision through the repository. It replaces source
+only while the canonical Note still equals the recorded expected revision,
+using the ordinary prewrite-protected save path. A changed, missing, unsafe, or
+unverifiable source is never overwritten or recreated; the candidate remains
+available for inspection and copying. If the candidate is already canonical,
+Recovery verifies that fact and removes only the completed machine-local
+record.
+
+Settle may pin an exact entry as a researcher-selected settled
+version without turning it into a truth claim. Temporary write recovery and
+settled-version retention remain separate references over verified immutable
+bytes. Invalid recovery metadata must not cause unrelated recoverable bytes to
+be deleted or silently attributed to a note. Durable settled-pin
+manifests, not the derived SQLite row, own pin identity and ordering; a missing
+or field-mismatched row is rebuilt only from a fully validated manifest. Pin
+order allocation is coordinated across local processes. If a validated
+manifest cannot be projected unambiguously, its exact bytes remain protected
+and automatic cleanup stops until the recovery authority is repaired.
