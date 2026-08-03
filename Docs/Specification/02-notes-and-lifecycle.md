@@ -58,6 +58,18 @@ selected constructs immediately. A direct click on a rendered link reveals
 that link's source, while Control-click and Command-click activate the target
 without moving the caret.
 
+Review and Edit use one stable marker track and nesting step for unordered,
+ordered, and task lists. Edit keeps the semantic marker projected while the
+caret edits list-item prose; it reveals the exact list prefix only when the
+selection enters that prefix. Left Arrow from the first prose position enters
+the prefix at its trailing edge. Neither projected versus exact presentation
+nor checked versus unchecked task state may move the prose start or change its
+indentation. Review task controls are read-only. Edit's task checkbox is a
+redundant pointer action that changes only `[ ]` to `[x]` or back in one Undo
+transaction without moving the document selection; the caret-line **Toggle
+Task** command remains the keyboard/menu route. Source always exposes the exact
+prefix and task bytes.
+
 Edit alone owns two caret-triggered input suggestion lists. Typing `[[` opens
 the current Workspace note catalog and filters it again as the researcher types;
 each insertable result shows its resolved title and quiet path context. Accepting

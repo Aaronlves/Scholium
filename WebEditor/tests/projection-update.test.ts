@@ -242,6 +242,16 @@ describe("projection activation boundaries", () => {
     expect(activeProjectionSignature([caret(12)], [projection])).toBe("");
   });
 
+  it("distinguishes a list prefix from prose on the same physical line", () => {
+    const state = EditorState.create({doc: "- stable list body"});
+    const prefix = {from: 0, to: 2};
+
+    expect(selectionProjectionSignature(state.doc, [caret(0)], [], [prefix]))
+      .not.toBe(selectionProjectionSignature(state.doc, [caret(8)], [], [prefix]));
+    expect(selectionProjectionSignature(state.doc, [caret(8)], [], [prefix]))
+      .toBe(selectionProjectionSignature(state.doc, [caret(12)], [], [prefix]));
+  });
+
   it("invalidates presentation only across physical-line or inline-construct boundaries", () => {
     const source = "plain **first** between **second**\nnext";
     const state = EditorState.create({doc: source});

@@ -90,6 +90,28 @@ struct SafeMarkdownRendererTests {
         #expect(!rendered.contains("<section dir=\"rtl\">"))
     }
 
+    @Test("Task list items retain their read-only checkbox state in Review")
+    func taskListCheckboxes() {
+        let source = "- [ ] Open task.\n- [x] Completed task.\n* [x] Alternate task."
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "tasks.md", rawContent: source)
+        ).htmlBody
+
+        #expect(
+            rendered.components(separatedBy: "class=\"scholium-task-list-item\"")
+                .count - 1 == 3
+        )
+        #expect(
+            rendered.components(separatedBy: "class=\"scholium-task-checkbox\"")
+                .count - 1 == 3
+        )
+        #expect(rendered.contains("aria-label=\"Incomplete task\""))
+        #expect(rendered.contains("aria-label=\"Completed task\""))
+        #expect(rendered.contains("checked=\"\""))
+        #expect(!rendered.contains("[ ]"))
+        #expect(!rendered.contains("[x]"))
+    }
+
     @Test("Obsidian embeds remain neutral navigable links without transclusion")
     func obsidianEmbedLink() {
         let source = "![[Notes/Claim#Ground|Claim ground]]"

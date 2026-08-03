@@ -490,6 +490,15 @@ extension markers remain ordinary editable source, matching mature Markdown
 failure behavior; only structurally opened block mathematics and comments
 produce fail-closed malformed diagnostics.
 
+`LiveProjectionIndex` derives list-prefix and task-item ranges with the
+semantic catalog and maps them through topology-safe prose edits. A prefix
+stays on its marker line and stops before any parent marker. Projected and
+exact prefixes consume one protected track, so neither owns prose geometry.
+Horizontal entry queries the sorted indexes instead of merging and sorting
+whole-Note ranges per Arrow key. Pointer and command paths consume one pure
+task-marker transition in `transformations`; the widget dispatches only that
+exact three-character source change.
+
 Live vertical geometry uses direct CodeMirror `StateField` decorations. One
 immutable `LiveProjectionIndex` owns the typed catalog plus sorted frontmatter,
 literal, code-block, table, Callout, footnote-reference, and mathematics ranges. Direct

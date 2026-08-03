@@ -5,19 +5,19 @@ This chapter owns the latest dated automated, UI, performance, visual, and distr
 
 ## Current verification baseline
 
-**Latest complete repository gate:** 2026-08-03
+**Latest complete repository gate:** 2026-08-04
 
 ### Repository gate
 
 **Current passing result**
 
 `verify.sh` passed the closed 3-manifest, 23-chapter documentation authority and all 93 checked local
-links; 15 protected Skill packages; 152 WebEditor tests and reproducible editor, mathematics,
-Mermaid, and license resources; deterministic RDF-1 v2 for 800 notes; 523 Core tests plus 3 isolated
+links; 15 protected Skill packages; 180 WebEditor tests and reproducible editor, mathematics,
+Mermaid, and license resources; deterministic RDF-1 v2 for 800 notes; 524 Core tests plus 3 isolated
 performance tests; 123 Contracts; 163 Application; 12 Local Agent bridge; 1 serialized architecture
-measurement; 426 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI,
+measurement; 449 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI,
 public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release
-build in 163.25 seconds.
+build in 165.21 seconds.
 
 **Boundary of the claim**
 
@@ -27,8 +27,8 @@ Automated source and disposable-fixture evidence, not a release artifact or huma
 
 **Current passing result**
 
-The fixed 2,056-note mixed-script fixture recorded 742.995 ms cold rebuild, 18.355 ms
-incremental-publication p95, 75.051 ms warm-query p95, 52,599,752 database bytes, and 151,977,984
+The fixed 2,056-note mixed-script fixture recorded 735.931 ms cold rebuild, 17.709 ms
+incremental-publication p95, 74.854 ms warm-query p95, 52,587,416 database bytes, and 148,275,200
 peak RSS bytes.
 
 **Boundary of the claim**
@@ -43,7 +43,9 @@ causation or packaged GUI latency.
 Current isolated journeys passed the exact-window Agent sheet (16.808 s), two-window projection
 convergence (51.864 s), and the stable native-toolbar Sidebar/Inspector pointer journey (24.384 s).
 The last journey resolves each Show/Hide state strictly beneath the real Toolbar accessibility
-subtree and confirms one control identifier per peripheral.
+subtree and confirms one control identifier per peripheral. The 2026-08-04 Storage Unavailable
+journey passed in 27.611 seconds, covering compact collapsed and expanded states, an unsuccessful
+Retry that remains compact, and successful recovery to the Workspace frame.
 
 **Boundary of the claim**
 

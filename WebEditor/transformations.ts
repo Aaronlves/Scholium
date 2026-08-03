@@ -10,6 +10,18 @@ export interface Transformation {
 export interface TransformOptions {
   argument?: string;
   protectedRanges?: readonly {from: number; to: number}[];
+  taskItems?: readonly {
+    from: number;
+    to: number;
+    markerFrom: number;
+    markerTo: number;
+  }[];
+}
+
+export function toggledTaskMarker(marker: string): "[x]" | "[ ]" | null {
+  const match = /^\[([ xX])\]$/.exec(marker);
+  if (!match) return null;
+  return match[1] === " " ? "[x]" : "[ ]";
 }
 
 const inlineMarkers: Partial<Record<MarkdownEditorCommand, [string, string, string]>> = {
@@ -197,15 +209,31 @@ export function transformMarkdown(
   if (command === "toggleTask") {
     const taskChanges = ranges.map((range) => {
       const bounds = lineBounds(source, range);
-      const line = source.slice(bounds.from, bounds.to);
-      const marker = /^(\s*-\s+)\[([ xX])\]/.exec(line);
-      if (!marker) return null;
-      const markerFrom = bounds.from + marker[1].length;
-      return {from: markerFrom, to: markerFrom + 3, insert: marker[2] === " " ? "[x]" : "[ ]"};
+      const indexedItem = options.taskItems?.findLast((item) =>
+        range.from >= item.from && range.to <= item.to);
+      const fallback = options.taskItems === undefined
+        ? /^([ \t]*(?:(?:[-+*])|(?:\d{1,9}[.)]))[ \t]+)(\[[ xX]\])/.exec(
+            source.slice(bounds.from, bounds.to),
+          )
+        : null;
+      const markerFrom = indexedItem?.markerFrom
+        ?? (fallback ? bounds.from + fallback[1].length : null);
+      const markerTo = indexedItem?.markerTo ?? (markerFrom === null ? null : markerFrom + 3);
+      if (markerFrom === null || markerTo === null) return null;
+      const insert = toggledTaskMarker(source.slice(markerFrom, markerTo));
+      return insert === null ? null : {from: markerFrom, to: markerTo, insert};
     });
     if (taskChanges.some((change) => change === null)) return null;
+    const uniqueChanges = new Map<string, SourceChange>();
+    for (const change of taskChanges as SourceChange[]) {
+      uniqueChanges.set(`${change.from}:${change.to}`, change);
+    }
+    const changes = [...uniqueChanges.values()]
+      .sort((left, right) => left.from - right.from || left.to - right.to);
+    if (changes.some((change, index) =>
+      index > 0 && change.from < changes[index - 1].to)) return null;
     return {
-      changes: taskChanges as SourceChange[],
+      changes,
       selections,
       undoLabel: "Toggle Task",
     };

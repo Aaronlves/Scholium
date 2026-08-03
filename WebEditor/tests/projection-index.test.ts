@@ -3,6 +3,7 @@ import {
   commandProtectionRanges,
   immutableProjectionRanges,
   projectionBoundaryTouches,
+  projectionRangeAtBoundary,
   projectionRangeContaining,
   projectionRangesIntersecting,
   projectionSelectionOverlaps,
@@ -58,6 +59,33 @@ describe("immutable live projection range index", () => {
     expect(matches).toBe(1_000);
     expect(Object.isFrozen(ranges)).toBe(true);
     expect(ranges).toHaveLength(10_000);
+  });
+
+  it("reports indexed list-prefix navigation without whole-document merging", () => {
+    const blockRanges = immutableProjectionRanges([{from: 0, to: 10, kind: "table"}]);
+    const listPrefixRanges = immutableProjectionRanges(Array.from(
+      {length: 10_000},
+      (_, index) => ({from: index * 20, to: index * 20 + 10}),
+    ));
+    const offsets = Array.from({length: 100}, (_, index) => index * 20 + 10);
+
+    const baselineStartedAt = performance.now();
+    const baseline = offsets.map((offset) => [
+      ...blockRanges,
+      ...listPrefixRanges.map((range) => ({...range, kind: "listPrefix"})),
+    ].sort((left, right) => left.from - right.from || left.to - right.to)
+      .find((range) => range.to === offset));
+    const baselineElapsed = performance.now() - baselineStartedAt;
+
+    const indexedStartedAt = performance.now();
+    const indexed = offsets.map((offset) =>
+      projectionRangeAtBoundary(listPrefixRanges, offset, "end"));
+    const indexedElapsed = performance.now() - indexedStartedAt;
+
+    console.log(
+      `LIST_HORIZONTAL_NAVIGATION_MICROBENCH baseline=${baselineElapsed.toFixed(3)}ms indexed=${indexedElapsed.toFixed(3)}ms`,
+    );
+    expect(indexed).toEqual(baseline.map((range) => range && ({from: range.from, to: range.to})));
   });
 
   it("uses the same index for inclusive edit-boundary checks", () => {

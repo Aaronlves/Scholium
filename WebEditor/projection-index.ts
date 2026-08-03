@@ -78,6 +78,22 @@ export function projectionRangeContaining<T extends ImmutableProjectionRange>(
   return candidates[0] ?? null;
 }
 
+/** Finds a range whose exact start or end owns one navigation boundary. */
+export function projectionRangeAtBoundary<T extends ImmutableProjectionRange>(
+  ranges: readonly T[],
+  offset: number,
+  boundary: "start" | "end",
+): T | null {
+  const candidates = projectionRangesIntersecting(
+    ranges,
+    Math.max(0, offset - 1),
+    offset + 1,
+  );
+  return candidates.find((range) =>
+    boundary === "start" ? range.from === offset : range.to === offset,
+  ) ?? null;
+}
+
 export function projectionSelectionOverlaps(
   ranges: readonly ImmutableProjectionRange[],
   selection: ImmutableProjectionRange,

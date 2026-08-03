@@ -542,6 +542,12 @@ enum ScholiumWebDesignTokens {
     --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
     --scholium-rhythm-semantic-block-gap: 1em;
     --scholium-rhythm-rule-block-gap: 0.5em;
+    --scholium-list-marker-track: 1.25em;
+    --scholium-list-marker-gap: 0.35em;
+    --scholium-list-indent: calc(
+      var(--scholium-list-marker-track) + var(--scholium-list-marker-gap)
+    );
+    --scholium-task-checkbox-size: max(1em, 20px);
     --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
     --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
@@ -659,6 +665,38 @@ enum ScholiumWebDesignTokens {
     .scholium-document li > ul,
     .scholium-document li > ol {
       margin-block: 0;
+    }
+    .scholium-document ul,
+    .scholium-document ol {
+      box-sizing: border-box;
+      margin-inline: 0;
+      padding-inline-start: var(--scholium-list-indent);
+      list-style-position: outside;
+    }
+    .scholium-document li {
+      padding-inline: 0;
+    }
+    .scholium-document li::marker {
+      color: var(--scholium-color-primary-text);
+      font-family: inherit;
+      font-weight: 400;
+    }
+    .scholium-document li.scholium-task-list-item {
+      position: relative;
+      list-style: none;
+    }
+    .scholium-document .scholium-task-checkbox {
+      position: absolute;
+      inset-block-start: calc((1lh - var(--scholium-task-checkbox-size)) / 2);
+      inset-inline-end: calc(100% + var(--scholium-list-marker-gap));
+      box-sizing: border-box;
+      inline-size: var(--scholium-task-checkbox-size);
+      block-size: var(--scholium-task-checkbox-size);
+      margin: 0;
+      opacity: 1;
+      accent-color: var(--scholium-color-accent);
+      font: inherit;
+      pointer-events: none;
     }
     .scholium-document > hr {
       margin-block: var(--scholium-rhythm-rule-block-gap);

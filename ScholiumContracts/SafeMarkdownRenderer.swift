@@ -396,7 +396,18 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "<ol\(start)\(sourceAttributes(for: .orderedList))>"; descendInto(orderedList); result += "</ol>\n"
     }
     mutating func visitListItem(_ listItem: ListItem) {
-        result += "<li dir=\"auto\"\(sourceAttributes(for: .listItem))>"; descendInto(listItem); result += "</li>\n"
+        let taskClass = listItem.checkbox == nil
+            ? ""
+            : " class=\"scholium-task-list-item\""
+        result += "<li\(taskClass) dir=\"auto\"\(sourceAttributes(for: .listItem))>"
+        if let checkbox = listItem.checkbox {
+            let checked = checkbox == .checked
+            let checkedAttribute = checked ? " checked=\"\"" : ""
+            let label = checked ? "Completed task" : "Incomplete task"
+            result += "<input class=\"scholium-task-checkbox\" type=\"checkbox\" disabled=\"\"\(checkedAttribute) aria-label=\"\(label)\">"
+        }
+        descendInto(listItem)
+        result += "</li>\n"
     }
     mutating func visitLink(_ link: Link) {
         let destination = link.destination ?? ""

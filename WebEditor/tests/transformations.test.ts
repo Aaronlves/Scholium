@@ -84,5 +84,52 @@ describe("exact Markdown transformations", () => {
   it("toggles only the three task-marker bytes", () => {
     expect(apply("- [ ] exact task", "toggleTask", 8).source).toBe("- [x] exact task");
     expect(apply("- [x] exact task", "toggleTask", 8).source).toBe("- [ ] exact task");
+    expect(apply("- [X] exact task", "toggleTask", 8).source).toBe("- [ ] exact task");
+    expect(apply("* [ ] alternate task", "toggleTask", 8).source).toBe("* [x] alternate task");
+    expect(apply("+ [x] alternate task", "toggleTask", 8).source).toBe("+ [ ] alternate task");
+    expect(apply("12. [ ] ordered task", "toggleTask", 10).source).toBe("12. [x] ordered task");
+  });
+
+  it("uses one indexed marker for continuation carets and duplicate selections", () => {
+    const source = "- [ ] task body\n  continued body";
+    const continuation = source.indexOf("continued") + 4;
+    const result = transformMarkdown(source, [
+      {anchor: continuation, head: continuation},
+      {anchor: continuation + 2, head: continuation + 2},
+    ], "toggleTask", {
+      taskItems: [{from: 0, to: source.length, markerFrom: 2, markerTo: 5}],
+    });
+
+    expect(result?.changes).toEqual([{from: 2, to: 5, insert: "[x]"}]);
+    expect(applySourceChanges(source, result!.changes))
+      .toBe("- [x] task body\n  continued body");
+  });
+
+  it("orders distinct parent and child task changes by exact source position", () => {
+    const source = [
+      "- [ ] parent",
+      "  - [ ] child",
+      "  parent continuation",
+    ].join("\n");
+    const parentMarker = source.indexOf("[ ]");
+    const childMarker = source.indexOf("[ ]", parentMarker + 3);
+    const childFrom = source.indexOf("  - [ ] child");
+    const childTo = source.indexOf("\n", childFrom);
+    const childCaret = source.indexOf("child") + 2;
+    const parentCaret = source.indexOf("parent continuation") + 2;
+    const result = transformMarkdown(source, [
+      {anchor: childCaret, head: childCaret},
+      {anchor: parentCaret, head: parentCaret},
+    ], "toggleTask", {
+      taskItems: [
+        {from: 0, to: source.length, markerFrom: parentMarker, markerTo: parentMarker + 3},
+        {from: childFrom, to: childTo, markerFrom: childMarker, markerTo: childMarker + 3},
+      ],
+    });
+
+    expect(result?.changes).toEqual([
+      {from: parentMarker, to: parentMarker + 3, insert: "[x]"},
+      {from: childMarker, to: childMarker + 3, insert: "[x]"},
+    ]);
   });
 });

@@ -64,7 +64,11 @@ import {
   recoveryGenerationCanReplaceCurrent,
   rejected,
 } from "./protocol";
-import {applySourceChanges, transformMarkdown} from "./transformations";
+import {
+  applySourceChanges,
+  toggledTaskMarker,
+  transformMarkdown,
+} from "./transformations";
 import {continueCallout, continueList, indentList} from "./interaction";
 import {tableTabAction} from "./tables";
 import {
@@ -126,6 +130,7 @@ import {
 } from "./interaction-reporting";
 import {
   immutableProjectionRanges,
+  projectionRangeAtBoundary,
   projectionRangeContaining,
   projectionRangesIntersecting as rangesIntersecting,
   projectionSelectionOverlaps,
@@ -277,38 +282,138 @@ function calloutHeader(text: string): RegExpExecArray | null {
 
 class ListMarkerWidget extends WidgetType {
   readonly marker: string;
+  readonly markerFrom: number;
+  readonly markerTo: number;
   readonly ordered: boolean;
-  readonly nested: boolean;
+  readonly depth: number;
   readonly task: boolean;
-  constructor(marker: string, ordered: boolean, nested: boolean, task: boolean) {
+  readonly taskMarkerFrom: number | null;
+  readonly taskMarkerTo: number | null;
+  readonly taskChecked: boolean;
+  constructor(
+    marker: string,
+    markerFrom: number,
+    markerTo: number,
+    ordered: boolean,
+    depth: number,
+    task: boolean,
+    taskMarkerFrom: number | null,
+    taskMarkerTo: number | null,
+    taskChecked: boolean,
+  ) {
     super();
     this.marker = marker;
+    this.markerFrom = markerFrom;
+    this.markerTo = markerTo;
     this.ordered = ordered;
-    this.nested = nested;
+    this.depth = depth;
     this.task = task;
+    this.taskMarkerFrom = taskMarkerFrom;
+    this.taskMarkerTo = taskMarkerTo;
+    this.taskChecked = taskChecked;
   }
   eq(other: ListMarkerWidget) {
     return other.marker === this.marker
+      && other.markerFrom === this.markerFrom
+      && other.markerTo === this.markerTo
       && other.ordered === this.ordered
-      && other.nested === this.nested
-      && other.task === this.task;
+      && other.depth === this.depth
+      && other.task === this.task
+      && other.taskMarkerFrom === this.taskMarkerFrom
+      && other.taskMarkerTo === this.taskMarkerTo
+      && other.taskChecked === this.taskChecked;
   }
-  toDOM() {
+  toDOM(view: EditorView) {
     const span = document.createElement("span");
     span.className = [
       "cm-live-list-marker",
       this.ordered ? "cm-live-list-marker-ordered" : "cm-live-list-marker-unordered",
-      this.nested ? "cm-live-list-marker-nested" : "",
       this.task ? "cm-live-list-marker-task" : "",
     ].filter(Boolean).join(" ");
-    span.textContent = this.ordered ? this.marker : this.nested ? "◦" : "•";
-    span.setAttribute("aria-hidden", "true");
+    const indent = listIndent(this.depth);
+    if (indent) span.style.marginInlineStart = indent;
+    const projected = this.task
+      ? this.taskCheckbox(view)
+      : document.createElement("span");
+    projected.classList.add("cm-live-list-marker-projected");
+    if (!this.task) {
+      projected.textContent = this.ordered ? this.marker : this.depth > 0 ? "◦" : "•";
+      span.addEventListener("mousedown", (event) => {
+        if (event.button !== 0 || view.composing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.markerFrom < 0 || this.markerTo <= this.markerFrom
+            || this.markerTo > view.state.doc.length) return;
+        view.dispatch({
+          selection: {anchor: this.markerFrom},
+          scrollIntoView: true,
+        });
+        view.focus();
+      });
+    }
+    span.append(projected);
+    if (!this.task) span.setAttribute("aria-hidden", "true");
     return span;
+  }
+
+  private taskCheckbox(view: EditorView) {
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "cm-live-task-checkbox";
+    checkbox.checked = this.taskChecked;
+    checkbox.tabIndex = -1;
+    checkbox.setAttribute("aria-label", "Task item");
+    checkbox.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    checkbox.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleTask(view);
+    });
+    return checkbox;
+  }
+
+  private toggleTask(view: EditorView) {
+    if (view.composing || this.taskMarkerFrom === null || this.taskMarkerTo === null) return;
+    const current = view.state.doc.sliceString(this.taskMarkerFrom, this.taskMarkerTo);
+    const insert = toggledTaskMarker(current);
+    if (insert === null) return;
+    view.dispatch({
+      changes: {
+        from: this.taskMarkerFrom,
+        to: this.taskMarkerTo,
+        insert,
+      },
+      annotations: Transaction.userEvent.of("input.scholium.toggleTask"),
+    });
+    lastUndoLabel = "Toggle Task";
+    lastRedoLabel = "Toggle Task";
+    view.focus();
   }
   // Let CodeMirror own pointer placement at the exact source marker. If the
   // browser handles selection inside this replacement widget, a single click
   // can start a native DOM selection that spans unrelated projected prose.
-  ignoreEvent() { return false; }
+  ignoreEvent(event: Event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".cm-live-task-checkbox")) {
+      return !(event instanceof MouseEvent) || event.button === 0;
+    }
+    if (target?.closest(".cm-live-list-marker") && event instanceof MouseEvent) {
+      return event.button === 0;
+    }
+    return false;
+  }
+}
+
+function listIndent(depth: number) {
+  if (depth <= 0) return "";
+  return `calc(${Array.from(
+    {length: depth},
+    () => "var(--scholium-list-indent)",
+  ).join(" + ")})`;
 }
 
 const vectorLinkSemantics: Record<
@@ -1975,22 +2080,51 @@ function buildLiveDecorations(
         if (list && listMarker) {
           const marker = doc.sliceString(listMarker.from, listMarker.to);
           const ordered = list.parent?.kind === "orderedList";
-          const nested = (list.listDepth ?? 0) > 0;
+          const listDepth = list.listDepth ?? 0;
           const task = list.taskMarkerRange !== null;
-          if (!activeLine) {
-            // Review parses task brackets as ListItem metadata rather than
-            // prose. Replace the same exact prefix while this line is
-            // inactive; activating it restores every authoritative byte.
-            const content = semanticBlocksOnLine.find((block) =>
-              block.kind === "paragraph"
-                && block.parent?.kind === "listItem"
-                && block.parent.from === list.from
-                && block.parent.to === list.to);
-            const replacementTo = content?.from
-              ?? (task ? list.taskMarkerRange!.to : listMarker.to);
+          // Review parses task brackets as ListItem metadata rather than
+          // prose. Keep the projected marker while the caret edits item prose;
+          // reveal the exact prefix only when the selection reaches that
+          // prefix. Both presentations use one fixed semantic marker track;
+          // exact source hangs toward the start edge rather than moving prose.
+          const listPrefix = rangesIntersecting(
+            index.listPrefixRanges,
+            line.from,
+            lineQueryTo,
+          ).find((range) => range.from <= listMarker.from && range.to >= listMarker.to);
+          const replacementFrom = listPrefix?.from ?? listMarker.from;
+          const replacementTo = listPrefix?.to
+            ?? (task ? list.taskMarkerRange!.to : listMarker.to);
+          const prefixIsActive = projectionSelections.some((range) =>
+            selectionIntersectsProjection(range, {from: replacementFrom, to: replacementTo}));
+          if (prefixIsActive) {
+            const className = [
+              "cm-live-list-source-prefix",
+            ].join(" ");
+            const indent = listIndent(listDepth);
+            const attributes: Record<string, string> = {class: className};
+            if (indent) attributes.style = `margin-inline-start: ${indent}`;
+            const range = Decoration.mark({attributes}).range(replacementFrom, replacementTo);
+            decorations.push(range);
+          } else {
+            const taskMarkerSource = list.taskMarkerRange
+              ? doc.sliceString(list.taskMarkerRange.from, list.taskMarkerRange.to)
+              : "";
             addAtomicReplacement(
-              Decoration.replace({widget: new ListMarkerWidget(marker, ordered, nested, task)}),
-              line.from,
+              Decoration.replace({
+                widget: new ListMarkerWidget(
+                  marker,
+                  listMarker.from,
+                  listMarker.to,
+                  ordered,
+                  listDepth,
+                  task,
+                  list.taskMarkerRange?.from ?? null,
+                  list.taskMarkerRange?.to ?? null,
+                  /^\[[xX]\]$/.test(taskMarkerSource),
+                ),
+              }),
+              replacementFrom,
               replacementTo,
             );
           }
@@ -2195,10 +2329,12 @@ class LivePreviewPlugin {
             update.startState.doc,
             liveSelection.selection(update.startState).ranges,
             inlineRanges,
+            projectionIndex.listPrefixRanges,
           ) === selectionProjectionSignature(
             update.state.doc,
             liveSelection.selection(update.state).ranges,
             inlineRanges,
+            projectionIndex.listPrefixRanges,
           )) {
         return;
       }
@@ -2526,6 +2662,34 @@ function liveNavigationBlockRanges(state: EditorState) {
   ].sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
+function liveHorizontalNavigationRangeAt(
+  state: EditorState,
+  offset: number,
+  forward: boolean,
+) {
+  const index = liveProjectionIndex.index(state);
+  const boundary = forward ? "start" : "end";
+  const blockRange = projectionRangeAtBoundary(index.blockRanges, offset, boundary);
+  const listPrefixRange = projectionRangeAtBoundary(
+    index.listPrefixRanges,
+    offset,
+    boundary,
+  );
+  const mermaidRange = projectionRangeAtBoundary(
+    state.field(liveMermaidField).presentations,
+    offset,
+    boundary,
+  );
+  const candidates = [
+    blockRange,
+    listPrefixRange ? {...listPrefixRange, kind: "listPrefix" as const} : null,
+    mermaidRange ? {...mermaidRange, kind: "mermaid" as const} : null,
+  ].filter((candidate) => candidate !== null);
+  return candidates.sort((left, right) =>
+    left.from - right.from || left.to - right.to,
+  )[0] ?? null;
+}
+
 function revealProjectedBlockForVerticalMove(
   view: EditorView,
   forward: boolean,
@@ -2594,12 +2758,10 @@ function revealProjectedBlockForHorizontalMove(
 ) {
   if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
   const selection = view.state.selection.main;
-  const projection = rangesIntersecting(
-    liveNavigationBlockRanges(view.state),
-    Math.max(0, selection.head - 1),
-    selection.head + 1,
-  ).find((candidate) =>
-    forward ? selection.head === candidate.from : selection.head === candidate.to,
+  const projection = liveHorizontalNavigationRangeAt(
+    view.state,
+    selection.head,
+    forward,
   );
   if (!projection) return false;
   const alreadyActive = projection.kind === "callout"
@@ -2830,14 +2992,26 @@ function indexedTablePositionAt(state: EditorState, offset: number) {
   )?.position;
 }
 
+function indexedTaskItemForSelection(
+  state: EditorState,
+  selection: {from: number; to: number},
+) {
+  const candidates = rangesIntersecting(
+    liveProjectionIndex.index(state).taskItemRanges,
+    Math.max(0, selection.from - 1),
+    Math.max(selection.from + 1, selection.to + 1),
+  );
+  return candidates.findLast((range) =>
+    selection.from >= range.from && selection.to <= range.to,
+  ) ?? null;
+}
+
 function currentEditorContext(view = editor): EditorContext {
   const state = view.state;
   const inline = new Set<string>();
   const block = new Set<string>();
-  const selectionLinePrefixes: string[] = [];
   for (const selection of state.selection.ranges) {
     const linePrefix = boundedLinePrefix(state.doc, selection.head);
-    selectionLinePrefixes.push(linePrefix);
     for (let node = syntaxTree(state).resolveInner(selection.head, -1); node; node = node.parent!) {
       if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
       if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
@@ -2859,7 +3033,8 @@ function currentEditorContext(view = editor): EditorContext {
   const availableCommands = allCommands.filter((command) => {
     if (tableOnlyCommands.has(command)) return currentTablePosition !== undefined;
     if (command === "toggleTask") {
-      return selectionLinePrefixes.every((linePrefix) => /^\s*-\s+\[[ xX]\]/.test(linePrefix));
+      return state.selection.ranges.every((selection) =>
+        indexedTaskItemForSelection(state, selection) !== null);
     }
     if (command === "linkSelectedText") return state.selection.ranges.every((selection) => !selection.empty);
     return true;
@@ -3068,6 +3243,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
       argument,
       protectedRanges: protectedCommandRanges(),
+      taskItems: liveProjectionIndex.index(editor.state).taskItemRanges,
     });
     if (!transformed) return rejected(request.requestID, documentVersion, "command is unavailable for the exact selection");
     const transformedSource = applySourceChanges(editor.state.doc.toString(), transformed.changes);

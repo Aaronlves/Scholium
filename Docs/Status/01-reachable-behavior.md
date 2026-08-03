@@ -374,6 +374,14 @@ Edit and Source hide WebKit's native caret and use one CodeMirror cursor layer,
 while source-character marks remain the only range paint; deleting a
 structurally inserted line cannot leave a second caret at its obsolete Live
 Preview baseline.
+Inactive Edit lists retain their semantic marker while the caret edits prose
+and reveal exact source only inside the indexed physical-line prefix. Review
+and Edit share the same marker track, nesting step, and task-control geometry;
+checked, unchecked, projected, and exact-prefix states keep one prose column.
+Review renders disabled task controls. Edit's pointer checkbox and the
+caret-line Toggle Task command share one exact-marker transition and one Undo
+event across supported list markers. Left Arrow from the prose start enters
+the prefix at its trailing edge without jumping to the physical line start.
 Return saves, Shift-Return inserts a line, Escape cancels, and Edit/Source have no Review Comment
 surface. The editor's one DOM-to-AppKit secondary-click path preserves a clicked selection, moves an
 outside click through CodeMirror, and presents Cut, Copy, Paste, and Select All before any available

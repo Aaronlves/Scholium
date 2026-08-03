@@ -18,6 +18,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             let editSelector: String
             let expectation: String
             let adapterStyleKeys: [String]?
+            let compareVisibleStart: Bool?
         }
 
         let comparisonProbes: [Probe]
@@ -37,6 +38,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             let lineCount: Int
             let lineTops: [Double]
             let lineWidths: [Double]
+            let visibleStart: Double?
             let widgetBufferCount: Int
             let widgetBufferHeight: Double
             let widgetBufferFontSize: String
@@ -64,6 +66,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             let topDelta: Double
             let heightDelta: Double
             let lineCountDelta: Int
+            let visibleStartDelta: Double?
             let precedingReadBlockID: String?
             let precedingEditBlockID: String?
             let precedingBlockOrderMatches: Bool?
@@ -134,6 +137,9 @@ extension MarkdownEditorWebViewIntegrationTests {
             if let visibleEndToken = probe.visibleEndToken {
                 argument["visibleEndToken"] = visibleEndToken
             }
+            if probe.compareVisibleStart == true {
+                argument["compareVisibleStart"] = true
+            }
             return argument
         }
 
@@ -158,6 +164,17 @@ extension MarkdownEditorWebViewIntegrationTests {
             probes: probeArguments,
             evaluate: readHarness.callPageJavaScript
         )
+        let readTaskControls = try #require(try await readHarness.callPageJavaScript(
+            """
+            return {
+              count: document.querySelectorAll('.scholium-task-checkbox').length,
+              checked: document.querySelectorAll('.scholium-task-checkbox:checked').length,
+              disabled: document.querySelectorAll('.scholium-task-checkbox:disabled').length,
+              labels: Array.from(document.querySelectorAll('.scholium-task-checkbox'))
+                .map(control => control.getAttribute('aria-label'))
+            };
+            """
+        ) as? [String: Any])
         await readHarness.closeAndDrain()
 
         let editHarness = EditorHarness(
@@ -180,6 +197,14 @@ extension MarkdownEditorWebViewIntegrationTests {
             probes: probeArguments,
             evaluate: editHarness.callPageJavaScript
         )
+        let editTaskControls = try #require(try await editHarness.callPageJavaScript(
+            """
+            return {
+              count: document.querySelectorAll('.cm-live-task-checkbox').length,
+              checked: document.querySelectorAll('.cm-live-task-checkbox:checked').length
+            };
+            """
+        ) as? [String: Any])
         #expect(try await editHarness.session.currentText(for: editHarness.documentID) == source)
         await editHarness.closeAndDrain()
 
@@ -216,6 +241,28 @@ extension MarkdownEditorWebViewIntegrationTests {
                 && $0.read.height > 0
                 && $0.edit.height > 0
         })
+        #expect(readTaskControls["count"] as? Int == 2)
+        #expect(readTaskControls["checked"] as? Int == 1)
+        #expect(readTaskControls["disabled"] as? Int == 2)
+        #expect(
+            readTaskControls["labels"] as? [String]
+                == ["Incomplete task", "Completed task"]
+        )
+        #expect(editTaskControls["count"] as? Int == 2)
+        #expect(editTaskControls["checked"] as? Int == 1)
+        for id in [
+            "unordered-list-item",
+            "nested-list-item",
+            "task-list-item",
+            "checked-task-list-item",
+            "ordered-list-item",
+        ] {
+            let difference = try #require(report.probes.first { $0.id == id })
+            // Two independent WKWebViews may quantize the same CSS `em`
+            // track to adjacent subpixels. A whole CSS pixel is the adapter
+            // tolerance; the pre-fix semantic drift was 5–29 pixels.
+            #expect(abs(try #require(difference.visibleStartDelta)) <= 1)
+        }
         let mermaid = try #require(report.probes.first { $0.id == "mermaid-diagram" })
         #expect(mermaid.styleDifferences.isEmpty)
         #expect(abs(mermaid.heightDelta) <= 0.5)
@@ -369,11 +416,20 @@ extension MarkdownEditorWebViewIntegrationTests {
             let topDelta = editProbe.top - readProbe.top
             let heightDelta = editProbe.height - readProbe.height
             let lineCountDelta = editProbe.lineCount - readProbe.lineCount
+            let visibleStartDelta: Double?
+            if let readStart = readProbe.visibleStart,
+               let editStart = editProbe.visibleStart {
+                visibleStartDelta = editStart - readStart
+            } else {
+                visibleStartDelta = nil
+            }
             if probe.expectation == "mustMatchReview",
                !styleDifferences.isEmpty
                 || abs(topDelta) > 0.5
                 || abs(heightDelta) > 0.5
                 || lineCountDelta != 0
+                || probe.compareVisibleStart == true
+                    && abs(visibleStartDelta ?? .infinity) > 1
                 || precedingBlockOrderMatches == false
                 || abs(precedingGapDelta ?? 0) > 0.5 {
                 mustMatchDifferenceCount += 1
@@ -392,6 +448,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 topDelta: topDelta,
                 heightDelta: heightDelta,
                 lineCountDelta: lineCountDelta,
+                visibleStartDelta: visibleStartDelta,
                 precedingReadBlockID: precedingReadBlockID,
                 precedingEditBlockID: precedingEditBlockID,
                 precedingBlockOrderMatches: precedingBlockOrderMatches,
@@ -580,6 +637,22 @@ extension MarkdownEditorWebViewIntegrationTests {
       }
       orderedLines.sort((a, b) => a.top - b.top);
       const computed = getComputedStyle(selected[0]);
+      const visibleStart = (() => {
+        if (!probe.visibleToken) return null;
+        for (const element of selected) {
+          const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+          let node;
+          while ((node = walker.nextNode())) {
+            const offset = (node.textContent || '').indexOf(probe.visibleToken);
+            if (offset < 0) continue;
+            const range = document.createRange();
+            range.setStart(node, offset);
+            range.setEnd(node, offset + 1);
+            return rounded(range.getBoundingClientRect().left - rootRect.left);
+          }
+        }
+        return null;
+      })();
       const widgetBuffer = selected[0].querySelector('.cm-widgetBuffer');
       const styles = Object.fromEntries(styleKeys.map(key => [
         key,
@@ -598,6 +671,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         lineCount: orderedLines.length,
         lineTops: orderedLines.map(line => rounded(line.top - rootRect.top)),
         lineWidths: orderedLines.map(line => rounded(line.right - line.left)),
+        visibleStart,
         widgetBufferCount: selected.reduce(
           (count, element) => count + element.querySelectorAll('.cm-widgetBuffer').length,
           0

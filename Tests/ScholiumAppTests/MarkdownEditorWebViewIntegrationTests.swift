@@ -1518,10 +1518,12 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let inactive = try await harness.waitUntilPresentation(stage: "inactive Review-parity lists") {
             $0.liveListMarkerCount == 8
+                && $0.liveTaskCheckboxCount == 2
+                && $0.liveTaskCheckedCheckboxCount == 1
                 && $0.liveTaskSourceTokenCount == 0
         }
         #expect(inactive.liveListMarkerUsesPrimaryText)
-        #expect(inactive.liveListMarkerText == "•|•|◦|1.|2.|1.|•|•")
+        #expect(inactive.liveListMarkerText == "•|•|◦|1.|2.|1.")
         #expect(inactive.liveListMarkerTextGap > 0)
         #expect(inactive.liveListMarkerTextGap < 8)
         let rhythm = try #require(try await harness.callPageJavaScript(
@@ -1545,9 +1547,358 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.goToLine(11)
         try await harness.waitUntilSelection(head: taskSourceFrom)
         let active = try await harness.waitUntilPresentation(stage: "active exact task source") {
-            $0.liveListMarkerCount == 7 && $0.liveTaskSourceTokenCount == 1
+            $0.liveListMarkerCount == 7
+                && $0.liveTaskCheckboxCount == 1
+                && $0.liveTaskSourceTokenCount == 1
         }
         #expect(active.liveListMarkerUsesPrimaryText)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Projected task checkbox toggles only its exact marker bytes")
+    func projectedTaskCheckboxTogglesExactMarkerBytes() async throws {
+        let source = """
+        Before the tasks.
+
+        - [ ] OPEN_TASK_BODY
+        - [x] COMPLETED_TASK_BODY
+        * [ ] ALTERNATE_TASK_BODY
+          ALTERNATE_CONTINUATION
+
+        After the tasks.
+        """
+        let expected = source.replacingOccurrences(
+            of: "- [ ] OPEN_TASK_BODY",
+            with: "- [x] OPEN_TASK_BODY"
+        )
+        let expectedAfterUncheck = expected.replacingOccurrences(
+            of: "- [x] COMPLETED_TASK_BODY",
+            with: "- [ ] COMPLETED_TASK_BODY"
+        )
+        let expectedAfterCommand = expectedAfterUncheck.replacingOccurrences(
+            of: "* [ ] ALTERNATE_TASK_BODY",
+            with: "* [x] ALTERNATE_TASK_BODY"
+        )
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let inactive = try await harness.waitUntilPresentation(stage: "projected task checkboxes") {
+            $0.liveTaskCheckboxCount == 3
+                && $0.liveTaskCheckedCheckboxCount == 1
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(inactive.isFocused)
+        let controls = try #require(try await harness.callPageJavaScript(
+            """
+            return Array.from(document.querySelectorAll('.cm-live-task-checkbox')).map(checkbox => ({
+              tag: checkbox.tagName,
+              type: checkbox.type,
+              label: checkbox.getAttribute('aria-label'),
+              tabIndex: checkbox.tabIndex,
+              checked: checkbox.checked,
+              width: checkbox.getBoundingClientRect().width,
+              height: checkbox.getBoundingClientRect().height
+            }));
+            """
+        ) as? [[String: Any]])
+        #expect(controls.count == 3)
+        #expect(controls.allSatisfy { $0["tag"] as? String == "INPUT" })
+        #expect(controls.allSatisfy { $0["type"] as? String == "checkbox" })
+        #expect(controls.allSatisfy { $0["label"] as? String == "Task item" })
+        #expect(controls.allSatisfy { $0["tabIndex"] as? Int == -1 })
+        #expect(controls.compactMap { $0["checked"] as? Bool } == [false, true, false])
+        #expect(controls.allSatisfy { ($0["width"] as? Double ?? 0) >= 20 })
+        #expect(controls.allSatisfy { ($0["height"] as? Double ?? 0) >= 20 })
+
+        func taskBodyLeadingX(_ body: String) async throws -> Double {
+            let value = try #require(try await harness.callPageJavaScript(
+                """
+                const target = '\(body)';
+                for (const line of document.querySelectorAll('.cm-line.cm-live-task-list')) {
+                  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                  let node;
+                  while ((node = walker.nextNode())) {
+                    const offset = (node.textContent || '').indexOf(target);
+                    if (offset < 0) continue;
+                    const range = document.createRange();
+                    range.setStart(node, offset);
+                    range.setEnd(node, offset + 1);
+                    return range.getBoundingClientRect().left;
+                  }
+                }
+                return null;
+                """
+            ) as? NSNumber)
+            return value.doubleValue
+        }
+        let initialOpenTaskX = try await taskBodyLeadingX("OPEN_TASK_BODY")
+        let initialCompletedTaskX = try await taskBodyLeadingX("COMPLETED_TASK_BODY")
+        #expect(abs(initialOpenTaskX - initialCompletedTaskX) <= 0.5)
+
+        let selectionBeforeClick = harness.session.context?.selections
+        try await harness.session.testingClickTaskCheckbox()
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(4))
+        while try await harness.session.currentText(for: harness.documentID) != expected {
+            guard clock.now < deadline else {
+                Issue.record("Task checkbox did not update its exact source marker.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let checked = try await harness.waitUntilPresentation(stage: "checked task projection") {
+            $0.liveTaskCheckboxCount == 3
+                && $0.liveTaskCheckedCheckboxCount == 2
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(checked.isFocused)
+        #expect(harness.session.context?.selections == selectionBeforeClick)
+        #expect(harness.session.context?.undoLabel == "Toggle Task")
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        #expect(abs(try await taskBodyLeadingX("OPEN_TASK_BODY") - initialOpenTaskX) <= 0.5)
+        #expect(
+            abs(try await taskBodyLeadingX("COMPLETED_TASK_BODY") - initialCompletedTaskX)
+                <= 0.5
+        )
+
+        try await harness.session.testingClickTaskCheckbox(at: 1)
+        let uncheckDeadline = clock.now.advanced(by: .seconds(4))
+        while try await harness.session.currentText(for: harness.documentID) != expectedAfterUncheck {
+            guard clock.now < uncheckDeadline else {
+                Issue.record("Checked task checkbox did not clear its exact source marker.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let unchecked = try await harness.waitUntilPresentation(stage: "unchecked task projection") {
+            $0.liveTaskCheckboxCount == 3
+                && $0.liveTaskCheckedCheckboxCount == 1
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(unchecked.isFocused)
+        #expect(harness.session.context?.selections == selectionBeforeClick)
+        #expect(harness.session.context?.undoLabel == "Toggle Task")
+        #expect(try await harness.session.currentText(for: harness.documentID) == expectedAfterUncheck)
+        #expect(abs(try await taskBodyLeadingX("OPEN_TASK_BODY") - initialOpenTaskX) <= 0.5)
+        #expect(
+            abs(try await taskBodyLeadingX("COMPLETED_TASK_BODY") - initialCompletedTaskX)
+                <= 0.5
+        )
+
+        let commandCaret = try #require(expectedAfterUncheck.range(of: "ALTERNATE_CONTINUATION"))
+            .lowerBound.utf16Offset(in: expectedAfterUncheck) + 2
+        harness.session.revealSourceRange(fromUTF16: commandCaret, toUTF16: commandCaret)
+        try await harness.waitUntilSelection(head: commandCaret)
+        let availabilityDeadline = clock.now.advanced(by: .seconds(4))
+        while harness.session.context?.availableCommands.contains(.toggleTask) != true {
+            guard clock.now < availabilityDeadline else {
+                Issue.record("The alternate task continuation did not expose Toggle Task.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.availableCommands.contains(.toggleTask) == true)
+        try await harness.session.perform(.toggleTask)
+        let commandDeadline = clock.now.advanced(by: .seconds(4))
+        while try await harness.session.currentText(for: harness.documentID) != expectedAfterCommand {
+            guard clock.now < commandDeadline else {
+                Issue.record("The keyboard/menu task command did not update its exact marker.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.undoLabel == "Toggle Task")
+        #expect(try await harness.session.currentText(for: harness.documentID) == expectedAfterCommand)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Left Arrow enters every projected list prefix at its trailing edge")
+    func leftArrowEntersProjectedListPrefixAtTrailingEdge() async throws {
+        let source = """
+        Before the lists.
+
+        - BULLET_LIST_BODY
+          - NESTED_LIST_BODY
+        10. ORDERED_LIST_BODY
+        - [ ] TASK_LIST_BODY
+
+        After the lists.
+        """
+        let cases = [
+            (prefix: "- ", body: "BULLET_LIST_BODY"),
+            (prefix: "  - ", body: "NESTED_LIST_BODY"),
+            (prefix: "10. ", body: "ORDERED_LIST_BODY"),
+            (prefix: "- [ ] ", body: "TASK_LIST_BODY"),
+        ]
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        for testCase in cases {
+            let bodyFrom = try #require(source.range(of: testCase.body))
+                .lowerBound.utf16Offset(in: source)
+            harness.session.revealSourceRange(fromUTF16: bodyFrom, toUTF16: bodyFrom)
+            try await harness.waitUntilSelection(head: bodyFrom)
+
+            try await harness.session.testingPressArrow("ArrowLeft")
+            try await harness.waitUntilSelection(
+                head: bodyFrom - 1,
+                stage: "trailing-edge source entry for \(testCase.body)"
+            )
+            let lineText = try #require(try await harness.callPageJavaScript(
+                """
+                return Array.from(document.querySelectorAll('.cm-line'))
+                  .find(line => (line.textContent || '').includes('\(testCase.body)'))
+                  ?.textContent || '';
+                """
+            ) as? String)
+            #expect(lineText.contains(testCase.prefix + testCase.body))
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("List source reveal is marker scoped and preserves content geometry")
+    func listSourceRevealIsMarkerScopedAndPreservesContentGeometry() async throws {
+        let source = """
+        Before the list.
+
+        - ROOT_LIST_BODY
+          - NESTED_LIST_BODY
+
+        10. ORDERED_LIST_BODY
+
+        - [ ] TASK_LIST_BODY
+
+        After the list.
+        """
+        let afterFrom = try #require(source.range(of: "After the list."))
+            .lowerBound.utf16Offset(in: source)
+        let cases = [
+            (marker: "- ROOT_LIST_BODY", body: "ROOT_LIST_BODY", task: false),
+            (marker: "- NESTED_LIST_BODY", body: "NESTED_LIST_BODY", task: false),
+            (marker: "10. ORDERED_LIST_BODY", body: "ORDERED_LIST_BODY", task: false),
+            (marker: "- [ ] TASK_LIST_BODY", body: "TASK_LIST_BODY", task: true),
+        ]
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func bodyLeadingX(_ target: String) async throws -> Double {
+            let value = try #require(try await harness.callPageJavaScript(
+                """
+                const target = '\(target)';
+                for (const line of document.querySelectorAll('.cm-line')) {
+                  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                  let node;
+                  while ((node = walker.nextNode())) {
+                    const text = node.textContent || '';
+                    const offset = text.indexOf(target);
+                    if (offset < 0) continue;
+                    const range = document.createRange();
+                    range.setStart(node, offset);
+                    range.setEnd(node, offset + 1);
+                    return range.getBoundingClientRect().left;
+                  }
+                }
+                return null;
+                """
+            ) as? NSNumber)
+            return value.doubleValue
+        }
+
+        harness.session.revealSourceRange(fromUTF16: afterFrom, toUTF16: afterFrom)
+        try await harness.waitUntilSelection(head: afterFrom)
+        let inactive = try await harness.session.testingAccessibilitySnapshot()
+        #expect(inactive.liveListMarkerCount == cases.count)
+
+        for testCase in cases {
+            let markerFrom = try #require(source.range(of: testCase.marker))
+                .lowerBound.utf16Offset(in: source)
+            let bodyFrom = try #require(source.range(of: testCase.body))
+                .lowerBound.utf16Offset(in: source)
+            let inactiveX = try await bodyLeadingX(testCase.body)
+
+            let bodyCaret = bodyFrom + testCase.body.utf16.count / 2
+            harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+            try await harness.waitUntilSelection(head: bodyCaret)
+            let bodyActive = try await harness.session.testingAccessibilitySnapshot()
+            #expect(bodyActive.liveListMarkerCount == cases.count)
+            #expect(bodyActive.liveTaskSourceTokenCount == 0)
+            let bodyActiveX = try await bodyLeadingX(testCase.body)
+
+            harness.session.revealSourceRange(fromUTF16: markerFrom, toUTF16: markerFrom)
+            try await harness.waitUntilSelection(head: markerFrom)
+            let markerActive = try await harness.session.testingAccessibilitySnapshot()
+            #expect(markerActive.liveListMarkerCount == cases.count - 1)
+            #expect(markerActive.liveTaskSourceTokenCount == (testCase.task ? 1 : 0))
+            let markerActiveX = try await bodyLeadingX(testCase.body)
+
+            harness.session.revealSourceRange(fromUTF16: afterFrom, toUTF16: afterFrom)
+            try await harness.waitUntilSelection(head: afterFrom)
+            let restored = try await harness.session.testingAccessibilitySnapshot()
+            #expect(restored.liveListMarkerCount == cases.count)
+            let restoredX = try await bodyLeadingX(testCase.body)
+
+            for candidate in [bodyActiveX, markerActiveX, restoredX] {
+                #expect(abs(candidate - inactiveX) <= 0.5)
+            }
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A nested list prefix never consumes its active Callout marker")
+    func nestedListPrefixPreservesActiveCalloutMarker() async throws {
+        let source = """
+        > [!state] Callout list
+        > - CALLOUT_LIST_BODY
+        """
+        let bodyFrom = try #require(source.range(of: "CALLOUT_LIST_BODY"))
+            .lowerBound.utf16Offset(in: source)
+        let markerFrom = try #require(source.range(of: "- CALLOUT_LIST_BODY"))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func listLinePresentation() async throws -> [String: Any] {
+            try #require(try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => (candidate.textContent || '').includes('CALLOUT_LIST_BODY'));
+                if (!line) return null;
+                return {
+                  text: line.textContent || '',
+                  projected: line.querySelectorAll('.cm-live-list-marker').length,
+                  exactPrefix: line.querySelectorAll('.cm-live-list-source-prefix').length
+                };
+                """
+            ) as? [String: Any])
+        }
+
+        let bodyCaret = bodyFrom + 4
+        harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+        try await harness.waitUntilSelection(head: bodyCaret)
+        _ = try await harness.waitUntilPresentation(stage: "Callout list body projection") {
+            $0.activeLiveBlockKind == "callout" && $0.liveListMarkerCount == 1
+        }
+        let projected = try await listLinePresentation()
+        #expect((projected["text"] as? String)?.hasPrefix(">") == true)
+        #expect(projected["projected"] as? Int == 1)
+        #expect(projected["exactPrefix"] as? Int == 0)
+
+        harness.session.revealSourceRange(fromUTF16: markerFrom, toUTF16: markerFrom)
+        try await harness.waitUntilSelection(head: markerFrom)
+        _ = try await harness.waitUntilPresentation(stage: "exact nested list prefix") {
+            $0.activeLiveBlockKind == "callout" && $0.liveListMarkerCount == 0
+        }
+        let exact = try await listLinePresentation()
+        #expect((exact["text"] as? String)?.contains("> - CALLOUT_LIST_BODY") == true)
+        #expect(exact["projected"] as? Int == 0)
+        #expect(exact["exactPrefix"] as? Int == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }

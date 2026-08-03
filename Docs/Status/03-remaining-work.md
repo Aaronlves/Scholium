@@ -57,6 +57,14 @@ separators, per-list gap widgets, second Callout activation ownership, and ViewP
 geometry are absent. Researcher visual evidence and its limits are recorded once in Verification
 Baseline.
 
+List prefixes and task items are cached `LiveProjectionIndex` range sets.
+Topology-safe prose edits map them without another list scan, and horizontal
+source entry uses indexed boundary queries rather than copying and sorting
+every block and list range on each Arrow key. Review and Edit consume one
+marker-track contract; read-only and editable task controls retain checked
+state and exact prose geometry, while pointer and keyboard/menu toggles share
+one exact-marker rule across supported list markers.
+
 **Required next evidence or work**
 
 Researcher reacceptance of corrected Arabic/Hebrew Review/Edit/Source behavior; real pointer and
@@ -118,6 +126,14 @@ observed completion fell from approximately 4 ms to 2 ms. Twenty-four
 equivalent Edit-toolbar updates fell from 168 observed attribute mutations to
 zero. These are regression diagnostics for that fixture and build, not visible
 latency acceptance or a product gate.
+
+The 2026-08-04 list-navigation cut replaced whole-Note range merging and
+sorting on each horizontal Arrow key with central immutable-index boundary
+queries. In six fresh Debug V8 observations on the same Mac16,12 / macOS 27.0 /
+Xcode 27.0 environment, 100 trailing-boundary queries over 10,000 synthetic
+list prefixes took 74.597–131.773 ms with the former merge/sort algorithm and
+0.081–0.162 ms with the indexed query. This is a deterministic regression
+diagnostic, not a visible-latency or release threshold.
 
 **Required next evidence or work**
 

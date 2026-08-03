@@ -23,6 +23,7 @@ This long ordinary paragraph compares **strong evidence**, *Neocaridina denticul
   - Nested unordered item.
 - Second unordered item.
 - [ ] Open synthetic task.
+- [x] Completed synthetic task.
 
 1. First ordered item.
    1. Nested ordered item.

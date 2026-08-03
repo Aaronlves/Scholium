@@ -56,12 +56,19 @@ interface IndexedTablePositionRange extends ProjectionSourceRange {
   readonly position: {row: number; column: number; rowCount: number; columnCount: number};
 }
 
+export interface IndexedTaskItemRange extends ProjectionSourceRange {
+  readonly markerFrom: number;
+  readonly markerTo: number;
+}
+
 export interface LiveProjectionIndex {
   /** Stable only while local Markdown topology is proven unchanged. */
   readonly topologyIdentity: object;
   readonly syntax: SemanticProjectionRanges;
   readonly literals: SemanticLiteralRanges;
   readonly inlineRanges: readonly Readonly<ProjectionSourceRange>[];
+  readonly listPrefixRanges: readonly Readonly<ProjectionSourceRange>[];
+  readonly taskItemRanges: readonly Readonly<IndexedTaskItemRange>[];
   readonly footnotes: FootnotePresentation;
   readonly tables: readonly TablePresentation[];
   readonly callouts: readonly CalloutPresentation[];
@@ -74,6 +81,65 @@ export interface LiveProjectionIndex {
   readonly footnoteRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly tablePositionRanges: readonly Readonly<IndexedTablePositionRange>[];
   readonly hasUnclosedFrontmatter: boolean;
+}
+
+function indexedListPrefixRanges(
+  doc: Text,
+  syntax: SemanticProjectionRanges,
+) {
+  const contentStarts = new Map<string, number>();
+  for (const block of syntax.blocks) {
+    if (block.kind !== "paragraph" || block.parent?.kind !== "listItem") continue;
+    const key = rangeKey(block.parent.from, block.parent.to);
+    contentStarts.set(key, Math.min(contentStarts.get(key) ?? block.from, block.from));
+  }
+  return syntax.blocks
+    .filter((block) => block.kind === "listItem" && block.markerRanges.length > 0)
+    .map((block) => {
+      const line = doc.lineAt(block.from);
+      const markerFrom = block.markerRanges.reduce(
+        (minimum, marker) => Math.min(minimum, marker.from),
+        line.to,
+      );
+      const markerTo = block.markerRanges.reduce(
+        (maximum, marker) => Math.max(maximum, marker.to),
+        block.from,
+      );
+      let from = markerFrom;
+      while (from > line.from) {
+        const character = doc.sliceString(from - 1, from);
+        if (character !== " " && character !== "\t") break;
+        from -= 1;
+      }
+      const contentStart = contentStarts.get(rangeKey(block.from, block.to));
+      let to = contentStart !== undefined
+          && contentStart >= line.from
+          && contentStart <= line.to
+        ? contentStart
+        : markerTo;
+      while (to < line.to) {
+        const character = doc.sliceString(to, to + 1);
+        if (character !== " " && character !== "\t") break;
+        to += 1;
+      }
+      return {
+        from,
+        to,
+      };
+    })
+    .filter((range) => range.to > range.from);
+}
+
+function indexedTaskItemRanges(syntax: SemanticProjectionRanges) {
+  return syntax.blocks.flatMap((block): IndexedTaskItemRange[] => {
+    if (block.kind !== "listItem" || block.taskMarkerRange === null) return [];
+    return [{
+      from: block.from,
+      to: block.to,
+      markerFrom: block.taskMarkerRange.from,
+      markerTo: block.taskMarkerRange.to,
+    }];
+  });
 }
 
 export interface LiveProjectionIndexController {
@@ -147,6 +213,8 @@ function finalizedLiveProjectionIndex(
   excluded: readonly ProjectionSourceRange[],
   codeBlocks: readonly SemanticCodeBlockRange[],
   inlineRanges: readonly ProjectionSourceRange[],
+  listPrefixRanges: readonly ProjectionSourceRange[],
+  taskItemRanges: readonly IndexedTaskItemRange[],
   footnotes: FootnotePresentation,
   tables: readonly TablePresentation[],
   callouts: readonly CalloutPresentation[],
@@ -187,6 +255,8 @@ function finalizedLiveProjectionIndex(
       codeBlocks: immutableCodeBlocks,
     }),
     inlineRanges: immutableProjectionRanges(inlineRanges),
+    listPrefixRanges: immutableProjectionRanges(listPrefixRanges),
+    taskItemRanges: immutableProjectionRanges(taskItemRanges),
     footnotes,
     tables: immutableTables,
     callouts: immutableCallouts,
@@ -352,6 +422,8 @@ function buildLiveProjectionIndex(
     excluded,
     codeBlocks,
     inlineRanges,
+    indexedListPrefixRanges(state.doc, syntax),
+    indexedTaskItemRanges(syntax),
     footnotes,
     tables,
     callouts,
@@ -431,6 +503,13 @@ function mapLiveProjectionIndex(
       })),
     })),
     index.inlineRanges.map((range) => ({from: map(range.from), to: map(range.to)})),
+    index.listPrefixRanges.map((range) => ({from: map(range.from), to: map(range.to)})),
+    index.taskItemRanges.map((range) => ({
+      from: map(range.from),
+      to: map(range.to),
+      markerFrom: map(range.markerFrom),
+      markerTo: map(range.markerTo),
+    })),
     footnotes,
     tables,
     callouts,

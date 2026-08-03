@@ -85,13 +85,18 @@ export function selectionProjectionSignature(
   doc: Text,
   selections: readonly ProjectionSelectionRange[],
   inlineProjections: readonly ProjectionSourceRange[],
+  listPrefixProjections: readonly ProjectionSourceRange[] = [],
 ) {
   const activeLines = selections.map((selection) => {
     const fromLine = doc.lineAt(Math.max(0, Math.min(selection.from, doc.length))).from;
     const toLine = doc.lineAt(Math.max(0, Math.min(selection.to, doc.length))).from;
     return `${fromLine}:${toLine}`;
   }).join("|");
-  return `${activeLines}#${activeProjectionSignature(selections, inlineProjections)}`;
+  return [
+    activeLines,
+    activeProjectionSignature(selections, inlineProjections),
+    activeProjectionSignature(selections, listPrefixProjections),
+  ].join("#");
 }
 
 /**

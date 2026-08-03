@@ -406,6 +406,7 @@ extension ScholiumUITests {
             "scholium.storageUnavailable.details"
         ]
         let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
+        let window = app.windows.firstMatch
 
         XCTAssertTrue(unavailable.exists)
         XCTAssertTrue(app.staticTexts["Storage Unavailable"].exists)
@@ -414,12 +415,31 @@ extension ScholiumUITests {
         XCTAssertTrue(app.buttons["Quit"].exists)
         XCTAssertFalse(renderedDocument.exists)
         XCTAssertFalse(detailsContent.exists)
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                window.frame.width >= 480
+                    && window.frame.width <= 560
+                    && window.frame.height >= 190
+                    && window.frame.height <= 320
+            },
+            "The collapsed storage-recovery window must fit its compact content."
+        )
+        let collapsedFrame = window.frame
 
         XCTAssertTrue(details.exists)
         XCTAssertEqual(details.value as? String, "Collapsed")
         details.click()
         XCTAssertEqual(details.value as? String, "Expanded")
         XCTAssertTrue(detailsContent.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                window.frame.width >= 480
+                    && window.frame.width <= 560
+                    && window.frame.height > collapsedFrame.height
+                    && window.frame.height <= 380
+            },
+            "Expanding storage details must grow only the compact recovery window."
+        )
 
         app.menuBars.menuBarItems["File"].click()
         let newNote = app.menuItems["New Note"].firstMatch
@@ -427,6 +447,21 @@ extension ScholiumUITests {
             XCTAssertFalse(newNote.isEnabled)
         }
         app.typeKey(.escape, modifierFlags: [])
+
+        app.staticTexts["Storage Unavailable"].click()
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                unavailable.exists
+                    && retry.isEnabled
+                    && !detailsContent.exists
+                    && window.frame.width >= 480
+                    && window.frame.width <= 560
+                    && window.frame.height >= 190
+                    && window.frame.height <= 320
+            },
+            "A failed Retry must remount the same compact recovery state."
+        )
 
         let blocker = homeDirectory.appendingPathComponent("ApplicationSupport")
         try FileManager.default.removeItem(at: blocker)
@@ -438,6 +473,13 @@ extension ScholiumUITests {
             "The default Retry action did not enter the Workspace after storage was repaired."
         )
         XCTAssertFalse(unavailable.exists)
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                window.frame.width >= 1_200
+                    && window.frame.height >= 650
+            },
+            "Successful Retry must restore the workspace frame after compact recovery."
+        )
     }
 
     @MainActor

@@ -191,6 +191,31 @@ extension MarkdownEditorSession {
         try await testingClickPagePoint(x: x, y: y, in: webView)
     }
 
+    func testingClickTaskCheckbox(at index: Int = 0) async throws {
+        guard let webView else { throw SessionError.unavailable }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const checkboxes = Array.from(document.querySelectorAll(
+                '.cm-live-list-marker-task input[type="checkbox"]'
+            ));
+            const checkbox = checkboxes[index];
+            if (!(checkbox instanceof HTMLInputElement)) return null;
+            checkbox.scrollIntoView({block: 'center', inline: 'nearest'});
+            const rect = checkbox.getBoundingClientRect();
+            return {x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2};
+            """,
+            arguments: ["index": index],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let position = result as? [String: Any],
+              let x = position["x"] as? Double,
+              let y = position["y"] as? Double else {
+            throw SessionError.invalidResult
+        }
+        try await testingClickPagePoint(x: x, y: y, in: webView)
+    }
+
     func testingModifiedClickVisibleText(
         _ requestedText: String,
         modifierFlags: NSEvent.ModifierFlags

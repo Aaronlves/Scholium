@@ -125,6 +125,8 @@ extension MarkdownEditorSession {
         let liveListMarkerUsesPrimaryText: Bool
         let liveListMarkerText: String
         let liveListMarkerTextGap: Double
+        let liveTaskCheckboxCount: Int
+        let liveTaskCheckedCheckboxCount: Int
         let liveTaskSourceTokenCount: Int
         let quotePaddingInlineStart: String
         let quoteMarginInlineStart: String
@@ -447,7 +449,9 @@ extension MarkdownEditorSession {
                     probe.remove();
                     return getComputedStyle(marker).color === resolvedExpected;
                 })(),
-                liveListMarkerText: Array.from(document.querySelectorAll('.cm-live-list-marker'))
+                liveListMarkerText: Array.from(document.querySelectorAll(
+                    '.cm-live-list-marker:not(.cm-live-list-marker-task) .cm-live-list-marker-projected'
+                ))
                     .map(marker => marker.textContent || '')
                     .join('|'),
                 liveListMarkerTextGap: (() => {
@@ -474,6 +478,12 @@ extension MarkdownEditorSession {
                     }
                     return 0;
                 })(),
+                liveTaskCheckboxCount: document.querySelectorAll(
+                    '.cm-live-list-marker-task input[type="checkbox"]'
+                ).length,
+                liveTaskCheckedCheckboxCount: document.querySelectorAll(
+                    '.cm-live-list-marker-task input[type="checkbox"]:checked'
+                ).length,
                 liveTaskSourceTokenCount: Array.from(document.querySelectorAll('.cm-live-task-list'))
                     .filter(line => /\\[[ xX]\\]/.test(line.textContent || ''))
                     .length,

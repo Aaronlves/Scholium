@@ -130,8 +130,11 @@ above visual centre and preserve a calm bottom edge.
   Accent boundary in Review and Edit, and never becomes a Callout or card.
   Lists retain ordinary Body line height inside each contiguous list: list
   items and nested lists add no paragraph gap or semantic block gap between
-  rows. Only the complete top-level list participates in surrounding document
-  block spacing. Edit keeps every Markdown paragraph-separator blank line as a
+  rows. Review and Edit share one marker track, marker-to-prose gap, nesting
+  step, and task-control size; bullet shape, order width, task state, and exact
+  prefix exposure never shift the prose column. Only the complete top-level
+  list participates in surrounding document block spacing. Edit keeps every
+  Markdown paragraph-separator blank line as a
   real, keyboard-addressable exact source line. Its measured line box supplies
   the corresponding Review paragraph gap; Edit does not collapse it or add the
   same gap again to the preceding paragraph. Consecutive authored blank lines

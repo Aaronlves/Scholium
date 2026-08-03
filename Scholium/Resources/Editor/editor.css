@@ -273,18 +273,47 @@ body,
 .cm-line.cm-live-list {
   padding-inline-start: 0;
 }
-.cm-live-list-marker {
-  display: inline-block;
-  min-inline-size: 1.25em;
-  margin-inline-end: 0.35em;
+.cm-live-list-marker,
+.cm-live-list-source-prefix {
+  box-sizing: border-box;
+  inline-size: var(--scholium-list-marker-track);
+  min-inline-size: var(--scholium-list-marker-track);
+  max-inline-size: var(--scholium-list-marker-track);
+  margin-inline-end: var(--scholium-list-marker-gap);
   color: var(--scholium-color-primary-text);
   font-family: inherit;
   font-weight: 400;
 }
-.cm-live-list-marker-nested {
-  margin-inline-start: 1.6em;
+.cm-live-list-marker {
+  display: inline-grid;
+  align-items: center;
+  vertical-align: baseline;
 }
-
+.cm-live-list-source-prefix {
+  display: inline-flex;
+  justify-content: flex-end;
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: pre;
+  overflow: visible;
+}
+.cm-live-list-marker-projected {
+  grid-area: 1 / 1;
+  justify-self: end;
+}
+.cm-live-task-checkbox {
+  align-self: center;
+  box-sizing: border-box;
+  inline-size: var(--scholium-task-checkbox-size);
+  block-size: var(--scholium-task-checkbox-size);
+  margin: 0;
+  accent-color: var(--scholium-color-accent);
+  cursor: pointer;
+}
+.cm-live-task-checkbox:focus-visible {
+  outline: 2px solid var(--scholium-color-accent);
+  outline-offset: 2px;
+}
 .cm-live-semantic-gap {
   --scholium-live-gap-after: 0px;
   --scholium-live-gap-before: 0px;

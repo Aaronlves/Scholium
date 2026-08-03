@@ -167,8 +167,106 @@ private struct ApplicationStorageUnavailableView: View {
             }
         }
         .padding(28)
-        .frame(minWidth: 440, idealWidth: 520, maxWidth: 620)
+        .frame(width: 520, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            GeometryReader { geometry in
+                ApplicationStorageUnavailableWindowSizer(
+                    contentSize: geometry.size
+                )
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.storageUnavailable")
+    }
+}
+
+/// Storage recovery is a compact root state, not a 720 × 720 onboarding page.
+/// Keep the scene's canonical Bootstrap default for the ready path, resize only
+/// while this failure view exists, and restore the exact prior frame on Retry.
+private struct ApplicationStorageUnavailableWindowSizer: NSViewRepresentable {
+    let contentSize: CGSize
+
+    func makeNSView(context: Context) -> StorageUnavailableWindowSizingView {
+        let view = StorageUnavailableWindowSizingView()
+        view.desiredContentSize = contentSize
+        return view
+    }
+
+    func updateNSView(
+        _ nsView: StorageUnavailableWindowSizingView,
+        context: Context
+    ) {
+        nsView.desiredContentSize = contentSize
+    }
+
+    static func dismantleNSView(
+        _ nsView: StorageUnavailableWindowSizingView,
+        coordinator: Void
+    ) {
+        nsView.restoreOriginalFrame()
+    }
+}
+
+private final class StorageUnavailableWindowSizingView: NSView {
+    var desiredContentSize: CGSize = .zero {
+        didSet { scheduleDesiredContentSize() }
+    }
+
+    private weak var sizedWindow: NSWindow?
+    private var originalFrame: NSRect?
+    private var pendingResize: DispatchWorkItem?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scheduleDesiredContentSize()
+    }
+
+    func restoreOriginalFrame() {
+        pendingResize?.cancel()
+        pendingResize = nil
+        guard let sizedWindow, let originalFrame else { return }
+        self.sizedWindow = nil
+        self.originalFrame = nil
+        DispatchQueue.main.async { [weak sizedWindow] in
+            sizedWindow?.setFrame(originalFrame, display: true, animate: false)
+        }
+    }
+
+    private func scheduleDesiredContentSize() {
+        pendingResize?.cancel()
+        let resize = DispatchWorkItem { [weak self] in
+            self?.applyDesiredContentSize()
+        }
+        pendingResize = resize
+        DispatchQueue.main.async(execute: resize)
+    }
+
+    private func applyDesiredContentSize() {
+        pendingResize = nil
+        guard let window,
+              desiredContentSize.width > 0,
+              desiredContentSize.height > 0 else { return }
+        if sizedWindow !== window {
+            restoreOriginalFrame()
+            sizedWindow = window
+            originalFrame = window.frame
+        }
+
+        let targetFrameSize = window.frameRect(
+            forContentRect: NSRect(origin: .zero, size: desiredContentSize)
+        ).size
+        let currentFrame = window.frame
+        guard abs(currentFrame.width - targetFrameSize.width) > 0.5
+                || abs(currentFrame.height - targetFrameSize.height) > 0.5 else {
+            return
+        }
+        let targetFrame = NSRect(
+            x: currentFrame.midX - targetFrameSize.width / 2,
+            y: currentFrame.maxY - targetFrameSize.height,
+            width: targetFrameSize.width,
+            height: targetFrameSize.height
+        )
+        window.setFrame(targetFrame, display: true, animate: false)
     }
 }

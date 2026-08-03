@@ -71,6 +71,7 @@
     "هذا نص عربي اختباري",
     "זהו טקסט בדיקה סינתטי",
     "- [ ] Open synthetic task.",
+    "- [x] Completed synthetic task.",
     "> Ordinary quotation",
     "```swift",
     "```Mermaid",
@@ -226,6 +227,7 @@
       "level": "block",
       "readSelector": ".scholium-document li > p",
       "editSelector": ".cm-line.cm-live-list",
+      "compareVisibleStart": true,
       "expectation": "mustMatchReview"
     },
     {
@@ -236,6 +238,7 @@
       "level": "block",
       "readSelector": ".scholium-document li > p",
       "editSelector": ".cm-line.cm-live-list",
+      "compareVisibleStart": true,
       "expectation": "mustMatchReview"
     },
     {
@@ -246,6 +249,18 @@
       "level": "block",
       "readSelector": ".scholium-document li > p",
       "editSelector": ".cm-line.cm-live-task-list",
+      "compareVisibleStart": true,
+      "expectation": "mustMatchReview"
+    },
+    {
+      "id": "checked-task-list-item",
+      "semanticRole": "listItem",
+      "sourceToken": "- [x] Completed synthetic task.",
+      "visibleToken": "Completed synthetic task",
+      "level": "block",
+      "readSelector": ".scholium-document li > p",
+      "editSelector": ".cm-line.cm-live-task-list",
+      "compareVisibleStart": true,
       "expectation": "mustMatchReview"
     },
     {
@@ -256,6 +271,7 @@
       "level": "block",
       "readSelector": ".scholium-document li > p",
       "editSelector": ".cm-line.cm-live-list",
+      "compareVisibleStart": true,
       "expectation": "mustMatchReview"
     },
     {

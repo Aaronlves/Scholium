@@ -79,6 +79,98 @@ describe("live projection index component", () => {
       .toEqual(["x"]);
   });
 
+  it("indexes exact list prefixes for marker-scoped source reveal", () => {
+    const controller = createLiveProjectionIndexController({
+      editingDialect: () => dialect,
+      recordMetric: () => {},
+    });
+    const source = [
+      "- root",
+      "  - nested",
+      "",
+      "10. ordered",
+      "",
+      "- [ ] task",
+      "* [x] alternate task",
+    ].join("\n");
+    const state = EditorState.create({
+      doc: source,
+      extensions: [scholiumNoteLanguage, controller.extension],
+    });
+    const initial = controller.index(state);
+
+    expect(initial.listPrefixRanges.map((range) =>
+      source.slice(range.from, range.to)))
+      .toEqual(["- ", "  - ", "10. ", "- [ ] ", "* [x] "]);
+    expect(initial.taskItemRanges.map((range) =>
+      source.slice(range.markerFrom, range.markerTo)))
+      .toEqual(["[ ]", "[x]"]);
+
+    const insertionPoint = source.indexOf("nested") + "nested".length;
+    const transaction = state.update({
+      changes: {from: insertionPoint, insert: " prose"},
+    });
+    const mapped = controller.index(transaction.state);
+    expect(mapped.topologyIdentity).toBe(initial.topologyIdentity);
+    expect(mapped.listPrefixRanges.map((range) =>
+      transaction.state.doc.sliceString(range.from, range.to)))
+      .toEqual(["- ", "  - ", "10. ", "- [ ] ", "* [x] "]);
+    expect(mapped.taskItemRanges.map((range) =>
+      transaction.state.doc.sliceString(range.markerFrom, range.markerTo)))
+      .toEqual(["[ ]", "[x]"]);
+  });
+
+  it("keeps an empty or continued item prefix on its marker line", () => {
+    const controller = createLiveProjectionIndexController({
+      editingDialect: () => dialect,
+      recordMetric: () => {},
+    });
+    const source = [
+      "-",
+      "  continued body",
+      "",
+      "- [ ]",
+      "  continued task body",
+    ].join("\n");
+    const state = EditorState.create({
+      doc: source,
+      extensions: [scholiumNoteLanguage, controller.extension],
+    });
+    const ranges = controller.index(state).listPrefixRanges;
+
+    expect(ranges.map((range) => source.slice(range.from, range.to)))
+      .toEqual(["-", "- "]);
+    expect(ranges.every((range) => range.to <= state.doc.lineAt(range.from).to))
+      .toBe(true);
+  });
+
+  it("leaves parent block markers outside nested list prefixes", () => {
+    const controller = createLiveProjectionIndexController({
+      editingDialect: () => dialect,
+      recordMetric: () => {},
+    });
+    const source = [
+      "> - quoted item",
+      "",
+      "> [!state] Callout",
+      "> - callout item",
+      "",
+      "[^1]: - footnote item",
+    ].join("\n");
+    const state = EditorState.create({
+      doc: source,
+      extensions: [scholiumNoteLanguage, controller.extension],
+    });
+    const prefixes = controller.index(state).listPrefixRanges.map((range) => ({
+      text: source.slice(range.from, range.to),
+      line: state.doc.lineAt(range.from),
+      from: range.from,
+    }));
+
+    expect(prefixes.map((prefix) => prefix.text)).toEqual([" - ", " - ", " - "]);
+    expect(prefixes.every((prefix) => prefix.from > prefix.line.from)).toBe(true);
+  });
+
   it("extends a proven Callout across its trailing quote-only edit line", () => {
     const controller = createLiveProjectionIndexController({
       editingDialect: () => dialect,
