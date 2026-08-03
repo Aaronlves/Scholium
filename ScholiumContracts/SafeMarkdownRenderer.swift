@@ -28,7 +28,8 @@ public enum SafeMarkdownRenderer {
     private static func renderBody(
         document: NoteDocument,
         semantic: MarkdownSemanticDocument,
-        depth: Int
+        depth: Int,
+        locatedLinkSpans: [SourceSpan]? = nil
     ) -> String {
         guard depth < 12 else {
             return "<p class=\"scholium-render-warning\" dir=\"auto\">Nested rendering limit reached.</p>"
@@ -63,7 +64,20 @@ public enum SafeMarkdownRenderer {
         for (index, callout) in outerCallouts.enumerated() {
             guard let relative = relativeRange(callout.span, bodyStart: bodyStart, bodyLength: bodyLength) else { continue }
             let key = "\(nonce)-block-\(index)"
-            blockHTML[key] = renderCallout(callout, depth: depth + 1)
+            let nestedLinkSpans = semantic.links.enumerated().compactMap { linkIndex, link -> SourceSpan? in
+                guard link.span.utf16LowerBound >= callout.headerSpan.utf16UpperBound,
+                      link.span.utf16UpperBound <= callout.span.utf16UpperBound else { return nil }
+                return locatedSpan(
+                    at: linkIndex,
+                    from: locatedLinkSpans,
+                    fallback: link.span
+                )
+            }
+            blockHTML[key] = renderCallout(
+                callout,
+                locatedLinkSpans: nestedLinkSpans,
+                depth: depth + 1
+            )
             replacements.append(Replacement(
                 range: relative,
                 text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"
@@ -114,7 +128,14 @@ public enum SafeMarkdownRenderer {
             guard let relative = relativeRange(link.span, bodyStart: bodyStart, bodyLength: bodyLength),
                   !overlaps(relative, replacements.map(\.range)) else { continue }
             let key = "SCHOLIUMINLINETOKEN\(nonce)L\(index)"
-            inlineHTML[key] = renderWikilink(link)
+            inlineHTML[key] = renderWikilink(
+                link,
+                locatedSpan: locatedSpan(
+                    at: index,
+                    from: locatedLinkSpans,
+                    fallback: link.span
+                )
+            )
             replacements.append(Replacement(range: relative, text: key))
         }
 
@@ -155,7 +176,11 @@ public enum SafeMarkdownRenderer {
         return visitor.result + footnoteSection
     }
 
-    private static func renderCallout(_ callout: CalloutBlock, depth: Int) -> String {
+    private static func renderCallout(
+        _ callout: CalloutBlock,
+        locatedLinkSpans: [SourceSpan],
+        depth: Int
+    ) -> String {
         let roleLabel = escapeHTML(callout.role.displayLabel)
         let purpose = escapeAttribute(callout.role.purpose)
         let accessibleRole = escapeAttribute("\(callout.role.displayLabel). \(callout.role.purpose)")
@@ -165,10 +190,14 @@ public enum SafeMarkdownRenderer {
         } ?? ""
         let heading = "<span class=\"scholium-callout-heading\" role=\"heading\" aria-level=\"2\">\(roleHTML)\(titleHTML)</span>"
         let fragment = NoteDocument(relativePath: "callout.md", rawContent: callout.bodySource)
+        let fragmentSemantic = MarkdownSemanticDocument(parsing: fragment)
         let renderedBody = renderBody(
             document: fragment,
-            semantic: MarkdownSemanticDocument(parsing: fragment),
-            depth: depth
+            semantic: fragmentSemantic,
+            depth: depth,
+            locatedLinkSpans: fragmentSemantic.links.count == locatedLinkSpans.count
+                ? locatedLinkSpans
+                : nil
         )
         let semanticBody = callout.role == .quote
             ? "<blockquote class=\"scholium-callout-quotation\" dir=\"auto\">\(renderedBody)</blockquote>"
@@ -232,19 +261,22 @@ public enum SafeMarkdownRenderer {
         return "<div class=\"scholium-footnotes-slot\"><section class=\"footnotes\" data-scholium-protected=\"footnotes\" aria-label=\"Footnotes\"><hr><ol>\(items)</ol></section></div>"
     }
 
-    private static func renderWikilink(_ link: LinkOccurrence) -> String {
+    private static func renderWikilink(
+        _ link: LinkOccurrence,
+        locatedSpan: SourceSpan
+    ) -> String {
         let display = link.alias ?? (link.target.isEmpty ? link.fragment ?? "Link" : link.target)
         let destination = link.target + (link.fragment.map { "#\($0)" } ?? "")
         let decodedDestination = destination.removingPercentEncoding ?? destination
         let encoded = decodedDestination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? decodedDestination
         if link.syntax == .embed {
-            return "<a class=\"wiki-link scholium-embed\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(link.span)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
+            return "<a class=\"wiki-link scholium-embed\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
         }
         let relation = link.relationship.map { " data-relationship=\"\(escapeAttribute($0.rawValue))\"" } ?? ""
         let vectorClass = link.vectorKind == nil ? "" : " scholium-vector"
         let vector = link.vectorKind.map { " data-vector-kind=\"\(escapeAttribute($0.rawValue))\"" } ?? ""
-        return "<a class=\"wiki-link\(vectorClass)\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(link.span))\(relation)\(vector)>\(escapeHTML(display))</a>"
+        return "<a class=\"wiki-link\(vectorClass)\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan))\(relation)\(vector)>\(escapeHTML(display))</a>"
     }
 
     private static func bodyUTF16Offset(in document: NoteDocument) -> Int {
@@ -254,6 +286,15 @@ public enum SafeMarkdownRenderer {
         let utf8Index = source.utf8.index(source.utf8.startIndex, offsetBy: byteOffset)
         guard let index = String.Index(utf8Index, within: source) else { return 0 }
         return index.utf16Offset(in: source)
+    }
+
+    private static func locatedSpan(
+        at index: Int,
+        from spans: [SourceSpan]?,
+        fallback: SourceSpan
+    ) -> SourceSpan {
+        guard let spans, spans.indices.contains(index) else { return fallback }
+        return spans[index]
     }
 
     private static func relativeRange(

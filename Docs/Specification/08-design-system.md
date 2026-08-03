@@ -138,7 +138,10 @@ above visual centre and preserve a calm bottom edge.
   real, keyboard-addressable exact source line. Its measured line box supplies
   the corresponding Review paragraph gap; Edit does not collapse it or add the
   same gap again to the preceding paragraph. Consecutive authored blank lines
-  remain distinct source lines.
+  remain distinct source lines. When Edit exposes an active fenced code block,
+  its block surface ends with the exact closing fence and adds no blank-looking
+  inset below that delimiter; any following authored separator remains a
+  separate keyboard-addressable line and owns the surrounding rhythm.
   Tables, code, and mathematics keep object-local horizontal overflow; the page
   itself never gains horizontal reading scroll. Display mathematics remains
   centered and italic with its number on a separate physical-right track.

@@ -203,6 +203,11 @@ extension MarkdownEditorSession {
         let menuBorderColor: String
         let separatorColor: String
         let accentColor: String
+        let rootBackground: String
+        let focusedBackground: String
+        let focusedClassName: String
+        let focusedMatchesFeedbackSelector: Bool
+        let raisedSurfaceBackground: String
         let toolbarSystemSymbolNames: [String]
         let visibleMenuSystemSymbolNames: [String]
         let toolbarSystemSymbolWidths: [Double]
@@ -238,11 +243,23 @@ extension MarkdownEditorSession {
         let activeSourceLineTexts: [String]
         let activeSourceLineClassNames: [String]
         let activeSourceLineBackgrounds: [String]
+        let activeSourceLineFontWeights: [String]
+        let activeSourceTitleFontFamilies: [String]
+        let activeSourceTitleFontSizes: [String]
+        let activeSourceTitleFontWeights: [String]
+        let activeSourceTitleFontStyles: [String]
         let renderedText: String
         let renderedTitleText: String
+        let renderedTitleFontFamily: String
+        let renderedTitleFontSize: String
+        let renderedTitleFontWeight: String
+        let renderedTitleFontStyle: String
         let renderedBodyText: String
         let renderedLinkTexts: [String]
         let renderedLinkTargets: [String]
+        let renderedLinkCaretOffsets: [Int]
+        let renderedLinkIconNames: [String]
+        let renderedLinkIconMaskCount: Int
     }
 
     struct TestingPointerProjectionResult: Sendable {
@@ -701,9 +718,19 @@ extension MarkdownEditorSession {
             const links = widget
                 ? Array.from(widget.querySelectorAll('[data-scholium-link-target]'))
                 : [];
+            const linkIcons = widget
+                ? Array.from(widget.querySelectorAll('.cm-live-vector-icon'))
+                : [];
             const activeSourceLines = Array.from(
                 document.querySelectorAll('.cm-line.cm-live-callout')
             );
+            const activeSourceTitles = activeSourceLines.map(
+                candidate => candidate.querySelector('.scholium-callout-title')
+            );
+            const renderedTitle = widget?.querySelector('.scholium-callout-title') || null;
+            const styleValue = (element, property) => element
+                ? getComputedStyle(element)[property] || ''
+                : '';
             return {
                 sourceLineText: line?.textContent || '',
                 activeSourceLineTexts: activeSourceLines.map(candidate => candidate.textContent || ''),
@@ -711,11 +738,42 @@ extension MarkdownEditorSession {
                 activeSourceLineBackgrounds: activeSourceLines.map(
                     candidate => getComputedStyle(candidate).backgroundColor
                 ),
+                activeSourceLineFontWeights: activeSourceLines.map(
+                    candidate => getComputedStyle(candidate).fontWeight
+                ),
+                activeSourceTitleFontFamilies: activeSourceTitles.map(
+                    candidate => styleValue(candidate, 'fontFamily')
+                ),
+                activeSourceTitleFontSizes: activeSourceTitles.map(
+                    candidate => styleValue(candidate, 'fontSize')
+                ),
+                activeSourceTitleFontWeights: activeSourceTitles.map(
+                    candidate => styleValue(candidate, 'fontWeight')
+                ),
+                activeSourceTitleFontStyles: activeSourceTitles.map(
+                    candidate => styleValue(candidate, 'fontStyle')
+                ),
                 renderedText: widget?.textContent || '',
-                renderedTitleText: widget?.querySelector('.scholium-callout-title')?.textContent || '',
+                renderedTitleText: renderedTitle?.textContent || '',
+                renderedTitleFontFamily: styleValue(renderedTitle, 'fontFamily'),
+                renderedTitleFontSize: styleValue(renderedTitle, 'fontSize'),
+                renderedTitleFontWeight: styleValue(renderedTitle, 'fontWeight'),
+                renderedTitleFontStyle: styleValue(renderedTitle, 'fontStyle'),
                 renderedBodyText: widget?.querySelector('.scholium-callout-body')?.textContent || '',
                 renderedLinkTexts: links.map(link => link.textContent || ''),
-                renderedLinkTargets: links.map(link => link.dataset.scholiumLinkTarget || '')
+                renderedLinkTargets: links.map(link => link.dataset.scholiumLinkTarget || ''),
+                renderedLinkCaretOffsets: links.map(
+                    link => Number(link.dataset.scholiumSourceCaret || '-1')
+                ),
+                renderedLinkIconNames: linkIcons.map(
+                    icon => icon.dataset.scholiumSystemSymbol || ''
+                ),
+                renderedLinkIconMaskCount: linkIcons.filter(icon => {
+                    const style = getComputedStyle(icon);
+                    return [style.webkitMaskImage, style.maskImage].some(
+                        value => Boolean(value) && value !== 'none'
+                    );
+                }).length
             };
             """,
             arguments: ["requestedText": requestedText],
@@ -752,6 +810,7 @@ extension MarkdownEditorSession {
                     .find(button => (button.textContent || '').trim() === submenuLabel)
                     ?.click();
             }
+            await Promise.resolve();
             const toolbar = root?.querySelector('.scholium-selection-toolbar');
             const controls = root
                 ? Array.from(toolbar?.querySelectorAll('.scholium-selection-control') || [])
@@ -793,8 +852,17 @@ extension MarkdownEditorSession {
             document.body.append(accentProbe);
             const accentColor = getComputedStyle(accentProbe).color;
             accentProbe.remove();
+            const raisedSurfaceProbe = document.createElement('span');
+            raisedSurfaceProbe.style.backgroundColor =
+                'var(--scholium-color-raised-surface-background)';
+            document.body.append(raisedSurfaceProbe);
+            const raisedSurfaceBackground = getComputedStyle(raisedSurfaceProbe).backgroundColor;
+            raisedSurfaceProbe.remove();
             const documentContent = document.querySelector('.cm-content');
             const rootText = root?.textContent || '';
+            const focusedElement = root?.contains(document.activeElement)
+                ? document.activeElement
+                : null;
             return {
                 hidden: root?.hidden !== false || getComputedStyle(root).visibility !== 'visible',
                 toolbarRole: toolbar?.getAttribute('role') || '',
@@ -834,6 +902,16 @@ extension MarkdownEditorSession {
                 menuBorderColor: firstMenu ? getComputedStyle(firstMenu).borderTopColor : '',
                 separatorColor: separator ? getComputedStyle(separator).backgroundColor : '',
                 accentColor,
+                rootBackground: root ? getComputedStyle(root).backgroundColor : '',
+                focusedBackground: focusedElement
+                    ? getComputedStyle(focusedElement).backgroundColor
+                    : '',
+                focusedClassName: focusedElement?.className || '',
+                focusedMatchesFeedbackSelector: focusedElement?.matches(
+                    '.scholium-selection-control.scholium-selection-keyboard-focus, '
+                        + '.scholium-selection-menu-item.scholium-selection-keyboard-focus'
+                ) || false,
+                raisedSurfaceBackground,
                 toolbarSystemSymbolNames: toolbarSymbols.map(
                     symbol => symbol.dataset.scholiumSystemSymbol || ''
                 ),

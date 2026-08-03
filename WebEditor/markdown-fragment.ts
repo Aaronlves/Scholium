@@ -5,6 +5,8 @@ import {
   type TablePresentation,
   type TablePresentationCell,
 } from "./table-presentation";
+import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
+import type {VectorLinkKind} from "./previews";
 
 export interface MarkdownFragmentCallout {
   identifier: string;
@@ -15,9 +17,19 @@ export interface MarkdownFragmentCallout {
 export interface MarkdownFragmentOptions {
   mathematics?: MathDialect;
   resolveCallout?: (rawKind: string) => MarkdownFragmentCallout;
-  resolveVectorLink?: (marker: string) => string;
+  resolveVectorLink?: (marker: string) => VectorLinkKind;
   sourceOffset?: (fragmentOffset: number) => number;
 }
+
+export const vectorLinkSemantics: Record<
+  VectorLinkKind,
+  {label: string; symbol: WebSystemSymbolKey}
+> = {
+  neutral: {label: "Related note", symbol: "link"},
+  supports: {label: "Supports", symbol: "plus-circle"},
+  opposes: {label: "Opposes", symbol: "minus-circle"},
+  incompatible: {label: "Incompatible", symbol: "xmark-circle"},
+};
 
 interface MarkdownTreeCursor {
   readonly name: string;
@@ -129,11 +141,24 @@ function appendInlineMarkdownNode(
     span.dir = "auto";
     const target = link[3].trim();
     const alias = link[4]?.trim();
-    span.textContent = alias || target;
-    const prefixLength = link[1].length + link[2].length + 2;
-    const aliasMarker = raw.indexOf("|");
-    const caret = cursor.from + (aliasMarker >= 0 ? aliasMarker + 1 : prefixLength);
-    identifyProjectedLink(span, target, cursor.from, cursor.to, caret, options);
+    if (!embed) {
+      const semantics = vectorLinkSemantics[kind];
+      const icon = systemSymbolElement(
+        semantics.symbol,
+        `cm-live-vector-icon cm-live-vector-icon-${kind.replaceAll("_", "-")}`,
+        document,
+      );
+      icon.title = semantics.label;
+      icon.removeAttribute("aria-hidden");
+      icon.setAttribute("role", "img");
+      icon.setAttribute("aria-label", semantics.label);
+      span.append(icon);
+    }
+    span.append(document.createTextNode(alias || target));
+    // A rendered Wikilink behaves as one projected object on first entry.
+    // Its exact half-open source end is the stable insertion point after `]]`;
+    // one subsequent backward move can then reveal and enter the syntax.
+    identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
     parent.append(span);
     return;
   }

@@ -766,6 +766,11 @@ enum ScholiumWebDesignTokens {
       border-end-start-radius: 10px;
       border-end-end-radius: 10px;
     }
+    .cm-editor.scholium-live-mode .cm-live-codeblock-active.cm-live-codeblock-end {
+      /* The visible closing fence is already the active block's final source
+         line. Do not synthesize a blank-looking inset below those exact bytes. */
+      padding-block-end: 0;
+    }
     .cm-editor.scholium-live-mode .cm-live-raw-html-end {
       padding-block-end: var(--scholium-rhythm-code-inset);
       border-end-start-radius: 10px;
@@ -933,19 +938,28 @@ enum ScholiumWebDesignTokens {
       cursor: default;
     }
     .scholium-selection-control:hover,
-    .scholium-selection-menu-item:hover {
+    .scholium-selection-menu-item:hover,
+    .scholium-selection-control:focus,
+    .scholium-selection-menu-item:focus,
+    .scholium-selection-control.scholium-selection-keyboard-focus,
+    .scholium-selection-menu-item.scholium-selection-keyboard-focus {
       color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-surface-background);
+      background: var(--scholium-color-raised-surface-background);
     }
     .scholium-selection-control:active,
     .scholium-selection-menu-item:active {
       color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-surface-background);
+      background: var(--scholium-color-raised-surface-background);
     }
     .scholium-selection-control:focus-visible,
     .scholium-selection-menu-item:focus-visible {
       color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-surface-background);
+      background: var(--scholium-color-raised-surface-background);
+      outline: 2px solid var(--scholium-color-accent);
+      outline-offset: 1px;
+    }
+    .scholium-selection-control.scholium-selection-keyboard-focus,
+    .scholium-selection-menu-item.scholium-selection-keyboard-focus {
       outline: 2px solid var(--scholium-color-accent);
       outline-offset: 1px;
     }
@@ -1102,9 +1116,10 @@ enum ScholiumWebDesignTokens {
       background: transparent;
       white-space: nowrap;
     }
+    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover,
     .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li[aria-selected="true"] {
       color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-surface-background);
+      background: var(--scholium-color-raised-surface-background);
     }
     .cm-tooltip-autocomplete.scholium-editor-suggestions .scholium-completion-symbol {
       flex: 0 0 14px;

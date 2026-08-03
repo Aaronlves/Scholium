@@ -56,6 +56,42 @@ describe("guarded Callout interaction", () => {
     expect(result!.undoLabel).toBe("Exit Callout");
   });
 
+  it("continues the current list level inside a Callout", () => {
+    for (const [source, expected] of [
+      ["> [!state] Claims\n> - first", "> [!state] Claims\n> - first\n> - "],
+      ["> [!state] Claims\n>   - nested", "> [!state] Claims\n>   - nested\n>   - "],
+      ["> [!state] Claims\n> 9. ordered", "> [!state] Claims\n> 9. ordered\n> 10. "],
+      ["> [!state] Claims\n> - [x] checked", "> [!state] Claims\n> - [x] checked\n> - [ ] "],
+    ]) {
+      const result = continueCallout(source, [{anchor: source.length, head: source.length}]);
+      expect(applySourceChanges(source, result!.changes)).toBe(expected);
+      expect(result!.undoLabel).toBe("Continue List");
+    }
+  });
+
+  it("preserves the Callout quote on the production CodeMirror Text path", () => {
+    const source = "> [!state] Claims\n> - first";
+    const result = continueCallout(
+      Text.of(source.split("\n")),
+      [{anchor: source.length, head: source.length}],
+    );
+    expect(applySourceChanges(source, result!.changes))
+      .toBe("> [!state] Claims\n> - first\n> - ");
+  });
+
+  it("exits an empty nested list before exiting its Callout", () => {
+    const source = "> [!state] Claims\n> - ";
+    const listExit = continueCallout(source, [{anchor: source.length, head: source.length}]);
+    const quotedBlank = applySourceChanges(source, listExit!.changes);
+    expect(quotedBlank).toBe("> [!state] Claims\n> ");
+    expect(listExit!.undoLabel).toBe("Exit List");
+
+    const calloutExit = continueCallout(quotedBlank, [{anchor: quotedBlank.length, head: quotedBlank.length}]);
+    expect(applySourceChanges(quotedBlank, calloutExit!.changes))
+      .toBe("> [!state] Claims\n");
+    expect(calloutExit!.undoLabel).toBe("Exit Callout");
+  });
+
   it("does not continue ordinary quotations or nonempty selections", () => {
     const quotation = "> Ordinary quotation.";
     expect(continueCallout(quotation, [{anchor: quotation.length, head: quotation.length}]))

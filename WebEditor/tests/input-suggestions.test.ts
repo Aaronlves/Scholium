@@ -198,6 +198,20 @@ describe("Edit input suggestions", () => {
     expect(undoLabels).toEqual(["Insert Wikilink"]);
   });
 
+  it("keeps completion active inside an empty auto-closed Wikilink", async () => {
+    const {suggestions, request} = controller();
+    const state = EditorState.create({doc: "[[]]", selection: {anchor: 2}});
+    const pending = suggestions.wikilinkCompletionSource(
+      new CompletionContext(state, 2, false),
+    ) as Promise<CompletionResult>;
+    const query = request();
+    expect(query?.query).toBe("");
+    suggestions.resolveLinkCompletionQuery(query!.id, []);
+    const result = await pending;
+    expect(result.from).toBe(2);
+    expect(result.options).toEqual([]);
+  });
+
   it("formats the inserted date as a local ISO calendar date", () => {
     expect(inputSuggestionTesting.localISODate(new Date(2026, 7, 3, 12, 30)))
       .toBe("2026-08-03");

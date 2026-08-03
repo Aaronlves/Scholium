@@ -12,6 +12,11 @@ function listPrefix(line: string) {
   return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
 }
 
+function continuedListPrefix(match: RegExpExecArray) {
+  const ordered = match[4] ? `${Number(match[4]) + 1}${match[5]}` : null;
+  return `${match[1]}${ordered ?? (match[2] ? "- [ ] " : match[3])}`;
+}
+
 function calloutQuotePrefix(line: string) {
   return /^(\s*>[ \t]?)/.exec(line);
 }
@@ -40,18 +45,33 @@ export function continueCallout(
     const bounds = document.lineAt(selection.head);
     const prefix = calloutQuotePrefix(bounds.text)?.[1];
     if (!prefix || !lineBelongsToCallout(document, bounds.number)) return null;
-    if (bounds.text.slice(prefix.length).trim().length === 0) {
+    const quotedContent = bounds.text.slice(prefix.length);
+    const nestedList = listPrefix(quotedContent);
+    if (nestedList && quotedContent.slice(nestedList[0].length).trim().length === 0) {
+      return {
+        change: {
+          from: bounds.from + prefix.length,
+          to: bounds.from + prefix.length + nestedList[0].length,
+          insert: "",
+        },
+        localSelection: bounds.from + prefix.length,
+        undoLabel: "Exit List",
+      };
+    }
+    if (quotedContent.trim().length === 0) {
       return {
         change: {from: bounds.from, to: bounds.from + prefix.length, insert: ""},
         localSelection: bounds.from,
         undoLabel: "Exit Callout",
       };
     }
-    const continued = `${prefix}\n`;
+    const continuedPrefix = nestedList
+      ? `${prefix}${continuedListPrefix(nestedList)}`
+      : prefix;
     return {
-      change: {from: selection.head, to: selection.head, insert: `\n${prefix}`},
-      localSelection: selection.head + continued.length,
-      undoLabel: "Continue Callout",
+      change: {from: selection.head, to: selection.head, insert: `\n${continuedPrefix}`},
+      localSelection: selection.head + 1 + continuedPrefix.length,
+      undoLabel: nestedList ? "Continue List" : "Continue Callout",
     };
   });
   if (entries.some((entry) => entry === null)) return null;
@@ -66,8 +86,8 @@ export function continueCallout(
   return {
     changes: sorted.map((entry) => entry.change),
     selections: mapped,
-    undoLabel: accepted.every((entry) => entry.undoLabel === "Exit Callout")
-      ? "Exit Callout"
+    undoLabel: accepted.every((entry) => entry.undoLabel === accepted[0].undoLabel)
+      ? accepted[0].undoLabel
       : "Continue Callout",
   };
 }
@@ -85,8 +105,7 @@ export function continueList(source: InteractionSource, selections: SelectionRan
     if (content.trim().length === 0) {
       return {change: {from: bounds.from, to: bounds.from + prefix.length, insert: ""}, localSelection: bounds.from};
     }
-    const ordered = match[4] ? `${Number(match[4]) + 1}${match[5]}` : null;
-    const continued = `${match[1]}${ordered ?? (match[2] ? "- [ ] " : match[3])}`;
+    const continued = continuedListPrefix(match);
     return {change: {from: selection.head, to: selection.head, insert: `\n${continued}`}, localSelection: selection.head + 1 + continued.length};
   });
   if (entries.some((entry) => entry === null)) return null;

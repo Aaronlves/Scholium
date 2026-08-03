@@ -99,6 +99,16 @@ export function createSelectionActionsController(options: {
     }
   }
 
+  function synchronizeKeyboardFocusFeedback(target: EventTarget | null) {
+    if (!root) return;
+    for (const element of root.querySelectorAll(".scholium-selection-keyboard-focus")) {
+      element.classList.remove("scholium-selection-keyboard-focus");
+    }
+    if (target instanceof HTMLButtonElement && root.contains(target)) {
+      target.classList.add("scholium-selection-keyboard-focus");
+    }
+  }
+
   function visibleToolbarControls() {
     if (!root) return [];
     return Array.from(root.querySelectorAll<HTMLButtonElement>(
@@ -339,20 +349,44 @@ export function createSelectionActionsController(options: {
       const main = selection.main;
       const from = Math.min(main.anchor, main.head);
       const to = Math.max(main.anchor, main.head);
-      const start = view.coordsAtPos(from, 1)
-        ?? view.coordsAtPos(Math.min(to, from + 1), -1);
-      const end = view.coordsAtPos(to, -1)
-        ?? view.coordsAtPos(Math.max(from, to - 1), 1)
-        ?? start;
-      if (!start || !end) return null;
-      const bounds = root.getBoundingClientRect();
-      return floatingSurfacePosition({
-        anchor: {
+      let anchor: {left: number; right: number; top: number; bottom: number} | null = null;
+      for (const element of view.contentDOM.querySelectorAll<HTMLElement>(
+        ".cm-scholium-selected-text",
+      )) {
+        for (const rectangle of element.getClientRects()) {
+          if (rectangle.width <= 0 || rectangle.height <= 0) continue;
+          anchor = anchor
+            ? {
+                left: Math.min(anchor.left, rectangle.left),
+                right: Math.max(anchor.right, rectangle.right),
+                top: Math.min(anchor.top, rectangle.top),
+                bottom: Math.max(anchor.bottom, rectangle.bottom),
+              }
+            : {
+                left: rectangle.left,
+                right: rectangle.right,
+                top: rectangle.top,
+                bottom: rectangle.bottom,
+              };
+        }
+      }
+      if (!anchor) {
+        const start = view.coordsAtPos(from, 1)
+          ?? view.coordsAtPos(Math.min(to, from + 1), -1);
+        const end = view.coordsAtPos(to, -1)
+          ?? view.coordsAtPos(Math.max(from, to - 1), 1)
+          ?? start;
+        if (!start || !end) return null;
+        anchor = {
           left: Math.min(start.left, end.left),
           right: Math.max(start.right, end.right),
           top: Math.min(start.top, end.top),
           bottom: Math.max(start.bottom, end.bottom),
-        },
+        };
+      }
+      const bounds = root.getBoundingClientRect();
+      return floatingSurfacePosition({
+        anchor,
         surface: bounds,
         viewport: {width: window.innerWidth, height: window.innerHeight},
         horizontal: "center",
@@ -428,8 +462,12 @@ export function createSelectionActionsController(options: {
     root.hidden = true;
     root.dataset.scholiumProtected = "selection-actions";
     root.addEventListener("mousedown", (event) => event.preventDefault());
-    root.addEventListener("focusin", clearFocusExitTimer);
+    root.addEventListener("focusin", (event) => {
+      clearFocusExitTimer();
+      synchronizeKeyboardFocusFeedback(event.target);
+    });
     root.addEventListener("focusout", () => {
+      window.queueMicrotask(() => synchronizeKeyboardFocusFeedback(document.activeElement));
       if (activeView) scheduleFocusExit(activeView);
     });
 
@@ -612,6 +650,7 @@ export function createSelectionActionsController(options: {
     supersedePositionRequest();
     if (!root || (root.hidden && activeView === null)) return;
     closeMenus();
+    synchronizeKeyboardFocusFeedback(null);
     root.hidden = true;
     activeView = null;
     presentedDocument = null;

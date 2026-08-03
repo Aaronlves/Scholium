@@ -46,7 +46,7 @@ describe("appendMarkdownBlocks", () => {
     const root = document.querySelector<HTMLElement>("#root")!;
     const source = [
       "> [!state] Main claim",
-      "> Body with $x^2$ and [[work-031|a linked note]].",
+      "> Body with $x^2$, [[work-031|a linked note]], and +[[analysis-001|support]].",
       "",
       "| Formula | Status |",
       "|:---|---:|",
@@ -67,7 +67,7 @@ describe("appendMarkdownBlocks", () => {
         label: rawKind === "state" ? "Statement" : "Note",
         meaning: "Semantic role",
       }),
-      resolveVectorLink: () => "neutral",
+      resolveVectorLink: (marker) => marker === "+" ? "supports" : "neutral",
       sourceOffset: (offset) => 100 + offset,
     });
 
@@ -85,6 +85,19 @@ describe("appendMarkdownBlocks", () => {
     expect(calloutLink?.dataset.scholiumLinkTarget).toBe("work-031");
     expect(Number(calloutLink?.dataset.scholiumSourceFrom))
       .toBe(100 + source.indexOf("[[work-031|a linked note]]"));
+    expect(Number(calloutLink?.dataset.scholiumSourceCaret))
+      .toBe(100 + source.indexOf("[[work-031|a linked note]]")
+        + "[[work-031|a linked note]]".length);
+    const calloutLinkIcons = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        ".scholium-callout-content .cm-live-vector-icon",
+      ),
+    );
+    expect(calloutLinkIcons.map((icon) => icon.dataset.scholiumSystemSymbol))
+      .toEqual(["link", "plus-circle"]);
+    expect(calloutLinkIcons.map((icon) => icon.getAttribute("aria-label")))
+      .toEqual(["Related note", "Supports"]);
+    expect(calloutLinkIcons.every((icon) => icon.querySelector("svg") === null)).toBe(true);
     expect(root.querySelectorAll("table.scholium-table th")).toHaveLength(2);
     expect([...root.querySelectorAll("table.scholium-table th, table.scholium-table td")]
       .every((cell) => cell.getAttribute("dir") === "auto")).toBe(true);

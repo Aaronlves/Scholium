@@ -55,8 +55,11 @@ effect of revealing syntax. Pointer-drag selection updates the authoritative
 selection continuously but holds the visual Markdown projection stable until
 pointer release; a discrete triple-click paragraph selection may reveal its
 selected constructs immediately. A direct click on a rendered link reveals
-that link's source, while Control-click and Command-click activate the target
-without moving the caret.
+that link's source with the collapsed caret immediately after its exact closing
+marker. The first keyboard move into an inactive rendered link lands at that
+same trailing boundary; one further backward move enters the now-visible exact
+syntax. Control-click and Command-click instead activate the target without
+moving the caret.
 
 Review and Edit use one stable marker track and nesting step for unordered,
 ordered, and task lists. Edit keeps the semantic marker projected while the
@@ -107,10 +110,14 @@ role markers; a nonempty selection exposes only the physical lines it intersects
 Every other line keeps its construct-scoped projection.
 
 Return on a nonempty Callout line inserts a newline with that line's exact
-quote prefix. Return on an otherwise empty line containing only `>` plus
-optional spacing removes that prefix and exits the Callout. Each operation is
-one CodeMirror transaction and one Undo event. Source remains ordinary exact
-text and applies neither continuation rule nor Edit projection.
+quote prefix. When that line is a list item, the same transaction additionally
+continues its current indentation, list kind, task form, and ordered-list
+sequence inside the Callout. Return on an empty quoted list item removes only
+its list prefix and leaves the empty quoted line; Return on that line containing
+only `>` plus optional spacing then removes the quote prefix and exits the
+Callout. Each operation is one CodeMirror transaction and one Undo event.
+Source remains ordinary exact text and applies neither continuation rule nor
+Edit projection.
 
 An inactive Edit callout atomically projects one half-open source range, but
 the insertion point immediately after its last content character remains

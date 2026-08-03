@@ -152,6 +152,31 @@ struct SafeMarkdownRendererTests {
         #expect(!rendered.contains("[!state]"))
     }
 
+    @Test("Links inside callouts retain document-level source locations")
+    func calloutLinkSourceLocations() {
+        let source = """
+        Prelude.
+
+        > [!connect] Curated connections
+        > - [[Target]]
+        > - +[[Support]]
+        """
+        let document = NoteDocument(relativePath: "callout-links.md", rawContent: source)
+        let result = SafeMarkdownRenderer.render(document)
+
+        #expect(result.semanticDocument.links.count == 2)
+        for link in result.semanticDocument.links {
+            #expect(result.htmlBody.contains(
+                "data-source-utf16-start=\"\(link.span.utf16LowerBound)\" "
+                    + "data-source-utf16-end=\"\(link.span.utf16UpperBound)\""
+            ))
+        }
+        #expect(result.htmlBody.contains("href=\"scholium-note:Target\""))
+        #expect(result.htmlBody.contains("href=\"scholium-note:Support\""))
+        #expect(result.htmlBody.contains("class=\"wiki-link scholium-vector\""))
+        #expect(result.htmlBody.contains("data-vector-kind=\"supports\""))
+    }
+
     @Test("Callout fold markers select expanded or collapsed Read state")
     func calloutFolding() {
         let expanded = SafeMarkdownRenderer.render(

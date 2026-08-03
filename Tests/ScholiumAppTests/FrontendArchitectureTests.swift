@@ -3375,6 +3375,7 @@ struct FrontendArchitectureTests {
             #"id="comment-selection" class="scholium-selection-control""#
         ))
         #expect(readHTML.contains(#"class="scholium-selection-label">Comment"#))
+        #expect(readHTML.contains("scholium-selection-keyboard-focus"))
         #expect(readHTML.contains("ResolveCommentSubmission"))
         #expect(readHTML.contains("Your Comment is still here"))
         #expect(readHTML.contains(
@@ -3416,6 +3417,7 @@ struct FrontendArchitectureTests {
             #"addMenuItem(moreMenu, "Comment", "markdownComment", "", false, "eye-slash")"#
         ))
         #expect(selectionActionsSource.contains("systemSymbolElement"))
+        #expect(selectionActionsSource.contains("synchronizeKeyboardFocusFeedback"))
         #expect(!selectionActionsSource.contains("createElementNS"))
         #expect(!selectionActionsSource.contains("[["))
         #expect(!selectionActionsSource.contains("%%"))
@@ -3428,6 +3430,18 @@ struct FrontendArchitectureTests {
         ))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             "border: 1px solid var(--scholium-color-separator)"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-selection-control:hover,"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".scholium-selection-menu-item:focus,"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            ".cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover,"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "background: var(--scholium-color-raised-surface-background)"
         ))
         #expect(!ScholiumWebDesignTokens.documentPresentationCSS.contains(
             ".scholium-selection-actions {\n      backdrop-filter"

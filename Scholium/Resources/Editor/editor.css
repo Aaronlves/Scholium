@@ -210,10 +210,6 @@ body,
   text-align: start;
 }
 
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-header:not(.cm-live-callout-orient-source) {
-  font-weight: 650;
-}
-
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-orient-source {
   font-weight: inherit;
 }

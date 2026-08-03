@@ -21420,6 +21420,10 @@ ${fence}`;
   function listPrefix(line) {
     return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
   }
+  function continuedListPrefix(match) {
+    const ordered = match[4] ? `${Number(match[4]) + 1}${match[5]}` : null;
+    return `${match[1]}${ordered ?? (match[2] ? "- [ ] " : match[3])}`;
+  }
   function calloutQuotePrefix(line) {
     return /^(\s*>[ \t]?)/.exec(line);
   }
@@ -21438,20 +21442,32 @@ ${fence}`;
       const bounds = document2.lineAt(selection.head);
       const prefix = calloutQuotePrefix(bounds.text)?.[1];
       if (!prefix || !lineBelongsToCallout(document2, bounds.number)) return null;
-      if (bounds.text.slice(prefix.length).trim().length === 0) {
+      const quotedContent = bounds.text.slice(prefix.length);
+      const nestedList = listPrefix(quotedContent);
+      if (nestedList && quotedContent.slice(nestedList[0].length).trim().length === 0) {
+        return {
+          change: {
+            from: bounds.from + prefix.length,
+            to: bounds.from + prefix.length + nestedList[0].length,
+            insert: ""
+          },
+          localSelection: bounds.from + prefix.length,
+          undoLabel: "Exit List"
+        };
+      }
+      if (quotedContent.trim().length === 0) {
         return {
           change: { from: bounds.from, to: bounds.from + prefix.length, insert: "" },
           localSelection: bounds.from,
           undoLabel: "Exit Callout"
         };
       }
-      const continued = `${prefix}
-`;
+      const continuedPrefix = nestedList ? `${prefix}${continuedListPrefix(nestedList)}` : prefix;
       return {
         change: { from: selection.head, to: selection.head, insert: `
-${prefix}` },
-        localSelection: selection.head + continued.length,
-        undoLabel: "Continue Callout"
+${continuedPrefix}` },
+        localSelection: selection.head + 1 + continuedPrefix.length,
+        undoLabel: nestedList ? "Continue List" : "Continue Callout"
       };
     });
     if (entries.some((entry) => entry === null)) return null;
@@ -21466,7 +21482,7 @@ ${prefix}` },
     return {
       changes: sorted.map((entry) => entry.change),
       selections: mapped,
-      undoLabel: accepted.every((entry) => entry.undoLabel === "Exit Callout") ? "Exit Callout" : "Continue Callout"
+      undoLabel: accepted.every((entry) => entry.undoLabel === accepted[0].undoLabel) ? accepted[0].undoLabel : "Continue Callout"
     };
   }
   function continueList(source, selections) {
@@ -21482,8 +21498,7 @@ ${prefix}` },
       if (content2.trim().length === 0) {
         return { change: { from: bounds.from, to: bounds.from + prefix.length, insert: "" }, localSelection: bounds.from };
       }
-      const ordered = match[4] ? `${Number(match[4]) + 1}${match[5]}` : null;
-      const continued = `${match[1]}${ordered ?? (match[2] ? "- [ ] " : match[3])}`;
+      const continued = continuedListPrefix(match);
       return { change: { from: selection.head, to: selection.head, insert: `
 ${continued}` }, localSelection: selection.head + 1 + continued.length };
     });
@@ -29356,8 +29371,12 @@ ${fence}
       if (character === 124 && separator < 0) separator = cursor;
       if (character === 93 && cx.char(cursor + 1) === 93) {
         const targetTo = separator < 0 ? cursor : separator;
-        if (cx.slice(contentFrom, targetTo).trim().length === 0) return null;
-        return { separator, closingFrom: cursor, to: cursor + 2 };
+        return {
+          separator,
+          closingFrom: cursor,
+          to: cursor + 2,
+          hasTarget: cx.slice(contentFrom, targetTo).trim().length > 0
+        };
       }
     }
     return null;
@@ -29366,6 +29385,7 @@ ${fence}
     const contentFrom = openingFrom + 2;
     const end = wikiLinkEnd(cx, contentFrom);
     if (!end) return -1;
+    if (!end.hasTarget) return end.to;
     const targetTo = end.separator < 0 ? end.closingFrom : end.separator;
     const children = [
       cx.elt(prefixName, from, contentFrom),
@@ -30939,8 +30959,8 @@ ${preview.fragment}` : relationship;
   }
 
   // system-symbols.ts
-  function systemSymbolElement(key, className = "") {
-    const symbol = document.createElement("span");
+  function systemSymbolElement(key, className = "", ownerDocument = document) {
+    const symbol = ownerDocument.createElement("span");
     symbol.className = `scholium-system-symbol ${className}`.trim();
     symbol.dataset.scholiumSystemSymbol = key;
     symbol.style.setProperty(
@@ -31351,6 +31371,15 @@ ${preview.fragment}` : relationship;
         if (!menu.parent) hideMenu(menu);
       }
     }
+    function synchronizeKeyboardFocusFeedback(target) {
+      if (!root) return;
+      for (const element of root.querySelectorAll(".scholium-selection-keyboard-focus")) {
+        element.classList.remove("scholium-selection-keyboard-focus");
+      }
+      if (target instanceof HTMLButtonElement && root.contains(target)) {
+        target.classList.add("scholium-selection-keyboard-focus");
+      }
+    }
     function visibleToolbarControls() {
       if (!root) return [];
       return Array.from(root.querySelectorAll(
@@ -31555,17 +31584,39 @@ ${preview.fragment}` : relationship;
         const main = selection.main;
         const from = Math.min(main.anchor, main.head);
         const to = Math.max(main.anchor, main.head);
-        const start = view.coordsAtPos(from, 1) ?? view.coordsAtPos(Math.min(to, from + 1), -1);
-        const end = view.coordsAtPos(to, -1) ?? view.coordsAtPos(Math.max(from, to - 1), 1) ?? start;
-        if (!start || !end) return null;
-        const bounds = root.getBoundingClientRect();
-        return floatingSurfacePosition({
-          anchor: {
+        let anchor = null;
+        for (const element of view.contentDOM.querySelectorAll(
+          ".cm-scholium-selected-text"
+        )) {
+          for (const rectangle of element.getClientRects()) {
+            if (rectangle.width <= 0 || rectangle.height <= 0) continue;
+            anchor = anchor ? {
+              left: Math.min(anchor.left, rectangle.left),
+              right: Math.max(anchor.right, rectangle.right),
+              top: Math.min(anchor.top, rectangle.top),
+              bottom: Math.max(anchor.bottom, rectangle.bottom)
+            } : {
+              left: rectangle.left,
+              right: rectangle.right,
+              top: rectangle.top,
+              bottom: rectangle.bottom
+            };
+          }
+        }
+        if (!anchor) {
+          const start = view.coordsAtPos(from, 1) ?? view.coordsAtPos(Math.min(to, from + 1), -1);
+          const end = view.coordsAtPos(to, -1) ?? view.coordsAtPos(Math.max(from, to - 1), 1) ?? start;
+          if (!start || !end) return null;
+          anchor = {
             left: Math.min(start.left, end.left),
             right: Math.max(start.right, end.right),
             top: Math.min(start.top, end.top),
             bottom: Math.max(start.bottom, end.bottom)
-          },
+          };
+        }
+        const bounds = root.getBoundingClientRect();
+        return floatingSurfacePosition({
+          anchor,
           surface: bounds,
           viewport: { width: window.innerWidth, height: window.innerHeight },
           horizontal: "center",
@@ -31633,8 +31684,12 @@ ${preview.fragment}` : relationship;
       root.hidden = true;
       root.dataset.scholiumProtected = "selection-actions";
       root.addEventListener("mousedown", (event) => event.preventDefault());
-      root.addEventListener("focusin", clearFocusExitTimer);
+      root.addEventListener("focusin", (event) => {
+        clearFocusExitTimer();
+        synchronizeKeyboardFocusFeedback(event.target);
+      });
       root.addEventListener("focusout", () => {
+        window.queueMicrotask(() => synchronizeKeyboardFocusFeedback(document.activeElement));
         if (activeView) scheduleFocusExit(activeView);
       });
       const commandBar = document.createElement("div");
@@ -31802,6 +31857,7 @@ ${preview.fragment}` : relationship;
       supersedePositionRequest();
       if (!root || root.hidden && activeView === null) return;
       closeMenus();
+      synchronizeKeyboardFocusFeedback(null);
       root.hidden = true;
       activeView = null;
       presentedDocument = null;
@@ -31982,6 +32038,12 @@ ${preview.fragment}` : relationship;
   }
 
   // markdown-fragment.ts
+  var vectorLinkSemantics = {
+    neutral: { label: "Related note", symbol: "link" },
+    supports: { label: "Supports", symbol: "plus-circle" },
+    opposes: { label: "Opposes", symbol: "minus-circle" },
+    incompatible: { label: "Incompatible", symbol: "xmark-circle" }
+  };
   var inlineMarkerNodes = /* @__PURE__ */ new Set([
     "EmphasisMark",
     "CodeMark",
@@ -32064,11 +32126,21 @@ ${preview.fragment}` : relationship;
       span.dir = "auto";
       const target = link[3].trim();
       const alias = link[4]?.trim();
-      span.textContent = alias || target;
-      const prefixLength = link[1].length + link[2].length + 2;
-      const aliasMarker = raw.indexOf("|");
-      const caret = cursor.from + (aliasMarker >= 0 ? aliasMarker + 1 : prefixLength);
-      identifyProjectedLink(span, target, cursor.from, cursor.to, caret, options);
+      if (!embed) {
+        const semantics = vectorLinkSemantics[kind];
+        const icon = systemSymbolElement(
+          semantics.symbol,
+          `cm-live-vector-icon cm-live-vector-icon-${kind.replaceAll("_", "-")}`,
+          document2
+        );
+        icon.title = semantics.label;
+        icon.removeAttribute("aria-hidden");
+        icon.setAttribute("role", "img");
+        icon.setAttribute("aria-label", semantics.label);
+        span.append(icon);
+      }
+      span.append(document2.createTextNode(alias || target));
+      identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
       parent.append(span);
       return;
     }
@@ -33183,12 +33255,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       () => "var(--scholium-list-indent)"
     ).join(" + ")})`;
   }
-  var vectorLinkSemantics = {
-    neutral: { label: "Related note", symbol: "link" },
-    supports: { label: "Supports", symbol: "plus-circle" },
-    opposes: { label: "Opposes", symbol: "minus-circle" },
-    incompatible: { label: "Incompatible", symbol: "xmark-circle" }
-  };
   var VectorLinkIconWidget = class extends WidgetType {
     kind;
     constructor(kind) {
@@ -33435,13 +33501,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function projectedWidgetSourceOffset(event) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target || target.closest(".scholium-callout-fold-mark")) return null;
+    const projectedLink = target.closest("[data-scholium-source-caret]");
+    const requestedLinkCaret = Number(projectedLink?.dataset.scholiumSourceCaret);
+    if (Number.isSafeInteger(requestedLinkCaret)) return requestedLinkCaret;
     const calloutSlot = target.closest(".cm-live-callout-slot");
     const callout = calloutSlot ? calloutWidgetPresentations.get(calloutSlot) : void 0;
     if (callout) {
-      const projectedLink = target.closest("[data-scholium-source-caret]");
-      const requested = Number(projectedLink?.dataset.scholiumSourceCaret);
-      const sourceOffset = Number.isSafeInteger(requested) ? Math.max(callout.from, Math.min(callout.to, requested)) : callout.to;
-      return sourceOffset;
+      return callout.to;
     }
     const table = target.closest(".cm-live-table-widget");
     const tablePresentation2 = table ? tableWidgetPresentations.get(table) : void 0;
@@ -34071,6 +34137,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
         classes.add("cm-live-callout-start");
         classes.add("cm-live-callout-header");
+        classes.add(`cm-live-callout-role-${calloutIdentifier ?? "neutral"}`);
       } else {
         classes.add("cm-live-callout-body-line");
       }
@@ -34081,6 +34148,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     if (codeBlock) {
       classes.add("cm-live-codeblock");
+      if (codeBlockActive) classes.add("cm-live-codeblock-active");
       if (!codeBlockActive && isFencedDelimiterLine(state.doc, codeBlock, line.from)) {
         classes.add("cm-live-code-fence-line");
       } else {
@@ -34426,11 +34494,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const addMark = (from, to, className) => {
       if (to > from) decorations2.push(liveMark(className).range(from, to));
     };
-    const addPreviewMark = (from, to, className, previewIndex) => {
+    const addPreviewMark = (from, to, className, previewIndex, attributes = {}) => {
       if (to <= from) return;
       decorations2.push(Decoration.mark({
         class: className,
         attributes: {
+          ...attributes,
           "data-link-preview-index": String(previewIndex),
           "data-scholium-protected": "link-preview-anchor"
         }
@@ -34482,8 +34551,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             const codeBlockActive = projectionSelections.some((range) => selectionIntersectsProjection(range, semanticCodeBlock));
             if (fenceLine && !codeBlockActive) {
               addHidden(line.from, line.to);
-            } else if (!fenceLine) {
-              addMark(scanFrom, scanTo, "cm-live-code");
             }
             if (line.to === doc2.length) break;
             line = doc2.line(line.number + 1);
@@ -34519,6 +34586,19 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
                   markerTo += 1;
                 }
                 addHidden(Math.max(line.from, marker.from), markerTo);
+              }
+            }
+            if (parsedCallout && parsedCallout.from === line.from) {
+              const opening = calloutHeader(doc2.sliceString(line.from, line.to));
+              const authoredTitle = opening?.[4] ?? "";
+              const roleIdentifier = opening ? calloutDefinition(opening[2]).identifier : "neutral";
+              if (roleIdentifier !== "orient" && authoredTitle.length > 0) {
+                const titleFrom = line.to - authoredTitle.length;
+                addMark(
+                  Math.max(scanFrom, titleFrom),
+                  Math.min(scanTo, line.to),
+                  "scholium-callout-title"
+                );
               }
             }
           }
@@ -34624,12 +34704,25 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               );
             }
             const linkClass = embed ? "cm-live-embed" : presentation.isLegacyRelationship && kind === "neutral" ? "cm-live-vector-link cm-live-vector-neutral cm-live-vector-legacy" : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
+            const projectedLinkAttributes = {
+              "data-scholium-link-target": target,
+              "data-scholium-source-caret": String(construct.to)
+            };
             addHidden(targetRange.from, presentation.displayStart);
             const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
             if (previewIndex === void 0) {
-              addMark(presentation.displayStart, presentation.displayEnd, linkClass);
+              decorations2.push(Decoration.mark({
+                class: linkClass,
+                attributes: projectedLinkAttributes
+              }).range(presentation.displayStart, presentation.displayEnd));
             } else {
-              addPreviewMark(presentation.displayStart, presentation.displayEnd, linkClass, previewIndex);
+              addPreviewMark(
+                presentation.displayStart,
+                presentation.displayEnd,
+                linkClass,
+                previewIndex,
+                projectedLinkAttributes
+              );
             }
             addHidden(presentation.displayEnd, construct.to);
           }
@@ -35033,10 +35126,16 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       offset,
       boundary
     );
+    const inlineLinkRange = projectionRangeAtBoundary(
+      index.syntax.inlines.filter((candidate) => candidate.kind === "wikilink" || candidate.kind === "vectorLink"),
+      offset,
+      boundary
+    );
     const candidates = [
       blockRange,
       listPrefixRange ? { ...listPrefixRange, kind: "listPrefix" } : null,
-      mermaidRange ? { ...mermaidRange, kind: "mermaid" } : null
+      mermaidRange ? { ...mermaidRange, kind: "mermaid" } : null,
+      inlineLinkRange
     ].filter((candidate) => candidate !== null);
     return candidates.sort(
       (left, right) => left.from - right.from || left.to - right.to
@@ -35101,8 +35200,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     );
     if (!projection) return false;
     const alreadyActive = projection.kind === "callout" ? selectionActivatesCallout(selection, projection) : selectionIntersectsProjection(selection, projection);
-    if (alreadyActive) return false;
-    const head = forward ? projection.from : projection.kind === "callout" ? projection.to : Math.max(projection.from, projection.to - 1);
+    const isProjectedLink = projection.kind === "wikilink" || projection.kind === "vectorLink";
+    if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
+      return false;
+    }
+    const head = forward ? isProjectedLink ? projection.to : projection.from : projection.kind === "callout" ? projection.to : Math.max(projection.from, projection.to - 1);
     view.dispatch({
       selection: { anchor: extend ? selection.anchor : head, head },
       scrollIntoView: true
@@ -35232,6 +35334,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     closeBrackets(),
     rectangularSelection(),
     EditorView.perLineTextDirection.of(true),
+    // Share Markdown's high precedence while preceding its generic list
+    // continuation. Scholium must compose the Callout quote and nested list
+    // prefixes before the base Markdown command can consume Return.
+    Prec.high(structuralInteractionKeymap),
     scholiumNoteLanguage,
     keymap.of([
       ...closeBracketsKeymap,
@@ -35239,7 +35345,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ...historyKeymap,
       ...foldKeymap
     ]),
-    Prec.high(structuralInteractionKeymap),
     saveKeymap,
     editorContextMenu,
     stateReporter,

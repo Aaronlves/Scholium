@@ -30,8 +30,12 @@ function wikiLinkEnd(cx: InlineContext, contentFrom: number) {
     if (character === 0x7c && separator < 0) separator = cursor;
     if (character === 0x5d && cx.char(cursor + 1) === 0x5d) {
       const targetTo = separator < 0 ? cursor : separator;
-      if (cx.slice(contentFrom, targetTo).trim().length === 0) return null;
-      return {separator, closingFrom: cursor, to: cursor + 2};
+      return {
+        separator,
+        closingFrom: cursor,
+        to: cursor + 2,
+        hasTarget: cx.slice(contentFrom, targetTo).trim().length > 0,
+      };
     }
   }
   return null;
@@ -47,6 +51,11 @@ function addWikiLink(
   const contentFrom = openingFrom + 2;
   const end = wikiLinkEnd(cx, contentFrom);
   if (!end) return -1;
+  // Consume an auto-closed empty placeholder as ordinary exact text. Without
+  // this handoff, the base Markdown Link parser interprets `[[]]` as a nested
+  // empty label and Live Preview hides its outer brackets before a target is
+  // typed. No syntax node is added, so completion remains free to own input.
+  if (!end.hasTarget) return end.to;
   const targetTo = end.separator < 0 ? end.closingFrom : end.separator;
   const children = [
     cx.elt(prefixName, from, contentFrom),

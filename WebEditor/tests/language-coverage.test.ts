@@ -52,6 +52,13 @@ describe("complete note-language coverage", () => {
     ]) expect(names).not.toContain(name);
   });
 
+  it("keeps an auto-closed empty Wikilink placeholder as ordinary exact text", () => {
+    const names = namesFor("[[]]");
+    expect(names).not.toContain("WikiLink");
+    expect(names).not.toContain("VectorLink");
+    expect(names).not.toContain("Link");
+  });
+
   it("types only structurally unclosed block constructs for fail-closed diagnostics", () => {
     expect(namesFor("$$\nx + y")).toContain("UnclosedBlockMath");
     expect(namesFor("%%\nhidden")).toContain("UnclosedObsidianCommentBlock");

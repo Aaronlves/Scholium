@@ -123,7 +123,7 @@ import {
   selectionActionCommands,
   type SelectionActionCommand,
 } from "./selection-actions";
-import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
+import {systemSymbolElement} from "./system-symbols";
 import {
   AnimationFrameCoalescer,
   interactionAvailabilitySignature,
@@ -140,7 +140,11 @@ import {
   mermaidPresentation,
   type MermaidPresentation,
 } from "./mermaid-presentation";
-import {appendMarkdownBlocks, createTableDOM} from "./markdown-fragment";
+import {
+  appendMarkdownBlocks,
+  createTableDOM,
+  vectorLinkSemantics,
+} from "./markdown-fragment";
 import {validatedLinkPreviews, type LinkPreview, type VectorLinkKind} from "./previews";
 import {
   createLiveSelectionController,
@@ -416,16 +420,6 @@ function listIndent(depth: number) {
   ).join(" + ")})`;
 }
 
-const vectorLinkSemantics: Record<
-  VectorLinkKind,
-  {label: string; symbol: WebSystemSymbolKey}
-> = {
-  neutral: { label: "Related note", symbol: "link" },
-  supports: { label: "Supports", symbol: "plus-circle" },
-  opposes: { label: "Opposes", symbol: "minus-circle" },
-  incompatible: { label: "Incompatible", symbol: "xmark-circle" },
-};
-
 class VectorLinkIconWidget extends WidgetType {
   readonly kind: VectorLinkKind;
   constructor(kind: VectorLinkKind) { super(); this.kind = kind; }
@@ -697,15 +691,14 @@ function projectedWidgetSourceOffset(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
   if (!target || target.closest(".scholium-callout-fold-mark")) return null;
 
+  const projectedLink = target.closest<HTMLElement>("[data-scholium-source-caret]");
+  const requestedLinkCaret = Number(projectedLink?.dataset.scholiumSourceCaret);
+  if (Number.isSafeInteger(requestedLinkCaret)) return requestedLinkCaret;
+
   const calloutSlot = target.closest<HTMLElement>(".cm-live-callout-slot");
   const callout = calloutSlot ? calloutWidgetPresentations.get(calloutSlot) : undefined;
   if (callout) {
-    const projectedLink = target.closest<HTMLElement>("[data-scholium-source-caret]");
-    const requested = Number(projectedLink?.dataset.scholiumSourceCaret);
-    const sourceOffset = Number.isSafeInteger(requested)
-      ? Math.max(callout.from, Math.min(callout.to, requested))
-      : callout.to;
-    return sourceOffset;
+    return callout.to;
   }
 
   const table = target.closest<HTMLElement>(".cm-live-table-widget");
@@ -1500,6 +1493,7 @@ function semanticLinePresentation(
     if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
       classes.add("cm-live-callout-start");
       classes.add("cm-live-callout-header");
+      classes.add(`cm-live-callout-role-${calloutIdentifier ?? "neutral"}`);
     } else {
       classes.add("cm-live-callout-body-line");
     }
@@ -1510,6 +1504,7 @@ function semanticLinePresentation(
   }
   if (codeBlock) {
     classes.add("cm-live-codeblock");
+    if (codeBlockActive) classes.add("cm-live-codeblock-active");
     if (!codeBlockActive && isFencedDelimiterLine(state.doc, codeBlock, line.from)) {
       classes.add("cm-live-code-fence-line");
     } else {
@@ -1927,11 +1922,18 @@ function buildLiveDecorations(
   const addMark = (from: number, to: number, className: string) => {
     if (to > from) decorations.push(liveMark(className).range(from, to));
   };
-  const addPreviewMark = (from: number, to: number, className: string, previewIndex: number) => {
+  const addPreviewMark = (
+    from: number,
+    to: number,
+    className: string,
+    previewIndex: number,
+    attributes: Record<string, string> = {},
+  ) => {
     if (to <= from) return;
     decorations.push(Decoration.mark({
       class: className,
       attributes: {
+        ...attributes,
         "data-link-preview-index": String(previewIndex),
         "data-scholium-protected": "link-preview-anchor",
       },
@@ -1994,8 +1996,6 @@ function buildLiveDecorations(
             selectionIntersectsProjection(range, semanticCodeBlock));
           if (fenceLine && !codeBlockActive) {
             addHidden(line.from, line.to);
-          } else if (!fenceLine) {
-            addMark(scanFrom, scanTo, "cm-live-code");
           }
           if (line.to === doc.length) break;
           line = doc.line(line.number + 1);
@@ -2045,6 +2045,21 @@ function buildLiveDecorations(
                 markerTo += 1;
               }
               addHidden(Math.max(line.from, marker.from), markerTo);
+            }
+          }
+          if (parsedCallout && parsedCallout.from === line.from) {
+            const opening = calloutHeader(doc.sliceString(line.from, line.to));
+            const authoredTitle = opening?.[4] ?? "";
+            const roleIdentifier = opening
+              ? calloutDefinition(opening[2]).identifier
+              : "neutral";
+            if (roleIdentifier !== "orient" && authoredTitle.length > 0) {
+              const titleFrom = line.to - authoredTitle.length;
+              addMark(
+                Math.max(scanFrom, titleFrom),
+                Math.min(scanTo, line.to),
+                "scholium-callout-title",
+              );
             }
           }
         }
@@ -2196,12 +2211,25 @@ function buildLiveDecorations(
             : presentation.isLegacyRelationship && kind === "neutral"
               ? "cm-live-vector-link cm-live-vector-neutral cm-live-vector-legacy"
               : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
+          const projectedLinkAttributes = {
+            "data-scholium-link-target": target,
+            "data-scholium-source-caret": String(construct.to),
+          };
           addHidden(targetRange.from, presentation.displayStart);
           const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
           if (previewIndex === undefined) {
-            addMark(presentation.displayStart, presentation.displayEnd, linkClass);
+            decorations.push(Decoration.mark({
+              class: linkClass,
+              attributes: projectedLinkAttributes,
+            }).range(presentation.displayStart, presentation.displayEnd));
           } else {
-            addPreviewMark(presentation.displayStart, presentation.displayEnd, linkClass, previewIndex);
+            addPreviewMark(
+              presentation.displayStart,
+              presentation.displayEnd,
+              linkClass,
+              previewIndex,
+              projectedLinkAttributes,
+            );
           }
           addHidden(presentation.displayEnd, construct.to);
         }
@@ -2680,10 +2708,17 @@ function liveHorizontalNavigationRangeAt(
     offset,
     boundary,
   );
+  const inlineLinkRange = projectionRangeAtBoundary(
+    index.syntax.inlines.filter((candidate) =>
+      candidate.kind === "wikilink" || candidate.kind === "vectorLink"),
+    offset,
+    boundary,
+  );
   const candidates = [
     blockRange,
     listPrefixRange ? {...listPrefixRange, kind: "listPrefix" as const} : null,
     mermaidRange ? {...mermaidRange, kind: "mermaid" as const} : null,
+    inlineLinkRange,
   ].filter((candidate) => candidate !== null);
   return candidates.sort((left, right) =>
     left.from - right.from || left.to - right.to,
@@ -2767,9 +2802,16 @@ function revealProjectedBlockForHorizontalMove(
   const alreadyActive = projection.kind === "callout"
     ? selectionActivatesCallout(selection, projection)
     : selectionIntersectsProjection(selection, projection);
-  if (alreadyActive) return false;
+  const isProjectedLink = projection.kind === "wikilink" || projection.kind === "vectorLink";
+  // The start boundary is ordinarily considered part of an inline construct.
+  // For a projected Wikilink, however, the first forward keyboard move treats
+  // the visible link as one object and lands after `]]`. A following backward
+  // move from that exact end still enters the authored closing syntax.
+  if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
+    return false;
+  }
   const head = forward
-    ? projection.from
+    ? isProjectedLink ? projection.to : projection.from
     : projection.kind === "callout" ? projection.to : Math.max(projection.from, projection.to - 1);
   view.dispatch({
     selection: {anchor: extend ? selection.anchor : head, head},
@@ -2924,6 +2966,10 @@ const editorExtensions = [
       closeBrackets(),
       rectangularSelection(),
       EditorView.perLineTextDirection.of(true),
+      // Share Markdown's high precedence while preceding its generic list
+      // continuation. Scholium must compose the Callout quote and nested list
+      // prefixes before the base Markdown command can consume Return.
+      Prec.high(structuralInteractionKeymap),
       scholiumNoteLanguage,
       keymap.of([
         ...closeBracketsKeymap,
@@ -2931,7 +2977,6 @@ const editorExtensions = [
         ...historyKeymap,
         ...foldKeymap,
       ]),
-      Prec.high(structuralInteractionKeymap),
       saveKeymap,
       editorContextMenu,
       stateReporter,

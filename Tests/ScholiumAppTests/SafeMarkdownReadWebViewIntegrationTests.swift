@@ -1049,6 +1049,63 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review link previews open inside callouts")
+    func reviewCalloutLinkPreviews() async throws {
+        let source = """
+        > [!connect] Curated connections
+        > - [[Target]]
+        > - +[[Support]]
+        """
+        let document = NoteDocument(relativePath: "CalloutPreviews.md", rawContent: source)
+        let rendered = SafeMarkdownRenderer.render(document)
+        let links = rendered.semanticDocument.links
+        #expect(links.count == 2)
+        guard links.count == 2 else { return }
+
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: rendered.htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.updateLinkPreviews([
+            Self.linkPreview(
+                at: links[0].span,
+                title: "Target note",
+                relationship: .neutral
+            ),
+            Self.linkPreview(
+                at: links[1].span,
+                title: "Supporting note",
+                relationship: .supports
+            ),
+        ], revision: "callout-links-1")
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        var titles: [String] = []
+        while titles != ["Target note", "Supporting note"] {
+            titles = try await harness.callPageJavaScript(
+                """
+                return [...document.querySelectorAll('.scholium-callout a.wiki-link')].map(link => {
+                  link.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
+                  return document.querySelector('.scholium-preview-title')?.textContent || '';
+                });
+                """
+            ) as? [String] ?? []
+            if clock.now >= deadline {
+                Issue.record("Review did not resolve callout link previews from document source ranges.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(titles == ["Target note", "Supporting note"])
+        await harness.closeAndDrain()
+    }
+
     @Test("Review Vector Links use only native SF Symbol masks")
     func reviewVectorLinksUseSystemSymbols() async throws {
         let source = "+[[Support]] -[[Oppose]] ?[[Conflict]] [[Related]]\n"
@@ -1495,8 +1552,8 @@ extension MarkdownEditorWebViewIntegrationTests {
     }
 
     private static func linkPreview(atUTF16 offset: Int) -> DocumentLinkPreview {
-        DocumentLinkPreview(
-            sourceSpan: SourceSpan(
+        linkPreview(
+            at: SourceSpan(
                 utf8LowerBound: offset,
                 utf8UpperBound: offset + 10,
                 utf16LowerBound: offset,
@@ -1504,10 +1561,22 @@ extension MarkdownEditorWebViewIntegrationTests {
                 start: SourcePosition(line: 1, utf8Column: 1, utf16Column: 1),
                 end: SourcePosition(line: 1, utf8Column: 11, utf16Column: 11)
             ),
+            title: "Target note",
+            relationship: .neutral
+        )
+    }
+
+    private static func linkPreview(
+        at span: SourceSpan,
+        title: String,
+        relationship: VectorLinkKind
+    ) -> DocumentLinkPreview {
+        DocumentLinkPreview(
+            sourceSpan: span,
             target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
             targetFingerprint: DocumentFingerprint(content: "Target body"),
-            title: "Target note",
-            relationship: .neutral,
+            title: title,
+            relationship: relationship,
             fragment: nil,
             htmlBody: "<p>Target body</p>"
         )

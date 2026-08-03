@@ -1318,6 +1318,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const commentHelp = document.getElementById('comment-help');
                 const qaCommentSubmit = document.getElementById('qa-submit-comment');
                 const defaultCommentHelpText = 'Return saves · Shift-Return adds a line · Escape cancels';
+                const synchronizeSelectionKeyboardFocus = target => {
+                  commentButton.classList.toggle(
+                    'scholium-selection-keyboard-focus',
+                    target === commentButton
+                  );
+                };
+                selectionActions.addEventListener('focusin', event => {
+                  synchronizeSelectionKeyboardFocus(event.target);
+                });
+                selectionActions.addEventListener('focusout', () => {
+                  queueMicrotask(() => synchronizeSelectionKeyboardFocus(document.activeElement));
+                });
                 const resizeCommentText = () => {
                   commentText.style.height = 'auto';
                   commentText.style.height = Math.min(

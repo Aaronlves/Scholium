@@ -244,7 +244,8 @@
 }
 
 .scholium-callout-cite .scholium-callout-role,
-.scholium-callout-cite .scholium-callout-title {
+.scholium-callout-cite .scholium-callout-title,
+.cm-live-callout-role-cite .scholium-callout-title {
   font-size: 104%;
   font-weight: 650;
 }
@@ -279,7 +280,8 @@
 }
 
 .scholium-callout-connect .scholium-callout-role,
-.scholium-callout-connect .scholium-callout-title {
+.scholium-callout-connect .scholium-callout-title,
+.cm-live-callout-role-connect .scholium-callout-title {
   font-size: 100%;
   font-style: italic;
   font-weight: 550;
@@ -314,7 +316,8 @@
 
 /* Statement — supplied title and first paragraph begin on the same line. */
 .scholium-callout-state .scholium-callout-role,
-.scholium-callout-state .scholium-callout-title {
+.scholium-callout-state .scholium-callout-title,
+.cm-live-callout-role-state .scholium-callout-title {
   font-size: 100%;
   font-weight: 700;
 }
@@ -354,7 +357,8 @@ details.scholium-callout-state .scholium-callout-body {
 
 /* Illustration — a title column and a content column, without a separator. */
 .scholium-callout-illustrate .scholium-callout-role,
-.scholium-callout-illustrate .scholium-callout-title {
+.scholium-callout-illustrate .scholium-callout-title,
+.cm-live-callout-role-illustrate .scholium-callout-title {
   font-size: 100%;
   font-style: italic;
   font-weight: 600;
@@ -385,7 +389,8 @@ aside.scholium-callout-illustrate .scholium-callout-body {
 
 /* Quotation — source wording first, supplied attribution at lower right. */
 .scholium-callout-quote .scholium-callout-role,
-.scholium-callout-quote .scholium-callout-title {
+.scholium-callout-quote .scholium-callout-title,
+.cm-live-callout-role-quote .scholium-callout-title {
   font: 600 82%/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: .02em;
 }
@@ -430,14 +435,16 @@ aside.scholium-callout-quote .scholium-callout-body {
 }
 
 .scholium-callout-flag .scholium-callout-role,
-.scholium-callout-flag .scholium-callout-title {
+.scholium-callout-flag .scholium-callout-title,
+.cm-live-callout-role-flag .scholium-callout-title {
   font: 700 84%/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: .025em;
 }
 
 /* Unknown identifiers stay deliberately neutral and claim no visual role. */
 .scholium-callout-neutral .scholium-callout-role,
-.scholium-callout-neutral .scholium-callout-title {
+.scholium-callout-neutral .scholium-callout-title,
+.cm-live-callout-role-neutral .scholium-callout-title {
   color: var(--scholium-callout-secondary-ink);
   font-size: 100%;
   font-style: italic;
