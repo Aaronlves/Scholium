@@ -13,13 +13,14 @@ Discuss, Analyze, Synthesize, Write, Critique, Content Fidelity, and optional
 Manuscript each declare exactly one public Action and one retained protected
 Function. Discuss method prose is separate from its automatic Discussion
 protocol. Catalog metadata also exposes capabilities—including
-`bibliography-recommendation`—and citation styles while retaining modes only
-for internal package assembly.
+bounded Zotero integration—and citation styles while retaining modes only for
+internal package assembly. Literature Recommendations are part of the Analyze
+completion contract and require no catalog capability or separate Method.
 
 Function-keyed Method activation and its Settings contracts are retired. No
 current decoder or mutation API models the preserved v1 primary, supplemental,
-or Practice selections; only the bounded Citation/Bibliography migration reader
-described above may inspect its own fields. Current Application operations edit,
+or Practice selections; only the bounded Citation migration reader described
+above may inspect its own fields. Current Application operations edit,
 disable, replace, and explicitly restore an Action's v2 Working Method through
 exact package and binding revisions. Direct edit and restore exchange
 the complete package through descriptor-relative operations, recheck the v2
@@ -91,7 +92,7 @@ edits, which remain ordinary filesystem concurrency.
 
 `AgentNoteChangeRequest` schema 1 is the non-authorizing coordination contract
 for one additional-note or child-Action request. It binds a caller-provided
-request UUID to the exact Triptych and parent Local Execution v2 run; the
+request UUID to the exact Triptych and parent Local Execution v3 run; the
 parent and requested Action, Method Skill, Profile, and Profile-document
 revisions; a bounded canonical set of stable Note identities and
 expected fingerprints; existing-note operations; and one bounded attributed
@@ -179,7 +180,7 @@ content, Skill maintenance state, and standing policy borrow the same gate as
 the final request validation and decision write. Actor reentrancy therefore
 cannot place a configuration commit between those two operations.
 
-Every new Local Execution v2 Action also receives one short-lived
+Every new Local Execution v3 Action also receives one short-lived
 `AgentCoordinationGrant`. The local execution persists only its SHA-256 digest,
 bound Triptych, parent run, exact Action revision, and expiry; a non-Codable
 authorization carries the plaintext key only in the live delivery packet.
@@ -224,7 +225,7 @@ grant. An allowed schema-v2 decision stores only a versioned correlation plan:
 one shared group ID plus reserved independent child run IDs for the exact
 approved Note subset. Application then re-resolves current Action, Profile,
 Method, Note identities, and fingerprints before preparing each child as its
-own Local Execution v2 run. Every child has one frozen Target, its own
+own Local Execution v3 run. Every child has one frozen Target, its own
 exact-Note continuation recovery checkpoint outside rolling automatic
 retention, its own activity grant and completion validation, optional
 final-revision Fidelity child, and durable parent/request/group lineage. The AF_UNIX response
@@ -233,7 +234,7 @@ matches the plan; plaintext keys remain delivery-only. Neither the plan nor
 lineage is consulted as authority without the exact allowed request, current
 parent, Action snapshot, checkpoint, and grant.
 
-Revision-bound Resynthesize reuses the same independent Local Execution v2
+Revision-bound Resynthesize reuses the same independent Local Execution v3
 child mechanics without impersonating an Agent change request. Application
 rereads the completed Synthesize record, exact Topic Target, actually-used
 Analysis revision, and current changed revision before reserving a new run.

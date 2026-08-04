@@ -2007,10 +2007,10 @@ extension ScholiumUITests {
         let recordID = try XCTUnwrap(
             UUID(uuidString: finishedFiles[0].deletingPathExtension().lastPathComponent)
         )
-        let recordButton = app.buttons["scholium.showResearchRecord"]
+        let recordButton = app.buttons["scholium.showResearchRecords"]
         XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
         recordButton.click()
-        let recordWindow = app.windows["Research Record"].firstMatch
+        let recordWindow = app.windows["Research Records"].firstMatch
         XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
         XCTAssertTrue(recordWindow.textFields[
             "scholium.researchRecord.search"

@@ -127,6 +127,19 @@ extension WorkspaceHandle {
         guard let actuallyUsedMaterialNoteIDs = completion.actuallyUsedMaterialNoteIDs else {
             throw ResearchActionExecutionContractError.staleResolution
         }
+        let literatureRecommendationCount: Int
+        if actionID == .analyze,
+           [.complete, .unverified].contains(completion.state) {
+            let record = try await services.portableResearchRecordStore.record(
+                id: completion.runID
+            )
+            guard record.action?.actionID == .analyze else {
+                throw ResearchActionExecutionContractError.staleResolution
+            }
+            literatureRecommendationCount = record.literatureRecommendations.count
+        } else {
+            literatureRecommendationCount = 0
+        }
         return ResearchActionCompletion(
             actionID: actionID,
             runID: completion.runID,
@@ -138,6 +151,7 @@ extension WorkspaceHandle {
             didModifyTarget: completion.didModifyTarget,
             outputFingerprint: completion.outputFingerprint,
             fidelityOutcomes: completion.fidelityOutcomes,
+            literatureRecommendationCount: literatureRecommendationCount,
             childRunIDs: completion.childRunIDs ?? [],
             completedAt: completion.completedAt,
             derivedRefreshWarning: completion.derivedRefreshWarning,
@@ -174,9 +188,7 @@ extension WorkspaceHandle {
               }) else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        let recordListing = try await services.portableResearchRecordStore.listing(
-            location: .records
-        )
+        let recordListing = try await services.portableResearchRecordStore.listing()
         guard WorkspaceSnapshotBuilder.isLatestSynthesisMaterialUse(
             recordID: context.recordID,
             topicNoteID: context.topicNoteID,
@@ -883,6 +895,7 @@ private extension ResearchActionCompletionSubmission {
             },
             outputFingerprint: outputFingerprint,
             fidelityOutcomes: fidelityOutcomes,
+            literatureRecommendations: literatureRecommendations,
             childRunIDs: childRunIDs,
             submittedAt: submittedAt
         )

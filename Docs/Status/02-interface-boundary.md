@@ -102,7 +102,8 @@ Zotero metadata/key presentation while exposing the D-131 exact-item action only
 Analysis; Connect preserves counted empty groups without filler; Actions presents Research and
 Review default groups, grouped Researcher Skills, and Judgment without chronology, a duplicate
 record launcher, or a separate active-Discussion row. Discuss itself opens an existing exchange.
-Research Record follows focus and remains separate. D-114 gives all three Inspector modes one
+Research Records remains separate and identity-bound to the Triptych that opened its keyed window;
+later Workspace or document focus changes do not retarget it. D-114 gives all three Inspector modes one
 borderless Apparatus component system, a section-level adaptive FactGrid, a keyboard-reachable
 equal-column ModeIndex, and one nonpersisted 320 pt first-reveal offer that leaves later split
 geometry to AppKit. D-115 seeds restored Inspector collapse before the split item is installed,
@@ -216,14 +217,14 @@ automation, drag-out and Folder-to-root automation, real case-sensitive or norma
 mounted-volume UI acceptance, injected identity/refresh failures during the source-ahead interval,
 and final researcher interaction/visual acceptance remain open.
 
-### Sidebar, Attention, and bibliography utility clean cutover
+### Sidebar and Attention clean cutover
 
 **Current state**
 
 D-119 through D-134 are reachable without a compatibility branch. Sidebar now composes fixed
 BrandHeader, a quiet equal-column ScopeIndex with no Attention statistics, a zero-absent
-current-Scope Attention alert, stable LocationHeader, one active source region, and a fixed Triptych
-Recommended Bibliography sibling outside that source scroll. `AttentionScopeCounts` derives exact
+current-Scope Attention alert, stable LocationHeader, and one active source region with no fixed
+literature-recommendation footer or reserved gap. `AttentionScopeCounts` derives exact
 internal values from the existing catalog and dismissal ledger without owning queue state; Scope
 labels never render or announce them. A nonzero current Scope receives the persistent raised alert,
 while first-load failure presents Attention Unavailable with Retry. D-128 removes the alert's
@@ -253,13 +254,11 @@ deterministic post-removal focus. Outside activation and Escape dismiss natively
 Resynthesize dismiss before continuing in the same Workspace. Switching to another Workspace resets
 query, kind filter, selection, and Note subset without changing the dismissal ledger. `Window →
 Attention` is enabled only when the focused Workspace has a visible Sidebar or Inspector Attention
-anchor. D-121 separates the agent-reading workflow from Library ownership; D-122 gives the complete
-Sidebar one Navigation surface and moves Inspector's Apparatus tone much closer to Document while
-retaining the native split boundary and semantic roles. D-123 makes Inspector sticky occlusion
+anchor. The complete Sidebar has one Navigation surface, while Inspector's Apparatus tone remains
+close to Document with the native split boundary and semantic roles intact. D-123 makes Inspector sticky occlusion
 consume that exact Apparatus role and shares one semantic underline component between ScopeIndex and
-ModeIndex without merging their metrics. D-124 removes the Bibliography subcopy, applies named
-asymmetric band insets, and gives Sidebar and Inspector one shared 28pt peripheral page edge without
-merging their internal rhythms. Its shared `ScholiumLibrarySourceState` aligns Library, Set Aside,
+ModeIndex without merging their metrics. Sidebar and Inspector share one 28pt peripheral page edge
+without merging their internal rhythms. Their shared `ScholiumLibrarySourceState` aligns Library, Set Aside,
 and Trash empty/loading/error content to that page edge while populated OutlineRows retain the
 denser row-surface inset. D-125 stages ordinary Scope/Location replacements from the latest accepted
 window snapshot, so navigation retains the committed tree until one coherent target commit and never
@@ -289,6 +288,37 @@ rendered zero/one/three approval, Dark/Increase Contrast/inactive-window accepta
 VoiceOver, physical Full Keyboard Access, installed IME, Reduce Transparency, Reduce Motion, exact
 200% readability, broader RTL/localization review, a real File Provider domain and packaged-App
 interruption journey, and release readiness.
+
+### Research Records auxiliary window
+
+**Current state**
+
+The former focus-following fixed presentation is replaced by one data-driven ordinary WindowGroup
+per Triptych ID. It reads the exact Triptych snapshot and Records capability directly, defaults to
+760 × 680pt, resizes to a 700 × 520pt minimum, and does not restore across launches. The document
+toolbar explicitly opens This Note Scope; the Research menu explicitly opens Triptych Scope. Scope
+and Records/Recommendations View remain independent and do not follow unrelated window focus.
+The ordinary titlebar now carries only the window title. The leading Navigation plane owns a
+restrained Records/Recommendations index and a borderless Scope menu in its list-context row, so
+no full-width control strip crosses the reading plane. Both Lists expose the semantic Navigation
+surface, controls inherit the resolved Accent, long revision identities use selectable wrapping
+blocks, and reading-plane actions share one borderless ink treatment. The auxiliary window
+consumes the same persisted System/Light/Dark choice as Workspace instead of falling back to
+system Light. Recommendations still reuses the same list/detail split, search, empty/error states,
+checkbox, sheet, typography, surfaces, and focus behavior. The Sidebar,
+Attention, and Inspector have no count, entry, or reserved gap for this view.
+
+**Still open**
+
+The focused coordinator/model and frontend-architecture suites pass. Five bounded native-window
+XCUITest journeys pass on the current Xcode 27 build after correcting one count-label AX merge and
+keeping primary provenance navigation above long identities; they cover keyed-window reuse,
+Recommendations disposition/note/parent routing, comparison/deletion, cross-Triptych isolation,
+View-index keyboard traversal, deterministic RTL mirroring, and the 700 × 520pt minimum content
+size. A populated Records and Recommendations pass also confirmed the shared semantic surfaces,
+controls, typography, and hierarchy in representative Light and Dark appearances. Genuine
+VoiceOver, exact 200% readability, Increase Contrast review, and researcher visual acceptance
+remain to be recorded for this cutover.
 
 ### Beta static Sidebar hierarchy polish
 

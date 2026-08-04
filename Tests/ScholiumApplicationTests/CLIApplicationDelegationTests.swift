@@ -97,21 +97,6 @@ struct CLIApplicationDelegationTests {
         ) == submission)
     }
 
-    @Test("Bibliography CLI is a thin Contracts-to-Application adapter")
-    func bibliographyCommandsDelegateWithoutPolicy() throws {
-        let sources = try CLISources.load()
-
-        #expect(sources.entry.contains(#"case "bibliography":"#))
-        #expect(sources.bibliography.contains("handle.research.prepareRecommendation(request)"))
-        #expect(sources.bibliography.contains("handle.research.recommendationRequest(id: requestID)"))
-        #expect(sources.bibliography.contains("handle.research.completeRecommendation(submission)"))
-        #expect(sources.bibliography.contains("handle.research.cancelRecommendation(id: requestID)"))
-        #expect(!sources.bibliography.contains("import " + "ScholiumCore"))
-        #expect(!sources.bibliography.contains("bibliographyRecommendation"))
-        #expect(!sources.bibliography.contains("zotero.resolve"))
-        #expect(!sources.bibliography.contains("recommended-bibliography.json"))
-    }
-
     @Test("Search v4, catalog, read, and lifecycle output schemas remain stable")
     func serializedOutputContractsRemainStable() throws {
         let sources = try CLISources.load()
@@ -161,7 +146,6 @@ private struct CLISources {
     let document: String
     let zotero: String
     let action: String
-    let bibliography: String
 
     static func load() throws -> Self {
         let root = URL(fileURLWithPath: #filePath)
@@ -192,12 +176,6 @@ private struct CLISources {
             ),
             action: String(
                 contentsOf: cli.appendingPathComponent("ResearchActionCommandHandler.swift"),
-                encoding: .utf8
-            ),
-            bibliography: String(
-                contentsOf: cli.appendingPathComponent(
-                    "RecommendedBibliographyCommandHandler.swift"
-                ),
                 encoding: .utf8
             )
         )

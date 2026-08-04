@@ -11,8 +11,8 @@ This chapter owns source layout, native presentation, interface ownership, and l
   the bounded native window-shell adapters described below.
 - `Scholium/UI/PreviewCatalog` contains the retained deterministic Debug-only
   research-workflow catalog for the modular Skill-run sheet, staged installer,
-  categorized Skill settings, Agent change request, and fixed-size secondary
-  Research Record. It resolves or mutates no production
+  categorized Skill settings, Agent change request, and resizable Triptych-keyed
+  Research Records window. It resolves or mutates no production
   state and is reachable only through one suppressed Debug window and an
   explicitly enabled QA command. Completed Sidebar, Inspector, generic-state,
   complete-window, and paired-window acceptance harnesses are removed after
@@ -87,30 +87,37 @@ installs toolbar/delegate state, and registers readiness/flushing. No singleton,
 window search, notification, polling, delayed correction, or width calculation
 participates.
 
-Research Record is a separate, nonrestored SwiftUI `UtilityWindow`. Its root
-receives the current native focused object observed at the app scene boundary;
-each Workspace supplies its `WindowModel` and its read-only
-`WindowCommandObservation` with `focusedSceneObject`. Research Record then
-observes the focused window's workspace-session, Document, and Research owners
-directly. No model
-registry, notification, presentation coordinator, custom focused key, or
-manually retained window model participates. Each presentation owns one
-`ResearchRecordBrowserModel`: one disposable deterministic in-memory index plus
-search, Note/date/Skill/Action/participant filters, selection, and at most one
-cancellable comparison task. Reopening
-resets to the current Note when available and the
-researcher can remove that scope to browse the complete Triptych. The window
-renders finished portable Discussion and nonconversational Action records,
-preserves attribution and evidence-class qualifications, exposes tombstones,
-and deep-links live participating Notes through the focused Workspace. Pin
-replaces only `is_pinned`; **Delete Record…** requires a second confirmation
-before Core permanently removes only the selected portable record under the
-same descriptor-relative coordination boundary. Ordinary Markdown
-annotations remain in the document and never become separate chronology. The
-fixed 760 × 680 window never enters the trailing split item and never owns checkpoints, a
-document buffer, autosave, undo, conflict, or retained trash state. Its diff is
-disposable presentation over retained exact bytes, not a second writable source.
-Closing Research Record therefore cannot reveal or resize Research Inspector.
+Research Records is a separate, nonrestored SwiftUI `WindowGroup` keyed by
+Triptych UUID. Its root resolves the exact Triptych capability from
+`WorkspaceStore` and consumes only that Triptych's snapshots; focused Workspace
+or document changes cannot retarget it. A transient
+`ResearchRecordsWindowCoordinator` routes explicit Note-scoped or
+Triptych-scoped presentation requests and same-Triptych Note openings without
+retaining Record data. Each Triptych window owns one
+`ResearchRecordBrowserModel`: disposable deterministic Record and recommendation
+indexes, independent Scope and View, search and scholarly filters, selection,
+and at most one cancellable comparison task. The native resizable list/detail
+split has a 760 × 680 default frame and 700 × 520 minimum. Its left list is a
+secondary navigation surface, not a Workspace Sidebar, and receives no Sidebar
+toolbar treatment. The standard titlebar shows the window identity without a
+feature toolbar. The Navigation plane owns a local View index above its List
+and a borderless Scope menu in the list-context row; the independent controls
+do not introduce a full-width header across the Document plane. List scroll
+backgrounds are hidden so the semantic Navigation plane remains continuous.
+
+The window renders finished portable Discussion and nonconversational Action
+records, preserves attribution and evidence-class qualifications, exposes
+tombstones, and routes live participating Notes only to a same-Triptych
+Workspace. Pin replaces only `is_pinned`; recommendation disposition and note
+updates replace only their selected occurrence; **Delete Record…** requires a
+second confirmation before Core permanently removes only the selected portable
+record under the same descriptor-relative coordination boundary. Ordinary
+Markdown annotations remain in the document and never become separate
+chronology. The window never enters the trailing split item and never owns
+checkpoints, a document buffer, autosave, undo, conflict, retained trash, or a
+second recommendation store. Its diff and recommendation grouping are
+disposable projections over retained exact bytes. Closing Research Records
+therefore cannot reveal or resize Research Inspector or mutate its presentation.
 
 Attention is one native transient SwiftUI popover owned by each exact
 `WindowModel`, not an app-wide Scene, sheet, inline Library destination,
@@ -140,13 +147,12 @@ changes so the newly active Workspace resets query, kind, Note subset, and
 selected task without treating popover key-window changes or app deactivation
 as Workspace switches. No global window search, notification, model registry,
 detached Attention Scene, NSWindow attachment, or toolbar compatibility state
-participates. Recommended Bibliography is the fixed, intrinsic-height sibling
-below the Library Source List scroll. It shares the Sidebar's navigation
-surface and adds one structural boundary but owns no Scope, Location, selection,
-filter, sort, disclosure, or lifecycle state. Inspector alone consumes the
-document-adjacent apparatus surface. Changing the current Note may change the
-focal source for a later request, but does not replace or hide the current
-Triptych result or active request.
+participates. Inspector alone consumes the document-adjacent apparatus surface;
+Library has no literature-recommendation row, footer, count, or reserved gap.
+The Document toolbar sends a Note-scoped Records request, while the Research
+menu sends a Triptych-scoped request. Both target the same UUID-keyed auxiliary
+window and neither changes Sidebar, Location, selection, filter, sort,
+disclosure, Attention, or Inspector state.
 
 Ordinary Scope and Location navigation uses a
 `DiscoveryLocationRequest(.stagedReplacement)`. `DiscoveryController` retains

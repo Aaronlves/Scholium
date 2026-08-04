@@ -73,7 +73,7 @@ struct ResearchSkillCatalogTests {
         #expect(analyzer.supportedFunctions.isEmpty)
         #expect(analyzer.supportedActions.isEmpty)
         #expect(analyzer.supportedModes == [.analyze])
-        #expect(analyzer.capabilities == [.bibliographyRecommendation])
+        #expect(analyzer.capabilities.isEmpty)
         #expect(analyzer.compatiblePracticeIDs == [
             "historical-interpreter",
             "conceptual-analyst",
@@ -83,12 +83,10 @@ struct ResearchSkillCatalogTests {
         #expect(try BundledResearchSkillLibrary.resourcePaths(for: analyzer) == [
             "SKILL.md",
             "references/analysis-forms.md",
-            "references/bibliography-recommendations.md",
             "references/later-use-handoffs.md",
             "references/method.md",
             "references/report-templates.md",
             "references/source-clusters.md",
-            "templates/recommended-bibliography-completion.json",
         ])
     }
 

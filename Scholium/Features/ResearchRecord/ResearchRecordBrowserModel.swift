@@ -14,6 +14,12 @@ enum ResearchRecordParticipantFilter: Hashable, Sendable {
     case note(UUID)
 }
 
+enum ResearchLiteratureRecommendationFilter: String, CaseIterable, Hashable, Sendable {
+    case unprocessed
+    case handled
+    case all
+}
+
 struct ResearchRecordNoteOption: Identifiable, Equatable, Sendable {
     let id: UUID
     let title: String
@@ -42,6 +48,39 @@ struct ResearchRecordIndexEntry: Identifiable, Equatable, Sendable {
     var id: UUID { record.id }
     var finishedAt: Date { record.finishedAt }
     var isPinned: Bool { record.isPinned }
+}
+
+struct ResearchLiteratureRecommendationOccurrenceID: Hashable, Sendable {
+    let recordID: UUID
+    let recommendationID: UUID
+}
+
+struct ResearchLiteratureRecommendationOccurrence: Identifiable, Equatable, Sendable {
+    let parentRecord: PortableResearchRecord
+    let recommendation: ResearchLiteratureRecommendation
+    let contextTitle: String
+    fileprivate let normalizedDOI: String?
+    fileprivate let normalizedZoteroItemKey: String?
+    fileprivate let normalizedSearchCorpus: String
+
+    var id: ResearchLiteratureRecommendationOccurrenceID {
+        ResearchLiteratureRecommendationOccurrenceID(
+            recordID: parentRecord.id,
+            recommendationID: recommendation.id
+        )
+    }
+
+    var displayTitle: String {
+        recommendation.title ?? recommendation.rawCitation
+    }
+}
+
+struct ResearchLiteratureRecommendationGroup: Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let occurrences: [ResearchLiteratureRecommendationOccurrence]
+
+    var displaysSharedIdentityHeader: Bool { occurrences.count > 1 }
 }
 
 extension PortableResearchRecord {
@@ -112,9 +151,7 @@ struct ResearchRecordDerivedIndex: Equatable, Sendable {
         now: Date,
         calendar: Calendar
     ) -> [ResearchRecordIndexEntry] {
-        let terms = Self.normalized(text)
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
+        let terms = Self.normalizedTerms(text)
         let startOfToday = calendar.startOfDay(for: now)
         let cutoff: Date? = switch dateFilter {
         case .any: nil
@@ -193,11 +230,366 @@ struct ResearchRecordDerivedIndex: Equatable, Sendable {
         return lhs.id.uuidString < rhs.id.uuidString
     }
 
-    private static func normalized(_ value: String) -> String {
+    fileprivate static func normalized(_ value: String) -> String {
         value.precomposedStringWithCanonicalMapping.folding(
             options: [.caseInsensitive, .diacriticInsensitive],
             locale: Locale(identifier: "en_US_POSIX")
         )
+    }
+
+    fileprivate static func normalizedTerms(_ value: String) -> [String] {
+        normalized(value)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+    }
+}
+
+/// A reconstructable occurrence index over the recommendation arrays owned by
+/// Analyze Research Records. Grouping is deliberately conservative: only an
+/// exact normalized DOI or Zotero item key can join occurrences, and an
+/// ambiguous bridge never combines conflicting identifiers.
+struct ResearchLiteratureRecommendationDerivedIndex: Equatable, Sendable {
+    private let occurrences: [ResearchLiteratureRecommendationOccurrence]
+    private let occurrencesByID: [
+        ResearchLiteratureRecommendationOccurrenceID:
+            ResearchLiteratureRecommendationOccurrence
+    ]
+
+    init(records: [PortableResearchRecord]) {
+        let occurrences = records.flatMap { record in
+            record.literatureRecommendations.map { recommendation in
+                Self.makeOccurrence(record: record, recommendation: recommendation)
+            }
+        }.sorted(by: Self.ordersOccurrences)
+        self.occurrences = occurrences
+        occurrencesByID = Dictionary(
+            occurrences.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    func occurrence(
+        id: ResearchLiteratureRecommendationOccurrenceID
+    ) -> ResearchLiteratureRecommendationOccurrence? {
+        occurrencesByID[id]
+    }
+
+    func unprocessedCount(noteID: UUID?) -> Int {
+        scopedOccurrences(noteID: noteID).count {
+            $0.recommendation.disposition.status == .unprocessed
+        }
+    }
+
+    func query(
+        text: String,
+        noteID: UUID?,
+        status: ResearchLiteratureRecommendationFilter
+    ) -> [ResearchLiteratureRecommendationGroup] {
+        let scoped = scopedOccurrences(noteID: noteID)
+        var compatibilityCheckCount = 0
+        let grouped = Self.group(
+            scoped,
+            compatibilityCheckCount: &compatibilityCheckCount
+        )
+        let terms = ResearchRecordDerivedIndex.normalizedTerms(text)
+        return grouped.compactMap { group in
+            let visibleOccurrences = group.occurrences.filter { occurrence in
+                let hasStatus = switch status {
+                case .unprocessed:
+                    occurrence.recommendation.disposition.status == .unprocessed
+                case .handled:
+                    occurrence.recommendation.disposition.status == .handled
+                case .all:
+                    true
+                }
+                return hasStatus
+                    && terms.allSatisfy(occurrence.normalizedSearchCorpus.contains)
+            }
+            guard !visibleOccurrences.isEmpty else { return nil }
+            return ResearchLiteratureRecommendationGroup(
+                id: group.id,
+                title: group.title,
+                occurrences: visibleOccurrences
+            )
+        }
+    }
+
+    func groupingCompatibilityCheckCount(noteID: UUID?) -> Int {
+        var count = 0
+        _ = Self.group(
+            scopedOccurrences(noteID: noteID),
+            compatibilityCheckCount: &count
+        )
+        return count
+    }
+
+    private func scopedOccurrences(
+        noteID: UUID?
+    ) -> [ResearchLiteratureRecommendationOccurrence] {
+        guard let noteID else { return occurrences }
+        return occurrences.filter { occurrence in
+            occurrence.parentRecord.participatingNotes.contains {
+                $0.noteID == noteID
+            }
+        }
+    }
+
+    private static func makeOccurrence(
+        record: PortableResearchRecord,
+        recommendation: ResearchLiteratureRecommendation
+    ) -> ResearchLiteratureRecommendationOccurrence {
+        let doi = normalizedDOI(recommendation.doi)
+        let zoteroItemKey = normalizedZoteroItemKey(recommendation.zoteroItemKey)
+        let searchable = [
+            recommendation.rawCitation,
+            recommendation.title,
+            recommendation.authors.joined(separator: " "),
+            recommendation.year.map(String.init),
+            recommendation.doi,
+            recommendation.zoteroItemKey,
+            recommendation.sourceLocators.joined(separator: " "),
+            recommendation.reason,
+            recommendation.uncertainty,
+            recommendation.disposition.researcherNote,
+            record.researchRecordContextTitle,
+            record.sourceReference?.displayName,
+            record.method?.packageID,
+            record.method?.version,
+        ].compactMap { $0 }.joined(separator: "\n")
+        return ResearchLiteratureRecommendationOccurrence(
+            parentRecord: record,
+            recommendation: recommendation,
+            contextTitle: record.researchRecordContextTitle ?? "Analyze",
+            normalizedDOI: doi,
+            normalizedZoteroItemKey: zoteroItemKey,
+            normalizedSearchCorpus: ResearchRecordDerivedIndex.normalized(searchable)
+        )
+    }
+
+    private struct RecommendationIdentitySignature {
+        let doi: String?
+        let zoteroItemKey: String?
+        let title: String?
+        let authors: [String]?
+        let year: Int?
+
+        init(_ occurrence: ResearchLiteratureRecommendationOccurrence) {
+            doi = occurrence.normalizedDOI
+            zoteroItemKey = occurrence.normalizedZoteroItemKey
+            title = normalizedOptional(occurrence.recommendation.title)
+            authors = normalizedAuthors(occurrence.recommendation.authors)
+            year = occurrence.recommendation.year
+        }
+
+        private init(
+            doi: String?,
+            zoteroItemKey: String?,
+            title: String?,
+            authors: [String]?,
+            year: Int?
+        ) {
+            self.doi = doi
+            self.zoteroItemKey = zoteroItemKey
+            self.title = title
+            self.authors = authors
+            self.year = year
+        }
+
+        func merging(_ other: Self) -> Self? {
+            guard valuesDoNotConflict(doi, other.doi),
+                  valuesDoNotConflict(zoteroItemKey, other.zoteroItemKey),
+                  valuesDoNotConflict(title, other.title),
+                  valuesDoNotConflict(authors, other.authors),
+                  valuesDoNotConflict(year, other.year) else {
+                return nil
+            }
+            return Self(
+                doi: doi ?? other.doi,
+                zoteroItemKey: zoteroItemKey ?? other.zoteroItemKey,
+                title: title ?? other.title,
+                authors: authors ?? other.authors,
+                year: year ?? other.year
+            )
+        }
+    }
+
+    private struct RecommendationCluster {
+        var occurrences: [ResearchLiteratureRecommendationOccurrence]
+        var signature: RecommendationIdentitySignature
+    }
+
+    private static func group(
+        _ occurrences: [ResearchLiteratureRecommendationOccurrence],
+        compatibilityCheckCount: inout Int
+    ) -> [ResearchLiteratureRecommendationGroup] {
+        var clusters: [Int: RecommendationCluster] = [:]
+        var doiOwners: [String: Set<Int>] = [:]
+        var zoteroOwners: [String: Set<Int>] = [:]
+        var nextClusterID = 0
+
+        func register(_ cluster: RecommendationCluster, id: Int) {
+            if let doi = cluster.signature.doi {
+                doiOwners[doi, default: []].insert(id)
+            }
+            if let key = cluster.signature.zoteroItemKey {
+                zoteroOwners[key, default: []].insert(id)
+            }
+        }
+
+        func unregister(_ cluster: RecommendationCluster, id: Int) {
+            if let doi = cluster.signature.doi {
+                doiOwners[doi]?.remove(id)
+                if doiOwners[doi]?.isEmpty == true { doiOwners.removeValue(forKey: doi) }
+            }
+            if let key = cluster.signature.zoteroItemKey {
+                zoteroOwners[key]?.remove(id)
+                if zoteroOwners[key]?.isEmpty == true {
+                    zoteroOwners.removeValue(forKey: key)
+                }
+            }
+        }
+
+        for occurrence in occurrences {
+            let occurrenceSignature = RecommendationIdentitySignature(occurrence)
+            var candidateIDs: Set<Int> = []
+            if let doi = occurrenceSignature.doi {
+                candidateIDs.formUnion(doiOwners[doi] ?? [])
+            }
+            if let key = occurrenceSignature.zoteroItemKey {
+                candidateIDs.formUnion(zoteroOwners[key] ?? [])
+            }
+            let compatibleIDs = candidateIDs.sorted().filter { id in
+                guard let cluster = clusters[id] else { return false }
+                compatibilityCheckCount += 1
+                return occurrenceSignature.merging(cluster.signature) != nil
+            }
+            guard !compatibleIDs.isEmpty else {
+                let id = nextClusterID
+                nextClusterID += 1
+                let cluster = RecommendationCluster(
+                    occurrences: [occurrence],
+                    signature: occurrenceSignature
+                )
+                clusters[id] = cluster
+                register(cluster, id: id)
+                continue
+            }
+
+            var combinedSignature: RecommendationIdentitySignature? = occurrenceSignature
+            for id in compatibleIDs {
+                guard let current = combinedSignature,
+                      let signature = clusters[id]?.signature else {
+                    combinedSignature = nil
+                    break
+                }
+                combinedSignature = current.merging(signature)
+            }
+            guard let mergedSignature = combinedSignature else {
+                let id = nextClusterID
+                nextClusterID += 1
+                let cluster = RecommendationCluster(
+                    occurrences: [occurrence],
+                    signature: occurrenceSignature
+                )
+                clusters[id] = cluster
+                register(cluster, id: id)
+                continue
+            }
+
+            var mergedOccurrences = [occurrence]
+            for id in compatibleIDs {
+                guard let cluster = clusters.removeValue(forKey: id) else { continue }
+                unregister(cluster, id: id)
+                mergedOccurrences.append(contentsOf: cluster.occurrences)
+            }
+            let id = compatibleIDs[0]
+            let cluster = RecommendationCluster(
+                occurrences: mergedOccurrences,
+                signature: mergedSignature
+            )
+            clusters[id] = cluster
+            register(cluster, id: id)
+        }
+
+        return clusters.values.map { cluster in
+            let occurrences = cluster.occurrences.sorted(by: ordersOccurrences)
+            let title = occurrences.lazy.compactMap(\.recommendation.title).first
+                ?? occurrences[0].recommendation.rawCitation
+            return ResearchLiteratureRecommendationGroup(
+                id: clusterID(occurrences),
+                title: title,
+                occurrences: occurrences
+            )
+        }.sorted { lhs, rhs in
+            let leftDate = lhs.occurrences.first?.parentRecord.finishedAt ?? .distantPast
+            let rightDate = rhs.occurrences.first?.parentRecord.finishedAt ?? .distantPast
+            if leftDate != rightDate { return leftDate > rightDate }
+            let comparison = lhs.title.localizedStandardCompare(rhs.title)
+            if comparison != .orderedSame { return comparison == .orderedAscending }
+            return lhs.id < rhs.id
+        }
+    }
+
+    private static func valuesDoNotConflict<Value: Equatable>(
+        _ lhs: Value?,
+        _ rhs: Value?
+    ) -> Bool {
+        guard let lhs, let rhs else { return true }
+        return lhs == rhs
+    }
+
+    private static func normalizedOptional(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return ResearchRecordDerivedIndex.normalized(value)
+    }
+
+    private static func normalizedAuthors(_ values: [String]) -> [String]? {
+        guard !values.isEmpty else { return nil }
+        return values.map {
+            ResearchRecordDerivedIndex.normalized(
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+    }
+
+    private static func clusterID(
+        _ occurrences: [ResearchLiteratureRecommendationOccurrence]
+    ) -> String {
+        occurrences.map {
+            "\($0.parentRecord.id.uuidString.lowercased()):\($0.recommendation.id.uuidString.lowercased())"
+        }.joined(separator: "|")
+    }
+
+    private static func normalizedDOI(_ value: String?) -> String? {
+        guard var value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(), !value.isEmpty else { return nil }
+        for prefix in ["https://doi.org/", "http://doi.org/", "doi:"]
+            where value.hasPrefix(prefix) {
+            value.removeFirst(prefix.count)
+            break
+        }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private static func normalizedZoteroItemKey(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value.uppercased()
+    }
+
+    private static func ordersOccurrences(
+        _ lhs: ResearchLiteratureRecommendationOccurrence,
+        _ rhs: ResearchLiteratureRecommendationOccurrence
+    ) -> Bool {
+        if lhs.parentRecord.finishedAt != rhs.parentRecord.finishedAt {
+            return lhs.parentRecord.finishedAt > rhs.parentRecord.finishedAt
+        }
+        if lhs.parentRecord.id != rhs.parentRecord.id {
+            return lhs.parentRecord.id.uuidString < rhs.parentRecord.id.uuidString
+        }
+        return lhs.recommendation.id.uuidString < rhs.recommendation.id.uuidString
     }
 }
 
@@ -205,7 +597,12 @@ struct ResearchRecordDerivedIndex: Equatable, Sendable {
 @Observable
 final class ResearchRecordBrowserModel {
     private(set) var visibleEntries: [ResearchRecordIndexEntry] = []
+    private(set) var visibleRecommendationGroups: [
+        ResearchLiteratureRecommendationGroup
+    ] = []
     private(set) var selectedRecord: PortableResearchRecord?
+    private(set) var selectedRecommendationOccurrence:
+        ResearchLiteratureRecommendationOccurrence?
     private(set) var noteOptions: [ResearchRecordNoteOption] = []
     private(set) var skillOptions: [String] = []
     private(set) var actionOptions: [ResearchActionID] = []
@@ -213,27 +610,48 @@ final class ResearchRecordBrowserModel {
     private(set) var rebuildingGeneration = 0
     private(set) var pinningRecordIDs: Set<UUID> = []
     private(set) var mutatingRecordIDs: Set<UUID> = []
+    private(set) var mutatingRecommendationIDs: Set<
+        ResearchLiteratureRecommendationOccurrenceID
+    > = []
     private(set) var comparingNoteID: UUID?
     private(set) var comparison: ResearchRecordComparison?
+    private(set) var contextNoteID: UUID?
+    private(set) var unprocessedRecommendationCount = 0
+
     var selectedRecordID: UUID? {
         didSet {
             if oldValue != selectedRecordID { cancelComparison() }
             selectedRecord = selectedRecordID.flatMap(index.record(id:))
         }
     }
-    var searchText = "" { didSet { refilter() } }
-    var noteFilterID: UUID? { didSet { refilter() } }
-    var dateFilter: ResearchRecordDateFilter = .any { didSet { refilter() } }
-    var skillFilterID: String? { didSet { refilter() } }
-    var actionFilterID: ResearchActionID? { didSet { refilter() } }
+    var selectedRecommendationID: ResearchLiteratureRecommendationOccurrenceID? {
+        didSet {
+            selectedRecommendationOccurrence = selectedRecommendationID.flatMap(
+                recommendationIndex.occurrence(id:)
+            )
+        }
+    }
+    var scope: ResearchRecordsScope = .triptych { didSet { refilter() } }
+    var viewKind: ResearchRecordsViewKind = .records
+    var searchText = "" { didSet { refilterRecords() } }
+    var recommendationSearchText = "" { didSet { refilterRecommendations() } }
+    var recommendationFilter: ResearchLiteratureRecommendationFilter = .unprocessed {
+        didSet { refilterRecommendations() }
+    }
+    var dateFilter: ResearchRecordDateFilter = .any { didSet { refilterRecords() } }
+    var skillFilterID: String? { didSet { refilterRecords() } }
+    var actionFilterID: ResearchActionID? { didSet { refilterRecords() } }
     var participantFilter: ResearchRecordParticipantFilter? {
-        didSet { refilter() }
+        didSet { refilterRecords() }
     }
     private(set) var errorMessage = ""
     private(set) var isComparisonError = false
     var isShowingError = false
 
+    var canScopeToNote: Bool { contextNoteID != nil }
+
     private var index = ResearchRecordDerivedIndex(records: [])
+    private var recommendationIndex = ResearchLiteratureRecommendationDerivedIndex(records: [])
     private var currentRecords: [PortableResearchRecord] = []
     @ObservationIgnored private var comparisonTask: Task<Void, Never>?
     @ObservationIgnored private var comparisonGeneration: UInt64 = 0
@@ -254,52 +672,87 @@ final class ResearchRecordBrowserModel {
     func prepareForOpen(
         triptychID: UUID,
         records: [PortableResearchRecord],
-        initialNoteID: UUID?
+        request: ResearchRecordsWindowRequest
     ) {
         if refreshesClockOnOpen { now = Date() }
         self.triptychID = triptychID
         searchText = ""
-        noteFilterID = initialNoteID
+        recommendationSearchText = ""
+        recommendationFilter = .unprocessed
         dateFilter = .any
         skillFilterID = nil
         actionFilterID = nil
         participantFilter = nil
+        apply(request)
         rebuild(records: records)
     }
 
     func receive(
         triptychID: UUID,
-        records: [PortableResearchRecord],
-        currentNoteID: UUID?
+        records: [PortableResearchRecord]
     ) {
-        if self.triptychID != triptychID {
-            prepareForOpen(
-                triptychID: triptychID,
-                records: records,
-                initialNoteID: currentNoteID
-            )
-        } else {
-            rebuild(records: records)
-        }
+        guard self.triptychID == triptychID else { return }
+        rebuild(records: records)
+    }
+
+    func apply(_ request: ResearchRecordsWindowRequest) {
+        guard triptychID == nil || request.triptychID == triptychID else { return }
+        contextNoteID = request.noteID
+        scope = request.noteID == nil ? .triptych : .thisNote
+        viewKind = request.initialView
+        refilter()
     }
 
     func select(_ id: UUID?) {
         selectedRecordID = id
     }
 
+    func selectRecommendation(_ id: ResearchLiteratureRecommendationOccurrenceID?) {
+        selectedRecommendationID = id
+    }
+
+    func openParentRecord(_ id: UUID) {
+        viewKind = .records
+        clearAllFilters()
+        selectedRecordID = id
+        refilterRecords()
+    }
+
+    func openRecommendation(recordID: UUID, recommendationID: UUID) {
+        let occurrenceID = ResearchLiteratureRecommendationOccurrenceID(
+            recordID: recordID,
+            recommendationID: recommendationID
+        )
+        guard recommendationIndex.occurrence(id: occurrenceID) != nil else { return }
+        recommendationSearchText = ""
+        recommendationFilter = .all
+        viewKind = .recommendations
+        selectedRecommendationID = occurrenceID
+    }
+
     func clearAllFilters() {
         searchText = ""
-        noteFilterID = nil
         dateFilter = .any
         skillFilterID = nil
         actionFilterID = nil
         participantFilter = nil
     }
 
+    func clearRecommendationFilters() {
+        recommendationSearchText = ""
+        recommendationFilter = .unprocessed
+    }
+
     func dismissError() {
         isShowingError = false
         errorMessage = ""
         isComparisonError = false
+    }
+
+    func presentError(_ message: String) {
+        errorMessage = message
+        isComparisonError = false
+        isShowingError = true
     }
 
     func deletePermanently(
@@ -364,7 +817,7 @@ final class ResearchRecordBrowserModel {
     func refreshClock(_ now: Date, calendar: Calendar? = nil) {
         self.now = now
         if let calendar { self.calendar = calendar }
-        refilter()
+        refilterRecords()
     }
 
     func setPinned(
@@ -378,23 +831,66 @@ final class ResearchRecordBrowserModel {
         dismissError()
         defer { pinningRecordIDs.remove(recordID) }
         do {
-            let updated = try await update(recordID, !current.isPinned)
-            guard let currentIndex = currentRecords.firstIndex(where: {
-                $0.id == recordID
-            }) else { return }
-            currentRecords[currentIndex] = updated
-            index = index.replacing(updated)
-            rebuildOptions()
-            refilter()
+            replaceRecord(try await update(recordID, !current.isPinned))
         } catch {
-            errorMessage = error.localizedDescription
-            isShowingError = true
+            present(error)
         }
+    }
+
+    func setRecommendationDisposition(
+        occurrenceID: ResearchLiteratureRecommendationOccurrenceID,
+        status: ResearchLiteratureRecommendationDispositionStatus,
+        update: @MainActor (
+            UUID,
+            UUID,
+            ResearchLiteratureRecommendationDispositionStatus
+        ) async throws -> PortableResearchRecord
+    ) async {
+        guard mutatingRecommendationIDs.insert(occurrenceID).inserted else { return }
+        dismissError()
+        defer { mutatingRecommendationIDs.remove(occurrenceID) }
+        do {
+            replaceRecord(try await update(
+                occurrenceID.recordID,
+                occurrenceID.recommendationID,
+                status
+            ))
+        } catch {
+            present(error)
+        }
+    }
+
+    func setRecommendationNote(
+        occurrenceID: ResearchLiteratureRecommendationOccurrenceID,
+        note: String?,
+        update: @MainActor (
+            UUID,
+            UUID,
+            String?
+        ) async throws -> PortableResearchRecord
+    ) async throws {
+        guard mutatingRecommendationIDs.insert(occurrenceID).inserted else { return }
+        dismissError()
+        defer { mutatingRecommendationIDs.remove(occurrenceID) }
+        replaceRecord(try await update(
+            occurrenceID.recordID,
+            occurrenceID.recommendationID,
+            note
+        ))
+    }
+
+    private func replaceRecord(_ updated: PortableResearchRecord) {
+        guard let currentIndex = currentRecords.firstIndex(where: {
+            $0.id == updated.id
+        }) else { return }
+        currentRecords[currentIndex] = updated
+        rebuild(records: currentRecords)
     }
 
     private func rebuild(records: [PortableResearchRecord]) {
         currentRecords = records
         index = ResearchRecordDerivedIndex(records: records)
+        recommendationIndex = ResearchLiteratureRecommendationDerivedIndex(records: records)
         rebuildingGeneration &+= 1
         rebuildOptions()
         refilter()
@@ -498,10 +994,16 @@ final class ResearchRecordBrowserModel {
     }
 
     private func refilter() {
+        if scope == .thisNote, contextNoteID == nil { scope = .triptych }
+        refilterRecords()
+        refilterRecommendations()
+    }
+
+    private func refilterRecords() {
         let selectedID = selectedRecordID
         visibleEntries = index.query(
             text: searchText,
-            noteID: noteFilterID,
+            noteID: scopedNoteID,
             dateFilter: dateFilter,
             skillID: skillFilterID,
             actionID: actionFilterID,
@@ -515,5 +1017,28 @@ final class ResearchRecordBrowserModel {
         } else {
             selectedRecordID = visibleEntries.first?.id
         }
+    }
+
+    private func refilterRecommendations() {
+        let selectedID = selectedRecommendationID
+        let noteID = scopedNoteID
+        visibleRecommendationGroups = recommendationIndex.query(
+            text: recommendationSearchText,
+            noteID: noteID,
+            status: recommendationFilter
+        )
+        unprocessedRecommendationCount = recommendationIndex.unprocessedCount(noteID: noteID)
+        let visibleIDs = Set(visibleRecommendationGroups.flatMap {
+            $0.occurrences.map(\.id)
+        })
+        if let selectedID, visibleIDs.contains(selectedID) {
+            selectedRecommendationID = selectedID
+        } else {
+            selectedRecommendationID = visibleRecommendationGroups.first?.occurrences.first?.id
+        }
+    }
+
+    private var scopedNoteID: UUID? {
+        scope == .thisNote ? contextNoteID : nil
     }
 }

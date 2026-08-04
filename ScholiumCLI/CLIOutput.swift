@@ -83,10 +83,6 @@ extension ScholiumCLI {
           scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown
           scholium action complete --from <json|-> [--triptych <selector>] --format json
           scholium action cancel <run-id> [--triptych <selector>]
-          scholium bibliography prepare --from <json|-> --format json|markdown
-          scholium bibliography show <request-id> [--triptych <selector>] --format json|markdown
-          scholium bibliography complete --from <json|-> [--triptych <selector>] --format json
-          scholium bibliography cancel <request-id> [--triptych <selector>]
           scholium read <vault>:<relative-path> [--format json]
           scholium note create <vault>:<path> --from <markdown-file>
           scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>
@@ -176,10 +172,6 @@ private extension ScholiumCLI {
             "action prepare-fidelity": "Usage: scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown\n\nPrepares or reuses the required final-revision Fidelity child for a completed Analyze, Synthesize, or Write Action.",
             "action complete": "Usage: scholium action complete --from <completion-json|-> [--triptych <selector>] --format json",
             "action cancel": "Usage: scholium action cancel <run-id> [--triptych <selector>] [--format json]",
-            "bibliography prepare": "Usage: scholium bibliography prepare --from <request-json|-> --format json|markdown",
-            "bibliography show": "Usage: scholium bibliography show <request-id> [--triptych <selector>] --format json|markdown",
-            "bibliography complete": "Usage: scholium bibliography complete --from <completion-json|-> [--triptych <selector>] --format json",
-            "bibliography cancel": "Usage: scholium bibliography cancel <request-id> [--triptych <selector>] [--format json]",
             "read": "Usage: scholium read <vault>:<relative-path> [--format text|json]",
             "note create": "Usage: scholium note create <vault>:<path> --from <markdown-file>",
             "note replace": "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>",

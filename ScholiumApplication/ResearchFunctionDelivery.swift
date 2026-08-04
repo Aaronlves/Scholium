@@ -462,9 +462,15 @@ extension ResearchFunctionCoordinator {
         }
         let completionTemplate = try renderCompletionTemplate(
             request: request,
+            actionID: action.id,
             runID: runID,
             confirmationToken: confirmationToken
         )
+        if action.id == .analyze {
+            sections += [
+                "For Analyze, literatureRecommendations is required even when empty. Add only literature encountered while analyzing the exact source. Each item requires rawCitation and a source-grounded reason; optional fields are title, authors, year, doi, zoteroItemKey, sourceLocators, and uncertainty. Do not invent IDs, handled state, matches, scores, or categories.",
+            ]
+        }
         sections += [
             "Submit completion with this run ID and confirmation token. Supply the final full Target fingerprint and a full final Material fingerprint keyed by every Material note ID above. actuallyUsedMaterialNoteIDs is required: report only the stable Note IDs of Materials actually used. An empty list explicitly reports that no selected Material was used; do not omit it or treat selection as use. Scholium does not infer that an edit, use, or audit occurred.",
             "This Action-specific schema is intentionally not directly submittable: replace every REPLACE_WITH value. For a write, set didModifyTarget truthfully. Supply the exact Fidelity outcomes, Critique output fingerprint, or Manuscript child run IDs shown for this Action.",
@@ -479,6 +485,7 @@ extension ResearchFunctionCoordinator {
 
     private func renderCompletionTemplate(
         request: ResearchFunctionRequest,
+        actionID: ResearchActionID?,
         runID: UUID,
         confirmationToken: UUID
     ) throws -> String {
@@ -521,6 +528,9 @@ extension ResearchFunctionCoordinator {
             ]
         } else if request.function.writesTarget {
             payload["didModifyTarget"] = "REPLACE_WITH_TRUE_OR_FALSE"
+        }
+        if actionID == .analyze {
+            payload["literatureRecommendations"] = []
         }
         switch request.function {
         case .fidelity:
@@ -583,6 +593,7 @@ extension ResearchFunctionCoordinator {
             outputFingerprint: completion.outputFingerprint,
             fidelityOutcomes: completion.fidelityOutcomes,
             fidelityTargetResults: completion.fidelityTargetResults ?? [],
+            literatureRecommendations: completion.literatureRecommendations,
             fidelityEvidenceKey: completion.fidelityEvidenceKey,
             reusedFidelityRunID: completion.reusedFidelityRunID,
             childRunIDs: completion.childRunIDs ?? [],
@@ -620,6 +631,7 @@ extension ResearchFunctionCoordinator {
                 didModifyTarget: parentCompletion.didModifyTarget,
                 outputFingerprint: parentCompletion.outputFingerprint,
                 fidelityOutcomes: [],
+                literatureRecommendations: parentCompletion.literatureRecommendations,
                 childRunIDs: [automatic.effectiveFidelityRunID]
             )
             actions.append(AgentCommandAction(
@@ -684,6 +696,7 @@ extension ResearchFunctionCoordinator {
             command: actionCommand(["complete", "--from", "-", "--format", "json"]),
             inputTemplate: try renderCompletionTemplate(
                 request: snapshot.request,
+                actionID: snapshot.actionSnapshot?.actionID,
                 runID: snapshot.runID,
                 confirmationToken: snapshot.confirmationToken
             )
@@ -791,6 +804,7 @@ extension ResearchFunctionCoordinator {
                 base = try researchActivityDeliveryInstructions(
                     base: base,
                     request: snapshot.request,
+                    actionID: snapshot.actionSnapshot?.actionID,
                     runID: snapshot.runID,
                     confirmationToken: snapshot.confirmationToken,
                     authorization: ResearchActivityGrantAuthorization(
@@ -862,13 +876,14 @@ extension ResearchFunctionCoordinator {
     func researchActivityDeliveryInstructions(
         base: String,
         request: ResearchFunctionRequest,
+        actionID: ResearchActionID?,
         runID: UUID,
         confirmationToken: UUID,
         authorization: ResearchActivityGrantAuthorization?
     ) throws -> String {
         guard let authorization else { return base }
         let grant = authorization.grant
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "runID": runID.uuidString.lowercased(),
             "confirmationToken": confirmationToken.uuidString.lowercased(),
             "actuallyUsedMaterialNoteIDs": [],
@@ -890,6 +905,9 @@ extension ResearchFunctionCoordinator {
                 "submittedAt": "REPLACE_WITH_ISO_8601_TIMESTAMP",
             ],
         ]
+        if actionID == .analyze {
+            payload["literatureRecommendations"] = []
+        }
         let data = try JSONSerialization.data(
             withJSONObject: payload,
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -905,6 +923,7 @@ extension ResearchFunctionCoordinator {
         Write key: \(authorization.activityKey)
 
         The key authorizes only completion reporting for the frozen Write set. It is not filesystem access. Do not create, delete, or rename Notes. Report only paths you believe this Action changed, and list only stable Material Note IDs actually used; selection alone is not use. Scholium checks all authorized revisions and reports unreported changes separately.
+        \(actionID == .analyze ? "For Analyze, literatureRecommendations is required even when empty. Each item requires rawCitation and a source-grounded reason; optional fields are title, authors, year, doi, zoteroItemKey, sourceLocators, and uncertainty. Do not include IDs, handled state, matches, scores, or categories." : "")
 
         Completion submission template (JSON):
         \(template)

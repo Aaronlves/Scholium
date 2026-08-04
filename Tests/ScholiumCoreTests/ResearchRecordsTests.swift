@@ -127,7 +127,7 @@ struct ResearchRecordsTests {
         #expect(moved.targetFingerprint == association.targetFingerprint)
     }
 
-    @Test("Critique Local-v2 handoff and findings reconciliation are idempotent")
+    @Test("Critique Local-v3 handoff and findings reconciliation are idempotent")
     func critiqueLocalExecutionReconciliation() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

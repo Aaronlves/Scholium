@@ -33,9 +33,13 @@ extension ResearchFunctionOperationsTests {
             .flatMap(\.loadedResources)
             .map(\.relativePath))
         #expect(baseResources.contains("references/method.md"))
+        #expect(baseResources.contains("references/literature-recommendations.md"))
         #expect(!baseResources.contains("references/synthesis.md"))
         #expect(!preflight.awaitsResourceSelection)
         #expect(preflight.instructions.contains("scholium action complete --from"))
+        #expect(preflight.instructions.contains(
+            "Appearance in a reference list alone is not sufficient"
+        ))
         try await handle.research.cancelProtectedFunction(runID: preflight.runID)
         await runtime.shutdown()
     }
@@ -219,13 +223,18 @@ extension ResearchFunctionOperationsTests {
             candidateModifiedNotes: [fixture.analysisID],
             summary: "Developed one bounded claim."
         )
+        let recommendations = [try ResearchLiteratureRecommendationSubmission(
+            rawCitation: "A. Author, Frozen Reading Lead (2025)",
+            reason: "The analyzed source identifies this work as a live objection."
+        )]
         let awaiting = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: develop.runID,
                 confirmationToken: develop.snapshot.confirmationToken,
                 summary: "Developed one bounded claim.",
                 didModifyTarget: true,
-                activityCompletion: activityCompletion
+                activityCompletion: activityCompletion,
+                literatureRecommendations: recommendations
             )
         )
         #expect(awaiting.state == .awaitingFidelity)
@@ -282,6 +291,25 @@ extension ResearchFunctionOperationsTests {
         #expect(completedProjection.state == .complete)
         #expect(completedProjection.effectiveFidelityRunID == fidelityCompletion.runID)
 
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeProtectedFunction(
+                ResearchFunctionCompletionSubmission(
+                    runID: develop.runID,
+                    confirmationToken: develop.snapshot.confirmationToken,
+                    summary: "Developed and checked one bounded claim.",
+                    didModifyTarget: true,
+                    activityCompletion: activityCompletion,
+                    literatureRecommendations: [
+                        try ResearchLiteratureRecommendationSubmission(
+                            rawCitation: "B. Author, Replacement Lead (2026)",
+                            reason: "A later payload must not replace the first report."
+                        ),
+                    ],
+                    childRunIDs: [automatic.preparation.runID]
+                )
+            )
+        }
+
         let verified = try await handle.research.completeProtectedFunction(
             ResearchFunctionCompletionSubmission(
                 runID: develop.runID,
@@ -289,11 +317,19 @@ extension ResearchFunctionOperationsTests {
                 summary: "Developed and checked one bounded claim.",
                 didModifyTarget: true,
                 activityCompletion: activityCompletion,
+                literatureRecommendations: recommendations,
                 childRunIDs: [automatic.preparation.runID]
             )
         )
         #expect(verified.state == .complete)
         #expect(verified.reusedFidelityRunID == fidelityCompletion.runID)
+        let portable = try #require(
+            try await handle.research.finishedResearchRecords(noteID: nil)
+                .first { $0.id == develop.runID }
+        )
+        #expect(portable.literatureRecommendations.map(\.rawCitation) == [
+            "A. Author, Frozen Reading Lead (2025)",
+        ])
 
         let currentTarget = try await researchFunctionTarget(
             fixture.analysisID,
@@ -352,6 +388,7 @@ extension ResearchFunctionOperationsTests {
                 summary: "Added one source-bound claim.",
                 didModifyTarget: true,
                 activityCompletion: activity,
+                literatureRecommendations: [],
                 submittedAt: submittedAt
             )
         )
@@ -377,12 +414,13 @@ extension ResearchFunctionOperationsTests {
             confirmationToken: parent.snapshot.confirmationToken,
             summary: "Added one source-bound claim.",
             didModifyTarget: true,
+            literatureRecommendations: [],
             submittedAt: submittedAt
         )
         let localURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
             .appendingPathComponent(parent.runID.uuidString.lowercased() + ".json")
         let recordsURL = fixture.rootURL.appendingPathComponent(
             ".scholium/research-records/v1/records",
@@ -476,6 +514,7 @@ extension ResearchFunctionOperationsTests {
                         candidateModifiedNotes: [],
                         summary: "No Analysis change was needed."
                     ),
+                    literatureRecommendations: [],
                     childRunIDs: [manual.runID]
                 )
             )
@@ -492,7 +531,8 @@ extension ResearchFunctionOperationsTests {
                 confirmationToken: develop.snapshot.confirmationToken,
                 summary: "No Analysis change was needed.",
                 didModifyTarget: false,
-                activityCompletion: unchangedDevelopActivity
+                activityCompletion: unchangedDevelopActivity,
+                literatureRecommendations: []
             )
         )
         #expect(unchangedDevelop.state == .complete)
@@ -600,7 +640,8 @@ extension ResearchFunctionOperationsTests {
                 confirmationToken: develop.snapshot.confirmationToken,
                 summary: "Developed one bounded claim.",
                 didModifyTarget: true,
-                activityCompletion: activityCompletion
+                activityCompletion: activityCompletion,
+                literatureRecommendations: []
             )
         )
         #expect(awaiting.state == .awaitingFidelity)
@@ -610,6 +651,7 @@ extension ResearchFunctionOperationsTests {
                 confirmationToken: develop.snapshot.confirmationToken,
                 summary: "Developed one bounded claim.",
                 didModifyTarget: true,
+                literatureRecommendations: [],
                 childRunIDs: [manualCompletion.runID]
             )
         )
@@ -696,7 +738,8 @@ extension ResearchFunctionOperationsTests {
             confirmationToken: develop.snapshot.confirmationToken,
             summary: "Developed one bounded claim.",
             didModifyTarget: true,
-            activityCompletion: activityCompletion
+            activityCompletion: activityCompletion,
+            literatureRecommendations: []
         )
         let awaiting = try await handle.research.completeProtectedFunction(awaitingSubmission)
         #expect(awaiting.state == .awaitingFidelity)
@@ -708,6 +751,7 @@ extension ResearchFunctionOperationsTests {
                     summary: "Tried to reuse an audit of the pre-edit revision.",
                     didModifyTarget: true,
                     activityCompletion: activityCompletion,
+                    literatureRecommendations: [],
                     childRunIDs: [preEditFidelity.runID]
                 )
             )
@@ -720,7 +764,8 @@ extension ResearchFunctionOperationsTests {
                     summary: "Tried to attach an unprepared audit claim.",
                     didModifyTarget: true,
                     activityCompletion: activityCompletion,
-                    fidelityOutcomes: [.passedContent]
+                    fidelityOutcomes: [.passedContent],
+                    literatureRecommendations: []
                 )
             )
         }
@@ -754,6 +799,7 @@ extension ResearchFunctionOperationsTests {
                 summary: "Developed and checked one bounded claim.",
                 didModifyTarget: true,
                 activityCompletion: activityCompletion,
+                literatureRecommendations: [],
                 childRunIDs: [finalFidelity.runID]
             )
         )

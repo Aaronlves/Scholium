@@ -757,6 +757,7 @@ extension ResearchFunctionCoordinator {
         let activityDeliveryInstructions = try researchActivityDeliveryInstructions(
             base: liveInstructions,
             request: request,
+            actionID: actionSnapshot.actionID,
             runID: runID,
             confirmationToken: confirmationToken,
             authorization: activityAuthorization
@@ -1097,7 +1098,7 @@ extension ResearchFunctionCoordinator {
                     matching: snapshot
                 )
             } catch {
-                // The Local v2 copy is already durable. Retain it as the
+                // The Local-v3 copy is already durable. Retain it as the
                 // authority and let the idempotent reconciliation path finish
                 // detaching the staging evidence now or after process restart.
                 _ = try await record(runID: runID)

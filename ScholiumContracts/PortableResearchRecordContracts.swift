@@ -2,8 +2,8 @@ import Foundation
 
 /// The durable scholarly shape of one portable Research Record.
 ///
-/// Storage location is intentionally not encoded: `active/`, `records/`, and
-/// `trash/` remain filesystem state owned by the portable store.
+/// Storage location is intentionally not encoded: active Discussions and
+/// finished Records remain filesystem state owned by the portable store.
 public enum PortableResearchRecordKind: String, Codable, Hashable, Sendable {
     case action
     case discussion
@@ -548,7 +548,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let id: UUID
@@ -565,6 +565,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let fidelityCompletion: PortableResearchFidelityCompletion
     public let confirmedChanges: [PortableResearchConfirmedChange]
     public let discrepancies: [PortableResearchDiscrepancy]
+    public let literatureRecommendations: [ResearchLiteratureRecommendation]
     public let startedAt: Date
     public let finishedAt: Date
     public let isPinned: Bool
@@ -584,6 +585,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         fidelityCompletion: PortableResearchFidelityCompletion,
         confirmedChanges: [PortableResearchConfirmedChange] = [],
         discrepancies: [PortableResearchDiscrepancy] = [],
+        literatureRecommendations: [ResearchLiteratureRecommendation] = [],
         startedAt: Date,
         finishedAt: Date,
         isPinned: Bool = false
@@ -594,6 +596,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         )
         let statementIDs = statements.map(\.id)
         let discrepancyIDs = discrepancies.map(\.id)
+        let recommendationIDs = literatureRecommendations.map(\.id)
         guard startedAt.timeIntervalSinceReferenceDate.isFinite,
               finishedAt.timeIntervalSinceReferenceDate.isFinite,
               finishedAt >= startedAt,
@@ -603,12 +606,20 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
               actuallyUsedMaterials.count <= 256,
               confirmedChanges.count <= 256,
               discrepancies.count <= 256,
+              literatureRecommendations.count <= 256,
               participatingByID.count == participatingNotes.count,
               Set(statementIDs).count == statementIDs.count,
               zip(statements, statements.dropFirst()).allSatisfy({ pair in
                   pair.0.createdAt <= pair.1.createdAt
               }),
               Set(discrepancyIDs).count == discrepancyIDs.count,
+              Set(recommendationIDs).count == recommendationIDs.count,
+              literatureRecommendations.enumerated().allSatisfy({ ordinal, item in
+                  item.id == ResearchLiteratureRecommendation.stableID(
+                      runID: id,
+                      ordinal: ordinal
+                  )
+              }),
               Set(actuallyUsedMaterials.map(\.noteID)).count == actuallyUsedMaterials.count,
               Set(confirmedChanges.map(\.noteID)).count == confirmedChanges.count,
               actuallyUsedMaterials.allSatisfy({ material in
@@ -639,7 +650,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             guard action != nil,
                   method != nil,
                   fidelityCompletion != .notApplicable,
-                  primaryNoteID.map({ participatingByID[$0] != nil }) ?? true else {
+                  primaryNoteID.map({ participatingByID[$0] != nil }) ?? true,
+                  action?.actionID != .analyze || sourceReference != nil,
+                  action?.actionID == .analyze || literatureRecommendations.isEmpty else {
                 throw PortableResearchRecordError.invalidRecord
             }
         case .discussion:
@@ -650,7 +663,8 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   actuallyUsedMaterials.isEmpty,
                   fidelityCompletion == .notApplicable,
                   confirmedChanges.isEmpty,
-                  discrepancies.isEmpty else {
+                  discrepancies.isEmpty,
+                  literatureRecommendations.isEmpty else {
                 throw PortableResearchRecordError.invalidRecord
             }
         }
@@ -678,6 +692,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             if $0.noteID != $1.noteID { return $0.noteID.uuidString < $1.noteID.uuidString }
             return $0.id.uuidString < $1.id.uuidString
         }
+        self.literatureRecommendations = literatureRecommendations
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.isPinned = isPinned
@@ -697,6 +712,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case fidelityCompletion = "fidelity_completion"
         case confirmedChanges = "confirmed_changes"
         case discrepancies
+        case literatureRecommendations = "literature_recommendations"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case isPinned = "is_pinned"
@@ -757,6 +773,10 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             discrepancies: container.decode(
                 [PortableResearchDiscrepancy].self,
                 forKey: .discrepancies
+            ),
+            literatureRecommendations: container.decode(
+                [ResearchLiteratureRecommendation].self,
+                forKey: .literatureRecommendations
             ),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decode(Date.self, forKey: .finishedAt),
@@ -950,7 +970,7 @@ private struct PortableResearchStrictSourceReference: Decodable {
     }
 }
 
-private enum PortableResearchRecordValidation {
+enum PortableResearchRecordValidation {
     static func isValidFingerprint(_ fingerprint: DocumentFingerprint) -> Bool {
         fingerprint.byteCount >= 0
             && fingerprint.sha256.count == 64
@@ -1021,20 +1041,116 @@ private enum PortableResearchRecordValidation {
     }
 
     static func containsAbsolutePath(_ value: String) -> Bool {
-        value.split(whereSeparator: { character in
-            character.isWhitespace
-                || "\"'`()[]{}<>,;".contains(character)
-        }).contains { rawToken in
-            let token = String(rawToken)
-            if token.lowercased().hasPrefix("file://") { return true }
-            if token.hasPrefix("/") && token.split(separator: "/").count > 1 {
+        var candidate = value.precomposedStringWithCompatibilityMapping
+        if containsAbsolutePathSyntax(candidate) { return true }
+        for _ in 0..<3 {
+            guard let decoded = candidate.removingPercentEncoding,
+                  decoded != candidate else {
+                break
+            }
+            candidate = decoded.precomposedStringWithCompatibilityMapping
+            if containsAbsolutePathSyntax(candidate) { return true }
+        }
+        return false
+    }
+
+    static func hasNoDisallowedControlCharacters(_ value: String) -> Bool {
+        !value.unicodeScalars.contains { scalar in
+            CharacterSet.controlCharacters.contains(scalar)
+                && scalar.value != 10
+                && scalar.value != 9
+        }
+    }
+
+    private static func containsAbsolutePathSyntax(_ value: String) -> Bool {
+        let characters = Array(value)
+
+        for index in characters.indices {
+            let character = characters[index]
+            let nextIndex = characters.index(after: index)
+            let hasNext = nextIndex < characters.endIndex
+            let next = hasNext ? characters[nextIndex] : nil
+            let isBoundary = index == characters.startIndex
+                || isPathBoundary(characters[characters.index(before: index)])
+
+            if character == "~", isBoundary, next == "/" || next == "\\" {
                 return true
             }
-            let scalars = Array(token.unicodeScalars)
-            return scalars.count >= 3
-                && CharacterSet.letters.contains(scalars[0])
-                && scalars[1] == ":"
-                && (scalars[2] == "\\" || scalars[2] == "/")
+
+            if character == "/" {
+                guard isBoundary else { continue }
+                if isWebURLSlash(characters, at: index) {
+                    continue
+                }
+                guard let next, !next.isWhitespace else { continue }
+                return true
+            }
+
+            if character == "\\" {
+                guard isBoundary, let next, !next.isWhitespace else { continue }
+                return true
+            }
+
+            guard isASCIIAlpha(character), hasNext, next == ":" else { continue }
+            let pathIndex = characters.index(after: nextIndex)
+            guard pathIndex < characters.endIndex,
+                  characters[pathIndex] == "/" || characters[pathIndex] == "\\",
+                  isBoundary else {
+                continue
+            }
+            return true
         }
+        return false
+    }
+
+    private static func isPathBoundary(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.whitespacesAndNewlines.contains(scalar)
+                || CharacterSet.punctuationCharacters.contains(scalar)
+                || CharacterSet.symbols.contains(scalar)
+        }
+    }
+
+    private static func isWebURLSlash(
+        _ characters: [Character],
+        at index: Int
+    ) -> Bool {
+        if isFirstWebURLSlash(characters, at: index) { return true }
+        guard index > 0, characters[index - 1] == "/" else { return false }
+        return isFirstWebURLSlash(characters, at: index - 1)
+    }
+
+    private static func isFirstWebURLSlash(
+        _ characters: [Character],
+        at index: Int
+    ) -> Bool {
+        guard index + 1 < characters.count,
+              characters[index] == "/",
+              characters[index + 1] == "/" else {
+            return false
+        }
+        for scheme in ["http", "https"] {
+            let schemeCharacters = Array(scheme)
+            let schemeStart = index - schemeCharacters.count - 1
+            guard schemeStart >= 0,
+                  characters[index - 1] == ":",
+                  Array(characters[schemeStart..<(index - 1)])
+                    .map({ Character(String($0).lowercased()) })
+                    == schemeCharacters else {
+                continue
+            }
+            if schemeStart == 0 || isPathBoundary(characters[schemeStart - 1]) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func isASCIIAlpha(_ character: Character) -> Bool {
+        guard character.unicodeScalars.count == 1,
+              let scalar = character.unicodeScalars.first else {
+            return false
+        }
+        return (65...90).contains(scalar.value) || (97...122).contains(scalar.value)
     }
 }

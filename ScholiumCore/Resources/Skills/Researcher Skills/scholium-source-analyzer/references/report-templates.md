@@ -39,7 +39,10 @@ For each central unit, label source-explicit material, reconstruction, repair, a
 ## Open Questions and Next Checks
 ```
 
-When the researcher requests later-use handoffs or bibliography screening and the analysis warrants them, append only the relevant structured output defined in `later-use-handoffs.md` or `bibliography-recommendations.md`. Omit either section when it was not requested or when there are zero warranted entries. Recommended Bibliography belongs in Scholium's structured Research record, not in the analysis note, unless the researcher explicitly asks for a prose rendering.
+When the researcher requests later-use handoffs and the analysis warrants them,
+append only the relevant structured output defined in `later-use-handoffs.md`.
+Omit the section when it was not requested or when there are zero warranted
+entries.
 
 ## Concise report
 

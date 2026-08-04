@@ -49,7 +49,7 @@ struct CurrentStateValidationTests {
         }
     }
 
-    @Test("Current capability Method documents reject unknown and future fields")
+    @Test("Current capability Method documents reject unknown fields")
     func strictCapabilityMethodDocuments() {
         let unknownCitation = Data(
             #"{"schema_version":1,"package_id":null,"citation_style":null,"future":true}"#.utf8
@@ -58,16 +58,6 @@ struct CurrentStateValidationTests {
             _ = try JSONDecoder().decode(
                 ResearchCitationMethodDocument.self,
                 from: unknownCitation
-            )
-        }
-
-        let futureBibliography = Data(
-            #"{"schema_version":2,"package_id":null}"#.utf8
-        )
-        #expect(throws: ResearchSkillBindingError.self) {
-            _ = try JSONDecoder().decode(
-                ResearchBibliographyMethodDocument.self,
-                from: futureBibliography
             )
         }
     }

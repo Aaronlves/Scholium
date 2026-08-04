@@ -3,6 +3,16 @@ import SwiftUI
 
 struct ResearchRecordBrowserContext {
     let setPinned: @MainActor (UUID, Bool) async throws -> PortableResearchRecord
+    let setRecommendationDisposition: @MainActor (
+        UUID,
+        UUID,
+        ResearchLiteratureRecommendationDispositionStatus
+    ) async throws -> PortableResearchRecord
+    let setRecommendationNote: @MainActor (
+        UUID,
+        UUID,
+        String?
+    ) async throws -> PortableResearchRecord
     let deletePermanently: @MainActor (UUID) async throws -> Void
     let comparison: @MainActor (
         UUID,
@@ -14,30 +24,64 @@ struct ResearchRecordBrowserContext {
 struct ResearchRecordBrowserView: View {
     let model: ResearchRecordBrowserModel
     let triptychName: String
-    let initialNoteID: UUID?
+    let loadIssues: [String]
     let context: ResearchRecordBrowserContext
 
     var body: some View {
         @Bindable var model = model
-        ResearchRecordTwoColumnView(
-            model: model,
-            triptychName: triptychName,
-            initialNoteID: initialNoteID,
-            context: context
-        )
-        .frame(width: 760, height: 680)
+        VStack(spacing: 0) {
+            if !loadIssues.isEmpty {
+                ResearchRecordsLoadIssuesBanner(issues: loadIssues)
+                ScholiumStructuralRule()
+            }
+            ResearchRecordTwoColumnView(
+                model: model,
+                triptychName: triptychName,
+                context: context
+            )
+        }
         .scholiumSurface(.document)
+        .tint(ScholiumColorRole.accent.color)
         .onDisappear { model.cancelComparison() }
         .alert(
             model.isComparisonError
                 ? "Comparison Unavailable"
-                : "Research Record Unavailable",
+                : "Research Records Unavailable",
             isPresented: $model.isShowingError
         ) {
             Button("Dismiss", role: .cancel) { model.dismissError() }
         } message: {
             Text(model.errorMessage)
         }
+    }
+}
+
+private struct ResearchRecordsLoadIssuesBanner: View {
+    let issues: [String]
+    @State private var isExpanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                ForEach(issues, id: \.self) { issue in
+                    Text(issue)
+                        .textSelection(.enabled)
+                }
+            }
+            .font(ScholiumInterfaceTypography.metadata)
+            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
+        } label: {
+            Label(
+                "Some Research Records Could Not Be Loaded",
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(ScholiumInterfaceTypography.rowTitle)
+        }
+        .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
+        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+        .scholiumSurface(.denseEvidence)
+        .accessibilityIdentifier("scholium.researchRecords.issues")
     }
 }
 
@@ -51,27 +95,390 @@ private enum ResearchRecordLayout {
 private struct ResearchRecordTwoColumnView: View {
     let model: ResearchRecordBrowserModel
     let triptychName: String
-    let initialNoteID: UUID?
     let context: ResearchRecordBrowserContext
 
     var body: some View {
-        HStack(spacing: 0) {
-            ResearchRecordListPane(
-                model: model,
-                triptychName: triptychName,
-                initialNoteID: initialNoteID,
-                context: context,
-                opensSelection: nil
-            )
+        HSplitView {
+            VStack(spacing: 0) {
+                ResearchRecordsViewIndex(model: model)
+                ScholiumStructuralRule()
+                Group {
+                    switch model.viewKind {
+                    case .records:
+                        ResearchRecordListPane(
+                            model: model,
+                            triptychName: triptychName,
+                            context: context,
+                            opensSelection: nil
+                        )
+                    case .recommendations:
+                        ResearchLiteratureRecommendationListPane(
+                            model: model,
+                            triptychName: triptychName,
+                            context: context
+                        )
+                    }
+                }
+            }
             .frame(
                 minWidth: ResearchRecordLayout.listMinimumWidth,
                 idealWidth: ResearchRecordLayout.listIdealWidth,
-                maxWidth: ResearchRecordLayout.listMaximumWidth
+                maxWidth: ResearchRecordLayout.listMaximumWidth,
+                maxHeight: .infinity
             )
-            ScholiumStructuralRule(orientation: .vertical)
-            ResearchRecordSelectedDetail(model: model, context: context)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scholiumSurface(.navigation)
+
+            Group {
+                switch model.viewKind {
+                case .records:
+                    ResearchRecordSelectedDetail(model: model, context: context)
+                case .recommendations:
+                    ResearchLiteratureRecommendationSelectedDetail(model: model, context: context)
+                }
+            }
+            .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
         }
+        .accessibilityIdentifier("scholium.researchRecords.split")
+    }
+}
+
+private struct ResearchRecordsViewIndex: View {
+    @Environment(\.layoutDirection) private var layoutDirection
+    @FocusState private var focusedView: ResearchRecordsViewKind?
+
+    let model: ResearchRecordBrowserModel
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(ResearchRecordsViewKind.allCases, id: \.self) { viewKind in
+                ResearchRecordsViewIndexButton(
+                    viewKind: viewKind,
+                    unprocessedCount: model.unprocessedRecommendationCount,
+                    isSelected: model.viewKind == viewKind,
+                    focusedView: $focusedView,
+                    select: { model.viewKind = viewKind },
+                    move: { moveFocus(from: viewKind, direction: $0) }
+                )
+                .frame(minWidth: 0, maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("View")
+        .accessibilityIdentifier("scholium.researchRecords.view")
+    }
+
+    private func moveFocus(
+        from viewKind: ResearchRecordsViewKind,
+        direction: MoveCommandDirection
+    ) {
+        let views = ResearchRecordsViewKind.allCases
+        guard let index = views.firstIndex(of: viewKind) else { return }
+        let visualStep: Int
+        switch direction {
+        case .left:
+            visualStep = layoutDirection == .leftToRight ? -1 : 1
+        case .right:
+            visualStep = layoutDirection == .leftToRight ? 1 : -1
+        default:
+            return
+        }
+        let nextIndex = (index + visualStep + views.count) % views.count
+        let nextView = views[nextIndex]
+        model.viewKind = nextView
+        focusedView = nextView
+    }
+}
+
+private struct ResearchRecordsViewIndexButton: View {
+    @State private var isHovering = false
+
+    let viewKind: ResearchRecordsViewKind
+    let unprocessedCount: Int
+    let isSelected: Bool
+    let focusedView: FocusState<ResearchRecordsViewKind?>.Binding
+    let select: () -> Void
+    let move: (MoveCommandDirection) -> Void
+
+    var body: some View {
+        Button(action: select) {
+            Text(title)
+                .font(
+                    isSelected
+                        ? ScholiumInterfaceTypography.apparatusModeSelected
+                        : ScholiumInterfaceTypography.apparatusMode
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: ScholiumMetrics.Apparatus.headerHeight
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .focusable()
+        .focused(focusedView, equals: viewKind)
+        .foregroundStyle(
+            isSelected || isHovering
+                ? ScholiumColorRole.primaryText.color
+                : ScholiumColorRole.secondaryText.color
+        )
+        .overlay(alignment: .bottom) {
+            ScholiumEditorialIndexUnderline(
+                isSelected: isSelected,
+                isHovering: isHovering,
+                width: ScholiumMetrics.Apparatus.selectedModeIndicatorWidth,
+                height: ScholiumMetrics.Apparatus.selectedModeIndicatorHeight
+            )
+        }
+        .onHover { isHovering = $0 }
+        .onMoveCommand(perform: move)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityValue(isSelected ? "Selected" : "")
+        .accessibilityIdentifier(
+            "scholium.researchRecords.view.\(viewKind.rawValue)"
+        )
+    }
+
+    private var title: String {
+        switch viewKind {
+        case .records:
+            "Records"
+        case .recommendations:
+            "Recommendations (\(unprocessedCount))"
+        }
+    }
+}
+
+private struct ResearchRecordsScopeMenu: View {
+    let model: ResearchRecordBrowserModel
+
+    var body: some View {
+        Menu {
+            if model.canScopeToNote {
+                scopeChoice("This Note", value: .thisNote)
+            }
+            scopeChoice("Triptych", value: .triptych)
+        } label: {
+            Text(scopeTitle)
+                .font(ScholiumInterfaceTypography.apparatusModeSelected)
+                .foregroundStyle(ScholiumColorRole.accent.color)
+                .lineLimit(1)
+                .frame(
+                    minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                    alignment: .leading
+                )
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .focusable()
+        .tint(ScholiumColorRole.accent.color)
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityLabel("Scope")
+        .accessibilityValue(scopeTitle)
+        .accessibilityIdentifier("scholium.researchRecords.scope")
+    }
+
+    @ViewBuilder
+    private func scopeChoice(
+        _ title: String,
+        value: ResearchRecordsScope
+    ) -> some View {
+        Button {
+            model.scope = value
+        } label: {
+            if model.scope == value {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
+
+    private var scopeTitle: String {
+        switch model.scope {
+        case .thisNote:
+            "This Note"
+        case .triptych:
+            "Triptych"
+        }
+    }
+}
+
+private struct ResearchRecordsListContext: View {
+    let model: ResearchRecordBrowserModel
+    let triptychName: String
+    let count: Text
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            ResearchRecordsScopeMenu(model: model)
+            Text("·")
+                .font(ScholiumInterfaceTypography.metadata)
+                .foregroundStyle(ScholiumColorRole.mutedText.color)
+                .accessibilityHidden(true)
+            Text(triptychName)
+                .font(ScholiumInterfaceTypography.metadata)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(-1)
+            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+            count
+                .font(ScholiumInterfaceTypography.metadata)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .monospacedDigit()
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+}
+
+private struct ResearchRecordsSearchField: View {
+    let prompt: String
+    @Binding var text: String
+    let identifier: String
+
+    var body: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: "magnifyingglass")
+                .font(ScholiumInterfaceTypography.metadata)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .accessibilityHidden(true)
+            TextField(prompt, text: $text)
+                .textFieldStyle(.plain)
+                .accessibilityIdentifier(identifier)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .frame(
+                            minWidth: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                            minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear Search")
+            }
+        }
+        .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
+        .background(
+            ScholiumColorRole.surfaceBackground.color,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
+        .scholiumBoundary(
+            .subtleBoundary,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
+    }
+}
+
+/// One ink-first action treatment shared by both Research Records views. It
+/// keeps native Button behavior while avoiding a second bezeled visual system
+/// inside the editorial reading plane.
+private struct ResearchRecordActionButton: View {
+    @Environment(\.isEnabled) private var isEnabled
+    @FocusState private var isFocused: Bool
+    @State private var isHovering = false
+
+    let title: String
+    let systemImage: String
+    let role: ButtonRole?
+    let identifier: String
+    let action: () -> Void
+
+    init(
+        _ title: String,
+        systemImage: String,
+        role: ButtonRole? = nil,
+        identifier: String,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.role = role
+        self.identifier = identifier
+        self.action = action
+    }
+
+    var body: some View {
+        Button(role: role, action: action) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Image(systemName: systemImage)
+                    .font(ScholiumInterfaceTypography.metadata)
+                    .foregroundStyle(actionColor)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(ScholiumInterfaceTypography.apparatusActionTitle)
+                    .foregroundStyle(actionColor)
+            }
+            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+            .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
+            .contentShape(Rectangle())
+            .background(
+                isHovering || isFocused
+                    ? ScholiumColorRole.raisedSurfaceBackground.color
+                    : Color.clear,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+                .strokeBorder(
+                    actionColor.opacity(isFocused ? 0.72 : 0),
+                    lineWidth: 1
+                )
+            }
+            .opacity(isEnabled ? 1 : 0.42)
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .focused($isFocused)
+        .onHover { isHovering = $0 }
+        .help(title)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var actionColor: Color {
+        role == .destructive
+            ? ScholiumColorRole.destructive.color
+            : ScholiumColorRole.primaryText.color
+    }
+}
+
+private struct ResearchRecordIdentityValue: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: ScholiumGrid.Spacing.labelAccessoryGap
+        ) {
+            Text(label)
+                .font(ScholiumInterfaceTypography.editorialLabel)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            Text(value)
+                .font(ScholiumTypography.swiftUIRevisionIdentity())
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, ScholiumGrid.Spacing.nestedContentInset)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -95,7 +502,6 @@ private struct ResearchRecordSelectedDetail: View {
 private struct ResearchRecordListPane: View {
     let model: ResearchRecordBrowserModel
     let triptychName: String
-    let initialNoteID: UUID?
     let context: ResearchRecordBrowserContext
     let opensSelection: ((UUID) -> Void)?
     @State private var showsFilters = false
@@ -106,7 +512,6 @@ private struct ResearchRecordListPane: View {
             ResearchRecordFilterControls(
                 model: model,
                 triptychName: triptychName,
-                initialNoteID: initialNoteID,
                 showsFilters: $showsFilters
             )
             ScholiumStructuralRule()
@@ -119,8 +524,6 @@ private struct ResearchRecordListPane: View {
                         contextTitle: entry.contextTitle,
                         actionID: entry.actionID,
                         finishedAt: entry.finishedAt,
-                        skillID: entry.skillID,
-                        skillVersion: entry.skillVersion,
                         noteTitles: entry.noteParticipants.map(\.title),
                         authorParticipants: entry.authorParticipants,
                         isPinned: entry.isPinned,
@@ -148,47 +551,39 @@ private struct ResearchRecordListPane: View {
                             trailing: ScholiumGrid.Spacing.inlineControlGap
                         )
                     )
+                    .listRowBackground(
+                        ScholiumColorRole.navigationSurfaceBackground.color
+                    )
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .accessibilityLabel("Research Records")
                 .accessibilityIdentifier("scholium.researchRecord.list")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .scholiumSurface(.navigation)
-        .navigationTitle("Research Record")
     }
 }
 
 private struct ResearchRecordFilterControls: View {
     let model: ResearchRecordBrowserModel
     let triptychName: String
-    let initialNoteID: UUID?
     @Binding var showsFilters: Bool
 
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            TextField("Search records", text: $model.searchText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("scholium.researchRecord.search")
-            Picker("Note", selection: $model.noteFilterID) {
-                Text("Triptych").tag(Optional<UUID>.none)
-                if let initialNoteID,
-                   !model.noteOptions.contains(where: { $0.id == initialNoteID }) {
-                    Text("This Note").tag(Optional(initialNoteID))
-                }
-                ForEach(model.noteOptions) { note in
-                    if note.id == initialNoteID {
-                        Text("This Note — \(note.title)").tag(Optional(note.id))
-                    } else if note.isTombstone {
-                        Text("Deleted Note — \(note.title)").tag(Optional(note.id))
-                    } else {
-                        Text(note.title).tag(Optional(note.id))
-                    }
-                }
-            }
-            .accessibilityIdentifier("scholium.researchRecord.noteFilter")
+            ResearchRecordsListContext(
+                model: model,
+                triptychName: triptychName,
+                count: recordCountText
+            )
+            ResearchRecordsSearchField(
+                prompt: "Search records",
+                text: $model.searchText,
+                identifier: "scholium.researchRecord.search"
+            )
             DisclosureGroup("Filters", isExpanded: $showsFilters) {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     ResearchRecordDatePicker(model: model)
@@ -200,19 +595,592 @@ private struct ResearchRecordFilterControls: View {
                 }
                 .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
             }
-            HStack {
-                Text(triptychName)
-                    .lineLimit(1)
-                Spacer()
-                Text("\(model.visibleEntries.count) records")
-                    .monospacedDigit()
-            }
-            .font(ScholiumInterfaceTypography.metadata)
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
         }
         .controlSize(.small)
         .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
         .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+    }
+
+    private var recordCountText: Text {
+        let count = model.visibleEntries.count
+        return count == 1
+            ? Text("\(count) record")
+            : Text("\(count) records")
+    }
+}
+
+private struct ResearchLiteratureRecommendationListPane: View {
+    let model: ResearchRecordBrowserModel
+    let triptychName: String
+    let context: ResearchRecordBrowserContext
+
+    var body: some View {
+        @Bindable var model = model
+        VStack(spacing: 0) {
+            ResearchLiteratureRecommendationFilterControls(
+                model: model,
+                triptychName: triptychName
+            )
+            ScholiumStructuralRule()
+            if model.visibleRecommendationGroups.isEmpty {
+                ResearchLiteratureRecommendationEmptyResults(model: model)
+            } else {
+                List(selection: $model.selectedRecommendationID) {
+                    ForEach(model.visibleRecommendationGroups) { group in
+                        if group.displaysSharedIdentityHeader {
+                            Section {
+                                recommendationRows(
+                                    in: group,
+                                    showsLiteratureTitle: false
+                                )
+                            } header: {
+                                Text(group.title)
+                                    .lineLimit(2)
+                                    .textCase(nil)
+                            }
+                        } else {
+                            recommendationRows(
+                                in: group,
+                                showsLiteratureTitle: true
+                            )
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .accessibilityLabel("Literature Recommendations")
+                .accessibilityIdentifier("scholium.researchRecommendations.list")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .scholiumSurface(.navigation)
+    }
+
+    @ViewBuilder
+    private func recommendationRows(
+        in group: ResearchLiteratureRecommendationGroup,
+        showsLiteratureTitle: Bool
+    ) -> some View {
+        ForEach(group.occurrences) { occurrence in
+            ResearchLiteratureRecommendationListRow(
+                occurrence: occurrence,
+                showsLiteratureTitle: showsLiteratureTitle,
+                isMutating: model.mutatingRecommendationIDs.contains(
+                    occurrence.id
+                ),
+                select: {
+                    model.selectRecommendation(occurrence.id)
+                },
+                setHandled: { isHandled in
+                    Task {
+                        await model.setRecommendationDisposition(
+                            occurrenceID: occurrence.id,
+                            status: isHandled ? .handled : .unprocessed,
+                            update: context.setRecommendationDisposition
+                        )
+                    }
+                }
+            )
+            .tag(occurrence.id)
+            .listRowInsets(
+                EdgeInsets(
+                    top: ScholiumGrid.Spacing.labelAccessoryGap,
+                    leading: ScholiumGrid.Spacing.inlineControlGap,
+                    bottom: ScholiumGrid.Spacing.labelAccessoryGap,
+                    trailing: ScholiumGrid.Spacing.inlineControlGap
+                )
+            )
+            .listRowBackground(
+                ScholiumColorRole.navigationSurfaceBackground.color
+            )
+        }
+    }
+}
+
+private struct ResearchLiteratureRecommendationFilterControls: View {
+    let model: ResearchRecordBrowserModel
+    let triptychName: String
+
+    var body: some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            ResearchRecordsListContext(
+                model: model,
+                triptychName: triptychName,
+                count: recommendationCountText
+            )
+            ResearchRecordsSearchField(
+                prompt: "Search recommendations",
+                text: $model.recommendationSearchText,
+                identifier: "scholium.researchRecommendations.search"
+            )
+            Picker("Status", selection: $model.recommendationFilter) {
+                Text("Unprocessed").tag(ResearchLiteratureRecommendationFilter.unprocessed)
+                Text("Handled").tag(ResearchLiteratureRecommendationFilter.handled)
+                Text("All").tag(ResearchLiteratureRecommendationFilter.all)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityIdentifier("scholium.researchRecommendations.status")
+        }
+        .controlSize(.small)
+        .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
+        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+    }
+
+    private var recommendationCountText: Text {
+        let count = model.visibleRecommendationGroups.reduce(0) {
+            $0 + $1.occurrences.count
+        }
+        return count == 1
+            ? Text("\(count) recommendation")
+            : Text("\(count) recommendations")
+    }
+}
+
+private struct ResearchLiteratureRecommendationEmptyResults: View {
+    let model: ResearchRecordBrowserModel
+
+    var body: some View {
+        ContentUnavailableView(
+            model.recommendationFilter == .unprocessed
+                ? "No Unprocessed Recommendations"
+                : "No Matching Recommendations",
+            systemImage: "books.vertical",
+            description: Text(emptyDescription)
+        )
+        .overlay(alignment: .bottom) {
+            if !model.recommendationSearchText.isEmpty
+                || model.recommendationFilter != .unprocessed {
+                Button("Clear Filters") { model.clearRecommendationFilters() }
+                    .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyDescription: String {
+        if model.recommendationFilter == .unprocessed,
+           model.recommendationSearchText.isEmpty {
+            return "Analyze Records in this scope contain no reading leads awaiting handling."
+        }
+        return "Clear the search or choose another handling status."
+    }
+}
+
+private struct ResearchLiteratureRecommendationListRow: View {
+    let occurrence: ResearchLiteratureRecommendationOccurrence
+    let showsLiteratureTitle: Bool
+    let isMutating: Bool
+    let select: () -> Void
+    let setHandled: @MainActor @Sendable (Bool) -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Button(action: select) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
+                    Text(
+                        showsLiteratureTitle
+                            ? occurrence.displayTitle
+                            : occurrence.contextTitle
+                    )
+                        .font(ScholiumInterfaceTypography.rowTitle)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if showsLiteratureTitle {
+                        Text(occurrence.contextTitle)
+                            .font(ScholiumInterfaceTypography.metadata)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .lineLimit(1)
+                    }
+                    Text(
+                        occurrence.parentRecord.finishedAt,
+                        format: .dateTime.year().month().day()
+                    )
+                    .font(ScholiumInterfaceTypography.metadata)
+                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Toggle(
+                "Handled",
+                isOn: Binding(
+                    get: {
+                        occurrence.recommendation.disposition.status == .handled
+                    },
+                    set: setHandled
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.checkbox)
+            .disabled(isMutating)
+            .accessibilityIdentifier(
+                "scholium.researchRecommendation.rowHandled.\(occurrence.recommendation.id.uuidString)"
+            )
+            .accessibilityValue(
+                occurrence.recommendation.disposition.status == .handled
+                    ? "Handled"
+                    : "Unprocessed"
+            )
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(
+            "scholium.researchRecommendation.row.\(occurrence.recommendation.id.uuidString)"
+        )
+    }
+}
+
+private struct ResearchLiteratureRecommendationSelectedDetail: View {
+    let model: ResearchRecordBrowserModel
+    let context: ResearchRecordBrowserContext
+
+    var body: some View {
+        if let occurrence = model.selectedRecommendationOccurrence {
+            ResearchLiteratureRecommendationDetailView(
+                occurrence: occurrence,
+                model: model,
+                context: context
+            )
+            .id(occurrence.id)
+        } else {
+            ContentUnavailableView(
+                "Select a Literature Recommendation",
+                systemImage: "books.vertical",
+                description: Text("Choose a reading lead from an Analyze Research Record.")
+            )
+        }
+    }
+}
+
+private struct ResearchLiteratureRecommendationDetailView: View {
+    let occurrence: ResearchLiteratureRecommendationOccurrence
+    let model: ResearchRecordBrowserModel
+    let context: ResearchRecordBrowserContext
+    @State private var isEditingNote = false
+    @State private var noteDraft = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text(occurrence.displayTitle)
+                        .font(ScholiumInterfaceTypography.documentTitle)
+                        .accessibilityHeading(.h1)
+                    if let title = occurrence.recommendation.title,
+                       title != occurrence.recommendation.rawCitation {
+                        Text(occurrence.recommendation.rawCitation)
+                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                            .textSelection(.enabled)
+                    }
+                }
+                ScholiumStructuralRule()
+                handlingControls
+                recommendationIdentity
+                ScholiumStructuralRule()
+                recommendationReason
+                ScholiumStructuralRule()
+                recommendationProvenance
+                ScholiumStructuralRule()
+                researcherNote
+            }
+            .padding(ScholiumGrid.Spacing.regionContentInset)
+            .frame(maxWidth: ResearchRecordLayout.readingMeasure, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .scholiumSurface(.document)
+        .accessibilityIdentifier("scholium.researchRecommendation.detail")
+        .sheet(isPresented: $isEditingNote) {
+            ResearchLiteratureRecommendationNoteSheet(
+                draft: $noteDraft,
+                save: { note in
+                    try await model.setRecommendationNote(
+                        occurrenceID: occurrence.id,
+                        note: note,
+                        update: context.setRecommendationNote
+                    )
+                },
+                dismiss: { isEditingNote = false }
+            )
+        }
+    }
+
+    private var handlingControls: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Toggle(
+                "Handled",
+                isOn: Binding(
+                    get: {
+                        occurrence.recommendation.disposition.status == .handled
+                    },
+                    set: { isHandled in
+                        Task {
+                            await model.setRecommendationDisposition(
+                                occurrenceID: occurrence.id,
+                                status: isHandled ? .handled : .unprocessed,
+                                update: context.setRecommendationDisposition
+                            )
+                        }
+                    }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .disabled(model.mutatingRecommendationIDs.contains(occurrence.id))
+            .accessibilityIdentifier(
+                "scholium.researchRecommendation.handled.\(occurrence.recommendation.id.uuidString)"
+            )
+            Text(
+                "Handled means only that you have processed this reading lead. It does not mean read, accepted, cited, verified, or endorsed."
+            )
+            .font(ScholiumInterfaceTypography.metadata)
+            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+        }
+    }
+
+    @ViewBuilder
+    private var recommendationIdentity: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            if !occurrence.recommendation.authors.isEmpty {
+                LabeledContent(
+                    "Authors",
+                    value: occurrence.recommendation.authors.formatted()
+                )
+            }
+            if let year = occurrence.recommendation.year {
+                LabeledContent("Year", value: String(year))
+            }
+            if let doi = occurrence.recommendation.doi {
+                LabeledContent("DOI") {
+                    Text(doi).textSelection(.enabled)
+                }
+            }
+            if let zoteroItemKey = occurrence.recommendation.zoteroItemKey {
+                LabeledContent("Zotero item key") {
+                    Text(zoteroItemKey).textSelection(.enabled)
+                }
+            }
+        }
+        .font(ScholiumInterfaceTypography.apparatusBody)
+    }
+
+    private var recommendationReason: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Why It Was Recommended")
+                .font(ScholiumInterfaceTypography.sectionTitle)
+                .accessibilityHeading(.h2)
+            Text(occurrence.recommendation.reason)
+                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                .textSelection(.enabled)
+            if let uncertainty = occurrence.recommendation.uncertainty {
+                LabeledContent("Uncertainty") {
+                    Text(uncertainty).textSelection(.enabled)
+                }
+            }
+            if !occurrence.recommendation.sourceLocators.isEmpty {
+                Text("Discovery Locators")
+                    .font(ScholiumInterfaceTypography.editorialLabel)
+                ForEach(
+                    Array(occurrence.recommendation.sourceLocators.enumerated()),
+                    id: \.offset
+                ) { _, locator in
+                    Text(locator).textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    private var recommendationProvenance: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Provenance")
+                .font(ScholiumInterfaceTypography.sectionTitle)
+                .accessibilityHeading(.h2)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    provenanceActions
+                }
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    provenanceActions
+                }
+            }
+            if let source = occurrence.parentRecord.sourceReference {
+                LabeledContent("Analyzed source", value: source.displayName)
+                ResearchRecordIdentityValue(
+                    label: "Exact source revision",
+                    value: source.fingerprint.sha256
+                )
+            }
+            LabeledContent("Analysis", value: occurrence.contextTitle)
+            if let method = occurrence.parentRecord.method {
+                LabeledContent("Method", value: "\(method.packageID), \(method.version)")
+            }
+            LabeledContent("Finished") {
+                Text(
+                    occurrence.parentRecord.finishedAt,
+                    format: .dateTime.year().month().day().hour().minute()
+                )
+            }
+            ResearchRecordIdentityValue(
+                label: "Parent Record",
+                value: occurrence.parentRecord.id.uuidString.lowercased()
+            )
+        }
+        .font(ScholiumInterfaceTypography.apparatusBody)
+    }
+
+    @ViewBuilder
+    private var provenanceActions: some View {
+        ResearchRecordActionButton(
+            "Open Analysis",
+            systemImage: "arrow.up.forward.app",
+            identifier: "scholium.researchRecommendation.openAnalysis"
+        ) {
+            guard let participant = analysisParticipant else { return }
+            context.openNote(participant.noteID, participant.note, nil)
+        }
+        .disabled(analysisParticipant == nil)
+        ResearchRecordActionButton(
+            "Open Parent Record",
+            systemImage: "doc.text.magnifyingglass",
+            identifier: "scholium.researchRecommendation.openParentRecord"
+        ) {
+            model.openParentRecord(occurrence.parentRecord.id)
+        }
+    }
+
+    private var researcherNote: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Researcher Note")
+                .font(ScholiumInterfaceTypography.sectionTitle)
+                .accessibilityHeading(.h2)
+            if let note = occurrence.recommendation.disposition.researcherNote {
+                Text(note)
+                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                    .textSelection(.enabled)
+            } else {
+                Text("No note")
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            }
+            ResearchRecordActionButton(
+                occurrence.recommendation.disposition.researcherNote == nil
+                    ? "Add Note…"
+                    : "Edit Note…",
+                systemImage: "square.and.pencil",
+                identifier: "scholium.researchRecommendation.editNote"
+            ) {
+                noteDraft = occurrence.recommendation.disposition.researcherNote ?? ""
+                isEditingNote = true
+            }
+            .disabled(model.mutatingRecommendationIDs.contains(occurrence.id))
+        }
+    }
+
+    private var analysisParticipant: PortableResearchNoteRevision? {
+        guard let participant = occurrence.parentRecord.researchRecordContextParticipant,
+              !participant.isTombstone else { return nil }
+        return participant
+    }
+}
+
+private struct ResearchLiteratureRecommendationNoteSheet: View {
+    @Binding var draft: String
+    let save: @MainActor (String?) async throws -> Void
+    let dismiss: () -> Void
+    @State private var isSaving = false
+    @State private var saveErrorMessage: String?
+
+    var body: some View {
+        VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                ) {
+                    Text("Researcher Note")
+                        .font(ScholiumInterfaceTypography.documentTitle)
+                        .accessibilityHeading(.h1)
+                    Text(
+                        "This note records how you handled the reading lead. Saving an empty note removes it without changing the handling status."
+                    )
+                    .font(ScholiumInterfaceTypography.apparatusBody)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    TextEditor(text: $draft)
+                        .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                        .scrollContentBackground(.hidden)
+                        .padding(ScholiumGrid.Spacing.inlineControlGap)
+                        .frame(minHeight: 120, idealHeight: 180)
+                        .background(
+                            ScholiumColorRole.surfaceBackground.color,
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .scholiumBoundary(
+                            .subtleBoundary,
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .accessibilityLabel("Researcher note")
+                        .accessibilityIdentifier(
+                            "scholium.researchRecommendation.noteEditor"
+                        )
+                    if let saveErrorMessage {
+                        Label(saveErrorMessage, systemImage: "exclamationmark.triangle")
+                            .font(ScholiumInterfaceTypography.metadata)
+                            .foregroundStyle(ScholiumColorRole.attention.color)
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier(
+                                "scholium.researchRecommendation.noteSaveError"
+                            )
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack {
+                Spacer()
+                if isSaving {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Saving researcher note")
+                }
+                Button("Cancel", action: dismiss)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isSaving)
+                Button("Save", action: beginSave)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isSaving)
+            }
+        }
+        .padding(ScholiumGrid.Spacing.regionContentInset)
+        .frame(
+            minWidth: 440,
+            idealWidth: 480,
+            maxWidth: 620,
+            minHeight: 320,
+            idealHeight: 400,
+            maxHeight: 640
+        )
+        .scholiumSurface(.document)
+        .tint(ScholiumColorRole.accent.color)
+    }
+
+    private func beginSave() {
+        guard !isSaving else { return }
+        isSaving = true
+        saveErrorMessage = nil
+        let normalized = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { @MainActor in
+            do {
+                try await save(normalized.isEmpty ? nil : normalized)
+                isSaving = false
+                dismiss()
+            } catch {
+                isSaving = false
+                saveErrorMessage = error.localizedDescription
+            }
+        }
     }
 }
 
@@ -317,8 +1285,6 @@ private struct ResearchRecordListRow: View {
     let contextTitle: String
     let actionID: ResearchActionID
     let finishedAt: Date
-    let skillID: String?
-    let skillVersion: String?
     let noteTitles: [String]
     let authorParticipants: [PortableResearchStatementAuthor]
     let isPinned: Bool
@@ -335,47 +1301,39 @@ private struct ResearchRecordListRow: View {
                 ) {
                     Text("\(actionTitle(actionID)): \(contextTitle)")
                         .font(ScholiumInterfaceTypography.rowTitle)
-                        .lineLimit(1)
+                        .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack {
+                    HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                         Text(finishedAt, format: .dateTime.year().month().day().hour().minute())
-                        Spacer(minLength: ScholiumGrid.Spacing.opticalAlignmentAdjustment)
-                        if let skillID {
-                            Text("\(skillID), version \(skillVersion ?? "—")")
+                        if !authorParticipants.isEmpty {
+                            Text("·")
+                                .accessibilityHidden(true)
+                            Text(authorParticipants.map(\.interfaceTitle).formatted())
                                 .lineLimit(1)
-                                .truncationMode(.middle)
-                        } else {
-                            Text("No recorded Skill")
-                                .foregroundStyle(ScholiumColorRole.mutedText.color)
                         }
                     }
                     .font(ScholiumInterfaceTypography.metadata)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    Text(noteTitles.formatted())
-                        .font(ScholiumInterfaceTypography.metadata)
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
-                        .lineLimit(1)
-                    Text(authorParticipants.map(\.interfaceTitle).formatted())
-                        .font(ScholiumInterfaceTypography.metadata)
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
-                        .lineLimit(1)
+                    if !noteTitles.isEmpty {
+                        Text(noteTitles.formatted())
+                            .font(ScholiumInterfaceTypography.metadata)
+                            .foregroundStyle(ScholiumColorRole.mutedText.color)
+                            .lineLimit(1)
+                    }
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(actionTitle(actionID)): \(contextTitle)")
-            Button(action: togglePin) {
-                Image(systemName: isPinned ? "pin.slash" : "pin")
-                    .frame(
-                        minWidth: ScholiumMetrics.Accessibility.minimumCustomTarget,
-                        minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget
-                    )
-            }
-            .buttonStyle(.borderless)
+            ScholiumInkIconControl(
+                title: isPinned ? "Unpin Research Record" : "Pin Research Record",
+                systemImage: isPinned ? "pin.fill" : "pin",
+                identifier: "scholium.researchRecord.pin.\(id.uuidString)",
+                isActive: isPinned,
+                action: togglePin
+            )
             .disabled(isPinning)
-            .accessibilityLabel(isPinned ? "Unpin Research Record" : "Pin Research Record")
             .accessibilityValue(isPinned ? "Pinned" : "Not Pinned")
-            .accessibilityIdentifier("scholium.researchRecord.pin.\(id.uuidString)")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchRecord.row.\(id.uuidString)")
@@ -392,11 +1350,7 @@ private struct ResearchRecordDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 ResearchRecordDetailHeader(record: record)
-                ResearchRecordLifecycleControls(
-                    recordID: record.id,
-                    model: model,
-                    confirmsPermanentDeletion: $confirmsPermanentDeletion
-                )
+                ScholiumStructuralRule()
                 ResearchRecordParticipantSection(
                     recordID: record.id,
                     participants: record.participatingNotes,
@@ -412,6 +1366,13 @@ private struct ResearchRecordDetailView: View {
                     primaryParticipant: primaryParticipant,
                     openNote: context.openNote
                 )
+                if !record.literatureRecommendations.isEmpty {
+                    ScholiumStructuralRule()
+                    ResearchRecordLiteratureRecommendationsSection(
+                        record: record,
+                        model: model
+                    )
+                }
                 ResearchRecordEvidenceSection(
                     materials: record.actuallyUsedMaterials,
                     fidelityCompletion: record.fidelityCompletion,
@@ -419,7 +1380,14 @@ private struct ResearchRecordDetailView: View {
                     discrepancies: record.discrepancies,
                     participants: record.participatingNotes
                 )
+                ScholiumStructuralRule()
                 ResearchRecordDetailsDisclosure(record: record)
+                ScholiumStructuralRule()
+                ResearchRecordLifecycleControls(
+                    recordID: record.id,
+                    model: model,
+                    confirmsPermanentDeletion: $confirmsPermanentDeletion
+                )
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
             .frame(maxWidth: ResearchRecordLayout.readingMeasure, alignment: .leading)
@@ -455,18 +1423,74 @@ private struct ResearchRecordLifecycleControls: View {
     @Binding var confirmsPermanentDeletion: Bool
 
     var body: some View {
-        Button("Delete Record…", systemImage: "trash", role: .destructive) {
+        ResearchRecordActionButton(
+            "Delete Record…",
+            systemImage: "trash",
+            role: .destructive,
+            identifier: "scholium.researchRecord.deletePermanently"
+        ) {
             confirmsPermanentDeletion = true
         }
         .accessibilityHint(
             "Ask for confirmation before permanently deleting only this portable record"
         )
-        .accessibilityIdentifier("scholium.researchRecord.deletePermanently")
         .disabled(
             model.mutatingRecordIDs.contains(recordID)
                 || model.pinningRecordIDs.contains(recordID)
         )
-        .controlSize(.small)
+    }
+}
+
+private struct ResearchRecordLiteratureRecommendationsSection: View {
+    let record: PortableResearchRecord
+    let model: ResearchRecordBrowserModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Literature Recommendations")
+                .font(ScholiumInterfaceTypography.sectionTitle)
+                .accessibilityHeading(.h2)
+            ForEach(record.literatureRecommendations) { recommendation in
+                Button {
+                    model.openRecommendation(
+                        recordID: record.id,
+                        recommendationID: recommendation.id
+                    )
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+                        ) {
+                            Text(recommendation.title ?? recommendation.rawCitation)
+                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if let title = recommendation.title,
+                               title != recommendation.rawCitation {
+                                Text(recommendation.rawCitation)
+                                    .font(ScholiumInterfaceTypography.metadata)
+                                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                                    .lineLimit(2)
+                            }
+                        }
+                        Text(
+                            recommendation.disposition.status == .handled
+                                ? "Handled"
+                                : "Unprocessed"
+                        )
+                        .font(ScholiumInterfaceTypography.metadata)
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Show this occurrence in Recommendations")
+                .accessibilityIdentifier(
+                    "scholium.researchRecord.recommendation.\(recommendation.id.uuidString)"
+                )
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -542,19 +1566,19 @@ private struct ResearchRecordParticipantSection: View {
                         )
                         .accessibilityHint("Open this participating Note in the focused workspace")
                         if participant.endingRevision != nil {
-                            Button("Compare Revisions") {
+                            ResearchRecordActionButton(
+                                "Compare",
+                                systemImage: "arrow.left.and.right",
+                                identifier: "scholium.researchRecord.compare.\(participant.noteID.uuidString)"
+                            ) {
                                 model.compare(
                                     recordID: recordID,
                                     noteID: participant.noteID,
                                     load: context.comparison
                                 )
                             }
-                            .buttonStyle(.borderless)
                             .accessibilityHint(
                                 "Compare only the exact retained starting and ending bytes"
-                            )
-                            .accessibilityIdentifier(
-                                "scholium.researchRecord.compare.\(participant.noteID.uuidString)"
                             )
                         }
                     }
@@ -625,19 +1649,22 @@ private struct ResearchRecordStatementView: View {
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
             }
             Text(text)
-                .font(ScholiumTypography.swiftUIReadingFont(size: 13, relativeTo: .body))
+                .font(ScholiumInterfaceTypography.apparatusResearchContent)
                 .lineSpacing(ScholiumGrid.Spacing.labelAccessoryGap)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
             if let lineReference, let primaryParticipant, !primaryParticipant.isTombstone {
-                Button("Open Lines \(lineReference.line)–\(lineReference.endLine)") {
+                ResearchRecordActionButton(
+                    "Open Lines \(lineReference.line)–\(lineReference.endLine)",
+                    systemImage: "text.line.first.and.arrowtriangle.forward",
+                    identifier: "scholium.researchRecord.openLines"
+                ) {
                     openNote(
                         primaryParticipant.noteID,
                         primaryParticipant.note,
                         lineReference.line
                     )
                 }
-                .buttonStyle(.borderless)
                 .accessibilityHint("Open the original revision-bound Comment location")
             }
         }
@@ -708,19 +1735,17 @@ private struct ResearchRecordDetailsDisclosure: View {
         DisclosureGroup("Record Details", isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 LabeledContent("Record kind", value: record.kind.interfaceTitle)
-                LabeledContent("Record identifier") {
-                    Text(record.id.uuidString.lowercased())
-                        .font(ScholiumTypography.swiftUIRevisionIdentity())
-                        .textSelection(.enabled)
-                }
+                ResearchRecordIdentityValue(
+                    label: "Record identifier",
+                    value: record.id.uuidString.lowercased()
+                )
                 if let method = record.method {
                     LabeledContent("Skill", value: method.packageID)
                     LabeledContent("Skill version", value: method.version)
-                    LabeledContent("Skill revision") {
-                        Text(method.packageRevision.sha256)
-                            .font(ScholiumTypography.swiftUIRevisionIdentity())
-                            .textSelection(.enabled)
-                    }
+                    ResearchRecordIdentityValue(
+                        label: "Skill revision",
+                        value: method.packageRevision.sha256
+                    )
                 }
                 if let source = record.sourceReference {
                     LabeledContent("Source", value: source.displayName)
@@ -752,17 +1777,15 @@ private struct ResearchRecordRevisionDetails: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Text(participant.title)
                 .font(ScholiumInterfaceTypography.apparatusActionTitle)
-            LabeledContent("Starting revision") {
-                Text(participant.startingRevision.sha256)
-                    .font(ScholiumTypography.swiftUIRevisionIdentity())
-                    .textSelection(.enabled)
-            }
+            ResearchRecordIdentityValue(
+                label: "Starting revision",
+                value: participant.startingRevision.sha256
+            )
             if let endingRevision = participant.endingRevision {
-                LabeledContent("Ending revision") {
-                    Text(endingRevision.sha256)
-                        .font(ScholiumTypography.swiftUIRevisionIdentity())
-                        .textSelection(.enabled)
-                }
+                ResearchRecordIdentityValue(
+                    label: "Ending revision",
+                    value: endingRevision.sha256
+                )
             } else {
                 Text("Deleted Note")
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
@@ -783,17 +1806,17 @@ private struct ResearchRecordComparisonSection: View {
                     .accessibilityHeading(.h2)
                 Spacer()
                 if model.comparison == nil {
-                    Button("Cancel") { model.cancelComparison() }
-                        .buttonStyle(.borderless)
-                        .accessibilityIdentifier(
-                            "scholium.researchRecord.cancelComparison"
-                        )
+                    ResearchRecordActionButton(
+                        "Cancel",
+                        systemImage: "xmark",
+                        identifier: "scholium.researchRecord.cancelComparison"
+                    ) { model.cancelComparison() }
                 } else {
-                    Button("Close") { model.cancelComparison() }
-                        .buttonStyle(.borderless)
-                        .accessibilityIdentifier(
-                            "scholium.researchRecord.cancelComparison"
-                        )
+                    ResearchRecordActionButton(
+                        "Close",
+                        systemImage: "xmark",
+                        identifier: "scholium.researchRecord.cancelComparison"
+                    ) { model.cancelComparison() }
                 }
             }
             if let comparison = model.comparison {
@@ -859,7 +1882,7 @@ private struct ResearchRecordComparisonLineView: View {
             Text(line.lineEnding.interfaceTitle)
                 .foregroundStyle(ScholiumColorRole.mutedText.color)
         }
-        .font(.system(.caption, design: .monospaced))
+        .font(ScholiumTypography.swiftUIDiff())
         .textSelection(.enabled)
         .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
         .accessibilityElement(children: .combine)

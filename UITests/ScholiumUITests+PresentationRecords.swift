@@ -101,16 +101,6 @@ extension ScholiumUITests {
             )
         }
 
-        let bibliographyUtility = app.descendants(matching: .any)[
-            "scholium.recommendedBibliography.utility"
-        ].firstMatch
-        XCTAssertTrue(bibliographyUtility.waitForExistence(timeout: 3))
-        XCTAssertLessThanOrEqual(
-            bibliographyUtility.frame.height,
-            72,
-            "The fixed Recommended Bibliography utility must retain its compact two-line composition at the readable minimum."
-        )
-
         let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         screenshot.name = "Library at the 300pt native readable minimum"
         screenshot.lifetime = .keepAlways
@@ -158,7 +148,7 @@ extension ScholiumUITests {
         let sidebarToggle = loadedToolbar.buttons["Hide Sidebar"].firstMatch
         let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
         let search = app.descendants(matching: .any)["scholium.documentSearch"]
-        let history = app.descendants(matching: .any)["scholium.showResearchRecord"]
+        let history = app.descendants(matching: .any)["scholium.showResearchRecords"]
         let inspectorToggle = loadedToolbar.buttons["Show Research Inspector"].firstMatch
         XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 5))
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
@@ -341,7 +331,7 @@ extension ScholiumUITests {
         )
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        let history = app.descendants(matching: .any)["scholium.showResearchRecord"]
+        let history = app.descendants(matching: .any)["scholium.showResearchRecords"]
         let inspector = app.descendants(matching: .any)["scholium.toggleInspector"]
         XCTAssertTrue(history.waitForExistence(timeout: 5))
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
@@ -825,12 +815,14 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testResearchRecordIsIndependentFromInspector() throws {
+    func testResearchRecordsReusesTriptychWindowIndependentlyFromInspector() throws {
         waitForDocumentSurface()
+        let currentTriptychID = try triptychID(at: triptychDirectory)
         let originalWorkspaceID = app.windows.firstMatch.identifier
         let originalWorkspace = app.windows[originalWorkspaceID]
         let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
-        let recordButton = app.buttons["scholium.showResearchRecord"]
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: originalWorkspace)
+        let recordButton = originalWorkspace.buttons["scholium.showResearchRecords"]
 
         if !inspector.exists {
             app.typeKey("b", modifierFlags: [.command, .option])
@@ -839,7 +831,9 @@ extension ScholiumUITests {
         XCTAssertTrue(recordButton.exists)
         recordButton.click()
 
-        let recordWindow = app.windows["Research Record"].firstMatch
+        let recordWindow = app.windows[
+            "scholium-research-records-\(currentTriptychID.uuidString.lowercased())"
+        ]
         XCTAssertTrue(recordWindow.waitForExistence(timeout: 5))
         XCTAssertTrue(recordWindow.exists)
         XCTAssertTrue(inspector.exists)
@@ -849,27 +843,228 @@ extension ScholiumUITests {
         XCTAssertTrue(recordWindow.staticTexts[
             "No Matching Research Records"
         ].waitForExistence(timeout: 5))
+        let scopeMenu = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecords.scope"
+        ]
+        XCTAssertTrue(scopeMenu.exists)
+        XCTAssertEqual(scopeMenu.value as? String, "This Note")
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view"
+        ].exists)
+
+        focusWorkspaceWindow(originalWorkspace)
+        app.menuBars.menuBarItems["Research"].click()
+        let triptychRecords = app.menuItems["Triptych · Records"]
+        XCTAssertTrue(triptychRecords.waitForExistence(timeout: 5))
+        triptychRecords.click()
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 5))
+        XCTAssertEqual(scopeMenu.value as? String, "Triptych")
+
+        focusWorkspaceWindow(originalWorkspace)
+        recordButton.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            scopeMenu.value as? String == "This Note"
+        })
 
         focusWorkspaceWindow(originalWorkspace)
         app.typeKey("n", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 3 })
+        let workspaceWindows = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        )
+        XCTAssertTrue(
+            waitUntil(timeout: 15) { workspaceWindows.count == 2 },
+            "New Window must create a second Workspace without replacing the keyed Records window."
+        )
         let newWorkspace = try XCTUnwrap(
-            app.windows.allElementsBoundByIndex.first(where: { window in
+            workspaceWindows.allElementsBoundByIndex.first(where: { window in
                 window.identifier != originalWorkspaceID
-                    && window.identifier != recordWindow.identifier
             })
         )
         focusWorkspaceWindow(newWorkspace)
         openNote("QA Autosave B.md", expectedTitle: "QA Autosave B", in: newWorkspace)
         XCTAssertTrue(recordWindow.textFields["scholium.researchRecord.search"].exists)
+        let secondRecordButton = newWorkspace.buttons["scholium.showResearchRecords"]
+        XCTAssertTrue(secondRecordButton.waitForExistence(timeout: 5))
+        secondRecordButton.click()
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            app.windows.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium-research-records-")
+            ).count,
+            1,
+            "Two Workspace windows for one Triptych must reuse one Research Records window."
+        )
 
-        focusWorkspaceWindow(originalWorkspace)
         XCTAssertTrue(recordWindow.textFields["scholium.researchRecord.search"].exists)
         recordWindow.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
+        focusWorkspaceWindow(originalWorkspace)
         XCTAssertTrue(inspector.exists)
         focusWorkspaceWindow(newWorkspace)
         closeFrontmostWindow()
+    }
+
+    @MainActor
+    func testLiteratureRecommendationHandlingStaysInsideParentRecord() throws {
+        app.terminate()
+        let fixture = try seedResearchRecordFixture()
+        let recommendationID = try XCTUnwrap(fixture.recommendationID)
+        let currentTriptychID = try triptychID(at: triptychDirectory)
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth)
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
+        let recordsButton = workspace.buttons["scholium.showResearchRecords"]
+        XCTAssertTrue(recordsButton.waitForExistence(timeout: 5))
+        recordsButton.click()
+
+        let recordsWindow = app.windows[
+            "scholium-research-records-\(currentTriptychID.uuidString.lowercased())"
+        ]
+        XCTAssertTrue(recordsWindow.waitForExistence(timeout: 8))
+        for nativeSidebarLabel in ["Show Sidebar", "Hide Sidebar", "Toggle Sidebar"] {
+            XCTAssertFalse(recordsWindow.buttons[nativeSidebarLabel].exists)
+        }
+        let recommendations = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view.recommendations"
+        ]
+        XCTAssertTrue(recommendations.waitForExistence(timeout: 5))
+        recommendations.click()
+
+        let recommendationRow = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecommendation.row.\(recommendationID.uuidString)"
+        ]
+        XCTAssertTrue(recommendationRow.waitForExistence(timeout: 8))
+        XCTAssertTrue(recordsWindow.staticTexts["1 recommendation"].exists)
+        let recommendationList = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecommendations.list"
+        ]
+        XCTAssertEqual(
+            recommendationList.buttons.matching(
+                NSPredicate(
+                    format: "label BEGINSWITH %@",
+                    "Source-Grounded Inquiry,"
+                )
+            ).count,
+            1,
+            "The singleton must expose one title-bearing occurrence row."
+        )
+        XCTAssertEqual(
+            recommendationList.staticTexts.matching(
+                NSPredicate(format: "label == %@", "Source-Grounded Inquiry")
+            ).count,
+            0,
+            "A singleton must not add a duplicate section header."
+        )
+        XCTAssertTrue(recordsWindow.staticTexts["Why It Was Recommended"].exists)
+        XCTAssertTrue(recordsWindow.staticTexts["QA Source.pdf"].exists)
+        XCTAssertTrue(recordsWindow.staticTexts["p. 42"].exists)
+
+        focusWorkspaceWindow(workspace)
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
+        let workspaceCount = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).count
+        focusAuxiliaryWindow(recordsWindow, menuItemTitle: "Research Records")
+        let openAnalysis = recordsWindow.buttons[
+            "scholium.researchRecommendation.openAnalysis"
+        ]
+        XCTAssertTrue(openAnalysis.waitForExistence(timeout: 5))
+        openAnalysis.click()
+        let documentTitle = workspace.descendants(matching: .any)[
+            "scholium.documentNoteName"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (documentTitle.value as? String) == "QA Autosave A"
+        })
+        XCTAssertEqual(
+            app.windows.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+            ).count,
+            workspaceCount,
+            "Open Analysis must reuse the same Triptych Workspace."
+        )
+        focusAuxiliaryWindow(recordsWindow, menuItemTitle: "Research Records")
+
+        let handled = recordsWindow.checkBoxes[
+            "scholium.researchRecommendation.handled.\(recommendationID.uuidString)"
+        ]
+        XCTAssertTrue(handled.waitForExistence(timeout: 5))
+        handled.click()
+        XCTAssertTrue(recordsWindow.staticTexts[
+            "No Unprocessed Recommendations"
+        ].waitForExistence(timeout: 8))
+
+        let statusPicker = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecommendations.status"
+        ]
+        XCTAssertTrue(statusPicker.waitForExistence(timeout: 5))
+        statusPicker.radioButtons["Handled"].click()
+        XCTAssertTrue(recommendationRow.waitForExistence(timeout: 8))
+
+        let editNote = recordsWindow.buttons[
+            "scholium.researchRecommendation.editNote"
+        ]
+        XCTAssertTrue(editNote.waitForExistence(timeout: 5))
+        editNote.click()
+        let noteSheet = recordsWindow.sheets.firstMatch
+        XCTAssertTrue(noteSheet.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(noteSheet.frame.width, 439)
+        XCTAssertGreaterThanOrEqual(noteSheet.frame.height, 319)
+        XCTAssertTrue(noteSheet.buttons["Cancel"].isHittable)
+        XCTAssertTrue(noteSheet.buttons["Save"].isHittable)
+        let noteEditor = recordsWindow.textViews[
+            "scholium.researchRecommendation.noteEditor"
+        ]
+        XCTAssertTrue(noteEditor.waitForExistence(timeout: 5))
+        try paste("Follow up after checking the cited chapter.", into: noteEditor)
+        recordsWindow.sheets.buttons["Save"].click()
+        XCTAssertTrue(recordsWindow.staticTexts[
+            "Follow up after checking the cited chapter."
+        ].waitForExistence(timeout: 8))
+
+        let handledAfterNote = recordsWindow.checkBoxes[
+            "scholium.researchRecommendation.handled.\(recommendationID.uuidString)"
+        ]
+        handledAfterNote.click()
+        statusPicker.radioButtons["Unprocessed"].click()
+        XCTAssertTrue(recommendationRow.waitForExistence(timeout: 8))
+        XCTAssertTrue(recordsWindow.staticTexts[
+            "Follow up after checking the cited chapter."
+        ].exists)
+
+        let openParent = recordsWindow.buttons[
+            "scholium.researchRecommendation.openParentRecord"
+        ]
+        XCTAssertTrue(openParent.exists)
+        openParent.click()
+        XCTAssertTrue(recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
+        ].waitForExistence(timeout: 8))
+        let embeddedRecommendation = recordsWindow.buttons[
+            "scholium.researchRecord.recommendation.\(recommendationID.uuidString)"
+        ]
+        XCTAssertTrue(embeddedRecommendation.waitForExistence(timeout: 5))
+        embeddedRecommendation.click()
+        XCTAssertTrue(recordsWindow.staticTexts["Why It Was Recommended"].waitForExistence(
+            timeout: 5
+        ))
+
+        recordsWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordsWindow.exists })
     }
 
     @MainActor
@@ -891,11 +1086,11 @@ extension ScholiumUITests {
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
         ).firstMatch
         openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
-        let recordButton = workspace.buttons["scholium.showResearchRecord"]
+        let recordButton = workspace.buttons["scholium.showResearchRecords"]
         XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
         recordButton.click()
 
-        let recordWindow = app.windows["Research Record"].firstMatch
+        let recordWindow = app.windows["Research Records"].firstMatch
         XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
         XCTAssertFalse(recordWindow.buttons["Record Trash"].exists)
         XCTAssertFalse(recordWindow.descendants(matching: .any)[
@@ -1067,19 +1262,23 @@ extension ScholiumUITests {
             secondWorkspace.waitForExistence(timeout: 10),
             "The second Triptych must open in its own native Workspace window."
         )
+        let initialTriptychID = try triptychID(at: triptychDirectory)
+        let secondTriptychID = try triptychID(at: secondTriptychDirectory)
         XCTAssertNotEqual(
-            try triptychID(at: triptychDirectory),
-            try triptychID(at: secondTriptychDirectory),
+            initialTriptychID,
+            secondTriptychID,
             "The focus journey must use two distinct Triptych identities."
         )
 
         focusWorkspaceWindow(initialWorkspace)
         openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: initialWorkspace)
-        let recordButton = initialWorkspace.buttons["scholium.showResearchRecord"]
+        let recordButton = initialWorkspace.buttons["scholium.showResearchRecords"]
         XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
         recordButton.click()
 
-        let recordWindow = app.windows["Research Record"].firstMatch
+        let recordWindow = app.windows[
+            "scholium-research-records-\(initialTriptychID.uuidString.lowercased())"
+        ]
         XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
         XCTAssertEqual(
             recordWindow.frame.width,
@@ -1088,10 +1287,89 @@ extension ScholiumUITests {
         )
         XCTAssertEqual(
             recordWindow.frame.height,
-            704,
+            680,
             accuracy: 8,
-            "XCUITest reports the 680pt fixed content plus the native 24pt title bar."
+            "The ordinary Records window must expose the specified 760 by 680 default frame."
         )
+        let scopeMenu = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecords.scope"
+        ]
+        let recordsView = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view.records"
+        ]
+        let recommendationsView = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view.recommendations"
+        ]
+        XCTAssertTrue(scopeMenu.waitForExistence(timeout: 5))
+        XCTAssertTrue(recordsView.waitForExistence(timeout: 5))
+        XCTAssertTrue(recommendationsView.waitForExistence(timeout: 5))
+        XCTAssertTrue(scopeMenu.isHittable)
+        XCTAssertEqual(scopeMenu.value as? String, "This Note")
+        XCTAssertTrue(recordsView.isHittable)
+        XCTAssertTrue(selectionControlIsSelected(recordsView))
+
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        recordsView.click()
+        for _ in 0..<24 where !keyboardFocus.evaluate(with: recordsView) {
+            app.typeKey(.tab, modifierFlags: [])
+        }
+        XCTAssertTrue(
+            keyboardFocus.evaluate(with: recordsView),
+            "The View index must be reachable by keyboard."
+        )
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            self.selectionControlIsSelected(recommendationsView)
+        })
+        app.typeKey(.leftArrow, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            self.selectionControlIsSelected(recordsView)
+        })
+
+        scopeMenu.click()
+        XCTAssertTrue(
+            app.menuItems["Triptych"].waitForExistence(timeout: 3),
+            "The Scope control must remain an accessible native menu."
+        )
+        app.typeKey(.escape, modifierFlags: [])
+
+        let splitDivider = recordWindow.splitters.firstMatch
+        XCTAssertTrue(splitDivider.waitForExistence(timeout: 3))
+        let nativeWindowChromeHeight = recordWindow.frame.height - splitDivider.frame.height
+        resizeProofWindow(
+            recordWindow,
+            toWidth: 700,
+            height: 520 + nativeWindowChromeHeight
+        )
+        XCTAssertGreaterThanOrEqual(recordWindow.frame.width, 699)
+        XCTAssertGreaterThanOrEqual(
+            splitDivider.frame.height,
+            519,
+            "The Records split must preserve its 520pt minimum content height."
+        )
+        let minimumFrame = recordWindow.frame
+        let resizeCorner = recordWindow.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.996, dy: 0.996)
+        )
+        resizeCorner.click(
+            forDuration: 0.15,
+            thenDragTo: resizeCorner.withOffset(CGVector(dx: -100, dy: -100))
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(
+            recordWindow.frame.width,
+            minimumFrame.width,
+            accuracy: QAWorkspaceMetricContract.frameTolerance,
+            "The Records window must clamp attempts to resize below 700pt."
+        )
+        XCTAssertEqual(
+            recordWindow.frame.height,
+            minimumFrame.height,
+            accuracy: QAWorkspaceMetricContract.frameTolerance,
+            "The Records window must clamp attempts to resize below 520pt."
+        )
+        XCTAssertTrue(scopeMenu.isHittable)
+        XCTAssertTrue(recordsView.isHittable)
         XCTAssertFalse(
             recordWindow.descendants(matching: .any)["scholium.toggleSidebar"].exists
         )
@@ -1101,6 +1379,11 @@ extension ScholiumUITests {
         XCTAssertTrue(recordWindow.descendants(matching: .any)[
             "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
         ].waitForExistence(timeout: 8))
+        XCTAssertTrue(recordWindow.staticTexts["1 record"].exists)
+        let minimumWindowAttachment = XCTAttachment(screenshot: recordWindow.screenshot())
+        minimumWindowAttachment.name = "Research Records at 700 by 520"
+        minimumWindowAttachment.lifetime = .keepAlways
+        add(minimumWindowAttachment)
         let populatedSearchField = recordWindow.textFields[
             "scholium.researchRecord.search"
         ]
@@ -1123,8 +1406,14 @@ extension ScholiumUITests {
             88,
             "A scanning row must not expand back into a card-like summary."
         )
+        let pinButton = recordWindow.buttons[
+            "scholium.researchRecord.pin.\(fixture.recordID.uuidString)"
+        ]
+        XCTAssertTrue(pinButton.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(pinButton.frame.width, 19.5)
+        XCTAssertGreaterThanOrEqual(pinButton.frame.height, 19.5)
         XCTAssertTrue(recordWindow.staticTexts[
-            "Analyze: QA Autosave A, QA Topic"
+            "Analyze: QA Autosave A"
         ].exists)
         XCTAssertTrue(recordWindow.staticTexts["Synthetic Action Agent"].exists)
         XCTAssertTrue(recordWindow.staticTexts[
@@ -1160,14 +1449,29 @@ extension ScholiumUITests {
         focusWorkspaceWindow(secondWorkspace)
         openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: secondWorkspace)
         XCTAssertTrue(recordWindow.staticTexts[
+            "A bounded nonconversational analysis report."
+        ].waitForExistence(timeout: 10))
+        XCTAssertFalse(
+            recordWindow.staticTexts["No Matching Research Records"].exists,
+            "Focusing another Triptych must not retarget the existing Records window."
+        )
+
+        let secondRecordButton = secondWorkspace.buttons["scholium.showResearchRecords"]
+        XCTAssertTrue(secondRecordButton.waitForExistence(timeout: 5))
+        secondRecordButton.click()
+        let secondRecordWindow = app.windows[
+            "scholium-research-records-\(secondTriptychID.uuidString.lowercased())"
+        ]
+        XCTAssertTrue(secondRecordWindow.waitForExistence(timeout: 8))
+        XCTAssertTrue(secondRecordWindow.staticTexts[
             "No Matching Research Records"
         ].waitForExistence(timeout: 10))
-        let emptySearchFrame = recordWindow.textFields[
+        let emptySearchFrame = secondRecordWindow.textFields[
             "scholium.researchRecord.search"
         ].frame
         XCTAssertEqual(
-            emptySearchFrame.minY,
-            populatedSearchFrame.minY,
+            emptySearchFrame.minY - secondRecordWindow.frame.minY,
+            populatedSearchFrame.minY - recordWindow.frame.minY,
             accuracy: 2,
             "An empty result set must not vertically recenter the search and filters."
         )
@@ -1178,10 +1482,74 @@ extension ScholiumUITests {
             "The compact filter controls must retain their size across content states."
         )
 
+        secondRecordWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !secondRecordWindow.exists })
+
         focusWorkspaceWindow(initialWorkspace)
         XCTAssertTrue(recordWindow.staticTexts[
             "A bounded nonconversational analysis report."
         ].waitForExistence(timeout: 10))
+        recordButton.click()
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 5))
+        recordWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
+    }
+
+    @MainActor
+    func testResearchRecordsViewIndexMirrorsArrowTraversalInRTL() throws {
+        app.terminate()
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth),
+            appearance: .light
+        )
+        app.launchEnvironment["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION"] = "rtl"
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
+        let recordButton = workspace.buttons["scholium.showResearchRecords"]
+        XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
+        recordButton.click()
+
+        let currentTriptychID = try triptychID(at: triptychDirectory)
+        let recordWindow = app.windows[
+            "scholium-research-records-\(currentTriptychID.uuidString.lowercased())"
+        ]
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
+        let recordsView = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view.records"
+        ]
+        let recommendationsView = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view.recommendations"
+        ]
+        XCTAssertTrue(recordsView.waitForExistence(timeout: 5))
+        XCTAssertTrue(recommendationsView.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(
+            recordsView.frame.minX,
+            recommendationsView.frame.minX,
+            "The View index must mirror its visual order in a right-to-left interface."
+        )
+
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        recordsView.click()
+        for _ in 0..<24 where !keyboardFocus.evaluate(with: recordsView) {
+            app.typeKey(.tab, modifierFlags: [])
+        }
+        XCTAssertTrue(keyboardFocus.evaluate(with: recordsView))
+        app.typeKey(.leftArrow, modifierFlags: [])
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                self.selectionControlIsSelected(recommendationsView)
+            },
+            "Left Arrow must follow the mirrored visual order in RTL."
+        )
+
         recordWindow.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })
     }

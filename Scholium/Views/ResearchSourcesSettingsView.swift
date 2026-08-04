@@ -14,7 +14,7 @@ struct ResearchSourcesSettingsView: View {
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Long-lived source, citation, bibliography, agent-handoff, and command-line configuration lives here. Action-specific source choice remains in the Action sheet.",
+                        "Long-lived source, citation, agent-handoff, and command-line configuration lives here. Action-specific source choice remains in the Action sheet.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -24,8 +24,6 @@ struct ResearchSourcesSettingsView: View {
                 ZoteroSettingsView()
                 Divider()
                 ResearchCitationMethodSettingsView { citationStatus = $0 }
-                Divider()
-                RecommendedBibliographyMethodSettingsView()
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
             .frame(maxWidth: 720, alignment: .topLeading)

@@ -888,6 +888,7 @@ public struct ResearchActionCompletionSubmission: Codable, Hashable, Sendable {
     public let writeCompletion: ResearchActionWriteCompletionSubmission?
     public let outputFingerprint: DocumentFingerprint?
     public let fidelityOutcomes: [FidelityCheckOutcome]
+    public let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
     public let childRunIDs: [UUID]
     public let submittedAt: Date
 
@@ -902,6 +903,7 @@ public struct ResearchActionCompletionSubmission: Codable, Hashable, Sendable {
         writeCompletion: ResearchActionWriteCompletionSubmission? = nil,
         outputFingerprint: DocumentFingerprint? = nil,
         fidelityOutcomes: [FidelityCheckOutcome] = [],
+        literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil,
         childRunIDs: [UUID] = [],
         submittedAt: Date = Date()
     ) {
@@ -917,6 +919,7 @@ public struct ResearchActionCompletionSubmission: Codable, Hashable, Sendable {
         self.writeCompletion = writeCompletion
         self.outputFingerprint = outputFingerprint
         self.fidelityOutcomes = fidelityOutcomes
+        self.literatureRecommendations = literatureRecommendations
         self.childRunIDs = childRunIDs
         self.submittedAt = submittedAt
     }
@@ -932,6 +935,7 @@ public struct ResearchActionCompletionSubmission: Codable, Hashable, Sendable {
         case writeCompletion
         case outputFingerprint
         case fidelityOutcomes
+        case literatureRecommendations
         case childRunIDs
         case submittedAt
     }
@@ -942,6 +946,15 @@ public struct ResearchActionCompletionSubmission: Codable, Hashable, Sendable {
             allowed: CodingKeys.allCases.map(\.stringValue)
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
+        if container.contains(.literatureRecommendations) {
+            literatureRecommendations = try container.decode(
+                [ResearchLiteratureRecommendationSubmission].self,
+                forKey: .literatureRecommendations
+            )
+        } else {
+            literatureRecommendations = nil
+        }
         self.init(
             runID: try container.decode(UUID.self, forKey: .runID),
             confirmationToken: try container.decode(
@@ -974,6 +987,7 @@ public struct ResearchActionCompletionSubmission: Codable, Hashable, Sendable {
                 [FidelityCheckOutcome].self,
                 forKey: .fidelityOutcomes
             ),
+            literatureRecommendations: literatureRecommendations,
             childRunIDs: try container.decode([UUID].self, forKey: .childRunIDs),
             submittedAt: try container.decode(Date.self, forKey: .submittedAt)
         )
@@ -991,6 +1005,7 @@ public struct ResearchActionCompletion: Codable, Hashable, Sendable {
     public let didModifyTarget: Bool
     public let outputFingerprint: DocumentFingerprint?
     public let fidelityOutcomes: [FidelityCheckOutcome]
+    public let literatureRecommendationCount: Int
     public let childRunIDs: [UUID]
     public let completedAt: Date
     public let derivedRefreshWarning: String?
@@ -1007,6 +1022,7 @@ public struct ResearchActionCompletion: Codable, Hashable, Sendable {
         didModifyTarget: Bool,
         outputFingerprint: DocumentFingerprint? = nil,
         fidelityOutcomes: [FidelityCheckOutcome] = [],
+        literatureRecommendationCount: Int = 0,
         childRunIDs: [UUID] = [],
         completedAt: Date,
         derivedRefreshWarning: String? = nil,
@@ -1022,6 +1038,7 @@ public struct ResearchActionCompletion: Codable, Hashable, Sendable {
         self.didModifyTarget = didModifyTarget
         self.outputFingerprint = outputFingerprint
         self.fidelityOutcomes = fidelityOutcomes
+        self.literatureRecommendationCount = literatureRecommendationCount
         self.childRunIDs = childRunIDs
         self.completedAt = completedAt
         self.derivedRefreshWarning = derivedRefreshWarning

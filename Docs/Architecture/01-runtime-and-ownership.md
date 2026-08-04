@@ -50,15 +50,20 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── DocumentController
             │   │   └── DocumentSessionStore
             │   ├── ResearchController
-            │   │   ├── ResearchActionController
-            │   │   └── RecommendedBibliographyController
+            │   │   └── ResearchActionController
             │   ├── AgentNoteChangeWindowController
             │   ├── WindowPresentationRouter
             │   └── typed WindowIntent routing
             └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
 
 ScholiumApplicationDelegate
-└── ScholiumWindowLifecycleRegistry (injected route readiness and flushers)
+├── ScholiumWindowLifecycleRegistry (injected route readiness and flushers)
+└── ResearchRecordsWindowCoordinator (transient Triptych routing only)
+
+Research Records WindowGroup (one UUID value per Triptych)
+└── ScholiumResearchRecordsRoot
+    ├── direct WindowWorkspaceCapabilities for that Triptych
+    └── ResearchRecordBrowserModel (rebuildable Records/Recommendations projections)
 ```
 
 `ApplicationBootstrapController` is the only production composition route to
@@ -170,7 +175,7 @@ of that window state enters the persisted search definition.
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 `DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
 `WindowResearchCapabilities` value composed from the narrow record,
-checkpoint, Skill, Action, source-access, and bibliography ports plus immutable
+checkpoint, Skill, Action, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
 `WorkspaceStore` coalesces duplicate runtime
 installation, retains one event subscription before publishing activation,
@@ -251,10 +256,14 @@ labels or availability. Commands still read and mutate the existing owners.
 `DocumentController` alone owns
 selection and document workflow state; `ResearchController` owns the current
 research-record projection, checkpoint-list failures, and durable-recovery
-listing. Shell, Research Action, and Recommended Bibliography state remain
-independently observable owners; `ResearchController` neither republishes nor
-duplicates them. `ContentView`, Inspector, Action, and bibliography leaves
-observe only the owner whose state they render. `WindowWorkspaceProjectionController` is the exact-window owner of the
+listing. Shell and Research Action state remain independently observable
+owners; `ResearchController` neither republishes nor duplicates them.
+Research Records windows bypass focused `WindowModel` state and read only the
+capabilities and immutable snapshot for their keyed Triptych. Their coordinator
+retains pending presentation requests and same-Triptych navigation endpoints,
+never Record data or authorization. `ContentView`, Inspector, Actions, and
+Research Records leaves observe only the owner whose state they render.
+`WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable catalog, per-vault snapshots, selected Location's
 Notes/tags/authors/years/revisions and property-filter options, graph, Search
 generation, derived-refresh status,
@@ -501,8 +510,9 @@ Target. No Research Activity chronology, Work with Agent wrapper, or Research
 Record launcher is projected there. A quiet row for each portable active
 Discussion that includes the current Note resumes passage-anchored, whole-note,
 and focal-note exchange, while Settle remains a separate researcher-owned
-current-state operation. Only finished Discussions appear in the current
-read-only Research Record window; removed archives have no projection. The
+current-state operation. Active Discussions never appear in Research Records;
+finished Discussions and completed Actions do, while removed Records have no
+projection. The
 Inspector may navigate or open another
 note in the Document tabs, but it never owns a document buffer, editing,
 autosave, undo, or conflict state. Those remain exclusively in the Document

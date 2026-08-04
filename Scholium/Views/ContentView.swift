@@ -570,7 +570,6 @@ struct ContentView: View {
                 propertyKeys: propertyFilterOptions.keys,
                 propertyValues: propertyFilterOptions.valuesByKey
             ),
-            bibliographyController: appState.researchController.bibliography,
             attentionPopoverSession: appState.attentionPopoverSession,
             openAttention: {
                 windowCoordinator.actions.showAttention(.sidebar, nil)
@@ -616,29 +615,6 @@ struct ContentView: View {
             moveToTrash: { try await appState.moveNoteToTrash($0) },
             putBack: { try await appState.putBackNote($0) },
             deletePermanently: { try await appState.deleteNotePermanently($0) },
-            openRecommendedAnalysis: { reference in
-                guard let note = appState.workspaceCatalog?.notes.first(where: {
-                    $0.reference.vaultID == reference.vaultID
-                        && $0.reference.relativePath == reference.relativePath
-                }) else { return }
-                appState.requestOpenNote(note.reference)
-            },
-            copyRecommendedBibliographyText: { text in
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                appState.showToast(String(localized: "Research instructions copied.", table: "Localizable", bundle: .module))
-            },
-            repairRecommendedBibliographyMethod: {
-                UserDefaults.standard.set(
-                    WorkspaceSettingsPane.researchGuidance.rawValue,
-                    forKey: "scholium.settings.selectedPane"
-                )
-                UserDefaults.standard.set(
-                    "skills",
-                    forKey: "scholium.settings.researchGuidanceCollection"
-                )
-                openSettings()
-            },
             revealCurrentVault: { appState.revealVaultInFinder() },
             openSettings: { openSettings() },
             selectSortOrder: { appState.noteSortOrder = $0 },

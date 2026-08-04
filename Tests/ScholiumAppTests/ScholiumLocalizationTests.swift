@@ -93,8 +93,22 @@ struct ScholiumLocalizationTests {
                 == "显示研究检查器"
         )
         #expect(
-            ScholiumL10n.string("RECOMMENDED BIBLIOGRAPHY", locale: simplifiedChinese)
-                == "推荐文献"
+            ScholiumL10n.string("Research Records", locale: simplifiedChinese)
+                == "研究记录"
+        )
+        #expect(
+            ScholiumL10n.string("Literature Recommendations", locale: simplifiedChinese)
+                == "文献推荐"
+        )
+        #expect(ScholiumL10n.string("Unprocessed", locale: simplifiedChinese) == "未处理")
+        #expect(ScholiumL10n.string("Handled", locale: simplifiedChinese) == "已处理")
+        #expect(
+            ScholiumL10n.string("This Note · Records", locale: simplifiedChinese)
+                == "此笔记 · 记录"
+        )
+        #expect(
+            ScholiumL10n.string("Triptych · Records", locale: simplifiedChinese)
+                == "研究脉络 · 记录"
         )
         #expect(ScholiumL10n.string("Storage Unavailable", locale: simplifiedChinese) == "存储不可用")
         #expect(ScholiumL10n.string("Details", locale: simplifiedChinese) == "详细信息")

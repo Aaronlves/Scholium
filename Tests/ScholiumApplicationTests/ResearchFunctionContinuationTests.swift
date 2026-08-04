@@ -342,7 +342,7 @@ extension ResearchFunctionOperationsTests {
                 fixture.assignment.id.uuidString,
                 isDirectory: true
             )
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
         let parentRecordURL = localExecutionURL.appendingPathComponent(
             parent.runID.uuidString.lowercased() + ".json"
         )
@@ -1610,7 +1610,7 @@ extension ResearchFunctionOperationsTests {
         let executionDirectory = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
         let firstExecutionURL = executionDirectory
             .appendingPathComponent(parent.runID.uuidString.lowercased() + ".json")
         let copiedExecutionURL = executionDirectory.appendingPathComponent(

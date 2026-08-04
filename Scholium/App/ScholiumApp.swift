@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate {
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
+    let researchRecordsWindowCoordinator = ResearchRecordsWindowCoordinator()
     private var terminationInFlight = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -74,7 +75,6 @@ struct BootstrapWindowRoute: Codable, Hashable {
 @main
 struct ScholiumApp: App {
     @NSApplicationDelegateAdaptor(ScholiumApplicationDelegate.self) private var applicationDelegate
-    @FocusedObject private var focusedWindowModel: WindowModel?
     @StateObject private var applicationBootstrap = ApplicationBootstrapController()
 
     init() {
@@ -118,7 +118,9 @@ struct ScholiumApp: App {
                     ScholiumWindowRoot(
                         workspaceStore: workspaceStore,
                         route: route.wrappedValue,
-                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
+                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry,
+                        researchRecordsWindowCoordinator:
+                            applicationDelegate.researchRecordsWindowCoordinator
                     )
                 }
             },
@@ -139,11 +141,23 @@ struct ScholiumApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands { ScholiumCommands(storageReady: applicationBootstrap.isReady) }
 
-        UtilityWindow("Research Record", id: "scholium-research-record") {
-            ScholiumResearchRecordUtilityRoot(appState: focusedWindowModel)
-        }
+        WindowGroup(
+            "Research Records",
+            id: "scholium-research-records",
+            for: UUID.self,
+            content: { triptychID in
+                ApplicationBootstrapGate(controller: applicationBootstrap) { workspaceStore in
+                    ScholiumResearchRecordsRoot(
+                        workspaceStore: workspaceStore,
+                        triptychID: triptychID.wrappedValue,
+                        coordinator: applicationDelegate.researchRecordsWindowCoordinator
+                    )
+                }
+            },
+            defaultValue: { UUID() }
+        )
         .defaultSize(width: 760, height: 680)
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
         .commandsRemoved()
@@ -170,103 +184,244 @@ struct ScholiumApp: App {
     }
 }
 
-/// A secondary scholarly-record window that follows the focused workspace.
-/// It consumes the focused window model but owns no document or editor state.
-private struct ScholiumResearchRecordUtilityRoot: View {
-    let appState: WindowModel?
+/// One nonmodal auxiliary window bound permanently to its Triptych identity.
+/// It reads the Triptych snapshot and narrow record capability directly from
+/// WorkspaceStore; focused workspace changes cannot retarget it.
+private struct ScholiumResearchRecordsRoot: View {
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.layoutDirection) private var inheritedLayoutDirection
+    @AppStorage(WindowColorSchemeChoice.defaultsKey)
+    private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
+    @ObservedObject private var workspaceStore: WorkspaceStore
+    private let triptychID: UUID
+    private let coordinator: ResearchRecordsWindowCoordinator
+    @State private var browserModel = ResearchRecordBrowserModel()
+    @State private var capabilities: WindowWorkspaceCapabilities?
+    @State private var currentRequest: ResearchRecordsWindowRequest
+    @State private var recordsEndpointToken: UUID?
+    @State private var isPrepared = false
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    @State private var recordLoadIssues: [String] = []
+
+    init(
+        workspaceStore: WorkspaceStore,
+        triptychID: UUID,
+        coordinator: ResearchRecordsWindowCoordinator
+    ) {
+        _workspaceStore = ObservedObject(wrappedValue: workspaceStore)
+        self.triptychID = triptychID
+        self.coordinator = coordinator
+        _currentRequest = State(initialValue: ResearchRecordsWindowRequest(
+            triptychID: triptychID
+        ))
+    }
 
     var body: some View {
         Group {
-            if let appState {
-                ScholiumResearchRecordFocusedContent(appState: appState)
+            if let capabilities {
+                recordsContent(capabilities)
+            } else if isLoading {
+                ProgressView("Loading Research Records…")
             } else {
                 ContentUnavailableView(
-                    "No Active Triptych",
-                    systemImage: "clock.arrow.circlepath",
-                    description: Text("Focus a Scholium workspace to view its Research Record.")
+                    "Research Records Unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(
+                        errorMessage ?? "This Triptych is not available on this Mac."
+                    )
                 )
             }
         }
+        .frame(minWidth: 700, minHeight: 520)
         .scholiumSurface(.denseEvidence)
-    }
-}
-
-private struct ScholiumResearchRecordFocusedContent: View {
-    let appState: WindowModel
-    @ObservedObject private var workspaceController: WindowWorkspaceController
-    @ObservedObject private var documentController: DocumentController
-    @ObservedObject private var researchController: ResearchController
-    @State private var browserModel = ResearchRecordBrowserModel()
-
-    init(appState: WindowModel) {
-        self.appState = appState
-        _workspaceController = ObservedObject(
-            wrappedValue: appState.windowWorkspaceController
+        .tint(ScholiumColorRole.accent.color)
+        .preferredColorScheme(
+            WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
         )
-        _documentController = ObservedObject(wrappedValue: appState.documentController)
-        _researchController = ObservedObject(wrappedValue: appState.researchController)
+        .environment(\.layoutDirection, recordsLayoutDirection)
+        .background(ResearchRecordsWindowAttachment(triptychID: triptychID))
+        .task(id: triptychID) { await loadCapabilities() }
+        .onAppear { registerRecordsEndpoint() }
+        .onDisappear { unregisterRecordsEndpoint() }
+        .onReceive(workspaceStore.$workspaceEvents) { events in
+            guard let event = events[triptychID], isPrepared else { return }
+            let snapshot = event.snapshot
+            browserModel.receive(
+                triptychID: triptychID,
+                records: snapshot.research.finishedResearchRecords
+            )
+            recordLoadIssues = researchRecordIssues(in: snapshot)
+        }
+        .onReceive(workspaceStore.$workspaceActivations) { activations in
+            guard let activation = activations[triptychID] else { return }
+            capabilities = activation.capabilities
+            recordLoadIssues = researchRecordIssues(in: activation.snapshot)
+            if isPrepared {
+                browserModel.receive(
+                    triptychID: triptychID,
+                    records: activation.snapshot.research.finishedResearchRecords
+                )
+            }
+        }
     }
 
-    var body: some View {
-        if let assignment = workspaceController.state.assignment {
+    private var recordsLayoutDirection: LayoutDirection {
+        switch ScholiumRuntimeIsolation.layoutDirectionOverride() {
+        case .leftToRight:
+            .leftToRight
+        case .rightToLeft:
+            .rightToLeft
+        case nil:
+            inheritedLayoutDirection
+        }
+    }
+
+    private func recordsContent(
+        _ capabilities: WindowWorkspaceCapabilities
+    ) -> some View {
             ResearchRecordBrowserView(
                 model: browserModel,
-                triptychName: assignment.triptych.name,
-                initialNoteID: currentNoteID,
+                triptychName: capabilities.assignment.triptych.name,
+                loadIssues: recordLoadIssues,
                 context: ResearchRecordBrowserContext(
                     setPinned: { id, isPinned in
-                        try await researchController.setResearchRecordPinned(
+                        try await capabilities.research.records.setResearchRecordPinned(
                             id: id,
                             isPinned: isPinned
                         )
                     },
+                    setRecommendationDisposition: { recordID, recommendationID, status in
+                        try await capabilities.research.records
+                            .setResearchRecordRecommendationDisposition(
+                                recordID: recordID,
+                                recommendationID: recommendationID,
+                                status: status
+                            )
+                    },
+                    setRecommendationNote: { recordID, recommendationID, note in
+                        try await capabilities.research.records
+                            .setResearchRecordRecommendationNote(
+                                recordID: recordID,
+                                recommendationID: recommendationID,
+                                note: note
+                            )
+                    },
                     deletePermanently: { id in
-                        try await researchController.deleteResearchRecordPermanently(id: id)
+                        try await capabilities.research.records
+                            .deleteResearchRecordPermanently(id: id)
                     },
                     comparison: { recordID, noteID in
-                        try await researchController.researchRecordComparison(
+                        try await capabilities.research.records.researchRecordComparison(
                             recordID: recordID,
                             noteID: noteID
                         )
                     },
                     openNote: { noteID, note, sourceLine in
-                        appState.requestOpenNote(
-                            note,
+                        openNote(
                             stableNoteID: noteID,
-                            sourceLine: sourceLine
+                            note: note,
+                            sourceLine: sourceLine,
+                            assignment: capabilities.assignment
                         )
                     }
                 )
             )
-            .onAppear {
-                browserModel.prepareForOpen(
-                    triptychID: assignment.id,
-                    records: finishedRecords,
-                    initialNoteID: currentNoteID
-                )
+    }
+
+    private func loadCapabilities() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            let capabilities = try await workspaceStore.workspaceCapabilities(id: triptychID)
+            try Task.checkCancellation()
+            self.capabilities = capabilities
+            let records: [PortableResearchRecord]
+            if let snapshot = workspaceStore.workspaceSnapshots[triptychID] {
+                records = snapshot.research.finishedResearchRecords
+                recordLoadIssues = researchRecordIssues(in: snapshot)
+            } else {
+                records = try await capabilities.research.records
+                    .finishedResearchRecords(noteID: nil)
+                recordLoadIssues = []
             }
-            .onReceive(researchController.$records) { snapshot in
-                browserModel.receive(
-                    triptychID: assignment.id,
-                    records: snapshot?.finishedResearchRecords ?? [],
-                    currentNoteID: currentNoteID
-                )
-            }
-        } else {
-            ContentUnavailableView(
-                "No Active Triptych",
-                systemImage: "clock.arrow.circlepath",
-                description: Text("Focus a Scholium workspace to view its Research Record.")
+            browserModel.prepareForOpen(
+                triptychID: triptychID,
+                records: records,
+                request: currentRequest
             )
+            isPrepared = true
+            isLoading = false
+        } catch is CancellationError {
+            return
+        } catch {
+            capabilities = nil
+            errorMessage = error.localizedDescription
+            isLoading = false
         }
     }
 
-    private var currentNoteID: UUID? {
-        documentController.activeDocument?.sessionKey.noteID
+    private func registerRecordsEndpoint() {
+        guard recordsEndpointToken == nil else { return }
+        recordsEndpointToken = coordinator.registerRecordsWindow(
+            triptychID: triptychID
+        ) { request in
+            currentRequest = request
+            if isPrepared { browserModel.apply(request) }
+        }
     }
 
-    private var finishedRecords: [PortableResearchRecord] {
-        researchController.records?.finishedResearchRecords ?? []
+    private func unregisterRecordsEndpoint() {
+        guard let recordsEndpointToken else { return }
+        coordinator.unregisterRecordsWindow(
+            triptychID: triptychID,
+            token: recordsEndpointToken
+        )
+        self.recordsEndpointToken = nil
+    }
+
+    private func openNote(
+        stableNoteID: UUID,
+        note: VaultQualifiedNoteID,
+        sourceLine: Int?,
+        assignment: TriptychAssignment
+    ) {
+        if coordinator.openInExistingWorkspace(
+            triptychID: triptychID,
+            noteID: stableNoteID,
+            note: note,
+            sourceLine: sourceLine
+        ) {
+            return
+        }
+        guard let vault = assignment.vaults.values.first(where: {
+            $0.id == note.vaultID
+        }) else {
+            browserModel.presentError(
+                "The recorded Analysis vault is no longer part of this Triptych."
+            )
+            return
+        }
+        let reference = VaultNoteReference(
+            vaultID: vault.id,
+            vaultName: vault.name,
+            vaultRole: vault.role,
+            relativePath: note.relativePath,
+            stableNoteID: stableNoteID.uuidString.lowercased()
+        )
+        openWindow(
+            id: "scholium-main",
+            value: TriptychWindowRoute(
+                triptychID: triptychID,
+                initialDocument: reference
+            )
+        )
+    }
+
+    private func researchRecordIssues(in snapshot: WorkspaceSnapshot) -> [String] {
+        snapshot.research.healthIssues.filter {
+            $0.hasPrefix("Portable Research Record ")
+        }
     }
 }
 
@@ -466,16 +621,19 @@ private final class ScholiumBootstrapModel: ObservableObject {
 private struct ScholiumWindowRoot: View {
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
     @StateObject private var appState: WindowModel
     @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
 
     init(
         workspaceStore: WorkspaceStore,
         route: TriptychWindowRoute,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
+        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
     ) {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
+        self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
         let model = WindowModel(
             workspaceStore: workspaceStore,
             nativeWindowID: route.windowID,
@@ -486,7 +644,8 @@ private struct ScholiumWindowRoot: View {
         _windowCoordinator = StateObject(wrappedValue: WorkspaceWindowCoordinator(
             windowID: route.windowID,
             appState: model,
-            lifecycleRegistry: lifecycleRegistry
+            lifecycleRegistry: lifecycleRegistry,
+            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator
         ))
     }
 
@@ -495,7 +654,8 @@ private struct ScholiumWindowRoot: View {
             appState: appState,
             windowCoordinator: windowCoordinator,
             route: route,
-            lifecycleRegistry: lifecycleRegistry
+            lifecycleRegistry: lifecycleRegistry,
+            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator
         )
     }
 }
@@ -515,13 +675,15 @@ private struct ScholiumWindowObservedRoot: View {
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
     @State private var destinationBootstrapWindowID: UUID?
 
     init(
         appState: WindowModel,
         windowCoordinator: WorkspaceWindowCoordinator,
         route: TriptychWindowRoute,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
+        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
     ) {
         self.appState = appState
         _windowCoordinator = ObservedObject(wrappedValue: windowCoordinator)
@@ -532,6 +694,7 @@ private struct ScholiumWindowObservedRoot: View {
         )
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
+        self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
     }
 
     var body: some View {
@@ -578,7 +741,7 @@ private struct ScholiumWindowObservedRoot: View {
                     closeWindow: { dismissWindow() }
                 )
             }
-            .preferredColorScheme(colorScheme)
+            .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
             .task(id: route.windowID) {
                 windowCoordinator.update(reduceMotion: reduceMotion)
                 await appState.restoreWindowSession(id: route.windowID)
@@ -601,8 +764,36 @@ private struct ScholiumWindowObservedRoot: View {
             }
             .onAppear {
                 windowCoordinator.activate(
-                    showResearchRecord: {
-                        openWindow(id: "scholium-research-record")
+                    showNoteResearchRecords: {
+                        guard let triptychID = appState.workspaceAssignment?.id,
+                              let noteID = appState.documentController.activeDocument?
+                                .sessionKey.noteID else { return }
+                        researchRecordsWindowCoordinator.submit(
+                            ResearchRecordsWindowRequest(
+                                triptychID: triptychID,
+                                noteID: noteID,
+                                initialView: .records
+                            )
+                        )
+                        openWindow(
+                            id: "scholium-research-records",
+                            value: triptychID
+                        )
+                    },
+                    showTriptychResearchRecords: {
+                        guard let triptychID = appState.workspaceAssignment?.id else {
+                            return
+                        }
+                        researchRecordsWindowCoordinator.submit(
+                            ResearchRecordsWindowRequest(
+                                triptychID: triptychID,
+                                initialView: .records
+                            )
+                        )
+                        openWindow(
+                            id: "scholium-research-records",
+                            value: triptychID
+                        )
                     },
                     showAttention: { anchor, workspaceSlot, noteScope in
                         appState.attentionPopoverSession.present(
@@ -612,7 +803,16 @@ private struct ScholiumWindowObservedRoot: View {
                         )
                     }
                 )
+                windowCoordinator.updateResearchRecordsRouting(
+                    triptychID: windowWorkspaceController.state.assignment?.id
+                )
                 windowCoordinator.update(reduceMotion: reduceMotion)
+            }
+            .onChange(
+                of: windowWorkspaceController.state.assignment?.id,
+                initial: true
+            ) { _, triptychID in
+                windowCoordinator.updateResearchRecordsRouting(triptychID: triptychID)
             }
             .onChange(of: reduceMotion) { _, reduceMotion in
                 windowCoordinator.update(reduceMotion: reduceMotion)
@@ -644,13 +844,6 @@ private struct ScholiumWindowObservedRoot: View {
         destinationBootstrapWindowID = destination.windowID
     }
 
-    private var colorScheme: ColorScheme? {
-        switch shellState.colorScheme {
-        case .dark: return .dark
-        case .light: return .light
-        case .system: return nil
-        }
-    }
 }
 
 private struct ScholiumSettingsRoot: View {
@@ -1065,8 +1258,13 @@ private struct ScholiumCommands: Commands {
                 }
             }
             Divider()
-            WindowVisibilityToggle(windowID: "scholium-research-record")
-                .disabled(appState?.workspaceAssignment == nil)
+            Button("Triptych · Records") {
+                workspaceWindowActions?.showTriptychResearchRecords()
+            }
+            .disabled(
+                appState?.workspaceAssignment == nil
+                    || workspaceWindowActions == nil
+            )
         }
         #if DEBUG
         if qaEditorFaultsAreEnabled || qaResearchWorkflowProofsAreEnabled {
@@ -2045,27 +2243,6 @@ final class WindowModel: ObservableObject {
         currentDocumentDescriptor?.reference
     }
 
-    var currentRecommendedBibliographyScope: RecommendedBibliographyScope? {
-        guard let triptychID = activeTriptychServicesID else { return nil }
-        let selectedNotes: [RecommendedBibliographySourceNote]
-        if let target = currentResearchFunctionTarget,
-           let descriptor = currentDocumentDescriptor {
-            selectedNotes = [RecommendedBibliographySourceNote(
-                noteID: target.noteID,
-                note: target.note,
-                role: descriptor.reference.vaultRole,
-                fingerprint: target.fingerprint,
-                title: target.title
-            )]
-        } else {
-            selectedNotes = []
-        }
-        return RecommendedBibliographyScope(
-            triptychID: triptychID,
-            selectedNotes: selectedNotes
-        )
-    }
-
     func researchActionsPresentation() -> ResearchActionsPresentation {
         let target = currentResearchActionTarget
         let actions = researchController.actions
@@ -2091,9 +2268,6 @@ final class WindowModel: ObservableObject {
         researchController.actions.invalidateIfTargetChanged(target)
         reconcileResearchActionPresentation()
         await researchController.actions.refreshAvailability(for: target)
-        await researchController.bibliography.refresh(
-            for: currentRecommendedBibliographyScope
-        )
     }
 
     private func reconcileResearchActionPresentation() {
@@ -3611,30 +3785,6 @@ final class WindowModel: ObservableObject {
                     await Task.yield()
                     self?.requestDiscussionPresentation(discussionID)
                 }
-            }
-        ))
-        researchController.bibliography.bind(RecommendedBibliographyClient(
-            overview: {
-                try await capabilities.research.bibliography.recommendationOverview()
-            },
-            prepare: { [weak self] request in
-                guard let self, let assignment = self.workspaceAssignment else {
-                    throw ScholiumApplicationError.researchStoreUnavailable(
-                        "No workspace is active."
-                    )
-                }
-                try await self.editorFlushCoordinator.flushAllEditors(in: assignment.id)
-                return try await capabilities.research.bibliography
-                    .prepareRecommendation(request)
-            },
-            cancel: { id in
-                try await capabilities.research.bibliography.cancelRecommendation(id: id)
-            },
-            dismiss: { requestID, candidateID in
-                try await capabilities.research.bibliography.dismissRecommendation(
-                    requestID: requestID,
-                    candidateID: candidateID
-                )
             }
         ))
         reconcileResearchActionPresentation()

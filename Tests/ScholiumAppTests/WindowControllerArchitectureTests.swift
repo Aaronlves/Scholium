@@ -1271,7 +1271,6 @@ struct WindowControllerArchitectureTests {
 
         shellState.selectInspectorMode(.actions)
         controller.actions.textValues = ["prompt": "Fixture"]
-        controller.bibliography.purpose = "Fixture purpose"
         #expect(invalidations == 0)
 
         controller.setActiveDocument(fixtureReference(path: "Topics/Owned.md"))
@@ -1303,7 +1302,6 @@ struct WindowControllerArchitectureTests {
 
         #expect(!controllerSource.contains("shellState.objectWillChange"))
         #expect(!controllerSource.contains("actions.objectWillChange"))
-        #expect(!controllerSource.contains("bibliography.objectWillChange"))
         #expect(contentSource.contains(
             "@ObservedObject private var researchActionController: ResearchActionController"
         ))
@@ -1726,7 +1724,6 @@ struct WindowControllerArchitectureTests {
             "let skills: any ResearchSkillUseCases",
             "let actions: any ResearchActionUseCases",
             "let sourceAccess: any ResearchSourceAccessUseCases",
-            "let bibliography: any RecommendedBibliographyUseCases",
         ] {
             #expect(windowSession.contains(capability))
         }

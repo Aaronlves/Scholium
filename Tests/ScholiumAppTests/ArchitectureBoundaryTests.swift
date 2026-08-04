@@ -688,19 +688,19 @@ struct ArchitectureBoundaryTests {
         #expect(!uiRoot.contains("func testCanonicalAcceptanceJourney"))
     }
 
-    @Test("Recommended Bibliography has one Triptych owner and no Analysis target bridge")
-    func recommendedBibliographyTriptychOwnership() throws {
+    @Test("Literature recommendations have one Record owner and a derived window projection")
+    func literatureRecommendationOwnership() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let paths = [
-            "ScholiumContracts/RecommendedBibliographyContracts.swift",
-            "ScholiumCore/RecommendedBibliographyStore.swift",
-            "ScholiumApplication/RecommendedBibliographyCoordinator.swift",
-            "Scholium/Features/ResearchContext/RecommendedBibliographyController.swift",
+            "ScholiumContracts/ResearchLiteratureRecommendationContracts.swift",
+            "ScholiumContracts/PortableResearchRecordContracts.swift",
+            "Scholium/Features/ResearchRecord/ResearchRecordBrowserModel.swift",
+            "Scholium/Features/ResearchRecord/ResearchRecordsWindowCoordinator.swift",
+            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift",
             "Scholium/App/ScholiumApp.swift",
-            "ScholiumCLI/RecommendedBibliographyCommandHandler.swift",
         ]
         let source = try paths.map {
             try String(
@@ -709,14 +709,19 @@ struct ArchitectureBoundaryTests {
             )
         }.joined(separator: "\n")
 
-        #expect(source.contains("RecommendedBibliographyScope"))
+        #expect(source.contains("ResearchLiteratureRecommendationSubmission"))
+        #expect(source.contains("literatureRecommendations"))
+        #expect(source.contains("ResearchLiteratureRecommendationDerivedIndex"))
+        #expect(source.contains("ResearchRecordsWindowRequest"))
         #expect(source.contains("triptychID"))
-        #expect(source.contains("selectedNotes"))
-        #expect(source.contains("sourceRevisions"))
-        #expect(!source.contains("RecommendedBibliographyTarget"))
-        #expect(!source.contains("analysisTargetRequired"))
-        #expect(!source.contains("targetNoteID"))
-        #expect(!source.contains("Analysis-only"))
+        #expect(source.contains("for: UUID.self"))
+        #expect(source.contains("WorkspaceStore"))
+        #expect(source.contains(".sourceLocators.enumerated()"))
+        #expect(source.contains("id: \\.offset"))
+        #expect(source.contains("if let title = recommendation.title,"))
+        #expect(source.contains("title != recommendation.rawCitation"))
+        #expect(source.contains(".toolbar(removing: .sidebarToggle)"))
+        #expect(!source.contains("struct ResearchRecommendation"))
     }
 
     private func swiftFiles(beneath root: URL) throws -> [URL] {

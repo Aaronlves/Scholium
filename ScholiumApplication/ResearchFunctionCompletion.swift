@@ -18,7 +18,7 @@ private struct ResearchFunctionConfirmedWriteActivity: Sendable {
 extension ResearchFunctionCoordinator {
     /// Completes one protected run as a single coordinator-owned transaction.
     /// The coordinator validates current source evidence before committing the
-    /// Local-v2 transition, then repairs any later portable-record or derived
+    /// Local-v3 transition, then repairs any later portable-record or derived
     /// publication work idempotently on the same submission.
     func completeProtectedFunction<Host: ResearchFunctionCoordinatorHost>(
         _ submission: ResearchFunctionCompletionSubmission,
@@ -64,10 +64,35 @@ extension ResearchFunctionCoordinator {
                 "A completion summary is required."
             )
         }
+        if snapshot.actionSnapshot?.actionID == .analyze {
+            guard let recommendations = submission.literatureRecommendations,
+                  recommendations.count <= 256 else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "Analyze completion requires an explicit literatureRecommendations array with at most 256 entries."
+                )
+            }
+        } else if submission.literatureRecommendations != nil {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Only Analyze completion accepts literatureRecommendations."
+            )
+        }
+        if let existing = stored.completion,
+           [.awaitingFidelity, .unverified, .stale].contains(existing.state),
+           (existing.literatureRecommendations != submission.literatureRecommendations
+               || existing.actuallyUsedMaterialNoteIDs
+                    != submission.actuallyUsedMaterialNoteIDs) {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Advancing Fidelity cannot replace the Action's recorded recommendation or Material-use testimony."
+            )
+        }
         // A prepared Analyze never outlives its exact source authority. Check
         // before consuming a write grant, then check again against the final
         // Target below so source loss cannot be converted into a completion.
-        _ = try await validateSnapshotResearchSourceAccess(snapshot)
+        let validatedSourceAccess = try await validateSnapshotResearchSourceAccess(snapshot)
+        try validateRecommendationSourcePrivacy(
+            submission.literatureRecommendations,
+            sourceAccess: validatedSourceAccess
+        )
 
         var completedCritiqueFindings: [CritiqueFinding] = []
         switch snapshot.request.function {
@@ -509,6 +534,7 @@ extension ResearchFunctionCoordinator {
             outputFingerprint: submission.outputFingerprint,
             fidelityOutcomes: outcomes,
             fidelityTargetResults: fidelityTargetResults,
+            literatureRecommendations: submission.literatureRecommendations,
             fidelityEvidenceKey: evidenceKey,
             reusedFidelityRunID: manuscriptFidelity?.runID
                 ?? linkedFinalFidelity?.runID
@@ -529,12 +555,22 @@ extension ResearchFunctionCoordinator {
                 currentTarget: finalCurrentTarget
             )
         }
-        if completion.function != .discuss {
-            _ = try await portableResearchRecord(
+        if completion.function != .discuss,
+           let candidateRecord = try await portableResearchRecord(
                 completion: completion,
                 stored: stored,
-                confirmedWrite: confirmedWriteActivity?.report
-            )
+                confirmedWrite: confirmedWriteActivity?.report,
+                storagePreflightForAwaitingFidelity: true
+           ) {
+            do {
+                try PortableResearchRecordStore.validateStorageEncoding(
+                    of: candidateRecord
+                )
+            } catch ResearchRecordStoreV1Error.recordTooLarge {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The resulting Research Record exceeds the portable storage boundary."
+                )
+            }
         }
         var didPersistLocalCompletionWithGrant = false
         if let confirmedWriteActivity,
@@ -608,6 +644,7 @@ extension ResearchFunctionCoordinator {
             outputFingerprint: completion.outputFingerprint,
             fidelityOutcomes: completion.fidelityOutcomes,
             fidelityTargetResults: completion.fidelityTargetResults ?? [],
+            literatureRecommendations: completion.literatureRecommendations,
             fidelityEvidenceKey: completion.fidelityEvidenceKey,
             reusedFidelityRunID: completion.reusedFidelityRunID,
             childRunIDs: completion.childRunIDs ?? [],
@@ -652,6 +689,7 @@ extension ResearchFunctionCoordinator {
                     didModifyTarget: submission.didModifyTarget,
                     outputFingerprint: submission.outputFingerprint,
                     fidelityOutcomes: submission.fidelityOutcomes,
+                    literatureRecommendations: submission.literatureRecommendations,
                     childRunIDs: [automatic.effectiveFidelityRunID],
                     submittedAt: submission.submittedAt
                 ),
@@ -776,17 +814,66 @@ extension ResearchFunctionCoordinator {
             stored: stored,
             confirmedWrite: confirmedWrite
         ) else { return }
-        _ = try await dependencies.portableResearchRecordStore.createFinishedRecord(
-            record
-        )
+        do {
+            _ = try await dependencies.portableResearchRecordStore.createFinishedRecord(
+                record
+            )
+        } catch ResearchRecordStoreV1Error.recordPermanentlyDeleted(let id)
+            where id == completion.runID {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The Research Record for this Action was permanently deleted and cannot be recreated."
+            )
+        } catch ResearchRecordStoreV1Error.recordTooLarge {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The resulting Research Record exceeds the portable storage boundary."
+            )
+        }
+    }
+
+    private func validateRecommendationSourcePrivacy(
+        _ recommendations: [ResearchLiteratureRecommendationSubmission]?,
+        sourceAccess: ResolvedResearchSourceAccess?
+    ) throws {
+        guard let recommendations, let sourceAccess else { return }
+        let forbiddenLocators = Set([
+            sourceAccess.fileURL.path,
+            sourceAccess.fileURL.standardizedFileURL.path,
+            sourceAccess.fileURL.absoluteString,
+            sourceAccess.fileURL.standardizedFileURL.absoluteString,
+        ].filter { !$0.isEmpty })
+        let containsLocator = { (value: String) in
+            forbiddenLocators.contains { value.contains($0) }
+        }
+        let leaked = recommendations.contains { recommendation in
+            let optionalValues = [
+                recommendation.title,
+                recommendation.doi,
+                recommendation.zoteroItemKey,
+                recommendation.uncertainty,
+            ].compactMap { $0 }
+            return containsLocator(recommendation.rawCitation)
+                || containsLocator(recommendation.reason)
+                || recommendation.authors.contains(where: containsLocator)
+                || recommendation.sourceLocators.contains(where: containsLocator)
+                || optionalValues.contains(where: containsLocator)
+        }
+        guard !leaked else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Literature Recommendations cannot persist the transient machine-local source locator."
+            )
+        }
     }
 
     private func portableResearchRecord(
         completion: ResearchFunctionCompletion,
         stored: StoredFunctionRecord,
-        confirmedWrite: MultiTargetCompletionReport?
+        confirmedWrite: MultiTargetCompletionReport?,
+        storagePreflightForAwaitingFidelity: Bool = false
     ) async throws -> PortableResearchRecord? {
-        guard [.complete, .unverified].contains(completion.state),
+        let canBuildRecord = [.complete, .unverified].contains(completion.state)
+            || (storagePreflightForAwaitingFidelity
+                && completion.state == .awaitingFidelity)
+        guard canBuildRecord,
               completion.function != .discuss,
               let actionSnapshot = stored.snapshot.actionSnapshot else {
             return nil
@@ -950,6 +1037,38 @@ extension ResearchFunctionCoordinator {
                     revision: material.fingerprint
                 )
             }
+        let recommendationSubmissions: [ResearchLiteratureRecommendationSubmission]
+        if actionSnapshot.actionID == .analyze {
+            guard let submitted = completion.literatureRecommendations,
+                  submitted.count <= 256 else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "A completed Analyze run cannot repair a Research Record without its explicit bounded literatureRecommendations report."
+                )
+            }
+            recommendationSubmissions = submitted
+        } else {
+            guard completion.literatureRecommendations == nil else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "Only Analyze completion can repair Literature Recommendations."
+                )
+            }
+            recommendationSubmissions = []
+        }
+        let literatureRecommendations = try recommendationSubmissions
+            .enumerated()
+            .map { ordinal, submission in
+                ResearchLiteratureRecommendation(
+                    id: ResearchLiteratureRecommendation.stableID(
+                        runID: completion.runID,
+                        ordinal: ordinal
+                    ),
+                    submission: submission,
+                    disposition: try PortableResearchRecommendationDisposition(
+                        status: .unprocessed,
+                        updatedAt: completion.completedAt
+                    )
+                )
+            }
         return try PortableResearchRecord(
             id: completion.runID,
             triptychID: workspaceID,
@@ -962,9 +1081,13 @@ extension ResearchFunctionCoordinator {
             participatingNotes: participatingNotes,
             statements: [feedback],
             actuallyUsedMaterials: actuallyUsedMaterials,
-            fidelityCompletion: try portableFidelityCompletion(for: completion),
+            fidelityCompletion: storagePreflightForAwaitingFidelity
+                    && completion.state == .awaitingFidelity
+                ? .notRequired
+                : try portableFidelityCompletion(for: completion),
             confirmedChanges: changes,
             discrepancies: discrepancies,
+            literatureRecommendations: literatureRecommendations,
             startedAt: snapshot.preparedAt,
             finishedAt: completion.completedAt
         )
@@ -1062,6 +1185,7 @@ extension ResearchFunctionCoordinator {
                     outputFingerprint: completion.outputFingerprint,
                     fidelityOutcomes: completion.fidelityOutcomes,
                     fidelityTargetResults: completion.fidelityTargetResults ?? [],
+                    literatureRecommendations: completion.literatureRecommendations,
                     fidelityEvidenceKey: completion.fidelityEvidenceKey,
                     reusedFidelityRunID: completion.reusedFidelityRunID,
                     childRunIDs: completion.childRunIDs ?? [],

@@ -116,7 +116,7 @@ and the application interface are not changed by a document configuration;
 only the shared Line width changes Source layout.
 
 Document toolbar order is Sidebar visibility; Heading Outline and compact
-identity; mode and Search; Research Record; Inspector visibility. Scholium
+identity; mode and Search; **This Note · Records**; Inspector visibility. Scholium
 controls are borderless ink. No second identity row,
 Document Properties button, or More control exists.
 Complete Properties is in Research; direct controls retain menu/keyboard
@@ -132,16 +132,23 @@ quiet, and `zotero_item_key` and Analysis title are never selectable there.
 
 ## 18.5 Contextual research and Actions
 
-Apparatus contains Research Inspector only; active Discussion, Research Record,
+Apparatus contains Research Inspector only; active Discussion, Research Records,
 and checkpoint recovery keep distinct ownership. Active Discussion opens as an
-Action sheet. Research Record is an independent, nonrestored native utility
-window, reads the focused Triptych directly, and keeps a fixed **760 × 680** content
-size chosen for readable temporary inspection. It uses one native list/detail
-layout, has no Workspace Sidebar control or alternate wide/narrow presentation,
-does not adapt into another primary interface, and never appears inside
-Inspector. Its leading record list remains compact and top-aligned in ready,
-empty, and filtered-empty states; controls and rows use compact native macOS
-density while every custom target retains the minimum accessible hit region.
+Action sheet. Research Records is an independent, nonrestored ordinary native
+auxiliary window keyed to one Triptych. It reads that Triptych directly instead
+of following focused `WindowModel`, defaults to **760 × 680pt**, and is resizable
+down to **700 × 520pt**. It uses one native list/detail split, has no Workspace
+Sidebar control or alternate primary-interface mode, and never appears inside
+Inspector. Its leading list remains compact and top-aligned in ready, empty,
+filtered-empty, and partial-load states; controls and rows use compact native
+macOS density while every custom target retains the minimum accessible hit
+region. Its ordinary native titlebar carries only window identity. Scope and
+View remain independent, but both belong to the leading collection-navigation
+plane: a restrained **Records / Recommendations** editorial index begins that
+pane, while a borderless native Scope menu sits in the list-context row above
+search. The reading plane begins directly beneath the ordinary titlebar; no
+full-width control band, toolbar, or glass treatment crosses it. Focus changes
+in other windows never retarget either control.
 Normal Action Material-use and Fidelity facts remain in the existing collapsed
 **Record Details**. An `unverified` Fidelity state instead appears once in the
 evidence area as a complete textual statement; it is not duplicated in Details

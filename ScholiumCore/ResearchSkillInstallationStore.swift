@@ -711,8 +711,7 @@ extension ResearchSkillTransactionCoordinator {
         if try citationMethods.snapshotWithoutMigration()?.document.packageID == id {
             return true
         }
-        return try bibliographyMethods
-            .snapshotWithoutMigration()?.document.packageID == id
+        return false
     }
 
     func quarantineExactStagedResearcherSkillPackage(

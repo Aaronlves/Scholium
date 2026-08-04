@@ -135,14 +135,14 @@ projection are absent. Review alone saves a selected-range Comment directly as o
 containing only the stable Note, current fingerprint, and inclusive line range; Edit and Source have
 no Comment route. The composer closes only after write acknowledgement and retains its text on
 failure. Comment opens no sheet or agent handoff. The first Discuss on a Comment-only draft resolves
-the editable Discuss Method/Profile into the same Discussion and Local-v2 run; later handoffs reload
+the editable Discuss Method/Profile into the same Discussion and Local-v3 run; later handoffs reload
 those frozen machine-local instructions. Bound Discussion reopens directly, and no duplicate
 active-Discussion row appears in Actions. Finished Discussions remain Research Records and are not
 silently injected as Critique evidence. Written annotation remains authoritative Markdown or a
 semantic Callout. D-105 cleanly removes Human Review, Qualification, ResearcherComment, app-owned
 Annotation, pre-Function Dialogue, and their stores, decoders, migrations, recovery, Search, and UI
 paths. A Work retains one attributed current Critique under `Works/Critiques`; Action-backed
-Critique execution uses a recoverable Local-v2 handoff and idempotently reconciles actionable
+Critique execution uses a recoverable Local-v3 handoff and idempotently reconciles actionable
 findings, while Accept/Reject/Rebut and researcher Complete Round remain separate scholarly
 decisions.
 
@@ -241,15 +241,16 @@ revision without flushing unrelated Notes. Current Actions create no automatic w
 checkpoint; mediated writes preserve exact displaced bytes per Note, while manual checkpoints remain
 available. Action preparation freezes the exact Action snapshot before delegating to the internal
 protected coordinator and persists protected state, instructions, grant digest, static Discuss
-transport contract, and completion evidence as independent Local Execution v2 files; a write report,
+transport contract, and completion evidence as independent Local Execution v3 files; a write report,
 grant completion, completion, and submission digest commit in one run-file replacement. Every
 current Action completion requires explicit actually-used Material testimony: `[]` means none,
 omission fails closed, and selection alone is not use. The Application persists each exact validated
-revision and role together with the primary Target. Portable record schema 3 also derives
+revision and role together with the primary Target. Portable record schema 4 also derives
 `not_required`, `completed`, or `unverified` Fidelity completion from Application evidence; it
-records no pass, truth, quality, or acceptance verdict. Unsupported pre-production stores and schema
-1/2 portable records remain byte-unchanged, invisible, and nonauthorizing, with no dedicated reveal
-entry. Analyze resolves and rechecks one exact source before and after Method resolution; Synthesize
+records no pass, truth, quality, or acceptance verdict. Analyze additionally requires an explicit
+bounded Literature Recommendations array, while every other Action rejects it. Only schema 4 is
+decoded and there is no pre-release record migration or compatibility path. Analyze resolves and
+rechecks one exact source before and after Method resolution; Synthesize
 does not. The durable snapshot stores only the safe source reference, while the assembled packet may
 carry its absolute path as a transient locator. The internal coordinator continues to own completion
 keys, revision/write validation, containment, conflicts, and recovery; Function-named public routes,
@@ -454,7 +455,7 @@ rejects the 129th file without first collecting an unbounded listing, and input 
 for network URLs, archives/non-directories, symlinks, hard links, executable or scripted files,
 unsupported/nested resources, malformed metadata, files over 1 MiB, and packages over 8 MiB.
 Application resolves explicitly selected Triptychs; Core preflights all destinations, rejects
-dangling current bindings or the retained citation/bibliography bindings that can still execute,
+dangling current bindings or the retained Citation binding that can still execute,
 uses no-replace publication for each independent copy, and repeats bounded validation after
 publication. Ignored legacy Function/Skill/Practice fields cannot authorize or block new
 installation. A later-destination failure moves proved task-owned directories into hidden
@@ -481,9 +482,9 @@ Settings-tab navigation until saved or discarded, and cannot cross a Triptych sw
 and identity checks also prevent stale Methods, Skills, Recovery, or Permissions reloads from
 repopulating a new Triptych. One Skill cannot silently claim an Action ID already configured by
 another. Function-keyed Settings are deleted and cannot enter Action resolution. Citation Fidelity
-and Recommended Bibliography each own a strict capability document; a retained
-`research-skill-bindings.json` is byte-preserved, read only for bounded lazy migration or explicit
-repair, and never supplies Function-keyed behavior or package-use constraints. Permissions edits the
+owns a strict capability document; a retained `research-skill-bindings.json` is byte-preserved,
+read only for bounded Citation migration or explicit repair, and never supplies Function-keyed
+behavior or package-use constraints. Permissions edits the
 machine-local Triptych default and exact-envelope per-Skill overrides, exposes invalidation without
 broad fallback, and states the boundary around Scholium-mediated operations. Sources reuses current
 CLI/Zotero controls. Superseded flat Settings, maintenance Proposal, and legacy-data reveal source
@@ -495,7 +496,7 @@ are deleted.
 
 One synthetic Debug-only PreviewCatalog remains for the modular Skill-run sheet, staged
 local-directory installer, responsibility-based Research Guidance categories, Agent-requested
-additional Notes, and fixed secondary Research Record utility layout. It is suppressed by default
+additional Notes, and Research Records auxiliary-window layout. It is suppressed by default
 and its single QA command is available only to the Debug `com.scholium.qa` bundle with an explicit
 launch argument. It owns no Workspace, Triptych, document, Skill, permission, execution, record, or
 source authority and is not a production surface. Completed Sidebar, Attention, Inspector,
@@ -509,7 +510,7 @@ active route or compatibility alias.
 Line Comment, whole-note Discuss, and optional focal Notes now use one `PortableResearchDiscussion`;
 older exact-passage turns remain readable. A new Comment stores only its Note fingerprint and
 inclusive line range, never starts an agent run, and is collected when Discuss opens the active
-exchange. New runs keep only their static response transport contract in Local Execution v2;
+exchange. New runs keep only their static response transport contract in Local Execution v3;
 attributed turns live in the portable active exchange. Close has no storage effect. Agent reply
 evidence is required before a Discuss run can complete, while researcher Finish is a separate
 neutral transition into one portable Research Record and creates no legacy Discussed event. External
@@ -587,41 +588,35 @@ copy-on-adoption Skill, not a Research Action; mutation remains separately autho
 
 Final Completion control and reminder presentation require human review.
 
-### Recommended Bibliography
+### Literature Recommendations and Research Records
 
 **Implemented evidence**
 
-D-121/D-122/D-124 present one Triptych-owned portable result as a fixed, intrinsic-height Sidebar
-utility below and outside the Library source scroll. One `RecommendedBibliographyScope` freezes the
-Triptych plus exact revisions of selected active Analyses, Topics, or Works as focal source context.
-The store exposes one overview and at most one active request for the Triptych, so Scope, Location,
-Note selection, and window changes neither replace nor hide the durable result. Completion echoes
-the exact selected-Note revision set; Application rereads source bytes before preparation and
-completion. Goals/purpose, prior-result retention, zero results, conservative discrimination, and no
-Markdown/Zotero mutation remain. The Analysis-only target/error/store index and schema-1 projection
-are removed; unsupported old bytes remain unchanged and nonauthorizing.
+Analyze completion now requires an explicit bounded recommendation array and writes one schema-4
+Research Record. Application derives stable occurrence IDs and initial Unprocessed dispositions;
+other Actions reject the field. Occurrence disposition and optional researcher-note updates share
+the locked atomic replacement/readback path with Pin. The Triptych Recommendations index is rebuilt
+only from parent Records and groups only exact nonconflicting normalized DOI or Zotero identities.
+Recommendation submissions and researcher notes now reject normalized,
+percent-encoded, POSIX, Windows-drive, UNC, and file-URL machine paths before
+portable persistence while retaining ordinary HTTPS bibliographic links.
+Permanent Record deletion now commits a machine-local tombstone under the same
+cross-process lock as portable creation/deletion, so a retained Local-v3
+completion cannot resurrect the deleted Record; source access, checkpoints,
+and recovery evidence remain outside that deletion.
+
+One nonmodal resizable Research Records window is keyed by Triptych ID, reads that Triptych's
+capabilities directly, and does not follow Workspace focus. Document and Research-menu requests
+reapply This Note or Triptych Scope respectively; Scope and Records/Recommendations View remain
+independent. Recommendations exposes search, Unprocessed/Handled/All, occurrence-local checkboxes,
+source and Record provenance, Open Analysis, Open Parent Record, and researcher notes. Sidebar,
+Attention, Settings, Method bindings, CLI, and Zotero acquire no parallel recommendation lifecycle
+or authority.
 
 **Still open**
 
-Philosophical value, final visual acceptance, and genuine spoken VoiceOver remain researcher-owned
-acceptance.
-
-### Recommended Bibliography compact entry
-
-**Implemented evidence**
-
-D-126 replaces the compact horizontal candidate scroller and diagonal-open glyph with one full-band
-native Button. The fixed band now shows its heading, nonzero count, quiet forward chevron, and
-either a purpose-named 10pt empty state or one static first-candidate citation preview. D-131
-removes direct Zotero navigation from the complete candidate surface; rows retain **Open Analysis**
-when matched and **Dismiss**. The compact Button exposes one Open label and count/empty value while
-the surrounding group retains Triptych ownership.
-
-**Still open**
-
-Focused contract/build and isolated Light QA evidence exist for the compact entry and exact Zotero
-routing; populated-candidate visual review, genuine spoken VoiceOver, physical Full Keyboard Access,
-Dark/Increase Contrast/inactive-window review, and researcher visual acceptance remain open.
+Complete Dark/Increase Contrast/RTL/200%/VoiceOver and physical Full Keyboard Access acceptance,
+plus genuine research-use evaluation of recommendation quality, remain researcher-owned acceptance.
 
 ### Protected Skill IDs
 

@@ -21,7 +21,7 @@ Keep these layers visibly separate:
 - source-supported analyst reconstruction;
 - charitable repair or bridging premise supplied by the analyst;
 - analyst objection, comparison, or evaluation;
-- later-use candidate or unread bibliography lead.
+- later-use candidate or unread literature lead.
 
 A plausible reconstruction is not a quotation. A charitable repair is not the author's argument. The author's account of a debate is not independently verified field history.
 
@@ -102,7 +102,7 @@ Reconstruct how the author presents rivals, allies, foils, precursors, and borro
 
 Propose a possible later-use role only when supported: primary evidence, interpretation, target, rival, partial ally, conceptual resource, methodological model, case source, objection source, background, or lead. Do not infer support, criticism, influence, or participation from citation, keyword overlap, chronology, graph proximity, or similar wording. The researcher decides project relevance.
 
-Unread bibliography items remain unrated leads. Debate Importance is optional, must be a whole integer from 0 through 10, requires an explicit Debate Scope and sufficient checked comparative evidence, and may be assigned only after analysis. It is not project relevance, truth, quality, prestige, reliability, citation impact, or the source's self-assessment. Omit it when the conditions are absent.
+Unread literature items remain unrated leads. Debate Importance is optional, must be a whole integer from 0 through 10, requires an explicit Debate Scope and sufficient checked comparative evidence, and may be assigned only after analysis. It is not project relevance, truth, quality, prestige, reliability, citation impact, or the source's self-assessment. Omit it when the conditions are absent.
 
 ## 8. Completion standard
 

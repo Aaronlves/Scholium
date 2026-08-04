@@ -85,6 +85,7 @@ final class ScholiumUITests: XCTestCase {
 
     struct QAResearchRecordFixture {
         let recordID: UUID
+        let recommendationID: UUID?
         let analysisNoteID: UUID
         let topicNoteID: UUID
         let tombstoneNoteID: UUID

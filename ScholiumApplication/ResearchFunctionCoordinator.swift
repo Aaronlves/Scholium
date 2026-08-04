@@ -93,7 +93,7 @@ protocol ResearchFunctionCoordinatorHost: Actor {
 /// delivery, run records, and terminal lifecycle transitions.
 ///
 /// This component owns availability, immutable preparation and delivery,
-/// Local-v2 lookup/reconciliation, completion persistence, cancellation, and
+/// Local-v3 lookup/reconciliation, completion persistence, cancellation, and
 /// protected Discussion Finish. It does not own Markdown, Workspace snapshots,
 /// source-operation exclusion, Discussion storage, or refresh publication. Its
 /// methods execute on the existing Workspace actor through an `isolated` host,

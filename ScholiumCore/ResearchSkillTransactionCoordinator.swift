@@ -24,7 +24,6 @@ public actor ResearchSkillTransactionCoordinator {
     public nonisolated let workingMethodBindingsURL: URL
     public nonisolated let actionProfileBindingsURL: URL
     public nonisolated let citationMethodBindingsURL: URL
-    public nonisolated let bibliographyMethodBindingsURL: URL
 
     private let controlURL: URL
     nonisolated let legacyFunctionBindingsURL: URL
@@ -34,7 +33,6 @@ public actor ResearchSkillTransactionCoordinator {
     let workingMethods: ResearchWorkingMethodStore
     let actionProfiles: ResearchActionProfileStore
     let citationMethods: ResearchCitationMethodStore
-    let bibliographyMethods: ResearchBibliographyMethodStore
     private let packageRepository: ResearchSkillPackageRepository
 
     public init(
@@ -60,11 +58,6 @@ public actor ResearchSkillTransactionCoordinator {
         self.citationMethodBindingsURL = controlURL.standardizedFileURL
             .appendingPathComponent(
                 "research-citation-method-v1.json",
-                isDirectory: false
-            )
-        self.bibliographyMethodBindingsURL = controlURL.standardizedFileURL
-            .appendingPathComponent(
-                "research-bibliography-method-v1.json",
                 isDirectory: false
             )
         self.fileManager = fileManager
@@ -105,18 +98,6 @@ public actor ResearchSkillTransactionCoordinator {
             ),
             fileManager: fileManager
         ))
-        self.bibliographyMethods = ResearchBibliographyMethodStore(files: .init(
-            controlURL: controlURL.standardizedFileURL,
-            currentURL: controlURL.standardizedFileURL.appendingPathComponent(
-                "research-bibliography-method-v1.json",
-                isDirectory: false
-            ),
-            legacyURL: controlURL.standardizedFileURL.appendingPathComponent(
-                "research-skill-bindings.json",
-                isDirectory: false
-            ),
-            fileManager: fileManager
-        ))
     }
 
     init(
@@ -143,11 +124,6 @@ public actor ResearchSkillTransactionCoordinator {
         self.citationMethodBindingsURL = controlURL.standardizedFileURL
             .appendingPathComponent(
                 "research-citation-method-v1.json",
-                isDirectory: false
-            )
-        self.bibliographyMethodBindingsURL = controlURL.standardizedFileURL
-            .appendingPathComponent(
-                "research-bibliography-method-v1.json",
                 isDirectory: false
             )
         self.fileManager = fileManager
@@ -180,18 +156,6 @@ public actor ResearchSkillTransactionCoordinator {
             controlURL: controlURL.standardizedFileURL,
             currentURL: controlURL.standardizedFileURL.appendingPathComponent(
                 "research-citation-method-v1.json",
-                isDirectory: false
-            ),
-            legacyURL: controlURL.standardizedFileURL.appendingPathComponent(
-                "research-skill-bindings.json",
-                isDirectory: false
-            ),
-            fileManager: fileManager
-        ))
-        self.bibliographyMethods = ResearchBibliographyMethodStore(files: .init(
-            controlURL: controlURL.standardizedFileURL,
-            currentURL: controlURL.standardizedFileURL.appendingPathComponent(
-                "research-bibliography-method-v1.json",
                 isDirectory: false
             ),
             legacyURL: controlURL.standardizedFileURL.appendingPathComponent(
@@ -998,99 +962,6 @@ public actor ResearchSkillTransactionCoordinator {
             actionID: actionID,
             package: restoredPackage,
             binding: committedBinding
-        )
-    }
-
-    /// Resolves the complete Source Analyzer used by the Triptych-owned
-    /// Recommended Bibliography capability. A missing explicit binding uses
-    /// the release-managed template; a broken explicit binding never falls
-    /// back silently.
-    public func bibliographyMethodBindingResolution() throws -> ResearchSkillBindingResolution {
-        let revision = try? bibliographyMethods.rawRevision()
-        let all = try skills()
-        let bundled = all.filter {
-            $0.origin == .bundled
-                && $0.isValid
-                && $0.provides(.bibliographyRecommendation)
-        }
-        let installed = all.filter {
-            $0.origin == .triptych
-                && $0.isValid
-                && $0.provides(.bibliographyRecommendation)
-                && $0.role == "method"
-        }
-        let snapshot: ResearchBibliographyMethodSnapshot?
-        do {
-            snapshot = try bibliographyMethods.snapshotMigratingLegacyIfNeeded()
-        } catch {
-            return ResearchSkillBindingResolution(
-                source: .none,
-                bundledTemplateAvailable: !bundled.isEmpty,
-                installedCandidateIDs: installed.map(\.id).sorted(),
-                issue: .malformed(error.localizedDescription),
-                bindingRevision: revision
-            )
-        }
-        let bindingRevision = snapshot?.revision ?? revision
-        if let packageID = snapshot?.document.packageID {
-            guard let package = installed.first(where: { $0.id == packageID }) else {
-                return ResearchSkillBindingResolution(
-                    source: .triptychBinding,
-                    bundledTemplateAvailable: !bundled.isEmpty,
-                    installedCandidateIDs: installed.map(\.id).sorted(),
-                    issue: .invalidPackage(packageID),
-                    bindingRevision: bindingRevision
-                )
-            }
-            return ResearchSkillBindingResolution(
-                source: .triptychBinding,
-                package: package,
-                bundledTemplateAvailable: !bundled.isEmpty,
-                installedCandidateIDs: installed.map(\.id).sorted(),
-                bindingRevision: bindingRevision
-            )
-        }
-        guard bundled.count == 1, let package = bundled.first else {
-            return ResearchSkillBindingResolution(
-                source: .bundledDefault,
-                bundledTemplateAvailable: !bundled.isEmpty,
-                installedCandidateIDs: installed.map(\.id).sorted(),
-                issue: .missingCapability(.bibliographyRecommendation),
-                bindingRevision: bindingRevision
-            )
-        }
-        return ResearchSkillBindingResolution(
-            source: .bundledDefault,
-            package: package,
-            bundledTemplateAvailable: true,
-            installedCandidateIDs: installed.map(\.id).sorted(),
-            bindingRevision: bindingRevision
-        )
-    }
-
-    @discardableResult
-    public func setBibliographyMethodBinding(
-        packageID: String?,
-        expectedBindingRevision: DocumentFingerprint?
-    ) throws -> ResearchBibliographyMethodSnapshot {
-        let observed = try bibliographyMethods.rawRevision()
-        guard observed == expectedBindingRevision else {
-            throw ResearchSkillBindingError.staleBindingFile
-        }
-        if let packageID {
-            let package = try packageRepository.localPackage(id: packageID)
-            guard package.origin == .triptych,
-                  package.isValid,
-                  package.role == "method",
-                  package.provides(.bibliographyRecommendation) else {
-                throw ResearchSkillBindingError.invalidBindingDocument(
-                    "The bibliography method must be a valid Triptych-local complete Source Analyzer."
-                )
-            }
-        }
-        return try bibliographyMethods.save(
-            ResearchBibliographyMethodDocument(packageID: packageID),
-            expectedRevision: expectedBindingRevision
         )
     }
 
@@ -2118,7 +1989,6 @@ public actor ResearchSkillTransactionCoordinator {
         let workingMethodRevision: DocumentFingerprint?
         let actionProfileRevision: DocumentFingerprint?
         let citationMethodRevision: DocumentFingerprint?
-        let bibliographyMethodRevision: DocumentFingerprint?
     }
 
     private func validatePackageIsUnused(
@@ -2140,15 +2010,10 @@ public actor ResearchSkillTransactionCoordinator {
         if citation?.document.packageID == packageID {
             throw ResearchActionProfileStorageError.packageInUse(packageID)
         }
-        let bibliography = try bibliographyMethods.snapshotMigratingLegacyIfNeeded()
-        if bibliography?.document.packageID == packageID {
-            throw ResearchActionProfileStorageError.packageInUse(packageID)
-        }
         return ResearchSkillUsageSnapshot(
             workingMethodRevision: working?.revision,
             actionProfileRevision: profiles?.revision,
-            citationMethodRevision: citation?.revision,
-            bibliographyMethodRevision: bibliography?.revision
+            citationMethodRevision: citation?.revision
         )
     }
 
@@ -2284,7 +2149,12 @@ public actor ResearchSkillTransactionCoordinator {
         fidelityChecks: Set<FidelityCheck>
     ) -> Set<String> {
         switch actionID {
-        case .analyze, .synthesize, .critique, .manuscript:
+        case .analyze:
+            [
+                "references/method.md",
+                "references/literature-recommendations.md",
+            ]
+        case .synthesize, .critique, .manuscript:
             ["references/method.md"]
         case .discuss:
             ["references/method.md", "references/response-contract.md"]

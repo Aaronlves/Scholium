@@ -78,6 +78,26 @@ struct ScholiumRuntimeIsolationTests {
         ) == nil)
     }
 
+    @Test("Only the QA bundle accepts a deterministic layout direction")
+    func qaLayoutDirectionIsBounded() {
+        #expect(ScholiumRuntimeIsolation.layoutDirectionOverride(
+            environment: ["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION": "rtl"],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == .rightToLeft)
+        #expect(ScholiumRuntimeIsolation.layoutDirectionOverride(
+            environment: ["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION": "LTR"],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == .leftToRight)
+        #expect(ScholiumRuntimeIsolation.layoutDirectionOverride(
+            environment: ["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION": "rtl"],
+            bundleIdentifier: "com.scholium.app"
+        ) == nil)
+        #expect(ScholiumRuntimeIsolation.layoutDirectionOverride(
+            environment: ["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION": "unknown"],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == nil)
+    }
+
     @Test("QA scene restoration is disabled unless one journey explicitly enables it")
     func qaSceneRestorationIsOptIn() {
         #expect(ScholiumRuntimeIsolation.disablesSystemWindowRestoration(

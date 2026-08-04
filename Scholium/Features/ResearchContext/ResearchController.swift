@@ -33,7 +33,7 @@ struct ResearchInspectorState: Equatable, Sendable {
 }
 
 /// The narrow application ports consumed by the per-window research feature.
-/// Permission, source-access, and bibliography capabilities remain with their
+/// Permission and source-access capabilities remain with their
 /// dedicated controllers and never enter this bundle.
 struct ResearchControllerCapabilities: Sendable {
     let documents: any DocumentUseCases
@@ -46,8 +46,8 @@ struct ResearchControllerCapabilities: Sendable {
 }
 
 /// Per-window owner for research-context data and capability access. Action
-/// and Recommended Bibliography presentation remain independently observable
-/// child owners and are never republished through this controller.
+/// presentation remains independently observable and is never republished
+/// through this controller.
 /// Inspector visibility and mode belong to the surrounding workspace window,
 /// so changing the selected document tab doesn't change the shell.
 /// Research records and checkpoints remain borrowed from Application.
@@ -65,7 +65,6 @@ final class ResearchController: ObservableObject {
     @Published var interruptedSaveRecoveryError: String?
 
     let actions = ResearchActionController()
-    let bibliography = RecommendedBibliographyController()
 
     private let intentHandler: IntentHandler
     private let shellState: WindowShellState
@@ -97,7 +96,6 @@ final class ResearchController: ObservableObject {
     func unbind() {
         capabilities = nil
         actions.unbind()
-        bibliography.unbind()
         records = nil
         errorMessage = nil
         transactionRecoveryRecords = []
@@ -532,7 +530,6 @@ final class ResearchController: ObservableObject {
         interruptedSaveRecoveries = []
         interruptedSaveRecoveryError = nil
         actions.dismiss()
-        bibliography.unbind()
     }
 
     func receive(_ snapshot: WorkspaceSnapshot) {

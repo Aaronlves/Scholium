@@ -98,13 +98,13 @@ File organization adds no state owner, runtime, transaction, or duplicate test s
 
 **Current boundary**
 
-Recommended Bibliography is Triptych-owned and freezes a bounded selected-Note scope with exact
-revisions.
+Analyze Literature Recommendations are schema-4 content owned only by their parent Research Record;
+the Triptych view is a reconstructable projection.
 
 **Invariant retained**
 
-One portable store writer, exact source revalidation, prior-result retention, and no Markdown or
-Zotero mutation.
+One portable Record writer, exact source provenance, occurrence-local researcher state, and no
+Markdown or Zotero mutation.
 
 ### Migration batches 11
 
@@ -193,14 +193,14 @@ scope, and one visible Search projection remain unchanged.
 **Current boundary**
 
 `ResearchController` publishes only research records, checkpoint/recovery state, and its active
-document; it no longer republishes shell, `ResearchActionController`, or
-`RecommendedBibliographyController` changes. Content and leaf views observe those exact owners
-directly.
+document; it no longer republishes shell or `ResearchActionController` changes. Content and leaf
+views observe those exact owners directly. Research Records windows resolve their keyed Triptych
+capability independently of focused `WindowModel`.
 
 **Invariant retained**
 
-Inspector mode and visibility, Action presentation and cancellation, Research Record,
-checkpoint/recovery, and bibliography lifecycles remain independently owned and window-scoped.
+Inspector mode and visibility, Action presentation and cancellation, Research Records, and
+checkpoint/recovery remain independently owned and window-scoped.
 
 ### Migration batches 19
 

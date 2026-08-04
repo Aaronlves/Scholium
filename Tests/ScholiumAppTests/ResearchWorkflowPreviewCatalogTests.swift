@@ -12,29 +12,17 @@ struct ResearchWorkflowPreviewCatalogTests {
             "case skillInstaller",
             "case skillSettings",
             "case changeRequest",
-            "case researchRecord",
         ] {
             #expect(source.contains(proof), "Missing interface proof: \(proof)")
         }
 
-        #expect(source.contains("ResearchRecordTwoColumnProof"))
-        #expect(source.contains("ResearchRecordUtilityProof"))
-        #expect(!source.contains("ResearchRecordStackedProof"))
-        let utilityRecordProof = try #require(
-            source.components(separatedBy: "private struct ResearchRecordUtilityProof")
-                .dropFirst()
-                .first?
-                .components(separatedBy: "private struct ResearchRecordTwoColumnProof")
-                .first
-        )
-        #expect(!utilityRecordProof.contains("GeometryReader"))
-        #expect(utilityRecordProof.contains("Fixed 760 × 680 utility window"))
-        #expect(!source.contains(".listStyle(.sidebar)"))
-        #expect(!source.contains("Show Narrow Fallback"))
-        #expect(source.contains("#Preview(\"Research Record Fixed Utility\")"))
-        #expect(source.contains(".frame(width: 760, height: 680)"))
-        #expect(source.contains("Fidelity could not be completed for this recorded revision."))
-        #expect(source.contains("Agent-reported Materials used"))
+        for removedParallelProof in [
+            "ResearchRecordsWindowProof",
+            "ResearchRecordTwoColumnProof",
+            "ResearchRecommendationTwoColumnProof",
+        ] {
+            #expect(!source.contains(removedParallelProof))
+        }
     }
 
     @Test("Research Guidance proofs use the current researcher-governed vocabulary")
@@ -113,17 +101,6 @@ struct ResearchWorkflowPreviewCatalogTests {
         #expect(source.contains("Continue Without Changes"))
         #expect(source.contains("Cancel the Run"))
 
-        for recordField in [
-            "Pinned",
-            "Date",
-            "Skill",
-            "Action",
-            "Participant",
-        ] {
-            #expect(source.contains(recordField), "Missing Research Record field: \(recordField)")
-        }
-        #expect(!source.contains("action: \"Discussion\""))
-        #expect(source.contains("values: [\"Any Action\", \"Discuss\""))
     }
 
     @Test("Appearance and accessibility review entry points remain explicit")

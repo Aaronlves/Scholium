@@ -40,8 +40,6 @@ Read [references/method.md](references/method.md) completely.
 Load a conditional resource only when triggered:
 
 - [references/report-templates.md](references/report-templates.md) for a structured durable report;
-- [references/bibliography-recommendations.md](references/bibliography-recommendations.md) when screening cited literature or completing an Analysis Recommended Bibliography request;
-- [templates/recommended-bibliography-completion.json](templates/recommended-bibliography-completion.json) only for the structured Scholium completion shape;
 - [references/later-use-handoffs.md](references/later-use-handoffs.md) for possible later research uses;
 - [references/source-clusters.md](references/source-clusters.md) for an edited volume, multi-author collection, chapter sequence, or bounded source cluster.
 
@@ -61,7 +59,7 @@ Search results, metadata, extraction, memory, a prior analysis, and rereading on
 
 Source Analyzer does not generate or present Project Relevance. The researcher decides how the source matters to the project.
 
-Debate Importance is optional. Assign it only after analysis, only as a whole integer from `0` through `10`, and only with a named Debate Scope and sufficient checked comparative evidence. It is not project relevance, truth, quality, prestige, reliability, citation impact, or the source's self-assessment. Omit it when those conditions are absent. Unread bibliography candidates receive no rating.
+Debate Importance is optional. Assign it only after analysis, only as a whole integer from `0` through `10`, and only with a named Debate Scope and sufficient checked comparative evidence. It is not project relevance, truth, quality, prestige, reliability, citation impact, or the source's self-assessment. Omit it when those conditions are absent. Unread literature leads receive no rating.
 
 ## Return
 
@@ -72,6 +70,6 @@ Lead with access status and exact scope, then state the source's function, centr
 3. source-supported analyst reconstruction;
 4. analyst-supplied charitable repair;
 5. analyst evaluation or objection;
-6. bibliography leads and possible later-use handoffs.
+6. literature leads and possible later-use handoffs.
 
 Use locators proportionate to the claim. Mark uncertain metadata, access gaps, translation risks, and unverified debate context. An analysis may later become Material, but it is not a note mutation or settled researcher commitment.

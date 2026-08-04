@@ -258,7 +258,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("Reveal Legacy Data"))
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))
-        #expect(source.contains("RecommendedBibliographyMethodSettingsView()"))
         #expect(source.contains("ResearchPermissionSettingsView()"))
         #expect(source.contains("saveTriptychPermissionPolicy"))
         #expect(source.contains("saveSkillPermissionOverride"))

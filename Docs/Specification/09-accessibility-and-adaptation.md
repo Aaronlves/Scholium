@@ -18,9 +18,10 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
 - Give every important state two suitable channels; never rely only on color,
   motion, sound, location, or arrow direction.
 - Actions exposes every official and researcher-enabled operation as a linear
-  accessible list without requiring hover. Research Record exposes its list,
-  filters, dialogue order, participants, anchors, and Record Details with
-  complete keyboard navigation inside its fixed readable utility-window size.
+  accessible list without requiring hover. Research Records exposes Scope,
+  View, lists, filters, recommendation status, dialogue order, participants,
+  anchors, provenance, and Record Details with complete keyboard navigation
+  throughout its resizable **700 × 520pt** minimum.
 - Inspector acceptance covers Overview, Connect, and Actions at **320pt** and
   **278pt**, plus long English, mixed English/Chinese, right-to-left layout,
   empty facts, long values, unavailable Actions, and 200% readability. The
@@ -38,7 +39,7 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   after the visual trailing symbol is removed.
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, Action sheets, conflict comparison, and
-  Research Record close.
+  Research Records close.
 - Direct root creation has the Library Add menu's pointer and accessibility
   routes for both **New Note** and **New Folder**; unoccupied-space context
   actions are redundant. **New Note** additionally has **File → New Note** and
@@ -90,13 +91,16 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   structure; refreshing, stale, and recoverable failure keep the last complete
   rows operable while status and Retry remain named. When the selected task
   disappears, focus follows the next/previous/filter sequence in §18.3.
-- Recommended Bibliography is exposed after the Library source region as one
-  **Triptych Recommended Bibliography** group. Its accessible scope does not
-  rely on fixed position or surface color, and its full workflow remains
-  keyboard and VoiceOver reachable across Scope and Location changes. The
-  compact band contains one **Open Recommended Bibliography** button whose value
-  is **No recommendations** or the recommendation count; no candidate inside
-  the compact preview becomes a separate accessibility target.
+- Research Records exposes **Scope** as a named native menu and **View** as a
+  named editorial index of native buttons; selection, count, and availability
+  remain current without relying on position or color. Left/Right Arrow moves
+  between View choices without coupling the Scope value. Each Literature
+  Recommendation occurrence exposes its
+  title, parent Analysis context, date, and independently operable Handled
+  checkbox. Detail preserves a linear reading order from identity and reason
+  through locators, uncertainty, provenance, navigation, and researcher note.
+  Group headings never imply a shared handled state. Empty, load-error, and
+  partially unsupported Record states remain named and keyboard reachable.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
 - A running Action exposes its Action name and **Running** state together while

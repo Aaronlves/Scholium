@@ -12,12 +12,12 @@ This chapter owns the latest dated automated, UI, performance, visual, and distr
 **Current passing result**
 
 `verify.sh` passed the closed 3-manifest, 23-chapter documentation authority and all 93 checked local
-links; 15 protected Skill packages; 180 WebEditor tests and reproducible editor, mathematics,
-Mermaid, and license resources; deterministic RDF-1 v2 for 800 notes; 524 Core tests plus 3 isolated
-performance tests; 123 Contracts; 163 Application; 12 Local Agent bridge; 1 serialized architecture
-measurement; 449 App tests; 5 real Action/Recommended Bibliography CLI lifecycles; workflow CLI,
-public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release
-build in 165.21 seconds.
+links; 15 protected Skill packages; the retired recommendation-feature zero-residue guard; 185 WebEditor
+tests and reproducible editor, mathematics, Mermaid, and license resources; deterministic RDF-1 v2
+for 800 notes; 518 Core tests plus 3 isolated performance tests; 120 Contracts; 162 Application; 12
+Local Agent bridge; 1 serialized architecture measurement; 454 App tests; 4 executable Action/CLI
+boundary journeys; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge,
+isolation/dead-path checks, and an optimized Release build in 188.68 seconds.
 
 **Boundary of the claim**
 
@@ -27,8 +27,8 @@ Automated source and disposable-fixture evidence, not a release artifact or huma
 
 **Current passing result**
 
-The fixed 2,056-note mixed-script fixture recorded 735.931 ms cold rebuild, 17.709 ms
-incremental-publication p95, 74.854 ms warm-query p95, 52,587,416 database bytes, and 148,275,200
+The fixed 2,056-note mixed-script fixture recorded 754.119 ms cold rebuild, 18.594 ms
+incremental-publication p95, 76.612 ms warm-query p95, 52,587,392 database bytes, and 152,092,672
 peak RSS bytes.
 
 **Boundary of the claim**
@@ -46,6 +46,16 @@ The last journey resolves each Show/Hide state strictly beneath the real Toolbar
 subtree and confirms one control identifier per peripheral. The 2026-08-04 Storage Unavailable
 journey passed in 27.611 seconds, covering compact collapsed and expanded states, an unsuccessful
 Retry that remains compact, and successful recovery to the Workspace frame.
+The Research Records cutover additionally passed Recommendations handling and parent-Record routing
+(84.235 s), one keyed window reused by two same-Triptych Workspaces (55.143 s), comparison and
+permanent deletion (54.721 s), and independent cross-Triptych windows with the 760 × 680 default,
+the 700 × 520 minimum content size, native Scope-menu exposure, and View-index keyboard traversal
+(139.596 s). A separate deterministic RTL journey passed mirrored View order and directional-key
+traversal in 33.653 seconds.
+
+Representative populated Records and Recommendations windows were also inspected directly in
+Light and Dark after the leading-navigation placement change; both retained the semantic
+Navigation/Document surfaces and one control treatment without transparent-material fallback.
 
 **Boundary of the claim**
 

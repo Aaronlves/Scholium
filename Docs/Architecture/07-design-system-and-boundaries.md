@@ -49,18 +49,23 @@ owns only the shared semantic color and visibility recipe. The Debug Editorial
 Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
-The compact Recommended Bibliography component retains no explanatory subcopy
-or horizontal candidate list. Its one native Button owns the full fixed band,
-shows at most the first static citation preview, and opens the existing complete
-surface. `ScholiumQuietRowButtonStyle` supplies the same raised hover/press
-grammar used by Inspector summary/action rows without taking over each
-consumer's purpose-owned height or insets.
-`ScholiumMetrics.Library.bibliographyTopInset` and
-`bibliographyBottomInset` map its asymmetric vertical rhythm to the shared grid;
-the heading and accessibility group continue to carry Triptych-wide identity.
+Research Records uses the existing semantic Document and Navigation surfaces,
+native `HSplitView`, compact search/filter controls, structural rules,
+empty/error content, checkbox, and sheet presentation. View reuses
+`ScholiumEditorialIndexUnderline` with ordinary borderless buttons at the top
+of the Navigation plane; Scope is a borderless native `Menu` in the list-context
+row. Neither creates a full-width header, feature toolbar, or Liquid Glass
+container. Lists hide their default scroll background and expose the Navigation
+role; editorial actions reuse one borderless ink-and-hover component while
+sheet confirmation actions remain system-owned.
+Recommendation groups and occurrences reuse list hierarchy rather than cards.
+The window observes `WindowColorSchemeChoice.defaultsKey` and resolves it
+through the same `swiftUIColorScheme` mapping used by Workspace content and
+toolbar hosts; it owns no second appearance preference.
 `ScholiumInterfaceTypography` owns the Folder, unselected Note, selected Note,
-compact toolbar identity, bibliography preview, and bibliography empty-state
-roles; leaf views no longer restate their sizes or weights.
+compact toolbar identity, record row, metadata, and editorial detail roles;
+leaf views do not restate their sizes or weights. No recommendation-specific
+color, spacing, radius, footer, badge, or elevation Variable exists.
 
 `ScholiumGrid.Peripheral.contentInset` is the one 28pt outer page-edge source
 for Library and Inspector. `ScholiumMetrics.Library` and

@@ -274,6 +274,69 @@ struct ActionCLIExecutableLifecycleTests {
         )
         #expect(dialogueCompleted.state == .complete)
 
+        let analyzeRequest = try Self.actionRequest(
+            actionID: .analyze,
+            target: fixture.analysisTarget,
+            availability: available,
+            instruction: "Retain one source-grounded reading lead."
+        )
+        let analyze = try decoder.decode(
+            ResearchActionPreparation.self,
+            from: try cli.run([
+                "action", "prepare", "--from", "-", "--format", "json",
+            ], stdin: try encoder.encode(analyzeRequest)).stdout
+        )
+        let analyzeWriteCompletion = ResearchActionWriteCompletionSubmission(
+            runID: analyze.runID,
+            writeKey: try Self.writeKey(for: analyze),
+            candidateModifiedNotes: [],
+            summary: "Reported no candidate Markdown change."
+        )
+        let analyzeCompleted = try decoder.decode(
+            ResearchActionCompletion.self,
+            from: try cli.run([
+                "action", "complete", "--from", "-",
+                "--triptych", fixture.assignment.id.uuidString,
+                "--format", "json",
+            ], stdin: try encoder.encode(ResearchActionCompletionSubmission(
+                runID: analyze.runID,
+                confirmationToken: try Self.confirmationToken(for: analyze),
+                finalTargetFingerprint: fixture.analysisTarget.fingerprint,
+                summary: "Retained one source-grounded reading lead.",
+                didModifyTarget: false,
+                writeCompletion: analyzeWriteCompletion,
+                literatureRecommendations: [
+                    try ResearchLiteratureRecommendationSubmission(
+                        rawCitation: "A. Author, A Relevant Work (2020)",
+                        title: "A Relevant Work",
+                        authors: ["A. Author"],
+                        year: 2020,
+                        doi: "10.1000/relevant",
+                        sourceLocators: ["p. 42"],
+                        reason: "The analyzed source presents this work as a live rival."
+                    ),
+                ]
+            ))).stdout
+        )
+        #expect(analyzeCompleted.state == .complete)
+        #expect(analyzeCompleted.literatureRecommendationCount == 1)
+        let analyzeRecordURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(analyze.runID.uuidString.lowercased() + ".json")
+        let analyzeRecord = try decoder.decode(
+            PortableResearchRecord.self,
+            from: Data(contentsOf: analyzeRecordURL)
+        )
+        #expect(analyzeRecord.schemaVersion == 4)
+        #expect(analyzeRecord.literatureRecommendations.count == 1)
+        #expect(
+            analyzeRecord.literatureRecommendations[0].disposition.status
+                == .unprocessed
+        )
+
         let workAvailable = try decoder.decode(
             [ResearchActionAvailability].self,
             from: try cli.run(
@@ -504,6 +567,10 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(String(decoding: version.stdout, as: UTF8.self).contains("cli_version"))
         let help = try cli.run(["action", "prepare", "--help", "--format", "json"])
         #expect(String(decoding: help.stdout, as: UTF8.self).contains("action prepare"))
+        let retiredCommand = ["biblio", "graphy"].joined()
+        let rootHelp = try cli.run(["help"])
+        #expect(!String(decoding: rootHelp.stdout, as: UTF8.self).contains(retiredCommand))
+        try cli.expectFailure([retiredCommand], contains: "Unknown command")
         let doctor = try cli.run(["doctor", "--format", "json"])
         #expect(String(decoding: doctor.stdout, as: UTF8.self).contains("triptych_count"))
         try cli.expectFailure(
@@ -514,177 +581,6 @@ struct ActionCLIExecutableLifecycleTests {
             ["skills", "catalog", "--format"],
             contains: "requires a value"
         )
-    }
-
-    @Test("The real CLI preserves the Recommended Bibliography lifecycle")
-    func bibliographyLifecycle() async throws {
-        guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_ACTION_CLI_BINARY"
-        ], !binaryPath.isEmpty else { return }
-
-        let fixture = try await ActionCLIFixture.make()
-        defer { fixture.remove() }
-        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
-        let encoder = Self.encoder()
-        let decoder = Self.decoder()
-        let analysis = RecommendedBibliographySourceNote(
-            noteID: fixture.analysisTarget.noteID,
-            note: fixture.analysisTarget.note,
-            role: .sourceCorpus,
-            fingerprint: fixture.analysisTarget.fingerprint,
-            title: fixture.analysisTarget.title
-        )
-        let scope = RecommendedBibliographyScope(
-            triptychID: fixture.assignment.id,
-            selectedNotes: [analysis]
-        )
-
-        let request = RecommendedBibliographyRequest(
-            scope: scope,
-            goals: [.objections, .classicWorks],
-            purpose: "Screen only source-grounded reading leads."
-        )
-        let requestURL = fixture.rootURL.appendingPathComponent("bibliography-request.json")
-        try encoder.encode(request).write(to: requestURL, options: .atomic)
-        let preparation = try decoder.decode(
-            RecommendedBibliographyPreparation.self,
-            from: try cli.run([
-                "bibliography", "prepare", "--from", requestURL.path,
-                "--format", "json",
-            ]).stdout
-        )
-        #expect(preparation.request == request)
-        #expect(preparation.method.packageID == "scholium-source-analyzer")
-
-        let shown = try cli.run([
-            "bibliography", "show", preparation.id.uuidString,
-            "--triptych", fixture.assignment.id.uuidString,
-            "--format", "markdown",
-        ])
-        #expect(String(decoding: shown.stdout, as: UTF8.self).contains(
-            "Reading leads, not evidence"
-        ))
-
-        let first = Self.bibliographyCandidate(title: "A Bounded Objection")
-        let second = Self.bibliographyCandidate(title: "A Bounded Objection")
-        let completion = RecommendedBibliographyCompletionSubmission(
-            requestID: preparation.id,
-            confirmationToken: preparation.confirmationToken,
-            sourceRevisions: scope.sourceRevisions,
-            sourceScope: "Synthetic complete source fixture",
-            candidates: [first, second]
-        )
-        let completionURL = fixture.rootURL.appendingPathComponent("bibliography-completion.json")
-        try encoder.encode(completion).write(to: completionURL, options: .atomic)
-        let projection = try decoder.decode(
-            RecommendedBibliographyProjection.self,
-            from: try cli.run([
-                "bibliography", "complete", "--from", completionURL.path,
-                "--triptych", fixture.assignment.triptych.name,
-                "--format", "json",
-            ]).stdout
-        )
-        #expect(projection.state == .complete)
-        #expect(projection.candidates.count == 2)
-        #expect(projection.candidates[1].matchState == .duplicate)
-        #expect(projection.candidates[1].duplicateOfCandidateID == first.id)
-
-        let cancellable = try decoder.decode(
-            RecommendedBibliographyPreparation.self,
-            from: try cli.run([
-                "bibliography", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
-                scope: scope,
-                goals: []
-            ))).stdout
-        )
-        for _ in 0..<2 {
-            let cancelled = try decoder.decode(
-                BibliographyCancellationReport.self,
-                from: try cli.run([
-                    "bibliography", "cancel", cancellable.id.uuidString,
-                    "--triptych", fixture.assignment.id.uuidString,
-                ]).stdout
-            )
-            #expect(cancelled.requestID == cancellable.id)
-            #expect(cancelled.state == "cancelled")
-        }
-
-        let wrongConfirmation = try decoder.decode(
-            RecommendedBibliographyPreparation.self,
-            from: try cli.run([
-                "bibliography", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
-                scope: scope
-            ))).stdout
-        )
-        try cli.expectFailure([
-            "bibliography", "complete", "--from", "-",
-            "--triptych", fixture.assignment.id.uuidString,
-            "--format", "json",
-        ], stdin: try encoder.encode(RecommendedBibliographyCompletionSubmission(
-            requestID: wrongConfirmation.id,
-            confirmationToken: UUID(),
-            sourceRevisions: scope.sourceRevisions,
-            sourceScope: "Synthetic source",
-            candidates: []
-        )), contains: "confirmation token")
-        _ = try cli.run([
-            "bibliography", "cancel", wrongConfirmation.id.uuidString,
-            "--triptych", fixture.assignment.id.uuidString,
-        ])
-
-        let workSource = RecommendedBibliographySourceNote(
-            noteID: fixture.workTarget.noteID,
-            note: fixture.workTarget.note,
-            role: .draftProject,
-            fingerprint: fixture.workTarget.fingerprint,
-            title: fixture.workTarget.title
-        )
-        let workScope = RecommendedBibliographyScope(
-            triptychID: fixture.assignment.id,
-            selectedNotes: [workSource]
-        )
-        let workPreparation = try decoder.decode(
-            RecommendedBibliographyPreparation.self,
-            from: try cli.run([
-                "bibliography", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
-                scope: workScope
-            ))).stdout
-        )
-        #expect(workPreparation.request.scope == workScope)
-        _ = try cli.run([
-            "bibliography", "cancel", workPreparation.id.uuidString,
-            "--triptych", fixture.assignment.id.uuidString,
-        ])
-        try cli.expectFailure(
-            ["bibliography", "prepare", "--from", "-", "--format", "json"],
-            stdin: Data("{malformed".utf8),
-            contains: "data"
-        )
-
-        let stale = try decoder.decode(
-            RecommendedBibliographyPreparation.self,
-            from: try cli.run([
-                "bibliography", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(RecommendedBibliographyRequest(
-                scope: scope
-            ))).stdout
-        )
-        try Data("---\ntitle: Analysis\n---\n# Analysis\n\nChanged after preparation.\n".utf8)
-            .write(to: fixture.analysisURL, options: .atomic)
-        try cli.expectFailure([
-            "bibliography", "complete", "--from", "-",
-            "--triptych", fixture.assignment.id.uuidString,
-            "--format", "json",
-        ], stdin: try encoder.encode(RecommendedBibliographyCompletionSubmission(
-            requestID: stale.id,
-            confirmationToken: stale.confirmationToken,
-            sourceRevisions: scope.sourceRevisions,
-            sourceScope: "Synthetic source",
-            candidates: []
-        )), contains: "changed")
     }
 
     private static func encoder() -> JSONEncoder {
@@ -710,9 +606,10 @@ struct ActionCLIExecutableLifecycleTests {
         availability: [ResearchActionAvailability],
         instruction: String? = nil
     ) throws -> ResearchActionExecutionRequest {
+        let repairReasons = availability.first { $0.id == actionID }?.repairReasons ?? []
         let presented = try #require(availability.first {
             $0.id == actionID && $0.isEnabled
-        })
+        }, "Expected enabled \(actionID.rawValue); repair reasons: \(repairReasons)")
         var values: [ResearchActionModuleID: ResearchActionParameterValue] = [:]
         if let instruction,
            let module = presented.profile.profile.modules.first(where: {
@@ -758,29 +655,6 @@ struct ActionCLIExecutableLifecycleTests {
         ))
     }
 
-    private static func bibliographyCandidate(
-        title: String
-    ) -> RecommendedBibliographyCandidate {
-        RecommendedBibliographyCandidate(
-            identity: BibliographyCandidateIdentity(
-                rawCitation: "A. Author, \(title), 2020",
-                title: title,
-                authors: ["A. Author"],
-                year: 2020,
-                doi: "10.1000/bounded-objection",
-                isChapter: false
-            ),
-            goals: [.objections],
-            reason: "The source discusses this as a bounded objection.",
-            evidence: BibliographyRecommendationEvidence(
-                discussionStatus: .substantivelyDiscussed,
-                sourceLocators: ["pp. 10–12"],
-                metadataVerified: true,
-                verificationProvenance: "Synthetic fixture metadata"
-            ),
-            requiredNextCheck: "Inspect the complete recommended source."
-        )
-    }
 }
 
 private struct CLIReadPayload: Decodable {
@@ -790,16 +664,6 @@ private struct CLIReadPayload: Decodable {
 
 private struct CLICancellationReport: Decodable {
     let runID: UUID
-}
-
-private struct BibliographyCancellationReport: Decodable {
-    let requestID: UUID
-    let state: String
-
-    private enum CodingKeys: String, CodingKey {
-        case requestID = "request_id"
-        case state
-    }
 }
 
 private struct ActionCLIProcess {
@@ -876,13 +740,18 @@ private struct ActionCLIFixture {
     let analysisTarget: ResearchActionNoteSnapshot
     let topicTarget: ResearchActionNoteSnapshot
     let workTarget: ResearchActionNoteSnapshot
-    let analysisURL: URL
 
     static func make() async throws -> Self {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "ScholiumActionCLI-\(UUID().uuidString)",
-            isDirectory: true
-        )
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let root = repositoryRoot
+            .appendingPathComponent(".build/test-fixtures", isDirectory: true)
+            .appendingPathComponent(
+                "ScholiumActionCLI-\(UUID().uuidString)",
+                isDirectory: true
+            )
         let home = root.appendingPathComponent("home", isDirectory: true)
         let appSupport = home.appendingPathComponent("ApplicationSupport", isDirectory: true)
         let registry = home.appendingPathComponent("registry", isDirectory: true)
@@ -899,6 +768,10 @@ private struct ActionCLIFixture {
             .write(to: topics.appendingPathComponent("Topic.md"), options: .atomic)
         try Data("---\ntitle: Draft Argument\nkind: chapter\n---\n# Draft Argument\n\nA synthetic work claim.\n".utf8)
             .write(to: works.appendingPathComponent("Draft Argument.md"), options: .atomic)
+        let analysisSourceURL = root.appendingPathComponent("Synthetic Source.md")
+        try Data(
+            "# Synthetic Source\n\nA source-grounded rival is discussed on page 42.\n".utf8
+        ).write(to: analysisSourceURL, options: .atomic)
 
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: appSupport,
@@ -924,6 +797,26 @@ private struct ActionCLIFixture {
             relativePath: "Draft Argument.md"
         )
         let analysisTarget = try await target(analysisID, role: .analysis, handle: handle)
+        _ = try await handle.research.bindSourceAccess(
+            ResearchSourceBindingRequest(
+                target: ResearchFunctionTarget(
+                    noteID: analysisTarget.noteID,
+                    note: analysisTarget.note,
+                    role: .analysis,
+                    lifecycle: analysisTarget.lifecycle,
+                    fingerprint: analysisTarget.fingerprint,
+                    title: analysisTarget.title
+                ),
+                selection: .localFile(analysisSourceURL)
+            )
+        )
+        try installExecutableVerifierBookmarkIfRequested(
+            applicationSupportURL: appSupport,
+            triptychID: assignment.id,
+            analysisNoteID: analysisTarget.noteID,
+            sourceURL: analysisSourceURL,
+            fixtureRootURL: root
+        )
         let topicTarget = try await target(
             VaultQualifiedNoteID(vaultID: topicVault.id, relativePath: "Topic.md"),
             role: .topic,
@@ -937,8 +830,7 @@ private struct ActionCLIFixture {
             assignment: assignment,
             analysisTarget: analysisTarget,
             topicTarget: topicTarget,
-            workTarget: workTarget,
-            analysisURL: analysisURL
+            workTarget: workTarget
         )
     }
 
@@ -959,7 +851,80 @@ private struct ActionCLIFixture {
         )
     }
 
+    /// SwiftPM executes tests through Apple's testing helper while the CLI is
+    /// a separate ad-hoc executable. The dedicated executable verifier signs
+    /// a minimal bookmark binder and a copied CLI with one disposable identity,
+    /// then asks this fixture to replace only the bookmark bytes created by the
+    /// test host. All other binding state still comes from the production use
+    /// case and the CLI must resolve and validate the real security scope.
+    private static func installExecutableVerifierBookmarkIfRequested(
+        applicationSupportURL: URL,
+        triptychID: UUID,
+        analysisNoteID: UUID,
+        sourceURL: URL,
+        fixtureRootURL: URL
+    ) throws {
+        guard let helperPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BOOKMARK_HELPER"
+        ], !helperPath.isEmpty else { return }
+
+        let bookmarkURL = fixtureRootURL.appendingPathComponent(
+            "action-cli-source.bookmark"
+        )
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: helperPath)
+        process.arguments = [sourceURL.path, bookmarkURL.path]
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let message = String(
+                decoding: errorPipe.fileHandleForReading.readDataToEndOfFile(),
+                as: UTF8.self
+            )
+            throw ActionCLIFixtureError.bookmarkHelperFailed(message)
+        }
+
+        let bookmark = try Data(contentsOf: bookmarkURL)
+        let bindingURL = applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(triptychID.uuidString, isDirectory: true)
+            .appendingPathComponent("source-access", isDirectory: true)
+            .appendingPathComponent("source-bindings-v1.json")
+        var payload = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: bindingURL))
+                as? [String: Any]
+        )
+        var bindings = try #require(payload["bindings"] as? [[String: Any]])
+        let index = try #require(bindings.firstIndex {
+            ($0["analysisNoteID"] as? String)?.lowercased()
+                == analysisNoteID.uuidString.lowercased()
+        })
+        bindings[index]["bookmarkData"] = bookmark.base64EncodedString()
+        payload["bindings"] = bindings
+        try JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.prettyPrinted, .sortedKeys]
+        ).write(to: bindingURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: bindingURL.path
+        )
+    }
+
     func remove() {
         try? FileManager.default.removeItem(at: rootURL)
+    }
+}
+
+private enum ActionCLIFixtureError: LocalizedError {
+    case bookmarkHelperFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .bookmarkHelperFailed(let message):
+            "The Action CLI bookmark fixture failed: \(message)"
+        }
     }
 }

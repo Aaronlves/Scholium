@@ -27,9 +27,9 @@ The old Function controller, panel, presentation route, and public use cases are
 deleted. `ScholiumContracts` owns public Action identity, Target/Material/scope,
 Fidelity checks, availability/repair codes, runs, submissions, and fingerprints.
 `WorkspaceStore` composes `WindowResearchCapabilities` from independently
-declared record, checkpoint, Skill, Action, source-access, and bibliography
-ports. `ResearchController` receives a still smaller capability value and
-cannot reach permission, source-access, or bibliography operations. Settings-
+declared record, checkpoint, Skill, Action, and source-access ports.
+`ResearchController` receives a still smaller capability value and cannot
+reach permission or source-access operations. Settings-
 only and CLI-completion operations remain concrete Application capabilities
 rather than requirements of a window-facing Contracts protocol. Protected
 Function types remain only behind Application as the mechanism used by the
@@ -119,7 +119,7 @@ for the other. `ResearchActionUseCases` now resolves and prepares default and
 researcher Actions and embeds the resulting Action snapshot before protected
 execution. Binding v1 never enters this path. The Inspector, Research menu,
 common modular sheet, CLI, and delivery contracts enter only through Action
-identity. Every Action run uses the separated Local Execution v2 boundary
+identity. Every Action run uses the separated Local Execution v3 boundary
 below; unsupported pre-production run files remain byte-unchanged, invisible,
 and unable to authorize current work.
 
@@ -146,9 +146,9 @@ explicit repair primitive for the later categorized Settings interface.
 The coordinator is the sole actor and cross-store transaction owner, not the
 implementation of every storage concern. `ResearchSkillPackageRepository`
 owns bounded package discovery, resources, revisions, CRUD and publication;
-`ResearchWorkingMethodStore`, `ResearchActionProfileStore`,
-`ResearchCitationMethodStore`, and `ResearchBibliographyMethodStore` each own
-one persisted document; and the I/O-free `ResearchSkillResolver` owns package
+`ResearchWorkingMethodStore`, `ResearchActionProfileStore`, and
+`ResearchCitationMethodStore` each own one persisted document; and the I/O-free
+`ResearchSkillResolver` owns package
 graph validation and dependency ordering. These are synchronous values used
 under the coordinator's isolation. Package-plus-binding replacement, recovery,
 and use-before-delete checks remain together in the coordinator because they
@@ -189,27 +189,27 @@ Action execution resolves only that Action-keyed v2 document. Its
 absence, malformed data, missing packages, invalid packages, and role/Action
 incompatibility fail closed without a bundled fallback. The bundled package is
 read only during initial installation or explicit restore. Research Citation
-Method writes only `research-citation-method-v1.json`, and Recommended
-Bibliography Method writes only `research-bibliography-method-v1.json`. If
-either owned document is absent, a minimal compatibility reader may project
-only that capability's fields from a retained Function-era
-`research-skill-bindings.json`. Complete or empty valid state migrates lazily to
-the owned document; an incomplete Citation package selection remains visible
-for explicit style repair, and malformed bytes expose their exact revision for
-revision-checked repair. The retained file is never rewritten or deleted, and
-its Function-keyed primary, supplemental and Practice fields are not decoded,
-validated, executed, or treated as package-use constraints. After an owned
-document exists, later retained-file edits cannot change that capability.
+Method writes only `research-citation-method-v1.json`. If that owned document
+is absent, a minimal reader may project only Citation fields from a retained
+Function-era `research-skill-bindings.json`; every other retained field is
+ignored and nonauthorizing.
+Complete or empty valid Citation state migrates lazily to the owned document,
+while an incomplete package selection remains visible for explicit style
+repair and malformed bytes expose their exact revision for revision-checked
+repair. The retained file is never rewritten or deleted, and its Function-keyed
+primary, supplemental and Practice fields are not decoded, validated,
+executed, or treated as package-use constraints. After an owned document
+exists, later retained-file edits cannot change Citation state.
 
 One independently constructed `ResearchFunctionCoordinator` now exists per
 workspace. It owns availability, Action/Skill resolution, immutable authority
 and instruction packets, preparation and rollback across checkpoints,
-Critique, Local-v2 and grants, delivery-only process keys, Local-v2 run lookup
+Critique, Local-v3 and grants, delivery-only process keys, Local-v3 run lookup
 and duplicate-Critique reconciliation, the complete completion/Fidelity
 transaction, portable-record repair, protected cancellation, and protected
 Discussion Finish. Its purpose-specific dependency bundle contains only the
 repositories, vault roles and roots, control and Skill stores, source and Agent
-request stores, checkpoints, portable records, Local-v2, Critique, and Zotero
+request stores, checkpoints, portable records, Local-v3, Critique, and Zotero
 authorities proved necessary by those responsibilities; the Workspace-wide
 service aggregate cannot enter the coordinator.
 
@@ -244,15 +244,18 @@ Codable for machine-local state, but no public Use Case, CLI command, next
 action, or rendered packet exposes its retired finalizer. Dialogue and Critique
 have no alternate preparation path.
 
-### Portable Research Record storage v1, record schema 3, and Local Execution v2
+### Portable Research Record storage v1, record schema 4, and Local Execution v3
 
 `PortableResearchRecordStore` owns one JSON file per intellectual record under
 `.scholium/research-records/v1/records/`; `active/` owns one file per unfinished
-portable Discussion. The retained empty `trash/` directory is legacy reserved
-storage, not a current lifecycle or projection. Confirmed record deletion
-isolates the exact reread JSON with a descriptor-relative rename inside
+portable Discussion. Confirmed record deletion
+first commits a machine-local, Triptych-scoped deletion tombstone under the
+same advisory lock used by record creation, then isolates the exact reread JSON with a descriptor-relative rename inside
 `records/`, verifies the isolated bytes, unlinks only that file, and restores an
-interrupted pre-unlink rename on startup. A
+interrupted pre-unlink rename on startup. Completion repair checks that
+tombstone under the same lock and fails closed instead of recreating a
+researcher-deleted Record. The tombstone carries no recommendation content,
+disposition, grouping, provenance, or presentation state. A
 separate `settlements/` directory stores exactly one replaceable current-state
 file per Note. Settle therefore no longer appends an application-authored
 history event, and Changed Since Settled is derived against the current
@@ -284,7 +287,8 @@ while postcommit privacy cleanup always removes late state for every deleted
 Note identity. Portable record contracts whitelist Action identity, exact
 Method/Profile revisions, the path-free Source Reference when present,
 participating Note revisions, attributed statements, agent-reported
-actually-used Materials, Application-confirmed changes, and discrepancies.
+actually-used Materials, Application-confirmed changes, discrepancies, and
+Analyze-only Literature Recommendations with Application-owned dispositions.
 Every new Action record also identifies its primary Target Note. Completion
 accepts actually-used Material IDs only as a unique subset of the frozen,
 exact-revision Material selection; merely selecting a Material never creates
@@ -295,13 +299,16 @@ participant fact while still retaining a later deletion tombstone as history.
 For current Action runs, the protected optional representation distinguishes
 retained Function-era absence from an explicit report; the Action decoder
 requires the field, and record construction rejects absence instead of
-coalescing it to `[]`. Schema 3 adds the closed `fidelity_completion` value:
+coalescing it to `[]`. Schema 4 retains the closed `fidelity_completion` value:
 Action permits `not_required`, `completed`, or `unverified`, while Discussion
 requires `not_applicable`. Application derives that process fact from terminal
 state plus exact-revision Fidelity evidence; it does not copy an Agent verdict.
-Schema 1/2 record files are isolated as unsupported and remain unchanged. The
-`v1` directory name continues to version this storage layout rather than the
-individual JSON schema.
+Analyze completion requires the explicit submission array and every other
+Action rejects it. Application derives stable recommendation IDs from run ID
+plus ordinal, creates the initial Unprocessed disposition, and writes one
+schema-4 parent Record. Only schema 4 is decoded; there is no record migration
+or compatibility path. The `v1` directory name continues to version this
+storage layout rather than the individual JSON schema.
 They have no generic metadata escape hatch and cannot encode a
 protected Function ID, assembled instructions, raw key, bookmark, absolute
 path, diff, token count, transport log, or window state. Strict decoding is
@@ -327,6 +334,16 @@ Enumeration isolates malformed record files instead of hiding valid peers.
 Store reopen removes incomplete app-owned staging files while holding the same
 lock and portable coordination boundary. The lock lives below the verified
 Application Support Triptych directory; it is not portable authority.
+
+Pin, recommendation disposition, and researcher-note updates share one
+revision-safe replacement primitive. Under the portable-record lock it rereads
+the exact file, replaces only the selected field or recommendation occurrence,
+atomically commits, and verifies readback. A proved pre-commit failure leaves
+the prior record authoritative; a post-commit readback failure reports commit
+uncertainty and never invites a blind retry. The Recommendations index is an
+in-memory projection rebuilt from those Records. It groups only exact
+nonconflicting normalized DOI or Zotero keys and owns no file, disposition, or
+bulk mutation authority.
 
 `PortableResearchDiscussion` is the single current exchange model. A
 lightweight Comment statement carries only the exact Note fingerprint and a
@@ -354,10 +371,16 @@ identity, the store reports every conflicting file, all ID-addressed reads and
 mutations fail closed, and the workspace publishes no active Discussion row
 until the conflict is repaired.
 
-`LocalResearchExecutionStore` owns one schema-v2 file per Action run at
-`Application Support/Triptychs/<id>/research-execution-v2/`. It may retain the
+`LocalResearchExecutionStore` owns one schema-v3 file per Action run at
+`Application Support/Triptychs/<id>/research-execution-v3/`. It may retain the
 protected Function snapshot, assembled instructions, grant digest, static
-Discuss transport contract, and completion evidence. Scholarly Discussion
+Discuss transport contract, and completion evidence. Analyze completion
+evidence retains the bounded agent recommendation submission so exact retries
+and crash-missing portable Records can be repaired unless a durable permanent-
+deletion tombstone records contrary researcher intent. It owns no recommendation ID,
+researcher disposition, derived index, or product presentation; the terminal
+schema-4 parent Record is the only presentable and mutable recommendation
+authority. Scholarly Discussion
 turns never enter this private execution file. Raw grant keys remain non-Codable and are
 delivered only in memory. Completion authorization for a new Action consults
 only this store, so a matching legacy grant cannot authorize it. A write
@@ -368,7 +391,7 @@ Note deletion preflights this store and, after the commit decision, removes
 every execution containing the deleted Note or its associated Critique;
 finished portable records remain under their separate tombstone lifecycle.
 
-Every new preparation path writes Local Execution v2 and creates one portable
+Every new preparation path writes Local Execution v3 and creates one portable
 record only after a terminal validated nonconversational completion. It never
 writes `research-activity.json` or `dialogue.json`. Legacy activity, Dialogue,
 binding, and grant files are not migrated, rewritten, or imported as current
@@ -377,11 +400,11 @@ current exchange model. No decoder, projection, recovery workflow, or product
 entry exposes those pre-production files; their bytes remain untouched.
 Critique preparation
 writes a machine-local handoff intent under
-`research-execution-v2/critique-handoffs/<run>.json` before its portable
+`research-execution-v3/critique-handoffs/<run>.json` before its portable
 association becomes staging. The intent contains only Triptych, run, an
 optional legacy checkpoint identity, and the canonical digest of the frozen
 snapshot plus prepared instructions.
-Portable prose can create the exact Local v2 run after interruption only when
+Portable prose can create the exact Local-v3 run after interruption only when
 the complete Critique invariants and that machine-local digest match. Missing,
 remote, changed, malformed, or
 conflicting evidence remains portable testimony with a health issue and cannot
@@ -405,7 +428,7 @@ portable projection at a bounded interval. A cooperating CLI reply can
 therefore update current state while the Discussion sheet is closed. Selecting
 Discuss opens a Method-bound exchange directly. A Comment-only draft instead
 passes once through the ordinary Action resolver, reuses its stable Discussion
-ID as the Local-v2 run ID, and atomically adds the exact Action/Method identity
+ID as the Local-v3 run ID, and atomically adds the exact Action/Method identity
 and request statement without losing earlier Comments. Subsequent handoffs
 reload that run's machine-local instructions. Actions has no duplicate
 active-Discussion row. A finished
@@ -479,11 +502,13 @@ storage. The clean cutover retains no Research Activity decoder/store, Human
 Review, Qualification, pre-Function Dialogue, ResearcherComment, or app-owned
 Annotation store; unsupported pre-production files remain unread and
 repositories alone mutate revision-checked source.
-`RecommendedBibliographyStore` alone owns its atomic portable JSON and never
-mutates notes or Zotero. No omnibus function store exists.
+No parallel literature-recommendation store or omnibus function store exists.
 
 CLI decodes Contracts, invokes the same Application use cases, and encodes the
-canonical Action and bibliography command families. No pre-1.0 aliases remain.
+canonical Action command family. Analyze completion carries the explicit
+recommendation array and reports the count derived from its newly written
+Record; no separate recommendation command family exists. No pre-1.0 aliases
+remain.
 `AgentCommandAction` uses argument vectors; CLI rendering never owns
 eligibility, Skill routing, checkpoints, write sets, or shell command strings.
 
@@ -513,33 +538,26 @@ the controller owns no repository, filesystem, document controller, protected
 Function identity, or authoritative research data. Its published presentation
 is observed directly and is not forwarded through `ResearchController`.
 
-Recommended Bibliography follows a separate Triptych-library capability
-boundary:
+Research Records follows a Triptych-identified presentation boundary:
 
 ```text
-SidebarRecommendedBibliographySection (fixed Sidebar utility outside Source List scroll)
-        ↓ compact presentation values and closures
-RecommendedBibliographyController (one window)
-        ↓ RecommendedBibliographyClient
-RecommendedBibliographyUseCases (Contracts)
-        ↓
-RecommendedBibliographyCoordinator (Application)
-        ↓
-ResearchSkillTransactionCoordinator + RecommendedBibliographyStore + Zotero read adapter (Core)
+Document toolbar / Research menu
+        ↓ ResearchRecordsWindowRequest (Triptych ID, optional Note ID, initial View)
+ResearchRecordsWindowCoordinator (transient routing, no Record data)
+        ↓ UUID-keyed Research Records WindowGroup
+ScholiumResearchRecordsRoot
+        ↓ exact Triptych WindowWorkspaceCapabilities and immutable snapshots
+ResearchRecordBrowserModel
+        ↓ reconstructable Records and Recommendations indexes
+ResearchRecordUseCases / PortableResearchRecordStore
 ```
 
-The controller is a sibling of `ResearchActionController` under the
-per-window `ResearchController`. One `RecommendedBibliographyScope` freezes the
-Triptych identity and the exact revisions of researcher-selected active Notes;
-those Notes are focal source context, not a second durable owner. The portable
-store exposes one Triptych overview and permits one active request regardless
-of current Scope, Location, selected Note, or window. Application snapshots the
-complete Source Analyzer method, validates completion tokens and
-evidence, and performs conservative duplicate discrimination without note or
-Zotero mutation. Bibliography views observe this controller directly; its
-changes are not forwarded through the research-record owner. Core owns portable storage,
-package resolution, path safety, and matching inputs. The App owns goals,
-purpose, focus, stale-response rejection, refresh presentation, and compact
-rows. Candidate rows route only to a matched Analysis or Dismiss; they no
-longer open Zotero directly. Prior results remain visible through refresh and
-failure.
+The coordinator retains only a pending request per Triptych and registered
+window/workspace endpoints. A data-driven `WindowGroup` value activates the
+existing window for the same Triptych and creates an independent window for a
+different value. The root resolves capabilities by that value and never reads
+focused `WindowModel`. Document opening prefers the most recently active
+Workspace endpoint for the same Triptych and otherwise opens a
+`TriptychWindowRoute(initialDocument:)`. Scope and View remain window-local;
+closing the nonrestored window discards only that presentation state. Portable
+Records remain the sole durable owner throughout.

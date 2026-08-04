@@ -52,56 +52,33 @@ content or philosophical evidence. Attachments, Zotero Notes, annotations,
 PDFs, and full text never enter automatic context. Built-in integration never
 changes Zotero data, files, or live SQLite.
 
-### 15.3 Recommended Bibliography
+### 15.3 Literature Recommendations and the Zotero boundary
 
-One Triptych-wide **Recommended Bibliography** utility is fixed at the
-Sidebar bottom outside Library's Scope-, Location-, selection-, filter-, and
-source-list ownership. It remains in the same position when Analyses, Topics,
-Works, Library, Set Aside, or Trash changes, and only a Triptych change changes
-its research boundary. Its compact band uses the heading, fixed sibling
-position, structural boundary, and **Triptych Recommended Bibliography**
-accessibility group to express that ownership; it adds no explanatory subcopy.
-The complete band is one button: its heading row shows the nonzero count and a
-quiet forward chevron, while the second row shows **No recommendations** or one
-static `Author, Year, Title` preview. It contains no compact horizontal list,
-individual candidate action, or diagonal-open glyph. Activating any part of the
-band opens the complete researcher-facing surface for handling agent-
-recommended literature. It is not Library content, a vault projection, a
-Research Action, Inspector launcher, note appendix, Zotero write path, or
-evidence store.
+Literature Recommendations are optional structured output from Analyze, not a
+separate product object, Research Action, Method binding, CLI lifecycle,
+Sidebar item, Settings capability, or Zotero write path. Analyze may report a
+reading lead only when the exact inspected source grounds both its citation and
+reason. A reference-list occurrence, in-text citation, substantive discussion,
+praise, criticism, centrality, verified metadata, and independent inspection
+remain distinct; a recommendation by itself establishes none of them.
 
-Optional goals are Background Reading, Core Positions, Historical
-Predecessors, Objections, Replies, Companion Literature, Alternative
-Approaches, Missing Citations, Recent Developments, and Classic Works, with an
-optional purpose. No selected goal requests neutral source-centred screening.
-Source Analyzer is the complete default method; Advanced may bind one compatible
-Triptych-local replacement. Broken explicit bindings show Repair and never
-silently fall back.
+The parent Analyze Research Record is the only portable product authority and
+provenance owner. It supplies the Action, Method/Profile, Analysis and
+participating Notes, exact revisions, source reference, date, and agent
+authorship. Machine-local protected completion evidence may retain the agent's
+submission only for idempotency and missing-Record repair; it has no
+disposition, recommendation ID, index, or product read path. The portable
+recommendation therefore does not copy a second source status, target match,
+verification score, refresh lifecycle, or category taxonomy. Researcher
+handling state belongs to that one occurrence and has only Unprocessed or
+Handled plus an optional note, as defined in §8.2.
 
-Preparation locks Triptych identity and selected-note fingerprints, snapshots
-exact methods/resources, and treats zero candidates as success. The agent
-distinguishes reference-list occurrence, in-text citation, substantive
-discussion, praise, criticism, centrality, verified metadata, and independent
-inspection. Unread candidates receive no Debate Importance or relevance score.
-
-Store the atomic portable projection at
-`.scholium/recommended-bibliography.json`. Match by verified scoped Zotero key,
-DOI, guarded ISBN, citation key, then exact normalized title + complete author
-identity + year. Never auto-merge chapters/books, editions/translations,
-conflicting or incomplete authors, or ambiguous titles. A matched Analysis
-proves no coverage beyond its Research Unit and evidence.
-
-Rows show title, authors/year, goals, one short reason, and verification/match
-state. Actions are **Open Analysis** when a matched Analysis exists and
-**Dismiss**. The section provides **Recommend…**, **Copy Instructions**,
-**Cancel**, and **Update Recommendations**; preserves prior results on refresh
-failure; and distinguishes empty, successful-zero, preparing, awaiting-agent,
-stale, malformed, duplicate, ambiguous, Zotero-unavailable, and general error
-states through text/symbol plus accessible focus and narrow adaptation.
-
-Recommended Bibliography preparation and completion remain separate from
-Research Actions. CLI provides `bibliography prepare`, `show`, `complete`,
-and `cancel`; Scholium owns normalization and duplicate discrimination.
+The Triptych Recommendations view may group occurrences by an exactly
+normalized DOI or Zotero item key when no other supplied identifier conflicts.
+It never queries Zotero to infer a match, never writes Zotero, and never treats
+a grouped result as a matched Analysis or evidence. DOI and Zotero identity are
+grouping hints only; all occurrence-level content and disposition remain in
+their parent Records.
 
 ### 15.4 Optional external-agent Zotero MCP
 

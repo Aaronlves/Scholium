@@ -32,7 +32,6 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
     case skillInstaller
     case skillSettings
     case changeRequest
-    case researchRecord
 
     var id: String { rawValue }
 
@@ -42,7 +41,6 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
         case .skillInstaller: "Skill Installer"
         case .skillSettings: "Skill Settings"
         case .changeRequest: "Agent Change Request"
-        case .researchRecord: "Research Record"
         }
     }
 
@@ -52,7 +50,6 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
         case .skillInstaller: "square.and.arrow.down"
         case .skillSettings: "slider.horizontal.3"
         case .changeRequest: "doc.badge.ellipsis"
-        case .researchRecord: "books.vertical"
         }
     }
 }
@@ -80,8 +77,6 @@ private struct ResearchWorkflowProofDetail: View {
             ResearchSkillSettingsProof()
         case .changeRequest:
             AgentChangeRequestProof()
-        case .researchRecord:
-            ResearchRecordUtilityProof()
         }
     }
 }
@@ -766,271 +761,6 @@ private struct AgentChangeRequestProof: View {
     }
 }
 
-// MARK: - Research Record
-
-private struct ResearchRecordEntry: Identifiable {
-    let id: String
-    let title: String
-    let date: String
-    let skill: String
-    let action: String
-    let participants: String
-    let isPinned: Bool
-}
-
-private let researchRecordEntries = [
-    ResearchRecordEntry(
-        id: "objection",
-        title: "Whether salience supplies a reason",
-        date: "25 Jul 2026, 14:32",
-        skill: "Discuss, revision 2",
-        action: "Discuss",
-        participants: "Researcher, Agent",
-        isPinned: true
-    ),
-    ResearchRecordEntry(
-        id: "source",
-        title: "Analyze What Is It Like to Be a Bat?",
-        date: "24 Jul 2026, 18:05",
-        skill: "Analyze Source, revision 3",
-        action: "Analyze",
-        participants: "Agent",
-        isPinned: false
-    ),
-    ResearchRecordEntry(
-        id: "synthesis",
-        title: "Synthesize attention into normative reasons",
-        date: "23 Jul 2026, 10:18",
-        skill: "Synthesize, revision 4",
-        action: "Synthesize",
-        participants: "Researcher, Agent",
-        isPinned: false
-    ),
-]
-
-private struct ResearchRecordUtilityProof: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Independent Triptych Window")
-                    .font(ScholiumInterfaceTypography.metadata)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                Spacer()
-                Text("Fixed 760 × 680 utility window")
-                    .font(ScholiumInterfaceTypography.metadata)
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
-            }
-            .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-            .frame(minHeight: ScholiumGrid.Dimension.regionHeaderHeight)
-            ScholiumStructuralRule()
-
-            ResearchRecordTwoColumnProof()
-                .accessibilityIdentifier("scholium.proofs.record.fixedUtility")
-        }
-    }
-}
-
-private struct ResearchRecordTwoColumnProof: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            ResearchRecordListProof()
-                .frame(minWidth: 224, idealWidth: 244, maxWidth: 268)
-            ScholiumStructuralRule(orientation: .vertical)
-            ResearchRecordReadingProof()
-                .frame(minWidth: 380, maxWidth: .infinity)
-        }
-    }
-}
-
-private struct ResearchRecordListProof: View {
-    @State private var searchText = ""
-    @State private var scope = "This Note"
-    @State private var selection = "objection"
-    @State private var showsFilters = true
-    @State private var dateFilter = "Any Date"
-    @State private var skillFilter = "Any Skill"
-    @State private var actionFilter = "Any Action"
-    @State private var participantFilter = "Any Participant"
-
-    var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                TextField("Search records", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                Picker("Scope", selection: $scope) {
-                    Text("This Note").tag("This Note")
-                    Text("Triptych").tag("Triptych")
-                }
-                .pickerStyle(.segmented)
-                DisclosureGroup("Filters", isExpanded: $showsFilters) {
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                        ResearchRecordFilterPicker(
-                            title: "Date",
-                            selection: $dateFilter,
-                            values: ["Any Date", "Today", "Past Week"]
-                        )
-                        ResearchRecordFilterPicker(
-                            title: "Skill",
-                            selection: $skillFilter,
-                            values: ["Any Skill", "Discuss", "Analyze Source", "Synthesize"]
-                        )
-                        ResearchRecordFilterPicker(
-                            title: "Action",
-                            selection: $actionFilter,
-                            values: ["Any Action", "Discuss", "Analyze", "Synthesize"]
-                        )
-                        ResearchRecordFilterPicker(
-                            title: "Participant",
-                            selection: $participantFilter,
-                            values: ["Any Participant", "Researcher", "Agent"]
-                        )
-                    }
-                    .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
-                }
-            }
-            .controlSize(.small)
-            .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
-            .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-            ScholiumStructuralRule()
-            List(researchRecordEntries, selection: $selection) { entry in
-                ResearchRecordListRow(entry: entry)
-                    .tag(entry.id)
-                    .listRowInsets(
-                        EdgeInsets(
-                            top: ScholiumGrid.Spacing.opticalAlignmentAdjustment,
-                            leading: ScholiumGrid.Spacing.inlineControlGap,
-                            bottom: ScholiumGrid.Spacing.opticalAlignmentAdjustment,
-                            trailing: ScholiumGrid.Spacing.inlineControlGap
-                        )
-                    )
-            }
-            .listStyle(.plain)
-        }
-        .scholiumSurface(.navigation)
-    }
-}
-
-private struct ResearchRecordFilterPicker: View {
-    let title: String
-    @Binding var selection: String
-    let values: [String]
-
-    var body: some View {
-        LabeledContent(title) {
-            Picker(title, selection: $selection) {
-                ForEach(values, id: \.self) { value in
-                    Text(value).tag(value)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-        }
-        .font(ScholiumInterfaceTypography.apparatusBody)
-    }
-}
-
-private struct ResearchRecordListRow: View {
-    let entry: ResearchRecordEntry
-
-    var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
-        ) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(entry.action): \(entry.title)")
-                    .font(ScholiumInterfaceTypography.rowTitle)
-                    .lineLimit(1)
-                Spacer(minLength: ScholiumGrid.Spacing.labelAccessoryGap)
-                if entry.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                        .accessibilityLabel("Pinned")
-                }
-            }
-            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text(entry.date)
-                Spacer()
-                Text(entry.skill)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .font(ScholiumInterfaceTypography.metadata)
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            Text(entry.participants)
-                .font(ScholiumInterfaceTypography.metadata)
-                .foregroundStyle(ScholiumColorRole.mutedText.color)
-        }
-    }
-}
-
-private struct ResearchRecordReadingProof: View {
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                Text("Analyze What Is It Like to Be a Bat?")
-                    .font(ScholiumInterfaceTypography.documentTitle)
-                    .accessibilityAddTraits(.isHeader)
-                Text("Analyze, 25 July 2026")
-                    .font(ScholiumInterfaceTypography.metadata)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-
-                ResearchRecordTurn(
-                    speaker: "Agent Feedback",
-                    context: "Bounded report",
-                    prose: "The source boundary and reconstruction were recorded, but the required final check could not inspect one locator-backed passage. The limitation remains explicit."
-                )
-                ScholiumStructuralRule()
-                Label(
-                    "Fidelity could not be completed for this recorded revision.",
-                    systemImage: "exclamationmark.triangle"
-                )
-                .font(ScholiumInterfaceTypography.apparatusBody)
-
-                DisclosureGroup("Record Details") {
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        LabeledContent("Action", value: "Analyze")
-                        LabeledContent("Agent-reported Materials used", value: "None")
-                        LabeledContent("Starting revision", value: "f4d77c2a")
-                    }
-                    .font(ScholiumInterfaceTypography.apparatusBody)
-                    .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-                }
-            }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: 720, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
-        .scholiumSurface(.document)
-    }
-}
-
-private struct ResearchRecordTurn: View {
-    let speaker: String
-    let context: String
-    let prose: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(speaker)
-                    .font(ScholiumInterfaceTypography.sectionTitle)
-                Spacer()
-                Text(context)
-                    .font(ScholiumInterfaceTypography.metadata)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .multilineTextAlignment(.trailing)
-            }
-            Text(prose)
-                .font(ScholiumTypography.swiftUIReadingFont(size: 13, relativeTo: .body))
-                .lineSpacing(ScholiumGrid.Spacing.labelAccessoryGap)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
 private struct ResearchProofSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
@@ -1095,11 +825,6 @@ private struct ResearchProofNotice: View {
 #Preview("Agent Change Request") {
     ResearchWorkflowProofDetail(proof: .changeRequest)
         .frame(width: 760, height: 720)
-}
-
-#Preview("Research Record Fixed Utility") {
-    ResearchWorkflowProofDetail(proof: .researchRecord)
-        .frame(width: 760, height: 680)
 }
 
 #Preview("Workflow Dark") {

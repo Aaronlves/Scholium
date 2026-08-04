@@ -367,14 +367,12 @@ public actor ResearchOperations:
     ResearchCheckpointUseCases,
     ResearchSkillUseCases,
     ResearchActionUseCases,
-    ResearchSourceAccessUseCases,
-    RecommendedBibliographyUseCases
+    ResearchSourceAccessUseCases
 {
     public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
     let reference: WorkspaceHandleReference
     private let functionCoordinator: ResearchFunctionCoordinator
-    private let bibliographyCoordinator: RecommendedBibliographyCoordinator
 
     init(
         reference: WorkspaceHandleReference,
@@ -384,7 +382,6 @@ public actor ResearchOperations:
     ) {
         self.reference = reference
         self.functionCoordinator = functionCoordinator
-        bibliographyCoordinator = RecommendedBibliographyCoordinator(reference: reference)
         self.skillsURL = skillsURL
         self.recoveryRecordsURL = recoveryRecordsURL
     }
@@ -525,57 +522,6 @@ public actor ResearchOperations:
         try await handle.removeResearchSourceAccess(for: target)
     }
 
-    public func recommendations() async throws -> RecommendedBibliographyProjection? {
-        try await bibliographyCoordinator.recommendations()
-    }
-
-    public func recommendationOverview() async throws -> RecommendedBibliographyOverview {
-        try await bibliographyCoordinator.overview()
-    }
-
-    public func prepareRecommendation(
-        _ request: RecommendedBibliographyRequest
-    ) async throws -> RecommendedBibliographyPreparation {
-        try await bibliographyCoordinator.prepare(request)
-    }
-
-    public func recommendationRequest(
-        id: UUID
-    ) async throws -> RecommendedBibliographyPreparation {
-        try await bibliographyCoordinator.request(id: id)
-    }
-
-    public func completeRecommendation(
-        _ submission: RecommendedBibliographyCompletionSubmission
-    ) async throws -> RecommendedBibliographyProjection {
-        try await bibliographyCoordinator.complete(submission)
-    }
-
-    public func cancelRecommendation(id: UUID) async throws {
-        try await bibliographyCoordinator.cancel(id: id)
-    }
-
-    public func dismissRecommendation(requestID: UUID, candidateID: UUID) async throws {
-        try await bibliographyCoordinator.dismiss(
-            requestID: requestID,
-            candidateID: candidateID
-        )
-    }
-
-    public func bibliographyMethodStatus() async throws -> RecommendedBibliographyMethodStatus {
-        try await bibliographyCoordinator.methodStatus()
-    }
-
-    public func setBibliographyMethod(
-        packageID: String?,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> RecommendedBibliographyMethodStatus {
-        try await bibliographyCoordinator.setMethod(
-            packageID: packageID,
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
     public func snapshot() async throws -> WorkspaceResearchSnapshot {
         let handle = try await reference.requireHandle()
         return try await handle.researchSnapshot()
@@ -713,6 +659,32 @@ public actor ResearchOperations:
     ) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
         return try await handle.setResearchRecordPinned(id: id, isPinned: isPinned)
+    }
+
+    public func setResearchRecordRecommendationDisposition(
+        recordID: UUID,
+        recommendationID: UUID,
+        status: ResearchLiteratureRecommendationDispositionStatus
+    ) async throws -> PortableResearchRecord {
+        let handle = try await reference.requireHandle()
+        return try await handle.setResearchRecordRecommendationDisposition(
+            recordID: recordID,
+            recommendationID: recommendationID,
+            status: status
+        )
+    }
+
+    public func setResearchRecordRecommendationNote(
+        recordID: UUID,
+        recommendationID: UUID,
+        note: String?
+    ) async throws -> PortableResearchRecord {
+        let handle = try await reference.requireHandle()
+        return try await handle.setResearchRecordRecommendationNote(
+            recordID: recordID,
+            recommendationID: recommendationID,
+            note: note
+        )
     }
 
     public func deleteResearchRecordPermanently(id: UUID) async throws {

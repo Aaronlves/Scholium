@@ -24,7 +24,6 @@ struct SidebarContext {
     let canMutateLibrary: Bool
     let lifecycleMutationGeneration: UInt64
     let filterOptions: SidebarLibraryFilterOptions
-    let bibliographyController: RecommendedBibliographyController
     let attentionPopoverSession: AttentionPopoverSession?
     let openAttention: () -> Void
     let retryAttention: () -> Void
@@ -43,9 +42,6 @@ struct SidebarContext {
     let moveToTrash: (NoteLifecycleTarget) async throws -> Void
     let putBack: (NoteLifecycleTarget) async throws -> Void
     let deletePermanently: (NoteLifecycleTarget) async throws -> Void
-    let openRecommendedAnalysis: (VaultQualifiedNoteID) -> Void
-    let copyRecommendedBibliographyText: (String) -> Void
-    let repairRecommendedBibliographyMethod: () -> Void
     let revealCurrentVault: () -> Void
     let openSettings: () -> Void
     let selectSortOrder: (NoteSortOrder) -> Void
@@ -136,8 +132,6 @@ struct SidebarView: View {
                 .padding(.bottom, ScholiumGrid.Spacing.labelAccessoryGap)
 
             sourceRegion
-
-            recommendedBibliographyUtility
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(ScholiumColorRole.navigationSurfaceBackground.color)
@@ -157,23 +151,6 @@ struct SidebarView: View {
     }
 
     // MARK: Fixed identity and navigation
-
-    /// Triptych-wide agent recommendations are a sibling of Library
-    /// navigation, never the tail of the active Scope/Location Source List.
-    /// The intrinsic-height band stays fixed while the source region scrolls.
-    private var recommendedBibliographyUtility: some View {
-        SidebarRecommendedBibliographySection(
-            controller: context.bibliographyController,
-            openAnalysis: context.openRecommendedAnalysis,
-            copyText: context.copyRecommendedBibliographyText,
-            repairMethod: context.repairRecommendedBibliographyMethod
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ScholiumColorRole.navigationSurfaceBackground.color)
-        .overlay(alignment: .top) {
-            ScholiumStructuralRule()
-        }
-    }
 
     private var brandHeader: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {

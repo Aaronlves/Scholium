@@ -204,13 +204,13 @@ packages:
 
   - id: scholium-source-analyzer
     name: Source Analyzer
-    description: Provide an editable researcher-owned external source method for bibliography screening and source work outside a Scholium Research Action.
+    description: Provide an editable researcher-owned method for source work outside a Scholium Research Action.
     class: researcher
     role: method
     version: 1.2.0-template
     supported_actions: []
     supported_functions: []
-    capabilities: [bibliography-recommendation]
+    capabilities: []
     citation_styles: []
     supported_modes: [analyze]
     compatible_practices: [historical-interpreter, conceptual-analyst, argument-reconstructionist]

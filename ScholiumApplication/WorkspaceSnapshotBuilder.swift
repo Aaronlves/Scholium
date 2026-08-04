@@ -270,7 +270,7 @@ enum WorkspaceSnapshotBuilder {
         let localExecutionListing = try await services.localResearchExecutionStore
             .listing()
         let finishedResearchRecordListing = try await services
-            .portableResearchRecordStore.listing(location: .records)
+            .portableResearchRecordStore.listing()
         var activeDiscussionListing = try await services
             .portableResearchRecordStore.activeDiscussions()
         var activeDiscussionReconciliationIssues: [String] = []
@@ -294,7 +294,7 @@ enum WorkspaceSnapshotBuilder {
                             expected: expected
                         ) else {
                             throw ResearchFunctionContractError.invalidCompletion(
-                                "The active Discussion does not match its Local-v2 run."
+                                "The active Discussion does not match its Local-v3 run."
                             )
                         }
                     } else if let finished = finishedByID[local.id] {
@@ -303,7 +303,7 @@ enum WorkspaceSnapshotBuilder {
                             expected: expected
                         ) else {
                             throw ResearchFunctionContractError.invalidCompletion(
-                                "The finished Discussion does not match its Local-v2 run."
+                                "The finished Discussion does not match its Local-v3 run."
                             )
                         }
                     } else if local.completion == nil,
@@ -314,7 +314,7 @@ enum WorkspaceSnapshotBuilder {
                             .createActiveDiscussion(expected)
                     } else {
                         throw ResearchFunctionContractError.invalidCompletion(
-                            "The Local-v2 Discuss run has no exact portable Discussion pair."
+                            "The Local-v3 Discuss run has no exact portable Discussion pair."
                         )
                     }
                 } catch {
@@ -601,7 +601,7 @@ enum WorkspaceSnapshotBuilder {
             let localFileName = round.id.uuidString.lowercased() + ".json"
             guard !unhealthyLocalFileNames.contains(localFileName) else {
                 healthIssues.append(
-                    "Critique handoff \(round.id.uuidString) has unreadable Local Execution v2 evidence; its portable staging evidence was preserved."
+                    "Critique handoff \(round.id.uuidString) has unreadable Local Execution v3 evidence; its portable staging evidence was preserved."
                 )
                 continue
             }
@@ -629,7 +629,7 @@ enum WorkspaceSnapshotBuilder {
                   round.completedAt == nil,
                   let preparedInstructions = round.functionInstructions else {
                 healthIssues.append(
-                    "Critique handoff \(round.id.uuidString) has inconsistent portable staging evidence; it was preserved without creating Local Execution v2."
+                    "Critique handoff \(round.id.uuidString) has inconsistent portable staging evidence; it was preserved without creating Local Execution v3."
                 )
                 continue
             }
@@ -680,7 +680,7 @@ enum WorkspaceSnapshotBuilder {
                 }
             } catch {
                 healthIssues.append(
-                    "Critique handoff \(round.id.uuidString) could not be installed in Local Execution v2; its portable staging evidence was preserved: \(error.localizedDescription)"
+                    "Critique handoff \(round.id.uuidString) could not be installed in Local Execution v3; its portable staging evidence was preserved: \(error.localizedDescription)"
                 )
             }
         }
@@ -714,7 +714,7 @@ enum WorkspaceSnapshotBuilder {
                 }
             } else {
                 healthIssues.append(
-                    "Research execution \(local.id.uuidString) has conflicting retained evidence; Local Execution v2 was projected read-only."
+                    "Research execution \(local.id.uuidString) has conflicting retained evidence; Local Execution v3 was projected read-only."
                 )
             }
         }

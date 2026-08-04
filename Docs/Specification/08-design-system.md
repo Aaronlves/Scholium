@@ -79,13 +79,19 @@ transient menu remains system-owned rather than becoming a Scholium popover.
 Pane-local content hosts consume the native safe area once; the titlebar and
 its single native toolbar own visibility-control alignment.
 
-The fixed Recommended Bibliography band is a sibling Sidebar utility, not a
-Library Location or Source List footer. It shares the complete Sidebar's
-Paper-derived Navigation surface; one structural top boundary, fixed position,
-heading, and accessible Triptych-scoped group express its ownership without
-explanatory subcopy, a card, blur, material, decorative elevation, or an
-independent palette. Its named top and bottom insets place the content slightly
-above visual centre and preserve a calm bottom edge.
+Research Records reuses the existing native list/detail structure, search and
+empty/error states, structural rules, semantic surfaces, typography, native
+menu, checkbox, sheet, and focus behavior. Its native titlebar remains ordinary
+window chrome. View uses the existing restrained editorial-index underline at
+the top of the Navigation plane; Scope uses one borderless native menu in the
+list-context row. Neither becomes a filled segment, full-width control band,
+feature toolbar, or Liquid Glass container. The leading List reveals the
+Navigation surface instead of a default scroll background, and reading-plane
+actions share one borderless ink-and-hover treatment. The auxiliary window
+consumes the same persisted System/Light/Dark choice and resolved semantic roles
+as Workspace rather than inventing a local appearance state. Recommendations
+adds no palette, card recipe, badge, bespoke split, Sidebar treatment, or new
+visual Variable.
 
 ### 19.2 Typography and color
 
@@ -95,9 +101,7 @@ above visual centre and preserve a calm bottom edge.
   remains the identity exception.
 - Library Folder and unselected Note titles use the same 12pt Regular system
   role; only the selected Note uses Semibold. The compact Document-toolbar
-  identity uses the 13pt system body role with secondary ink. Recommended
-  Bibliography's empty state uses the purpose-named 10pt metadata role with
-  secondary ink; a populated compact preview uses the editorial citation role.
+  identity uses the 13pt system body role with secondary ink.
 - **Alegreya** is for Review/Edit prose and may identify content-derived
   titles, linked research objects, researcher judgments, field values,
   explanations, Scope, Limitations, and other research content when density,
@@ -161,8 +165,8 @@ above visual centre and preserve a calm bottom edge.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
   **Paper** `#FEF8ED`. In Light appearance Paper is the illuminated Document
   plane; one resolver derives every other Light output and every Dark and
-  Increase Contrast semantic output. The complete Sidebar, including Recommended
-  Bibliography, uses one recessive and neutral `navigationSurface`. Inspector's
+  Increase Contrast semantic output. The complete Sidebar uses one recessive
+  and neutral `navigationSurface`. Inspector's
   `apparatusSurface` is a document-adjacent Paper role: it remains subtly
   distinct across the native split while staying perceptually much closer to
   `documentBackground` than to Navigation. These roles are not additional
@@ -188,8 +192,8 @@ radius, shadow, border, gradient, or paper scales.
 
 - Interface type roles: identity, section title, row title, metadata, and
   narrowly approved editorial hierarchy. Library exposes purpose-named Folder,
-  Note, selected-Note, Attention-alert, bibliography-empty, and
-  bibliography-preview roles; the toolbar exposes the compact-identity role.
+  Note, selected-Note, and Attention-alert roles; the toolbar exposes the
+  compact-identity role.
   These roles may resolve to a shared point
   size but leaf views do not recreate their weights or sizes. Document roles:
   Body,
@@ -240,8 +244,7 @@ radius, shadow, border, gradient, or paper scales.
   preferred/minimum custom targets **28/20pt**, Document tab strip **40pt**,
   Action target **44pt**, and region header **48pt**. A general compact
   **24pt** row role does not size Library rows, and Library has no fixed
-  lifecycle-footer anchor. Recommended Bibliography's fixed position uses its
-  intrinsic content height rather than a footer-height Variable.
+  lifecycle-footer anchor.
 - The Library's **300pt minimum readable thickness** is a component-specific
   containment threshold outside the grid, not a spacing role, preferred width,
   or scene minimum.

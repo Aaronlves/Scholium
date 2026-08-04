@@ -410,7 +410,7 @@ struct ResearchSkillInstallationStoreTests {
             == InstallationFixture.validSkillSource)
     }
 
-    @Test("Dangling current and retained bindings prevent disabled installation")
+    @Test("Dangling current bindings prevent disabled installation")
     func danglingBindingsPreventInstallation() async throws {
         let fixture = try InstallationFixture()
         defer { fixture.remove() }
@@ -450,75 +450,6 @@ struct ResearchSkillInstallationStoreTests {
             #expect(error == .destinationBindingConflict(fixture.packageID))
         }
 
-        let retained = ResearchSkillTransactionCoordinator(controlURL: fixture.secondControl)
-        _ = try await retained.installDefaultWorkingMethods()
-        let ignoredRetainedDocument = """
-        {
-          "schema_version": 1,
-          "function_bindings": {"critique": "\(fixture.packageID)"},
-          "function_skill_bindings": {},
-          "function_practice_bindings": {},
-          "citation_binding": null,
-          "citation_style": null,
-          "bibliography_method_binding": null
-        }
-        """
-        try Data(ignoredRetainedDocument.utf8).write(
-            to: retained.legacyFunctionBindingsURL
-        )
-        let ignoredPreparation = try await installer.stage(directoryURL: fixture.source)
-        _ = try await installer.install(
-            ignoredPreparation,
-            destinations: [ResearchSkillInstallationDestination(
-                triptychID: UUID(),
-                skillStore: retained
-            )]
-        )
-        #expect(!FileManager.default.fileExists(
-            atPath: retained.citationMethodBindingsURL.path
-        ))
-        #expect(!FileManager.default.fileExists(
-            atPath: retained.bibliographyMethodBindingsURL.path
-        ))
-        try FileManager.default.removeItem(
-            at: fixture.secondControl.appendingPathComponent(
-                "skills/\(fixture.packageID)"
-            )
-        )
-
-        let executableRetainedDocument = """
-        {
-          "schema_version": 1,
-          "function_bindings": {},
-          "function_skill_bindings": {},
-          "function_practice_bindings": {},
-          "citation_binding": null,
-          "citation_style": null,
-          "bibliography_method_binding": "\(fixture.packageID)"
-        }
-        """
-        try Data(executableRetainedDocument.utf8).write(
-            to: retained.legacyFunctionBindingsURL
-        )
-        let retainedPreparation = try await installer.stage(directoryURL: fixture.source)
-        do {
-            _ = try await installer.install(
-                retainedPreparation,
-                destinations: [ResearchSkillInstallationDestination(
-                    triptychID: UUID(),
-                    skillStore: retained
-                )]
-            )
-            Issue.record("A dangling retained binding activated a staged package.")
-        } catch let error as ResearchSkillInstallationError {
-            #expect(error == .destinationBindingConflict(fixture.packageID))
-        }
-        #expect(!FileManager.default.fileExists(
-            atPath: retained.citationMethodBindingsURL.path
-        ))
-        #expect(!FileManager.default.fileExists(
-            atPath: retained.bibliographyMethodBindingsURL.path
-        ))
     }
 
     @Test("A post-publish hard link fails closed and is quarantined")

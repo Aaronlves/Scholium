@@ -56,7 +56,7 @@ Research Actions、可编辑 Working Methods、Researcher Skills、常驻权限�
 与文件夹移动可以保留编辑器、标签页和研究身份，而每次变更仍会在提交前重新核验
 当前来源修订与目标位置。
 
-应用、CLI、交付合同与记录全部使用 Action 身份。受保护的 Local Execution v2
+应用、CLI、交付合同与记录全部使用 Action 身份。受保护的 Local Execution v3
 仅作为内部的容纳、修订、完成、冲突与恢复机制。未知的预发布数据保持原字节、
 不可见、不解析且不产生授权；产品中没有旧数据入口或兼容命令。
 

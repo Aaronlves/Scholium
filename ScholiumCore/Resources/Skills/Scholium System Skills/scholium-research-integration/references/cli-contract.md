@@ -183,14 +183,7 @@ When the response addresses one selected note or Comment, add the exact `--note 
 
 Use `--from` for multiline responses. Never interpolate untrusted Markdown or researcher text into a shell command. Compose the attributed turn under `scholium-discuss` and persist it under `scholium-discussion-protocol`; include material uncertainty and any needed researcher decision, not commands, token counts, or routine file operations.
 
-## 6. Recommended Bibliography
-
-Recommended Bibliography is a separate Triptych-owned lifecycle. Prefer its
-typed `nextActions`; recover a prepared request with `bibliography show`. These
-commands transport structured reading leads only and never authorize note or
-Zotero mutation.
-
-## 7. Failure behavior
+## 6. Failure behavior
 
 Stop the affected operation when:
 

@@ -304,7 +304,7 @@ public actor CritiqueRegistry {
     }
 
     /// Removes protected execution evidence after the same run has been
-    /// durably installed in Local Execution v2. The Critique round remains a
+    /// durably installed in Local Execution v3. The Critique round remains a
     /// portable scholarly association identified by its own round ID.
     @discardableResult
     public func detachFunctionEvidence(
@@ -375,7 +375,7 @@ public actor CritiqueRegistry {
     }
 
     /// Captures findings for a Critique whose execution evidence is owned by
-    /// Local Execution v2 rather than this portable association file.
+    /// Local Execution v3 rather than this portable association file.
     @discardableResult
     public func captureLocalExecutionFindings(
         runID: UUID,

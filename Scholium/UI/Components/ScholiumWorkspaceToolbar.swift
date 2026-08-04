@@ -23,7 +23,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             "scholium.toolbar.documentActions"
         )
         static let apparatusDivider = NSToolbarItem.Identifier.inspectorTrackingSeparator
-        static let researchRecord = NSToolbarItem.Identifier("scholium.toolbar.researchRecord")
+        static let researchRecords = NSToolbarItem.Identifier("scholium.toolbar.researchRecords")
     }
 
     private let appState: WindowModel
@@ -71,7 +71,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.libraryDivider,
             Item.documentIdentity,
             Item.documentActions,
-            Item.researchRecord,
+            Item.researchRecords,
             Item.inspector,
             Item.apparatusDivider,
         ]
@@ -85,7 +85,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.documentIdentity,
             .flexibleSpace,
             Item.documentActions,
-            Item.researchRecord,
+            Item.researchRecords,
             Item.inspector,
             Item.apparatusDivider,
             .flexibleSpace,
@@ -143,12 +143,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 splitView: splitView,
                 dividerIndex: 1
             )
-        case Item.researchRecord:
+        case Item.researchRecords:
             return hostedItem(
                 identifier: itemIdentifier,
-                label: ScholiumL10n.string("Research Record"),
+                label: ScholiumL10n.string("This Note · Records"),
                 visibilityPriority: .user,
-                view: ScholiumWorkspaceResearchRecordToolbarView(
+                view: ScholiumWorkspaceResearchRecordsToolbarView(
                     appState: appState,
                     documentController: appState.documentController,
                     workspaceProjectionController: appState.workspaceProjectionController,
@@ -209,15 +209,7 @@ private struct ScholiumWorkspaceToolbarEnvironment<Content: View>: View {
     var body: some View {
         content
             .tint(ScholiumColorRole.accent.color)
-            .preferredColorScheme(colorScheme)
-    }
-
-    private var colorScheme: ColorScheme? {
-        switch shellState.colorScheme {
-        case .dark: .dark
-        case .light: .light
-        case .system: nil
-        }
+            .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
     }
 }
 
@@ -406,7 +398,7 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
     }
 }
 
-private struct ScholiumWorkspaceResearchRecordToolbarView: View {
+private struct ScholiumWorkspaceResearchRecordsToolbarView: View {
     @ObservedObject var appState: WindowModel
     @ObservedObject var documentController: DocumentController
     @ObservedObject var workspaceProjectionController: WindowWorkspaceProjectionController
@@ -414,11 +406,11 @@ private struct ScholiumWorkspaceResearchRecordToolbarView: View {
 
     var body: some View {
         ScholiumInkIconControl(
-            title: ScholiumL10n.dynamicString("Show Research Record"),
+            title: ScholiumL10n.dynamicString("This Note · Records"),
             systemImage: "clock.arrow.circlepath",
-            identifier: "scholium.showResearchRecord"
+            identifier: "scholium.showResearchRecords"
         ) {
-            windowActions.showResearchRecord()
+            windowActions.showNoteResearchRecords()
         }
         .disabled(!isAvailable)
     }

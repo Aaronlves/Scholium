@@ -3,6 +3,11 @@ import Foundation
 /// Resolves only an explicitly supplied Debug/QA isolation root. Release
 /// production never accepts this environment override or invents a fallback.
 enum ScholiumRuntimeIsolation {
+    enum LayoutDirectionOverride: Equatable {
+        case leftToRight
+        case rightToLeft
+    }
+
     static let qaBundleIdentifier = "com.scholium.qa"
     static func homeURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -63,6 +68,33 @@ enum ScholiumRuntimeIsolation {
             return nil
         }
         return CGFloat(width)
+#else
+        return nil
+#endif
+    }
+
+    /// Provides a deterministic interface direction only to the isolated QA
+    /// executable. Locale launch arguments do not reliably update SwiftUI's
+    /// layout environment when the app has no localization for that locale.
+    static func layoutDirectionOverride(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> LayoutDirectionOverride? {
+#if DEBUG
+        guard bundleIdentifier == qaBundleIdentifier,
+              let value = nonempty(
+                  environment["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION"]
+              )?.lowercased()
+        else { return nil }
+
+        switch value {
+        case "ltr":
+            return .leftToRight
+        case "rtl":
+            return .rightToLeft
+        default:
+            return nil
+        }
 #else
         return nil
 #endif

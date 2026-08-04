@@ -238,7 +238,6 @@ public extension ResearchFunctionID {
 public enum ResearchSkillCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case citationVerification = "citation-verification"
     case citationFormatting = "citation-formatting"
-    case bibliographyRecommendation = "bibliography-recommendation"
 }
 
 public enum ResearchFunctionRepairReasonCode: String, Codable, Hashable, Sendable {
@@ -1216,6 +1215,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
     /// Present for a shared multi-note Fidelity run. A single-target run may
     /// continue using `fidelityOutcomes` for wire compatibility.
     public let fidelityTargetSubmissions: [ResearchFunctionFidelityTargetSubmission]?
+    public let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
     public let submittedAt: Date
     public let childRunIDs: [UUID]?
 
@@ -1231,6 +1231,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
         outputFingerprint: DocumentFingerprint? = nil,
         fidelityOutcomes: [FidelityCheckOutcome] = [],
         fidelityTargetSubmissions: [ResearchFunctionFidelityTargetSubmission] = [],
+        literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil,
         childRunIDs: [UUID] = [],
         submittedAt: Date = Date()
     ) {
@@ -1249,6 +1250,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
         self.fidelityTargetSubmissions = fidelityTargetSubmissions.isEmpty
             ? nil
             : fidelityTargetSubmissions
+        self.literatureRecommendations = literatureRecommendations
         self.childRunIDs = childRunIDs.isEmpty ? nil : childRunIDs
         self.submittedAt = submittedAt
     }
@@ -1268,6 +1270,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
     public let outputFingerprint: DocumentFingerprint?
     public let fidelityOutcomes: [FidelityCheckOutcome]
     public let fidelityTargetResults: [ResearchFunctionFidelityTargetResult]?
+    public let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
     /// Deterministic identity of the exact final revision, evidence, checks,
     /// and resolved skill resources audited by this completion.
     public let fidelityEvidenceKey: ResearchFidelityEvidenceKey?
@@ -1293,6 +1296,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         outputFingerprint: DocumentFingerprint? = nil,
         fidelityOutcomes: [FidelityCheckOutcome],
         fidelityTargetResults: [ResearchFunctionFidelityTargetResult] = [],
+        literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil,
         fidelityEvidenceKey: ResearchFidelityEvidenceKey? = nil,
         reusedFidelityRunID: UUID? = nil,
         childRunIDs: [UUID] = [],
@@ -1315,6 +1319,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         self.fidelityTargetResults = fidelityTargetResults.isEmpty
             ? nil
             : fidelityTargetResults
+        self.literatureRecommendations = literatureRecommendations
         self.fidelityEvidenceKey = fidelityEvidenceKey
         self.reusedFidelityRunID = reusedFidelityRunID
         self.childRunIDs = childRunIDs.isEmpty ? nil : childRunIDs

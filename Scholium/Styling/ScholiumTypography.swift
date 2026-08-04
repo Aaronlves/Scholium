@@ -235,11 +235,6 @@ enum ScholiumInterfaceTypography {
     /// scrolling document title remains the primary editorial identity.
     static let workspaceToolbarIdentity = Font.body
     static let noteTitle = Font.body
-    static let literatureCitation = ScholiumTypography.swiftUIReadingFont(
-        size: 12,
-        relativeTo: .body
-    )
-    static let bibliographyPreview = literatureCitation
     static let apparatusTitle = ScholiumTypography.swiftUIReadingFont(
         size: 17,
         relativeTo: .headline,
@@ -248,7 +243,6 @@ enum ScholiumInterfaceTypography {
     static let sectionTitle = Font.headline.weight(.medium)
     static let rowTitle = libraryHierarchy.weight(.medium)
     static let metadata = Font.caption.weight(.medium)
-    static let bibliographyEmptyState = metadata
     static let editorialLabel = Font.caption2.weight(.semibold)
     /// The LocationPicker is the primary title of its stable Library header.
     /// It uses the macOS default interface size without acquiring a bezel.

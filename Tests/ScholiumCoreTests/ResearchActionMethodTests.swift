@@ -780,8 +780,7 @@ struct ResearchActionMethodTests {
           "function_skill_bindings": {"retired": ["ignored"]},
           "function_practice_bindings": {"retired": "ignored"},
           "citation_binding": "\(local.id)",
-          "citation_style": "APA-7",
-          "bibliography_method_binding": null
+          "citation_style": "APA-7"
         }
         """
         let legacyBytes = Data(legacy.utf8)
@@ -823,42 +822,6 @@ struct ResearchActionMethodTests {
         try Data(changedLegacy.utf8).write(to: store.legacyFunctionBindingsURL)
         let stable = try #require(try await store.citationMethodSnapshot())
         #expect(stable == migrated)
-    }
-
-    @Test("Legacy Bibliography state migrates independently")
-    func legacyBibliographyMigrationIsIndependent() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = ResearchSkillTransactionCoordinator(controlURL: fixture.control)
-        let local = try await store.duplicateBundled(
-            id: "scholium-source-analyzer",
-            as: "legacy-source-analyzer"
-        )
-        let legacy = """
-        {
-          "schema_version": 1,
-          "function_bindings": {"develop": "ignored"},
-          "function_skill_bindings": {},
-          "function_practice_bindings": {},
-          "citation_binding": null,
-          "citation_style": null,
-          "bibliography_method_binding": "\(local.id)"
-        }
-        """
-        let legacyBytes = Data(legacy.utf8)
-        try legacyBytes.write(to: store.legacyFunctionBindingsURL)
-
-        let resolved = try await store.bibliographyMethodBindingResolution()
-        #expect(resolved.package?.id == local.id)
-        #expect(resolved.source == .triptychBinding)
-        let currentBytes = try Data(
-            contentsOf: store.bibliographyMethodBindingsURL
-        )
-        #expect(resolved.bindingRevision == DocumentFingerprint(data: currentBytes))
-        #expect(try Data(contentsOf: store.legacyFunctionBindingsURL) == legacyBytes)
-        #expect(!FileManager.default.fileExists(
-            atPath: store.citationMethodBindingsURL.path
-        ))
     }
 
     @Test("Retired Function-only references do not constrain package maintenance")
@@ -976,6 +939,22 @@ struct ResearchActionMethodTests {
         #expect(writing.loadedResources.allSatisfy {
             $0.revision == DocumentFingerprint(content: $0.source)
         })
+
+        let analyzeSelections = try await store.resolvedFunctionPackages(
+            for: .develop,
+            actionID: .analyze
+        )
+        let analyze = try #require(analyzeSelections.first {
+            $0.id == "scholium-working-analyze"
+        })
+        #expect(analyze.loadedResources.map(\.relativePath) == [
+            "SKILL.md",
+            "references/literature-recommendations.md",
+            "references/method.md",
+        ])
+        #expect(analyze.loadedResources.first {
+            $0.relativePath == "references/literature-recommendations.md"
+        }?.source.contains("Appearance in a reference list alone is not sufficient") == true)
 
         await #expect(throws: ResearchSkillBindingError.self) {
             _ = try await store.resolvedFunctionPackages(

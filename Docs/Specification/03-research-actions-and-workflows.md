@@ -118,13 +118,16 @@ need not create one. The record may contain researcher turns, attributed agent
 replies and feedback, participating note identities, Action and exact Skill
 revisions, starting and ending revisions, agent-reported actually used
 Materials, confirmed changes, discrepancies, and deliberately expressed
-researcher responses. It excludes assembled prompts, raw keys, bookmarks,
+researcher responses. An Analyze record may additionally contain source-grounded
+Literature Recommendations and their occurrence-local researcher dispositions.
+It excludes assembled prompts, raw keys, bookmarks,
 absolute paths, token counts, transport logs, routine save events, derived
 index freshness, window state, and stored diff hunks.
 
-Portable Research Records use schema version 3. Decoding rejects another
-schema version or unknown fields without projecting, authorizing, rewriting,
-or deleting the underlying file.
+Portable Research Records use schema version 4. Only schema 4 is decoded;
+another schema version, a missing required field, or an unknown field fails
+closed and cannot project or authorize research state. There is no pre-release
+record migration or compatibility decoder.
 
 Every current Action completion contains a complete Material-use report.
 `actuallyUsedMaterialNoteIDs: []` is the Agent's explicit report that no frozen
@@ -132,6 +135,17 @@ Material was actually used; omission is invalid, and Scholium never infers an
 empty report from selection or silence. Membership remains Agent testimony,
 while Scholium validates each reported identity, role, qualified reference,
 title, and exact starting revision.
+
+Analyze completion also requires an explicit `literatureRecommendations`
+array; `[]` is a successful report of no warranted reading leads. Every other
+Action must omit that field, and its presence is invalid. Each submitted item
+contains only a raw citation and source-grounded reason, with optional title,
+authors, year, DOI, Zotero item key, source locators, and uncertainty. The
+agent cannot submit an ID, status, grouping, score, match, target category, or
+other application state. After validating the run, Action, exact source, and
+completion, Application derives each stable occurrence ID from run ID plus
+ordinal and initializes it as **Unprocessed**. Duplicate completion follows the
+ordinary completion idempotency contract and creates no second record.
 
 Every portable Action record also preserves whether exact-revision Fidelity
 was `not_required`, `completed`, or `unverified`; a Discussion records only
@@ -145,25 +159,66 @@ credentials, temporary transport state, and rebuildable indexes remain in
 Application Support. Markdown remains authoritative research content; a record
 never reconstructs writable source.
 
-The independent **Research Record** utility window is Triptych-scoped and uses
-one list row per finished Discussion or completed Action, with a coherent
-detail rather than one row per turn. Opening from a note applies a removable
-**This Note** filter. Search and filters cover note, date, Skill, Action, and
-participant; Pin is explicit. Record titles derive quietly from Action,
-context, and date and are not editable.
+**Research Records** is one ordinary nonmodal, resizable auxiliary window per
+Triptych, keyed by Triptych identity rather than the focused Workspace. The
+same Triptych value activates its existing window; another Triptych receives
+an independent window. It defaults to **760 × 680pt**, has a **700 × 520pt**
+minimum content size, uses a native resizable list/detail split, and does not
+restore across launches. Closing it clears presentation state only.
+
+The document toolbar opens **This Note · Records** and explicitly reapplies the
+active Note context. **Research → Triptych · Records** opens the same window
+without Note context. Ordinary window focus changes never change its Scope or
+View. Its toolbar exposes two independent dimensions: **This Note | Triptych**
+Scope, with This Note absent when no Note context exists; and **Records |
+Recommendations (unprocessed count)** View. Records keeps search, date, Skill,
+Action, participant, Pin, comparison, and permanent deletion; it has no
+separate Note filter because Scope owns that dimension. One list row represents
+one finished Discussion or completed Action, with a coherent detail rather
+than one row per turn. Record titles derive quietly from Action, context, and
+date and are not editable.
 
 The detail uses attributed editorial prose, fine rules, restrained context,
 and collapsed **Record Details**, not chat bubbles. Line Comments retain only
 their revision-bound inclusive line range; no stored passage copy is required
 for a Comment or agent handoff. Multi-note context appears
 once. Active Discussion
-never moves into this window. The toolbar, Research menu, and keyboard route
-open the window without revealing or changing Inspector state.
+never moves into this window. The toolbar and Research menu open the window
+without revealing or changing Inspector state.
+
+Recommendations is a reconstructable projection over the recommendation arrays
+owned by Analyze Research Records. **This Note** includes only occurrences
+whose parent Record participates in that Note. Search composes with
+**Unprocessed | Handled | All**, defaulting to Unprocessed. Exact normalized
+DOI or Zotero item-key equality may group occurrences only when every other
+provided identifier is nonconflicting. Title similarity, citation keys, ISBN,
+and fuzzy author matching never merge them. A group owns no disposition:
+every parent-Record occurrence is handled independently, so no second store or
+multi-file transaction becomes authoritative.
+
+Recommendation detail shows bibliographic identity, source-grounded reason,
+uncertainty, discovery locators, the Analysis and exact source revision, parent
+Analyze Record, Method, and date. **Open Analysis** routes only within the same
+Triptych, opening a Workspace for that Triptych when none is available;
+**Open Parent Record** switches View and selects its authoritative Record.
+Each occurrence has a checkbox and optional researcher note. **Handled** means
+only that the researcher processed the reading lead; it never means read,
+accepted, cited, verified, or endorsed. Returning to Unprocessed preserves the
+note. Agent recommendation fields and researcher notes reject control
+characters and machine-local absolute-path syntax—including encoded and
+cross-platform forms—before any Local or portable commit; ordinary HTTPS
+bibliographic links remain valid. Disposition and note changes reread and replace only the selected item
+under the portable-record lock, atomically commit and read back, and use the
+same pre-commit refusal versus post-commit uncertainty boundary as Pin.
 
 Records are never summarized or deleted automatically. **Delete Record…**
 opens a second confirmation, then permanently removes the one underlying record
 and its projections from every participant without editing Markdown,
-checkpoints, exact-note recovery, or unrelated records. Scholium provides no Record Trash
+checkpoints, exact-note recovery, source binding, Local completion evidence,
+or unrelated records. A durable machine-local deletion tombstone prevents
+completion retry or crash repair from recreating that Record; such a stale
+retry fails explicitly. The tombstone contains no recommendation or provenance
+content and is not a second Record authority. Scholium provides no Record Trash
 or Restore workflow for portable records. A diff is computed
 only on request from exact retained revisions or checkpoints. If those bytes
 cannot be verified, the interface states **Comparison Unavailable**; diff text

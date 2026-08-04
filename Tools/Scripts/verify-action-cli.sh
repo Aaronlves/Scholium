@@ -24,10 +24,29 @@ if [[ ! -x "${BINARY}" ]]; then
   exit 1
 fi
 
-SCHOLIUM_ACTION_CLI_BINARY="${BINARY}" \
+VERIFIER_DIRECTORY="$(mktemp -d "${SCRATCH}/signed-action-cli.XXXXXX")"
+trap 'rm -rf "${VERIFIER_DIRECTORY}"' EXIT
+VERIFIER_BINARY="${VERIFIER_DIRECTORY}/scholium"
+BOOKMARK_HELPER="${VERIFIER_DIRECTORY}/bookmark-binder"
+CORE_RESOURCES="${BINARY:h}/Scholium_ScholiumCore.bundle"
+if [[ ! -d "${CORE_RESOURCES}" ]]; then
+  print -u2 "Action CLI verifier cannot find ${CORE_RESOURCES}."
+  exit 1
+fi
+cp "${BINARY}" "${VERIFIER_BINARY}"
+ditto "${CORE_RESOURCES}" "${VERIFIER_DIRECTORY}/Scholium_ScholiumCore.bundle"
+xcrun swiftc \
+  "${ROOT}/Tools/Fixtures/ScholiumActionCLIBookmarkBinder.swift" \
+  -o "${BOOKMARK_HELPER}"
+VERIFIER_IDENTITY="com.scholium.action-cli-verifier"
+codesign --force --sign - --identifier "${VERIFIER_IDENTITY}" "${BOOKMARK_HELPER}"
+codesign --force --sign - --identifier "${VERIFIER_IDENTITY}" "${VERIFIER_BINARY}"
+
+SCHOLIUM_ACTION_CLI_BINARY="${VERIFIER_BINARY}" \
+SCHOLIUM_ACTION_CLI_BOOKMARK_HELPER="${BOOKMARK_HELPER}" \
 swift test \
   --package-path "${ROOT}" \
   --scratch-path "${SCRATCH}" \
   --filter ActionCLIExecutableLifecycleTests
 
-print "Research CLI: Action and Recommended Bibliography executable lifecycles verified"
+print "Research CLI: Research Action executable lifecycles verified"

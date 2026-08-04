@@ -2,11 +2,6 @@ import Darwin
 import Foundation
 import ScholiumContracts
 
-public enum PortableResearchRecordLocation: String, CaseIterable, Sendable {
-    case records
-    case trash
-}
-
 public struct PortableResearchRecordStoreIssue: Hashable, Identifiable, Sendable {
     public let location: String
     public let fileName: String
@@ -68,7 +63,9 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
     case lifecycleCommitUncertain(String)
     case recordAlreadyExists(UUID)
     case recordNotFound(UUID)
+    case recordPermanentlyDeleted(UUID)
     case recordIdentityMismatch(UUID)
+    case recommendationNotFound(UUID)
     case recordTooLarge(Int)
     case coordinationFailed(String)
     case discussionAlreadyExists(UUID)
@@ -97,8 +94,12 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
             "Research Record \(id.uuidString) already exists."
         case .recordNotFound(let id):
             "Research Record \(id.uuidString) was not found."
+        case .recordPermanentlyDeleted(let id):
+            "Research Record \(id.uuidString) was permanently deleted."
         case .recordIdentityMismatch(let id):
             "Research Record \(id.uuidString) does not match its file identity."
+        case .recommendationNotFound(let id):
+            "Literature recommendation \(id.uuidString) was not found in its Research Record."
         case .recordTooLarge(let count):
             "The Research Record exceeds the \(count)-byte storage boundary."
         case .coordinationFailed(let reason):
@@ -133,11 +134,13 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
 /// Every actual file open remains descriptor-relative and no-follow.
 public actor PortableResearchRecordStore {
     private static let maximumRecordByteCount = 8 * 1024 * 1024
+    private static let recordsDirectory = "records"
 
     public nonisolated let storageURL: URL
     private let triptychID: UUID
     private var storage: SecureRecordDirectory
     private let deletionMarkers: SecureRecordDirectory
+    private var recordDeletionMarkers: SecureRecordDirectory
     private let lock: AdvisoryFileLock
 
     public init(
@@ -177,16 +180,28 @@ public actor PortableResearchRecordStore {
             maximumByteCount: 256
         )
         try deletionMarkers.ensureDirectories([])
-        try deletionMarkers.removeAbandonedStagingFiles(in: [nil])
+        let initialRecordDeletionMarkers = SecureRecordDirectory(
+            trustedRootURL: applicationSupportURL,
+            components: [
+                "Triptychs",
+                triptychID.uuidString,
+                "portable-record-deletion-tombstones-v1",
+            ],
+            directoryMode: 0o700,
+            fileMode: 0o600,
+            maximumByteCount: 256
+        )
+        recordDeletionMarkers = initialRecordDeletionMarkers
+        try initialRecordDeletionMarkers.ensureDirectories([])
         lock = try AdvisoryFileLock(
             directory: coordinationDirectory,
             fileName: "portable-records-v1.lock"
         )
         try lock.withExclusiveLock {
+            try deletionMarkers.removeAbandonedStagingFiles(in: [nil])
+            try initialRecordDeletionMarkers.removeAbandonedStagingFiles(in: [nil])
             try Self.coordinateWrite(at: controlURL) {
-                let directories = ["active"]
-                    + PortableResearchRecordLocation.allCases.map(\.rawValue)
-                    + ["settlements"]
+                let directories = ["active", Self.recordsDirectory, "settlements"]
                 try initialStorage.ensureDirectories(directories)
                 try initialStorage.removeAbandonedStagingFiles(
                     in: directories.map(Optional.some)
@@ -231,6 +246,20 @@ public actor PortableResearchRecordStore {
             postCommitFault: fault
         )
     }
+
+    package func setRecordDeletionMarkerPostCommitFaultForTesting(
+        _ fault: (@Sendable (String) throws -> Void)?
+    ) {
+        recordDeletionMarkers = SecureRecordDirectory(
+            trustedRootURL: recordDeletionMarkers.trustedRootURL,
+            components: recordDeletionMarkers.components,
+            directoryMode: recordDeletionMarkers.directoryMode,
+            fileMode: recordDeletionMarkers.fileMode,
+            maximumByteCount: recordDeletionMarkers.maximumByteCount,
+            preCommitFault: recordDeletionMarkers.preCommitFault,
+            postCommitFault: fault
+        )
+    }
     #endif
 
     @discardableResult
@@ -240,18 +269,14 @@ public actor PortableResearchRecordStore {
         guard record.triptychID == triptychID else {
             throw ResearchRecordStoreV1Error.recordIdentityMismatch(record.id)
         }
-        let (canonicalRecord, data) = try Self.canonicalized(record)
-        guard data.count <= Self.maximumRecordByteCount else {
-            throw ResearchRecordStoreV1Error.recordTooLarge(
-                Self.maximumRecordByteCount
-            )
-        }
+        let (canonicalRecord, data) = try Self.validatedStorageEncoding(of: record)
         return try lock.withExclusiveLock {
             try Self.coordinateWrite(at: storageURL) {
+                try requireRecordNotPermanentlyDeleted(id: record.id)
                 do {
                     let readback = try storage.createExclusive(
                         data,
-                        directory: PortableResearchRecordLocation.records.rawValue,
+                        directory: Self.recordsDirectory,
                         fileName: Self.fileName(record.id)
                     )
                     let stored = try Self.decode(
@@ -264,10 +289,7 @@ public actor PortableResearchRecordStore {
                     return stored
                 } catch let error as SecureRecordDirectoryError {
                     if case .alreadyExists = error {
-                        let existing = try readRecord(
-                            id: record.id,
-                            location: .records
-                        )
+                        let existing = try readRecord(id: record.id)
                         if existing == canonicalRecord { return existing }
                         throw ResearchRecordStoreV1Error.recordAlreadyExists(record.id)
                     }
@@ -277,13 +299,10 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    public func record(
-        id: UUID,
-        location: PortableResearchRecordLocation = .records
-    ) throws -> PortableResearchRecord {
+    public func record(id: UUID) throws -> PortableResearchRecord {
         try lock.withSharedLock {
             try Self.coordinateRead(at: storageURL) {
-                try readRecord(id: id, location: location)
+                try readRecord(id: id)
             }
         }
     }
@@ -299,7 +318,7 @@ public actor PortableResearchRecordStore {
                 let record: PortableResearchRecord
                 do {
                     exactData = try storage.read(
-                        directory: PortableResearchRecordLocation.records.rawValue,
+                        directory: Self.recordsDirectory,
                         fileName: Self.fileName(id)
                     )
                     record = try Self.decode(PortableResearchRecord.self, from: exactData)
@@ -312,9 +331,10 @@ public actor PortableResearchRecordStore {
                     }
                     throw Self.map(error)
                 }
+                try establishRecordDeletionMarker(id: id)
                 do {
                     try storage.remove(
-                        directory: PortableResearchRecordLocation.records.rawValue,
+                        directory: Self.recordsDirectory,
                         fileName: Self.fileName(id),
                         expected: exactData
                     )
@@ -324,17 +344,17 @@ public actor PortableResearchRecordStore {
                     case .replacementCommitUncertain:
                         do {
                             let source = try storage.readIfPresent(
-                                directory: PortableResearchRecordLocation.records.rawValue,
+                                directory: Self.recordsDirectory,
                                 fileName: Self.fileName(id)
                             )
                             let isolated = try storage.readIfPresent(
-                                directory: PortableResearchRecordLocation.records.rawValue,
+                                directory: Self.recordsDirectory,
                                 fileName: ".scholium-deleting-\(Self.fileName(id))"
                             )
                             if source == nil, isolated == nil {
                                 try storage.synchronize(
                                     directories: [
-                                        PortableResearchRecordLocation.records.rawValue,
+                                        Self.recordsDirectory,
                                     ]
                                 )
                                 return record
@@ -363,41 +383,35 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    public func listing(
-        location: PortableResearchRecordLocation? = nil
-    ) throws -> PortableResearchRecordListing {
+    public func listing() throws -> PortableResearchRecordListing {
         try lock.withSharedLock {
             try Self.coordinateRead(at: storageURL) {
-                let locations = location.map { [$0] }
-                    ?? PortableResearchRecordLocation.allCases
                 var records: [PortableResearchRecord] = []
                 var issues: [PortableResearchRecordStoreIssue] = []
-                for location in locations {
-                    let files = try storage.fileNames(in: location.rawValue)
-                    for fileName in files where fileName.hasSuffix(".json") {
-                        do {
-                            let data = try storage.read(
-                                directory: location.rawValue,
-                                fileName: fileName
+                let files = try storage.fileNames(in: Self.recordsDirectory)
+                for fileName in files where fileName.hasSuffix(".json") {
+                    do {
+                        let data = try storage.read(
+                            directory: Self.recordsDirectory,
+                            fileName: fileName
+                        )
+                        let record = try Self.decode(
+                            PortableResearchRecord.self,
+                            from: data
+                        )
+                        guard fileName == Self.fileName(record.id),
+                              record.triptychID == triptychID else {
+                            throw ResearchRecordStoreV1Error.recordIdentityMismatch(
+                                record.id
                             )
-                            let record = try Self.decode(
-                                PortableResearchRecord.self,
-                                from: data
-                            )
-                            guard fileName == Self.fileName(record.id),
-                                  record.triptychID == triptychID else {
-                                throw ResearchRecordStoreV1Error.recordIdentityMismatch(
-                                    record.id
-                                )
-                            }
-                            records.append(record)
-                        } catch {
-                            issues.append(PortableResearchRecordStoreIssue(
-                                location: location.rawValue,
-                                fileName: fileName,
-                                reason: error.localizedDescription
-                            ))
                         }
+                        records.append(record)
+                    } catch {
+                        issues.append(PortableResearchRecordStoreIssue(
+                            location: Self.recordsDirectory,
+                            fileName: fileName,
+                            reason: error.localizedDescription
+                        ))
                     }
                 }
                 return PortableResearchRecordListing(
@@ -421,21 +435,92 @@ public actor PortableResearchRecordStore {
         _ isPinned: Bool,
         for id: UUID
     ) throws -> PortableResearchRecord {
+        try replaceFinishedRecord(id: id) { current in
+            guard current.isPinned != isPinned else { return current }
+            return try Self.replacingPin(in: current, isPinned: isPinned)
+        }
+    }
+
+    /// Replaces only one occurrence's researcher-owned handled state. The
+    /// current record is reread under the same cross-process lock used by Pin,
+    /// so concurrent Pin, disposition, tombstone, and other record content are
+    /// preserved by the single atomic replacement.
+    @discardableResult
+    public func setRecommendationDisposition(
+        _ status: ResearchLiteratureRecommendationDispositionStatus,
+        recommendationID: UUID,
+        recordID: UUID,
+        updatedAt: Date = Date()
+    ) throws -> PortableResearchRecord {
+        try replaceFinishedRecord(id: recordID) { current in
+            guard let index = current.literatureRecommendations.firstIndex(where: {
+                $0.id == recommendationID
+            }) else {
+                throw ResearchRecordStoreV1Error.recommendationNotFound(recommendationID)
+            }
+            let existing = current.literatureRecommendations[index]
+            guard existing.disposition.status != status else { return current }
+            let disposition = try PortableResearchRecommendationDisposition(
+                status: status,
+                updatedAt: updatedAt,
+                researcherNote: existing.disposition.researcherNote
+            )
+            var recommendations = current.literatureRecommendations
+            recommendations[index] = try existing.replacingDisposition(disposition)
+            return try Self.replacingRecommendations(
+                in: current,
+                recommendations: recommendations
+            )
+        }
+    }
+
+    /// Replaces only one occurrence's optional researcher note and preserves
+    /// its handled state. Passing nil or whitespace clears the note.
+    @discardableResult
+    public func setRecommendationNote(
+        _ note: String?,
+        recommendationID: UUID,
+        recordID: UUID,
+        updatedAt: Date = Date()
+    ) throws -> PortableResearchRecord {
+        try replaceFinishedRecord(id: recordID) { current in
+            guard let index = current.literatureRecommendations.firstIndex(where: {
+                $0.id == recommendationID
+            }) else {
+                throw ResearchRecordStoreV1Error.recommendationNotFound(recommendationID)
+            }
+            let existing = current.literatureRecommendations[index]
+            let disposition = try PortableResearchRecommendationDisposition(
+                status: existing.disposition.status,
+                updatedAt: updatedAt,
+                researcherNote: note
+            )
+            guard disposition.researcherNote != existing.disposition.researcherNote else {
+                return current
+            }
+            var recommendations = current.literatureRecommendations
+            recommendations[index] = try existing.replacingDisposition(disposition)
+            return try Self.replacingRecommendations(
+                in: current,
+                recommendations: recommendations
+            )
+        }
+    }
+
+    private func replaceFinishedRecord(
+        id: UUID,
+        transform: (PortableResearchRecord) throws -> PortableResearchRecord
+    ) throws -> PortableResearchRecord {
         try lock.withExclusiveLock {
             try Self.coordinateWrite(at: storageURL) {
-                let current = try readRecord(id: id, location: .records)
-                guard current.isPinned != isPinned else { return current }
-                let updated = try Self.replacingPin(in: current, isPinned: isPinned)
-                let (canonical, data) = try Self.canonicalized(updated)
-                guard data.count <= Self.maximumRecordByteCount else {
-                    throw ResearchRecordStoreV1Error.recordTooLarge(
-                        Self.maximumRecordByteCount
-                    )
-                }
+                let current = try readRecord(id: id)
+                let updated = try transform(current)
+                guard updated != current else { return current }
+                let (canonical, data) = try Self.validatedStorageEncoding(of: updated)
                 do {
                     let readback = try storage.replace(
                         data,
-                        directory: PortableResearchRecordLocation.records.rawValue,
+                        directory: Self.recordsDirectory,
                         fileName: Self.fileName(id)
                     )
                     let stored = try Self.decode(
@@ -757,7 +842,7 @@ public actor PortableResearchRecordStore {
                 do {
                     discussion = try readDiscussion(id: id)
                 } catch ResearchRecordStoreV1Error.discussionNotFound(_) {
-                    let existing = try readRecord(id: id, location: .records)
+                    let existing = try readRecord(id: id)
                     guard existing.kind == .discussion else {
                         throw ResearchRecordStoreV1Error.discussionFinishConflict(id)
                     }
@@ -770,11 +855,11 @@ public actor PortableResearchRecordStore {
                     participatingNotes: participatingNotes,
                     finishedAt: finishedAt
                 )
-                let (canonical, data) = try Self.canonicalized(record)
+                let (canonical, data) = try Self.validatedStorageEncoding(of: record)
                 do {
                     let readback = try storage.createExclusive(
                         data,
-                        directory: PortableResearchRecordLocation.records.rawValue,
+                        directory: Self.recordsDirectory,
                         fileName: Self.fileName(id)
                     )
                     let stored = try Self.decode(PortableResearchRecord.self, from: readback)
@@ -783,7 +868,7 @@ public actor PortableResearchRecordStore {
                     }
                 } catch let error as SecureRecordDirectoryError {
                     if case .alreadyExists = error {
-                        let existing = try readRecord(id: id, location: .records)
+                        let existing = try readRecord(id: id)
                         guard Self.isFinished(existing, from: discussion) else {
                             throw ResearchRecordStoreV1Error.discussionFinishConflict(id)
                         }
@@ -795,7 +880,7 @@ public actor PortableResearchRecordStore {
                     directory: "active",
                     fileName: Self.fileName(id)
                 )
-                return try readRecord(id: id, location: .records)
+                return try readRecord(id: id)
             }
         }
     }
@@ -821,10 +906,12 @@ public actor PortableResearchRecordStore {
                         fileName: Self.fileName(discussion.id)
                     )
                 }
-                for location in PortableResearchRecordLocation.allCases {
-                    for fileName in try storage.fileNames(in: location.rawValue)
-                        where fileName.hasSuffix(".json") {
-                        let data = try storage.read(directory: location.rawValue, fileName: fileName)
+                for fileName in try storage.fileNames(in: Self.recordsDirectory)
+                    where fileName.hasSuffix(".json") {
+                        let data = try storage.read(
+                            directory: Self.recordsDirectory,
+                            fileName: fileName
+                        )
                         let record = try Self.decode(PortableResearchRecord.self, from: data)
                         guard record.triptychID == triptychID,
                               fileName == Self.fileName(record.id) else {
@@ -852,10 +939,9 @@ public actor PortableResearchRecordStore {
                         let (_, encoded) = try Self.canonicalized(updated)
                         _ = try storage.replace(
                             encoded,
-                            directory: location.rawValue,
+                            directory: Self.recordsDirectory,
                             fileName: fileName
                         )
-                    }
                 }
             }
         }
@@ -1198,9 +1284,80 @@ public actor PortableResearchRecordStore {
         }
     }
 
+    /// A machine-local completion may outlive its portable projection so an
+    /// interrupted create can be repaired. Permanent deletion is different:
+    /// this tombstone records researcher intent under the same cross-process
+    /// lock as create/delete and prevents a later completion retry from
+    /// recreating the selected Record.
+    private func requireRecordNotPermanentlyDeleted(id: UUID) throws {
+        let expected = Self.recordDeletionMarkerData(id)
+        do {
+            let observed = try recordDeletionMarkers.read(
+                directory: nil,
+                fileName: Self.fileName(id)
+            )
+            guard observed == expected else {
+                throw ResearchRecordStoreV1Error.unsafeStore(
+                    "A permanent Record-deletion tombstone does not match its identity."
+                )
+            }
+            throw ResearchRecordStoreV1Error.recordPermanentlyDeleted(id)
+        } catch let error as SecureRecordDirectoryError {
+            if case .notFound = error { return }
+            throw Self.map(error)
+        }
+    }
+
+    private func establishRecordDeletionMarker(id: UUID) throws {
+        let data = Self.recordDeletionMarkerData(id)
+        do {
+            _ = try recordDeletionMarkers.createExclusive(
+                data,
+                directory: nil,
+                fileName: Self.fileName(id)
+            )
+        } catch let error as SecureRecordDirectoryError {
+            if case .alreadyExists = error {
+                let existing = try recordDeletionMarkers.read(
+                    directory: nil,
+                    fileName: Self.fileName(id)
+                )
+                guard existing == data else {
+                    throw ResearchRecordStoreV1Error.unsafeStore(
+                        "A permanent Record-deletion tombstone does not match its identity."
+                    )
+                }
+                do {
+                    try recordDeletionMarkers.synchronize(directory: nil)
+                } catch {
+                    throw ResearchRecordStoreV1Error.lifecycleCommitUncertain(
+                        "The permanent Record-deletion tombstone is present but its durability could not be confirmed: \(error.localizedDescription)"
+                    )
+                }
+                return
+            }
+            if case .replacementCommitUncertain = error,
+               (try? recordDeletionMarkers.read(
+                   directory: nil,
+                   fileName: Self.fileName(id)
+               )) == data {
+                throw ResearchRecordStoreV1Error.lifecycleCommitUncertain(
+                    "The permanent Record-deletion tombstone may have committed; the Research Record was retained."
+                )
+            }
+            throw Self.map(error)
+        }
+    }
+
     private static func deletionMarkerData(_ noteID: UUID) -> Data {
         Data(
             "{\"note_id\":\"\(noteID.uuidString.lowercased())\",\"schema_version\":1}\n".utf8
+        )
+    }
+
+    private static func recordDeletionMarkerData(_ recordID: UUID) -> Data {
+        Data(
+            "{\"record_id\":\"\(recordID.uuidString.lowercased())\",\"schema_version\":1}\n".utf8
         )
     }
 
@@ -1256,6 +1413,7 @@ public actor PortableResearchRecordStore {
               record.actuallyUsedMaterials.isEmpty,
               record.confirmedChanges.isEmpty,
               record.discrepancies.isEmpty,
+              record.literatureRecommendations.isEmpty,
               record.startedAt == discussion.createdAt,
               record.finishedAt >= discussion.updatedAt else { return false }
         let activeByID = Dictionary(
@@ -1294,6 +1452,7 @@ public actor PortableResearchRecordStore {
             fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
             discrepancies: record.discrepancies,
+            literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             isPinned: record.isPinned
@@ -1319,19 +1478,43 @@ public actor PortableResearchRecordStore {
             fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
             discrepancies: record.discrepancies,
+            literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             isPinned: isPinned
         )
     }
 
-    private func readRecord(
-        id: UUID,
-        location: PortableResearchRecordLocation
+    private static func replacingRecommendations(
+        in record: PortableResearchRecord,
+        recommendations: [ResearchLiteratureRecommendation]
     ) throws -> PortableResearchRecord {
+        try PortableResearchRecord(
+            id: record.id,
+            triptychID: record.triptychID,
+            kind: record.kind,
+            action: record.action,
+            method: record.method,
+            sourceReference: record.sourceReference,
+            continuationLineage: record.continuationLineage,
+            primaryNoteID: record.primaryNoteID,
+            participatingNotes: record.participatingNotes,
+            statements: record.statements,
+            actuallyUsedMaterials: record.actuallyUsedMaterials,
+            fidelityCompletion: record.fidelityCompletion,
+            confirmedChanges: record.confirmedChanges,
+            discrepancies: record.discrepancies,
+            literatureRecommendations: recommendations,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            isPinned: record.isPinned
+        )
+    }
+
+    private func readRecord(id: UUID) throws -> PortableResearchRecord {
         do {
             let data = try storage.read(
-                directory: location.rawValue,
+                directory: Self.recordsDirectory,
                 fileName: Self.fileName(id)
             )
             let record = try Self.decode(
@@ -1375,6 +1558,25 @@ public actor PortableResearchRecordStore {
         let first = try makeEncoder().encode(value)
         let canonical = try makeDecoder().decode(T.self, from: first)
         return (canonical, try makeEncoder().encode(canonical))
+    }
+
+    /// Validates the exact canonical portable bytes before any machine-local
+    /// completion becomes authoritative. This shares the store's encoder and
+    /// byte ceiling so an accepted Action can always materialize its Record.
+    public nonisolated static func validateStorageEncoding(
+        of record: PortableResearchRecord
+    ) throws {
+        _ = try validatedStorageEncoding(of: record)
+    }
+
+    private nonisolated static func validatedStorageEncoding(
+        of record: PortableResearchRecord
+    ) throws -> (PortableResearchRecord, Data) {
+        let encoded = try canonicalized(record)
+        guard encoded.1.count <= maximumRecordByteCount else {
+            throw ResearchRecordStoreV1Error.recordTooLarge(maximumRecordByteCount)
+        }
+        return encoded
     }
 
     private static func map(_ error: SecureRecordDirectoryError) -> Error {
@@ -1619,6 +1821,24 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 && $0.parentRunID == snapshot.runID
                 && $0.actionRevision == coordinationRevision
         } ?? true
+        let completionRecommendationShapeMatches: Bool
+        if let completion {
+            if snapshot.actionSnapshot?.actionID == .analyze {
+                switch completion.state {
+                case .awaitingFidelity, .complete, .unverified, .stale:
+                    completionRecommendationShapeMatches = completion
+                        .literatureRecommendations.map { $0.count <= 256 } ?? false
+                case .prepared, .cancelled:
+                    completionRecommendationShapeMatches = completion
+                        .literatureRecommendations == nil
+                }
+            } else {
+                completionRecommendationShapeMatches = completion
+                    .literatureRecommendations == nil
+            }
+        } else {
+            completionRecommendationShapeMatches = true
+        }
         let continuationMatches: Bool
         switch snapshot.continuationLineage?.kind {
         case nil:
@@ -1662,6 +1882,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 || agentCoordinationGrant != nil,
               completion?.runID == snapshot.runID || completion == nil,
               completion?.function == snapshot.request.function || completion == nil,
+              completionRecommendationShapeMatches,
               grant?.state != .completed || completion != nil,
               grant?.state != .completed || grant?.completionReport != nil,
               grant?.state != .completed || grant?.completionPayloadDigest != nil else {
@@ -1811,13 +2032,13 @@ public actor LocalResearchExecutionStore {
         storageURL = applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
         storage = SecureRecordDirectory(
             trustedRootURL: applicationSupportURL,
             components: [
                 "Triptychs",
                 triptychID.uuidString,
-                "research-execution-v2",
+                "research-execution-v3",
             ],
             directoryMode: 0o700,
             fileMode: 0o600,
@@ -1826,7 +2047,7 @@ public actor LocalResearchExecutionStore {
         try storage.ensureDirectories(["critique-handoffs"])
         lock = try AdvisoryFileLock(
             directory: storage,
-            fileName: "execution-v2.lock"
+            fileName: "execution-v3.lock"
         )
         try lock.withExclusiveLock {
             try storage.removeAbandonedStagingFiles(in: [nil, "critique-handoffs"])
@@ -2366,7 +2587,7 @@ public actor LocalResearchExecutionStore {
                 records.append(record)
             } catch {
                 issues.append(PortableResearchRecordStoreIssue(
-                    location: "research-execution-v2",
+                    location: "research-execution-v3",
                     fileName: fileName,
                     reason: error.localizedDescription
                 ))
@@ -2433,6 +2654,10 @@ public actor LocalResearchExecutionStore {
               existing.summary == replacement.summary,
               existing.didModifyTarget == replacement.didModifyTarget,
               existing.outputFingerprint == replacement.outputFingerprint,
+              existing.actuallyUsedMaterialNoteIDs
+                == replacement.actuallyUsedMaterialNoteIDs,
+              existing.literatureRecommendations
+                == replacement.literatureRecommendations,
               existing.completedAt == replacement.completedAt,
               existing.fidelityEvidenceKey == nil
                   || existing.fidelityEvidenceKey == replacement.fidelityEvidenceKey,
@@ -2800,6 +3025,17 @@ struct SecureRecordDirectory: Sendable {
             guard fsync(descriptor) == 0 else {
                 throw unsafe("flush \(directory) record directory")
             }
+        }
+    }
+
+    func synchronize(directory: String?) throws {
+        let descriptor = try openTargetDirectory(
+            directory,
+            createIfMissing: false
+        )
+        defer { Darwin.close(descriptor) }
+        guard fsync(descriptor) == 0 else {
+            throw unsafe("flush record directory")
         }
     }
 

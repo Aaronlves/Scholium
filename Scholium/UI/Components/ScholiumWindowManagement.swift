@@ -341,7 +341,8 @@ final class ScholiumWindowLifecycleRegistry {
 struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
-    let showResearchRecord: @MainActor () -> Void
+    let showNoteResearchRecords: @MainActor () -> Void
+    let showTriptychResearchRecords: @MainActor () -> Void
     let showAttention: @MainActor (
         AttentionPopoverAnchor,
         VaultQualifiedNoteID?
@@ -368,6 +369,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private let appState: WindowModel
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator?
     private weak var window: NSWindow?
     private weak var splitController: (any ScholiumWorkspaceSplitControlling)?
     // `NSWindow.delegate` is not an ownership boundary. Keep SwiftUI's
@@ -383,7 +385,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var isRegistered = false
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
-    private var researchRecordPresenter: @MainActor () -> Void = {}
+    private var noteResearchRecordsPresenter: @MainActor () -> Void = {}
+    private var triptychResearchRecordsPresenter: @MainActor () -> Void = {}
+    private var researchRecordsWorkspaceToken: UUID?
+    private var researchRecordsTriptychID: UUID?
     private var attentionPresenter:
         @MainActor (
             AttentionPopoverAnchor,
@@ -399,11 +404,13 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     init(
         windowID: UUID,
         appState: WindowModel,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
+        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator? = nil
     ) {
         self.windowID = windowID
         self.appState = appState
         self.lifecycleRegistry = lifecycleRegistry
+        self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
         let loadingToolbar = NSToolbar(
             identifier: NSToolbar.Identifier("scholium.workspaceToolbar.loading")
         )
@@ -433,8 +440,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             setResearchInspectorVisible: { [weak self] visible in
                 self?.setResearchInspectorVisible(visible)
             },
-            showResearchRecord: { [weak self] in
-                self?.researchRecordPresenter()
+            showNoteResearchRecords: { [weak self] in
+                self?.noteResearchRecordsPresenter()
+            },
+            showTriptychResearchRecords: { [weak self] in
+                self?.triptychResearchRecordsPresenter()
             },
             showAttention: { [weak self] anchor, noteScope in
                 self?.attentionPresenter(anchor, nil, noteScope)
@@ -453,7 +463,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func activate(
-        showResearchRecord: @escaping @MainActor () -> Void,
+        showNoteResearchRecords: @escaping @MainActor () -> Void,
+        showTriptychResearchRecords: @escaping @MainActor () -> Void,
         showAttention: @escaping @MainActor (
             AttentionPopoverAnchor,
             WorkspaceVaultSlot?,
@@ -461,8 +472,32 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         ) -> Void
     ) {
         registerLifecycle()
-        researchRecordPresenter = showResearchRecord
+        noteResearchRecordsPresenter = showNoteResearchRecords
+        triptychResearchRecordsPresenter = showTriptychResearchRecords
         attentionPresenter = showAttention
+    }
+
+    func updateResearchRecordsRouting(triptychID: UUID?) {
+        if researchRecordsTriptychID == triptychID,
+           researchRecordsWorkspaceToken != nil || triptychID == nil {
+            return
+        }
+        unregisterResearchRecordsWorkspace()
+        guard let triptychID, let researchRecordsWindowCoordinator else { return }
+        researchRecordsTriptychID = triptychID
+        researchRecordsWorkspaceToken = researchRecordsWindowCoordinator.registerWorkspace(
+            triptychID: triptychID,
+            windowID: windowID
+        ) { [weak self] noteID, note, sourceLine in
+            guard let self else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            self.window?.makeKeyAndOrderFront(nil)
+            self.appState.requestOpenNote(
+                note,
+                stableNoteID: noteID,
+                sourceLine: sourceLine
+            )
+        }
     }
 
     func attach(to window: NSWindow) {
@@ -524,8 +559,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         removeToolbar()
         splitController = nil
         unregisterAgentNoteChangeWindow()
+        unregisterResearchRecordsWorkspace()
         detachWindow()
-        researchRecordPresenter = {}
+        noteResearchRecordsPresenter = {}
+        triptychResearchRecordsPresenter = {}
         attentionPresenter = { _, _, _ in }
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
@@ -580,6 +617,22 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         agentRequestPriorResponder = nil
     }
 
+    private func unregisterResearchRecordsWorkspace() {
+        guard let researchRecordsTriptychID,
+              let researchRecordsWorkspaceToken,
+              let researchRecordsWindowCoordinator else {
+            self.researchRecordsTriptychID = nil
+            self.researchRecordsWorkspaceToken = nil
+            return
+        }
+        researchRecordsWindowCoordinator.unregisterWorkspace(
+            triptychID: researchRecordsTriptychID,
+            token: researchRecordsWorkspaceToken
+        )
+        self.researchRecordsTriptychID = nil
+        self.researchRecordsWorkspaceToken = nil
+    }
+
     private func focusAgentNoteChangeSheet() {
         guard let window else { return }
         NSApp.activate(ignoringOtherApps: true)
@@ -598,6 +651,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             appState.attentionPopoverSession.resetForWorkspaceSwitch()
         }
         appState.agentNoteChangeWindowController.noteWindowActivated()
+        if let researchRecordsTriptychID, let researchRecordsWorkspaceToken {
+            researchRecordsWindowCoordinator?.workspaceDidActivate(
+                triptychID: researchRecordsTriptychID,
+                token: researchRecordsWorkspaceToken
+            )
+        }
         previousDelegate?.windowDidBecomeKey?(notification)
     }
 
@@ -606,6 +665,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         // model so an unresolved request can move to another exact window.
         appState.finalizeWindowClose()
         unregisterAgentNoteChangeWindow()
+        unregisterResearchRecordsWorkspace()
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
             isRegistered = false
@@ -849,6 +909,29 @@ struct WorkspaceWindowAttachment: NSViewRepresentable {
         _ nsView: WindowAttachmentView,
         coordinator: Void
     ) {}
+}
+
+struct ResearchRecordsWindowAttachment: NSViewRepresentable {
+    let triptychID: UUID
+
+    func makeNSView(context: Context) -> WindowAttachmentView {
+        let view = WindowAttachmentView()
+        view.onWindowAttachment = configure
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
+        if let window = nsView.window { configure(window) }
+    }
+
+    private func configure(_ window: NSWindow) {
+        window.identifier = NSUserInterfaceItemIdentifier(
+            "scholium-research-records-\(triptychID.uuidString.lowercased())"
+        )
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.tabbingMode = .disallowed
+    }
 }
 
 final class WindowAttachmentView: NSView {

@@ -55,8 +55,9 @@ Markdown editing, Search and Connections, note/folder lifecycle, external-edit
 conflicts, checkpoints and per-Note recovery, Settle, unified Discussion,
 Critique, Research Actions, editable Working Methods, Researcher Skills,
 standing permissions, agent Note-change requests with independently bounded
-child phases, portable Research Records, Recommended Bibliography, local
-read-only Zotero context, and an optional first-party Zotero MCP transport.
+child phases, schema-4 portable Research Records with Analyze Literature
+Recommendations, local read-only Zotero context, and an optional first-party
+Zotero MCP transport.
 
 Library, Set Aside, and Trash share one native AppKit folder-and-note outline
 and the same browsing grammar. Library creates notes and folders and retains
@@ -72,7 +73,7 @@ research identity while every mutation still revalidates the current source
 revision and destination before commit.
 
 The public app, CLI, delivery contracts, and records use Action identity.
-Protected Local Execution v2 remains an internal containment, revision,
+Protected Local Execution v3 remains an internal containment, revision,
 completion, conflict, and recovery mechanism. Unsupported pre-production data
 is left byte-unchanged, invisible, unparsed, and nonauthorizing; there is no
 legacy-data product entry or compatibility command.
@@ -215,8 +216,8 @@ scholium action prepare --help
 
 The CLI shares Application capabilities for registered Triptychs, Search,
 links and graph traces, workspace catalog and Attention, exact reads,
-Discussion replies, resumable Actions, Recommended Bibliography, and
-revision-checked Note operations. Existing-note mutations require the current
+Discussion replies, resumable Actions with structured Analyze recommendations,
+and revision-checked Note operations. Existing-note mutations require the current
 SHA-256 returned by `scholium read --format json`.
 
 `scholium agent mcp serve` exposes cooperative mid-run Note-change requests to

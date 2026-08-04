@@ -606,9 +606,7 @@ public actor NotePermanentDeletionCoordinator {
         }
         guard let portableRecordStore else { return }
         var issues = try await portableRecordStore.activeDiscussions().issues
-        for location in PortableResearchRecordLocation.allCases {
-            issues += try await portableRecordStore.listing(location: location).issues
-        }
+        issues += try await portableRecordStore.listing().issues
         issues += try await portableRecordStore.settlementListing().issues
         guard issues.isEmpty else {
             let reason = issues.map { "\($0.id): \($0.reason)" }.joined(separator: "; ")

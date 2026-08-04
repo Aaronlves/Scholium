@@ -46,13 +46,11 @@ sibling items:
    with no Attention statistics; one conditional current-Scope Attention alert;
    one title-style LocationPicker for **Library**, **Set
    Aside**, and **Trash**; one active location-owned source region; and
-   Library-local Filter and Add. A fixed Triptych-wide Recommended
-   Bibliography utility is its sibling below the Library source region.
-   Settings is not a Library destination.
+   Library-local Filter and Add. Settings is not a Library destination.
 2. **Document:** selected note or the restrained no-document empty state.
 3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
    projections. It never owns buffers, autosave, Undo, or conflicts;
-   full chronology belongs to Research Record.
+   full chronology belongs to Research Records.
 
 The workspace starts at **1180 × 760**, not a minimum. Scene state owns route
 identity and restoration; the native window and split controller own divider,
@@ -114,9 +112,9 @@ The Inspector toolbar control and View command send one explicit intent through
 the exact window coordinator to the native split.
 The Inspector routes share selected-document availability and preserve native
 transition and geometry. Inspector Show remains visible but disabled without a
-Target; a visible Inspector can always be hidden. Research Record is
-Triptych-scoped and remains available in every configured workspace; opening it
-with a Target applies the removable **This Note** filter.
+Target; a visible Inspector can always be hidden. Research Records remains a
+separate Triptych-bound auxiliary window; opening it from the document toolbar
+explicitly reapplies **This Note** Scope without changing Inspector state.
 
 With two or more documents, a Document-owned strip appears only in the middle
 item. Each tab references one retained editor session. The native tab
@@ -154,8 +152,8 @@ Menus follow researcher tasks:
 - **Window:** standard window navigation plus **Attention**. The command is
   enabled only when the focused Workspace has a visible Sidebar or Inspector
   Attention anchor, and opens that anchor's transient popover.
-- **Research:** role-valid Actions and **Show Research Record**, never
-  Attention or Checkpoints.
+- **Research:** role-valid Actions and **Triptych · Records**, never Attention
+  or Checkpoints.
 - **Settings:** Triptychs, Property profiles, Research Guidance, Attention,
   Zotero, and Appearance.
 
@@ -326,7 +324,7 @@ Menus follow researcher tasks:
 - **Set Aside** and **Trash** are same-plane Library Locations, never overlays,
   cards, sheets, or separate Sidebar modes. Selecting one replaces only the
   source-region content; BrandHeader, ScopeIndex, conditional Attention state,
-  LocationHeader, and Recommended Bibliography retain their ownership.
+  LocationHeader retain their ownership.
   All three Locations project the same native Folder-and-Note outline and row
   interaction grammar; lifecycle filtering and category-valid actions are the
   only intentional differences.
@@ -359,20 +357,6 @@ Menus follow researcher tasks:
   currently presented Note also removes that document page and shows the
   no-document empty state; explicit selection in the destination Location
   remains the route for browsing its content.
-- Compact Recommended Bibliography is an intrinsic-height fixed Sidebar
-  utility below and outside the Library source scroll. It is never a Source
-  List section, Location, footer navigation control, vault projection, or
-  selected Library row. It shares the complete Sidebar's Paper-derived
-  `navigationSurface`, uses one
-  structural top boundary, and no card, shadow, or fixed numeric height. Its
-  complete band is one quiet full-width button with the same raised hover/press
-  grammar as other summary rows, not a card or bezel. Its heading row contains
-  the nonzero count and a quiet forward chevron; the second row uses the 10pt
-  metadata role for **No recommendations** or one static, single-line
-  `Author, Year, Title` preview. It has no horizontal candidate scroller or
-  compact per-candidate action; the complete list and operations belong to the
-  full surface. Use `&` for two authors and first author + `et al.` for three or
-  more.
 - Debate Importance ordering first requires one exact Debate Scope.
 - Shared Search follows Section 13: compact centered surface, always-visible
   scopes, no empty sheet, bounded results that identify match context and

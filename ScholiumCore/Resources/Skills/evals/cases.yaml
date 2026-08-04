@@ -350,13 +350,12 @@ cases:
     expected_result: unsupported-action-fails-closed
     invariants: [action-identity-required, no-ambiguous-bundled-fallback, legacy-binding-not-authority]
 
-  - id: external-source-analyzer-remains-separate
-    request: Screen an Analysis for bibliography leads using the optional external Source Analyzer.
+  - id: analyze-literature-recommendations-remain-bounded
+    request: During Analyze, return only literature leads warranted by the exact source.
     expected_mode: analyze
-    expected_primary: scholium-source-analyzer
-    expected_researcher: [scholium-source-analyzer]
-    expected_result: external-read-only-method
-    invariants: [no-research-action-impersonation, zero-recommendations-valid, reading-leads-not-evidence]
+    expected_primary: scholium-analyze
+    expected_result: source-grounded-record-content
+    invariants: [zero-recommendations-valid, reading-leads-not-evidence, no-application-state-from-agent]
 
   - id: agent-feedback-inability
     request: Report what the run could not establish after analyzing or revising.

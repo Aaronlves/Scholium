@@ -199,7 +199,7 @@ struct FrontendArchitectureTests {
 
         #expect(appSource.contains("id: \"scholium-bootstrap\""))
         #expect(appSource.contains("for: BootstrapWindowRoute.self"))
-        #expect(appSource.components(separatedBy: "WindowGroup(").count == 3)
+        #expect(appSource.components(separatedBy: "WindowGroup(").count == 4)
         #expect(!appSource.contains("id: \"scholium-stage4-design-proofs\""))
         #expect(!appSource.contains("id: \"scholium-editor\""))
         #expect(!appSource.contains("Window(\"Editor\""))
@@ -212,15 +212,11 @@ struct FrontendArchitectureTests {
         #expect(!routerSource.contains("adaptiveContext"))
         #expect(!contentSource.contains("ScholiumInactiveLibrarySurface()"))
         #expect(!contentSource.contains("ScholiumInactiveApparatusSurface()"))
-        #expect(appSource.contains(
-            "@FocusedObject private var focusedWindowModel: WindowModel?"
-        ))
-        #expect(appSource.contains(
-            "ScholiumResearchRecordUtilityRoot(appState: focusedWindowModel)"
-        ))
-        #expect(appSource.contains(
-            "WindowVisibilityToggle(windowID: \"scholium-research-record\")"
-        ))
+        #expect(!appSource.contains("@FocusedObject private var focusedWindowModel"))
+        #expect(appSource.contains("\"Research Records\""))
+        #expect(appSource.contains("id: \"scholium-research-records\""))
+        #expect(appSource.contains("for: UUID.self"))
+        #expect(appSource.contains("workspaceStore.workspaceCapabilities(id: triptychID)"))
         #expect(appSource.contains(".focusedSceneObject(appState)"))
         #expect(!appSource.contains("ScholiumWindowModelFocusedKey"))
     }
@@ -584,7 +580,7 @@ struct FrontendArchitectureTests {
         #expect(item.maximumThickness == NSSplitViewItem.unspecifiedDimension)
     }
 
-    @Test("Library hierarchy, Attention, Recommended Bibliography, and filters share one contract")
+    @Test("Library hierarchy, Attention, and filters share one contract")
     func compactLibraryComponentContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -661,9 +657,7 @@ struct FrontendArchitectureTests {
         #expect(typographySource.contains("static let libraryFolderTitle = libraryHierarchy"))
         #expect(typographySource.contains("static let libraryNoteTitle = libraryHierarchy"))
         #expect(typographySource.contains("static let librarySelectedNoteTitle"))
-        #expect(typographySource.contains("static let bibliographyEmptyState = metadata"))
         #expect(typographySource.contains("static let noteTitle = Font.body"))
-        #expect(typographySource.contains("static let literatureCitation"))
         #expect(typographySource.contains("static let libraryLocation"))
         #expect(componentsSource.contains("struct SidebarAttentionAlert"))
         #expect(componentsSource.contains("title: \"ATTENTION\""))
@@ -730,13 +724,9 @@ struct FrontendArchitectureTests {
         let attention = try #require(sidebarSections.range(of: "SidebarAttentionAlert("))
         let library = try #require(sidebarSections.range(of: "locationHeader"))
         let sourceRegion = try #require(sidebarSections.range(of: "sourceRegion"))
-        let bibliography = try #require(sidebarSections.range(
-            of: "recommendedBibliographyUtility"
-        ))
         #expect(scope.lowerBound < attention.lowerBound)
         #expect(attention.lowerBound < library.lowerBound)
         #expect(library.lowerBound < sourceRegion.lowerBound)
-        #expect(sourceRegion.lowerBound < bibliography.lowerBound)
         #expect(sidebarSource.contains("SidebarOutlineSourceList("))
         #expect(
             sidebarSource.components(separatedBy: "SidebarOutlineSourceList(").count
@@ -891,11 +881,9 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("Section(\"Integrity\")"))
         #expect(!sidebarSource.contains("Section(\"Review\")"))
 
-        #expect(sidebarSource.contains("SidebarRecommendedBibliographySection("))
         #expect(sidebarSource.contains(
             ".background(ScholiumColorRole.navigationSurfaceBackground.color)"
         ))
-        #expect(sidebarSource.contains("ScholiumStructuralRule()"))
         #expect(!sidebarSource.contains("SidebarLiteratureSection("))
         #expect(!sidebarSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
 
@@ -1482,11 +1470,11 @@ struct FrontendArchitectureTests {
         )
         #expect(toolbar.contains("\"scholium.headingOutline\""))
         #expect(toolbar.contains("\"scholium.documentSearch\""))
-        #expect(toolbar.contains("\"scholium.showResearchRecord\""))
-        #expect(toolbar.contains("windowActions.showResearchRecord()"))
+        #expect(toolbar.contains("\"scholium.showResearchRecords\""))
+        #expect(toolbar.contains("windowActions.showNoteResearchRecords()"))
         #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
         #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
-        #expect(toolbar.contains("static let researchRecord"))
+        #expect(toolbar.contains("static let researchRecords"))
         #expect(toolbar.contains("selectedDocument == nil"))
         #expect(toolbar.contains(".disabled(!isAvailable)"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
@@ -1792,56 +1780,78 @@ struct FrontendArchitectureTests {
         #expect(controller.inspector.isVisible)
     }
 
-    @Test("Recommended Bibliography is a Triptych apparatus outside the Library source region")
-    func recommendedBibliographyOwnershipAndPlacement() throws {
+    @Test("Research Records is a Triptych-bound auxiliary window with transient routing")
+    func researchRecordsWindowOwnershipAndRouting() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let section = try String(
+        let app = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/RecommendedBibliographySection.swift"
+                "Scholium/App/ScholiumApp.swift"
             ),
             encoding: .utf8
         )
-        let controller = try String(
+        let coordinator = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Features/ResearchContext/RecommendedBibliographyController.swift"
+                "Scholium/Features/ResearchRecord/ResearchRecordsWindowCoordinator.swift"
             ),
             encoding: .utf8
         )
-        for forbidden in [
-            "WindowModel", "ResearchFunctionController", "FileManager",
-            "ResearchSkillTransactionCoordinator", "import ScholiumApplication",
-        ] {
-            #expect(!section.contains(forbidden))
-            #expect(!controller.contains(forbidden))
-        }
-        #expect(controller.contains("final class RecommendedBibliographyController"))
-        #expect(controller.contains("RecommendedBibliographyScope"))
-        #expect(!controller.contains("RecommendedBibliographyTarget"))
-        #expect(controller.contains("It owns no repository, skill package, YAML, or filesystem authority."))
-        #expect(!section.contains("Triptych · Reading leads, not evidence"))
-        #expect(section.contains("Triptych Recommended Bibliography"))
-        #expect(section.contains("Image(systemName: \"chevron.forward\")"))
-        #expect(section.contains("controller.visibleCandidates.first"))
-        #expect(section.contains("ScholiumInterfaceTypography.bibliographyEmptyState"))
-        #expect(section.contains("ScholiumQuietRowButtonStyle("))
-        #expect(section.contains(".accessibilityValue(recommendationAccessibilityValue)"))
-        #expect(!section.contains(".accessibilityElement(children: .ignore)"))
-        #expect(!section.contains("arrow.up.right.square"))
-        #expect(!section.contains("ScrollView(.horizontal)"))
-        #expect(section.contains("Update Recommendations"))
-        #expect(!section.contains("Open in Zotero"))
-        #expect(!section.contains("openZoteroItem"))
-        #expect(section.contains("Dismiss"))
-        #expect(section.contains("Repair in Research Guidance"))
-        #expect(section.contains("Recommended Bibliography"))
-        #expect(!section.contains("Open an Analysis to prepare"))
-        #expect(!section.contains("SidebarLiteratureSection"))
-        #expect(ScholiumMetrics.Library.bibliographyTopInset == 12)
-        #expect(ScholiumMetrics.Library.bibliographyBottomInset == 16)
+        let browser = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+            ),
+            encoding: .utf8
+        )
+        let windowManagement = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
+            ),
+            encoding: .utf8
+        )
 
+        #expect(app.contains("WindowGroup(\n            \"Research Records\""))
+        #expect(app.contains("for: UUID.self"))
+        #expect(app.contains("workspaceStore.workspaceCapabilities(id: triptychID)"))
+        #expect(app.contains(".windowResizability(.contentMinSize)"))
+        #expect(app.contains(".frame(minWidth: 700, minHeight: 520)"))
+        #expect(app.contains(".restorationBehavior(.disabled)"))
+        #expect(app.contains("@AppStorage(WindowColorSchemeChoice.defaultsKey)"))
+        #expect(app.contains("WindowColorSchemeChoice(rawValue: storedColorScheme)"))
+        #expect(coordinator.contains("final class ResearchRecordsWindowCoordinator"))
+        #expect(coordinator.contains("pendingRequests"))
+        #expect(coordinator.contains("openInExistingWorkspace"))
+        #expect(!coordinator.contains("FileManager"))
+        #expect(!coordinator.contains("WindowModel"))
+        #expect(browser.contains("HSplitView"))
+        #expect(browser.contains("ResearchRecordsViewIndex"))
+        #expect(browser.contains("ResearchRecordsScopeMenu"))
+        #expect(!browser.contains("ResearchRecordsWindowHeader"))
+        #expect(browser.contains("scholium.researchRecords.scope"))
+        #expect(browser.contains("scholium.researchRecords.view"))
+        #expect(browser.contains(".scrollContentBackground(.hidden)"))
+        #expect(browser.contains(".tint(ScholiumColorRole.accent.color)"))
+        #expect(!browser.contains("ResearchRecordsToolbar"))
+        #expect(!browser.contains("ToolbarItemGroup(placement: .principal)"))
+        #expect(windowManagement.contains("window.titleVisibility = .visible"))
+        #expect(windowManagement.contains("window.titlebarAppearsTransparent = false"))
+        #expect(!windowManagement.contains("window.minSize ="))
+        #expect(WindowColorSchemeChoice.dark.swiftUIColorScheme == .dark)
+        #expect(WindowColorSchemeChoice.light.swiftUIColorScheme == .light)
+        #expect(WindowColorSchemeChoice.system.swiftUIColorScheme == nil)
+
+        let recordsSceneStart = try #require(
+            app.range(of: "WindowGroup(\n            \"Research Records\"")
+        )
+        let settingsStart = try #require(
+            app.range(
+                of: "\n        Settings {",
+                range: recordsSceneStart.upperBound ..< app.endIndex
+            )
+        )
+        let recordsScene = app[recordsSceneStart.lowerBound ..< settingsStart.lowerBound]
+        #expect(!recordsScene.contains(".windowToolbarStyle"))
     }
 
     @Test("Command-F restores the previous ordinary scope and rejects late results")
@@ -2379,7 +2389,6 @@ struct FrontendArchitectureTests {
             ],
             "Scholium/Views/Sidebar/SidebarView.swift": [
                 ".background(ScholiumColorRole.navigationSurfaceBackground.color)",
-                "SidebarRecommendedBibliographySection(",
             ],
             "Scholium/Views/Note/NoteContentView.swift": [
                 ".scholiumSurface(.document)",
@@ -2915,7 +2924,7 @@ struct FrontendArchitectureTests {
         #expect(editorHTML.contains(".cm-live-callout-widget"))
         #expect(calloutCSS.contains(".scholium-callout-role,\n.scholium-callout-title"))
         #expect(calloutCSS.contains(".scholium-callout-role {\n  position: absolute;"))
-        #expect(!calloutCSS.contains(".cm-live-callout-role"))
+        #expect(!calloutCSS.contains(".cm-live-callout-role {"))
         #expect(calloutCSS.contains("--scholium-callout-surface: color-mix("))
         #expect(calloutCSS.contains("background: transparent;"))
         #expect(calloutCSS.contains(".scholium-callout-cite,\n.scholium-callout-flag {"))

@@ -16,7 +16,12 @@ Analyze one explicit source and update only the current Analysis Target. Decide 
 
 ## Method
 
-Read `references/method.md` and perform its three passes. Reconstruct concepts and arguments before applying critical pressure. Critical testing is part of Analyze, not a separate interface mode, but it must never be presented as the source author's own position.
+Read `references/method.md` and perform its three passes. Read
+`references/literature-recommendations.md` before completing the required
+`literatureRecommendations` array. Reconstruct concepts and arguments before
+applying critical pressure. Critical testing is part of Analyze, not a separate
+interface mode, but it must never be presented as the source author's own
+position.
 
 Revise the existing Analysis in place when warranted. Preserve useful uncertainty, competing interpretations, exact locators, and unrelated researcher-authored material. Do not create a new source-centered note when the current Analysis is the designated home.
 
@@ -28,4 +33,6 @@ Report in first person:
 - whether the run was initial analysis or reanalysis;
 - what changed and what was deliberately left unchanged;
 - access limits, uncertain reconstructions, and unresolved objections;
+- any source-grounded literature recommendations, including an explicit empty
+  array when there are none;
 - any Topic contribution worth considering in a separately authorized Synthesize run.

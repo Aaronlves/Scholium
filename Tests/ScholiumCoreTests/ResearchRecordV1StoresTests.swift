@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 3 and Local Execution v2")
+@Suite("Portable Research Record storage v1/schema 4 and Local Execution v3")
 struct ResearchRecordV1StoresTests {
     @Test("A post-rename failure leaves exact committed bytes observable")
     func secureReplacementReportsPostRenameUncertainty() throws {
@@ -102,7 +102,7 @@ struct ResearchRecordV1StoresTests {
             .appendingPathComponent(".scholium-pending-crashed-run")
         try Data("partial".utf8).write(to: abandoned)
         let reopened = try fixture.portableStore()
-        let listing = try await reopened.listing(location: .records)
+        let listing = try await reopened.listing()
         #expect(listing.records.map(\.id) == [record.id])
         #expect(listing.issues.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: abandoned.path))
@@ -114,7 +114,11 @@ struct ResearchRecordV1StoresTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.portableStore()
-        let record = try makePortableRecord()
+        let recommendation = try makeRecommendation(ordinal: 0)
+        let record = try makePortableRecord(
+            actionID: .analyze,
+            recommendations: [recommendation]
+        )
         _ = try await store.createFinishedRecord(record)
 
         let pinned = try await store.setPinned(true, for: record.id)
@@ -132,6 +136,7 @@ struct ResearchRecordV1StoresTests {
         #expect(pinned.fidelityCompletion == record.fidelityCompletion)
         #expect(pinned.confirmedChanges == record.confirmedChanges)
         #expect(pinned.discrepancies == record.discrepancies)
+        #expect(pinned.literatureRecommendations == record.literatureRecommendations)
         #expect(pinned.sourceReference == record.sourceReference)
         #expect(pinned.startedAt == record.startedAt)
         #expect(pinned.finishedAt == record.finishedAt)
@@ -139,6 +144,141 @@ struct ResearchRecordV1StoresTests {
 
         let restored = try await store.setPinned(false, for: record.id)
         #expect(restored == record)
+    }
+
+    @Test("Disposition and researcher note replace only one recommendation occurrence")
+    func recommendationMutationPreservesRecord() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let first = try makeRecommendation(ordinal: 0)
+        let second = try makeRecommendation(
+            ordinal: 1,
+            citation: "A second reading lead"
+        )
+        let record = try makePortableRecord(
+            actionID: .analyze,
+            recommendations: [first, second]
+        )
+        _ = try await store.createFinishedRecord(record)
+
+        let handled = try await store.setRecommendationDisposition(
+            .handled,
+            recommendationID: first.id,
+            recordID: record.id,
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+        #expect(handled.literatureRecommendations[0].disposition.status == .handled)
+        #expect(handled.literatureRecommendations[0].disposition.researcherNote == nil)
+        #expect(handled.literatureRecommendations[1] == second)
+        #expect(handled.statements == record.statements)
+        #expect(handled.isPinned == record.isPinned)
+
+        let noted = try await store.setRecommendationNote(
+            "Compare its account of the objection.",
+            recommendationID: first.id,
+            recordID: record.id,
+            updatedAt: Date(timeIntervalSince1970: 40)
+        )
+        #expect(noted.literatureRecommendations[0].disposition.status == .handled)
+        #expect(
+            noted.literatureRecommendations[0].disposition.researcherNote
+                == "Compare its account of the objection."
+        )
+        #expect(noted.literatureRecommendations[1] == second)
+        #expect(try await store.record(id: record.id) == noted)
+
+        let recordURL = fixture.control
+            .appendingPathComponent("research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        let exactBytesBeforeRefusal = try Data(contentsOf: recordURL)
+        await #expect(throws: ResearchLiteratureRecommendationError.self) {
+            _ = try await store.setRecommendationNote(
+                "private=/Users/researcher/Research Notes.txt",
+                recommendationID: first.id,
+                recordID: record.id,
+                updatedAt: Date(timeIntervalSince1970: 50)
+            )
+        }
+        #expect(try Data(contentsOf: recordURL) == exactBytesBeforeRefusal)
+        #expect(try await store.record(id: record.id) == noted)
+    }
+
+    @Test("Pin and disposition serialize across store instances without lost updates")
+    func concurrentPinAndDispositionPreserveBothChanges() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let firstStore = try fixture.portableStore()
+        let secondStore = try fixture.portableStore()
+        let recommendation = try makeRecommendation(ordinal: 0)
+        let record = try makePortableRecord(
+            actionID: .analyze,
+            recommendations: [recommendation]
+        )
+        _ = try await firstStore.createFinishedRecord(record)
+
+        async let pinned = firstStore.setPinned(true, for: record.id)
+        async let handled = secondStore.setRecommendationDisposition(
+            .handled,
+            recommendationID: recommendation.id,
+            recordID: record.id,
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+        _ = try await (pinned, handled)
+
+        let final = try await firstStore.record(id: record.id)
+        #expect(final.isPinned)
+        #expect(final.literatureRecommendations[0].disposition.status == .handled)
+        #expect(final.literatureRecommendations[0].rawCitation == recommendation.rawCitation)
+    }
+
+    @Test("Recommendation replacement distinguishes pre-commit failure from uncertainty")
+    func recommendationReplacementFailurePhases() async throws {
+        enum InjectedFailure: Error { case fault }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let recommendation = try makeRecommendation(ordinal: 0)
+        let record = try makePortableRecord(
+            actionID: .analyze,
+            recommendations: [recommendation]
+        )
+        _ = try await store.createFinishedRecord(record)
+
+        await store.setPreCommitFaultForTesting { _ in throw InjectedFailure.fault }
+        do {
+            _ = try await store.setRecommendationDisposition(
+                .handled,
+                recommendationID: recommendation.id,
+                recordID: record.id
+            )
+            Issue.record("Expected a typed pre-commit failure.")
+        } catch let error as ResearchRecordStoreV1Error {
+            guard case .replacementNotCommitted = error else {
+                Issue.record("Unexpected replacement error: \(error)")
+                return
+            }
+        }
+        #expect(try await store.record(id: record.id) == record)
+
+        await store.setPreCommitFaultForTesting(nil)
+        await store.setPostCommitFaultForTesting { _ in throw InjectedFailure.fault }
+        do {
+            _ = try await store.setRecommendationDisposition(
+                .handled,
+                recommendationID: recommendation.id,
+                recordID: record.id,
+                updatedAt: Date(timeIntervalSince1970: 30)
+            )
+            Issue.record("Expected typed post-commit uncertainty.")
+        } catch let error as ResearchRecordStoreV1Error {
+            guard case .replacementCommitUncertain = error else {
+                Issue.record("Unexpected replacement error: \(error)")
+                return
+            }
+        }
+        let committed = try await store.record(id: record.id)
+        #expect(committed.literatureRecommendations[0].disposition.status == .handled)
     }
 
     @Test("Portable record permanent deletion is bounded to the selected record")
@@ -155,17 +295,54 @@ struct ResearchRecordV1StoresTests {
         let recordsURL = fixture.control
             .appendingPathComponent("research-records/v1/records", isDirectory: true)
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
-        let trashURL = fixture.control
-            .appendingPathComponent("research-records/v1/trash", isDirectory: true)
-            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
         #expect(try await store.deletePermanently(id: record.id) == record)
         #expect(!FileManager.default.fileExists(atPath: recordsURL.path))
-        #expect(!FileManager.default.fileExists(atPath: trashURL.path))
-        #expect(try await store.listing(location: .records).records == [unrelated])
-        #expect(try await store.listing(location: .trash).records.isEmpty)
+        #expect(try await store.listing().records == [unrelated])
         #expect(try await store.record(id: unrelated.id) == unrelated)
         await #expect(throws: ResearchRecordStoreV1Error.self) {
             _ = try await store.record(id: record.id)
+        }
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.createFinishedRecord(record)
+        }
+        let reopened = try fixture.portableStore()
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await reopened.createFinishedRecord(record)
+        }
+    }
+
+    @Test("Permanent deletion and completion repair cannot race a Record back into existence")
+    func concurrentPermanentDeletionAndRepairRemainDeleted() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let deletingStore = try fixture.portableStore()
+        let repairingStore = try fixture.portableStore()
+        let record = try makePortableRecord(
+            actionID: .analyze,
+            recommendations: [try makeRecommendation(ordinal: 0)]
+        )
+        _ = try await deletingStore.createFinishedRecord(record)
+
+        async let deletedRecord = deletingStore.deletePermanently(id: record.id)
+        async let repairWonBeforeDeletion: Bool = {
+            do {
+                _ = try await repairingStore.createFinishedRecord(record)
+                return true
+            } catch ResearchRecordStoreV1Error.recordPermanentlyDeleted(let id)
+                where id == record.id {
+                return false
+            }
+        }()
+        let (deleted, _) = try await (deletedRecord, repairWonBeforeDeletion)
+
+        #expect(deleted == record)
+        #expect(try await deletingStore.listing().records.isEmpty)
+        let reopened = try fixture.portableStore()
+        do {
+            _ = try await reopened.createFinishedRecord(record)
+            Issue.record("A completion repair recreated a permanently deleted Record.")
+        } catch ResearchRecordStoreV1Error.recordPermanentlyDeleted(let id) {
+            #expect(id == record.id)
         }
     }
 
@@ -181,51 +358,10 @@ struct ResearchRecordV1StoresTests {
             .appendingPathComponent("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee.json")
         try Data("{\"schema_version\":1,".utf8).write(to: corruptURL)
 
-        let listing = try await store.listing(location: .records)
+        let listing = try await store.listing()
         #expect(listing.records.map(\.id) == [record.id])
         #expect(listing.issues.count == 1)
         #expect(listing.issues.first?.fileName == corruptURL.lastPathComponent)
-    }
-
-    @Test("Portable schema 1 and 2 files remain byte-unchanged and unsupported")
-    func portableLegacySchemasRemainUntouched() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = try fixture.portableStore()
-        let current = try makePortableRecord()
-        _ = try await store.createFinishedRecord(current)
-        let legacy = try makePortableRecord(
-            id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAC")!
-        )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        var object = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(legacy)) as? [String: Any]
-        )
-        object["schema_version"] = 2
-        object.removeValue(forKey: "fidelity_completion")
-        let bytes = try JSONSerialization.data(
-            withJSONObject: object,
-            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        )
-        let legacyURL = fixture.control
-            .appendingPathComponent("research-records/v1/records", isDirectory: true)
-            .appendingPathComponent(legacy.id.uuidString.lowercased() + ".json")
-        try bytes.write(to: legacyURL)
-        let modificationDate = Date(timeIntervalSince1970: 1_234)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o600), .modificationDate: modificationDate],
-            ofItemAtPath: legacyURL.path
-        )
-
-        let listing = try await store.listing(location: .records)
-
-        #expect(listing.records == [current])
-        #expect(listing.issues.map(\.fileName) == [legacyURL.lastPathComponent])
-        #expect(try Data(contentsOf: legacyURL) == bytes)
-        let attributes = try FileManager.default.attributesOfItem(atPath: legacyURL.path)
-        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
-        #expect((attributes[.modificationDate] as? Date) == modificationDate)
     }
 
     @Test("An interrupted permanent-deletion rename restores on reopen")
@@ -247,7 +383,7 @@ struct ResearchRecordV1StoresTests {
 
         let reopened = try fixture.portableStore()
         #expect(try await reopened.record(id: record.id) == record)
-        #expect(try await reopened.listing(location: .records).issues.isEmpty)
+        #expect(try await reopened.listing().issues.isEmpty)
     }
 
     @Test("Lifecycle post-commit uncertainty reconciles exact deletion state")
@@ -264,8 +400,44 @@ struct ResearchRecordV1StoresTests {
         }
         #expect(try await store.deletePermanently(id: record.id) == record)
         let reopened = try fixture.portableStore()
-        #expect(try await reopened.listing(location: .records).records.isEmpty)
-        #expect(try await reopened.listing(location: .trash).records.isEmpty)
+        #expect(try await reopened.listing().records.isEmpty)
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await reopened.createFinishedRecord(record)
+        }
+    }
+
+    @Test("Deletion retries durably fence a marker commit uncertainty before unlinking")
+    func deletionMarkerCommitUncertaintyRetainsThenFencesRecord() async throws {
+        enum InjectedFailure: Error { case afterMarkerRename }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        _ = try await store.createFinishedRecord(record)
+
+        await store.setRecordDeletionMarkerPostCommitFaultForTesting { _ in
+            throw InjectedFailure.afterMarkerRename
+        }
+        do {
+            _ = try await store.deletePermanently(id: record.id)
+            Issue.record("Expected marker commit uncertainty before Record deletion.")
+        } catch let error as ResearchRecordStoreV1Error {
+            guard case .lifecycleCommitUncertain = error else {
+                Issue.record("Unexpected lifecycle error: \(error)")
+                return
+            }
+        }
+        #expect(try await store.record(id: record.id) == record)
+
+        await store.setRecordDeletionMarkerPostCommitFaultForTesting(nil)
+        #expect(try await store.deletePermanently(id: record.id) == record)
+        let reopened = try fixture.portableStore()
+        do {
+            _ = try await reopened.createFinishedRecord(record)
+            Issue.record("Repair bypassed a durable permanent-deletion tombstone.")
+        } catch ResearchRecordStoreV1Error.recordPermanentlyDeleted(let id) {
+            #expect(id == record.id)
+        }
     }
 
     @Test("Concurrent store instances make one idempotent record")
@@ -281,7 +453,7 @@ struct ResearchRecordV1StoresTests {
         let results = try await [firstResult, secondResult]
 
         #expect(results.allSatisfy { $0.id == record.id })
-        let listing = try await first.listing(location: .records)
+        let listing = try await first.listing()
         #expect(listing.records.count == 1)
         #expect(listing.issues.isEmpty)
     }
@@ -321,7 +493,7 @@ struct ResearchRecordV1StoresTests {
         #expect(record.kind == .discussion)
         #expect(record.statements.count == 2)
         #expect(try await store.activeDiscussions().discussions.isEmpty)
-        #expect(try await store.listing(location: .records).records == [record])
+        #expect(try await store.listing().records == [record])
     }
 
     @Test("Interrupted Discussion finish reconciles the exact active-record pair")
@@ -672,7 +844,7 @@ struct ResearchRecordV1StoresTests {
     }
 
 
-    @Test("Local Execution v2 keeps only the Agent coordination digest")
+    @Test("Local Execution v3 keeps only the Agent coordination digest")
     func localCoordinationKeyIsTransient() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -861,7 +1033,7 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Local Execution v2 rejects undeclared fields including raw keys")
+    @Test("Local Execution v3 rejects undeclared fields including raw keys")
     func localExecutionRejectsUnknownFields() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -883,6 +1055,86 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
         await #expect(throws: ResearchRecordStoreV1Error.self) {
             try await store.validateStoreHealth()
+        }
+    }
+
+    @Test("Durable Analyze completion requires and freezes its recommendation report")
+    func localAnalyzeCompletionRecommendationShapeIsFrozen() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.localStore()
+        let runID = UUID()
+        let local = try makeLocalExecutionRecord(
+            runID: runID,
+            grant: nil,
+            actionID: .analyze
+        )
+        _ = try await store.create(local)
+        let first = [try ResearchLiteratureRecommendationSubmission(
+            rawCitation: "First source-grounded lead",
+            reason: "The source identifies this work as a live objection."
+        )]
+        let replacement = [try ResearchLiteratureRecommendationSubmission(
+            rawCitation: "Replacement lead",
+            reason: "This later payload must not replace the first report."
+        )]
+        let awaiting = ResearchFunctionCompletion(
+            runID: runID,
+            function: .develop,
+            state: .awaitingFidelity,
+            targetFingerprint: local.snapshot.request.target.fingerprint,
+            materialFingerprints: [:],
+            summary: "Analyze completion awaiting exact-revision Fidelity.",
+            didModifyTarget: true,
+            fidelityOutcomes: [],
+            literatureRecommendations: first,
+            completedAt: Date(timeIntervalSince1970: 20)
+        )
+        _ = try await store.setCompletion(
+            awaiting,
+            submissionDigest: "first-submission",
+            runID: runID
+        )
+        let tamperedTerminal = ResearchFunctionCompletion(
+            runID: runID,
+            function: .develop,
+            state: .complete,
+            targetFingerprint: awaiting.targetFingerprint,
+            materialFingerprints: awaiting.materialFingerprints,
+            summary: awaiting.summary,
+            didModifyTarget: awaiting.didModifyTarget,
+            fidelityOutcomes: [],
+            literatureRecommendations: replacement,
+            completedAt: awaiting.completedAt
+        )
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.setCompletion(
+                tamperedTerminal,
+                submissionDigest: "replacement-submission",
+                runID: runID
+            )
+        }
+        #expect(try await store.record(id: runID).completion == awaiting)
+
+        let url = store.storageURL
+            .appendingPathComponent(runID.uuidString.lowercased() + ".json")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .deferredToDate
+        var object = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(
+                try await store.record(id: runID)
+            )) as? [String: Any]
+        )
+        var completion = try #require(object["completion"] as? [String: Any])
+        completion.removeValue(forKey: "literatureRecommendations")
+        object["completion"] = completion
+        try JSONSerialization.data(withJSONObject: object).write(to: url)
+
+        let listing = try await store.listing()
+        #expect(listing.records.isEmpty)
+        #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.record(id: runID)
         }
     }
 
@@ -914,9 +1166,11 @@ struct ResearchRecordV1StoresTests {
     }
 
     private func makePortableRecord(
-        id: UUID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!
+        id: UUID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
+        actionID: ResearchActionID = .synthesize,
+        recommendations: [ResearchLiteratureRecommendation] = []
     ) throws -> PortableResearchRecord {
-        let action = try makeActionSnapshot()
+        let action = try makeActionSnapshot(actionID: actionID)
         let note = try PortableResearchNoteRevision(
             noteID: action.target.noteID,
             note: action.target.note,
@@ -931,6 +1185,13 @@ struct ResearchRecordV1StoresTests {
             kind: .action,
             action: ResearchActionRecordIdentity(snapshot: action),
             method: try PortableResearchMethodReference(snapshot: action),
+            sourceReference: actionID == .analyze
+                ? try ResearchSourceReference(
+                    identity: .localFile(id: id),
+                    displayName: "Source.pdf",
+                    fingerprint: DocumentFingerprint(content: "source bytes")
+                )
+                : nil,
             participatingNotes: [note],
             statements: [try PortableResearchStatement(
                 author: .agent,
@@ -940,8 +1201,33 @@ struct ResearchRecordV1StoresTests {
                 createdAt: Date(timeIntervalSince1970: 20)
             )],
             fidelityCompletion: .notRequired,
+            literatureRecommendations: recommendations,
             startedAt: Date(timeIntervalSince1970: 10),
             finishedAt: Date(timeIntervalSince1970: 20)
+        )
+    }
+
+    private func makeRecommendation(
+        recordID: UUID = UUID(
+            uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
+        )!,
+        ordinal: Int,
+        citation: String = "A source-grounded reading lead"
+    ) throws -> ResearchLiteratureRecommendation {
+        try ResearchLiteratureRecommendation(
+            id: ResearchLiteratureRecommendation.stableID(
+                runID: recordID,
+                ordinal: ordinal
+            ),
+            rawCitation: citation,
+            title: citation,
+            doi: "10.1000/reading-lead",
+            sourceLocators: ["p. 42"],
+            reason: "The analyzed source discusses this work as a live objection.",
+            disposition: PortableResearchRecommendationDisposition(
+                status: .unprocessed,
+                updatedAt: Date(timeIntervalSince1970: 20)
+            )
         )
     }
 
@@ -1001,9 +1287,10 @@ struct ResearchRecordV1StoresTests {
         runID: UUID,
         grant: ResearchActivityGrant?,
         coordinationGrant: AgentCoordinationGrant? = nil,
+        actionID: ResearchActionID = .synthesize,
         noteID: UUID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
     ) throws -> LocalResearchExecutionRecord {
-        let action = try makeActionSnapshot(noteID: noteID)
+        let action = try makeActionSnapshot(noteID: noteID, actionID: actionID)
         let target = ResearchFunctionTarget(
             noteID: action.target.noteID,
             note: action.target.note,
@@ -1038,31 +1325,45 @@ struct ResearchRecordV1StoresTests {
     }
 
     private func makeActionSnapshot(
-        noteID: UUID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
+        noteID: UUID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
+        actionID: ResearchActionID = .synthesize
     ) throws -> ResearchActionSnapshot {
-        let definition = ResearchActionDefinition.synthesize
+        let definition = actionID == .analyze
+            ? ResearchActionDefinition.analyze
+            : ResearchActionDefinition.synthesize
+        let targetRole: ResearchActionTargetRole = actionID == .analyze
+            ? .analysis
+            : .topic
         let target = ResearchActionNoteSnapshot(
             noteID: noteID,
             note: VaultQualifiedNoteID(
                 vaultID: UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!,
-                relativePath: "Problem.md"
+                relativePath: actionID == .analyze ? "Analysis.md" : "Problem.md"
             ),
-            role: .topic,
+            role: targetRole,
             lifecycle: .active,
             fingerprint: DocumentFingerprint(content: "# Topic\n"),
-            title: "Problem"
+            title: actionID == .analyze ? "Analysis" : "Problem"
         )
+        let sourceModuleID = ResearchActionModuleID(rawValue: "source")!
+        let modules: [ResearchActionModuleDefinition] = actionID == .analyze
+            ? [try .sourceReference(
+                id: sourceModuleID,
+                label: "Source",
+                isRequired: true
+            )]
+            : []
         let profile = try ResearchActionProfile(
             definition: definition,
-            buttonName: "Synthesize",
+            buttonName: actionID == .analyze ? "Analyze" : "Synthesize",
             order: 100,
-            applicableRoles: [.topic],
+            applicableRoles: [targetRole],
             showInActions: true,
-            modules: [],
-            sourceRequirement: .none,
+            modules: modules,
+            sourceRequirement: actionID == .analyze ? .required : .none,
             capabilities: try ResearchActionCapabilityDeclaration(
-                readableRoles: [.topic],
-                candidateWritableRoles: [.topic],
+                readableRoles: [targetRole],
+                candidateWritableRoles: [targetRole],
                 candidateWriteOperations: [.modifyMarkdown]
             ),
             feedbackRequirement: .requested
@@ -1071,7 +1372,9 @@ struct ResearchRecordV1StoresTests {
             definition: definition,
             target: target,
             method: try ResearchActionMethodSnapshot(
-                packageID: "scholium-synthesize",
+                packageID: actionID == .analyze
+                    ? "scholium-analyze"
+                    : "scholium-synthesize",
                 origin: .triptych,
                 version: "working",
                 packageRevision: DocumentFingerprint(content: "package"),
@@ -1086,7 +1389,16 @@ struct ResearchRecordV1StoresTests {
                 profileRevision: profile.contentRevision(),
                 profileDocumentRevision: nil
             ),
-            parameters: try ResearchActionParameterModel(profile: profile),
+            parameters: try ResearchActionParameterModel(
+                profile: profile,
+                values: actionID == .analyze
+                    ? [sourceModuleID: .source(try ResearchSourceReference(
+                        identity: .localFile(),
+                        displayName: "Source.pdf",
+                        fingerprint: DocumentFingerprint(content: "source")
+                    ))]
+                    : [:]
+            ),
             authority: try ResearchAuthorityEnvelope(
                 readableNotes: [target],
                 writableNotes: [target],

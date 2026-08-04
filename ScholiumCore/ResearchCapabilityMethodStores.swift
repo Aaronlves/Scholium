@@ -87,62 +87,6 @@ public struct ResearchCitationMethodAdoption: Hashable, Sendable {
     }
 }
 
-public struct ResearchBibliographyMethodDocument: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
-
-    public let schemaVersion: Int
-    public let packageID: String?
-
-    public init(
-        schemaVersion: Int = Self.currentSchemaVersion,
-        packageID: String? = nil
-    ) {
-        self.schemaVersion = schemaVersion
-        self.packageID = packageID?.nilIfEmpty
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion = "schema_version"
-        case packageID = "package_id"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: ResearchCapabilityAnyCodingKey.self)
-        let supported = Set(CodingKeys.allCases.map(\.rawValue))
-        if let unknown = raw.allKeys.map(\.stringValue).first(where: {
-            !supported.contains($0)
-        }) {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Bibliography Method contains unsupported field \(unknown)."
-            )
-        }
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == Self.currentSchemaVersion else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Unsupported Bibliography Method schema version \(schemaVersion)."
-            )
-        }
-        self.init(
-            schemaVersion: schemaVersion,
-            packageID: try container.decodeIfPresent(String.self, forKey: .packageID)
-        )
-    }
-}
-
-public struct ResearchBibliographyMethodSnapshot: Hashable, Sendable {
-    public let document: ResearchBibliographyMethodDocument
-    public let revision: DocumentFingerprint
-
-    public init(
-        document: ResearchBibliographyMethodDocument,
-        revision: DocumentFingerprint
-    ) {
-        self.document = document
-        self.revision = revision
-    }
-}
-
 struct ResearchCitationMethodStore {
     let files: ResearchCapabilityDocumentFileStore
 
@@ -218,77 +162,6 @@ struct ResearchCitationMethodStore {
             document: ResearchCitationMethodDocument(
                 packageID: legacy.citationBinding,
                 citationStyle: legacy.citationStyle
-            ),
-            revision: DocumentFingerprint(data: data)
-        )
-    }
-}
-
-struct ResearchBibliographyMethodStore {
-    let files: ResearchCapabilityDocumentFileStore
-
-    func rawRevision() throws -> DocumentFingerprint? {
-        try files.rawRevision()
-    }
-
-    func snapshotMigratingLegacyIfNeeded()
-        throws -> ResearchBibliographyMethodSnapshot?
-    {
-        if let data = try files.currentData() {
-            return ResearchBibliographyMethodSnapshot(
-                document: try Self.decode(data),
-                revision: DocumentFingerprint(data: data)
-            )
-        }
-        guard let legacy = try legacySnapshot() else { return nil }
-        return try save(
-            legacy.document,
-            expectedRevision: legacy.revision
-        )
-    }
-
-    func snapshotWithoutMigration() throws -> ResearchBibliographyMethodSnapshot? {
-        if let data = try files.currentData() {
-            return ResearchBibliographyMethodSnapshot(
-                document: try Self.decode(data),
-                revision: DocumentFingerprint(data: data)
-            )
-        }
-        return try legacySnapshot()
-    }
-
-    func save(
-        _ document: ResearchBibliographyMethodDocument,
-        expectedRevision: DocumentFingerprint?
-    ) throws -> ResearchBibliographyMethodSnapshot {
-        let data = try files.save(document, expectedRevision: expectedRevision)
-        return ResearchBibliographyMethodSnapshot(
-            document: document,
-            revision: DocumentFingerprint(data: data)
-        )
-    }
-
-    private static func decode(_ data: Data) throws -> ResearchBibliographyMethodDocument {
-        do {
-            return try JSONDecoder().decode(
-                ResearchBibliographyMethodDocument.self,
-                from: data
-            )
-        } catch let error as ResearchSkillBindingError {
-            throw error
-        } catch {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Bibliography Method cannot be decoded. \(error.localizedDescription)"
-            )
-        }
-    }
-
-    private func legacySnapshot() throws -> ResearchBibliographyMethodSnapshot? {
-        guard let data = try files.legacyData() else { return nil }
-        let legacy = try LegacyResearchCapabilityBindingDocument.decode(data)
-        return ResearchBibliographyMethodSnapshot(
-            document: ResearchBibliographyMethodDocument(
-                packageID: legacy.bibliographyMethodBinding
             ),
             revision: DocumentFingerprint(data: data)
         )
@@ -484,13 +357,11 @@ private struct LegacyResearchCapabilityBindingDocument: Decodable {
 
     let citationBinding: String?
     let citationStyle: String?
-    let bibliographyMethodBinding: String?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case citationBinding = "citation_binding"
         case citationStyle = "citation_style"
-        case bibliographyMethodBinding = "bibliography_method_binding"
     }
 
     static func decode(_ data: Data) throws -> Self {
@@ -524,10 +395,6 @@ private struct LegacyResearchCapabilityBindingDocument: Decodable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .nilIfEmpty
-        bibliographyMethodBinding = try container.decodeIfPresent(
-            String.self,
-            forKey: .bibliographyMethodBinding
-        )?.nilIfEmpty
     }
 }
 

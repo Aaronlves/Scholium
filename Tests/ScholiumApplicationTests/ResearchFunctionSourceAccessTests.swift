@@ -98,7 +98,8 @@ extension ResearchFunctionOperationsTests {
                     confirmationToken: preparation.snapshot.confirmationToken,
                     finalTargetFingerprint: analysis.fingerprint,
                     summary: "Attempted completion after source removal.",
-                    didModifyTarget: false
+                    didModifyTarget: false,
+                    literatureRecommendations: []
                 )
             )
         }
@@ -124,7 +125,7 @@ extension ResearchFunctionOperationsTests {
         let executionURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
         let data = try Data(contentsOf: executionURL)
         let payload = try JSONSerialization.jsonObject(with: data)

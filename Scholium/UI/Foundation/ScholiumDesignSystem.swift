@@ -1313,10 +1313,6 @@ enum ScholiumMetrics {
         static let scopeIndicatorHeight: CGFloat = 1
         static let scopeTopSpacing = ScholiumGrid.Spacing.sectionSeparation
         static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
-        /// The fixed bibliography band sits slightly above the visual centre
-        /// of its region so its last line keeps a calm window-edge margin.
-        static let bibliographyTopInset = ScholiumGrid.Spacing.nestedContentInset
-        static let bibliographyBottomInset = ScholiumGrid.Spacing.sectionSeparation
         /// Empty, loading, and error content begins one section step below the
         /// stable LocationHeader while retaining the shared peripheral edge.
         static let sourceStateVerticalInset = ScholiumGrid.Spacing.sectionSeparation

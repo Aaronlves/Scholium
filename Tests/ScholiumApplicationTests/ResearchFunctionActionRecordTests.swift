@@ -4,120 +4,6 @@ import Foundation
 import Testing
 
 extension ResearchFunctionOperationsTests {
-    @Test("Recommended Bibliography is Triptych-owned, immutable, and accepts zero results")
-    func recommendedBibliographyLifecycle() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try #require(
-            try await handle.snapshot().document(id: fixture.analysisID)
-        )
-        let stableID = try #require(analysis.stableIdentity.resolvedID)
-        let scope = RecommendedBibliographyScope(
-            triptychID: fixture.assignment.id,
-            selectedNotes: [RecommendedBibliographySourceNote(
-                noteID: stableID,
-                note: fixture.analysisID,
-                role: .sourceCorpus,
-                fingerprint: analysis.fingerprint,
-                title: "Analysis"
-            )]
-        )
-        let preparation = try await handle.research.prepareRecommendation(
-            RecommendedBibliographyRequest(
-                scope: scope,
-                goals: [.objections, .replies],
-                purpose: "Identify only source-grounded reading leads."
-            )
-        )
-        #expect(preparation.method.packageID == "scholium-source-analyzer")
-        #expect(preparation.method.loadedResources.map(\.relativePath) == [
-            "SKILL.md",
-            "references/bibliography-recommendations.md",
-            "references/method.md",
-            "templates/recommended-bibliography-completion.json",
-        ])
-        #expect(preparation.method.renderedResources.map(\.relativePath)
-            == preparation.method.loadedResources.map(\.relativePath))
-        #expect(preparation.method.renderedResources.allSatisfy { resource in
-            DocumentFingerprint(content: resource.source) == resource.revision
-                && preparation.instructions.contains(resource.source)
-        })
-        #expect(preparation.instructions.contains("Reading leads, not evidence"))
-        #expect(preparation.instructions.contains("\"identity\""))
-        #expect(preparation.instructions.contains("\"discussionStatus\""))
-        #expect(preparation.instructions.contains("\"requiredNextCheck\""))
-        #expect(try await handle.documents.load(fixture.analysisID).fingerprint == analysis.fingerprint)
-
-        let projection = try await handle.research.completeRecommendation(
-            RecommendedBibliographyCompletionSubmission(
-                requestID: preparation.id,
-                confirmationToken: preparation.confirmationToken,
-                sourceRevisions: scope.sourceRevisions,
-                sourceScope: "Complete Analysis and its documented source scope",
-                candidates: []
-            )
-        )
-        #expect(projection.state == .complete)
-        #expect(projection.candidates.isEmpty)
-        #expect(try await handle.research.recommendations() == projection)
-        #expect(try await handle.research.recommendationOverview().result == projection)
-        #expect(try await handle.documents.load(fixture.analysisID).fingerprint == analysis.fingerprint)
-
-        let stalePreparation = try await handle.research.prepareRecommendation(
-            RecommendedBibliographyRequest(scope: scope)
-        )
-        try Data("# Analysis\n\nChanged outside the cached Workspace snapshot.\n".utf8)
-            .write(
-                to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
-                options: .atomic
-            )
-        await #expect(throws: RecommendedBibliographyError.self) {
-            _ = try await handle.research.completeRecommendation(
-                RecommendedBibliographyCompletionSubmission(
-                    requestID: stalePreparation.id,
-                    confirmationToken: stalePreparation.confirmationToken,
-                    sourceRevisions: scope.sourceRevisions,
-                    sourceScope: "Stale selected Note",
-                    candidates: []
-                )
-            )
-        }
-        try await handle.research.cancelRecommendation(id: stalePreparation.id)
-
-        let work = try await researchFunctionTarget(
-            fixture.workID,
-            role: .work,
-            handle: handle
-        )
-        let workScope = RecommendedBibliographyScope(
-            triptychID: fixture.assignment.id,
-            selectedNotes: [RecommendedBibliographySourceNote(
-                noteID: work.noteID,
-                note: work.note,
-                role: .draftProject,
-                fingerprint: work.fingerprint,
-                title: work.title
-            )]
-        )
-        let workPreparation = try await handle.research.prepareRecommendation(
-            RecommendedBibliographyRequest(scope: workScope)
-        )
-        #expect(workPreparation.request.scope == workScope)
-        try await handle.research.cancelRecommendation(id: workPreparation.id)
-
-        await #expect(throws: RecommendedBibliographyError.self) {
-            _ = try await handle.research.prepareRecommendation(
-                RecommendedBibliographyRequest(scope: RecommendedBibliographyScope(
-                    triptychID: UUID(),
-                    selectedNotes: workScope.selectedNotes
-                ))
-            )
-        }
-        await runtime.shutdown()
-    }
-
     @Test("Action resolver follows the default matrix and explicit disabled Method state")
     func actionResolverDefaultMatrixAndDisabledMethod() async throws {
         let fixture = try await ResearchFixture.make()
@@ -471,7 +357,7 @@ extension ResearchFunctionOperationsTests {
     }
 
 
-    @Test("Action runs use Local Execution v2 and emit one whitelisted portable record")
+    @Test("Action runs use Local Execution v3 and emit one whitelisted portable record")
     func actionExecutionUsesSeparatedStoresWithoutTouchingLegacyData() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -611,7 +497,7 @@ extension ResearchFunctionOperationsTests {
         }
 
         let localURL = triptychSupport
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
         let portableURL = fixture.rootURL
             .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
@@ -1207,7 +1093,7 @@ extension ResearchFunctionOperationsTests {
         await reopenedRuntime.shutdown()
     }
 
-    @Test("A crashed Critique handoff reconciles Local v2 as the sole execution authority")
+    @Test("A crashed Critique handoff reconciles Local-v3 as the sole execution authority")
     func actionCritiqueHandoffRecoversAfterRestart() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -1228,7 +1114,7 @@ extension ResearchFunctionOperationsTests {
         let localURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
         let localDecoder = JSONDecoder()
         localDecoder.dateDecodingStrategy = .deferredToDate
@@ -1322,7 +1208,7 @@ extension ResearchFunctionOperationsTests {
         let localURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v2", isDirectory: true)
+            .appendingPathComponent("research-execution-v3", isDirectory: true)
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
         let localDecoder = JSONDecoder()
         localDecoder.dateDecodingStrategy = .deferredToDate
@@ -1454,8 +1340,8 @@ extension ResearchFunctionOperationsTests {
         await reopenedRuntime.shutdown()
     }
 
-    @Test("Action Analyze retains only its safe Source Reference")
-    func actionAnalyzePortableRecordIncludesSafeSource() async throws {
+    @Test("Action Analyze records structured recommendations with safe source provenance")
+    func actionAnalyzePortableRecordIncludesRecommendations() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1475,39 +1361,301 @@ extension ResearchFunctionOperationsTests {
         let protectedRun = try await handle.research.protectedFunctionRun(id: action.runID)
         let source = try #require(protectedRun.snapshot.sourceReference)
         let submittedAt = Date()
-        let activity = try researchActivityCompletion(
-            for: protectedRun,
-            candidateModifiedNotes: [],
+        let writeCompletion = try actionWriteCompletion(
+            for: action,
             summary: "The source supports no warranted Analysis change.",
             submittedAt: submittedAt
         )
-        _ = try await handle.research.completeProtectedFunction(
-            ResearchFunctionCompletionSubmission(
-                runID: protectedRun.runID,
-                confirmationToken: protectedRun.snapshot.confirmationToken,
-                summary: "The source supports no warranted Analysis change.",
-                didModifyTarget: false,
-                activityCompletion: activity,
-                submittedAt: submittedAt
-            )
-        )
-
         let portableURL = fixture.rootURL
             .appendingPathComponent(
                 ".scholium/research-records/v1/records",
                 isDirectory: true
             )
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
+        let missingRecommendations = ResearchActionCompletionSubmission(
+            runID: protectedRun.runID,
+            confirmationToken: protectedRun.snapshot.confirmationToken,
+            summary: "The source supports no warranted Analysis change.",
+            didModifyTarget: false,
+            writeCompletion: writeCompletion,
+            submittedAt: submittedAt
+        )
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeAction(missingRecommendations)
+        }
+        let privatePath = fixture.analysisSourceURL.path
+        let embeddedPrivatePath = "opaque\(privatePath)"
+        let leakingRecommendation = try ResearchLiteratureRecommendationSubmission(
+            rawCitation: embeddedPrivatePath,
+            title: embeddedPrivatePath,
+            authors: [embeddedPrivatePath],
+            doi: embeddedPrivatePath,
+            sourceLocators: [embeddedPrivatePath],
+            reason: embeddedPrivatePath,
+            uncertainty: embeddedPrivatePath
+        )
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeAction(
+                ResearchActionCompletionSubmission(
+                    runID: protectedRun.runID,
+                    confirmationToken: protectedRun.snapshot.confirmationToken,
+                    summary: "The source supports no warranted Analysis change.",
+                    didModifyTarget: false,
+                    writeCompletion: writeCompletion,
+                    literatureRecommendations: [leakingRecommendation],
+                    submittedAt: submittedAt
+                )
+            )
+        }
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        ).completion == nil)
+        #expect(!FileManager.default.fileExists(atPath: portableURL.path))
+        let recommendations = [
+            try ResearchLiteratureRecommendationSubmission(
+                rawCitation: "A. Author, First Work (2020)",
+                title: "First Work",
+                authors: ["A. Author"],
+                year: 2020,
+                doi: "10.1000/first",
+                sourceLocators: ["p. 42"],
+                reason: "The analyzed source treats this work as its principal rival."
+            ),
+            try ResearchLiteratureRecommendationSubmission(
+                rawCitation: "B. Author, Second Work (2021)",
+                title: "Second Work",
+                authors: ["B. Author"],
+                year: 2021,
+                zoteroItemKey: "ABCD1234",
+                sourceLocators: ["n. 17"],
+                reason: "The analyzed source identifies a bounded reply in this work.",
+                uncertainty: "The page range was not independently checked."
+            ),
+        ]
+        let submission = ResearchActionCompletionSubmission(
+            runID: protectedRun.runID,
+            confirmationToken: protectedRun.snapshot.confirmationToken,
+            summary: "The source supports no warranted Analysis change.",
+            didModifyTarget: false,
+            writeCompletion: writeCompletion,
+            literatureRecommendations: recommendations,
+            submittedAt: submittedAt
+        )
+        let completion = try await handle.research.completeAction(submission)
+        #expect(completion.literatureRecommendationCount == 2)
+        #expect(try await handle.research.completeAction(submission) == completion)
+
         let data = try Data(contentsOf: portableURL)
         let portable = try JSONDecoder.scholium.decode(
             PortableResearchRecord.self,
             from: data
         )
         #expect(portable.sourceReference == source)
+        #expect(portable.literatureRecommendations.count == 2)
+        #expect(portable.literatureRecommendations.map(\.id) == [
+            ResearchLiteratureRecommendation.stableID(
+                runID: action.runID,
+                ordinal: 0
+            ),
+            ResearchLiteratureRecommendation.stableID(
+                runID: action.runID,
+                ordinal: 1
+            ),
+        ])
+        #expect(portable.literatureRecommendations.allSatisfy {
+            $0.disposition.status == .unprocessed
+                && $0.disposition.researcherNote == nil
+        })
         let encoded = String(decoding: data, as: UTF8.self)
         #expect(!encoded.contains(fixture.analysisSourceURL.path))
         #expect(!encoded.contains("bookmark"))
+
+        let zeroAction = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let zeroRun = try await handle.research.protectedFunctionRun(
+            id: zeroAction.runID
+        )
+        let zeroSubmittedAt = Date().addingTimeInterval(1)
+        let zeroWriteCompletion = try actionWriteCompletion(
+            for: zeroAction,
+            summary: "No additional reading leads were warranted.",
+            submittedAt: zeroSubmittedAt
+        )
+        let zeroCompletion = try await handle.research.completeAction(
+            ResearchActionCompletionSubmission(
+                runID: zeroRun.runID,
+                confirmationToken: zeroRun.snapshot.confirmationToken,
+                summary: "No additional reading leads were warranted.",
+                didModifyTarget: false,
+                writeCompletion: zeroWriteCompletion,
+                literatureRecommendations: [],
+                submittedAt: zeroSubmittedAt
+            )
+        )
+        #expect(zeroCompletion.literatureRecommendationCount == 0)
+        let records = try await handle.research.finishedResearchRecords(noteID: nil)
+        #expect(records.count { $0.id == action.runID } == 1)
+        #expect(records.count { $0.id == zeroAction.runID } == 1)
+        #expect(
+            records.first { $0.id == zeroAction.runID }?
+                .literatureRecommendations.isEmpty == true
+        )
+
+        let retainedLocalCompletion = try #require(
+            try await handle.services.localResearchExecutionStore.record(
+                id: action.runID
+            ).completion
+        )
+        #expect(try await handle.research.sourceAccess(for: analysis).state == .available)
+        try await handle.research.deleteResearchRecordPermanently(id: action.runID)
+        #expect(!FileManager.default.fileExists(atPath: portableURL.path))
+        do {
+            _ = try await handle.research.completeAction(submission)
+            Issue.record("A stale completion replay bypassed permanent Record deletion.")
+        } catch ResearchFunctionContractError.invalidCompletion(let reason) {
+            #expect(reason.contains("permanently deleted"))
+        }
+        #expect(!FileManager.default.fileExists(atPath: portableURL.path))
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        ).completion == retainedLocalCompletion)
+        #expect(try await handle.research.sourceAccess(for: analysis).state == .available)
+        let afterRetry = try await handle.research.finishedResearchRecords(noteID: nil)
+        #expect(afterRetry.allSatisfy { $0.id != action.runID })
+        #expect(afterRetry.count { $0.id == zeroAction.runID } == 1)
         await runtime.shutdown()
+    }
+
+    @Test("Oversize Analyze recommendations are refused before durable completion")
+    func oversizeAnalyzeRecommendationsDoNotStrandCompletion() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let protectedRun = try await handle.research.protectedFunctionRun(
+            id: action.runID
+        )
+        let submittedAt = Date()
+        let writeCompletion = try actionWriteCompletion(
+            for: action,
+            summary: "The source supports no warranted Analysis change.",
+            submittedAt: submittedAt
+        )
+        let largeReason = String(repeating: "x", count: 60 * 1024)
+        let recommendations = try (0..<144).map { ordinal in
+            try ResearchLiteratureRecommendationSubmission(
+                rawCitation: "Source-grounded lead \(ordinal)",
+                reason: largeReason
+            )
+        }
+
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeAction(
+                ResearchActionCompletionSubmission(
+                    runID: protectedRun.runID,
+                    confirmationToken: protectedRun.snapshot.confirmationToken,
+                    summary: "The source supports no warranted Analysis change.",
+                    didModifyTarget: false,
+                    writeCompletion: writeCompletion,
+                    literatureRecommendations: recommendations,
+                    submittedAt: submittedAt
+                )
+            )
+        }
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        ).completion == nil)
+        let portableURL = fixture.rootURL
+            .appendingPathComponent(
+                ".scholium/research-records/v1/records",
+                isDirectory: true
+            )
+            .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
+        #expect(!FileManager.default.fileExists(atPath: portableURL.path))
+
+        try await handle.research.cancelProtectedFunction(runID: action.runID)
+        await runtime.shutdown()
+    }
+
+    @Test("Only Analyze accepts an explicit literature recommendations array")
+    func nonAnalyzeRejectsRecommendationArray() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topic)
+            )
+        )
+        let protectedRun = try await handle.research.protectedFunctionRun(
+            id: action.runID
+        )
+        let writeCompletion = try actionWriteCompletion(
+            for: action,
+            summary: "No synthesis was warranted."
+        )
+
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.completeAction(
+                ResearchActionCompletionSubmission(
+                    runID: action.runID,
+                    confirmationToken: protectedRun.snapshot.confirmationToken,
+                    summary: "No synthesis was warranted.",
+                    didModifyTarget: false,
+                    writeCompletion: writeCompletion,
+                    literatureRecommendations: []
+                )
+            )
+        }
+        try await handle.research.cancelProtectedFunction(runID: action.runID)
+        await runtime.shutdown()
+    }
+
+    private func actionWriteCompletion(
+        for preparation: ResearchActionPreparation,
+        summary: String,
+        submittedAt: Date = Date()
+    ) throws -> ResearchActionWriteCompletionSubmission {
+        let prefix = "Write key: "
+        let writeKey = try #require(
+            preparation.instructions
+                .split(separator: "\n")
+                .map(String.init)
+                .first(where: { $0.hasPrefix(prefix) })
+                .map { String($0.dropFirst(prefix.count)) }
+        )
+        return ResearchActionWriteCompletionSubmission(
+            runID: preparation.runID,
+            writeKey: writeKey,
+            candidateModifiedNotes: [],
+            summary: summary,
+            submittedAt: submittedAt
+        )
     }
 
 }

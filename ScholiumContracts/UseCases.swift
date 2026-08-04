@@ -174,6 +174,16 @@ public protocol ResearchRecordUseCases: Sendable {
         id: UUID,
         isPinned: Bool
     ) async throws -> PortableResearchRecord
+    func setResearchRecordRecommendationDisposition(
+        recordID: UUID,
+        recommendationID: UUID,
+        status: ResearchLiteratureRecommendationDispositionStatus
+    ) async throws -> PortableResearchRecord
+    func setResearchRecordRecommendationNote(
+        recordID: UUID,
+        recommendationID: UUID,
+        note: String?
+    ) async throws -> PortableResearchRecord
     func deleteResearchRecordPermanently(id: UUID) async throws
     func researchRecordComparison(
         recordID: UUID,

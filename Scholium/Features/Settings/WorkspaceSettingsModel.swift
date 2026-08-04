@@ -87,12 +87,6 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
     let adoptBundledCitationStarter: (
         UUID, DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus
-    let bibliographyMethodStatus: (
-        UUID
-    ) async throws -> RecommendedBibliographyMethodStatus
-    let setBibliographyMethod: (
-        UUID, String?, DocumentFingerprint?
-    ) async throws -> RecommendedBibliographyMethodStatus
     let createResearchSkill: (UUID, String, String) async throws -> ResearchSkillPackage
     let duplicateBundledResearchSkill: (UUID, String, String) async throws -> ResearchSkillPackage
     let renameResearchSkill: (UUID, String, String, DocumentFingerprint) async throws -> ResearchSkillPackage
@@ -713,27 +707,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return try await capabilities.researchGuidance.citationMethodStatus(workspaceID)
-    }
-
-    func bibliographyMethodStatus() async throws -> RecommendedBibliographyMethodStatus {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.bibliographyMethodStatus(workspaceID)
-    }
-
-    func setBibliographyMethod(
-        packageID: String?,
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> RecommendedBibliographyMethodStatus {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.setBibliographyMethod(
-            workspaceID,
-            packageID,
-            expectedBindingRevision
-        )
     }
 
     func activateCitationMethod(

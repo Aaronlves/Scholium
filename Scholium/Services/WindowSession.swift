@@ -65,7 +65,6 @@ struct WindowResearchCapabilities: Sendable {
     let skills: any ResearchSkillUseCases
     let actions: any ResearchActionUseCases
     let sourceAccess: any ResearchSourceAccessUseCases
-    let bibliography: any RecommendedBibliographyUseCases
     let skillsURL: URL
     let recoveryRecordsURL: URL
 }
@@ -638,17 +637,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 try await workspaceHandle(id: workspaceID).research
                     .adoptBundledCitationStarter(expectedBindingRevision: revision)
             },
-            bibliographyMethodStatus: { [self] workspaceID in
-                try await workspaceHandle(id: workspaceID).research
-                    .bibliographyMethodStatus()
-            },
-            setBibliographyMethod: { [self] workspaceID, packageID, revision in
-                try await workspaceHandle(id: workspaceID).research
-                    .setBibliographyMethod(
-                        packageID: packageID,
-                        expectedBindingRevision: revision
-                    )
-            },
             createResearchSkill: { [self] workspaceID, id, source in
                 try await workspaceHandle(id: workspaceID).research.createSkill(
                     id: id,
@@ -1089,7 +1077,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 skills: research,
                 actions: research,
                 sourceAccess: research,
-                bibliography: research,
                 skillsURL: research.skillsURL,
                 recoveryRecordsURL: research.recoveryRecordsURL
             )

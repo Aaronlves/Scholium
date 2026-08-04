@@ -89,9 +89,10 @@ struct PortableResearchRecordContractsTests {
             "schema_version", "id", "triptych_id", "kind", "action", "method",
             "participating_notes", "statements", "actually_used_materials",
             "fidelity_completion", "confirmed_changes", "discrepancies",
-            "started_at", "finished_at", "is_pinned", "primary_note_id",
+            "literature_recommendations", "started_at", "finished_at",
+            "is_pinned", "primary_note_id",
         ])
-        #expect(object["schema_version"] as? Int == 3)
+        #expect(object["schema_version"] as? Int == 4)
         #expect(object["fidelity_completion"] as? String == "not_required")
         let source = String(decoding: data, as: UTF8.self)
         for forbidden in [
@@ -107,8 +108,8 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 3 requires explicit Material and Fidelity completion fields")
-    func schemaThreeIsStrict() throws {
+    @Test("Schema 4 requires every authoritative array and rejects earlier schemas")
+    func schemaFourIsStrict() throws {
         for fidelity in [
             PortableResearchFidelityCompletion.notRequired,
             .completed,
@@ -127,7 +128,7 @@ struct PortableResearchRecordContractsTests {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
 
-        for version in [1, 2] {
+        for version in [1, 2, 3] {
             object["schema_version"] = version
             #expect(throws: PortableResearchRecordError.self) {
                 _ = try JSONDecoder.scholium.decode(
@@ -135,6 +136,17 @@ struct PortableResearchRecordContractsTests {
                     from: JSONSerialization.data(withJSONObject: object)
                 )
             }
+        }
+
+        object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "literature_recommendations")
+        #expect(throws: (any Error).self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
         }
 
         object = try #require(
@@ -161,6 +173,76 @@ struct PortableResearchRecordContractsTests {
 
         object["fidelity_completion"] = "unknown"
         #expect(throws: (any Error).self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+    }
+
+    @Test("Analyze recommendation identities are fixed by parent run and ordinal")
+    func analyzeRecommendationIdentityAndOrderFailClosed() throws {
+        let recordID = UUID(
+            uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
+        )!
+        let disposition = try PortableResearchRecommendationDisposition(
+            status: .unprocessed,
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        let recommendations = try [
+            ResearchLiteratureRecommendation(
+                id: ResearchLiteratureRecommendation.stableID(
+                    runID: recordID,
+                    ordinal: 0
+                ),
+                rawCitation: "First source-grounded lead",
+                reason: "The source identifies the first work as a live objection.",
+                disposition: disposition
+            ),
+            ResearchLiteratureRecommendation(
+                id: ResearchLiteratureRecommendation.stableID(
+                    runID: recordID,
+                    ordinal: 1
+                ),
+                rawCitation: "Second source-grounded lead",
+                reason: "The source uses the second work to frame its reply.",
+                disposition: disposition
+            ),
+        ]
+        let record = try makeAnalyzeRecord(recommendations: recommendations)
+        let encoded = try JSONEncoder.scholium.encode(record)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        let originalRecommendations = try #require(
+            object["literature_recommendations"] as? [[String: Any]]
+        )
+
+        var wrongIdentity = originalRecommendations
+        wrongIdentity[0]["id"] = UUID().uuidString
+        object["literature_recommendations"] = wrongIdentity
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        object["literature_recommendations"] = Array(
+            originalRecommendations.reversed()
+        )
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "source_reference")
+        #expect(throws: PortableResearchRecordError.self) {
             _ = try JSONDecoder.scholium.decode(
                 PortableResearchRecord.self,
                 from: JSONSerialization.data(withJSONObject: object)
@@ -516,6 +598,38 @@ struct PortableResearchRecordContractsTests {
             )],
             startedAt: Date(timeIntervalSince1970: 10),
             finishedAt: Date(timeIntervalSince1970: 20)
+        )
+    }
+
+    private func makeAnalyzeRecord(
+        recommendations: [ResearchLiteratureRecommendation]
+    ) throws -> PortableResearchRecord {
+        let base = try makeRecord(sourceReference: ResearchSourceReference(
+            identity: .localFile(
+                id: UUID(uuidString: "99999999-9999-4999-8999-999999999999")!
+            ),
+            displayName: "Source.pdf",
+            fingerprint: DocumentFingerprint(content: "source bytes")
+        ))
+        return try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            kind: base.kind,
+            action: ResearchActionRecordIdentity(actionID: .analyze),
+            method: base.method,
+            sourceReference: base.sourceReference,
+            continuationLineage: base.continuationLineage,
+            primaryNoteID: base.primaryNoteID,
+            participatingNotes: base.participatingNotes,
+            statements: base.statements,
+            actuallyUsedMaterials: base.actuallyUsedMaterials,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: base.confirmedChanges,
+            discrepancies: base.discrepancies,
+            literatureRecommendations: recommendations,
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt,
+            isPinned: base.isPinned
         )
     }
 

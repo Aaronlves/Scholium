@@ -663,7 +663,7 @@ extension WorkspaceHandle {
 
     func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord] {
         try requireActive()
-        let listing = try await services.portableResearchRecordStore.listing(location: .records)
+        let listing = try await services.portableResearchRecordStore.listing()
         guard listing.issues.isEmpty else {
             throw ScholiumApplicationError.researchStoreUnavailable(
                 listing.issues.map(\.reason).joined(separator: "\n")
@@ -684,6 +684,38 @@ extension WorkspaceHandle {
             for: id
         )
         try await refreshAfterResearchCommit("The Research Record pin")
+        return updated
+    }
+
+    func setResearchRecordRecommendationDisposition(
+        recordID: UUID,
+        recommendationID: UUID,
+        status: ResearchLiteratureRecommendationDispositionStatus
+    ) async throws -> PortableResearchRecord {
+        try requireActive()
+        let updated = try await services.portableResearchRecordStore
+            .setRecommendationDisposition(
+                status,
+                recommendationID: recommendationID,
+                recordID: recordID
+            )
+        try await refreshAfterResearchCommit("The literature recommendation disposition")
+        return updated
+    }
+
+    func setResearchRecordRecommendationNote(
+        recordID: UUID,
+        recommendationID: UUID,
+        note: String?
+    ) async throws -> PortableResearchRecord {
+        try requireActive()
+        let updated = try await services.portableResearchRecordStore
+            .setRecommendationNote(
+                note,
+                recommendationID: recommendationID,
+                recordID: recordID
+            )
+        try await refreshAfterResearchCommit("The literature recommendation note")
         return updated
     }
 

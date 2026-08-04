@@ -68,6 +68,57 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
+# Literature recommendations belong only to schema-4 Analyze Research Records.
+# Reject the retired standalone product object, its private files and commands,
+# and its dedicated interface tokens without banning ordinary bibliographic
+# metadata terminology used by Zotero and research documents.
+if rg -n -i --hidden \
+  --glob '!.git/**' \
+  --glob '!.build/**' \
+  --glob '!Tools/Scripts/verify.sh' \
+  'recommendedbibliography|recommended bibliography|recommended-bibliography\.json|research-bibliography-method-v1\.json|bibliography-recommendation|bibliographyrecommendation|bibliographycandidatediscriminator|bibliographycandidateidentity|bibliographyrecommendationgoal|bibliographymatchstate|researchbibliographymethod(document|snapshot|store)|bibliographymethodbinding|setbibliographymethodbinding|bibliography[[:space:]]+(prepare|show|complete|cancel)|bibliographypreview|bibliographyemptystate|bibliographytopinset|bibliographybottominset|researchrecordutilityproof|fixedutility|fixed 760 × 680 utility window' \
+  "${ROOT}"; then
+  echo "Recommended Bibliography cutover guard failed: retired product residue remains." >&2
+  exit 1
+fi
+
+# Keep the dedicated CLI route absent even if it is reintroduced without the
+# old command/help phrases caught by the repository-wide guard above.
+if rg -n -i --glob '*.swift' \
+  'case[[:space:]]+("bibliography"|\.bibliography)|(^|[^[:alnum:]_])\.bibliography\b|runbibliography\b|bibliographycommandhandler\b' \
+  "${ROOT}/ScholiumCLI"; then
+  echo "Recommended Bibliography cutover guard failed: the retired CLI route returned." >&2
+  exit 1
+fi
+
+if rg -n --glob '*.swift' \
+  '(struct|class|enum|typealias)[[:space:]]+ResearchRecommendation' \
+  "${ROOT}/Scholium/Features/ResearchRecord" \
+  "${ROOT}/Scholium/Views/ResearchRecord"; then
+  echo "Literature Recommendation naming guard failed: UI types must use the ResearchLiteratureRecommendation prefix." >&2
+  exit 1
+fi
+
+if rg -n --hidden \
+  --glob '!.git/**' \
+  --glob '!.build/**' \
+  --glob '!Tools/Scripts/verify.sh' \
+  'Local Execution v2|Local-v2|research-execution-v2|execution-v2\.lock' \
+  "${ROOT}"; then
+  echo "Local Execution v3 cutover guard failed: v2 residue remains." >&2
+  exit 1
+fi
+
+if rg -n --hidden \
+  --glob '!.git/**' \
+  --glob '!.build/**' \
+  --glob '!Tools/Scripts/verify.sh' \
+  'PortableResearchRecordLocation|research-records/v1/trash' \
+  "${ROOT}"; then
+  echo "Research Record lifecycle guard failed: retired Record Trash storage remains." >&2
+  exit 1
+fi
+
 # Delivery targets compile only against Contracts plus Application composition.
 # Core is internal and cannot be imported by App, CLI, or their boundary tests.
 DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumCLI")

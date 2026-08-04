@@ -22,7 +22,6 @@ struct WorkspaceServices: Sendable {
     let agentNoteChangeRequestStore: AgentNoteChangeRequestStore
     let researchRecoveryPolicyStore: ResearchRecoveryPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
-    let recommendedBibliographyStore: RecommendedBibliographyStore
     let zotero: ZoteroOperations
     let portableResearchRecordStore: PortableResearchRecordStore
     let localResearchExecutionStore: LocalResearchExecutionStore
@@ -587,9 +586,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 researchSourceAccessStore: ResearchSourceAccessStore(
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
-                ),
-                recommendedBibliographyStore: RecommendedBibliographyStore(
-                    controlURL: controlURL
                 ),
                 zotero: zotero,
                 portableResearchRecordStore: portableResearchRecordStore,

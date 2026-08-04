@@ -11,6 +11,16 @@ struct LibraryDisclosureScope: Hashable, Sendable {
 
 enum WindowColorSchemeChoice: String, CaseIterable {
     case dark, light, system
+
+    static let defaultsKey = "colorScheme"
+
+    var swiftUIColorScheme: ColorScheme? {
+        switch self {
+        case .dark: .dark
+        case .light: .light
+        case .system: nil
+        }
+    }
 }
 
 struct WindowToast: Equatable {
@@ -57,7 +67,10 @@ final class WindowShellState: ObservableObject {
     @Published private(set) var hasCompletedInitialRestore = false
     @Published var colorScheme: WindowColorSchemeChoice {
         didSet {
-            userDefaults.set(colorScheme.rawValue, forKey: Self.colorSchemeDefaultsKey)
+            userDefaults.set(
+                colorScheme.rawValue,
+                forKey: WindowColorSchemeChoice.defaultsKey
+            )
         }
     }
     @Published private(set) var documentTextScale = ScholiumMetrics.Document.defaultTextScale
@@ -65,13 +78,12 @@ final class WindowShellState: ObservableObject {
     @Published private(set) var refreshStatusText: String?
     @Published private(set) var windowSessionPersistenceError: String?
 
-    private static let colorSchemeDefaultsKey = "colorScheme"
     private let userDefaults: UserDefaults
     private var didRestoreInspector = false
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        colorScheme = userDefaults.string(forKey: Self.colorSchemeDefaultsKey)
+        colorScheme = userDefaults.string(forKey: WindowColorSchemeChoice.defaultsKey)
             .flatMap(WindowColorSchemeChoice.init(rawValue:))
             ?? .system
     }

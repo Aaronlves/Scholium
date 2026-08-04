@@ -77,7 +77,11 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func resizeProofWindow(_ window: XCUIElement, toWidth width: CGFloat) {
+    func resizeProofWindow(
+        _ window: XCUIElement,
+        toWidth width: CGFloat,
+        height: CGFloat? = nil
+    ) {
         var currentFrame = window.frame
         guard let screenFrame = NSScreen.main?.frame ?? NSScreen.screens.first?.frame else {
             XCTFail("The responsive proof requires an attached macOS display.")
@@ -103,15 +107,21 @@ extension ScholiumUITests {
         }
 
         let widthDelta = width - currentFrame.width
+        let heightDelta = height.map { $0 - currentFrame.height } ?? 0
         let resizeCorner = window.coordinate(
             withNormalizedOffset: CGVector(dx: 0.996, dy: 0.996)
         )
         resizeCorner.click(
             forDuration: 0.15,
-            thenDragTo: resizeCorner.withOffset(CGVector(dx: widthDelta, dy: 0))
+            thenDragTo: resizeCorner.withOffset(
+                CGVector(dx: widthDelta, dy: heightDelta)
+            )
         )
         XCTAssertTrue(waitUntil(timeout: 5) {
             abs(window.frame.width - width) <= QAWorkspaceMetricContract.frameTolerance
+                && (height.map {
+                    abs(window.frame.height - $0) <= QAWorkspaceMetricContract.frameTolerance
+                } ?? true)
         })
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
@@ -220,6 +230,24 @@ extension ScholiumUITests {
             "The QA workspace focus request could not be posted."
         )
         RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    @MainActor
+    func focusAuxiliaryWindow(
+        _ window: XCUIElement,
+        menuItemTitle: String
+    ) {
+        guard window.exists else {
+            XCTFail("The requested auxiliary window must exist before focus routing.")
+            return
+        }
+        let windowMenu = app.menuBars.menuBarItems["Window"]
+        XCTAssertTrue(windowMenu.waitForExistence(timeout: 3))
+        windowMenu.click()
+        let windowItem = app.menuItems[menuItemTitle].firstMatch
+        XCTAssertTrue(windowItem.waitForExistence(timeout: 3))
+        windowItem.click()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
     }
 
     @MainActor
@@ -445,12 +473,17 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func checkboxIsSelected(_ checkbox: XCUIElement) -> Bool {
-        if let value = checkbox.value as? NSNumber {
+    func selectionControlIsSelected(_ control: XCUIElement) -> Bool {
+        if let value = control.value as? NSNumber {
             return value.boolValue
         }
-        guard let value = checkbox.value as? String else { return false }
+        guard let value = control.value as? String else { return false }
         return ["1", "true", "selected", "checked"].contains(value.lowercased())
+    }
+
+    @MainActor
+    func checkboxIsSelected(_ checkbox: XCUIElement) -> Bool {
+        selectionControlIsSelected(checkbox)
     }
 
     @MainActor
@@ -768,6 +801,11 @@ extension ScholiumUITests {
         let tombstoneNoteID = UUID(
             uuidString: "5E551019-0000-4000-8000-000000000003"
         )!
+        let recommendationID = qaResearchRecommendationID(
+            runID: recordID,
+            ordinal: 0
+        )
+        let sourceID = UUID(uuidString: "5E551019-0000-4000-8000-000000000005")!
         let startedAt = "2026-07-27T04:00:00Z"
         let finishedAt = "2026-07-27T04:01:00Z"
         let methodRevision = qaFingerprint("QA bounded Analyze Method")
@@ -812,7 +850,7 @@ extension ScholiumUITests {
         topicParticipant["starting_revision"] = topicStartingRevision
 
         var portableRecord: [String: Any] = [
-            "schema_version": 3,
+            "schema_version": 4,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "kind": "action",
@@ -877,12 +915,40 @@ extension ScholiumUITests {
             "fidelity_completion": "unverified",
             "confirmed_changes": [],
             "discrepancies": [],
+            "literature_recommendations": createsSynthesisAttention ? [] : [[
+                "id": recommendationID.uuidString,
+                "raw_citation": "Ada Rivera, Source-Grounded Inquiry (2024).",
+                "title": "Source-Grounded Inquiry",
+                "authors": ["Ada Rivera"],
+                "year": 2024,
+                "doi": "10.1000/qa-reading",
+                "zotero_item_key": "QAREAD01",
+                "source_locators": ["p. 42"],
+                "reason": "The analyzed source identifies this work as a key account of source-grounded inquiry.",
+                "uncertainty": "The source gives only a brief characterization.",
+                "disposition": [
+                    "status": "unprocessed",
+                    "updated_at": finishedAt,
+                ],
+            ]],
             "started_at": startedAt,
             "finished_at": finishedAt,
             "is_pinned": false,
         ]
         if createsSynthesisAttention {
             portableRecord["primary_note_id"] = topic.noteID.uuidString
+        } else {
+            portableRecord["primary_note_id"] = analysis.noteID.uuidString
+            portableRecord["source_reference"] = [
+                "schemaVersion": 1,
+                "identity": [
+                    "schemaVersion": 1,
+                    "id": sourceID.uuidString,
+                    "route": "local_file",
+                ],
+                "displayName": "QA Source.pdf",
+                "fingerprint": qaFingerprint("QA exact analyzed source bytes"),
+            ]
         }
 
         let recordsDirectory = triptychDirectory.appendingPathComponent(
@@ -919,6 +985,7 @@ extension ScholiumUITests {
 
         return QAResearchRecordFixture(
             recordID: recordID,
+            recommendationID: createsSynthesisAttention ? nil : recommendationID,
             analysisNoteID: analysis.noteID,
             topicNoteID: topic.noteID,
             tombstoneNoteID: tombstoneNoteID
@@ -964,6 +1031,21 @@ extension ScholiumUITests {
         let data = Data(source.utf8)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         return ["sha256": digest, "byteCount": data.count]
+    }
+
+    func qaResearchRecommendationID(runID: UUID, ordinal: Int) -> UUID {
+        let source = "\(runID.uuidString.lowercased()):literature-recommendation:\(ordinal)"
+        let digest = SHA256.hash(data: Data(source.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let value = [
+            String(digest.prefix(8)),
+            String(digest.dropFirst(8).prefix(4)),
+            String(digest.dropFirst(12).prefix(4)),
+            String(digest.dropFirst(16).prefix(4)),
+            String(digest.dropFirst(20).prefix(12)),
+        ].joined(separator: "-")
+        return UUID(uuidString: value)!
     }
 
     func createIsolatedTriptych() throws {
