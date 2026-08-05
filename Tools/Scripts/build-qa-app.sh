@@ -82,10 +82,25 @@ find "${DERIVED}/debug/Scholium_ScholiumApp.bundle" -type d -name '*.lproj' | wh
 done
 cp "${ROOT}/Tools/Packaging/Info.plist" "${APP}/Contents/Info.plist"
 cp "${ROOT}/Tools/Packaging/ScholiumIcon.icns" "${APP}/Contents/Resources/"
+# Finder and `open` do not inherit the shell environment used to assemble the
+# bundle. Give only this generated QA identity its build-owned isolated home;
+# XCTest launch environments may still replace these values per journey.
 /usr/libexec/PlistBuddy \
   -c "Set :CFBundleIdentifier com.scholium.qa" \
   -c "Set :CFBundleName Scholium QA" \
+  -c "Add :LSEnvironment dict" \
+  -c "Add :LSEnvironment:SCHOLIUM_HOME string ${QA_HOME}" \
+  -c "Add :LSEnvironment:CFFIXED_USER_HOME string ${QA_HOME}" \
   "${APP}/Contents/Info.plist"
+
+[[ "$(plutil -extract LSEnvironment.SCHOLIUM_HOME raw "${APP}/Contents/Info.plist")" == "${QA_HOME}" ]] || {
+  print -u2 "The QA bundle does not declare its isolated SCHOLIUM_HOME."
+  exit 1
+}
+[[ "$(plutil -extract LSEnvironment.CFFIXED_USER_HOME raw "${APP}/Contents/Info.plist")" == "${QA_HOME}" ]] || {
+  print -u2 "The QA bundle does not declare its isolated CFFIXED_USER_HOME."
+  exit 1
+}
 xattr -cr "${APP}"
 codesign --force --deep --sign - "${APP}"
 codesign --verify --deep --strict "${APP}"
