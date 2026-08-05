@@ -61,6 +61,11 @@ package, standing-permission, and child-change-request owners. Analyze Records
 may carry Literature Recommendations. Local read-only Zotero context and the
 optional first-party Zotero MCP transport remain available.
 
+The ad-hoc Beta distribution disables the direct Agent bridge (方案 B): it
+never shows a Pairing Code and its Agent CLI commands fail closed with a typed
+"this build does not support local Agent connection" state. Local pairing is
+available in development builds and in future bridge-enabled signed builds.
+
 Library, Set Aside, and Trash share one native AppKit folder-and-note outline
 and the same browsing grammar. Library creates notes and folders and retains
 menu, keyboard, accessibility, and drag alternatives for organization; Set

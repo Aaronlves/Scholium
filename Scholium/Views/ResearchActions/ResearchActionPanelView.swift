@@ -546,6 +546,22 @@ struct ResearchActionPanelView: View {
                         .font(.caption)
                         .scholiumForeground(.attention)
                 }
+                if let message = controller.agentBridgeDisabledMessage {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(
+                            message,
+                            systemImage: "person.crop.circle.badge.exclamationmark"
+                        )
+                        .font(.callout)
+                        .scholiumForeground(.attention)
+                        Text("The Run is frozen and durable. This build cannot connect a local Agent; use a bridge-enabled signed build for Agent collaboration.")
+                            .font(.caption)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("scholium.researchAction.bridgeDisabled")
+                }
                 if let handoff = controller.agentHandoff,
                    controller.canCancelPreparedRun {
                     Divider()
@@ -715,6 +731,7 @@ struct ResearchActionPanelView: View {
 
     private var canCopyInstructions: Bool {
         guard pendingHandoff == nil, !controller.isBusy else { return false }
+        guard controller.agentBridgeDisabledMessage == nil else { return false }
         return controller.canCancelPreparedRun || controller.canPrepare
     }
 

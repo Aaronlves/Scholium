@@ -531,6 +531,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
 }
 
 public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable {
+    case disabledForDistribution
     case unavailable
     case invalidFrame
     case invalidRequest
@@ -548,6 +549,8 @@ public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable {
 
     public var errorDescription: String? {
         switch self {
+        case .disabledForDistribution:
+            "This build does not support local Agent connection. The ad-hoc Beta distribution disables the direct Agent bridge."
         case .unavailable:
             "Scholium is not running or its local Agent bridge is unavailable."
         case .invalidFrame: "The local Agent bridge frame was invalid."

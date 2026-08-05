@@ -119,6 +119,9 @@ extension ResearchOperations {
         runID: UUID,
         validity: TimeInterval = 10 * 60
     ) async throws -> ResearchAgentHandoff {
+        guard AgentBridgeDistribution().isEnabled else {
+            throw LocalAgentBridgeError.disabledForDistribution
+        }
         let handle = try await reference.requireHandle()
         return try await handle.issueResearchAgentHandoff(
             runID: runID,
