@@ -3253,9 +3253,11 @@ struct FrontendArchitectureTests {
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: #"<pre><code class="language-mermaid">flowchart LR\nA --&gt; B</code></pre>"#,
-            source: "```mermaid\nflowchart LR\nA --> B\n```\n",
+        )
+        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
             documentID: "Diagram.md",
             fingerprint: DocumentFingerprint(content: "diagram").sha256,
+            loadGeneration: 1,
             commentEnabled: false,
             selectionEnabled: false,
             linkPreviews: [],
@@ -3276,12 +3278,12 @@ struct FrontendArchitectureTests {
         ))
         #expect(editorWebViewSource.contains("case \"requestMermaidRuntime\""))
         #expect(readHTML.contains(css))
-        #expect(readHTML.contains("window.scholiumMermaidReady"))
-        #expect(readHTML.contains("post('requestMermaidRuntime')"))
-        #expect(readHTML.contains("runtime.mount(output, result.svg)"))
-        #expect(readHTML.contains("document.querySelectorAll('pre > code')"))
-        #expect(readHTML.contains("name.toLowerCase() === 'language-mermaid'"))
-        #expect(!readHTML.contains("diagnostic.setAttribute('role', 'status')"))
+        #expect(readBridge.contains("window.scholiumMermaidReady"))
+        #expect(readBridge.contains("post('requestMermaidRuntime')"))
+        #expect(readBridge.contains("runtime.mount(output, result.svg)"))
+        #expect(readBridge.contains("document.querySelectorAll('pre > code')"))
+        #expect(readBridge.contains("name.toLowerCase() === 'language-mermaid'"))
+        #expect(!readBridge.contains("diagnostic.setAttribute('role', 'status')"))
     }
 
     @Test("Structured Appearance CSS maps the exported typography and callout profile")
@@ -3319,15 +3321,7 @@ struct FrontendArchitectureTests {
         #expect(css.contains("overflow-x: auto"))
         #expect(editorHTML.contains(css))
         #expect(SafeMarkdownReadWebView.Coordinator.documentHTML(
-            body: "<div class=\"scholium-table-scroll\"></div>",
-            source: "",
-            documentID: "Table.md",
-            fingerprint: DocumentFingerprint(content: "").sha256,
-            commentEnabled: false,
-            selectionEnabled: false,
-            linkPreviews: [],
-            presentationCSS: "",
-            userCSS: ""
+            body: "<div class=\"scholium-table-scroll\"></div>"
         ).contains(css))
     }
 
@@ -3343,15 +3337,7 @@ struct FrontendArchitectureTests {
         #expect(css.contains("padding-inline-end"))
         #expect(editorHTML.contains(css))
         #expect(SafeMarkdownReadWebView.Coordinator.documentHTML(
-            body: "<section class=\"footnotes\"></section>",
-            source: "",
-            documentID: "Footnotes.md",
-            fingerprint: DocumentFingerprint(content: "").sha256,
-            commentEnabled: false,
-            selectionEnabled: false,
-            linkPreviews: [],
-            presentationCSS: "",
-            userCSS: ""
+            body: "<section class=\"footnotes\"></section>"
         ).contains(css))
     }
 
@@ -3375,9 +3361,11 @@ struct FrontendArchitectureTests {
         let editReference = String(editorSource[referenceStart.lowerBound..<referenceEnd.lowerBound])
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: #"<p>Claim<button class="footnote-reference" data-footnote="1">1</button>.</p><section class="footnotes"><ol><li data-footnote="1"><div class="footnote-content">Basis.</div><button class="footnote-return">Return</button></li></ol></section>"#,
-            source: "Claim[^one].\n\n[^one]: Basis.\n",
+        )
+        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
             documentID: "Footnotes.md",
             fingerprint: DocumentFingerprint(content: "Claim[^one].\n\n[^one]: Basis.\n").sha256,
+            loadGeneration: 1,
             commentEnabled: false,
             selectionEnabled: true,
             linkPreviews: [],
@@ -3396,9 +3384,11 @@ struct FrontendArchitectureTests {
         #expect(!editorSource.contains("class FootnoteSectionWidget"))
         #expect(!editorSource.contains("cm-live-footnotes-widget"))
         #expect(!editorSource.contains("cm-live-footnote-definition-source"))
-        #expect(readHTML.contains("showFootnotePopover"))
-        #expect(readHTML.contains("event.target.closest('.footnote-reference')"))
-        #expect(readHTML.contains("event.target.closest('.footnote-return')"))
+        #expect(readHTML.contains("class=\"footnote-reference\""))
+        #expect(readHTML.contains("class=\"footnote-return\""))
+        #expect(readBridge.contains("showFootnotePopover"))
+        #expect(readBridge.contains("event.target.closest('.footnote-reference')"))
+        #expect(readBridge.contains("event.target.closest('.footnote-return')"))
     }
 
     @Test("Read and Live Preview share the bounded preview presentation")
@@ -3440,10 +3430,12 @@ struct FrontendArchitectureTests {
             htmlBody: "<p>Target body</p>"
         )
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
-            body: #"<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="10">Target</a>"#,
-            source: "[[Target]]",
+            body: #"<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="10">Target</a>"#
+        )
+        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
             documentID: "Source.md",
             fingerprint: DocumentFingerprint(content: "[[Target]]").sha256,
+            loadGeneration: 1,
             commentEnabled: false,
             selectionEnabled: false,
             linkPreviews: [preview],
@@ -3451,9 +3443,9 @@ struct FrontendArchitectureTests {
             userCSS: ""
         )
         #expect(readHTML.contains(css))
-        #expect(readHTML.contains("previewByRange"))
-        #expect(readHTML.contains("showLinkPopover"))
-        #expect(readHTML.contains("showFootnotePopover"))
+        #expect(readBridge.contains("previewByRange"))
+        #expect(readBridge.contains("showLinkPopover"))
+        #expect(readBridge.contains("showFootnotePopover"))
         #expect(previewControllerSource.contains("ViewPlugin.define"))
         #expect(previewControllerSource.contains("document.removeEventListener"))
         #expect(previewControllerSource.contains("floatingSurfacePosition"))
@@ -3489,10 +3481,12 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
-            body: #"<p data-source-line="2">A bounded claim.</p>"#,
-            source: "# Topic\nA bounded claim.\n",
+            body: #"<p data-source-line="2">A bounded claim.</p>"#
+        )
+        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
             documentID: "Topic.md",
             fingerprint: DocumentFingerprint(content: "# Topic\nA bounded claim.\n").sha256,
+            loadGeneration: 1,
             commentEnabled: true,
             selectionEnabled: true,
             linkPreviews: [],
@@ -3501,33 +3495,33 @@ struct FrontendArchitectureTests {
         )
 
         #expect(readHTML.contains("Return saves · Shift-Return adds a line · Escape cancels"))
-        #expect(readHTML.contains("commentSubmitted"))
-        #expect(readHTML.contains("Comment for"))
+        #expect(readBridge.contains("commentSubmitted"))
+        #expect(readBridge.contains("Comment for"))
         #expect(readHTML.contains(#"class="scholium-selection-actions""#))
         #expect(readHTML.contains(#"class="scholium-selection-toolbar""#))
         #expect(readHTML.contains(
             #"id="comment-selection" class="scholium-selection-control""#
         ))
         #expect(readHTML.contains(#"class="scholium-selection-label">Comment"#))
-        #expect(readHTML.contains("scholium-selection-keyboard-focus"))
-        #expect(readHTML.contains("ResolveCommentSubmission"))
-        #expect(readHTML.contains("Your Comment is still here"))
+        #expect(readBridge.contains("scholium-selection-keyboard-focus"))
+        #expect(readBridge.contains("ResolveCommentSubmission"))
+        #expect(readBridge.contains("Your Comment is still here"))
         #expect(readHTML.contains(
             "#comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-color-accent); }"
         ))
         #expect(!readHTML.contains(
             "#comment-text:focus-visible { outline: 2px solid var(--scholium-color-accent)"
         ))
-        #expect(readHTML.contains("TextEncoder"))
-        #expect(readHTML.contains("makeRequestID"))
-        #expect(readHTML.contains("globalThis.crypto.getRandomValues"))
-        #expect(readHTML.contains("commentSelectionRange = range.cloneRange()"))
-        #expect(readHTML.contains("const range = commentSelectionRange?.cloneRange()"))
-        #expect(readHTML.contains("selection.addRange(range)"))
+        #expect(readBridge.contains("TextEncoder"))
+        #expect(readBridge.contains("makeRequestID"))
+        #expect(readBridge.contains("globalThis.crypto.getRandomValues"))
+        #expect(readBridge.contains("commentSelectionRange = range.cloneRange()"))
+        #expect(readBridge.contains("const range = commentSelectionRange?.cloneRange()"))
+        #expect(readBridge.contains("selection.addRange(range)"))
         #expect(!readHTML.contains("Copy and Open Agent App"))
         #expect(!readHTML.contains("Copy Only"))
-        #expect(readHTML.contains("startLine"))
-        #expect(readHTML.contains("endLine"))
+        #expect(readBridge.contains("startLine"))
+        #expect(readBridge.contains("endLine"))
         #expect(!readHTML.contains("quotation:"))
         #expect(!readHTML.contains("utf16Range"))
         #expect(selectionActionsSource.contains("view.composing"))

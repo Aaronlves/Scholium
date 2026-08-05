@@ -22,6 +22,22 @@ struct CSSSnippetSanitizerTests {
         #expect(result.livePreviewCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
     }
 
+    @Test("Declared document class selectors are accepted and scoped")
+    func acceptsDocumentClassSelectors() throws {
+        let result = try CSSSnippetSanitizer.sanitize("""
+        .scholium-document { max-width: 46ch; }
+        .scholium-document h2 { color: #7a3b2e; }
+        .scholium-highlight { background-color: #f6ecd8; }
+        """)
+
+        #expect(result.readCSS.contains(".scholium-document {"))
+        #expect(result.readCSS.contains(".scholium-document h2 {"))
+        #expect(result.readCSS.contains(".scholium-highlight {"))
+        #expect(result.livePreviewCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
+        #expect(result.livePreviewCSS.contains(".scholium-live-mode .cm-live-h2"))
+        #expect(!result.livePreviewCSS.contains(".scholium-document h2"))
+    }
+
     @Test("Network, cascade escape, and HTML injection are rejected", arguments: [
         "p { background: url(https://example.com/x); }",
         "p { color: red !important; }",
@@ -88,5 +104,60 @@ struct CSSSnippetSanitizerTests {
 
         #expect(result.readCSS.contains("font-size: 1.1em"))
         #expect(result.readCSS.contains("color: #444"))
+    }
+
+    @Test("Snippet names normalize to inert display labels")
+    func normalizesSnippetNames() {
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName(
+                "</style><script id=\"scholium-proof\">0</script><style>",
+                fallback: "Fallback"
+            )
+                == "/stylescript id=\"scholium-proof\"0/scriptstyle"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName(
+                "</STYLE><SCRIPT id=\"scholium-proof\">0</SCRIPT><STYLE>",
+                fallback: "Fallback"
+            )
+                == "/STYLESCRIPT id=\"scholium-proof\"0/SCRIPTSTYLE"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName("  My Notes  ", fallback: "Fallback")
+                == "My Notes"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName("plain-name", fallback: "Fallback")
+                == "plain-name"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName("", fallback: "Fallback") == "Fallback"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName("   \n\t ", fallback: "Fallback")
+                == "Fallback"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName("a\u{0000}b", fallback: "Fallback") == "ab"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName(
+                "line\u{2028}separator",
+                fallback: "Fallback"
+            ) == "lineseparator"
+        )
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName(
+                String(repeating: "x", count: 200),
+                fallback: "Fallback"
+            ).count
+                == CSSSnippetSanitizer.maximumSnippetNameLength
+        )
+        // Invisible format characters such as ZWSP are removed with control
+        // characters so a label cannot hide text or spoof another name.
+        #expect(
+            CSSSnippetSanitizer.normalizedSnippetName("a\u{200B}b", fallback: "Fallback")
+                == "ab"
+        )
     }
 }

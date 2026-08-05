@@ -148,6 +148,81 @@ struct StyleOperationsTests {
         #expect(try await operations.managedStylesLocation().path.contains("Application Support"))
     }
 
+    @Test("CSS snippet names are normalized and never enter generated CSS")
+    func cssSnippetNamesStayInert() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumStyleSnippetNames-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let hostile = "</style><script id=\"scholium-proof\">0</script><style>"
+        let sourceURL = root.appendingPathComponent("Readable.css")
+        try Data("p { color: #543210; }\n".utf8).write(to: sourceURL)
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+
+        let imported = try await operations.importStyleSnippet(from: sourceURL)
+        let record = try #require(imported.snippets.first)
+        let renamed = try await operations.renameStyleSnippet(record.id, to: hostile)
+        let renamedRecord = try #require(renamed.snippets.first)
+
+        #expect(renamedRecord.name == "/stylescript id=\"scholium-proof\"0/scriptstyle")
+        #expect(!renamed.readCSS.contains("scholium-proof"))
+        #expect(!renamed.readCSS.contains("</style>"))
+        #expect(!renamed.livePreviewCSS.contains(hostile))
+        #expect(!renamed.readCSS.contains(renamedRecord.name))
+        #expect(renamed.readCSS.contains("#543210"))
+
+        let persisted: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+        let reloaded = try await persisted.styleSnapshot()
+        #expect(reloaded.snippets.first?.name == renamedRecord.name)
+    }
+
+    @Test("Tampered snippet manifests normalize hostile names on load")
+    func tamperedSnippetManifestNamesAreNormalized() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumTamperedSnippetManifest-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let styles = support
+            .appendingPathComponent("Workspace", isDirectory: true)
+            .appendingPathComponent("Styles", isDirectory: true)
+        try FileManager.default.createDirectory(at: styles, withIntermediateDirectories: true)
+        let managedFileName = UUID().uuidString.lowercased() + ".css"
+        let snippetsDirectory = styles.appendingPathComponent("Snippets", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: snippetsDirectory,
+            withIntermediateDirectories: true
+        )
+        try Data("p { color: #543210; }\n".utf8).write(
+            to: snippetsDirectory.appendingPathComponent(managedFileName),
+            options: .atomic
+        )
+
+        let record = CSSSnippetRecord(
+            id: UUID(),
+            name: "</style><script id=\"scholium-proof\">0</script><style>",
+            managedFileName: managedFileName,
+            isEnabled: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode([record]).write(
+            to: styles.appendingPathComponent("snippets.json"),
+            options: .atomic
+        )
+
+        let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+        let loaded = try await operations.styleSnapshot()
+        #expect(loaded.snippets.first?.name == "/stylescript id=\"scholium-proof\"0/scriptstyle")
+        #expect(!loaded.readCSS.contains("scholium-proof"))
+        #expect(!loaded.livePreviewCSS.contains("</style>"))
+        #expect(loaded.readCSS.contains("#543210"))
+    }
+
     @Test("Obsidian appearance bytes are read in Application")
     func obsidianAppearance() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(

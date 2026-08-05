@@ -38,7 +38,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let result = try #require(try await harness.callPageJavaScript(
+        let result = try #require(try await harness.callBridgeJavaScript(
             """
             const familySources = [
               'sequenceDiagram\\nA->>B: Reason',
@@ -75,6 +75,66 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(result["links"] as? Int == 0)
         #expect(result["scripts"] as? Int == 0)
         #expect(result["mapped"] as? String == "0")
+    }
+
+    @Test("Read HTML template is inert markup with no inline scripts")
+    func readHTMLTemplateIsInert() throws {
+        let html = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<p>Fixture</p>"
+        )
+
+        #expect(!html.contains("<script"))
+        #expect(!html.contains("</script>"))
+        #expect(html.contains("<style id=\"scholium-presentation-css\"></style>"))
+        #expect(html.contains("<style id=\"scholium-user-css\"></style>"))
+        #expect(html.contains("script-src 'none'"))
+    }
+
+    @Test("Read treats hostile CSS bytes as inert style text")
+    func readHostileUserCSSCannotCreateNodes() async throws {
+        let hostile = "</style><script id=\"scholium-proof\">0</script><style>"
+        let source = "A claim.\n"
+        let document = NoteDocument(relativePath: "Hostile.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            userCSS: hostile
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let page = try #require(try await harness.callPageJavaScript(
+            """
+            return {
+              scripts: document.querySelectorAll('script').length,
+              proof: document.getElementById('scholium-proof') !== null,
+              pageHandler: Boolean(window.webkit
+                && window.webkit.messageHandlers
+                && window.webkit.messageHandlers.scholiumRead)
+            };
+            """
+        ) as? [String: Any])
+        #expect(page["scripts"] as? Int == 0)
+        #expect(page["proof"] as? Bool == false)
+        #expect(page["pageHandler"] as? Bool == false)
+
+        let bridge = try #require(try await harness.callBridgeJavaScript(
+            """
+            return {
+              ready: window.scholiumReadReady instanceof Promise,
+              handler: Boolean(window.webkit
+                && window.webkit.messageHandlers
+                && window.webkit.messageHandlers.scholiumRead),
+              appliedCSS: document.getElementById('scholium-user-css')?.textContent || ''
+            };
+            """
+        ) as? [String: Any])
+        #expect(bridge["ready"] as? Bool == true)
+        #expect(bridge["handler"] as? Bool == true)
+        #expect(bridge["appliedCSS"] as? String == hostile)
     }
 
     @Test("Review never offers Comment for a selection intersecting Mermaid")
@@ -792,7 +852,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(submission.endLine == 7)
         #expect(submission.text == "A focused regression Comment.")
 
-        let failure = try #require(try await harness.callPageJavaScript(
+        let failure = try #require(try await harness.callBridgeJavaScript(
             """
             const resolved = window.scholiumResolveCommentSubmission(requestID, false);
             const composer = document.getElementById('comment-composer');
@@ -840,7 +900,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let mermaidRuntime = try await harness.callPageJavaScript(
+        let mermaidRuntime = try await harness.callBridgeJavaScript(
             "return window.scholiumMermaid?.version || 0"
         ) as? Int
         #expect(mermaidRuntime == 0)
@@ -1733,6 +1793,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         init(
             initialAnchor: EditorScrollAnchor?,
             initialScrollFraction: Double,
+            userCSS: String,
             testingForcesFinalizationFailure: Bool,
             testingScrollRestoreDelayMilliseconds: Int
         ) {
@@ -1747,6 +1808,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 fraction: initialScrollFraction,
                 anchor: initialAnchor
             )
+            self.userCSS = userCSS
             #if DEBUG
             self.testingForcesFinalizationFailure = testingForcesFinalizationFailure
             self.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
@@ -1814,6 +1876,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             fingerprint: String,
             initialAnchor: EditorScrollAnchor?,
             initialScrollFraction: Double,
+            userCSS: String = "",
             enablesComments: Bool = false,
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0
@@ -1825,6 +1888,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             sourceBox = SourceBox(
                 initialAnchor: initialAnchor,
                 initialScrollFraction: initialScrollFraction,
+                userCSS: userCSS,
                 testingForcesFinalizationFailure: testingForcesFinalizationFailure,
                 testingScrollRestoreDelayMilliseconds: testingScrollRestoreDelayMilliseconds
             )
@@ -1842,6 +1906,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 source: source,
                 htmlBody: htmlBody,
                 fingerprint: fingerprint,
+                userCSS: userCSS,
                 enablesComments: enablesComments,
                 sourceBox: sourceBox
             )
@@ -1884,6 +1949,26 @@ extension MarkdownEditorWebViewIntegrationTests {
                 arguments: arguments,
                 in: nil,
                 contentWorld: .page
+            )
+        }
+
+        /// Runs JavaScript in the app-owned Read content world where the
+        /// bridge globals (``window.scholiumReadReady``,
+        /// ``window.scholiumReadScroll``, the Mermaid runtime, and the
+        /// comment/selection surface) live.
+        func callBridgeJavaScript(
+            _ body: String,
+            arguments: [String: Any] = [:]
+        ) async throws -> Any? {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            return try await webView.callAsyncJavaScript(
+                body,
+                arguments: arguments,
+                in: nil,
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
             )
         }
 
@@ -2094,7 +2179,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 "return window.scholiumReadScroll?.restoreCount ?? -1;",
                 arguments: [:],
                 in: nil,
-                contentWorld: .page
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
             )
             guard let count = (result as? NSNumber)?.intValue, count >= 0 else {
                 throw ReadHarnessError.invalidSnapshot
@@ -2135,11 +2220,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         func footnoteInteractionSnapshot() async throws -> FootnoteInteractionSnapshot {
-            guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
-                throw ReadHarnessError.webViewUnavailable
-            }
-            let rawResult = try await webView.callAsyncJavaScript(
+            let rawResult = try await callBridgeJavaScript(
                 """
                 const references = Array.from(document.querySelectorAll('.footnote-reference'));
                 const reference = references[1];
@@ -2185,9 +2266,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                   referenceFocused: document.activeElement === reference
                 };
                 """,
-                arguments: [:],
-                in: nil,
-                contentWorld: .page
+                arguments: [:]
             )
             guard JSONSerialization.isValidJSONObject(rawResult as Any),
                   let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
@@ -2239,7 +2318,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         func crossParagraphSelectionPresentation() async throws -> ReviewSelectionPresentationSnapshot {
-            let rawResult = try await callPageJavaScript(
+            let rawResult = try await callBridgeJavaScript(
                 """
                 const paragraphs = Array.from(document.querySelectorAll('#scholium-document > p'));
                 if (paragraphs.length !== 2) return null;
@@ -2279,7 +2358,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 "return window.scholiumReadScroll?.testingSnapshot() ?? null;",
                 arguments: [:],
                 in: nil,
-                contentWorld: .page
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
             )
             guard let payload = result as? [String: Any],
                   let count = (payload["registryCount"] as? NSNumber)?.intValue,
@@ -2577,6 +2656,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let source: String
         let htmlBody: String
         let fingerprint: String
+        let userCSS: String
         let enablesComments: Bool
         @ObservedObject var sourceBox: SourceBox
 

@@ -38,6 +38,10 @@ public enum CSSSnippetSanitizationError: LocalizedError, Equatable {
 /// ambiguous syntax is rejected instead of being passed through to WebKit.
 public enum CSSSnippetSanitizer {
     public static let maximumUTF8Size = 1_048_576
+    /// Human-readable snippet names are configuration labels, never markup.
+    /// Normalize them so a name can never become an HTML or CSS construct
+    /// even if a future consumer reintroduces names into generated output.
+    public static let maximumSnippetNameLength = 120
 
     private static let protectedSelectorFragments = [
         "scholium-callout", "footnote", "review", "diagnostic", "provenance",
@@ -124,6 +128,28 @@ public enum CSSSnippetSanitizer {
         )
     }
 
+    /// Normalizes a machine-local CSS snippet display name for safe storage
+    /// and presentation. Control characters, HTML delimiters, and Unicode
+    /// line separators are removed (never interpreted), leading/trailing
+    /// whitespace is trimmed, and the result is bounded in length. An empty
+    /// result falls back to ``fallback`` so callers never persist an empty
+    /// label.
+    public static func normalizedSnippetName(
+        _ requestedName: String,
+        fallback: String
+    ) -> String {
+        let trimmed = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = trimmed.filter { character in
+            !character.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+                && character != "<"
+                && character != ">"
+                && character != "\u{2028}"
+                && character != "\u{2029}"
+        }
+        let normalized = String(filtered.prefix(maximumSnippetNameLength))
+        return normalized.isEmpty ? fallback : normalized
+    }
+
     private struct Rule {
         let selector: String
         let declarations: String
@@ -198,7 +224,7 @@ public enum CSSSnippetSanitizer {
         guard !compounds.isEmpty else { throw CSSSnippetSanitizationError.unsupportedSelector(selector) }
         for compound in compounds {
             if compound.hasPrefix(".") {
-                guard allowedClasses.contains(String(compound)) else {
+                guard allowedClasses.contains(String(compound.dropFirst())) else {
                     throw CSSSnippetSanitizationError.unsupportedSelector(selector)
                 }
             } else if !allowedElements.contains(compound.lowercased()) {

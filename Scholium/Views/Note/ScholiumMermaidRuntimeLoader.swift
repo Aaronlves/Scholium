@@ -5,38 +5,46 @@ import WebKit
 /// owns request identity, cancellation, and page lifetime.
 enum ScholiumMermaidRuntimeLoader {
     @MainActor
-    static func installAndNotify(in webView: WKWebView) async {
-        let loaded = await install(in: webView)
+    static func installAndNotify(
+        in webView: WKWebView,
+        contentWorld: WKContentWorld = .page
+    ) async {
+        let loaded = await install(in: webView, contentWorld: contentWorld)
         _ = try? await webView.callAsyncJavaScript(
             "window.scholiumMermaidRuntimeDidLoad?.(loaded)",
             arguments: ["loaded": loaded],
             in: nil,
-            contentWorld: .page
+            contentWorld: contentWorld
         )
     }
 
     @MainActor
-    private static func install(in webView: WKWebView) async -> Bool {
+    private static func install(
+        in webView: WKWebView,
+        contentWorld: WKContentWorld
+    ) async -> Bool {
         if let installed = try? await webView.callAsyncJavaScript(
             "return window.scholiumMermaid?.version === 2",
             arguments: [:],
             in: nil,
-            contentWorld: .page
+            contentWorld: contentWorld
         ), installed as? Bool == true {
             return true
         }
         guard !ScholiumMermaidAssets.runtimeJavaScript.isEmpty else { return false }
         do {
             // WebKit explicitly supports evaluateJavaScript for installing
-            // page-world libraries whose globals later calls rely on.
+            // content-world libraries whose globals later calls rely on.
             _ = try await webView.evaluateJavaScript(
-                ScholiumMermaidAssets.runtimeJavaScript
+                ScholiumMermaidAssets.runtimeJavaScript,
+                in: nil,
+                contentWorld: contentWorld
             )
             let installed = try await webView.callAsyncJavaScript(
                 "return window.scholiumMermaid?.version === 2",
                 arguments: [:],
                 in: nil,
-                contentWorld: .page
+                contentWorld: contentWorld
             )
             return installed as? Bool == true
         } catch {

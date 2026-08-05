@@ -4,6 +4,12 @@ import SwiftUI
 import WebKit
 
 struct SafeMarkdownReadWebView: NSViewRepresentable {
+    /// App-owned bridge scripts and the native message handler live in a
+    /// named content world. Research-authored CSS and Markdown never enter
+    /// that world, and the page world exposes no native handler or script.
+    static let bridgeContentWorldName = "ScholiumRead"
+    static let bridgeContentWorld = WKContentWorld.world(name: bridgeContentWorldName)
+
     let documentID: String
     let fingerprint: String
     let source: String
@@ -73,14 +79,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let contentController = WKUserContentController()
-        contentController.add(context.coordinator, name: Coordinator.messageHandlerName)
-        if !ScholiumMathAssets.runtimeJavaScript.isEmpty {
-            contentController.addUserScript(WKUserScript(
-                source: ScholiumMathAssets.runtimeJavaScript,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            ))
-        }
+        contentController.add(
+            context.coordinator,
+            contentWorld: Self.bridgeContentWorld,
+            name: Coordinator.messageHandlerName
+        )
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
         configuration.websiteDataStore = .nonPersistent()
@@ -146,9 +149,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
-        webView.evaluateJavaScript(
-            "window.scholiumSetReviewSelectionSurfaceActive?.(false)"
-        )
+        Task { @MainActor [weak webView] in
+            guard let webView else { return }
+            _ = try? await webView.evaluateJavaScript(
+                "window.scholiumSetReviewSelectionSurfaceActive?.(false)",
+                in: nil,
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+            )
+        }
         webView.configuration.userContentController.removeScriptMessageHandler(
             forName: Coordinator.messageHandlerName
         )
@@ -353,7 +361,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     "return window.scholiumShowCommentComposer?.() === true",
                     arguments: [:],
                     in: nil,
-                    contentWorld: .page
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                 )
             }
         }
@@ -373,7 +381,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         "succeeded": resolution.succeeded,
                     ],
                     in: nil,
-                    contentWorld: .page
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                 )
             }
         }
@@ -446,17 +454,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             pageIsReady = false
             appliedSelectionSurfaceIsActive = nil
             activeWebView = webView
-            let html = Self.documentHTML(
-                body: body,
-                source: source,
-                documentID: documentID,
-                fingerprint: fingerprint,
-                loadGeneration: expectedLoadGeneration,
-                commentEnabled: onCommentSelection != nil,
-                selectionEnabled: onSelectionChange != nil,
-                linkPreviews: linkPreviews,
+            installBridgeScripts(
                 presentationCSS: presentationCSS,
-                userCSS: userCSS
+                userCSS: userCSS,
+                linkPreviews: linkPreviews,
+                loadGeneration: loadGeneration,
+                in: webView
+            )
+            let html = Self.documentHTML(
+                body: body
             )
             let expectedSignature = signature
             Task { @MainActor [weak self, weak webView] in
@@ -478,6 +484,44 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
         }
 
+        /// Installs the app-owned math runtime and the Read bridge into the
+        /// named content world before the next page load. The page world
+        /// receives no scripts, so research text and CSS can never reach a
+        /// script boundary.
+        private func installBridgeScripts(
+            presentationCSS: String,
+            userCSS: String,
+            linkPreviews: [DocumentLinkPreview],
+            loadGeneration: UInt64,
+            in webView: WKWebView
+        ) {
+            let contentController = webView.configuration.userContentController
+            contentController.removeAllUserScripts()
+            if !ScholiumMathAssets.runtimeJavaScript.isEmpty {
+                contentController.addUserScript(WKUserScript(
+                    source: ScholiumMathAssets.runtimeJavaScript,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true,
+                    in: SafeMarkdownReadWebView.bridgeContentWorld
+                ))
+            }
+            contentController.addUserScript(WKUserScript(
+                source: Self.bridgeScript(
+                    documentID: documentID,
+                    fingerprint: fingerprint,
+                    loadGeneration: loadGeneration,
+                    commentEnabled: onCommentSelection != nil,
+                    selectionEnabled: onSelectionChange != nil,
+                    linkPreviews: linkPreviews,
+                    presentationCSS: presentationCSS,
+                    userCSS: userCSS
+                ),
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true,
+                in: SafeMarkdownReadWebView.bridgeContentWorld
+            ))
+        }
+
         private func applyLinkPreviewsIfNeeded(in webView: WKWebView) {
             guard pageIsReady,
                   desiredLinkPreviewRevision != appliedLinkPreviewRevision,
@@ -491,7 +535,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     "return window.scholiumSetLinkPreviews?.(previews) === true",
                     arguments: ["previews": previews],
                     in: nil,
-                    contentWorld: .page
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                 )
                 guard !Task.isCancelled,
                       result as? Bool == true,
@@ -518,7 +562,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     """,
                     arguments: ["active": requestedActive],
                     in: nil,
-                    contentWorld: .page
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                 )
                 guard !Task.isCancelled,
                       result as? Bool == true,
@@ -618,7 +662,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 guard let webView,
                       self.activeWebView === webView,
                       !Task.isCancelled else { return }
-                await ScholiumMermaidRuntimeLoader.installAndNotify(in: webView)
+                await ScholiumMermaidRuntimeLoader.installAndNotify(
+                    in: webView,
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                )
             }
         }
 
@@ -695,7 +742,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         """,
                         arguments: [:],
                         in: nil,
-                        contentWorld: .page
+                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                     )
                     guard result as? Bool == true,
                           self.isCurrentLoad(
@@ -840,7 +887,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     "fallbackFraction": fraction,
                 ],
                 in: nil,
-                contentWorld: .page
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
             )
             guard activeWebView === webView,
                   loadGeneration == generation,
@@ -1152,7 +1199,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 """,
                 arguments: ["requested": line],
                 in: nil,
-                contentWorld: .page
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
             )
             guard let payload = result as? [String: Any],
                   payload["reached"] as? Bool == true,
@@ -1211,12 +1258,58 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             decisionHandler(.cancel)
         }
 
-        static func documentHTML(
-            body: String,
-            source: String,
+        static func documentHTML(body: String) -> String {
+            #if DEBUG
+            let qaCommentSubmitControl = Bundle.main.bundleIdentifier == "com.scholium.qa"
+                ? #"<button id="qa-submit-comment" class="scholium-qa-only-control" type="button">Submit Comment for QA</button>"#
+                : ""
+            #else
+            let qaCommentSubmitControl = ""
+            #endif
+            return """
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; font-src data:">
+              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
+              <style id="scholium-presentation-css"></style>
+              <style id="scholium-user-css"></style>
+            </head>
+            <body>
+              <main id="scholium-document" class="scholium-document">\(body)</main>
+              <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="tooltip" aria-live="polite" hidden>
+                <h2 class="scholium-preview-title"></h2>
+                <p class="scholium-preview-metadata"></p>
+                <div class="scholium-preview-body"></div>
+              </aside>
+              <div id="selection-actions" class="scholium-selection-actions" hidden>
+                <div id="selection-toolbar" class="scholium-selection-toolbar" role="toolbar" aria-label="Selection actions">
+                  <button id="comment-selection" class="scholium-selection-control" type="button">
+                    <span class="scholium-selection-label">Comment</span>
+                  </button>
+                </div>
+                <div id="comment-composer" aria-busy="false" hidden>
+                  <textarea id="comment-text" rows="2" maxlength="16384" placeholder="Comment" aria-label="Comment" aria-describedby="comment-help"></textarea>
+                  <span id="comment-help" role="status" aria-live="polite" aria-atomic="true">Return saves · Shift-Return adds a line · Escape cancels</span>
+                  \(qaCommentSubmitControl)
+                </div>
+              </div>
+            </body>
+            </html>
+            """
+        }
+
+        /// App-owned Read bridge executed in the named content world.
+        /// Parameters are embedded as JSON literals, so research text and CSS
+        /// are values inside this script rather than markup in the HTML
+        /// document. Dynamic CSS is applied with ``textContent`` and can never
+        /// change the page's node structure.
+        static func bridgeScript(
             documentID: String,
             fingerprint: String,
-            loadGeneration: UInt64 = 1,
+            loadGeneration: UInt64,
             commentEnabled: Bool,
             selectionEnabled: Bool,
             linkPreviews: [DocumentLinkPreview],
@@ -1245,12 +1338,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     };
                   },
             """
-            let qaCommentSubmitControl = Bundle.main.bundleIdentifier == "com.scholium.qa"
-                ? #"<button id="qa-submit-comment" class="scholium-qa-only-control" type="button">Submit Comment for QA</button>"#
-                : ""
             #else
             let readScrollTestingMembers = ""
-            let qaCommentSubmitControl = ""
             #endif
             let previewPayload = base64JSON(linkPreviews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).map {
                 ReadLinkPreview(
@@ -1263,36 +1352,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             })
             return """
-            <!doctype html>
-            <html lang="en">
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src data:">
-              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
-              <style id="scholium-presentation-css">\(presentationCSS)</style>
-              <style id="scholium-user-css">\(userCSS)</style>
-            </head>
-            <body>
-              <main id="scholium-document" class="scholium-document">\(body)</main>
-              <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="tooltip" aria-live="polite" hidden>
-                <h2 class="scholium-preview-title"></h2>
-                <p class="scholium-preview-metadata"></p>
-                <div class="scholium-preview-body"></div>
-              </aside>
-              <div id="selection-actions" class="scholium-selection-actions" hidden>
-                <div id="selection-toolbar" class="scholium-selection-toolbar" role="toolbar" aria-label="Selection actions">
-                  <button id="comment-selection" class="scholium-selection-control" type="button">
-                    <span class="scholium-selection-label">Comment</span>
-                  </button>
-                </div>
-                <div id="comment-composer" aria-busy="false" hidden>
-                  <textarea id="comment-text" rows="2" maxlength="16384" placeholder="Comment" aria-label="Comment" aria-describedby="comment-help"></textarea>
-                  <span id="comment-help" role="status" aria-live="polite" aria-atomic="true">Return saves · Shift-Return adds a line · Escape cancels</span>
-                  \(qaCommentSubmitControl)
-                </div>
-              </div>
-              <script>
+              const presentationCSS = \(jsonLiteral(presentationCSS));
+              const userCSS = \(jsonLiteral(userCSS));
+              const presentationStyle = document.getElementById('scholium-presentation-css');
+              const userStyle = document.getElementById('scholium-user-css');
+              if (presentationStyle) presentationStyle.textContent = presentationCSS;
+              if (userStyle) userStyle.textContent = userCSS;
               window.scholiumReadReady = (async () => {
                 'use strict';
                 const version = 1;
@@ -2260,9 +2325,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 // handlers exist. The native side also probes this API from
                 // didFinish, so a dropped early message cannot lose a query.
               })();
-              </script>
-            </body>
-            </html>
             """
         }
 

@@ -129,7 +129,10 @@ public actor StyleOperations: StyleUseCases {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let record = CSSSnippetRecord(
             id: id,
-            name: displayName.isEmpty ? "CSS Snippet" : displayName,
+            name: CSSSnippetSanitizer.normalizedSnippetName(
+                displayName,
+                fallback: "CSS Snippet"
+            ),
             managedFileName: managedFileName,
             isEnabled: true,
             sourceFingerprint: DocumentFingerprint(content: source).sha256
@@ -168,7 +171,7 @@ public actor StyleOperations: StyleUseCases {
 
     public func renameStyleSnippet(_ id: UUID, to requestedName: String) throws -> StyleSnapshot {
         ensureLoaded()
-        let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = CSSSnippetSanitizer.normalizedSnippetName(requestedName, fallback: "")
         guard !name.isEmpty else { return snapshot() }
         try mutate { candidate in
             guard let index = candidate.firstIndex(where: { $0.id == id }) else { return false }
@@ -190,7 +193,10 @@ public actor StyleOperations: StyleUseCases {
         try data.write(to: target, options: .atomic)
         let copy = CSSSnippetRecord(
             id: copyID,
-            name: source.name + " Copy",
+            name: CSSSnippetSanitizer.normalizedSnippetName(
+                source.name + " Copy",
+                fallback: source.name + " Copy"
+            ),
             managedFileName: fileName,
             isEnabled: source.isEnabled,
             sourceFingerprint: source.sourceFingerprint
@@ -307,10 +313,9 @@ public actor StyleOperations: StyleUseCases {
         do {
             try ensureDirectory()
             if fileManager.fileExists(atPath: manifestURL.path) {
-                snippets = try JSONDecoder().decode(
-                    [CSSSnippetRecord].self,
-                    from: Data(contentsOf: manifestURL)
-                )
+                snippets = try JSONDecoder()
+                    .decode([CSSSnippetRecord].self, from: Data(contentsOf: manifestURL))
+                    .map(normalizedSnippetRecord)
             }
             if fileManager.fileExists(atPath: appearanceManifestURL.path) {
                 let manifest = try JSONDecoder().decode(
@@ -529,8 +534,8 @@ public actor StyleOperations: StyleUseCases {
                 let projection = try CSSSnippetSanitizer.sanitize(source)
                 records[index].sourceFingerprint = DocumentFingerprint(content: source).sha256
                 records[index].lastFailure = nil
-                read.append("/* \(snippet.name) */\n\(projection.readCSS)")
-                live.append("/* \(snippet.name) */\n\(projection.livePreviewCSS)")
+                read.append("/* Scholium user CSS snippet */\n\(projection.readCSS)")
+                live.append("/* Scholium user CSS snippet */\n\(projection.livePreviewCSS)")
             } catch {
                 errors[snippet.id] = error.localizedDescription
                 records[index].lastFailure = error.localizedDescription
@@ -542,6 +547,17 @@ public actor StyleOperations: StyleUseCases {
             readCSS: read.joined(separator: "\n\n"),
             livePreviewCSS: live.joined(separator: "\n\n")
         )
+    }
+
+    private func normalizedSnippetRecord(
+        _ record: CSSSnippetRecord
+    ) -> CSSSnippetRecord {
+        var record = record
+        record.name = CSSSnippetSanitizer.normalizedSnippetName(
+            record.name,
+            fallback: "CSS Snippet"
+        )
+        return record
     }
 
     private func managedURL(for record: CSSSnippetRecord) throws -> URL {
