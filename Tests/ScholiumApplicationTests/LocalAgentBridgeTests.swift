@@ -6,26 +6,6 @@ import Testing
 
 @Suite("Local Agent bridge", .serialized)
 struct LocalAgentBridgeTests {
-    @Test("Ad-hoc distribution disables the Agent bridge at the container boundary")
-    func adHocDistributionDisablesBridge() throws {
-        #expect(
-            AgentBridgeDistribution(environment: [
-                "SCHOLIUM_AGENT_BRIDGE_MODE": "disabled",
-            ]) == .disabledForAdHocDistribution
-        )
-        #expect(AgentBridgeDistribution(environment: [:]) == .enabled)
-
-        let disabledEnvironment = [
-            "SCHOLIUM_AGENT_BRIDGE_MODE": "disabled",
-            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": "/tmp/ignored",
-        ]
-        #expect(throws: LocalAgentBridgeError.disabledForDistribution) {
-            _ = try ScholiumPaths.agentBridgeContainerURL(
-                environment: disabledEnvironment
-            )
-        }
-    }
-
     @Test("The bridge wire rejects unknown fields, unknown operations, and old versions")
     func strictCurrentWire() throws {
         let request = try pairRequest()

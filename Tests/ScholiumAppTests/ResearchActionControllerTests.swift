@@ -1,6 +1,5 @@
 import Foundation
 import ScholiumContracts
-import ScholiumApplication
 import Testing
 @testable import ScholiumApp
 
@@ -729,45 +728,13 @@ struct ResearchActionControllerTests {
         #expect(handoffCount == 2)
     }
 
-    @Test("A prepared Run stays durable without a Pairing Code when the bridge is disabled")
-    func preparedRunSkipsPairingWhenBridgeDisabled() async throws {
-        let action = try availability(.checkFidelity, order: 0)
-        let runID = UUID()
-        let controller = ResearchActionController()
-        controller.bind(client(
-            actions: [action],
-            candidates: [target()],
-            prepare: { request in
-                try self.preparation(action: action, target: request.target, runID: runID)
-            },
-            handoff: { _ in throw LocalAgentBridgeError.disabledForDistribution }
-        ))
-        let presentationID = UUID()
-        controller.begin(
-            target: target(),
-            availability: action,
-            selection: nil,
-            presentationID: presentationID
-        )
-        await waitUntil { controller.canPrepare }
-        controller.prepare()
-        await waitUntil { controller.phase == .prepared }
-
-        #expect(controller.phase == .prepared)
-        #expect(controller.errorMessage == nil)
-        #expect(controller.agentHandoff == nil)
-        #expect(controller.agentBridgeDisabledMessage != nil)
-    }
-
     private func client(
         actions: [ResearchActionAvailability],
         candidates: [ResearchActionNoteSnapshot] = [],
         sourceStatus: ResearchSourceAccessStatus = .repairRequired(.missingBinding),
         prepare: @escaping @MainActor (
             ResearchActionExecutionRequest
-        ) async throws -> ResearchActionPreparation = { _ in throw TestFailure.stopAfterCapture },
-        handoff: @escaping @MainActor (UUID) async throws -> ResearchAgentHandoff =
-            { try Self.defaultTestHandoff(runID: $0) }
+        ) async throws -> ResearchActionPreparation = { _ in throw TestFailure.stopAfterCapture }
     ) -> ResearchActionClient {
         ResearchActionClient(
             availableActions: { _ in actions },
@@ -775,13 +742,13 @@ struct ResearchActionControllerTests {
             sourceAccess: { _ in sourceStatus },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
             prepare: { request, _ in try await prepare(request) },
-            handoff: handoff,
+            handoff: { try testHandoff(runID: $0) },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
         )
     }
 
-    private static func defaultTestHandoff(runID: UUID) throws -> ResearchAgentHandoff {
+    private func testHandoff(runID: UUID) throws -> ResearchAgentHandoff {
         ResearchAgentHandoff(
             run: ResearchRunLocator(rawValue: "controllerfixturelocator")!,
             pairingCode: ResearchPairingCode(
@@ -789,10 +756,6 @@ struct ResearchActionControllerTests {
             )!,
             expiresAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
-    }
-
-    private func testHandoff(runID: UUID) throws -> ResearchAgentHandoff {
-        try Self.defaultTestHandoff(runID: runID)
     }
 
     private func availability(

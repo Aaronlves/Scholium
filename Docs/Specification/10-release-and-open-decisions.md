@@ -50,11 +50,7 @@ authenticated local Session; app-process restart invalidation and
 same-Run re-pairing; no secret in prompt, argument, URL, vault, or log; App
 Group socket packaging; current-Run scope; reload; Research Context; bounded
 multi-document write and recovery; keyboard/VoiceOver; and an unavailable
-fallback. This evidence applies to bridge-enabled builds. The ad-hoc Beta
-distribution intentionally disables the direct Agent bridge (方案 B): the App
-never shows a Pairing Code, and the typed "this build does not support local
-Agent connection" state replaces the pairing flow. It does not require an
-embedded or provider-specific Agent runtime.
+fallback. It does not require an embedded or provider-specific Agent runtime.
 
 For material evidence, use disposable fixtures and retain command, source
 revision, Xcode/SDK, build, fixture identity, result, and artifact location.
@@ -72,15 +68,13 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | External binaries use a clean exact tag, corresponding GPL source/licenses, no private state, accurate signing/architecture, checksum, and clean-account smoke test. |
-| **G10 Agent research collaboration** | Skill/Practice routing, Profiles/Result Contracts, Triptych collaboration, process-bound Sessions, bounded writes, Research Context, Records/Evaluation, and local bridges pass their journeys. Excluded from the ad-hoc Beta channel (方案 B). |
+| **G10 Agent research collaboration** | Skill/Practice routing, Profiles/Result Contracts, Triptych collaboration, process-bound Sessions, bounded writes, Research Context, Records/Evaluation, and local bridges pass their journeys. |
 
 Usable Core/0.1 require G1–G4, G6, and G8; G9 applies to any distributed
 artifact. G6/G7 baselines and gaps must not be misrepresented as Beta passes.
-Beta requires every applicable gate; the ad-hoc Beta channel applies G1–G4,
-G6, G8, and G9 and explicitly excludes G10 because the direct Agent bridge is
-disabled (方案 B). No release gate requires provider-specific task creation,
-auto-submission, background Agent execution, or **Run with Codex**.
-Current evidence belongs only in
+Beta requires every applicable gate including G10. No release gate requires
+provider-specific task creation, auto-submission, background Agent execution,
+or **Run with Codex**. Current evidence belongs only in
 [Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 ### 21.4 Packaged performance gate
@@ -165,14 +159,6 @@ separate public CLI asset. The release also includes applicable license texts
 and notices, identifies verified architectures without overstating universal
 support, and contains no real vault, Application Support state, bookmark,
 credential, index, absolute private path, or research content.
-
-The ad-hoc Beta ZIP does not include a direct Agent bridge. The packaged App
-and CLI are compiled with `SCHOLIUM_ADHOC_DISTRIBUTION`: no Pairing Code is
-generated or shown, the Agent CLI commands fail with the typed "this build does
-not support local Agent connection" state, and the packaged artifacts do not
-claim the shared App Group entitlement. The Beta channel therefore does not
-claim G10; Agent collaboration is available in development builds and in any
-future bridge-enabled signed channel.
 
 Ad-hoc signing is not Developer ID signing, notarization, publisher
 verification, or Gatekeeper acceptance. Testers may approve the trusted GitHub

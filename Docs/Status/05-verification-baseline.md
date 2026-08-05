@@ -7,18 +7,6 @@ This chapter owns the latest dated automated, UI, performance, visual, and distr
 
 **Latest complete repository gate:** 2026-08-04
 
-### Ad-hoc Beta distribution channel (2026-08-05)
-
-The release channel uses 方案 B: the ad-hoc Beta App and CLI are compiled with
-`SCHOLIUM_ADHOC_DISTRIBUTION`, which disables the direct Agent bridge. The App
-shows a typed "this build does not support local Agent connection" state
-instead of a Pairing Code; Agent CLI commands fail closed with the same typed
-state; packaged artifacts do not claim the shared App Group entitlement; and
-the channel does not claim G10. The sandboxed AF_UNIX bridge probe remains
-DEBUG development-protocol evidence and does not validate the ad-hoc release
-channel. Unit coverage for the typed disabled state was added to
-`LocalAgentBridgeTests` and `ResearchActionControllerTests`.
-
 ### Repository gate
 
 **Current passing result**

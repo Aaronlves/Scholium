@@ -1,5 +1,4 @@
 import Foundation
-import ScholiumApplication
 import ScholiumContracts
 
 extension ScholiumCLI {
@@ -139,8 +138,7 @@ extension ScholiumCLI {
                 )
             },
             platformActionCount: PlatformActionCatalog.definitions.count,
-            zoteroState: context.runtime.zotero.report().state.rawValue,
-            agentBridgeState: AgentBridgeDistribution().isEnabled ? "enabled" : "disabled"
+            zoteroState: context.runtime.zotero.report().state.rawValue
         )
         if format == .json {
             let encoder = JSONEncoder()
@@ -156,10 +154,6 @@ extension ScholiumCLI {
             }
             write("Platform Actions: \(report.platformActionCount)\n")
             write("Zotero transport: \(report.zoteroState)\n")
-            write("Agent bridge: \(report.agentBridgeState)\n")
-            if report.agentBridgeState == "disabled" {
-                write("This ad-hoc Beta build disables the direct local Agent connection.\n")
-            }
             if report.triptychCount == 0 {
                 write("Repair: configure Analyses, Topics, and Works in Scholium, then run doctor again.\n")
             }
@@ -241,7 +235,6 @@ private struct CLIDoctorReport: Encodable {
     let triptychs: [CLIDoctorTriptych]
     let platformActionCount: Int
     let zoteroState: String
-    let agentBridgeState: String
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
@@ -253,7 +246,6 @@ private struct CLIDoctorReport: Encodable {
         case triptychs
         case platformActionCount = "platform_action_count"
         case zoteroState = "zotero_state"
-        case agentBridgeState = "agent_bridge_state"
     }
 }
 

@@ -45,18 +45,7 @@ rm -rf \
   "${SCRATCH}"
 mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Helpers" "${STAGING_APP}/Contents/Resources" "${OUTPUT}"
 
-AD_HOC_BUILD_FLAGS=()
-if [[ "${IDENTITY}" == "-" ]]; then
-  # 方案 B: the ad-hoc Beta distribution disables the direct Agent bridge at
-  # compile time, so the App never shows a pairing flow and the CLI never
-  # attempts a shared-container rendezvous.
-  AD_HOC_BUILD_FLAGS=(-Xswiftc -DSCHOLIUM_ADHOC_DISTRIBUTION)
-fi
-swift build \
-  --package-path "${ROOT}" \
-  -c release \
-  --scratch-path "${SCRATCH}" \
-  "${AD_HOC_BUILD_FLAGS[@]}"
+swift build --package-path "${ROOT}" -c release --scratch-path "${SCRATCH}"
 cp "${SCRATCH}/release/ScholiumApp" "${STAGING_APP}/Contents/MacOS/Scholium"
 cp "${SCRATCH}/release/scholium" "${STAGING_APP}/Contents/Helpers/scholium"
 chmod +x "${STAGING_APP}/Contents/Helpers/scholium"
@@ -128,28 +117,6 @@ plutil -insert sdk_version -string "${SDK_VERSION}" "${PROVENANCE}"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' \
   "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements")" == "group.com.scholium.app" ]]
 
-APP_ENTITLEMENTS="${ROOT}/Tools/Packaging/Scholium.entitlements"
-CLI_ENTITLEMENTS="${ROOT}/Tools/Packaging/ScholiumCLI.entitlements"
-if [[ "${IDENTITY}" == "-" ]]; then
-  # Ad-hoc Beta artifacts do not claim the shared App Group. The compiled-in
-  # bridge disable already fails closed; removing the entitlement prevents an
-  # accidental container grant even if a future caller ignores the mode.
-  APP_ENTITLEMENTS="${SCRATCH}/Scholium.ad-hoc.entitlements"
-  CLI_ENTITLEMENTS="${SCRATCH}/ScholiumCLI.ad-hoc.entitlements"
-  cp "${ROOT}/Tools/Packaging/Scholium.entitlements" "${APP_ENTITLEMENTS}"
-  cp "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements" "${CLI_ENTITLEMENTS}"
-  /usr/libexec/PlistBuddy \
-    -c "Delete :com.apple.security.application-groups" \
-    "${APP_ENTITLEMENTS}"
-  /usr/libexec/PlistBuddy \
-    -c "Delete :com.apple.security.application-groups" \
-    "${CLI_ENTITLEMENTS}"
-  /usr/libexec/PlistBuddy \
-    -c "Add :LSEnvironment dict" \
-    -c "Add :LSEnvironment:SCHOLIUM_AGENT_BRIDGE_MODE string disabled" \
-    "${STAGING_APP}/Contents/Info.plist"
-fi
-
 # The beta SwiftPM linker may record the deployment target as both minOS and SDK
 # in LC_BUILD_VERSION. Preserve the product's macOS 26 minimum while recording
 # the SDK that actually compiled the app.
@@ -183,7 +150,7 @@ xattr -cr "${OUTPUT}/Scholium_ScholiumCore.bundle"
 # rendezvous. Keep --deep for verification, not for applying outer entitlements
 # to nested code.
 codesign --force --options runtime \
-  --entitlements "${CLI_ENTITLEMENTS}" \
+  --entitlements "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements" \
   --sign "${IDENTITY}" "${STAGING_APP}/Contents/Helpers/scholium"
 codesign --verify --strict --verbose=2 \
   "${STAGING_APP}/Contents/Helpers/scholium"
@@ -196,7 +163,7 @@ if rg -q 'com\.apple\.security\.app-sandbox' "${BUNDLED_CLI_ENTITLEMENTS}"; then
   exit 65
 fi
 codesign --force --options runtime \
-  --entitlements "${APP_ENTITLEMENTS}" \
+  --entitlements "${ROOT}/Tools/Packaging/Scholium.entitlements" \
   --sign "${IDENTITY}" "${STAGING_APP}"
 codesign --verify --deep --strict --verbose=2 "${STAGING_APP}"
 
@@ -213,7 +180,7 @@ while IFS= read -r -d '' directory; do
 done < <(find "${APP}" -type d -print0)
 codesign --verify --deep --strict --verbose=2 "${APP}"
 codesign --force --options runtime \
-  --entitlements "${CLI_ENTITLEMENTS}" \
+  --entitlements "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements" \
   --sign "${IDENTITY}" "${OUTPUT}/scholium"
 codesign --verify --strict --verbose=2 "${OUTPUT}/scholium"
 PACKAGED_CLI_SMOKE="${SCRATCH}/packaged-cli-version.json"
@@ -228,24 +195,6 @@ fi
 SCHOLIUM_HOME="${SCRATCH}/bundled-cli-smoke-home" \
   "${APP}/Contents/Helpers/scholium" doctor --format json \
   | jq -e '.schema_version == 1 and .platform_action_count == 7' >/dev/null
-
-if [[ "${IDENTITY}" == "-" ]]; then
-  [[ "$(plutil -extract LSEnvironment.SCHOLIUM_AGENT_BRIDGE_MODE raw \
-    "${APP}/Contents/Info.plist")" == "disabled" ]]
-  SCHOLIUM_HOME="${SCRATCH}/cli-smoke-home" \
-    "${OUTPUT}/scholium" doctor --format json \
-    | jq -e '.agent_bridge_state == "disabled"' >/dev/null
-  SCHOLIUM_HOME="${SCRATCH}/bundled-cli-smoke-home" \
-    "${APP}/Contents/Helpers/scholium" doctor --format json \
-    | jq -e '.agent_bridge_state == "disabled"' >/dev/null
-  if ! SCHOLIUM_HOME="${SCRATCH}/cli-smoke-home" \
-    "${OUTPUT}/scholium" agent pair \
-      --run "ad-hoc-bridge-disabled-smoke-locator" </dev/null 2>&1 \
-    | rg -qi 'does not support local Agent connection'; then
-    print -u2 "The ad-hoc packaged CLI must reject Agent pairing with the typed disabled message."
-    exit 66
-  fi
-fi
 
 ARCHITECTURES="$(lipo -archs "${APP}/Contents/MacOS/Scholium")"
 if [[ "${ARCHITECTURES}" == "arm64 x86_64" || "${ARCHITECTURES}" == "x86_64 arm64" ]]; then
@@ -270,7 +219,6 @@ echo "Beta ZIP: ${ZIP_PATH}"
 echo "Checksum: ${CHECKSUM_PATH}"
 if [[ "${IDENTITY}" == "-" ]]; then
   echo "Signing: ad hoc (not Developer ID signed or notarized)"
-  echo "Agent bridge: disabled (方案 B; ad-hoc Beta has no direct Agent connection)"
 else
   echo "Signing identity: ${IDENTITY} (notarization not performed by this script)"
 fi

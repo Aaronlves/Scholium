@@ -1,33 +1,6 @@
 import ScholiumContracts
 import Foundation
 
-/// Declares whether this process participates in the direct local Agent
-/// bridge. The ad-hoc Beta distribution (方案 B) explicitly disables the
-/// bridge so the App never shows a pairing flow and the CLI never attempts a
-/// shared-container rendezvous; development and bridge-enabled signed builds
-/// remain available by default.
-public enum AgentBridgeDistribution: Sendable, Equatable {
-    case enabled
-    case disabledForAdHocDistribution
-
-    public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
-#if SCHOLIUM_ADHOC_DISTRIBUTION
-        self = .disabledForAdHocDistribution
-#else
-        if environment["SCHOLIUM_AGENT_BRIDGE_MODE"] == "disabled" {
-            self = .disabledForAdHocDistribution
-        } else {
-            self = .enabled
-        }
-#endif
-    }
-
-    public var isEnabled: Bool {
-        if case .enabled = self { return true }
-        return false
-    }
-}
-
 public enum ScholiumPaths {
     public static let applicationSupportDirectoryName = "Scholium"
     public static let applicationBundleIdentifier = "com.scholium.app"
@@ -99,9 +72,6 @@ public enum ScholiumPaths {
         fileManager: FileManager = .default,
         debugFallbackURL: URL? = nil
     ) throws -> URL {
-        if AgentBridgeDistribution(environment: environment) == .disabledForAdHocDistribution {
-            throw LocalAgentBridgeError.disabledForDistribution
-        }
         if let explicit = environment["SCHOLIUM_AGENT_BRIDGE_CONTAINER"],
            !explicit.isEmpty {
             return URL(

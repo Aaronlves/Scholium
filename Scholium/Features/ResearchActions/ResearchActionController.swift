@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 import ScholiumContracts
-import ScholiumApplication
 
 struct ResearchActionClient {
     let availableActions: @MainActor (
@@ -154,10 +153,6 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var isLoadingSourceStatus = false
     @Published private(set) var preparation: ResearchActionPreparation?
     @Published private(set) var agentHandoff: ResearchAgentHandoff?
-    /// Set when this build intentionally disables the direct Agent bridge
-    /// (ad-hoc Beta distribution). The Run stays frozen and durable, but no
-    /// Pairing Code is generated or shown.
-    @Published private(set) var agentBridgeDisabledMessage: String?
     @Published private(set) var resultRecord: PortableResearchRecord?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isBindingSource = false
@@ -564,12 +559,6 @@ final class ResearchActionController: ObservableObject {
                 resultRecord = nil
                 do {
                     agentHandoff = try await client.handoff(result.runID)
-                    agentBridgeDisabledMessage = nil
-                    phase = .prepared
-                } catch LocalAgentBridgeError.disabledForDistribution {
-                    agentHandoff = nil
-                    agentBridgeDisabledMessage =
-                        LocalAgentBridgeError.disabledForDistribution.localizedDescription
                     phase = .prepared
                 } catch {
                     phase = .failed
@@ -616,7 +605,7 @@ final class ResearchActionController: ObservableObject {
             return
         }
         let token = nextGeneration()
-                phase = .cancelling
+        phase = .cancelling
         Task { @MainActor [self] in
             do {
                 try await client.cancel(runID)
@@ -626,7 +615,6 @@ final class ResearchActionController: ObservableObject {
                 }
                 preparation = nil
                 agentHandoff = nil
-                agentBridgeDisabledMessage = nil
                 resultRecord = nil
                 phase = .cancelled
             } catch {
@@ -667,19 +655,11 @@ final class ResearchActionController: ObservableObject {
         phase = .preparing
         errorMessage = nil
         agentHandoff = nil
-        agentBridgeDisabledMessage = nil
         Task { @MainActor [self] in
             do {
                 let handoff = try await client.handoff(runID)
                 guard accepts(token) else { return }
                 agentHandoff = handoff
-                agentBridgeDisabledMessage = nil
-                phase = .prepared
-            } catch LocalAgentBridgeError.disabledForDistribution {
-                guard accepts(token) else { return }
-                agentHandoff = nil
-                agentBridgeDisabledMessage =
-                    LocalAgentBridgeError.disabledForDistribution.localizedDescription
                 phase = .prepared
             } catch {
                 guard accepts(token) else { return }
@@ -886,7 +866,6 @@ final class ResearchActionController: ObservableObject {
         isLoadingSourceStatus = false
         preparation = nil
         agentHandoff = nil
-        agentBridgeDisabledMessage = nil
         resultRecord = nil
         errorMessage = nil
         isBindingSource = false
