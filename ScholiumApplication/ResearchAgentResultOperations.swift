@@ -1,0 +1,547 @@
+import Foundation
+import ScholiumContracts
+import ScholiumCore
+
+extension WorkspaceRuntime {
+    public func submitResearchAgentResult(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        submission: ResearchAgentResultSubmission
+    ) async throws -> ResearchAgentResultReceipt {
+        guard let sessions = researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let authenticated = try await sessions.authenticate(
+            credential,
+            run: run,
+            requiresWrite: false,
+            claimCoreProtocol: false,
+            allowFinalized: true
+        )
+        let handle = try await openWorkspace(id: authenticated.triptychID)
+        return try await handle.submitResearchAgentResult(
+            credential: credential,
+            run: run,
+            submission: submission
+        )
+    }
+}
+
+extension ResearchOperations {
+    public func submitAgentResult(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        submission: ResearchAgentResultSubmission
+    ) async throws -> ResearchAgentResultReceipt {
+        let handle = try await reference.requireHandle()
+        return try await handle.submitResearchAgentResult(
+            credential: credential,
+            run: run,
+            submission: submission
+        )
+    }
+}
+
+extension WorkspaceHandle {
+    func submitResearchAgentResult(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        submission: ResearchAgentResultSubmission
+    ) async throws -> ResearchAgentResultReceipt {
+        try requireActive()
+        guard let sessions = services.researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let authenticated = try await sessions.authenticate(
+            credential,
+            run: run,
+            requiresWrite: false,
+            claimCoreProtocol: false,
+            allowFinalized: true
+        )
+        guard authenticated.triptychID == services.manifest.id else {
+            throw ResearchAgentSessionError.sessionRejected
+        }
+
+        let submissionFingerprint = try submission.contentFingerprint()
+        let stored = try await services.localResearchExecutionStore.record(
+            id: authenticated.runID
+        )
+        guard stored.triptychID == services.manifest.id,
+              let action = stored.snapshot.actionSnapshot,
+              action.actionID != .discuss else {
+            throw ResearchAgentConnectionError.runUnavailable
+        }
+        if let existing = stored.resultPayload {
+            guard existing.submissionFingerprint == submissionFingerprint else {
+                throw ResearchAgentResultContractError.resultAlreadySubmitted
+            }
+            if let completion = stored.completion,
+               completion.state != .awaitingFidelity {
+                let reconciled = try await researchFunctionCoordinator
+                    .completeProtectedFunction(
+                        ResearchFunctionCompletionSubmission(
+                            runID: authenticated.runID,
+                            confirmationToken: stored.snapshot.confirmationToken,
+                            finalTargetFingerprint: completion.targetFingerprint,
+                            finalMaterialFingerprints: completion.materialFingerprints,
+                            actuallyUsedMaterialNoteIDs:
+                                completion.actuallyUsedMaterialNoteIDs,
+                            summary: completion.summary,
+                            didModifyTarget: completion.didModifyTarget,
+                            fidelityOutcomes: existing.fidelityOutcomes,
+                            literatureRecommendations:
+                                existing.literatureRecommendations,
+                            childRunIDs: completion.childRunIDs ?? [],
+                            submittedAt: existing.submittedAt
+                        ),
+                        acceptedSubmissionDigest:
+                            existing.submissionFingerprint.sha256,
+                        host: self
+                    )
+                return try resultReceipt(
+                    disposition: existing.disposition,
+                    completion: reconciled
+                )
+            }
+        }
+
+        let academicResults = try validateAcademicResults(
+            submission.academicResults,
+            disposition: submission.disposition,
+            contract: action.resultContract
+        )
+        try validateActionSpecificResultShape(
+            submission,
+            action: action,
+            fidelityChecks: stored.snapshot.request.checks
+        )
+        let contextUseReport = try await verifiedContextUseReport(
+            claims: submission.contextUseClaims,
+            sessions: sessions,
+            credential: credential,
+            run: run,
+            runID: authenticated.runID,
+            triptychID: authenticated.triptychID
+        )
+        let submittedAt = stored.resultPayload?.submittedAt ?? Date()
+        let payload = try ResearchRunResultPayload(
+            runID: authenticated.runID,
+            submissionFingerprint: submissionFingerprint,
+            disposition: submission.disposition,
+            academicResults: academicResults,
+            contextUseReport: contextUseReport,
+            fidelityOutcomes: submission.fidelityOutcomes,
+            literatureRecommendations: submission.literatureRecommendations,
+            submittedAt: submittedAt
+        )
+        if let existing = stored.resultPayload, existing != payload {
+            throw ResearchAgentResultContractError.resultAlreadySubmitted
+        }
+
+        let target = try await exactCurrentNote(action.target)
+        var materialFingerprints: [UUID: DocumentFingerprint] = [:]
+        for material in stored.snapshot.request.materials {
+            let current = try await exactCurrentMaterial(material)
+            guard current.fingerprint == material.fingerprint else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "A frozen Material changed before Result finalization."
+                )
+            }
+            materialFingerprints[material.noteID] = current.fingerprint
+        }
+        let actuallyUsedMaterialIDs = contextUseReport.map {
+            actuallyUsedMaterialIDs(from: $0, in: stored.snapshot.request.materials)
+        } ?? []
+        let completionSubmission = ResearchFunctionCompletionSubmission(
+            runID: authenticated.runID,
+            confirmationToken: stored.snapshot.confirmationToken,
+            finalTargetFingerprint: target.fingerprint,
+            finalMaterialFingerprints: materialFingerprints,
+            actuallyUsedMaterialNoteIDs: actuallyUsedMaterialIDs,
+            summary: resultSummary(
+                academicResults,
+                contract: action.resultContract,
+                disposition: submission.disposition
+            ),
+            didModifyTarget: false,
+            fidelityOutcomes: submission.fidelityOutcomes,
+            literatureRecommendations: submission.literatureRecommendations,
+            submittedAt: submittedAt
+        )
+        let completion = try await researchFunctionCoordinator
+            .completeProtectedFunction(
+                completionSubmission,
+                acceptedSubmissionDigest: submissionFingerprint.sha256,
+                candidateResultPayload: payload,
+                host: self
+            )
+        return try resultReceipt(
+            disposition: submission.disposition,
+            completion: completion
+        )
+    }
+
+    private func validateAcademicResults(
+        _ submitted: ResearchAcademicFieldValues,
+        disposition: ResearchAgentResultDisposition,
+        contract: ResearchResultContract
+    ) throws -> ResearchAcademicFieldValues {
+        if disposition == .completed {
+            let validated = try ResearchAcademicFieldValues(
+                rawValues: submitted.values,
+                definitions: contract.academicFields
+            )
+            try ResearchAcademicProfileCatalog.validatePlatformResultRules(
+                validated,
+                actionID: contract.actionID
+            )
+            return validated
+        }
+        let byID = Dictionary(uniqueKeysWithValues: contract.academicFields.map {
+            ($0.fieldID.rawValue, $0)
+        })
+        guard submitted.values.keys.allSatisfy({ byID[$0] != nil }) else {
+            throw ResearchAcademicProfileError.invalidFieldValues
+        }
+        for (fieldID, value) in submitted.values {
+            guard let definition = byID[fieldID] else {
+                throw ResearchAcademicProfileError.invalidFieldValues
+            }
+            _ = try ResearchAcademicFieldValues(
+                rawValues: [fieldID: value],
+                definitions: [definition]
+            )
+        }
+        let validated = try ResearchAcademicFieldValues(
+            rawValues: submitted.values,
+            definitions: submitted.values.keys.compactMap { byID[$0] }
+        )
+        try ResearchAcademicProfileCatalog.validatePlatformResultRules(
+            validated,
+            actionID: contract.actionID
+        )
+        return validated
+    }
+
+    private func validateActionSpecificResultShape(
+        _ submission: ResearchAgentResultSubmission,
+        action: ResearchActionSnapshot,
+        fidelityChecks: Set<FidelityCheck>
+    ) throws {
+        if action.actionID == .analyze {
+            guard let recommendations = submission.literatureRecommendations,
+                  recommendations.count <= 256 else {
+                throw ResearchAgentResultContractError.invalidSubmission
+            }
+        } else if submission.literatureRecommendations != nil {
+            throw ResearchAgentResultContractError.invalidSubmission
+        }
+        if action.actionID == .checkFidelity {
+            let expected = fidelityChecks
+            let submitted = submission.fidelityOutcomes.map(\.check)
+            guard Set(submitted).count == submitted.count,
+                  Set(submitted) == expected else {
+                throw ResearchAgentResultContractError.invalidSubmission
+            }
+            for outcome in submission.fidelityOutcomes { try outcome.validate() }
+        } else if !submission.fidelityOutcomes.isEmpty {
+            throw ResearchAgentResultContractError.invalidSubmission
+        }
+    }
+
+    private func verifiedContextUseReport(
+        claims: [ResearchContextUseClaim],
+        sessions: ResearchAgentSessionAuthority,
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        runID: UUID,
+        triptychID: UUID
+    ) async throws -> ContextUseReport? {
+        guard !claims.isEmpty else { return nil }
+        do {
+            try await sessions.requireReturnedContextReferences(
+                claims.map(\.sourceReference),
+                credential: credential,
+                run: run,
+                allowFinalized: true
+            )
+        } catch {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        var entries: [ContextUseEntry] = []
+        for claim in claims {
+            let reference = claim.sourceReference
+            guard reference.authorizedScope.runID == runID,
+                  reference.authorizedScope.triptychID == triptychID,
+                  reference.owner.triptychID == triptychID,
+                  reference.currentness == .current else {
+                throw ResearchAgentResultContractError.invalidContextUse
+            }
+            let facts: [ContextUseVerificationFact]
+            switch reference.sourceKind {
+            case .note:
+                facts = try await verifyNoteReference(reference)
+            case .record:
+                facts = try await verifyRecordReference(reference)
+            case .material, .researcherState:
+                // These owner kinds do not yet expose one authoritative
+                // revision-and-locator verifier. Reject rather than infer use
+                // from a selected item or provider testimony.
+                throw ResearchAgentResultContractError.invalidContextUse
+            }
+            entries.append(try ContextUseEntry(
+                sourceReference: reference,
+                verificationFacts: facts,
+                testimony: claim.testimony
+            ))
+        }
+        return try ContextUseReport(
+            runID: runID,
+            triptychID: triptychID,
+            entries: entries
+        )
+    }
+
+    private func verifyNoteReference(
+        _ reference: SourceReferenceEnvelope
+    ) async throws -> [ContextUseVerificationFact] {
+        guard reference.owner.kind == .note,
+              let vaultID = reference.owner.vaultID,
+              let relativePath = reference.owner.relativePath else {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
+        guard let snapshot = currentSnapshot.document(id: noteID),
+              snapshot.lifecycle == .active,
+              let stableID = snapshot.stableIdentity.resolvedID,
+              reference.owner.stableObjectIdentity
+                == stableID.uuidString.lowercased(),
+              reference.fingerprint == snapshot.fingerprint,
+              reference.vaultRole == snapshot.vaultRole,
+              reference.objectRole == Self.objectRole(snapshot.vaultRole),
+              reference.actorClass == .unknown,
+              reference.evidentialLayer == Self.evidentialLayer(snapshot.vaultRole)
+        else {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        let document = try await loadDocument(noteID)
+        guard document.fingerprint == snapshot.fingerprint,
+              Self.locator(reference.locator, isValidIn: document.rawContent) else {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        return [.authoritativeOwnerRead, .revisionMatched, .locatorResolved]
+    }
+
+    private func verifyRecordReference(
+        _ reference: SourceReferenceEnvelope
+    ) async throws -> [ContextUseVerificationFact] {
+        guard reference.owner.kind == .record,
+              let recordID = reference.owner.recordID,
+              reference.owner.stableObjectIdentity
+                == recordID.uuidString.lowercased(),
+              reference.objectRole == .researchRecord,
+              reference.vaultRole == nil,
+              reference.evidentialLayer == .researchRecord else {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        let listing = try await services.portableResearchRecordStore.listing()
+        guard listing.issues.isEmpty,
+              let revision = listing.revisions.first(where: { $0.id == recordID }),
+              reference.fingerprint == revision.fingerprint else {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        switch reference.locator.kind {
+        case .recordStatement:
+            guard let statementID = reference.locator.statementID,
+                  let statement = revision.record.statements.first(where: {
+                      $0.id == statementID
+                  }),
+                  reference.actorClass == Self.actorClass(statement.author) else {
+                throw ResearchAgentResultContractError.invalidContextUse
+            }
+        case .wholeObject:
+            guard reference.actorClass == .unknown else {
+                throw ResearchAgentResultContractError.invalidContextUse
+            }
+        case .sourceRange, .materialLocator, .unknown:
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        return [.authoritativeOwnerRead, .revisionMatched, .locatorResolved]
+    }
+
+    private func exactCurrentNote(
+        _ target: ResearchActionNoteSnapshot
+    ) async throws -> NoteDocument {
+        guard let snapshot = currentSnapshot.document(id: target.note),
+              snapshot.lifecycle == .active,
+              snapshot.stableIdentity.resolvedID == target.noteID,
+              snapshot.vaultRole == Self.vaultRole(target.role) else {
+            throw ResearchFunctionContractError.targetIdentityChanged
+        }
+        return try await loadDocument(target.note)
+    }
+
+    private func exactCurrentMaterial(
+        _ material: ResearchFunctionMaterial
+    ) async throws -> NoteDocument {
+        guard let snapshot = currentSnapshot.document(id: material.note),
+              snapshot.lifecycle == .active,
+              snapshot.stableIdentity.resolvedID == material.noteID,
+              ResearchFunctionTargetRole(vaultRole: snapshot.vaultRole)
+                == material.role else {
+            throw ResearchFunctionContractError.targetIdentityChanged
+        }
+        return try await loadDocument(material.note)
+    }
+
+    private func actuallyUsedMaterialIDs(
+        from report: ContextUseReport,
+        in materials: [ResearchFunctionMaterial]
+    ) -> [UUID] {
+        let byStableIdentity = Dictionary(uniqueKeysWithValues: materials.map {
+            ($0.noteID.uuidString.lowercased(), $0)
+        })
+        return Set(report.entries.compactMap { entry -> UUID? in
+            guard entry.sourceReference.sourceKind == .note,
+                  let material = byStableIdentity[
+                    entry.sourceReference.owner.stableObjectIdentity
+                  ],
+                  entry.sourceReference.fingerprint == material.fingerprint else {
+                return nil
+            }
+            return material.noteID
+        }).sorted { $0.uuidString < $1.uuidString }
+    }
+
+    private func resultSummary(
+        _ results: ResearchAcademicFieldValues,
+        contract: ResearchResultContract,
+        disposition: ResearchAgentResultDisposition
+    ) -> String {
+        let definitions = Dictionary(uniqueKeysWithValues: contract.academicFields.map {
+            ($0.fieldID.rawValue, $0)
+        })
+        if case .freeText(let text)? = results.values[
+            ResearchAcademicFieldID.academicOutcome.rawValue
+        ], !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+        for definition in contract.academicFields {
+            guard let value = results.values[definition.fieldID.rawValue] else { continue }
+            switch value {
+            case .freeText(let text):
+                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return text
+                }
+            case .singleChoice(let choice):
+                return definitions[definition.fieldID.rawValue]?.choices
+                    .first(where: { $0.value == choice })?.label ?? choice
+            case .multipleChoice(let choices):
+                if !choices.isEmpty {
+                    let labels = choices.map { choice in
+                        definitions[definition.fieldID.rawValue]?.choices
+                            .first(where: { $0.value == choice })?.label ?? choice
+                    }
+                    return labels.joined(separator: "; ")
+                }
+            }
+        }
+        return disposition == .blocked
+            ? "The Agent reported that this bounded research result was blocked."
+            : "The Agent completed a Run whose frozen Result Contract contained no academic prose field."
+    }
+
+    private func resultReceipt(
+        disposition: ResearchAgentResultDisposition,
+        completion: ResearchFunctionCompletion
+    ) throws -> ResearchAgentResultReceipt {
+        switch completion.state {
+        case .complete:
+            return try ResearchAgentResultReceipt(
+                disposition: disposition,
+                state: .finalized,
+                recordFormed: true,
+                message: "The canonical Result was finalized as one Research Record."
+            )
+        case .unverified:
+            return try ResearchAgentResultReceipt(
+                disposition: disposition,
+                state: .unverified,
+                recordFormed: true,
+                message: "The Result formed one Research Record with explicit unverified Fidelity evidence."
+            )
+        case .awaitingFidelity:
+            return try ResearchAgentResultReceipt(
+                disposition: disposition,
+                state: .awaitingFidelity,
+                recordFormed: false,
+                message: "The Result is staged on this Run and awaits its exact-revision Fidelity completion."
+            )
+        case .prepared, .stale, .cancelled:
+            throw ResearchAgentResultContractError.invalidSubmission
+        }
+    }
+
+    private static func locator(
+        _ locator: ResearchContextSourceLocator,
+        isValidIn source: String
+    ) -> Bool {
+        switch locator.kind {
+        case .wholeObject:
+            return true
+        case .sourceRange:
+            guard let range = locator.sourceRange,
+                  range.utf16LowerBound >= 0,
+                  range.utf16UpperBound >= range.utf16LowerBound,
+                  range.utf16UpperBound <= source.utf16.count else { return false }
+            let lines = source.split(
+                separator: "\n",
+                omittingEmptySubsequences: false
+            )
+            guard range.line > 0,
+                  range.endLine >= range.line,
+                  range.endLine <= max(lines.count, 1) else { return false }
+            let startLength = lines[range.line - 1].utf16.count
+            let endLength = lines[range.endLine - 1].utf16.count
+            return (1...(startLength + 1)).contains(range.column)
+                && (1...(endLength + 1)).contains(range.endColumn)
+        case .recordStatement, .materialLocator, .unknown:
+            return false
+        }
+    }
+
+    private static func vaultRole(_ role: ResearchActionTargetRole) -> VaultRole {
+        switch role {
+        case .analysis: .sourceCorpus
+        case .topic: .topicKnowledge
+        case .work: .draftProject
+        }
+    }
+
+    private static func objectRole(_ role: VaultRole) -> ResearchContextObjectRole? {
+        switch role {
+        case .sourceCorpus: .analysis
+        case .topicKnowledge: .topic
+        case .draftProject: .work
+        case .other: nil
+        }
+    }
+
+    private static func evidentialLayer(_ role: VaultRole) -> EvidentialLayer {
+        switch role {
+        case .sourceCorpus: .paperAnalysis
+        case .topicKnowledge, .other: .topicNote
+        case .draftProject: .draftProse
+        }
+    }
+
+    private static func actorClass(
+        _ author: PortableResearchStatementAuthor
+    ) -> ResearchContextActorClass {
+        switch author {
+        case .researcher: .researcher
+        case .agent: .agent
+        }
+    }
+}

@@ -66,7 +66,7 @@ extension ResearchFunctionOperationsTests {
         let storedRun = try #require(try await handle.services.localResearchExecutionStore.listing().records.first {
             $0.id == analyze.runID
         })
-        let storedInstructions = try #require(storedRun.preparedInstructions)
+        let storedInstructions = storedRun.preparedInstructions
         #expect(!storedInstructions.contains(fixture.analysisSourceURL.path))
         #expect(!storedInstructions.contains("bookmarkData"))
         await runtime.shutdown()
@@ -92,7 +92,7 @@ extension ResearchFunctionOperationsTests {
             _ = try await handle.research.protectedFunctionRun(id: preparation.runID)
         }
         await expectSourceFailure(.missingBinding) {
-            _ = try await handle.research.completeProtectedFunction(
+            _ = try await completeTestProtectedFunction(handle: handle, submission:
                 ResearchFunctionCompletionSubmission(
                     runID: preparation.runID,
                     confirmationToken: preparation.snapshot.confirmationToken,
@@ -125,7 +125,7 @@ extension ResearchFunctionOperationsTests {
         let executionURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v3", isDirectory: true)
+            .appendingPathComponent("research-execution-v8", isDirectory: true)
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
         let data = try Data(contentsOf: executionURL)
         let payload = try JSONSerialization.jsonObject(with: data)
@@ -182,7 +182,7 @@ extension ResearchFunctionOperationsTests {
         let storedRun = try #require(try await handle.services.localResearchExecutionStore.listing().records.first {
             $0.id == preparation.runID
         })
-        let persistedInstructions = try #require(storedRun.preparedInstructions)
+        let persistedInstructions = storedRun.preparedInstructions
         #expect(!persistedInstructions.contains(source.path))
         await runtime.shutdown()
     }
@@ -576,7 +576,9 @@ extension ResearchFunctionOperationsTests {
         #expect(preparation.instructions.contains("Validated method contract only"))
         #expect(preparation.instructions.contains("\\n## \(marker)"))
         #expect(!preparation.instructions.contains("\n## \(marker)"))
-        #expect(preparation.snapshot.request.authorizedWriteTargets.isEmpty)
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: preparation.runID
+        ).boundedWriteSet.entries.isEmpty)
         #expect(try await handle.documents.load(fixture.analysisID).sourceBytes
             == originalBytes.sourceBytes)
         await runtime.shutdown()
@@ -619,9 +621,6 @@ extension ResearchFunctionOperationsTests {
             ZoteroCreatorMetadata(role: "editor", name: "Example Editor"),
         ])
         #expect(context.metadata?.tags == ["fittingness", "value"])
-        #expect(first.snapshot.skills.map { $0.packageID }.contains(
-            "scholium-zotero-integration"
-        ))
         #expect(first.instructions.contains("## Zotero bibliographic metadata"))
         #expect(first.instructions.contains(
             "bibliographic metadata, not paper content or philosophical evidence"
@@ -688,12 +687,6 @@ extension ResearchFunctionOperationsTests {
         )
         #expect(analysisPreparation.snapshot.zoteroBibliographicContext == nil)
         #expect(workPreparation.snapshot.zoteroBibliographicContext == nil)
-        #expect(!analysisPreparation.snapshot.skills.map { $0.packageID }.contains(
-            "scholium-zotero-integration"
-        ))
-        #expect(!workPreparation.snapshot.skills.map { $0.packageID }.contains(
-            "scholium-zotero-integration"
-        ))
         #expect(await script.requestCount() == 0)
         await runtime.shutdown()
     }

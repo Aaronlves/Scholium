@@ -29,18 +29,14 @@ struct DiscoverySearchState: Equatable, Sendable {
     var criteria = SearchWorkspaceState()
     var ordinaryScope: SearchPresentationScope = .triptych
     var invocation: SearchInvocation = .general
-    var hits: [SearchHit] = []
-    var relatedItems: [RelatedSearchItem] = []
-    var relatedAvailability: RelatedSearchAvailability = .notApplicable
+    var results: [SearchResult] = []
     var selectedResultID: String?
     var responseRequestID: UUID?
     var freshnessToken: SearchFreshnessToken?
-    var availability: SearchAvailability = .unavailable
+    var availability: SearchProviderAvailability = .note(.unavailable)
     var diagnostics: [SearchQueryDiagnostic] = []
     var hasMore = false
     var errorMessage: String?
-    var relatedErrorMessage: String?
-    var isLoadingRelated = false
     var isRunning = false
 }
 
@@ -158,25 +154,9 @@ final class DiscoveryController: ObservableObject {
         try await requireOperations().search(request)
     }
 
-    func relatedResults(
-        query: String,
-        scope: SearchExecutionScope,
-        searchGeneration: SearchGenerationID?,
-        excluding: Set<VaultQualifiedNoteID> = [],
-        limit: Int = 12
-    ) async throws -> RelatedSearchResponse {
-        try await requireOperations().related(
-            query: query,
-            scope: scope,
-            searchGeneration: searchGeneration,
-            excluding: excluding,
-            limit: limit
-        )
-    }
-
-    /// Owns the complete lexical-plus-direct-relationship Search use case for
-    /// one window. The window shell supplies only its current navigation
-    /// identities and handles presentation of a reported failure.
+    /// Owns the complete Search use case for one window. The window shell
+    /// supplies only current navigation identities and handles presentation
+    /// of a reported failure.
     func executeSearch(
         _ criteria: SearchWorkspaceState,
         context: DiscoverySearchExecutionContext
@@ -215,7 +195,7 @@ final class DiscoveryController: ObservableObject {
             failSearch(error.localizedDescription, for: request)
             throw error
         }
-        let limit = SearchContractV4.maximumInterfaceResults
+        let limit = SearchContract.maximumInterfaceResults
 
         do {
             let response = try await search(SearchRequest(
@@ -227,26 +207,6 @@ final class DiscoveryController: ObservableObject {
             ))
             guard isCurrentSearch(request) else { return }
             receiveSearchResponse(response, for: request)
-            guard response.diagnostics.isEmpty else { return }
-            let excluded = Set(response.results.map {
-                VaultQualifiedNoteID(vaultID: $0.vaultID, relativePath: $0.relativePath)
-            })
-            beginRelated(for: request)
-            do {
-                let related = try await relatedResults(
-                    query: query,
-                    scope: applicationScope,
-                    searchGeneration: response.availability.lastGoodGeneration,
-                    excluding: excluded
-                )
-                guard isCurrentSearch(request) else { return }
-                receiveRelatedResults(related, for: request)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard isCurrentSearch(request) else { return }
-                failRelated(error.localizedDescription, for: request)
-            }
         } catch is CancellationError {
             return
         } catch {
@@ -395,14 +355,10 @@ final class DiscoveryController: ObservableObject {
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
-        search.hits = []
-        search.relatedItems = []
-        search.relatedAvailability = .notApplicable
+        search.results = []
         search.diagnostics = []
         search.hasMore = false
         search.errorMessage = nil
-        search.relatedErrorMessage = nil
-        search.isLoadingRelated = false
         search.isRunning = false
         switch invocation {
         case .general:
@@ -411,6 +367,30 @@ final class DiscoveryController: ObservableObject {
             search.ordinaryScope = previousScope
             search.criteria.scope = .thisNote
         }
+    }
+
+    /// Installs a stale Saved Search as visible, editable plain text without
+    /// executing it under a newer contract. Editing the query clears this
+    /// diagnostic through the ordinary invalidation path.
+    func presentSavedSearchForEditing(
+        _ definition: SearchDefinition,
+        diagnostic: SearchQueryDiagnostic
+    ) {
+        activeSearchRequestID = nil
+        search.invocation = .general
+        search.criteria = SearchWorkspaceState(
+            query: definition.query,
+            scope: definition.presentationScope
+        )
+        search.ordinaryScope = definition.presentationScope
+        search.results = []
+        search.selectedResultID = nil
+        search.responseRequestID = nil
+        search.freshnessToken = nil
+        search.diagnostics = [diagnostic]
+        search.hasMore = false
+        search.errorMessage = nil
+        search.isRunning = false
     }
 
     /// Dismissal retains only the ordinary scope. Query, selection, results,
@@ -460,14 +440,10 @@ final class DiscoveryController: ObservableObject {
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
-        search.hits = []
-        search.relatedItems = []
-        search.relatedAvailability = .notApplicable
+        search.results = []
         search.diagnostics = []
         search.hasMore = false
         search.errorMessage = nil
-        search.relatedErrorMessage = nil
-        search.isLoadingRelated = false
         search.isRunning = !search.criteria.query
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
@@ -485,16 +461,13 @@ final class DiscoveryController: ObservableObject {
         search.responseRequestID = nil
         search.freshnessToken = nil
         search.errorMessage = nil
-        search.relatedErrorMessage = nil
         search.diagnostics = []
         search.hasMore = false
         search.isRunning = !canonicalCriteria.query
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
         if !search.isRunning {
-            search.hits = []
-            search.relatedItems = []
-            search.relatedAvailability = .notApplicable
+            search.results = []
         }
         return request
     }
@@ -504,9 +477,7 @@ final class DiscoveryController: ObservableObject {
         for request: DiscoverySearchRequest
     ) {
         guard isCurrent(request), response.requestID == request.id else { return }
-        search.hits = response.results
-        search.relatedItems = []
-        search.relatedAvailability = .notApplicable
+        search.results = response.results
         search.selectedResultID = nil
         search.responseRequestID = response.requestID
         search.freshnessToken = response.freshnessToken
@@ -515,31 +486,6 @@ final class DiscoveryController: ObservableObject {
         search.hasMore = response.hasMore
         search.errorMessage = nil
         search.isRunning = false
-    }
-
-    private func beginRelated(for request: DiscoverySearchRequest) {
-        guard isCurrent(request) else { return }
-        search.isLoadingRelated = true
-        search.relatedErrorMessage = nil
-    }
-
-    private func receiveRelatedResults(
-        _ response: RelatedSearchResponse,
-        for request: DiscoverySearchRequest
-    ) {
-        guard isCurrent(request) else { return }
-        search.relatedItems = response.items
-        search.relatedAvailability = response.availability
-        search.relatedErrorMessage = nil
-        search.isLoadingRelated = false
-    }
-
-    private func failRelated(_ message: String, for request: DiscoverySearchRequest) {
-        guard isCurrent(request) else { return }
-        search.relatedItems = []
-        search.relatedAvailability = .notApplicable
-        search.relatedErrorMessage = message
-        search.isLoadingRelated = false
     }
 
     func failSearch(_ message: String, for request: DiscoverySearchRequest) {
@@ -557,17 +503,13 @@ final class DiscoveryController: ObservableObject {
     }
 
     private func completeSearchFailure(_ message: String) {
-        search.hits = []
-        search.relatedItems = []
-        search.relatedAvailability = .notApplicable
+        search.results = []
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
         search.diagnostics = []
         search.hasMore = false
         search.errorMessage = message
-        search.relatedErrorMessage = nil
-        search.isLoadingRelated = false
         search.isRunning = false
     }
 
@@ -615,9 +557,7 @@ final class DiscoveryController: ObservableObject {
         _ result: SearchResultSelection,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
-        if case .lexical = result {
-            guard responseRequestIDIsCurrent else { return }
-        }
+        guard responseRequestIDIsCurrent else { return }
         intentHandler(.openSearchResult(result, disposition: disposition))
     }
 
@@ -634,7 +574,7 @@ final class DiscoveryController: ObservableObject {
     private var responseRequestIDIsCurrent: Bool {
         guard let responseRequestID = search.responseRequestID else { return false }
         return responseRequestID == activeSearchRequestID
-            && search.hits.allSatisfy { $0.freshnessToken == search.freshnessToken }
+            && search.results.allSatisfy { $0.freshnessToken == search.freshnessToken }
     }
 
     func isCurrentLocationRequest(_ request: DiscoveryLocationRequest) -> Bool {

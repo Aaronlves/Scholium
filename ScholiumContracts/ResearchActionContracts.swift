@@ -1,36 +1,16 @@
 import Foundation
 
-/// Stable identity for a researcher-visible Action.
-///
-/// Bundled and researcher-created Actions share one bounded identifier form.
-/// Interface labels remain separate, researcher-editable presentation data.
-/// Parsing a raw value does not establish ownership; creation flows for a
-/// researcher-owned Action must use `init(researcherOwnedRawValue:)` so a
-/// bundled identity cannot be replaced accidentally.
+/// Stable identity for one code-owned Platform Action. Researcher-editable
+/// presentation and academic fields live in the Profile; they cannot create a
+/// second executable Action identity.
 public struct ResearchActionID: RawRepresentable, Codable, Hashable, Sendable,
     CustomStringConvertible
 {
     public let rawValue: String
 
     public init?(rawValue: String) {
-        let bytes = Array(rawValue.utf8)
-        guard (1...64).contains(bytes.count),
-              bytes.first != 45,
-              bytes.last != 45,
-              !rawValue.contains("--"),
-              !Self.protectedFunctionOnlyIDs.contains(rawValue),
-              bytes.allSatisfy(Self.isIdentifierByte) else {
-            return nil
-        }
+        guard Self.supportedRawValues.contains(rawValue) else { return nil }
         self.rawValue = rawValue
-    }
-
-    public init?(researcherOwnedRawValue rawValue: String) {
-        guard let identifier = Self(rawValue: rawValue),
-              !identifier.isReservedForBundledAction else {
-            return nil
-        }
-        self = identifier
     }
 
     private init(uncheckedRawValue: String) {
@@ -46,8 +26,6 @@ public struct ResearchActionID: RawRepresentable, Codable, Hashable, Sendable,
     public static let manuscript = Self(uncheckedRawValue: "manuscript")
 
     public var description: String { rawValue }
-    public var isReservedForBundledAction: Bool { reservedExecutionKind != nil }
-
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
@@ -65,23 +43,13 @@ public struct ResearchActionID: RawRepresentable, Codable, Hashable, Sendable,
         try container.encode(rawValue)
     }
 
-    private static let protectedFunctionOnlyIDs: Set<String> = [
-        "develop",
-        "fidelity",
-        "revise",
+    private static let supportedRawValues: Set<String> = [
+        "discuss", "analyze", "synthesize", "write", "critique",
+        "check-fidelity", "manuscript",
     ]
-
-    private static func isIdentifierByte(_ byte: UInt8) -> Bool {
-        switch byte {
-        case 45, 48...57, 97...122:
-            true
-        default:
-            false
-        }
-    }
 }
 
-/// Public execution semantics available to bundled and custom Actions.
+/// Public execution semantics available to the closed Platform Actions.
 /// These values never expose the protected Function used to execute them.
 public enum ResearchActionExecutionKind: String, Codable, CaseIterable, Hashable, Sendable {
     case discussion
@@ -122,18 +90,6 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
 
     public var allowedTargetRoles: Set<ResearchActionTargetRole> {
         executionKind.allowedTargetRoles
-    }
-
-    /// Creates a researcher-owned definition without permitting it to
-    /// impersonate one of Scholium's bundled Actions.
-    public init(
-        researcherOwnedID id: ResearchActionID,
-        executionKind: ResearchActionExecutionKind
-    ) throws {
-        guard !id.isReservedForBundledAction else {
-            throw ResearchActionContractError.bundledActionIDReserved(id)
-        }
-        try self.init(validatingID: id, executionKind: executionKind)
     }
 
     init(
@@ -222,18 +178,21 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
 
 /// Versioned public identity and authority recorded for one Action run.
 ///
-/// Schema v2 is created only after the resolver has frozen the exact Target,
-/// Method, Profile, parameter values, and concrete authority envelope. It
+/// Schema v3 is created only after the resolver has frozen the exact Target,
+/// Method, academic Profile, protected Platform inputs, academic inputs,
+/// Result Contract, and concrete authority envelope. It
 /// intentionally contains no internal Function ID.
 public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let definition: ResearchActionDefinition
     public let target: ResearchActionNoteSnapshot
-    public let method: ResearchActionMethodSnapshot
+    public let method: ResearchMethodSnapshot
     public let resolvedProfile: ResearchActionResolvedProfileSnapshot
-    public let parameters: ResearchActionParameterModel
+    public let platformInputs: ResearchActionPlatformInputs
+    public let academicInputs: ResearchAcademicFieldValues
+    public let resultContract: ResearchResultContract
     public let authority: ResearchAuthorityEnvelope
 
     public var actionID: ResearchActionID { definition.id }
@@ -243,15 +202,25 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
     public init(
         definition: ResearchActionDefinition,
         target: ResearchActionNoteSnapshot,
-        method: ResearchActionMethodSnapshot,
+        method: ResearchMethodSnapshot,
         resolvedProfile: ResearchActionResolvedProfileSnapshot,
-        parameters: ResearchActionParameterModel,
+        platformInputs: ResearchActionPlatformInputs,
+        academicInputs: ResearchAcademicFieldValues,
+        resultContract: ResearchResultContract,
         authority: ResearchAuthorityEnvelope
     ) throws {
         try definition.validate(targetRole: target.role)
-        let validatedParameters = try ResearchActionParameterModel(
-            profile: resolvedProfile.profile,
-            rawValues: parameters.values
+        guard let platform = PlatformActionCatalog.definition(for: definition.id) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        try platform.validate(profile: resolvedProfile.profile)
+        let validatedPlatformInputs = try platformInputs.validated(
+            for: platform,
+            target: target
+        )
+        let validatedAcademicInputs = try ResearchAcademicFieldValues(
+            rawValues: academicInputs.values,
+            definitions: resolvedProfile.profile.academicInputFields
         )
         let validatedAuthority = try ResearchAuthorityEnvelope(
             readableNotes: authority.readableNotes,
@@ -259,46 +228,22 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
             writeOperations: authority.writeOperations,
             editablePropertyKeys: authority.editablePropertyKeys
         )
-        let capabilities = resolvedProfile.profile.capabilities
-        let readableRoles = Set(capabilities.readableRoles)
-        let writableRoles = Set(capabilities.candidateWritableRoles)
-        let candidateOperations = Set(capabilities.candidateWriteOperations)
-        let candidatePropertyKeys = Set(capabilities.editablePropertyKeys)
-        let selectedNotes = validatedParameters.values.values.flatMap { value in
-            if case .notes(let notes) = value { return notes }
-            return []
-        }
-        let anchorsMatchTarget = validatedParameters.values.values.allSatisfy { value in
-            if case .passage(let anchor) = value {
-                return anchor.fingerprint == target.fingerprint
-            }
-            return true
-        }
-        let resourcePaths = method.loadedResources.map(\.relativePath)
-        guard resolvedProfile.profile.definition == definition,
+        let canWriteInitial = platform.operations.contains(.modifyInitialNote)
+        guard resolvedProfile.profile.actionID == definition.id,
               resolvedProfile.profile.applicableRoles.contains(target.role),
-              method.packageID.isEmpty == false,
-              method.loadedResources.isEmpty == false,
-              Set(resourcePaths).count == resourcePaths.count,
-              resourcePaths.allSatisfy({ path in
-                  !path.isEmpty
-                      && !path.hasPrefix("/")
-                      && !path.split(separator: "/", omittingEmptySubsequences: false)
-                          .contains(where: { $0 == "." || $0 == ".." || $0.isEmpty })
-              }),
+              method.registration.actionID == definition.id,
+              method.registration.isEnabled,
+              method.primaryMarkdownRevision
+                == DocumentFingerprint(content: method.primaryMarkdownSource),
               validatedAuthority.readableNotes.contains(target),
-              validatedAuthority.readableNotes.allSatisfy({
-                  readableRoles.contains($0.role)
-              }),
-              validatedAuthority.writableNotes.allSatisfy({
-                  writableRoles.contains($0.role)
-              }),
-              Set(validatedAuthority.writeOperations).isSubset(of: candidateOperations),
-              Set(validatedAuthority.editablePropertyKeys).isSubset(
-                  of: candidatePropertyKeys
+              validatedPlatformInputs.focalNotes.allSatisfy(
+                validatedAuthority.readableNotes.contains
               ),
-              selectedNotes.allSatisfy(validatedAuthority.readableNotes.contains),
-              anchorsMatchTarget else {
+              validatedAuthority.writableNotes.allSatisfy({ $0 == target }),
+              (validatedAuthority.writableNotes.isEmpty || canWriteInitial),
+              resultContract.actionID == definition.id,
+              resultContract.registrationKey == method.registration.key,
+              resultContract.profileRevision == resolvedProfile.profileRevision else {
             throw ResearchActionExecutionContractError.staleResolution
         }
         schemaVersion = Self.currentSchemaVersion
@@ -306,7 +251,9 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         self.target = target
         self.method = method
         self.resolvedProfile = resolvedProfile
-        self.parameters = validatedParameters
+        self.platformInputs = validatedPlatformInputs
+        self.academicInputs = validatedAcademicInputs
+        self.resultContract = resultContract
         self.authority = validatedAuthority
     }
 
@@ -317,7 +264,9 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         case target
         case method
         case resolvedProfile = "resolved_profile"
-        case parameters
+        case platformInputs = "platform_inputs"
+        case academicInputs = "academic_inputs"
+        case resultContract = "result_contract"
         case authority
     }
 
@@ -341,14 +290,22 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         try self.init(
             definition: definition,
             target: container.decode(ResearchActionNoteSnapshot.self, forKey: .target),
-            method: container.decode(ResearchActionMethodSnapshot.self, forKey: .method),
+            method: container.decode(ResearchMethodSnapshot.self, forKey: .method),
             resolvedProfile: container.decode(
                 ResearchActionResolvedProfileSnapshot.self,
                 forKey: .resolvedProfile
             ),
-            parameters: container.decode(
-                ResearchActionParameterModel.self,
-                forKey: .parameters
+            platformInputs: container.decode(
+                ResearchActionPlatformInputs.self,
+                forKey: .platformInputs
+            ),
+            academicInputs: container.decode(
+                ResearchAcademicFieldValues.self,
+                forKey: .academicInputs
+            ),
+            resultContract: container.decode(
+                ResearchResultContract.self,
+                forKey: .resultContract
             ),
             authority: container.decode(ResearchAuthorityEnvelope.self, forKey: .authority)
         )
@@ -362,7 +319,9 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         try container.encode(target, forKey: .target)
         try container.encode(method, forKey: .method)
         try container.encode(resolvedProfile, forKey: .resolvedProfile)
-        try container.encode(parameters, forKey: .parameters)
+        try container.encode(platformInputs, forKey: .platformInputs)
+        try container.encode(academicInputs, forKey: .academicInputs)
+        try container.encode(resultContract, forKey: .resultContract)
         try container.encode(authority, forKey: .authority)
     }
 }
@@ -417,7 +376,6 @@ public struct ResearchActionRecordIdentity: Codable, Hashable, Sendable {
 }
 
 public enum ResearchActionContractError: LocalizedError, Hashable, Sendable {
-    case bundledActionIDReserved(ResearchActionID)
     case reservedExecutionKindMismatch(
         actionID: ResearchActionID,
         expected: ResearchActionExecutionKind,
@@ -433,8 +391,6 @@ public enum ResearchActionContractError: LocalizedError, Hashable, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .bundledActionIDReserved(let actionID):
-            "The Action identifier \(actionID.rawValue) is reserved for a bundled Action."
         case .reservedExecutionKindMismatch(let actionID, let expected, let actual):
             "The reserved Action \(actionID.rawValue) requires \(expected.rawValue), not \(actual.rawValue)."
         case .invalidTargetRole(let actionID, _, let role):

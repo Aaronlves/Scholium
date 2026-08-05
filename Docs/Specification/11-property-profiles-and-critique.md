@@ -25,6 +25,7 @@ the role-aware constraints in §5.2.
 | `text_reliability` | Researcher | Combined Source Basis | Reliability of consulted text. |
 | `locators` | Researcher | Combined Source Basis | Citation stability/checkability. |
 | `tags` | Researcher | No | Retrieval terms. |
+| `summary` | Researcher / authorized Agent | Yes | Optional short navigation declaration; one current YAML owner, actual writer retained. |
 | `debate_importance` | Researcher | No | Optional whole number 0–10. |
 | `debate_importance_scope` | Researcher | No | Must appear with Debate Importance. |
 | `zotero_item_key` | Protected machine | No | Exact task-context identity; not ordinarily editable. |
@@ -41,6 +42,7 @@ Topic YAML is optional.
 | `research_unit` | Researcher | Scope, then every Limitation | Optional `scope` and/or `limitations`. |
 | `aliases` | Researcher | Yes | Search and link alternatives. |
 | `tags` | Researcher | No | Retrieval terms. |
+| `summary` | Researcher / authorized Agent | Yes | Optional short navigation declaration; one current YAML owner, actual writer retained. |
 
 Topic identity is first H1, then filename. YAML `title` is not recognized.
 
@@ -53,6 +55,7 @@ Topic identity is first H1, then filename. YAML `title` is not recognized.
 | `authors` | Researcher | Yes | Co-authors when relevant. |
 | `venue` | Researcher | Yes | Intended or actual journal, publisher, course, or event. |
 | `tags` | Researcher | No | Retrieval terms. |
+| `summary` | Researcher / authorized Agent | Yes | Optional short navigation declaration; one current YAML owner, actual writer retained. |
 
 Work identity is first H1, then filename. YAML `title`, `status`, and `deadline`
 are not recognized. Only canonical keys receive typed semantics; all other
@@ -73,7 +76,7 @@ and uncertainty. Any Traced, Untraced, Disputed, or Beyond Sources label remains
 an attributed agent judgment, never a Scholium status.
 
 Critique never modifies the target Work. A recommended source change requires
-a separately authorized Write child phase. The Triptych-installed editable
-Working Method owns the active prose; its bundled reference remains read-only
-and serves only explicit comparison or restoration. This specification states
-requirements without duplicating either Skill's complete prose.
+current Write authority. The Critique registration's editable primary Markdown
+owns the active method; the app-bundled default is read only and used only for
+explicit restoration. This specification states requirements without
+duplicating the Skill's complete prose.

@@ -12,24 +12,39 @@ This chapter owns the latest dated automated, UI, performance, visual, and distr
 **Current passing result**
 
 `verify.sh` passed the closed 3-manifest, 23-chapter documentation authority and all 93 checked local
-links; 15 protected Skill packages; the retired recommendation-feature zero-residue guard; 185 WebEditor
-tests and reproducible editor, mathematics, Mermaid, and license resources; deterministic RDF-1 v2
-for 800 notes; 518 Core tests plus 3 isolated performance tests; 120 Contracts; 162 Application; 12
-Local Agent bridge; 1 serialized architecture measurement; 454 App tests; 4 executable Action/CLI
-boundary journeys; workflow CLI, public symbol graph, sandboxed AF_UNIX bridge,
-isolation/dead-path checks, and an optimized Release build in 188.68 seconds.
+links; 11 shipped `SKILL.md` roots; retired research-owner zero-residue guards; 185 WebEditor tests
+and reproducible editor, mathematics, Mermaid, and license resources; deterministic RDF-1 v2 for
+800 notes; 424 Core tests plus 3 isolated performance tests; 118 Contracts; 180 Application; 8 Local
+Agent bridge; 1 serialized architecture measurement; 453 App tests; and 6 executable Research
+Action/CLI boundary journeys. The executable journeys cover strict parsing, provider-discriminated
+Search-v6 text and JSONL, Pairing through standard input, protected Session reload, bounded writes
+and retries without exposed write identities, one canonical Result plus Continue Research, and one
+separately authenticated Method-improvement Run. The gate also passed the public symbol graph,
+sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 162.92
+seconds.
 
 **Boundary of the claim**
 
 Automated source and disposable-fixture evidence, not a release artifact or human acceptance.
 
+This complete gate incorporates the earlier direct-relation resolver and 87-test Search owner-range
+completion evidence rather than leaving it as a post-gate exception. The lower aggregate counts are
+the result of the authorized clean cutover deleting package, workflow, permission, Profile-module,
+and compatibility suites with their retired owners; they are not evidence that old paths remain.
+
+An independent target/canonical/current/evidence conformance pass found no P0/P1. It fixed two
+bounded P2 residues before the final gate: current Search-v5 labels were migrated to v6, and the
+sandbox probe was aligned with the bridge's generic authorization-denial wire contract while
+retaining its reachability, secret-nonlogging, and unavailable-state assertions. Production residue
+searches then found no retired research owner or separate Research Memory/Search side path.
+
 ### Search performance gate
 
 **Current passing result**
 
-The fixed 2,056-note mixed-script fixture recorded 754.119 ms cold rebuild, 18.594 ms
-incremental-publication p95, 76.612 ms warm-query p95, 52,587,392 database bytes, and 152,092,672
-peak RSS bytes.
+The Search v6/schema 9 fixed 2,056-note mixed-script fixture recorded 817.019 ms cold rebuild,
+19.915 ms incremental-publication p95, 30.352 ms warm-query p95, 52,171,976 database bytes, and
+153,518,080 peak RSS bytes.
 
 **Boundary of the claim**
 
@@ -57,10 +72,20 @@ Representative populated Records and Recommendations windows were also inspected
 Light and Dark after the leading-navigation placement change; both retained the semantic
 Navigation/Document surfaces and one control treatment without transparent-material fallback.
 
+The explicit direct-relation Search journey is implemented and compiles. XCTest attempts on
+2026-08-04 did not enter the test body because the host timed out while enabling automation mode;
+that harness result remains environment-blocked rather than a product failure. The same bounded
+journey was then exercised directly in the isolated Debug QA app with the disposable nonprivate
+fixture: the explicit `from-note` plus `relation:supports` query returned only `QA Autosave A`,
+explained the direct-support relation without presenting the anchor Topic as a parallel result, and
+opened the target Note in Source. This is a passing product-level manual automation observation,
+not a substitute for a future XCTest regression run.
+
 **Boundary of the claim**
 
 Representative Debug/QA paths only; headless tests own durable, authentication, and transaction
-claims.
+claims. The direct-relation Search behavior is accepted for the Search Foundation engineering
+handoff; a successful XCTest host-automation run remains test-infrastructure closure work.
 
 ### Complete UI baseline
 
@@ -104,8 +129,10 @@ acceptance.
 
 **Current passing result**
 
-Local source-first assembly has passed metadata, licenses, resources, signing structure, CLI
-execution, ZIP, and checksum smoke. The latest architecture gate passed an optimized Release build.
+Local source-first assembly passed metadata, licenses, resources, path-disclosure checks, signing
+structure, standalone and bundled CLI execution, ZIP, and checksum smoke from an isolated temporary
+output on 2026-08-04. The delivered smoke bundle was ad hoc signed. The latest complete repository
+gate also passed an optimized Release build.
 
 **Boundary of the claim**
 

@@ -545,27 +545,170 @@ func createCommentExchange(
     return discussion.id
 }
 
-func researchActivityCompletion(
+func writePreparedResearchDocument(
     for preparation: ResearchFunctionPreparation,
-    candidateModifiedNotes: [VaultQualifiedNoteID],
-    summary: String,
-    submittedAt: Date = Date()
-) throws -> ResearchActivityCompletionSubmission {
-    let prefix = "Write key: "
-    let key = try #require(
-        preparation.instructions
-            .split(separator: "\n")
-            .map(String.init)
-            .first(where: { $0.hasPrefix(prefix) })?
-            .dropFirst(prefix.count)
+    content: String,
+    handle: WorkspaceHandle,
+    requestID: UUID = UUID()
+) async throws -> ResearchDocumentWriteResult {
+    let target = preparation.snapshot.request.target
+    let role: ResearchActionTargetRole = switch target.role {
+    case .analysis: .analysis
+    case .topic: .topic
+    case .work: .work
+    }
+    let handoff = try await handle.research.issueAgentHandoff(
+        runID: preparation.runID
     )
-    return ResearchActivityCompletionSubmission(
-        activityID: try #require(preparation.snapshot.activityID),
-        activityKey: String(key),
-        candidateModifiedNotes: candidateModifiedNotes,
-        summary: summary,
-        submittedAt: submittedAt
+    let credential = try await handle.research.pairAgent(
+        run: handoff.run,
+        pairingCode: handoff.pairingCode
     )
+    return try await handle.research.writeAgentDocument(
+        credential: credential,
+        run: handoff.run,
+        intent: try ResearchDocumentWriteIntent(
+            requestID: requestID,
+            role: role,
+            relativePath: target.note.relativePath,
+            content: content
+        )
+    )
+}
+
+struct TestResearchAgentClient {
+    let run: ResearchRunLocator
+    let credential: ResearchConnectionCredential
+}
+
+func connectTestResearchAgent(
+    to preparation: ResearchFunctionPreparation,
+    handle: WorkspaceHandle
+) async throws -> TestResearchAgentClient {
+    let handoff = try await handle.research.issueAgentHandoff(
+        runID: preparation.runID
+    )
+    let credential = try await handle.research.pairAgent(
+        run: handoff.run,
+        pairingCode: handoff.pairingCode
+    )
+    return TestResearchAgentClient(run: handoff.run, credential: credential)
+}
+
+func testAcademicResults(
+    for action: ResearchActionSnapshot
+) throws -> ResearchAcademicFieldValues {
+    var rawValues: [String: ResearchAcademicFieldValue] = [:]
+    for definition in action.resultContract.academicFields
+        where definition.requirement != .excluded {
+        let value: ResearchAcademicFieldValue = switch definition.kind {
+        case .freeText:
+            .freeText("Bounded test result for \(definition.label).")
+        case .singleChoice:
+            .singleChoice(try #require(definition.choices.first?.value))
+        case .multipleChoice:
+            .multipleChoice([try #require(definition.choices.first?.value)])
+        }
+        rawValues[definition.fieldID.rawValue] = value
+    }
+    let results = try ResearchAcademicFieldValues(
+        rawValues: rawValues,
+        definitions: action.resultContract.academicFields
+    )
+    try ResearchAcademicProfileCatalog.validatePlatformResultRules(
+        results,
+        actionID: action.actionID
+    )
+    return results
+}
+
+func makeTestAgentResultSubmission(
+    for preparation: ResearchFunctionPreparation,
+    disposition: ResearchAgentResultDisposition = .completed,
+    contextUseClaims: [ResearchContextUseClaim] = [],
+    fidelityOutcomes: [FidelityCheckOutcome] = [],
+    literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil
+) throws -> ResearchAgentResultSubmission {
+    let action = try #require(preparation.snapshot.actionSnapshot)
+    return try ResearchAgentResultSubmission(
+        disposition: disposition,
+        academicResults: testAcademicResults(for: action),
+        contextUseClaims: contextUseClaims,
+        fidelityOutcomes: fidelityOutcomes,
+        literatureRecommendations: literatureRecommendations
+    )
+}
+
+func submitTestAgentResult(
+    _ submission: ResearchAgentResultSubmission,
+    client: TestResearchAgentClient,
+    handle: WorkspaceHandle
+) async throws -> ResearchAgentResultReceipt {
+    try await handle.research.submitAgentResult(
+        credential: client.credential,
+        run: client.run,
+        submission: submission
+    )
+}
+
+func submitTestAgentResult(
+    for preparation: ResearchFunctionPreparation,
+    handle: WorkspaceHandle,
+    disposition: ResearchAgentResultDisposition = .completed,
+    contextUseClaims: [ResearchContextUseClaim] = [],
+    fidelityOutcomes: [FidelityCheckOutcome] = [],
+    literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil
+) async throws -> ResearchAgentResultReceipt {
+    let client = try await connectTestResearchAgent(
+        to: preparation,
+        handle: handle
+    )
+    return try await submitTestAgentResult(
+        makeTestAgentResultSubmission(
+            for: preparation,
+            disposition: disposition,
+            contextUseClaims: contextUseClaims,
+            fidelityOutcomes: fidelityOutcomes,
+            literatureRecommendations: literatureRecommendations
+        ),
+        client: client,
+        handle: handle
+    )
+}
+
+/// Legacy orchestration tests exercise the internal completion validator
+/// directly. Current production runs first stage one strict Agent Result, so
+/// this helper retries only the otherwise-valid missing-Result boundary after
+/// installing a canonical test payload in the real Local Execution store.
+func completeTestProtectedFunction(
+    handle: WorkspaceHandle,
+    submission: ResearchFunctionCompletionSubmission
+) async throws -> ResearchFunctionCompletion {
+    do {
+        return try await handle.research.completeProtectedFunction(submission)
+    } catch ResearchFunctionContractError.invalidCompletion(let reason)
+        where reason.contains("canonical Result payload") {
+        let local = try await handle.services.localResearchExecutionStore.record(
+            id: submission.runID
+        )
+        let action = try #require(local.snapshot.actionSnapshot)
+        let academicResults = try testAcademicResults(for: action)
+        let payload = try ResearchRunResultPayload(
+            runID: submission.runID,
+            submissionFingerprint: DocumentFingerprint(
+                content: "test-result:\(submission.runID.uuidString.lowercased())"
+            ),
+            disposition: .completed,
+            academicResults: academicResults,
+            contextUseReport: nil,
+            fidelityOutcomes: submission.fidelityOutcomes,
+            literatureRecommendations: submission.literatureRecommendations,
+            submittedAt: submission.submittedAt
+        )
+        _ = try await handle.services.localResearchExecutionStore
+            .stageResultPayload(payload)
+        return try await handle.research.completeProtectedFunction(submission)
+    }
 }
 
 extension FidelityCheckOutcome {

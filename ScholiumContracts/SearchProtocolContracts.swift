@@ -3,14 +3,16 @@ import Foundation
 
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
-public enum SearchContractV4 {
-    public static let contractVersion = 4
-    public static let schemaVersion = 6
+public enum SearchContract {
+    public static let currentVersion = 6
+    public static let schemaVersion = 9
     public static let tokenizerPolicyVersion = 2
-    public static let rankingPolicyVersion = 1
+    public static let rankingPolicyVersion = 2
     public static let maximumInterfaceResults = 100
     public static let defaultCLIResults = 20
     public static let maximumCLIResults = 500
+    public static let maximumQueryUTF16Count = 16_384
+    public static let maximumQueryTokenCount = 64
 }
 
 public struct SearchSourceManifestEntry: Codable, Hashable, Sendable {
@@ -50,7 +52,7 @@ public struct SearchDefinition: Codable, Hashable, Sendable {
     public var presentationScope: SearchPresentationScope
 
     public init(
-        contractVersion: Int = SearchContractV4.contractVersion,
+        contractVersion: Int = SearchContract.currentVersion,
         query: String,
         presentationScope: SearchPresentationScope
     ) {
@@ -111,6 +113,17 @@ public struct SearchRequest: Codable, Hashable, Sendable {
         self.executionScope = executionScope
         self.limit = limit
     }
+
+    public var hasConsistentScopes: Bool {
+        switch (presentationScope, executionScope) {
+        case (.thisNote, .currentNote),
+             (.currentVault, .currentVault),
+             (.triptych, .triptych):
+            true
+        default:
+            false
+        }
+    }
 }
 
 public struct SearchGenerationID: Codable, Hashable, Sendable {
@@ -125,10 +138,10 @@ public struct SearchGenerationID: Codable, Hashable, Sendable {
     public init(
         triptychID: UUID,
         sequence: Int,
-        schemaVersion: Int = SearchContractV4.schemaVersion,
-        queryContractVersion: Int = SearchContractV4.contractVersion,
-        tokenizerPolicyVersion: Int = SearchContractV4.tokenizerPolicyVersion,
-        rankingPolicyVersion: Int = SearchContractV4.rankingPolicyVersion,
+        schemaVersion: Int = SearchContract.schemaVersion,
+        queryContractVersion: Int = SearchContract.currentVersion,
+        tokenizerPolicyVersion: Int = SearchContract.tokenizerPolicyVersion,
+        rankingPolicyVersion: Int = SearchContract.rankingPolicyVersion,
         sourceManifestHash: String
     ) {
         self.triptychID = triptychID
@@ -137,6 +150,22 @@ public struct SearchGenerationID: Codable, Hashable, Sendable {
         self.queryContractVersion = queryContractVersion
         self.tokenizerPolicyVersion = tokenizerPolicyVersion
         self.rankingPolicyVersion = rankingPolicyVersion
+        self.sourceManifestHash = sourceManifestHash
+    }
+}
+
+public struct RecordSearchGenerationID: Codable, Hashable, Sendable {
+    public let triptychID: UUID
+    public let queryContractVersion: Int
+    public let sourceManifestHash: String
+
+    public init(
+        triptychID: UUID,
+        queryContractVersion: Int = SearchContract.currentVersion,
+        sourceManifestHash: String
+    ) {
+        self.triptychID = triptychID
+        self.queryContractVersion = queryContractVersion
         self.sourceManifestHash = sourceManifestHash
     }
 }
@@ -172,6 +201,12 @@ public struct SearchFreshnessToken: Codable, Hashable, Sendable, CustomStringCon
     public static func triptych(_ generation: SearchGenerationID) -> Self {
         Self(
             "triptych:\(generation.triptychID.uuidString.lowercased()):\(generation.sequence):\(generation.sourceManifestHash)"
+        )
+    }
+
+    public static func record(_ generation: RecordSearchGenerationID) -> Self {
+        Self(
+            "record:\(generation.triptychID.uuidString.lowercased()):\(generation.sourceManifestHash)"
         )
     }
 }
@@ -210,6 +245,47 @@ public enum SearchAvailability: Codable, Hashable, Sendable {
     }
 }
 
+public enum RecordSearchAvailability: Codable, Hashable, Sendable {
+    case unavailable
+    case building(SearchBuildProgress)
+    case current(RecordSearchGenerationID)
+    case refreshing(lastGood: RecordSearchGenerationID)
+    case stale(lastGood: RecordSearchGenerationID, reason: String)
+    case failed(lastGood: RecordSearchGenerationID?, reason: String)
+
+    public var lastGoodGeneration: RecordSearchGenerationID? {
+        switch self {
+        case .current(let generation): generation
+        case .refreshing(let generation): generation
+        case .stale(let generation, _): generation
+        case .failed(let generation, _): generation
+        case .unavailable, .building: nil
+        }
+    }
+}
+
+public enum SearchProviderAvailability: Codable, Hashable, Sendable {
+    case note(SearchAvailability)
+    case record(RecordSearchAvailability)
+
+    public var provider: SearchProvider {
+        switch self {
+        case .note: .note
+        case .record: .record
+        }
+    }
+
+    public var noteAvailability: SearchAvailability? {
+        guard case .note(let availability) = self else { return nil }
+        return availability
+    }
+
+    public var recordAvailability: RecordSearchAvailability? {
+        guard case .record(let availability) = self else { return nil }
+        return availability
+    }
+}
+
 public enum SearchQueryDiagnosticCode: String, Codable, Hashable, Sendable {
     case emptyClause
     case unclosedPhrase
@@ -217,11 +293,16 @@ public enum SearchQueryDiagnosticCode: String, Codable, Hashable, Sendable {
     case invalidPrefix
     case cjkPrefixUnsupported
     case unknownField
-    case removedField
+    case unsupportedField
+    case providerMismatch
+    case unsupportedScopeSelector
+    case duplicateClause
+    case missingCompanion
+    case ambiguousIdentity
+    case notApplicable
     case missingFieldValue
     case unknownStructuredValue
     case unsupportedSyntax
-    case invalidScope
     case onlyExcludedFreeText
     case needsEditing
 }
@@ -286,49 +367,39 @@ public struct SearchResponse: Codable, Hashable, Sendable {
     public let contractVersion: Int
     public let requestID: UUID
     public let scope: SearchPresentationScope
+    public let explanation: SearchExplanation
     public let freshnessToken: SearchFreshnessToken
-    public let availability: SearchAvailability
-    public let results: [SearchHit]
+    public let availability: SearchProviderAvailability
+    public let results: [SearchResult]
     public let hasMore: Bool
     public let diagnostics: [SearchQueryDiagnostic]
 
     public init(
-        contractVersion: Int = SearchContractV4.contractVersion,
+        contractVersion: Int = SearchContract.currentVersion,
         requestID: UUID,
         scope: SearchPresentationScope,
+        explanation: SearchExplanation,
         freshnessToken: SearchFreshnessToken,
-        availability: SearchAvailability,
-        results: [SearchHit],
+        availability: SearchProviderAvailability,
+        results: [SearchResult],
         hasMore: Bool,
         diagnostics: [SearchQueryDiagnostic] = []
     ) {
         self.contractVersion = contractVersion
         self.requestID = requestID
         self.scope = scope
+        self.explanation = explanation
         self.freshnessToken = freshnessToken
         self.availability = availability
         self.results = results
         self.hasMore = hasMore
         self.diagnostics = diagnostics
     }
-}
 
-public enum RelatedSearchAvailability: Codable, Hashable, Sendable {
-    case notApplicable
-    case current
-    case refreshing
-    case stale(reason: String)
-}
+    public var provider: SearchProvider { availability.provider }
 
-public struct RelatedSearchResponse: Hashable, Sendable {
-    public let availability: RelatedSearchAvailability
-    public let items: [RelatedSearchItem]
-
-    public init(
-        availability: RelatedSearchAvailability,
-        items: [RelatedSearchItem] = []
-    ) {
-        self.availability = availability
-        self.items = items
+    public var hasConsistentProviderIdentity: Bool {
+        results.allSatisfy { $0.provider == provider }
+            && explanation.provider == provider
     }
 }

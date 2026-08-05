@@ -9,6 +9,9 @@ public enum EvidentialLayer: String, Codable, CaseIterable, Sendable {
     case paperAnalysis = "paper_analysis"
     case topicNote = "topic_note"
     case draftProse = "draft_prose"
+    case researchRecord = "research_record"
+    case researcherState = "researcher_state"
+    case sourceMaterial = "source_material"
     case agentReconstruction = "agent_reconstruction"
 }
 

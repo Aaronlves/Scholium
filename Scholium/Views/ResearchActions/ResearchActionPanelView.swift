@@ -9,17 +9,20 @@ struct ResearchActionPanelContext {
     let dismiss: () -> Void
 }
 
-/// The one native sheet shared by bundled and researcher-owned Actions.
-/// Profile modules may request fields, but cannot hide the app-owned Target,
-/// revision, authority, conflict, or recovery boundary.
+/// One native sheet for every Action. Protected Platform selectors and
+/// researcher-owned academic fields are rendered as separate evidential
+/// layers; neither can hide the app-owned Target, revision, authority,
+/// conflict, recovery, or frozen Result Contract boundary.
 struct ResearchActionPanelView: View {
     @ObservedObject private var controller: ResearchActionController
     @ObservedObject private var agentApplicationHandoff: AgentApplicationHandoffController
     let context: ResearchActionPanelContext
 
-    @FocusState private var focusedTextModuleID: String?
-    @State private var noteQueries: [String: String] = [:]
+    @FocusState private var focusedAcademicFieldID: String?
+    @State private var focalNoteQuery = ""
     @State private var pendingHandoff: PendingHandoff?
+    @State private var evaluationHasUnsavedChanges = false
+    @State private var confirmsDiscardEvaluation = false
 
     init(
         controller: ResearchActionController,
@@ -39,10 +42,55 @@ struct ResearchActionPanelView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     appOwnedContext
-                    if let profile = controller.profile {
-                        modules(profile.modules)
-                    }
+                    platformInputs
+                    academicInputs
                     status
+                    if let result = controller.resultRecord {
+                        ScholiumStructuralRule()
+                        ResearchFinalizedResultView(record: result)
+                        ScholiumStructuralRule()
+                        ResearcherEvaluationView(
+                            record: result,
+                            save: {
+                                draft, expectedRevision, resultFingerprint in
+                                try await controller.saveResearcherEvaluation(
+                                    draft: draft,
+                                    expectedEvaluationRevision: expectedRevision,
+                                    expectedResultFingerprint: resultFingerprint
+                                )
+                            },
+                            clear: { expectedRevision, resultFingerprint in
+                                try await controller.clearResearcherEvaluation(
+                                    expectedEvaluationRevision: expectedRevision,
+                                    expectedResultFingerprint: resultFingerprint
+                                )
+                            },
+                            draftStateDidChange: {
+                                evaluationHasUnsavedChanges = $0
+                            }
+                        )
+                        ScholiumStructuralRule()
+                        ResearchMethodFeedbackView(
+                            record: result,
+                            save: {
+                                draft, expectedRevision, resultFingerprint in
+                                try await controller.saveMethodFeedbackComment(
+                                    draft: draft,
+                                    expectedCommentRevision: expectedRevision,
+                                    expectedResultFingerprint: resultFingerprint
+                                )
+                            },
+                            clear: { expectedRevision, resultFingerprint in
+                                try await controller.clearMethodFeedbackComment(
+                                    expectedCommentRevision: expectedRevision,
+                                    expectedResultFingerprint: resultFingerprint
+                                )
+                            },
+                            startImprovement: {
+                                try await controller.startMethodImprovement()
+                            }
+                        )
+                    }
                 }
                 .padding(22)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -68,13 +116,15 @@ struct ResearchActionPanelView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchAction.sheet")
         .interactiveDismissDisabled(
-            controller.phase == .preparing || controller.phase == .cancelling
+            controller.phase == .preparing
+                || controller.phase == .cancelling
+                || evaluationHasUnsavedChanges
         )
-        .onAppear { focusFirstTextModule() }
+        .onAppear { focusFirstAcademicTextField() }
         .onChange(of: controller.phase) { _, phase in
             switch phase {
             case .editing:
-                focusFirstTextModule()
+                focusFirstAcademicTextField()
             case .prepared:
                 completePendingHandoff()
             case .failed, .cancelled:
@@ -83,25 +133,34 @@ struct ResearchActionPanelView: View {
                 break
             }
         }
+        .alert(
+            "Discard the Unsaved Evaluation Draft?",
+            isPresented: $confirmsDiscardEvaluation
+        ) {
+            Button("Keep Editing", role: .cancel) {}
+            Button("Discard Draft and Close", role: .destructive) {
+                evaluationHasUnsavedChanges = false
+                context.dismiss()
+            }
+        } message: {
+            Text("The saved evaluation and finalized Research Result will remain unchanged.")
+        }
     }
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: controller.activeAvailability?.definition.interfaceSymbol ?? "sparkles")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .accessibilityHidden(true)
+            Image(
+                systemName: controller.activeAvailability?.definition.interfaceSymbol
+                    ?? "sparkles"
+            )
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Group {
-                    if controller.activeAvailability?.profile.origin == .applicationDefault {
-                        Text(LocalizedStringKey(actionTitle))
-                    } else {
-                        Text(verbatim: actionTitle)
-                    }
-                }
+                Text(verbatim: actionTitle)
                     .font(.title2.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
-                Text(verbatim: actionOriginTitle)
+                Text("Method + Academic Profile")
                     .font(.callout)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
             }
@@ -129,7 +188,7 @@ struct ResearchActionPanelView: View {
                     boundaryBlock("Authority", value: authorityLabel)
                 }
             }
-            Text("Scholium revalidates the note identity and revision before preparation. Write-capable Actions preserve the exact bytes they replace and remain subject to conflict and recovery checks.")
+            Text("Scholium revalidates the exact note and Method/Profile revisions before preparation. Write-capable Actions preserve the bytes they replace and remain subject to conflict and recovery checks.")
                 .font(.caption)
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -165,242 +224,184 @@ struct ResearchActionPanelView: View {
             Text(LocalizedStringKey(label))
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            Text(value)
-                .padding(.leading, 10)
+            Text(value).padding(.leading, 10)
         }
     }
 
     @ViewBuilder
-    private func modules(_ modules: [ResearchActionModuleDefinition]) -> some View {
-        ForEach(Array(modules.enumerated()), id: \.element.id) { index, module in
-            moduleView(module)
-            if index < modules.count - 1 { ScholiumStructuralRule() }
+    private var platformInputs: some View {
+        let selectors = controller.platformSelectors
+        if !selectors.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("RESEARCH CONTEXT")
+                    .scholiumApparatusHeadingStyle()
+                    .accessibilityAddTraits(.isHeader)
+                if selectors.contains(.source) { sourceSelector }
+                if selectors.contains(.focalNotes) { focalNotesSelector }
+                if selectors.contains(.passage) { passageSelector }
+                if selectors.contains(.fidelityChecks) { fidelityChecksSelector }
+                if selectors.contains(.citationStyle) {
+                    machineResolvedSelector(
+                        title: "Citation Style",
+                        detail: "Scholium resolves the current citation configuration at preparation."
+                    )
+                }
+                if selectors.contains(.feedback) {
+                    machineResolvedSelector(
+                        title: "Feedback",
+                        detail: "Only explicit current feedback supplied through Scholium is included."
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("scholium.researchAction.platformInputs")
         }
     }
 
     @ViewBuilder
-    private func moduleView(_ module: ResearchActionModuleDefinition) -> some View {
+    private var academicInputs: some View {
+        if let fields = controller.profile?.academicInputFields.filter({
+            $0.requirement != .excluded
+        }), !fields.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("ACADEMIC INPUTS")
+                    .scholiumApparatusHeadingStyle()
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
+                    academicField(field)
+                    if index < fields.count - 1 { ScholiumStructuralRule() }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("scholium.researchAction.academicInputs")
+        }
+    }
+
+    @ViewBuilder
+    private func academicField(_ field: ResearchAcademicFieldDefinition) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                profileText(module.label)
-                    .font(.headline)
-                if !module.isRequired {
+                Text(verbatim: field.label).font(.headline)
+                if field.requirement != .required {
                     Text("Optional")
                         .font(.caption)
                         .foregroundStyle(ScholiumColorRole.mutedText.color)
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("scholium.researchAction.moduleHeader.\(module.id.rawValue)")
-            if let helpText = module.helpText {
-                profileText(helpText)
+            .accessibilityIdentifier(
+                "scholium.researchAction.academicFieldHeader.\(field.fieldID.rawValue)"
+            )
+            if let helpText = field.helpText {
+                Text(verbatim: helpText)
                     .font(.caption)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            switch module.kind {
-            case .boundedText:
-                boundedText(module)
-            case .boolean:
-                boolean(module)
-            case .enumeration:
-                enumeration(module)
-            case .notePicker, .materialSelector:
-                notePicker(module)
-            case .passageAnchor:
-                passage(module)
-            case .sourceReference:
-                source(module)
+            switch field.kind {
+            case .freeText:
+                academicText(field)
+            case .singleChoice:
+                academicSingleChoice(field)
+            case .multipleChoice:
+                academicMultipleChoice(field)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func boundedText(_ module: ResearchActionModuleDefinition) -> some View {
-        let binding = Binding(
-            get: { controller.textValues[module.id.rawValue] ?? "" },
-            set: { controller.setText($0, module: module) }
+    private func academicText(_ field: ResearchAcademicFieldDefinition) -> some View {
+        TextEditor(text: Binding(
+            get: { controller.textValues[field.fieldID.rawValue] ?? "" },
+            set: { controller.setText($0, field: field) }
+        ))
+        .frame(minHeight: 92, maxHeight: 150)
+        .scrollContentBackground(.hidden)
+        .padding(6)
+        .background(ScholiumColorRole.documentBackground.color)
+        .overlay {
+            RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius)
+                .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
+        }
+        .focused($focusedAcademicFieldID, equals: field.fieldID.rawValue)
+        .accessibilityLabel(Text(verbatim: field.label))
+        .accessibilityIdentifier(
+            "scholium.researchAction.academicText.\(field.fieldID.rawValue)"
         )
-        return Group {
-            if module.allowsMultipleLines == true {
-                TextEditor(text: binding)
-                    .frame(minHeight: 92, maxHeight: 150)
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .background(ScholiumColorRole.documentBackground.color)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius)
-                            .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
-                    }
-            } else {
-                TextField(text: binding, prompt: profileText(module.label)) {
-                    profileText(module.label)
-                }
-                .labelsHidden()
-            }
-        }
-        .focused($focusedTextModuleID, equals: module.id.rawValue)
-        .accessibilityLabel(profileText(module.label))
-        .accessibilityIdentifier("scholium.researchAction.text.\(module.id.rawValue)")
     }
 
-    private func boolean(_ module: ResearchActionModuleDefinition) -> some View {
-        Toggle(
-            isOn: Binding(
-                get: { controller.booleanValues[module.id.rawValue] ?? false },
-                set: { controller.setBoolean($0, module: module) }
+    private func academicSingleChoice(
+        _ field: ResearchAcademicFieldDefinition
+    ) -> some View {
+        Picker(
+            selection: Binding<String?>(
+                get: { controller.choiceValues[field.fieldID.rawValue]?.first },
+                set: { value in
+                    let current = controller.choiceValues[field.fieldID.rawValue]?.first
+                    if let value {
+                        controller.setChoice(value, isSelected: true, field: field)
+                    } else if let current {
+                        controller.setChoice(current, isSelected: false, field: field)
+                    }
+                }
             )
         ) {
-            profileText(module.label)
+            if field.requirement != .required {
+                Text("None").tag(Optional<String>.none)
+            }
+            ForEach(field.choices, id: \.value) { choice in
+                Text(verbatim: choice.label).tag(Optional(choice.value))
+            }
+        } label: {
+            Text(verbatim: field.label)
         }
         .labelsHidden()
-        .accessibilityLabel(profileText(module.label))
+        .pickerStyle(.radioGroup)
+        .accessibilityLabel(Text(verbatim: field.label))
     }
 
-    private func enumeration(_ module: ResearchActionModuleDefinition) -> some View {
-        Group {
-            if module.maximumSelectionCount == 1 {
-                Picker(
-                    selection: Binding<ResearchActionModuleChoiceValue?>(
-                        get: { controller.choiceValues[module.id.rawValue]?.first },
-                        set: { value in
-                            if let value {
-                                controller.setChoice(value, isSelected: true, module: module)
-                            } else if let current = controller.choiceValues[module.id.rawValue]?.first {
-                                controller.setChoice(current, isSelected: false, module: module)
-                            }
+    private func academicMultipleChoice(
+        _ field: ResearchAcademicFieldDefinition
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(field.choices, id: \.value) { choice in
+                Toggle(
+                    isOn: Binding(
+                        get: {
+                            controller.choiceValues[field.fieldID.rawValue]?
+                                .contains(choice.value) == true
+                        },
+                        set: {
+                            controller.setChoice(
+                                choice.value,
+                                isSelected: $0,
+                                field: field
+                            )
                         }
                     )
                 ) {
-                    if !module.isRequired {
-                        Text("None")
-                            .tag(Optional<ResearchActionModuleChoiceValue>.none)
-                    }
-                    ForEach(module.choices ?? [], id: \.value) { choice in
-                        profileText(choice.label).tag(Optional(choice.value))
-                    }
-                } label: {
-                    profileText(module.label)
+                    Text(verbatim: choice.label)
                 }
-                .labelsHidden()
-                .pickerStyle(.radioGroup)
-                .accessibilityLabel(profileText(module.label))
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(module.choices ?? [], id: \.value) { choice in
-                        Toggle(
-                            isOn: Binding(
-                                get: {
-                                    controller.choiceValues[module.id.rawValue]?.contains(choice.value) == true
-                                },
-                                set: {
-                                    controller.setChoice(
-                                        choice.value,
-                                        isSelected: $0,
-                                        module: module
-                                    )
-                                }
-                            )
-                        ) {
-                            profileText(choice.label)
-                        }
-                        .toggleStyle(.checkbox)
-                    }
-                }
-            }
-        }
-    }
-
-    private func notePicker(_ module: ResearchActionModuleDefinition) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            TextField(
-                "Search eligible notes",
-                text: Binding(
-                    get: { noteQueries[module.id.rawValue] ?? "" },
-                    set: { noteQueries[module.id.rawValue] = $0 }
-                )
-            )
-            .textFieldStyle(.roundedBorder)
-            .accessibilityLabel(Text("Search \(module.label)"))
-            .accessibilityIdentifier("scholium.researchAction.noteSearch.\(module.id.rawValue)")
-            .padding(.bottom, 6)
-
-            if controller.isLoadingMaterialCandidates {
-                ProgressView("Loading eligible notes…")
-                    .controlSize(.small)
-                    .accessibilityIdentifier("scholium.researchAction.notes.loading")
-            } else if eligibleCandidates(for: module).isEmpty {
-                Text("No eligible notes are available.")
-                    .font(.callout)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            } else if visibleCandidates(for: module).isEmpty {
-                Text("Enter a title or path to find an eligible note.")
-                    .font(.callout)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            } else {
-                ForEach(visibleCandidates(for: module), id: \.noteID) { candidate in
-                    Toggle(
-                        isOn: Binding(
-                            get: {
-                                controller.noteValues[module.id.rawValue]?.contains(candidate.noteID) == true
-                            },
-                            set: {
-                                controller.setNote(
-                                    candidate.noteID,
-                                    isSelected: $0,
-                                    module: module
-                                )
-                            }
-                        )
-                    ) {
-                        Text(verbatim: candidate.title)
-                    }
-                    .toggleStyle(.checkbox)
-                    .accessibilityIdentifier(
-                        "scholium.researchAction.note.\(module.id.rawValue).\(candidate.noteID.uuidString.lowercased())"
-                    )
-                    .help(candidate.note.relativePath)
-                    .padding(.vertical, 5)
-                }
-            }
-        }
-    }
-
-    private func passage(_ module: ResearchActionModuleDefinition) -> some View {
-        Group {
-            if controller.passageIsAvailable {
-                Toggle("Use selected passage", isOn: $controller.usesPassage)
-                    .toggleStyle(.checkbox)
-                    .accessibilityValue("Passage available")
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("No passage selected", systemImage: "selection.pin.in.out")
-                        .font(.callout)
-                    Text("Select a passage in the document, then reopen this Action from the Research menu or its Inspector row.")
-                        .font(.caption)
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .toggleStyle(.checkbox)
             }
         }
     }
 
     @ViewBuilder
-    private func source(_ module: ResearchActionModuleDefinition) -> some View {
+    private var sourceSelector: some View {
+        selectorHeader("Source", required: selectorIsRequired(.source))
         if controller.isLoadingSourceStatus {
             ProgressView("Checking source access…")
                 .controlSize(.small)
                 .accessibilityIdentifier("scholium.researchAction.source.loading")
         } else if controller.sourceStatus?.state == .available,
-           let reference = controller.sourceStatus?.reference {
+                  let reference = controller.sourceStatus?.reference {
             Label {
                 Text(verbatim: reference.displayName)
             } icon: {
                 Image(systemName: "doc.text.magnifyingglass")
             }
-                .font(.callout)
-                .accessibilityIdentifier("scholium.researchAction.source.available")
+            .font(.callout)
+            .accessibilityIdentifier("scholium.researchAction.source.available")
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Source access needs attention.", systemImage: "exclamationmark.triangle")
@@ -412,10 +413,112 @@ struct ResearchActionPanelView: View {
                 }
                 .disabled(controller.isBindingSource)
                 .accessibilityIdentifier("scholium.researchAction.source.choose")
-                Text("Scholium retains the permission and fingerprint locally; the Research Record stores neither the path nor the source bytes.")
+                Text("Scholium retains permission and the fingerprint locally; the Research Record stores neither the path nor source bytes.")
                     .font(.caption)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var focalNotesSelector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            selectorHeader("Focal Notes", required: selectorIsRequired(.focalNotes))
+            TextField("Search eligible notes", text: $focalNoteQuery)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("scholium.researchAction.focalNoteSearch")
+            if controller.isLoadingMaterialCandidates {
+                ProgressView("Loading eligible notes…")
+                    .controlSize(.small)
+                    .accessibilityIdentifier("scholium.researchAction.notes.loading")
+            } else if controller.materialCandidates.isEmpty {
+                Text("No eligible notes are available.")
+                    .font(.callout)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            } else if visibleFocalNoteCandidates.isEmpty {
+                Text("Enter a title or path to find an eligible note.")
+                    .font(.callout)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            } else {
+                ForEach(visibleFocalNoteCandidates, id: \.noteID) { candidate in
+                    Toggle(
+                        isOn: Binding(
+                            get: {
+                                controller.selectedFocalNoteIDs.contains(candidate.noteID)
+                            },
+                            set: {
+                                controller.setFocalNote(candidate.noteID, isSelected: $0)
+                            }
+                        )
+                    ) {
+                        Text(verbatim: candidate.title)
+                    }
+                    .toggleStyle(.checkbox)
+                    .help(candidate.note.relativePath)
+                    .accessibilityIdentifier(
+                        "scholium.researchAction.focalNote.\(candidate.noteID.uuidString.lowercased())"
+                    )
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private var passageSelector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            selectorHeader("Passage", required: selectorIsRequired(.passage))
+            if controller.passageIsAvailable {
+                Toggle("Use selected passage", isOn: $controller.usesPassage)
+                    .toggleStyle(.checkbox)
+                    .accessibilityValue("Passage available")
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("No passage selected", systemImage: "selection.pin.in.out")
+                        .font(.callout)
+                    Text("Select a passage in the document, then reopen this Action.")
+                        .font(.caption)
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                }
+            }
+        }
+    }
+
+    private var fidelityChecksSelector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            selectorHeader(
+                "Fidelity Checks",
+                required: selectorIsRequired(.fidelityChecks)
+            )
+            ForEach(FidelityCheck.allCases, id: \.self) { check in
+                Toggle(
+                    isOn: Binding(
+                        get: { controller.selectedFidelityChecks.contains(check) },
+                        set: { controller.setFidelityCheck(check, isSelected: $0) }
+                    )
+                ) {
+                    Text(check.interfaceTitle)
+                }
+                .toggleStyle(.checkbox)
+            }
+        }
+    }
+
+    private func machineResolvedSelector(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            selectorHeader(title, required: false)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+        }
+    }
+
+    private func selectorHeader(_ title: String, required: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(LocalizedStringKey(title)).font(.headline)
+            if !required {
+                Text("Optional")
+                    .font(.caption)
+                    .foregroundStyle(ScholiumColorRole.mutedText.color)
             }
         }
     }
@@ -435,13 +538,47 @@ struct ResearchActionPanelView: View {
                     .scholiumApparatusHeadingStyle()
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("scholium.researchAction.prepared")
-                Text("The exact Action, method revision, parameters, Target revision, and authority boundary are frozen for this run.")
+                Text("The exact Action, Method and Profile revisions, Platform and academic inputs, Result Contract, Target revision, and authority boundary are frozen for this Run.")
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                 if let warning = preparation.derivedRefreshWarning {
                     Label(warning, systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption)
                         .scholiumForeground(.attention)
+                }
+                if let handoff = controller.agentHandoff,
+                   controller.canCancelPreparedRun {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("PAIRING CODE")
+                            .scholiumApparatusHeadingStyle()
+                            .accessibilityAddTraits(.isHeader)
+                        Text(handoff.pairingCode.rawValue)
+                            .font(.system(.title3, design: .monospaced).weight(.semibold))
+                            .privacySensitive()
+                            .accessibilityLabel("Pairing Code")
+                            .accessibilityValue(handoff.pairingCode.rawValue)
+                            .accessibilityIdentifier(
+                                "scholium.researchAction.pairingCode"
+                            )
+                        Text("Enter this one-time code only when `scholium agent pair` asks on standard input. Do not paste it into the Agent conversation or command.")
+                            .font(.caption)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Expires \(handoff.expiresAt, style: .relative).")
+                            .font(.caption)
+                            .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    }
+                    Button("Generate New Pairing Code") {
+                        controller.regenerateHandoff()
+                    }
+                    .disabled(controller.isBusy)
+                    .accessibilityIdentifier(
+                        "scholium.researchAction.regeneratePairing"
+                    )
+                    .accessibilityHint(
+                        "Invalidates the previous pairing for this Run without replacing the Run or its recovery state."
+                    )
                 }
             }
         }
@@ -450,7 +587,11 @@ struct ResearchActionPanelView: View {
     private var footer: some View {
         HStack(spacing: 10) {
             Button(controller.preparation == nil ? "Cancel" : "Done") {
-                context.dismiss()
+                if evaluationHasUnsavedChanges {
+                    confirmsDiscardEvaluation = true
+                } else {
+                    context.dismiss()
+                }
             }
             .keyboardShortcut(.cancelAction)
             .disabled(controller.phase == .preparing || controller.phase == .cancelling)
@@ -474,7 +615,7 @@ struct ResearchActionPanelView: View {
                 }
                 .disabled(!canCopyInstructions)
                 .accessibilityIdentifier("scholium.researchAction.copyOnly")
-                .accessibilityHint("Validates and freezes this Action, then copies its instructions.")
+                .accessibilityHint("Validates and freezes this Action, then copies non-secret connection instructions without the Pairing Code, research content, or local paths.")
                 Button {
                     beginHandoff(.copyAndOpen)
                 } label: {
@@ -485,39 +626,36 @@ struct ResearchActionPanelView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(
-                    !canCopyInstructions
-                        || agentApplicationHandoff.isOpening
-                )
+                .disabled(!canCopyInstructions || agentApplicationHandoff.isOpening)
                 .accessibilityIdentifier("scholium.researchAction.copyAndOpen")
-                .accessibilityHint(
-                    agentApplicationHandoff.primaryActionAccessibilityHint
-                )
+                .accessibilityHint(agentApplicationHandoff.primaryActionAccessibilityHint)
             }
         }
         .padding(16)
     }
 
     @ViewBuilder
-    private func handoffButtonLabel(
-        title: String,
-        isPending: Bool
-    ) -> some View {
+    private func handoffButtonLabel(title: String, isPending: Bool) -> some View {
         HStack(spacing: 6) {
             if isPending {
-                ProgressView()
-                    .controlSize(.small)
+                ProgressView().controlSize(.small)
             }
-            Text(LocalizedStringKey(isPending ? "Preparing…" : title))
-                .lineLimit(1)
+            Text(LocalizedStringKey(isPending ? "Preparing…" : title)).lineLimit(1)
         }
     }
 
     private func beginHandoff(_ handoff: PendingHandoff) {
-        if let instructions = controller.preparation?.instructions,
+        if let agentHandoff = controller.agentHandoff,
            controller.canCancelPreparedRun,
            !controller.isBusy {
-            performHandoff(handoff, instructions: instructions)
+            performHandoff(handoff, instructions: agentHandoff.agentInstructions)
+            return
+        }
+        if controller.preparation != nil,
+           controller.phase == .failed,
+           !controller.isBusy {
+            pendingHandoff = handoff
+            controller.retryHandoff()
             return
         }
         guard controller.canPrepare, pendingHandoff == nil else { return }
@@ -527,18 +665,15 @@ struct ResearchActionPanelView: View {
 
     private func completePendingHandoff() {
         guard let handoff = pendingHandoff,
-              let instructions = controller.preparation?.instructions else {
+              let agentHandoff = controller.agentHandoff else {
             pendingHandoff = nil
             return
         }
         pendingHandoff = nil
-        performHandoff(handoff, instructions: instructions)
+        performHandoff(handoff, instructions: agentHandoff.agentInstructions)
     }
 
-    private func performHandoff(
-        _ handoff: PendingHandoff,
-        instructions: String
-    ) {
+    private func performHandoff(_ handoff: PendingHandoff, instructions: String) {
         switch handoff {
         case .copyOnly:
             agentApplicationHandoff.copyOnly(
@@ -558,29 +693,24 @@ struct ResearchActionPanelView: View {
             ?? String(localized: "Research Action", table: "Localizable", bundle: .module)
     }
 
-    private var actionOriginTitle: String {
-        controller.activeAvailability?.profile.origin.interfaceTitle
-            ?? String(localized: "Research Action", table: "Localizable", bundle: .module)
-    }
-
     private var revisionLabel: String {
         controller.target.map { String($0.fingerprint.sha256.prefix(8)) }
             ?? String(localized: "Unavailable", table: "Localizable", bundle: .module)
     }
 
     private var authorityLabel: String {
-        guard let profile = controller.profile else {
+        guard let platform = controller.platformDefinition else {
             return String(localized: "Checking…", table: "Localizable", bundle: .module)
         }
         let role = controller.target?.role.interfaceTitle
             ?? String(localized: "note", table: "Localizable", bundle: .module)
-        return profile.capabilities.candidateWritableRoles.isEmpty
-            ? String(localized: "Read-only", table: "Localizable", bundle: .module)
-            : String(
+        return platform.operations.contains(.modifyInitialNote)
+            ? String(
                 localized: "Candidate write to current \(role)",
                 table: "Localizable",
                 bundle: .module
             )
+            : String(localized: "Read-only", table: "Localizable", bundle: .module)
     }
 
     private var canCopyInstructions: Bool {
@@ -588,44 +718,24 @@ struct ResearchActionPanelView: View {
         return controller.canCancelPreparedRun || controller.canPrepare
     }
 
-    private func profileText(_ value: String) -> Text {
-        if controller.activeAvailability?.profile.origin == .applicationDefault {
-            Text(LocalizedStringKey(value))
-        } else {
-            Text(verbatim: value)
-        }
+    private func focusFirstAcademicTextField() {
+        focusedAcademicFieldID = controller.profile?.academicInputFields.first(where: {
+            $0.kind == .freeText && $0.requirement != .excluded
+        })?.fieldID.rawValue
     }
 
-    private enum PendingHandoff {
-        case copyOnly
-        case copyAndOpen
+    private func selectorIsRequired(_ selector: PlatformActionSelector) -> Bool {
+        controller.platformDefinition?.requiredSelectors.contains(selector) == true
     }
 
-    private func focusFirstTextModule() {
-        focusedTextModuleID = controller.profile?.modules.first(where: {
-            $0.kind == .boundedText
-        })?.id.rawValue
-    }
-
-    private func eligibleCandidates(
-        for module: ResearchActionModuleDefinition
-    ) -> [ResearchActionNoteSnapshot] {
-        let roles = Set(module.roleScope ?? ResearchActionTargetRole.allCases)
-        return controller.materialCandidates.filter { roles.contains($0.role) }
-    }
-
-    private func visibleCandidates(
-        for module: ResearchActionModuleDefinition
-    ) -> [ResearchActionNoteSnapshot] {
-        let candidates = eligibleCandidates(for: module)
-        let query = (noteQueries[module.id.rawValue] ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    private var visibleFocalNoteCandidates: [ResearchActionNoteSnapshot] {
+        let candidates = controller.materialCandidates
+        let query = focalNoteQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty {
-            guard candidates.count <= 20 else {
-                let selected = controller.noteValues[module.id.rawValue] ?? []
-                return candidates.filter { selected.contains($0.noteID) }
+            guard candidates.count > 20 else { return candidates }
+            return candidates.filter {
+                controller.selectedFocalNoteIDs.contains($0.noteID)
             }
-            return candidates
         }
         let comparable = query.folding(
             options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
@@ -639,6 +749,11 @@ struct ResearchActionPanelView: View {
                 ).contains(comparable)
             }
         }.prefix(50).map { $0 }
+    }
+
+    private enum PendingHandoff {
+        case copyOnly
+        case copyAndOpen
     }
 }
 
@@ -686,13 +801,11 @@ extension ResearchActionDefinition {
     }
 }
 
-private extension ResearchActionProfileOrigin {
+private extension FidelityCheck {
     var interfaceTitle: String {
         switch self {
-        case .applicationDefault:
-            String(localized: "Working Method", table: "Localizable", bundle: .module)
-        case .researcher:
-            String(localized: "Researcher Skill", table: "Localizable", bundle: .module)
+        case .content: "Content"
+        case .citations: "Citations"
         }
     }
 }

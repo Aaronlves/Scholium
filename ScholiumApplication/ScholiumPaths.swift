@@ -4,6 +4,7 @@ import Foundation
 public enum ScholiumPaths {
     public static let applicationSupportDirectoryName = "Scholium"
     public static let applicationBundleIdentifier = "com.scholium.app"
+    public static let applicationGroupIdentifier = "group.com.scholium.app"
 
     /// Returns Scholium's own app-support directory. Pre-release application
     /// state from other product identities is never imported automatically.
@@ -60,6 +61,42 @@ public enum ScholiumPaths {
             return container
         }
         return try applicationSupportURL(baseURL: fallbackBaseURL, fileManager: fileManager)
+    }
+
+    /// Supported rendezvous location for the sandboxed App and signed CLI.
+    /// This container owns only the Unix socket and its minimal owner lock;
+    /// research content, Runs, Records, recovery state, and Session semantics
+    /// remain in their existing owners.
+    public static func agentBridgeContainerURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        debugFallbackURL: URL? = nil
+    ) throws -> URL {
+        if let explicit = environment["SCHOLIUM_AGENT_BRIDGE_CONTAINER"],
+           !explicit.isEmpty {
+            return URL(
+                fileURLWithPath: (explicit as NSString).expandingTildeInPath,
+                isDirectory: true
+            ).standardizedFileURL
+        }
+        if environment["SCHOLIUM_HOME"] != nil {
+            return cliHomeURL(environment: environment, fileManager: fileManager)
+                .appendingPathComponent("AgentBridge", isDirectory: true)
+        }
+        if let group = fileManager.containerURL(
+            forSecurityApplicationGroupIdentifier: applicationGroupIdentifier
+        ) {
+            return group
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+                .appendingPathComponent("ScholiumAgentBridge", isDirectory: true)
+        }
+#if DEBUG
+        if let debugFallbackURL {
+            return debugFallbackURL
+                .appendingPathComponent("AgentBridge", isDirectory: true)
+        }
+#endif
+        throw CocoaError(.fileNoSuchFile)
     }
 
     /// The app and the ordinary CLI share one role-aware vault registry. An

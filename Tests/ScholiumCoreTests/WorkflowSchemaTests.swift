@@ -64,6 +64,8 @@ struct WorkflowSchemaTests {
         let works = try #require(TriptychSettings.defaultProperties[.output])
 
         for configuration in [analyses, topics, works] {
+            #expect(configuration.visibleFields.contains("summary"))
+            #expect(configuration.editableFields.contains("summary"))
             #expect(!configuration.visibleFields.contains("last_modified_by"))
             #expect(!configuration.visibleFields.contains("last_modified_at"))
             #expect(!configuration.editableFields.contains("last_modified_by"))

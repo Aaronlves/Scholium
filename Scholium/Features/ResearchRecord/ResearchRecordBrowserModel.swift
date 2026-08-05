@@ -20,6 +20,16 @@ enum ResearchLiteratureRecommendationFilter: String, CaseIterable, Hashable, Sen
     case all
 }
 
+private enum ResearchRecordBrowserSearchError: LocalizedError {
+    case invalidResponse(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse(let reason): reason
+        }
+    }
+}
+
 struct ResearchRecordNoteOption: Identifiable, Equatable, Sendable {
     let id: UUID
     let title: String
@@ -39,11 +49,9 @@ struct ResearchRecordIndexEntry: Identifiable, Equatable, Sendable {
     let record: PortableResearchRecord
     let contextTitle: String
     let actionID: ResearchActionID
-    let skillID: String?
-    let skillVersion: String?
+    let methodName: String?
     let noteParticipants: [PortableResearchNoteRevision]
     let authorParticipants: [PortableResearchStatementAuthor]
-    fileprivate let normalizedSearchCorpus: String
 
     var id: UUID { record.id }
     var finishedAt: Date { record.finishedAt }
@@ -107,143 +115,6 @@ extension PortableResearchRecord {
     }
 }
 
-/// A disposable in-memory projection of finished portable records. The index
-/// owns no files, authorization, or record mutation; rebuilding from the same
-/// portable records yields the same ordered entries.
-struct ResearchRecordDerivedIndex: Equatable, Sendable {
-    private(set) var entries: [ResearchRecordIndexEntry]
-    private let recordsByID: [UUID: PortableResearchRecord]
-
-    init(records: [PortableResearchRecord]) {
-        let unique = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: {
-            first,
-            second in
-            if first.finishedAt != second.finishedAt {
-                return first.finishedAt > second.finishedAt ? first : second
-            }
-            return first.id.uuidString < second.id.uuidString ? first : second
-        })
-        recordsByID = unique
-        entries = unique.values.map(Self.makeEntry).sorted(by: Self.ordersEntries)
-    }
-
-    func record(id: UUID) -> PortableResearchRecord? {
-        recordsByID[id]
-    }
-
-    func replacing(_ record: PortableResearchRecord) -> Self {
-        var records = Array(recordsByID.values)
-        if let index = records.firstIndex(where: { $0.id == record.id }) {
-            records[index] = record
-        } else {
-            records.append(record)
-        }
-        return Self(records: records)
-    }
-
-    func query(
-        text: String,
-        noteID: UUID?,
-        dateFilter: ResearchRecordDateFilter,
-        skillID: String?,
-        actionID: ResearchActionID?,
-        participant: ResearchRecordParticipantFilter?,
-        now: Date,
-        calendar: Calendar
-    ) -> [ResearchRecordIndexEntry] {
-        let terms = Self.normalizedTerms(text)
-        let startOfToday = calendar.startOfDay(for: now)
-        let cutoff: Date? = switch dateFilter {
-        case .any: nil
-        case .today: startOfToday
-        case .pastSevenDays: calendar.date(byAdding: .day, value: -7, to: now)
-        case .pastThirtyDays: calendar.date(byAdding: .day, value: -30, to: now)
-        }
-
-        return entries.filter { entry in
-            if let noteID,
-               !entry.noteParticipants.contains(where: { $0.noteID == noteID }) {
-                return false
-            }
-            if let cutoff, entry.finishedAt < cutoff { return false }
-            if let skillID, entry.skillID != skillID { return false }
-            if let actionID, entry.actionID != actionID { return false }
-            if let participant {
-                switch participant {
-                case .author(let author):
-                    guard entry.authorParticipants.contains(author) else { return false }
-                case .note(let noteID):
-                    guard entry.noteParticipants.contains(where: {
-                        $0.noteID == noteID
-                    }) else { return false }
-                }
-            }
-            return terms.allSatisfy(entry.normalizedSearchCorpus.contains)
-        }
-    }
-
-    private static func makeEntry(
-        _ record: PortableResearchRecord
-    ) -> ResearchRecordIndexEntry {
-        let actionID = record.kind == .discussion
-            ? ResearchActionID.discuss
-            : record.action?.actionID ?? .discuss
-        let contextTitle = record.researchRecordContextTitle
-        let authors = Set(record.statements.map(\.author)).sorted {
-            $0.rawValue < $1.rawValue
-        }
-        let searchableParts = [
-            contextTitle,
-            actionID.rawValue,
-            record.method?.packageID,
-            record.method?.version,
-            record.sourceReference?.displayName,
-        ].compactMap { $0 }
-            + record.participatingNotes.flatMap {
-                [$0.title, $0.role.rawValue]
-            }
-            + record.statements.flatMap {
-                [$0.author.rawValue, $0.kind.rawValue, $0.attribution, $0.text]
-            }
-            + record.actuallyUsedMaterials.flatMap {
-                [$0.title, $0.role.rawValue]
-            }
-
-        return ResearchRecordIndexEntry(
-            record: record,
-            contextTitle: contextTitle ?? actionID.rawValue,
-            actionID: actionID,
-            skillID: record.method?.packageID,
-            skillVersion: record.method?.version,
-            noteParticipants: record.participatingNotes,
-            authorParticipants: authors,
-            normalizedSearchCorpus: normalized(searchableParts.joined(separator: "\n"))
-        )
-    }
-
-    private static func ordersEntries(
-        _ lhs: ResearchRecordIndexEntry,
-        _ rhs: ResearchRecordIndexEntry
-    ) -> Bool {
-        if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
-        if lhs.finishedAt != rhs.finishedAt { return lhs.finishedAt > rhs.finishedAt }
-        return lhs.id.uuidString < rhs.id.uuidString
-    }
-
-    fileprivate static func normalized(_ value: String) -> String {
-        value.precomposedStringWithCanonicalMapping.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
-    }
-
-    fileprivate static func normalizedTerms(_ value: String) -> [String] {
-        normalized(value)
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
-    }
-}
-
 /// A reconstructable occurrence index over the recommendation arrays owned by
 /// Analyze Research Records. Grouping is deliberately conservative: only an
 /// exact normalized DOI or Zotero item key can join occurrences, and an
@@ -291,7 +162,7 @@ struct ResearchLiteratureRecommendationDerivedIndex: Equatable, Sendable {
             scoped,
             compatibilityCheckCount: &compatibilityCheckCount
         )
-        let terms = ResearchRecordDerivedIndex.normalizedTerms(text)
+        let terms = Self.normalizedTerms(text)
         return grouped.compactMap { group in
             let visibleOccurrences = group.occurrences.filter { occurrence in
                 let hasStatus = switch status {
@@ -353,8 +224,8 @@ struct ResearchLiteratureRecommendationDerivedIndex: Equatable, Sendable {
             recommendation.disposition.researcherNote,
             record.researchRecordContextTitle,
             record.sourceReference?.displayName,
-            record.method?.packageID,
-            record.method?.version,
+            record.method?.displayName,
+            record.method?.practiceNames.joined(separator: " "),
         ].compactMap { $0 }.joined(separator: "\n")
         return ResearchLiteratureRecommendationOccurrence(
             parentRecord: record,
@@ -362,7 +233,7 @@ struct ResearchLiteratureRecommendationDerivedIndex: Equatable, Sendable {
             contextTitle: record.researchRecordContextTitle ?? "Analyze",
             normalizedDOI: doi,
             normalizedZoteroItemKey: zoteroItemKey,
-            normalizedSearchCorpus: ResearchRecordDerivedIndex.normalized(searchable)
+            normalizedSearchCorpus: normalized(searchable)
         )
     }
 
@@ -541,13 +412,13 @@ struct ResearchLiteratureRecommendationDerivedIndex: Equatable, Sendable {
     private static func normalizedOptional(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
-        return ResearchRecordDerivedIndex.normalized(value)
+        return normalized(value)
     }
 
     private static func normalizedAuthors(_ values: [String]) -> [String]? {
         guard !values.isEmpty else { return nil }
         return values.map {
-            ResearchRecordDerivedIndex.normalized(
+            normalized(
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         }
@@ -591,6 +462,19 @@ struct ResearchLiteratureRecommendationDerivedIndex: Equatable, Sendable {
         }
         return lhs.recommendation.id.uuidString < rhs.recommendation.id.uuidString
     }
+
+    fileprivate static func normalized(_ value: String) -> String {
+        value.precomposedStringWithCanonicalMapping.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+    }
+
+    private static func normalizedTerms(_ value: String) -> [String] {
+        normalized(value)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+    }
 }
 
 @MainActor
@@ -604,7 +488,7 @@ final class ResearchRecordBrowserModel {
     private(set) var selectedRecommendationOccurrence:
         ResearchLiteratureRecommendationOccurrence?
     private(set) var noteOptions: [ResearchRecordNoteOption] = []
-    private(set) var skillOptions: [String] = []
+    private(set) var methodOptions: [String] = []
     private(set) var actionOptions: [ResearchActionID] = []
     private(set) var participantOptions: [ResearchRecordParticipantOption] = []
     private(set) var rebuildingGeneration = 0
@@ -616,12 +500,13 @@ final class ResearchRecordBrowserModel {
     private(set) var comparingNoteID: UUID?
     private(set) var comparison: ResearchRecordComparison?
     private(set) var contextNoteID: UUID?
+    private(set) var focusedStatementID: UUID?
     private(set) var unprocessedRecommendationCount = 0
 
     var selectedRecordID: UUID? {
         didSet {
             if oldValue != selectedRecordID { cancelComparison() }
-            selectedRecord = selectedRecordID.flatMap(index.record(id:))
+            selectedRecord = selectedRecordID.flatMap { recordsByID[$0] }
         }
     }
     var selectedRecommendationID: ResearchLiteratureRecommendationOccurrenceID? {
@@ -639,71 +524,96 @@ final class ResearchRecordBrowserModel {
         didSet { refilterRecommendations() }
     }
     var dateFilter: ResearchRecordDateFilter = .any { didSet { refilterRecords() } }
-    var skillFilterID: String? { didSet { refilterRecords() } }
+    var methodFilterName: String? { didSet { refilterRecords() } }
     var actionFilterID: ResearchActionID? { didSet { refilterRecords() } }
     var participantFilter: ResearchRecordParticipantFilter? {
         didSet { refilterRecords() }
     }
     private(set) var errorMessage = ""
     private(set) var isComparisonError = false
+    private var isRecordSearchError = false
     var isShowingError = false
 
     var canScopeToNote: Bool { contextNoteID != nil }
 
-    private var index = ResearchRecordDerivedIndex(records: [])
+    private var allEntries: [ResearchRecordIndexEntry] = []
+    private var recordsByID: [UUID: PortableResearchRecord] = [:]
     private var recommendationIndex = ResearchLiteratureRecommendationDerivedIndex(records: [])
     private var currentRecords: [PortableResearchRecord] = []
+    private var currentFingerprints: [UUID: DocumentFingerprint] = [:]
+    private var activeRecordLocator: ResearchRecordsWindowRequest?
+    @ObservationIgnored private var recordSearch: (@MainActor @Sendable (
+        SearchRequest
+    ) async throws -> SearchResponse)?
+    @ObservationIgnored private var recordSearchTask: Task<Void, Never>?
+    @ObservationIgnored private var recordSearchGeneration: UInt64 = 0
     @ObservationIgnored private var comparisonTask: Task<Void, Never>?
     @ObservationIgnored private var comparisonGeneration: UInt64 = 0
     private var triptychID: UUID?
-    private var now: Date
-    private var calendar: Calendar
-    private let refreshesClockOnOpen: Bool
 
-    init(
-        now: Date? = nil,
-        calendar: Calendar = .autoupdatingCurrent
+    init() {}
+
+    func bindRecordSearch(
+        _ search: @escaping @MainActor @Sendable (
+            SearchRequest
+        ) async throws -> SearchResponse
     ) {
-        self.now = now ?? Date()
-        self.calendar = calendar
-        refreshesClockOnOpen = now == nil
+        recordSearch = search
+        refilterRecords()
     }
+
+    #if DEBUG
+    func waitForRecordSearchForTesting() async {
+        await recordSearchTask?.value
+    }
+    #endif
 
     func prepareForOpen(
         triptychID: UUID,
         records: [PortableResearchRecord],
+        fingerprints: [UUID: DocumentFingerprint] = [:],
         request: ResearchRecordsWindowRequest
     ) {
-        if refreshesClockOnOpen { now = Date() }
         self.triptychID = triptychID
         searchText = ""
         recommendationSearchText = ""
         recommendationFilter = .unprocessed
         dateFilter = .any
-        skillFilterID = nil
+        methodFilterName = nil
         actionFilterID = nil
         participantFilter = nil
-        apply(request)
+        currentFingerprints = fingerprints
         rebuild(records: records)
+        apply(request)
     }
 
     func receive(
         triptychID: UUID,
-        records: [PortableResearchRecord]
+        records: [PortableResearchRecord],
+        fingerprints: [UUID: DocumentFingerprint] = [:]
     ) {
         guard self.triptychID == triptychID else { return }
+        currentFingerprints = fingerprints
         rebuild(records: records)
+        if let activeRecordLocator {
+            applyRecordLocator(activeRecordLocator)
+        }
     }
 
     func apply(_ request: ResearchRecordsWindowRequest) {
         guard triptychID == nil || request.triptychID == triptychID else { return }
+        activeRecordLocator = request.recordID == nil ? nil : request
+        if request.recordID == nil { focusedStatementID = nil }
         contextNoteID = request.noteID
         scope = request.noteID == nil ? .triptych : .thisNote
         viewKind = request.initialView
         refilter()
+        applyRecordLocator(request)
     }
 
     func select(_ id: UUID?) {
+        activeRecordLocator = nil
+        focusedStatementID = nil
         selectedRecordID = id
     }
 
@@ -712,6 +622,7 @@ final class ResearchRecordBrowserModel {
     }
 
     func openParentRecord(_ id: UUID) {
+        activeRecordLocator = nil
         viewKind = .records
         clearAllFilters()
         selectedRecordID = id
@@ -733,7 +644,7 @@ final class ResearchRecordBrowserModel {
     func clearAllFilters() {
         searchText = ""
         dateFilter = .any
-        skillFilterID = nil
+        methodFilterName = nil
         actionFilterID = nil
         participantFilter = nil
     }
@@ -747,11 +658,13 @@ final class ResearchRecordBrowserModel {
         isShowingError = false
         errorMessage = ""
         isComparisonError = false
+        isRecordSearchError = false
     }
 
     func presentError(_ message: String) {
         errorMessage = message
         isComparisonError = false
+        isRecordSearchError = false
         isShowingError = true
     }
 
@@ -768,6 +681,12 @@ final class ResearchRecordBrowserModel {
         do {
             try await update(recordID)
             rebuild(records: currentRecords.filter { $0.id != recordID })
+        } catch ScholiumApplicationError.operationCommittedButRefreshFailed {
+            currentFingerprints[recordID] = nil
+            rebuild(records: currentRecords.filter { $0.id != recordID })
+            presentError(
+                "The Research Record was deleted, but the workspace refresh failed. Scholium removed the committed Record from this window."
+            )
         } catch {
             present(error)
         }
@@ -814,19 +733,13 @@ final class ResearchRecordBrowserModel {
         comparison = nil
     }
 
-    func refreshClock(_ now: Date, calendar: Calendar? = nil) {
-        self.now = now
-        if let calendar { self.calendar = calendar }
-        refilterRecords()
-    }
-
     func setPinned(
         recordID: UUID,
         update: @MainActor (UUID, Bool) async throws -> PortableResearchRecord
     ) async {
         guard !pinningRecordIDs.contains(recordID),
               !mutatingRecordIDs.contains(recordID),
-              let current = index.record(id: recordID) else { return }
+              let current = recordsByID[recordID] else { return }
         pinningRecordIDs.insert(recordID)
         dismissError()
         defer { pinningRecordIDs.remove(recordID) }
@@ -879,6 +792,10 @@ final class ResearchRecordBrowserModel {
         ))
     }
 
+    func acceptUpdatedRecord(_ record: PortableResearchRecord) {
+        replaceRecord(record)
+    }
+
     private func replaceRecord(_ updated: PortableResearchRecord) {
         guard let currentIndex = currentRecords.firstIndex(where: {
             $0.id == updated.id
@@ -888,20 +805,68 @@ final class ResearchRecordBrowserModel {
     }
 
     private func rebuild(records: [PortableResearchRecord]) {
-        currentRecords = records
-        index = ResearchRecordDerivedIndex(records: records)
-        recommendationIndex = ResearchLiteratureRecommendationDerivedIndex(records: records)
+        let unique = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: {
+            first,
+            second in
+            if first.finishedAt != second.finishedAt {
+                return first.finishedAt > second.finishedAt ? first : second
+            }
+            return first.id.uuidString < second.id.uuidString ? first : second
+        })
+        recordsByID = unique
+        currentRecords = Array(unique.values)
+        allEntries = currentRecords.map(Self.makeEntry).sorted(by: Self.ordersEntries)
+        recommendationIndex = ResearchLiteratureRecommendationDerivedIndex(
+            records: currentRecords
+        )
         rebuildingGeneration &+= 1
         rebuildOptions()
         refilter()
     }
 
+    private func applyRecordLocator(_ request: ResearchRecordsWindowRequest) {
+        guard let recordID = request.recordID else { return }
+        guard let record = currentRecords.first(where: { $0.id == recordID }),
+              let expected = request.expectedRecordFingerprint,
+              currentFingerprints[recordID] == expected else {
+            selectedRecordID = nil
+            focusedStatementID = nil
+            presentError(
+                "The Research Record changed or was deleted. Search results must be refreshed."
+            )
+            return
+        }
+        if let statementID = request.statementID,
+           !record.statements.contains(where: { $0.id == statementID }) {
+            selectedRecordID = nil
+            focusedStatementID = nil
+            presentError(
+                "The matched Research Record statement is no longer available. Search results must be refreshed."
+            )
+            return
+        }
+        clearAllFilters()
+        viewKind = .records
+        selectedRecordID = recordID
+        focusedStatementID = request.statementID
+        refilterRecords()
+    }
+
     private func present(_ error: Error) {
         errorMessage = error.localizedDescription
+        isRecordSearchError = false
+        isShowingError = true
+    }
+
+    private func presentRecordSearchError(_ message: String) {
+        errorMessage = message
+        isComparisonError = false
+        isRecordSearchError = true
         isShowingError = true
     }
 
     private func presentComparison(_ error: Error) {
+        isRecordSearchError = false
         guard let comparisonError = error as? ResearchRecordComparisonError else {
             present(error)
             return
@@ -943,7 +908,7 @@ final class ResearchRecordBrowserModel {
 
     private func rebuildOptions() {
         var notesByID: [UUID: ResearchRecordNoteOption] = [:]
-        for entry in index.entries {
+        for entry in allEntries {
             for note in entry.noteParticipants {
                 let candidate = ResearchRecordNoteOption(
                     id: note.noteID,
@@ -969,13 +934,13 @@ final class ResearchRecordBrowserModel {
             if comparison != .orderedSame { return comparison == .orderedAscending }
             return $0.id.uuidString < $1.id.uuidString
         }
-        skillOptions = Set(index.entries.compactMap(\.skillID)).sorted {
+        methodOptions = Set(allEntries.compactMap(\.methodName)).sorted {
             $0.localizedStandardCompare($1) == .orderedAscending
         }
-        actionOptions = Set(index.entries.map(\.actionID)).sorted {
+        actionOptions = Set(allEntries.map(\.actionID)).sorted {
             $0.rawValue < $1.rawValue
         }
-        let authorOptions = Set(index.entries.flatMap(\.authorParticipants)).sorted {
+        let authorOptions = Set(allEntries.flatMap(\.authorParticipants)).sorted {
             $0.rawValue < $1.rawValue
         }.map {
             ResearchRecordParticipantOption(
@@ -1000,23 +965,147 @@ final class ResearchRecordBrowserModel {
     }
 
     private func refilterRecords() {
-        let selectedID = selectedRecordID
-        visibleEntries = index.query(
-            text: searchText,
-            noteID: scopedNoteID,
-            dateFilter: dateFilter,
-            skillID: skillFilterID,
-            actionID: actionFilterID,
-            participant: participantFilter,
-            now: now,
-            calendar: calendar
+        recordSearchGeneration &+= 1
+        let generation = recordSearchGeneration
+        recordSearchTask?.cancel()
+        guard let recordSearch, triptychID != nil else {
+            visibleEntries = []
+            selectedRecordID = nil
+            return
+        }
+        let request = SearchRequest(
+            query: recordSearchQuery,
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: SearchContract.maximumInterfaceResults
         )
-        if let selectedID,
-           visibleEntries.contains(where: { $0.id == selectedID }) {
+        recordSearchTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let response = try await recordSearch(request)
+                try Task.checkCancellation()
+                guard generation == recordSearchGeneration else { return }
+                try acceptRecordSearchResponse(response)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard generation == recordSearchGeneration else { return }
+                visibleEntries = []
+                selectedRecordID = nil
+                presentRecordSearchError(
+                    "Research Record Search failed: \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
+    private func acceptRecordSearchResponse(_ response: SearchResponse) throws {
+        guard response.contractVersion == SearchContract.currentVersion,
+              response.provider == .record,
+              response.hasConsistentProviderIdentity,
+              response.diagnostics.isEmpty,
+              case .record(.current) = response.availability else {
+            throw ResearchRecordBrowserSearchError.invalidResponse(
+                response.diagnostics.first?.message
+                    ?? "The Record provider did not return a current result."
+            )
+        }
+        let results = response.results.compactMap { result -> RecordSearchResult? in
+            guard case .record(let record) = result else { return nil }
+            return record
+        }
+        guard results.count == response.results.count else {
+            throw ResearchRecordBrowserSearchError.invalidResponse(
+                "The Record provider returned a Note result."
+            )
+        }
+        var entries: [ResearchRecordIndexEntry] = []
+        for result in results {
+            guard let entry = allEntries.first(where: { $0.id == result.recordID }),
+                  currentFingerprints[result.recordID] == result.fingerprint else {
+                throw ResearchRecordBrowserSearchError.invalidResponse(
+                    "A Research Record changed while its results were being displayed."
+                )
+            }
+            entries.append(entry)
+        }
+        if isRecordSearchError { dismissError() }
+        let selectedID = selectedRecordID
+        visibleEntries = entries
+        if let selectedID, entries.contains(where: { $0.id == selectedID }) {
             selectedRecordID = selectedID
         } else {
-            selectedRecordID = visibleEntries.first?.id
+            selectedRecordID = entries.first?.id
         }
+    }
+
+    private var recordSearchQuery: String {
+        var clauses = ["kind:record"]
+        clauses.append(contentsOf: searchText.split(whereSeparator: \.isWhitespace).map {
+            Self.quotedSearchValue(String($0))
+        })
+        var noteIDs: [UUID] = []
+        if let scopedNoteID { noteIDs.append(scopedNoteID) }
+        if case .note(let noteID) = participantFilter { noteIDs.append(noteID) }
+        for noteID in Set(noteIDs).sorted(by: {
+            $0.uuidString < $1.uuidString
+        }) {
+            clauses.append("note:\(Self.quotedSearchValue(noteID.uuidString.lowercased()))")
+        }
+        if let methodFilterName {
+            clauses.append("skill:\(Self.quotedSearchValue(methodFilterName))")
+        }
+        if let actionFilterID {
+            clauses.append("action:\(Self.quotedSearchValue(actionFilterID.rawValue))")
+        }
+        if case .author(let author) = participantFilter {
+            clauses.append("participant:\(author.rawValue)")
+        }
+        switch dateFilter {
+        case .any:
+            break
+        case .today:
+            clauses.append("date:today")
+        case .pastSevenDays:
+            clauses.append("date:7d")
+        case .pastThirtyDays:
+            clauses.append("date:30d")
+        }
+        return clauses.joined(separator: " ")
+    }
+
+    private static func quotedSearchValue(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
+
+    private static func makeEntry(
+        _ record: PortableResearchRecord
+    ) -> ResearchRecordIndexEntry {
+        let actionID = record.kind == .discussion
+            ? ResearchActionID.discuss
+            : record.action?.actionID ?? .discuss
+        return ResearchRecordIndexEntry(
+            record: record,
+            contextTitle: record.researchRecordContextTitle ?? actionID.rawValue,
+            actionID: actionID,
+            methodName: record.method?.displayName,
+            noteParticipants: record.participatingNotes,
+            authorParticipants: Set(record.statements.map(\.author)).sorted {
+                $0.rawValue < $1.rawValue
+            }
+        )
+    }
+
+    private static func ordersEntries(
+        _ lhs: ResearchRecordIndexEntry,
+        _ rhs: ResearchRecordIndexEntry
+    ) -> Bool {
+        if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
+        if lhs.finishedAt != rhs.finishedAt { return lhs.finishedAt > rhs.finishedAt }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
     private func refilterRecommendations() {

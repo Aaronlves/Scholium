@@ -2047,17 +2047,6 @@ private extension CritiqueFindingDispositionDecision {
     }
 }
 
-private extension ResearchWriteScope {
-    var researchRecordTitle: String {
-        switch self {
-        case .currentNote: "Current Note"
-        case .selectedNotes: "Selected Notes"
-        case .analysesAndTopics: "Analyses and Topics"
-        case .entireTriptych: "Entire Triptych"
-        }
-    }
-}
-
 // MARK: - Preview
 
 #Preview {

@@ -127,80 +127,35 @@ struct ResearchRecordsTests {
         #expect(moved.targetFingerprint == association.targetFingerprint)
     }
 
-    @Test("Critique Local-v3 handoff and findings reconciliation are idempotent")
-    func critiqueLocalExecutionReconciliation() async throws {
+    @Test("Critique registry rejects the retired Function-authority schema")
+    func retiredCritiqueSchemaFailsClosed() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let registry = CritiqueRegistry(
-            controlURL: fixture.root.appendingPathComponent(".scholium")
+        let control = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: control,
+            withIntermediateDirectories: true
         )
-        let workID = UUID()
-        let targetFingerprint = DocumentFingerprint(content: "# Work\n")
-        let target = ResearchFunctionTarget(
-            noteID: workID,
-            note: VaultQualifiedNoteID(
-                vaultID: UUID(),
-                relativePath: "Drafts/Paper.md"
-            ),
-            role: .work,
-            fingerprint: targetFingerprint,
-            title: "Paper"
-        )
-        let snapshot = ResearchFunctionSnapshot(
-            request: ResearchFunctionRequest(function: .critique, target: target),
-            recordKind: .critique,
-            preparedAt: Date(timeIntervalSince1970: 10)
-        )
-        _ = try await registry.recordRequest(
-            workNoteID: workID,
-            workRelativePath: target.note.relativePath,
-            targetFingerprint: targetFingerprint,
-            critiqueRelativePath: "Critiques/Paper Critique.md",
-            checkpointID: UUID(),
-            scope: .overall,
-            roundID: snapshot.runID,
-            functionSnapshot: snapshot,
-            functionInstructions: "Prepared Critique instructions."
+        try Data("{\"schemaVersion\":2,\"associations\":[]}".utf8).write(
+            to: control.appendingPathComponent("critiques.json")
         )
 
-        let detached = try await registry.detachFunctionEvidence(
-            runID: snapshot.runID,
-            matching: snapshot
-        )
-        let repeatedDetach = try await registry.detachFunctionEvidence(
-            runID: snapshot.runID,
-            matching: snapshot
-        )
-        #expect(detached == repeatedDetach)
-        #expect(try await registry.functionRecord(runID: snapshot.runID) == nil)
-
-        let finding = CritiqueFinding(
-            judgment: .untraced,
-            title: "State the suppressed premise",
-            critiqueSourceLine: 5,
-            targetLine: 3
-        )
-        let captured = try await registry.captureLocalExecutionFindings(
-            runID: snapshot.runID,
-            findings: [finding]
-        )
-        let repeatedCapture = try await registry.captureLocalExecutionFindings(
-            runID: snapshot.runID,
-            findings: [finding]
-        )
-        #expect(captured == repeatedCapture)
-        await #expect(throws: CritiqueRegistryError.self) {
-            _ = try await registry.captureLocalExecutionFindings(
-                runID: snapshot.runID,
-                findings: [CritiqueFinding(
-                    judgment: .disputed,
-                    title: "Different finding",
-                    critiqueSourceLine: 6,
-                    targetLine: 4
-                )]
-            )
+        let registry = CritiqueRegistry(controlURL: control)
+        let health = await registry.healthError()
+        #expect(health?.contains(
+            "Unsupported Critique schema version 2"
+        ) == true)
+        #expect(await registry.association(workNoteID: UUID()) == nil)
+        await #expect(throws: ResearchRecordStoreError.self) {
+            _ = try await registry.save(CritiqueAssociation(
+                workNoteID: UUID(),
+                workRelativePath: "Drafts/Paper.md",
+                targetFingerprint: DocumentFingerprint(content: "draft"),
+                critiqueRelativePath: "Critiques/Paper.md"
+            ))
         }
     }
+
 
     @Test("Critique round completes only after every actionable finding is disposed")
     func critiqueRoundDispositionAndCompletion() async throws {
@@ -209,29 +164,8 @@ struct ResearchRecordsTests {
         let control = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
         let registry = CritiqueRegistry(controlURL: control)
         let workID = UUID()
-        let vaultID = UUID()
+        let roundID = UUID()
         let targetFingerprint = DocumentFingerprint(content: "# Original Work\n")
-        let target = ResearchFunctionTarget(
-            noteID: workID,
-            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Drafts/Paper.md"),
-            role: .work,
-            fingerprint: targetFingerprint,
-            title: "Paper"
-        )
-        let snapshot = ResearchFunctionSnapshot(
-            request: ResearchFunctionRequest(function: .critique, target: target),
-            recordKind: .critique
-        )
-        let completion = ResearchFunctionCompletion(
-            runID: snapshot.runID,
-            function: .critique,
-            state: .complete,
-            targetFingerprint: targetFingerprint,
-            materialFingerprints: [:],
-            summary: "Two actionable findings were recorded.",
-            didModifyTarget: false,
-            fidelityOutcomes: []
-        )
         _ = try await registry.recordRequest(
             workNoteID: workID,
             workRelativePath: "Drafts/Paper.md",
@@ -239,9 +173,7 @@ struct ResearchRecordsTests {
             critiqueRelativePath: "Critiques/Paper Critique.md",
             checkpointID: UUID(),
             scope: .overall,
-            roundID: snapshot.runID,
-            functionSnapshot: snapshot,
-            functionCompletion: completion
+            roundID: roundID
         )
         let first = CritiqueFinding(
             judgment: .traced,
@@ -256,13 +188,13 @@ struct ResearchRecordsTests {
             targetLine: 8
         )
         _ = try await registry.captureActionableFindings(
-            runID: snapshot.runID,
+            roundID: roundID,
             findings: [first, second]
         )
 
         await #expect(throws: CritiqueRegistryError.self) {
             _ = try await registry.setFindingDisposition(
-                roundID: snapshot.runID,
+                roundID: roundID,
                 findingID: first.id,
                 decision: .accept,
                 currentWorkRevision: targetFingerprint,
@@ -271,7 +203,7 @@ struct ResearchRecordsTests {
             )
         }
         _ = try await registry.setFindingDisposition(
-            roundID: snapshot.runID,
+            roundID: roundID,
             findingID: first.id,
             decision: .accept,
             currentWorkRevision: targetFingerprint,
@@ -279,18 +211,18 @@ struct ResearchRecordsTests {
             noTextChangeRationale: "The clarification is already explicit in the cited paragraph."
         )
         await #expect(throws: CritiqueRegistryError.self) {
-            _ = try await registry.completeRound(roundID: snapshot.runID)
+            _ = try await registry.completeRound(roundID: roundID)
         }
         _ = try await registry.setFindingDisposition(
-            roundID: snapshot.runID,
+            roundID: roundID,
             findingID: second.id,
             decision: .rebut,
             currentWorkRevision: targetFingerprint,
             rationale: "The counterexample assumes the conclusion it disputes.",
             noTextChangeRationale: nil
         )
-        let completed = try await registry.completeRound(roundID: snapshot.runID)
-        let retried = try await registry.completeRound(roundID: snapshot.runID)
+        let completed = try await registry.completeRound(roundID: roundID)
+        let retried = try await registry.completeRound(roundID: roundID)
         let round = try #require(completed.rounds.first)
         #expect(round.completedAt != nil)
         #expect(round.findingDispositions.count == 2)
@@ -303,60 +235,6 @@ struct ResearchRecordsTests {
         #expect(persisted.rounds.first?.completedAt != nil)
     }
 
-    @Test("Critique preparation rollback removes only its incomplete round")
-    func critiqueFunctionPreparationRollback() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let registry = CritiqueRegistry(
-            controlURL: fixture.support.appendingPathComponent("control", isDirectory: true)
-        )
-        let workID = UUID()
-        let vaultID = UUID()
-        let fingerprint = DocumentFingerprint(content: "# Work\n")
-        let target = ResearchFunctionTarget(
-            noteID: workID,
-            note: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Drafts/Work.md"),
-            role: .work,
-            fingerprint: fingerprint,
-            title: "Work"
-        )
-        let olderRoundID = UUID()
-        _ = try await registry.recordRequest(
-            workNoteID: workID,
-            workRelativePath: "Drafts/Work.md",
-            targetFingerprint: fingerprint,
-            critiqueRelativePath: "Critiques/Work Critique.md",
-            checkpointID: UUID(),
-            scope: .overall,
-            roundID: olderRoundID
-        )
-        let snapshot = ResearchFunctionSnapshot(
-            request: ResearchFunctionRequest(
-                function: .critique,
-                target: target,
-                scope: .whole
-            ),
-            recordKind: .critique,
-            preparedAt: Date(timeIntervalSince1970: 100)
-        )
-        _ = try await registry.recordRequest(
-            workNoteID: workID,
-            workRelativePath: "Drafts/Work.md",
-            targetFingerprint: fingerprint,
-            critiqueRelativePath: "Critiques/Work Critique.md",
-            checkpointID: UUID(),
-            scope: .overall,
-            roundID: UUID(),
-            functionSnapshot: snapshot
-        )
-
-        let preparedRecord = try await registry.functionRecord(runID: snapshot.runID)
-        #expect(preparedRecord?.snapshot == snapshot)
-        _ = try await registry.discardPreparedFunctionRecord(runID: snapshot.runID)
-        #expect(try await registry.functionRecord(runID: snapshot.runID) == nil)
-        let retained = try #require(await registry.association(workNoteID: workID))
-        #expect(retained.rounds.map(\.id) == [olderRoundID])
-    }
 
     @Test("Repeated Critique requests keep one association and bind each round to the current Work")
     func repeatedCritiqueRequests() async throws {

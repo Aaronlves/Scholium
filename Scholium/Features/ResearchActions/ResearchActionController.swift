@@ -21,8 +21,94 @@ struct ResearchActionClient {
         ResearchActionExecutionRequest,
         MaterialChangedSinceUseAttentionContext?
     ) async throws -> ResearchActionPreparation
+    let handoff: @MainActor (UUID) async throws -> ResearchAgentHandoff
     let cancel: @MainActor (UUID) async throws -> Void
+    let saveEvaluation: @MainActor (
+        UUID,
+        ResearcherEvaluationDraft,
+        UUID?,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let clearEvaluation: @MainActor (
+        UUID,
+        UUID,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let saveMethodFeedback: @MainActor (
+        UUID,
+        ResearchMethodFeedbackDraft,
+        UUID?,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let clearMethodFeedback: @MainActor (
+        UUID,
+        UUID,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let startMethodImprovement: @MainActor (UUID) async throws
+        -> ResearchAgentHandoff
     let openActiveDiscussion: @MainActor (UUID) -> Void
+
+    init(
+        availableActions: @escaping @MainActor (ResearchActionNoteSnapshot) async throws -> [ResearchActionAvailability],
+        materialCandidates: @escaping @MainActor (ResearchActionNoteSnapshot, ResearchActionDefinition) async throws -> [ResearchActionNoteSnapshot],
+        sourceAccess: @escaping @MainActor (ResearchActionNoteSnapshot) async throws -> ResearchSourceAccessStatus,
+        bindLocalSource: @escaping @MainActor (ResearchActionNoteSnapshot, URL) async throws -> ResearchSourceReference,
+        prepare: @escaping @MainActor (ResearchActionExecutionRequest, MaterialChangedSinceUseAttentionContext?) async throws -> ResearchActionPreparation,
+        handoff: @escaping @MainActor (UUID) async throws -> ResearchAgentHandoff = { _ in
+            throw ResearchActionExecutionContractError.staleResolution
+        },
+        cancel: @escaping @MainActor (UUID) async throws -> Void,
+        saveEvaluation: @escaping @MainActor (
+            UUID,
+            ResearcherEvaluationDraft,
+            UUID?,
+            DocumentFingerprint
+        ) async throws -> PortableResearchRecord = { _, _, _, _ in
+            throw PortableResearchEvaluationMutationError.recordUnavailable
+        },
+        clearEvaluation: @escaping @MainActor (
+            UUID,
+            UUID,
+            DocumentFingerprint
+        ) async throws -> PortableResearchRecord = { _, _, _ in
+            throw PortableResearchEvaluationMutationError.recordUnavailable
+        },
+        saveMethodFeedback: @escaping @MainActor (
+            UUID,
+            ResearchMethodFeedbackDraft,
+            UUID?,
+            DocumentFingerprint
+        ) async throws -> PortableResearchRecord = { _, _, _, _ in
+            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
+        },
+        clearMethodFeedback: @escaping @MainActor (
+            UUID,
+            UUID,
+            DocumentFingerprint
+        ) async throws -> PortableResearchRecord = { _, _, _ in
+            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
+        },
+        startMethodImprovement: @escaping @MainActor (UUID) async throws
+            -> ResearchAgentHandoff = { _ in
+                throw ResearchMethodImprovementError.runUnavailable
+            },
+        openActiveDiscussion: @escaping @MainActor (UUID) -> Void
+    ) {
+        self.availableActions = availableActions
+        self.materialCandidates = materialCandidates
+        self.sourceAccess = sourceAccess
+        self.bindLocalSource = bindLocalSource
+        self.prepare = prepare
+        self.handoff = handoff
+        self.cancel = cancel
+        self.saveEvaluation = saveEvaluation
+        self.clearEvaluation = clearEvaluation
+        self.saveMethodFeedback = saveMethodFeedback
+        self.clearMethodFeedback = clearMethodFeedback
+        self.startMethodImprovement = startMethodImprovement
+        self.openActiveDiscussion = openActiveDiscussion
+    }
 }
 
 enum ResearchActionPanelPhase: Equatable {
@@ -44,7 +130,8 @@ struct ResearchActionCancellationRecovery: Equatable, Identifiable {
 }
 
 /// Per-window owner for the common, Profile-generated Action sheet. It keeps
-/// researcher-entered parameter values transient and delegates every durable
+/// researcher-entered academic values and protected selector values transient
+/// and delegates every durable
 /// identity, revision, authority, recovery, and completion decision to the
 /// Application boundary.
 @MainActor
@@ -65,6 +152,8 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var sourceStatus: ResearchSourceAccessStatus?
     @Published private(set) var isLoadingSourceStatus = false
     @Published private(set) var preparation: ResearchActionPreparation?
+    @Published private(set) var agentHandoff: ResearchAgentHandoff?
+    @Published private(set) var resultRecord: PortableResearchRecord?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isBindingSource = false
     @Published private(set) var cancellationRecoveries: [ResearchActionCancellationRecovery] = []
@@ -72,9 +161,9 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var pendingCancellationBarrierCount = 0
 
     @Published var textValues: [String: String] = [:]
-    @Published var booleanValues: [String: Bool] = [:]
-    @Published var choiceValues: [String: Set<ResearchActionModuleChoiceValue>] = [:]
-    @Published var noteValues: [String: Set<UUID>] = [:]
+    @Published var choiceValues: [String: Set<String>] = [:]
+    @Published var selectedFocalNoteIDs: Set<UUID> = []
+    @Published var selectedFidelityChecks: Set<FidelityCheck> = []
     @Published var usesPassage = true
 
     private var passage: CommentAnchor?
@@ -103,12 +192,16 @@ final class ResearchActionController: ObservableObject {
         presentationAvailability
     }
 
-    var profile: ResearchActionProfile? {
+    var profile: ResearchAcademicActionProfile? {
         activeAvailability?.profile.profile
     }
 
+    var platformDefinition: PlatformActionDefinition? {
+        activeActionID.flatMap(PlatformActionCatalog.definition)
+    }
+
     var canCancelPreparedRun: Bool {
-        preparation?.state == .prepared
+        preparation?.state == .prepared && resultRecord == nil
     }
 
     var canPrepare: Bool {
@@ -118,12 +211,94 @@ final class ResearchActionController: ObservableObject {
               !isLoadingMaterialCandidates,
               !isLoadingSourceStatus,
               !isBusy else { return false }
-        return profile.modules.allSatisfy(moduleIsSatisfied)
+        return profile.academicInputFields.allSatisfy(academicFieldIsSatisfied)
+            && requiredPlatformSelectorsAreSatisfied
     }
 
     func bind(_ client: ResearchActionClient) {
         invalidate(clearAvailability: true)
         self.client = client
+    }
+
+    func receive(records: [PortableResearchRecord]) {
+        guard let runID = preparation?.runID else { return }
+        resultRecord = records.first { $0.id == runID }
+    }
+
+    func saveResearcherEvaluation(
+        draft: ResearcherEvaluationDraft,
+        expectedEvaluationRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        guard let client, let record = resultRecord else {
+            throw PortableResearchEvaluationMutationError.recordUnavailable
+        }
+        let updated = try await client.saveEvaluation(
+            record.id,
+            draft,
+            expectedEvaluationRevision,
+            expectedResultFingerprint
+        )
+        resultRecord = updated
+        return updated
+    }
+
+    func clearResearcherEvaluation(
+        expectedEvaluationRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        guard let client, let record = resultRecord else {
+            throw PortableResearchEvaluationMutationError.recordUnavailable
+        }
+        let updated = try await client.clearEvaluation(
+            record.id,
+            expectedEvaluationRevision,
+            expectedResultFingerprint
+        )
+        resultRecord = updated
+        return updated
+    }
+
+    func saveMethodFeedbackComment(
+        draft: ResearchMethodFeedbackDraft,
+        expectedCommentRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        guard let client, let record = resultRecord else {
+            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
+        }
+        let updated = try await client.saveMethodFeedback(
+            record.id,
+            draft,
+            expectedCommentRevision,
+            expectedResultFingerprint
+        )
+        resultRecord = updated
+        return updated
+    }
+
+    func clearMethodFeedbackComment(
+        expectedCommentRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        guard let client, let record = resultRecord else {
+            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
+        }
+        let updated = try await client.clearMethodFeedback(
+            record.id,
+            expectedCommentRevision,
+            expectedResultFingerprint
+        )
+        resultRecord = updated
+        return updated
+    }
+
+    func startMethodImprovement() async throws -> ResearchAgentHandoff {
+        guard let client, let record = resultRecord,
+              record.methodFeedbackComment != nil else {
+            throw ResearchMethodImprovementError.runUnavailable
+        }
+        return try await client.startMethodImprovement(record.id)
     }
 
     func unbind() {
@@ -194,26 +369,21 @@ final class ResearchActionController: ObservableObject {
             return true
         }
         initializeValues(for: selected.profile.profile)
-        if !initialMaterialNoteIDs.isEmpty,
-           let module = selected.profile.profile.modules.first(where: {
-               $0.kind == .materialSelector
-           }) {
-            noteValues[module.id.rawValue] = initialMaterialNoteIDs
-        }
+        selectedFocalNoteIDs = initialMaterialNoteIDs
         if let initialInstruction,
-           let module = selected.profile.profile.modules.first(where: {
-               $0.kind == .boundedText
+           let field = selected.profile.profile.academicInputFields.first(where: {
+               $0.kind == .freeText && $0.requirement != .excluded
            }) {
-            setText(initialInstruction, module: module)
+            setText(initialInstruction, field: field)
         }
         phase = .editing
         errorMessage = Self.presentationError(for: selected)
-        let needsMaterialCandidates = selected.profile.profile.modules.contains(where: {
-            $0.kind == .notePicker || $0.kind == .materialSelector
-        })
-        let needsSourceStatus = selected.profile.profile.modules.contains(where: {
-            $0.kind == .sourceReference
-        })
+        let selectors = Set(
+            (PlatformActionCatalog.definition(for: selected.id)?.requiredSelectors ?? [])
+                + (PlatformActionCatalog.definition(for: selected.id)?.optionalSelectors ?? [])
+        )
+        let needsMaterialCandidates = selectors.contains(.focalNotes)
+        let needsSourceStatus = selectors.contains(.source)
         isLoadingMaterialCandidates = needsMaterialCandidates
         isLoadingSourceStatus = needsSourceStatus
 
@@ -259,61 +429,59 @@ final class ResearchActionController: ObservableObject {
         return true
     }
 
-    func setText(_ value: String, module: ResearchActionModuleDefinition) {
-        guard let maximum = module.maximumTextUTF8ByteCount else { return }
+    func setText(_ value: String, field: ResearchAcademicFieldDefinition) {
+        guard field.kind == .freeText,
+              let maximum = field.maximumTextUTF8Count else { return }
         var bounded = value
         while bounded.utf8.count > maximum, !bounded.isEmpty {
             bounded.removeLast()
         }
-        textValues[module.id.rawValue] = bounded
-    }
-
-    func setBoolean(_ value: Bool, module: ResearchActionModuleDefinition) {
-        booleanValues[module.id.rawValue] = value
+        textValues[field.fieldID.rawValue] = bounded
     }
 
     func setChoice(
-        _ value: ResearchActionModuleChoiceValue,
+        _ value: String,
         isSelected: Bool,
-        module: ResearchActionModuleDefinition
+        field: ResearchAcademicFieldDefinition
     ) {
-        var selected = choiceValues[module.id.rawValue] ?? []
+        guard field.choices.contains(where: { $0.value == value }) else { return }
+        var selected = choiceValues[field.fieldID.rawValue] ?? []
         if isSelected {
-            let maximum = module.maximumSelectionCount ?? 1
-            if maximum == 1 {
+            if field.kind == .singleChoice {
                 selected = [value]
             } else {
-                guard selected.contains(value) || selected.count < maximum else { return }
                 selected.insert(value)
             }
         } else {
             selected.remove(value)
         }
-        choiceValues[module.id.rawValue] = selected
+        choiceValues[field.fieldID.rawValue] = selected
     }
 
-    func setNote(
+    func setFocalNote(
         _ noteID: UUID,
-        isSelected: Bool,
-        module: ResearchActionModuleDefinition
+        isSelected: Bool
     ) {
-        var selected = noteValues[module.id.rawValue] ?? []
         if isSelected {
-            let maximum = module.maximumSelectionCount ?? 1
-            if maximum == 1 {
-                selected = [noteID]
-            } else {
-                guard selected.contains(noteID) || selected.count < maximum else { return }
-                selected.insert(noteID)
-            }
+            guard selectedFocalNoteIDs.contains(noteID)
+                    || selectedFocalNoteIDs.count < 16 else { return }
+            selectedFocalNoteIDs.insert(noteID)
         } else {
-            selected.remove(noteID)
+            selectedFocalNoteIDs.remove(noteID)
         }
-        noteValues[module.id.rawValue] = selected
+    }
+
+    func setFidelityCheck(_ check: FidelityCheck, isSelected: Bool) {
+        if isSelected {
+            selectedFidelityChecks.insert(check)
+        } else {
+            selectedFidelityChecks.remove(check)
+        }
     }
 
     func bindLocalSource(_ url: URL) {
-        guard let client, let target, profile?.sourceRequirement == .required else { return }
+        guard let client, let target,
+              platformSelectors.contains(.source) else { return }
         sourceTask?.cancel()
         let token = nextGeneration()
         isBindingSource = true
@@ -356,15 +524,23 @@ final class ResearchActionController: ObservableObject {
               let presentationAvailability,
               let presentationID,
               canPrepare else { return }
-        let request = ResearchActionExecutionRequest(
-            actionID: activeActionID,
-            expectedExecutionKind: profile.executionKind,
-            expectedProfileRevision: presentationAvailability.profile.profileRevision,
-            expectedProfileDocumentRevision:
-                presentationAvailability.profile.profileDocumentRevision,
-            target: target,
-            parameterValues: parameterValues(for: profile)
-        )
+        let request: ResearchActionExecutionRequest
+        do {
+            request = ResearchActionExecutionRequest(
+                actionID: activeActionID,
+                expectedExecutionKind: presentationAvailability.definition.executionKind,
+                expectedProfileRevision: presentationAvailability.profile.profileRevision,
+                expectedProfileDocumentRevision:
+                    presentationAvailability.profile.profileDocumentRevision,
+                target: target,
+                platformInputs: try platformInputs(),
+                academicInputs: try academicInputs(for: profile)
+            )
+        } catch {
+            phase = .failed
+            errorMessage = error.localizedDescription
+            return
+        }
         let token = nextGeneration()
         phase = .preparing
         errorMessage = nil
@@ -380,7 +556,14 @@ final class ResearchActionController: ObservableObject {
                     return
                 }
                 preparation = result
-                phase = .prepared
+                resultRecord = nil
+                do {
+                    agentHandoff = try await client.handoff(result.runID)
+                    phase = .prepared
+                } catch {
+                    phase = .failed
+                    errorMessage = error.localizedDescription
+                }
             } catch is CancellationError {
                 if !accepts(token) || self.presentationID != presentationID {
                     finishPendingCancellationBarrier()
@@ -431,6 +614,8 @@ final class ResearchActionController: ObservableObject {
                     return
                 }
                 preparation = nil
+                agentHandoff = nil
+                resultRecord = nil
                 phase = .cancelled
             } catch {
                 if accepts(token) {
@@ -444,6 +629,42 @@ final class ResearchActionController: ObservableObject {
                     )
                     finishPendingCancellationBarrier()
                 }
+            }
+        }
+    }
+
+    func retryHandoff() {
+        guard let client, let preparation,
+              phase == .failed, !isBusy else { return }
+        requestHandoff(using: client, runID: preparation.runID)
+    }
+
+    /// Invalidates any prior pairing for this Run and issues a fresh short
+    /// handoff. The Run and its durable recovery state remain unchanged.
+    func regenerateHandoff() {
+        guard let client, let preparation,
+              phase == .prepared, !isBusy else { return }
+        requestHandoff(using: client, runID: preparation.runID)
+    }
+
+    private func requestHandoff(
+        using client: ResearchActionClient,
+        runID: UUID
+    ) {
+        let token = nextGeneration()
+        phase = .preparing
+        errorMessage = nil
+        agentHandoff = nil
+        Task { @MainActor [self] in
+            do {
+                let handoff = try await client.handoff(runID)
+                guard accepts(token) else { return }
+                agentHandoff = handoff
+                phase = .prepared
+            } catch {
+                guard accepts(token) else { return }
+                phase = .failed
+                errorMessage = error.localizedDescription
             }
         }
     }
@@ -478,20 +699,17 @@ final class ResearchActionController: ObservableObject {
         guard current == target else { invalidate(clearAvailability: false); return }
     }
 
-    private func initializeValues(for profile: ResearchActionProfile) {
-        for module in profile.modules {
-            switch module.kind {
-            case .boundedText:
-                textValues[module.id.rawValue] = ""
-            case .boolean:
-                booleanValues[module.id.rawValue] = module.defaultBoolean ?? false
-            case .enumeration:
-                choiceValues[module.id.rawValue] = []
-            case .notePicker, .materialSelector:
-                noteValues[module.id.rawValue] = []
-            case .passageAnchor, .sourceReference:
-                break
+    private func initializeValues(for profile: ResearchAcademicActionProfile) {
+        for field in profile.academicInputFields where field.requirement != .excluded {
+            switch field.kind {
+            case .freeText:
+                textValues[field.fieldID.rawValue] = ""
+            case .singleChoice, .multipleChoice:
+                choiceValues[field.fieldID.rawValue] = []
             }
+        }
+        if platformSelectors.contains(.fidelityChecks) {
+            selectedFidelityChecks = [.content]
         }
     }
 
@@ -544,53 +762,86 @@ final class ResearchActionController: ObservableObject {
         pendingCancellationBarrierCount = max(0, pendingCancellationBarrierCount - 1)
     }
 
-    private func moduleIsSatisfied(_ module: ResearchActionModuleDefinition) -> Bool {
-        guard module.isRequired else { return true }
-        switch module.kind {
-        case .boundedText:
-            return !(textValues[module.id.rawValue] ?? "")
+    private func academicFieldIsSatisfied(
+        _ field: ResearchAcademicFieldDefinition
+    ) -> Bool {
+        guard field.requirement == .required else { return true }
+        switch field.kind {
+        case .freeText:
+            return !(textValues[field.fieldID.rawValue] ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .boolean:
-            return booleanValues[module.id.rawValue] != nil
-        case .enumeration:
-            return !(choiceValues[module.id.rawValue] ?? []).isEmpty
-        case .notePicker, .materialSelector:
-            return !(noteValues[module.id.rawValue] ?? []).isEmpty
-        case .passageAnchor:
-            return passage != nil && usesPassage
-        case .sourceReference:
-            return sourceStatus?.state == .available
+        case .singleChoice, .multipleChoice:
+            return !(choiceValues[field.fieldID.rawValue] ?? []).isEmpty
         }
     }
 
-    private func parameterValues(
-        for profile: ResearchActionProfile
-    ) -> [ResearchActionModuleID: ResearchActionParameterValue] {
-        Dictionary(uniqueKeysWithValues: profile.modules.compactMap { module in
-            let value: ResearchActionParameterValue?
-            switch module.kind {
-            case .boundedText:
-                let text = textValues[module.id.rawValue] ?? ""
-                value = text.isEmpty ? nil : .text(text)
-            case .boolean:
-                value = booleanValues[module.id.rawValue].map(ResearchActionParameterValue.boolean)
-            case .enumeration:
-                let choices = (choiceValues[module.id.rawValue] ?? [])
-                    .sorted { $0.rawValue < $1.rawValue }
-                value = choices.isEmpty ? nil : .choices(choices)
-            case .notePicker, .materialSelector:
-                let ids = noteValues[module.id.rawValue] ?? []
-                let notes = materialCandidates.filter { ids.contains($0.noteID) }
-                value = notes.isEmpty ? nil : .notes(notes)
-            case .passageAnchor:
-                value = usesPassage ? passage.map(ResearchActionParameterValue.passage) : nil
-            case .sourceReference:
-                // The Application resolves the machine-local binding again and
-                // freezes the exact reference in the Action snapshot.
-                value = nil
+    var platformSelectors: Set<PlatformActionSelector> {
+        guard let platformDefinition else { return [] }
+        return Set(
+            platformDefinition.requiredSelectors + platformDefinition.optionalSelectors
+        )
+    }
+
+    private var requiredPlatformSelectorsAreSatisfied: Bool {
+        guard let platformDefinition else { return false }
+        return platformDefinition.requiredSelectors.allSatisfy { selector in
+            switch selector {
+            case .source:
+                sourceStatus?.state == .available
+            case .focalNotes:
+                !selectedFocalNoteIDs.isEmpty
+            case .passage:
+                passage != nil && usesPassage
+            case .fidelityChecks:
+                !selectedFidelityChecks.isEmpty
+            case .citationStyle, .feedback:
+                // These selectors are resolved from current app-owned state.
+                true
             }
-            return value.map { (module.id, $0) }
-        })
+        }
+    }
+
+    private func academicInputs(
+        for profile: ResearchAcademicActionProfile
+    ) throws -> ResearchAcademicFieldValues {
+        var values: [String: ResearchAcademicFieldValue] = [:]
+        for field in profile.academicInputFields where field.requirement != .excluded {
+            switch field.kind {
+            case .freeText:
+                let text = textValues[field.fieldID.rawValue] ?? ""
+                if field.requirement == .required || !text.isEmpty {
+                    values[field.fieldID.rawValue] = .freeText(text)
+                }
+            case .singleChoice:
+                if let choice = choiceValues[field.fieldID.rawValue]?.sorted().first {
+                    values[field.fieldID.rawValue] = .singleChoice(choice)
+                }
+            case .multipleChoice:
+                let choices = choiceValues[field.fieldID.rawValue]?.sorted() ?? []
+                if field.requirement == .required || !choices.isEmpty {
+                    values[field.fieldID.rawValue] = .multipleChoice(choices)
+                }
+            }
+        }
+        return try ResearchAcademicFieldValues(
+            rawValues: values,
+            definitions: profile.academicInputFields
+        )
+    }
+
+    private func platformInputs() throws -> ResearchActionPlatformInputs {
+        let focalNotes = platformSelectors.contains(.focalNotes)
+            ? materialCandidates.filter { selectedFocalNoteIDs.contains($0.noteID) }
+            : []
+        return try ResearchActionPlatformInputs(
+            focalNotes: focalNotes,
+            passage: platformSelectors.contains(.passage) && usesPassage
+                ? passage
+                : nil,
+            fidelityChecks: platformSelectors.contains(.fidelityChecks)
+                ? selectedFidelityChecks
+                : []
+        )
     }
 
     private func invalidate(clearAvailability: Bool) {
@@ -614,12 +865,14 @@ final class ResearchActionController: ObservableObject {
         sourceStatus = nil
         isLoadingSourceStatus = false
         preparation = nil
+        agentHandoff = nil
+        resultRecord = nil
         errorMessage = nil
         isBindingSource = false
         textValues = [:]
-        booleanValues = [:]
         choiceValues = [:]
-        noteValues = [:]
+        selectedFocalNoteIDs = []
+        selectedFidelityChecks = []
         passage = nil
         resynthesisContext = nil
         usesPassage = true
@@ -656,7 +909,6 @@ final class ResearchActionController: ObservableObject {
         _ actions: [ResearchActionAvailability]
     ) -> [ResearchActionAvailability] {
         actions.sorted {
-            if $0.group != $1.group { return $0.group == .defaultAction }
             if $0.order != $1.order { return $0.order < $1.order }
             return $0.id.rawValue < $1.id.rawValue
         }

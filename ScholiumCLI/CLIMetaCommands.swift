@@ -121,7 +121,6 @@ extension ScholiumCLI {
             throw CLIError.usage("Doctor supports --format text or json.")
         }
         let assignments = try await context.assignments()
-        let catalog = try await context.runtime.researchGuidance.catalog()
         let executable = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
         let report = CLIDoctorReport(
             cliVersion: productVersion,
@@ -138,7 +137,7 @@ extension ScholiumCLI {
                     }.map(\.rawValue)
                 )
             },
-            protectedSkillCount: catalog.entries.count,
+            platformActionCount: PlatformActionCatalog.definitions.count,
             zoteroState: context.runtime.zotero.report().state.rawValue
         )
         if format == .json {
@@ -153,7 +152,7 @@ extension ScholiumCLI {
             for triptych in report.triptychs {
                 write("  \(triptych.id.uuidString.lowercased())  \(triptych.name)  [\(triptych.roles.joined(separator: ", "))]\n")
             }
-            write("Protected Skills: \(report.protectedSkillCount)\n")
+            write("Platform Actions: \(report.platformActionCount)\n")
             write("Zotero transport: \(report.zoteroState)\n")
             if report.triptychCount == 0 {
                 write("Repair: configure Analyses, Topics, and Works in Scholium, then run doctor again.\n")
@@ -176,12 +175,13 @@ extension ScholiumCLI {
     }
 
     static func writeCLIError(_ error: Error, arguments: [String]) {
-        let wantsJSON = arguments.indices.contains { index in
+        let requestedFormat = arguments.indices.compactMap { index -> String? in
             arguments[index] == "--format"
                 && arguments.indices.contains(index + 1)
-                && arguments[index + 1] == "json"
-        }
-        guard wantsJSON else {
+                ? arguments[index + 1]
+                : nil
+        }.first
+        guard requestedFormat == "json" || requestedFormat == "jsonl" else {
             writeError("scholium: \(error.localizedDescription)\n")
             return
         }
@@ -189,10 +189,14 @@ extension ScholiumCLI {
             code: errorCode(for: error),
             message: error.localizedDescription,
             command: arguments.prefix(2).joined(separator: " "),
-            help: "scholium help " + arguments.prefix(2).joined(separator: " ")
+            help: "scholium help " + arguments.prefix(2).joined(separator: " "),
+            diagnostic: searchDiagnostic(for: error)
         )
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.outputFormatting = requestedFormat == "jsonl"
+            ? [.sortedKeys, .withoutEscapingSlashes]
+            : [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         if let data = try? encoder.encode(report) {
             writeError(String(decoding: data, as: UTF8.self) + "\n")
         } else {
@@ -207,10 +211,17 @@ extension ScholiumCLI {
             case .invalidUTF8: return "invalid_utf8"
             case .noteNotFound: return "note_not_found"
             case .unavailable: return "unavailable"
+            case .searchDiagnostic: return "search_query_diagnostic"
             }
         }
         if error is DecodingError { return "invalid_json" }
         return "operation_failed"
+    }
+
+    private static func searchDiagnostic(for error: Error) -> SearchQueryDiagnostic? {
+        guard let cli = error as? CLIError,
+              case .searchDiagnostic(let diagnostic) = cli else { return nil }
+        return diagnostic
     }
 }
 
@@ -222,7 +233,7 @@ private struct CLIDoctorReport: Encodable {
     let isolatedHome: Bool
     let triptychCount: Int
     let triptychs: [CLIDoctorTriptych]
-    let protectedSkillCount: Int
+    let platformActionCount: Int
     let zoteroState: String
 
     private enum CodingKeys: String, CodingKey {
@@ -233,7 +244,7 @@ private struct CLIDoctorReport: Encodable {
         case isolatedHome = "isolated_home"
         case triptychCount = "triptych_count"
         case triptychs
-        case protectedSkillCount = "protected_skill_count"
+        case platformActionCount = "platform_action_count"
         case zoteroState = "zotero_state"
     }
 }
@@ -251,9 +262,10 @@ private struct CLIErrorReport: Encodable {
     let message: String
     let command: String
     let help: String
+    let diagnostic: SearchQueryDiagnostic?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
-        case error, code, message, command, help
+        case error, code, message, command, help, diagnostic
     }
 }

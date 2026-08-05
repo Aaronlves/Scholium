@@ -64,8 +64,7 @@ let package = Package(
                 "ScholiumCore",
                 .product(name: "Yams", package: "Yams"),
             ],
-            path: "Tests/ScholiumCoreTests",
-            exclude: ["Fixtures"]
+            path: "Tests/ScholiumCoreTests"
         ),
         .testTarget(
             name: "ScholiumApplicationTests",

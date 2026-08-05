@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import ScholiumContracts
 
-struct WindowLexicalSearchEvidence: Equatable, Sendable {
+struct WindowSearchResultEvidence: Equatable, Sendable {
     let freshness: SearchFreshnessToken?
     let fingerprint: DocumentFingerprint?
 }
@@ -19,10 +19,10 @@ final class WindowSearchController: ObservableObject {
         let executionContext: @MainActor (
             SearchWorkspaceState
         ) async throws -> DiscoverySearchExecutionContext
-        let lexicalEvidence: @MainActor (
-            SearchHit,
+        let resultEvidence: @MainActor (
+            SearchResult,
             SearchPresentationScope
-        ) async -> WindowLexicalSearchEvidence
+        ) async -> WindowSearchResultEvidence
         let open: @MainActor (
             SearchResultSelection,
             WindowOpenDisposition
@@ -121,28 +121,22 @@ final class WindowSearchController: ObservableObject {
         _ result: SearchResultSelection,
         disposition: WindowOpenDisposition
     ) async {
-        switch result {
-        case .related:
-            await dependencies.open(result, disposition)
-            dismiss()
-
-        case .lexical(let hit):
-            guard discoveryController.search.freshnessToken == hit.freshnessToken else {
-                await refreshAfterStaleResult()
-                return
-            }
-            let evidence = await dependencies.lexicalEvidence(
-                hit,
-                discoveryController.search.criteria.scope
-            )
-            guard evidence.freshness == hit.freshnessToken,
-                  evidence.fingerprint == hit.fingerprint else {
-                await refreshAfterStaleResult()
-                return
-            }
-            await dependencies.open(result, disposition)
-            dismiss()
+        guard case .result(let searchResult) = result else { return }
+        guard discoveryController.search.freshnessToken == searchResult.freshnessToken else {
+            await refreshAfterStaleResult(searchResult)
+            return
         }
+        let evidence = await dependencies.resultEvidence(
+            searchResult,
+            discoveryController.search.criteria.scope
+        )
+        guard evidence.freshness == searchResult.freshnessToken,
+              evidence.fingerprint == searchResult.fingerprint else {
+            await refreshAfterStaleResult(searchResult)
+            return
+        }
+        await dependencies.open(.result(searchResult), disposition)
+        dismiss()
     }
 
     func searchGenerationDidChange() {
@@ -187,6 +181,16 @@ final class WindowSearchController: ObservableObject {
     }
 
     func run(_ search: SavedSearch) {
+        if let diagnostic = search.needsEditingDiagnostic {
+            cancelExecution()
+            discoveryController.presentSavedSearchForEditing(
+                search.definition,
+                diagnostic: diagnostic
+            )
+            dependencies.setPresented(true)
+            dependencies.reportInformation(diagnostic.message)
+            return
+        }
         criteria = SearchWorkspaceState(
             query: search.definition.query,
             scope: search.definition.presentationScope
@@ -249,13 +253,23 @@ final class WindowSearchController: ObservableObject {
         }
     }
 
-    private func refreshAfterStaleResult() async {
-        dependencies.reportInformation(
+    private func refreshAfterStaleResult(_ result: SearchResult) async {
+        let message = switch result {
+        case .note:
             String(
                 localized: "The note changed. Search results were refreshed.",
                 table: "Localizable",
                 bundle: .module
             )
+        case .record:
+            String(
+                localized: "The Research Record changed. Search results were refreshed.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+        dependencies.reportInformation(
+            message
         )
         await refresh()
     }

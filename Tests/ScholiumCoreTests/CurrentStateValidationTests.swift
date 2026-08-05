@@ -30,18 +30,10 @@ struct CurrentStateValidationTests {
         }
     }
 
-    @Test("Retired replacement Practice fields fail closed")
-    func retiredReplacementPractice() {
-        let source = Data(#"{"package_id":"practices","practice_id":"reviewer","application":"replace"}"#.utf8)
-        #expect(throws: DecodingError.self) {
-            _ = try JSONDecoder().decode(ResearchPracticeSelection.self, from: source)
-        }
-    }
-
     @Test("Incomplete Citation Method documents fail closed")
     func incompleteCitationMethodDocument() {
-        let source = Data(#"{"schema_version":1,"package_id":"citations"}"#.utf8)
-        #expect(throws: ResearchSkillBindingError.self) {
+        let source = Data(#"{"schemaVersion":1,"activeCitationStyle":"apa-7"}"#.utf8)
+        #expect(throws: DecodingError.self) {
             _ = try JSONDecoder().decode(
                 ResearchCitationMethodDocument.self,
                 from: source
@@ -49,15 +41,26 @@ struct CurrentStateValidationTests {
         }
     }
 
-    @Test("Current capability Method documents reject unknown fields")
-    func strictCapabilityMethodDocuments() {
+    @Test("Current Citation Method documents reject unknown fields")
+    func strictCitationMethodDocuments() {
+        let id = UUID().uuidString
         let unknownCitation = Data(
-            #"{"schema_version":1,"package_id":null,"citation_style":null,"future":true}"#.utf8
+            #"{"schemaVersion":1,"triptychID":"\#(id)","activeCitationStyle":null,"future":true}"#.utf8
         )
-        #expect(throws: ResearchSkillBindingError.self) {
+        #expect(throws: ResearchCitationMethodContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchCitationMethodDocument.self,
                 from: unknownCitation
+            )
+        }
+    }
+
+    @Test("Unsupported citation styles fail closed")
+    func unsupportedCitationStyle() {
+        #expect(throws: ResearchCitationMethodContractError.self) {
+            _ = try ResearchCitationMethodDocument(
+                triptychID: UUID(),
+                activeCitationStyle: "invented-style"
             )
         }
     }

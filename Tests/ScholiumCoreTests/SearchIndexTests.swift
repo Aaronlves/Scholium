@@ -5,9 +5,9 @@ import Testing
 @testable import ScholiumCore
 
 /// The original 17 lexical baselines are retained here, but execute against
-/// the only user-reachable v3 engine. They are regression evidence, not a
+/// the only user-reachable Search v6 engine. They are regression evidence, not a
 /// second implementation contract.
-@Suite("Search v4 retained lexical baselines")
+@Suite("Search v6 retained lexical baselines")
 struct SearchIndexTests {
     @Test("Phrases, prefixes, fields, CJK, and retrieval classification share one contract")
     func queryContract() async throws {
@@ -34,15 +34,15 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Papers/Other.md", "---\ntitle: Other Work\n---\nA reason appears without deliberative control."),
         ])
 
-        let phrase = try await index.search(fixture.request("\"deliberative control\" author:Scanlon"))
-        #expect(phrase.results.map(\.relativePath) == ["Papers/Reasons.md"])
-        #expect(phrase.results.first?.classification == .retrievalLead)
-        #expect(try await index.search(fixture.request("delib* tag:reasons")).results.first?.relativePath == "Papers/Reasons.md")
-        #expect(try await index.search(fixture.request("control -other")).results.map(\.relativePath) == ["Papers/Reasons.md"])
-        #expect(try await index.search(fixture.request("哲")).results.first?.relativePath == "Papers/Reasons.md")
-        #expect(try await index.search(fixture.request("哲学")).results.first?.relativePath == "Papers/Reasons.md")
-        #expect(try await index.search(fixture.request("callout:state Guidance")).results.first?.matchedField == .callout)
-        #expect(try await index.search(fixture.request("callout:argument Guidance")).diagnostics.first?.code == .unknownStructuredValue)
+        let phrase = try await index.testSearch(fixture.request("\"deliberative control\" author:Scanlon"))
+        #expect(phrase.noteResults.map(\.relativePath) == ["Papers/Reasons.md"])
+        #expect(phrase.noteResults.first?.classification == .retrievalLead)
+        #expect(try await index.testSearch(fixture.request("delib* tag:reasons")).noteResults.first?.relativePath == "Papers/Reasons.md")
+        #expect(try await index.testSearch(fixture.request("control -other")).noteResults.map(\.relativePath) == ["Papers/Reasons.md"])
+        #expect(try await index.testSearch(fixture.request("哲")).noteResults.first?.relativePath == "Papers/Reasons.md")
+        #expect(try await index.testSearch(fixture.request("哲学")).noteResults.first?.relativePath == "Papers/Reasons.md")
+        #expect(try await index.testSearch(fixture.request("callout:state Guidance")).noteResults.first?.matchedField == .callout)
+        #expect(SearchQueryParser.parse("callout:argument Guidance").diagnostics.first?.code == .unknownStructuredValue)
     }
 
     @Test("Canonical Unicode equivalence is searchable")
@@ -52,7 +52,7 @@ struct SearchIndexTests {
         _ = try await index.synchronize([
             fixture.item(fixture.analyses, "Papers/Cafe.md", "A Cafe\u{301} argument remains searchable."),
         ])
-        #expect(try await index.search(fixture.request("Café")).results.map(\.relativePath) == ["Papers/Cafe.md"])
+        #expect(try await index.testSearch(fixture.request("Café")).noteResults.map(\.relativePath) == ["Papers/Cafe.md"])
     }
 
     @Test("FTS diacritic folding preserves exact ranking and source ranges")
@@ -65,7 +65,7 @@ struct SearchIndexTests {
         ])
 
         let foldedTitle = try #require(
-            await index.search(fixture.request("\"cafe ethics\"")).results.first
+            await index.testSearch(fixture.request("\"cafe ethics\"")).noteResults.first
         )
         #expect(foldedTitle.rankReason == .lexicalRelevance)
         #expect(foldedTitle.matchedField == .title)
@@ -78,12 +78,12 @@ struct SearchIndexTests {
         ) == "Café Ethics")
 
         let exactTitle = try #require(
-            await index.search(fixture.request("\"Café Ethics\"")).results.first
+            await index.testSearch(fixture.request("\"Café Ethics\"")).noteResults.first
         )
         #expect(exactTitle.rankReason == .exactTitle)
 
         let foldedBody = try #require(
-            await index.search(fixture.request("naive")).results.first
+            await index.testSearch(fixture.request("naive")).noteResults.first
         )
         let bodyRange = try #require(foldedBody.sourceRange)
         #expect((source as NSString).substring(
@@ -108,8 +108,8 @@ struct SearchIndexTests {
         }
         await #expect(throws: CancellationError.self) { _ = try await cancelled.value }
         #expect(try await index.generation() == first.generation)
-        #expect(try await index.search(fixture.request("original-search-term")).results.map(\.relativePath) == ["Original.md"])
-        #expect(try await index.search(fixture.request("replacement-search-term")).results.isEmpty)
+        #expect(try await index.testSearch(fixture.request("original-search-term")).noteResults.map(\.relativePath) == ["Original.md"])
+        #expect(try await index.testSearch(fixture.request("replacement-search-term")).noteResults.isEmpty)
     }
 
     @Test("Cancellation rolls back an empty generation")
@@ -126,16 +126,13 @@ struct SearchIndexTests {
         #expect(try await index.generation() == first.generation)
     }
 
-    @Test("Malformed clauses return query diagnostics without failing the index")
-    func malformedQueryDiagnostics() async throws {
+    @Test("Parser diagnostics do not change current index availability")
+    func parserDiagnosticsDoNotChangeAvailability() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([fixture.item(fixture.analyses, "A.md", "searchable text")])
-        #expect(try await index.search(fixture.request("\"missing close")).diagnostics.first?.code == .unclosedPhrase)
-        let removed = try await index.search(fixture.request("role:analyses searchable"))
-        #expect(removed.diagnostics.first?.code == .removedField)
-        #expect(removed.diagnostics.first?.needsEditing == true)
-        #expect(try await index.search(fixture.request("title:")).diagnostics.first?.code == .missingFieldValue)
+        #expect(SearchQueryParser.parse("\"missing close").diagnostics.first?.code == .unclosedPhrase)
+        #expect(SearchQueryParser.parse("title:").diagnostics.first?.code == .missingFieldValue)
         guard case .current = await index.availability() else {
             Issue.record("Query diagnostics changed index availability")
             return
@@ -158,16 +155,16 @@ struct SearchIndexTests {
             """),
             fixture.item(fixture.analyses, "Papers/CJK.md", "---\ntitle: 价值理论\n---\n中文正文保持清晰。"),
         ])
-        let title = try #require(await index.search(fixture.request("title:\"Normative Reasons\"")).results.first)
+        let title = try #require(await index.testSearch(fixture.request("title:\"Normative Reasons\"")).noteResults.first)
         #expect(title.matchedField == .title)
         #expect(title.snippet == "Normative Reasons")
         #expect(!title.snippet.contains("title:"))
-        let author = try #require(await index.search(fixture.request("author:Scanlon")).results.first)
+        let author = try #require(await index.testSearch(fixture.request("author:Scanlon")).noteResults.first)
         #expect(author.snippet == "T. Scanlon")
-        let body = try #require(await index.search(fixture.request("deliberation")).results.first)
+        let body = try #require(await index.testSearch(fixture.request("deliberation")).noteResults.first)
         #expect(body.snippet.contains("guide deliberation"))
         #expect(!body.snippet.contains("**"))
-        let cjk = try #require(await index.search(fixture.request("title:价值理论")).results.first)
+        let cjk = try #require(await index.testSearch(fixture.request("title:价值理论")).noteResults.first)
         #expect(cjk.highlights.allSatisfy { $0.utf16UpperBound <= cjk.snippet.utf16.count })
     }
 
@@ -179,8 +176,8 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "A.md", "target concept appears once"),
             fixture.item(fixture.works, "B.md", "target target target concept"),
         ])
-        let response = try await index.search(fixture.request("target", scope: .currentVault(fixture.analyses.id), limit: 1))
-        #expect(response.results.map(\.relativePath) == ["A.md"])
+        let response = try await index.testSearch(fixture.request("target", scope: .currentVault(fixture.analyses.id), limit: 1))
+        #expect(response.noteResults.map(\.relativePath) == ["A.md"])
     }
 
     @Test("A 512-note fixture ranks exact title, alias, heading, then body")
@@ -197,9 +194,9 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Body.md", "---\ntitle: Practical Reason\n---\nThis develops deliberative autonomy."),
         ]
         _ = try await index.synchronize(documents)
-        let hits = try await index.search(fixture.request("\"deliberative autonomy\"", limit: 10))
-        #expect(hits.results.map(\.relativePath) == ["Title.md", "Alias.md", "Heading.md", "Body.md"])
-        #expect(hits.results.map(\.matchedField) == [.title, .alias, .heading, .body])
+        let hits = try await index.testSearch(fixture.request("\"deliberative autonomy\"", limit: 10))
+        #expect(hits.noteResults.map(\.relativePath) == ["Title.md", "Alias.md", "Heading.md", "Body.md"])
+        #expect(hits.noteResults.map(\.matchedField) == [.title, .alias, .heading, .body])
     }
 
     @Test("Large collisions preserve deterministic field precedence")
@@ -218,13 +215,13 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, String(format: "Background/%04d.md", $0), "A note about practical identity.")
         }
         _ = try await index.synchronize(leading + background)
-        let first = try await index.search(fixture.request("\"practical identity\"", limit: 20))
-        #expect(first.results.prefix(6).map(\.relativePath) == [
+        let first = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
+        #expect(first.noteResults.prefix(6).map(\.relativePath) == [
             "00-title.md", "01-title.md", "10-alias.md", "11-alias.md",
             "21-heading.md", "20-heading.md",
         ])
-        let repeated = try await index.search(fixture.request("\"practical identity\"", limit: 20))
-        #expect(repeated.results.map(\.relativePath) == first.results.map(\.relativePath))
+        let repeated = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
+        #expect(repeated.noteResults.map(\.relativePath) == first.noteResults.map(\.relativePath))
     }
 
     @Test("Exact filename and path rank before body occurrences")
@@ -235,8 +232,8 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Archive/Known Note.md", "---\ntitle: Archival Entry\n---\nNo matching prose."),
             fixture.item(fixture.analyses, "Body.md", "Known Note and Archive/Known Note.md appear here."),
         ])
-        #expect(try await index.search(fixture.request("\"Known Note\"")).results.first?.rankReason == .exactFilename)
-        #expect(try await index.search(fixture.request("\"Archive/Known Note.md\"")).results.first?.rankReason == .exactPath)
+        #expect(try await index.testSearch(fixture.request("\"Known Note\"")).noteResults.first?.rankReason == .exactFilename)
+        #expect(try await index.testSearch(fixture.request("\"Archive/Known Note.md\"")).noteResults.first?.rankReason == .exactPath)
     }
 
     @Test("Incremental inventory synchronization converges with a clean rebuild")
@@ -252,8 +249,8 @@ struct SearchIndexTests {
 
         let clean = try fixture.index(at: fixture.root.appendingPathComponent("clean.sqlite"))
         _ = try await clean.synchronize([edited, renamed])
-        #expect(try await incremental.search(fixture.request("second")).results.map(\.relativePath)
-            == clean.search(fixture.request("second")).results.map(\.relativePath))
+        #expect(try await incremental.testSearch(fixture.request("second")).noteResults.map(\.relativePath)
+            == clean.testSearch(fixture.request("second")).noteResults.map(\.relativePath))
         #expect(try await incremental.generation()?.sourceManifestHash == clean.generation()?.sourceManifestHash)
     }
 
@@ -265,14 +262,13 @@ struct SearchIndexTests {
         let broken = fixture.item(fixture.analyses, document: source, hasBrokenLink: true)
         let repaired = fixture.item(fixture.analyses, document: source)
         let first = try await index.synchronize([broken])
-        #expect(try await index.search(fixture.request("Alpha has:broken-link")).results.map(\.relativePath) == ["A.md"])
-        let brokenOnly = try await index.search(fixture.request("has:broken-link"))
-        #expect(brokenOnly.results.first?.matchedFields == [.brokenLink])
-        #expect(brokenOnly.results.first?.rankReason == .structuredFilter)
+        #expect(try await index.testSearch(fixture.request("Alpha has:broken-link")).noteResults.map(\.relativePath) == ["A.md"])
+        let brokenOnly = try await index.testSearch(fixture.request("has:broken-link"))
+        #expect(brokenOnly.noteResults.first?.matchedFields == [.brokenLink])
+        #expect(brokenOnly.noteResults.first?.rankReason == .structuredFilter)
         let second = try await index.synchronize([repaired])
         #expect(second.generation.sequence > first.generation.sequence)
-        #expect(try await index.search(fixture.request("Alpha has:broken-link")).results.isEmpty)
-        #expect(SearchQueryParser.parse("review:qualified").diagnostics.first?.code == .unknownField)
+        #expect(try await index.testSearch(fixture.request("Alpha has:broken-link")).noteResults.isEmpty)
     }
 
     @Test("An unchanged inventory retains its generation")
@@ -296,10 +292,10 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Recovered.md", "---\ntitle: Recovered\n---\nrecoverable concept"),
         ])
         #expect(result.disposition == .recoveredAndRebuilt)
-        #expect(try await opened.index.search(fixture.request("recoverable")).results.map(\.relativePath) == ["Recovered.md"])
+        #expect(try await opened.index.testSearch(fixture.request("recoverable")).noteResults.map(\.relativePath) == ["Recovered.md"])
     }
 
-    @Test("An incompatible v3 schema is replaced without touching source")
+    @Test("An incompatible prior schema is replaced without touching source")
     func incompatibleContractRecoveryIsVisibleAndComplete() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         var index: TriptychSearchIndex? = try fixture.index()
@@ -310,7 +306,7 @@ struct SearchIndexTests {
         let opened = try TriptychSearchIndex.openRecovering(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([source])
-        #expect(result.generation.schemaVersion == SearchContractV4.schemaVersion)
+        #expect(result.generation.schemaVersion == SearchContract.schemaVersion)
         #expect(source.document.rawContent.contains("exact source remains external"))
     }
 
@@ -322,9 +318,9 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Shared.md", "first-domain-only"),
             fixture.item(fixture.works, "Shared.md", "second-domain-only"),
         ])
-        #expect(try await index.search(fixture.request("first-domain-only", scope: .currentVault(fixture.analyses.id))).results.count == 1)
-        #expect(try await index.search(fixture.request("second-domain-only", scope: .currentVault(fixture.analyses.id))).results.isEmpty)
-        #expect(try await index.search(fixture.request("second-domain-only", scope: .currentVault(fixture.works.id))).results.count == 1)
+        #expect(try await index.testSearch(fixture.request("first-domain-only", scope: .currentVault(fixture.analyses.id))).noteResults.count == 1)
+        #expect(try await index.testSearch(fixture.request("second-domain-only", scope: .currentVault(fixture.analyses.id))).noteResults.isEmpty)
+        #expect(try await index.testSearch(fixture.request("second-domain-only", scope: .currentVault(fixture.works.id))).noteResults.count == 1)
     }
 
     @Test("Triptych search includes every configured vault")
@@ -336,8 +332,8 @@ struct SearchIndexTests {
             fixture.item(fixture.topics, "Topic.md", "Shared private phrase"),
             fixture.item(fixture.works, "Decision.md", "Shared private phrase"),
         ])
-        let hits = try await index.search(fixture.request("private"))
-        #expect(Set(hits.results.map(\.vaultRole)) == [.sourceCorpus, .topicKnowledge, .draftProject])
+        let hits = try await index.testSearch(fixture.request("private"))
+        #expect(Set(hits.noteResults.map(\.vaultRole)) == [.sourceCorpus, .topicKnowledge, .draftProject])
     }
 
     private final class Fixture: @unchecked Sendable {
@@ -349,9 +345,14 @@ struct SearchIndexTests {
         let works = RegisteredVault(name: "Works", role: .draftProject, canonicalPath: "/fixtures/works")
 
         init() throws {
-            root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            root = URL(
+                fileURLWithPath: FileManager.default.currentDirectoryPath,
+                isDirectory: true
+            )
+                .appendingPathComponent(".build/search-v6-retained-tests", isDirectory: true)
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v4.sqlite")
+            databaseURL = root.appendingPathComponent("search-v6.sqlite")
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {

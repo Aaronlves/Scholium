@@ -158,21 +158,21 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public static let defaultProperties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [
         .paperAnalysis: VaultPropertiesConfiguration(
             visibleFields: [
-                "authors", "year", "type", "access", "text_reliability", "locators",
+                "summary", "authors", "year", "type", "access", "text_reliability", "locators",
             ],
             editableFields: [
-                "title", "authors", "year", "type",
+                "title", "summary", "authors", "year", "type",
                 "debate_importance", "debate_importance_scope",
                 "access", "text_reliability", "locators", "tags", "research_unit",
             ]
         ),
         .topicKnowledge: VaultPropertiesConfiguration(
-            visibleFields: ["aliases"],
-            editableFields: ["aliases", "tags", "research_unit"]
+            visibleFields: ["summary", "aliases"],
+            editableFields: ["summary", "aliases", "tags", "research_unit"]
         ),
         .output: VaultPropertiesConfiguration(
-            visibleFields: ["kind", "authors", "venue"],
-            editableFields: ["kind", "authors", "venue", "tags", "research_unit"]
+            visibleFields: ["summary", "kind", "authors", "venue"],
+            editableFields: ["summary", "kind", "authors", "venue", "tags", "research_unit"]
         ),
     ]
 

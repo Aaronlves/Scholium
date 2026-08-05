@@ -120,39 +120,10 @@ struct PermanentDeletionTests {
             try makeDeletionTestLocalExecution(
                 triptychID: fixture.triptychID,
                 runID: parentRunID,
-                action: parentAction
+                action: parentAction,
+                checkpointID: fixture.checkpoint.id
             )
         )
-        let revision = try AgentNoteChangeActionRevision(
-            actionSnapshot: parentAction
-        )
-        let requestByParent = try makeDeletionTestAgentRequest(
-            triptychID: fixture.triptychID,
-            parentRunID: parentRunID,
-            revision: revision,
-            targetNoteID: UUID(),
-            vaultID: fixture.vaultID,
-            relativePath: "Unrelated Work.md",
-            fingerprint: DocumentFingerprint(content: "# Unrelated Work\n")
-        )
-        let requestByTarget = try makeDeletionTestAgentRequest(
-            triptychID: fixture.triptychID,
-            parentRunID: UUID(),
-            revision: revision,
-            targetNoteID: fixture.workIdentity.id,
-            vaultID: fixture.vaultID,
-            relativePath: fixture.workPath,
-            fingerprint: fixture.workFingerprint
-        )
-        _ = try await fixture.agentNoteChangeRequestStore.submitValidated(
-            requestByParent,
-            isCurrent: true
-        )
-        _ = try await fixture.agentNoteChangeRequestStore.submitValidated(
-            requestByTarget,
-            isCurrent: true
-        )
-
         let commit = try await fixture.coordinator().delete(
             noteID: fixture.workIdentity.id,
             vaultID: fixture.vaultID,
@@ -177,16 +148,6 @@ struct PermanentDeletionTests {
         #expect(try await fixture.localExecutionStore.recordIfPresent(
             id: parentRunID
         ) == nil)
-        await #expect(throws: AgentNoteChangeRequestStoreError.self) {
-            _ = try await fixture.agentNoteChangeRequestStore.record(
-                id: requestByParent.id
-            )
-        }
-        await #expect(throws: AgentNoteChangeRequestStoreError.self) {
-            _ = try await fixture.agentNoteChangeRequestStore.record(
-                id: requestByTarget.id
-            )
-        }
         let pending = try await fixture.recoveryStore.pending()
         #expect(pending.isEmpty)
     }
@@ -447,7 +408,6 @@ struct PermanentDeletionTests {
         let recoveryStore: TriptychMutationRecoveryStore
         let portableRecordStore: PortableResearchRecordStore
         let localExecutionStore: LocalResearchExecutionStore
-        let agentNoteChangeRequestStore: AgentNoteChangeRequestStore
         let workSettlement: SettlementRecord
         let critiqueSettlement: SettlementRecord
 
@@ -498,10 +458,6 @@ struct PermanentDeletionTests {
                 triptychID: triptychID
             )
             localExecutionStore = try LocalResearchExecutionStore(
-                applicationSupportURL: support,
-                triptychID: triptychID
-            )
-            agentNoteChangeRequestStore = try AgentNoteChangeRequestStore(
                 applicationSupportURL: support,
                 triptychID: triptychID
             )
@@ -571,7 +527,6 @@ struct PermanentDeletionTests {
                 recoveryStore: recoveryStore,
                 portableRecordStore: portableRecordStore,
                 localExecutionStore: localExecutionStore,
-                agentNoteChangeRequestStore: agentNoteChangeRequestStore,
                 faultPlan: faultPlan
             )
         }
@@ -596,10 +551,6 @@ struct PermanentDeletionTests {
                     triptychID: triptychID
                 ),
                 localExecutionStore: try LocalResearchExecutionStore(
-                    applicationSupportURL: support,
-                    triptychID: triptychID
-                ),
-                agentNoteChangeRequestStore: try AgentNoteChangeRequestStore(
                     applicationSupportURL: support,
                     triptychID: triptychID
                 )
@@ -639,41 +590,43 @@ private func makeDeletionTestActionSnapshot(
         fingerprint: fingerprint,
         title: "Work"
     )
-    let profile = try ResearchActionProfile(
-        definition: definition,
-        buttonName: "Write",
-        order: 100,
-        applicableRoles: [.work],
-        showInActions: true,
-        modules: [],
-        sourceRequirement: .none,
-        capabilities: try ResearchActionCapabilityDeclaration(
-            readableRoles: [.work],
-            candidateWritableRoles: [.work],
-            candidateWriteOperations: [.modifyMarkdown]
+    let profile = try #require(
+        ResearchAcademicProfileCatalog.defaultProfiles.first {
+            $0.actionID == definition.id
+        }
+    )
+    let profileRevision = try profile.contentRevision()
+    let registration = try ResearchSkillRegistration(
+        key: ResearchSkillRegistrationKey(
+            rawValue: UUID(uuidString: "10000000-0000-0000-0000-000000000005")!
         ),
-        feedbackRequirement: .requested
+        actionID: definition.id,
+        displayName: "Write",
+        primaryMarkdown: .machineLocal()
     )
     return try ResearchActionSnapshot(
         definition: definition,
         target: target,
-        method: try ResearchActionMethodSnapshot(
-            packageID: "scholium-working-write",
-            origin: .triptych,
-            version: "working",
-            packageRevision: DocumentFingerprint(content: "package"),
-            loadedResources: [ResearchActionResourceSnapshot(
-                relativePath: "SKILL.md",
-                revision: DocumentFingerprint(content: "method")
-            )]
+        method: try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Write\n\nExact test method.\n",
+            practices: []
         ),
         resolvedProfile: try ResearchActionResolvedProfileSnapshot(
-            origin: .applicationDefault,
             profile: profile,
-            profileRevision: profile.contentRevision(),
-            profileDocumentRevision: nil
+            profileRevision: profileRevision,
+            profileDocumentRevision: DocumentFingerprint(content: "profiles")
         ),
-        parameters: try ResearchActionParameterModel(profile: profile),
+        platformInputs: try ResearchActionPlatformInputs(),
+        academicInputs: try ResearchAcademicFieldValues(
+            values: [:],
+            definitions: profile.academicInputFields
+        ),
+        resultContract: try ResearchResultContract(
+            profile: profile,
+            registrationKey: registration.key,
+            profileRevision: profileRevision
+        ),
         authority: try ResearchAuthorityEnvelope(
             readableNotes: [target],
             writableNotes: [target],
@@ -686,7 +639,8 @@ private func makeDeletionTestActionSnapshot(
 private func makeDeletionTestLocalExecution(
     triptychID: UUID,
     runID: UUID,
-    action: ResearchActionSnapshot
+    action: ResearchActionSnapshot,
+    checkpointID: UUID
 ) throws -> LocalResearchExecutionRecord {
     let target = ResearchFunctionTarget(
         noteID: action.target.noteID,
@@ -700,13 +654,12 @@ private func makeDeletionTestLocalExecution(
         runID: runID,
         request: ResearchFunctionRequest(
             function: .revise,
-            target: target,
-            writeScope: .currentNote,
-            authorizedWriteTargets: [target]
+            target: target
         ),
         actionSnapshot: action,
         recordKind: .functionEnvelope,
         recordID: runID,
+        checkpointID: checkpointID,
         confirmationToken: UUID(),
         preparedAt: Date(timeIntervalSince1970: 10)
     )
@@ -714,33 +667,5 @@ private func makeDeletionTestLocalExecution(
         triptychID: triptychID,
         snapshot: snapshot,
         preparedInstructions: "Local protected instructions."
-    )
-}
-
-private func makeDeletionTestAgentRequest(
-    triptychID: UUID,
-    parentRunID: UUID,
-    revision: AgentNoteChangeActionRevision,
-    targetNoteID: UUID,
-    vaultID: UUID,
-    relativePath: String,
-    fingerprint: DocumentFingerprint
-) throws -> AgentNoteChangeRequest {
-    try AgentNoteChangeRequest(
-        triptychID: triptychID,
-        parentRunID: parentRunID,
-        parentAction: revision,
-        requestedAction: revision,
-        targets: [try AgentNoteChangeTarget(
-            noteID: targetNoteID,
-            note: VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: relativePath
-            ),
-            role: .work,
-            expectedFingerprint: fingerprint
-        )],
-        operations: [.modifyMarkdown],
-        agentReason: "Request one independently authorized Work change."
     )
 }

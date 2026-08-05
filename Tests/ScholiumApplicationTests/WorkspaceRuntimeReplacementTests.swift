@@ -132,6 +132,10 @@ struct WorkspaceRuntimeReplacementTests {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(restored).write(to: manifestURL, options: .atomic)
+        try rewritePortableOwnerIdentities(
+            controlURL: manifestURL.deletingLastPathComponent(),
+            stableID: stableID
+        )
 
         let assignment = try await runtime.reidentifyWorkspace(
             id: fixture.assignment.id,
@@ -157,6 +161,52 @@ struct WorkspaceRuntimeReplacementTests {
         await runtime.shutdown()
     }
 
+    @Test("A partial portable identity change fails before registry or peer replacement")
+    func partialReidentificationFailsClosed() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        let runtime = liveRuntime(for: fixture)
+        let previous = try await runtime.openWorkspace(id: fixture.assignment.id)
+        var events = (await previous.events.events()).makeAsyncIterator()
+        _ = try #require(await events.next())
+
+        let manifestURL = fixture.rootURL
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent("manifest.json")
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let existing = try decoder.decode(
+            TriptychManifest.self,
+            from: Data(contentsOf: manifestURL)
+        )
+        let stableID = UUID()
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(TriptychManifest(
+            id: stableID,
+            vaultIDs: existing.vaultIDs,
+            createdAt: existing.createdAt,
+            updatedAt: Date()
+        )).write(to: manifestURL, options: .atomic)
+
+        do {
+            _ = try await runtime.reidentifyWorkspace(
+                id: fixture.assignment.id,
+                as: stableID
+            )
+            Issue.record("A partial portable identity change was accepted.")
+        } catch {
+            // The exact owner mismatch is the expected fail-closed outcome.
+        }
+        let assignments = try await runtime.availableWorkspaces()
+        #expect(assignments.contains { $0.id == fixture.assignment.id })
+        #expect(!assignments.contains { $0.id == stableID })
+        #expect(try await runtime.openWorkspace(id: fixture.assignment.id) === previous)
+        #expect(await previous.events.subscriberCount == 1)
+        await runtime.shutdown()
+    }
+
     private func liveRuntime(for fixture: ApplicationFixture) -> WorkspaceRuntime {
         WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
@@ -177,5 +227,38 @@ struct WorkspaceRuntimeReplacementTests {
         #expect(reload.runtimeIdentity != previous.runtimeIdentity)
         #expect(reload.snapshot.triptych.id == replacement.id)
         #expect(reload.snapshot.generatedAt == (try await replacement.snapshot()).generatedAt)
+    }
+
+    private func rewritePortableOwnerIdentities(
+        controlURL: URL,
+        stableID: UUID
+    ) throws {
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+        let collaborationURL = controlURL.appendingPathComponent(
+            "collaboration-policy-v1.json"
+        )
+        let collaboration = try decoder.decode(
+            ResearchCollaborationPolicyDocument.self,
+            from: Data(contentsOf: collaborationURL)
+        )
+        try encoder.encode(ResearchCollaborationPolicyDocument(
+            triptychID: stableID,
+            policy: collaboration.policy
+        )).write(to: collaborationURL, options: .atomic)
+
+        let citationURL = controlURL.appendingPathComponent(
+            "citation-method-v1.json"
+        )
+        let citation = try decoder.decode(
+            ResearchCitationMethodDocument.self,
+            from: Data(contentsOf: citationURL)
+        )
+        try encoder.encode(ResearchCitationMethodDocument(
+            triptychID: stableID,
+            activeCitationStyle: citation.activeCitationStyle
+        )).write(to: citationURL, options: .atomic)
     }
 }

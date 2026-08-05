@@ -258,49 +258,63 @@ public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sen
 /// Exact Method and Profile revisions retained without the Method prose,
 /// assembled prompt, Action parameters, authority grant, or machine locator.
 public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
-    public let packageID: String
-    public let origin: ResearchSkillOrigin
-    public let version: String
-    public let packageRevision: DocumentFingerprint
-    public let loadedResources: [ResearchActionResourceSnapshot]
+    public let registrationKey: ResearchSkillRegistrationKey
+    public let displayName: String
+    public let practiceNames: [String]
     public let profileRevision: DocumentFingerprint
 
+    public init(
+        registrationKey: ResearchSkillRegistrationKey,
+        displayName: String,
+        practiceNames: [String] = [],
+        profileRevision: DocumentFingerprint
+    ) throws {
+        guard !displayName.isEmpty,
+              displayName.utf8.count <= 256,
+              !PortableResearchRecordValidation.containsAbsolutePath(displayName),
+              Set(practiceNames).count == practiceNames.count,
+              practiceNames.allSatisfy({
+                  !$0.isEmpty
+                      && $0.utf8.count <= 256
+                      && !PortableResearchRecordValidation.containsAbsolutePath($0)
+              }),
+              PortableResearchRecordValidation.isValidFingerprint(profileRevision)
+        else { throw PortableResearchRecordError.invalidMethodReference }
+        self.registrationKey = registrationKey
+        self.displayName = displayName
+        self.practiceNames = practiceNames
+        self.profileRevision = profileRevision
+    }
+
     public init(snapshot: ResearchActionSnapshot) throws {
-        guard snapshot.method.packageID.utf8.count <= 256,
-              snapshot.method.version.utf8.count <= 128,
-              !PortableResearchRecordValidation.containsAbsolutePath(
-                snapshot.method.packageID
-              ),
-              !PortableResearchRecordValidation.containsAbsolutePath(
-                snapshot.method.version
-              ),
-              PortableResearchRecordValidation.isValidFingerprint(
-                snapshot.method.packageRevision
-              ),
+        let name = snapshot.method.registration.displayName
+        let practices = snapshot.method.practices.map(\.title)
+        guard !name.isEmpty,
+              name.utf8.count <= 256,
+              !PortableResearchRecordValidation.containsAbsolutePath(name),
+              Set(practices).count == practices.count,
+              practices.allSatisfy({
+                  !$0.isEmpty
+                      && $0.utf8.count <= 256
+                      && !PortableResearchRecordValidation.containsAbsolutePath($0)
+              }),
               PortableResearchRecordValidation.isValidFingerprint(
                 snapshot.resolvedProfile.profileRevision
-              ),
-              snapshot.method.loadedResources.allSatisfy({
-                PortableResearchRecordValidation.isValidFingerprint($0.revision)
-                    && PortableResearchRecordValidation.isValidResourcePath(
-                        $0.relativePath
-                    )
-              }) else {
+              ) else {
             throw PortableResearchRecordError.invalidMethodReference
         }
-        packageID = snapshot.method.packageID
-        origin = snapshot.method.origin
-        version = snapshot.method.version
-        packageRevision = snapshot.method.packageRevision
-        loadedResources = snapshot.method.loadedResources
-        profileRevision = snapshot.resolvedProfile.profileRevision
+        try self.init(
+            registrationKey: snapshot.method.registration.key,
+            displayName: name,
+            practiceNames: practices,
+            profileRevision: snapshot.resolvedProfile.profileRevision
+        )
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case packageID = "package_id"
-        case origin, version
-        case packageRevision = "package_revision"
-        case loadedResources = "loaded_resources"
+        case registrationKey = "registration_key"
+        case displayName = "display_name"
+        case practiceNames = "practice_names"
         case profileRevision = "profile_revision"
     }
 
@@ -310,58 +324,36 @@ public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
             allowed: CodingKeys.allCases.map(\.stringValue)
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let packageID = try container.decode(String.self, forKey: .packageID)
-        let version = try container.decode(String.self, forKey: .version)
-        let loadedResources = try container.decode(
-            [PortableResearchStrictResourceSnapshot].self,
-            forKey: .loadedResources
-        ).map(\.value)
-        guard !packageID.isEmpty,
-              packageID.utf8.count <= 256,
-              !PortableResearchRecordValidation.containsAbsolutePath(packageID),
-              version.utf8.count <= 128,
-              !PortableResearchRecordValidation.containsAbsolutePath(version),
-              loadedResources.allSatisfy({ resource in
-                  PortableResearchRecordValidation.isValidResourcePath(
-                      resource.relativePath
-                  )
+        let registrationKey = try container.decode(
+            ResearchSkillRegistrationKey.self,
+            forKey: .registrationKey
+        )
+        let displayName = try container.decode(String.self, forKey: .displayName)
+        let practiceNames = try container.decode([String].self, forKey: .practiceNames)
+        guard !displayName.isEmpty,
+              displayName.utf8.count <= 256,
+              !PortableResearchRecordValidation.containsAbsolutePath(displayName),
+              Set(practiceNames).count == practiceNames.count,
+              practiceNames.allSatisfy({
+                  !$0.isEmpty
+                      && $0.utf8.count <= 256
+                      && !PortableResearchRecordValidation.containsAbsolutePath($0)
               }) else {
             throw PortableResearchRecordError.invalidMethodReference
         }
-        let origin = try container.decode(ResearchSkillOrigin.self, forKey: .origin)
-        let packageRevision = try container.decode(
-            PortableResearchStrictFingerprint.self,
-            forKey: .packageRevision
-        ).value
         let profileRevision = try container.decode(
             PortableResearchStrictFingerprint.self,
             forKey: .profileRevision
         ).value
-        let validated: ResearchActionMethodSnapshot
-        do {
-            validated = try ResearchActionMethodSnapshot(
-                packageID: packageID,
-                origin: origin,
-                version: version,
-                packageRevision: packageRevision,
-                loadedResources: loadedResources
-            )
-        } catch {
+        guard PortableResearchRecordValidation.isValidFingerprint(profileRevision) else {
             throw PortableResearchRecordError.invalidMethodReference
         }
-        guard PortableResearchRecordValidation.isValidFingerprint(packageRevision),
-              PortableResearchRecordValidation.isValidFingerprint(profileRevision),
-              loadedResources.allSatisfy({
-                PortableResearchRecordValidation.isValidFingerprint($0.revision)
-              }) else {
-            throw PortableResearchRecordError.invalidMethodReference
-        }
-        self.packageID = validated.packageID
-        self.origin = validated.origin
-        self.version = validated.version
-        self.packageRevision = validated.packageRevision
-        self.loadedResources = validated.loadedResources
-        self.profileRevision = profileRevision
+        try self.init(
+            registrationKey: registrationKey,
+            displayName: displayName,
+            practiceNames: practiceNames,
+            profileRevision: profileRevision
+        )
     }
 }
 
@@ -427,6 +419,7 @@ public struct PortableResearchMaterialUse: Codable, Hashable, Identifiable, Send
 
 public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, Sendable {
     public let noteID: UUID
+    public let actor: ResearchContextActorClass
     public let startingRevision: DocumentFingerprint
     public let endingRevision: DocumentFingerprint
 
@@ -434,21 +427,25 @@ public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, 
 
     public init(
         noteID: UUID,
+        actor: ResearchContextActorClass,
         startingRevision: DocumentFingerprint,
         endingRevision: DocumentFingerprint
     ) throws {
-        guard startingRevision != endingRevision,
+        guard actor != .unknown,
+              startingRevision != endingRevision,
               PortableResearchRecordValidation.isValidFingerprint(startingRevision),
               PortableResearchRecordValidation.isValidFingerprint(endingRevision) else {
             throw PortableResearchRecordError.invalidConfirmedChange
         }
         self.noteID = noteID
+        self.actor = actor
         self.startingRevision = startingRevision
         self.endingRevision = endingRevision
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case noteID = "note_id"
+        case actor
         case startingRevision = "starting_revision"
         case endingRevision = "ending_revision"
     }
@@ -461,6 +458,10 @@ public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, 
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
             noteID: container.decode(UUID.self, forKey: .noteID),
+            actor: container.decode(
+                ResearchContextActorClass.self,
+                forKey: .actor
+            ),
             startingRevision: container.decode(
                 PortableResearchStrictFingerprint.self,
                 forKey: .startingRevision
@@ -548,7 +549,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
 
     public let schemaVersion: Int
     public let id: UUID
@@ -561,6 +562,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let primaryNoteID: UUID?
     public let participatingNotes: [PortableResearchNoteRevision]
     public let statements: [PortableResearchStatement]
+    public let resultDisposition: ResearchAgentResultDisposition
+    public let academicResults: [PortableResearchAcademicFieldResult]
+    public let contextUseReport: ContextUseReport?
     public let actuallyUsedMaterials: [PortableResearchMaterialUse]
     public let fidelityCompletion: PortableResearchFidelityCompletion
     public let confirmedChanges: [PortableResearchConfirmedChange]
@@ -569,6 +573,8 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let startedAt: Date
     public let finishedAt: Date
     public let isPinned: Bool
+    public let researcherEvaluation: PortableResearcherEvaluation?
+    public let methodFeedbackComment: PortableResearchMethodFeedbackComment?
 
     public init(
         id: UUID = UUID(),
@@ -581,6 +587,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         primaryNoteID: UUID? = nil,
         participatingNotes: [PortableResearchNoteRevision],
         statements: [PortableResearchStatement],
+        resultDisposition: ResearchAgentResultDisposition = .completed,
+        academicResults: [PortableResearchAcademicFieldResult] = [],
+        contextUseReport: ContextUseReport? = nil,
         actuallyUsedMaterials: [PortableResearchMaterialUse] = [],
         fidelityCompletion: PortableResearchFidelityCompletion,
         confirmedChanges: [PortableResearchConfirmedChange] = [],
@@ -588,7 +597,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         literatureRecommendations: [ResearchLiteratureRecommendation] = [],
         startedAt: Date,
         finishedAt: Date,
-        isPinned: Bool = false
+        isPinned: Bool = false,
+        researcherEvaluation: PortableResearcherEvaluation? = nil,
+        methodFeedbackComment: PortableResearchMethodFeedbackComment? = nil
     ) throws {
         let participatingByID = Dictionary(
             participatingNotes.map { ($0.noteID, $0) },
@@ -597,18 +608,21 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         let statementIDs = statements.map(\.id)
         let discrepancyIDs = discrepancies.map(\.id)
         let recommendationIDs = literatureRecommendations.map(\.id)
+        let academicFieldIDs = academicResults.map(\.id)
         guard startedAt.timeIntervalSinceReferenceDate.isFinite,
               finishedAt.timeIntervalSinceReferenceDate.isFinite,
               finishedAt >= startedAt,
               !participatingNotes.isEmpty,
               participatingNotes.count <= 256,
               statements.count <= 4_096,
+              academicResults.count <= 24,
               actuallyUsedMaterials.count <= 256,
               confirmedChanges.count <= 256,
               discrepancies.count <= 256,
               literatureRecommendations.count <= 256,
               participatingByID.count == participatingNotes.count,
               Set(statementIDs).count == statementIDs.count,
+              Set(academicFieldIDs).count == academicFieldIDs.count,
               zip(statements, statements.dropFirst()).allSatisfy({ pair in
                   pair.0.createdAt <= pair.1.createdAt
               }),
@@ -642,6 +656,14 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
               discrepancies.allSatisfy({ discrepancy in
                   participatingByID[discrepancy.noteID] != nil
               }),
+              contextUseReport.map({ report in
+                  report.runID == id && report.triptychID == triptychID
+                      && report.entries.allSatisfy({ entry in
+                          !PortableResearchRecordValidation.containsAbsolutePath(
+                              entry.testimony
+                          )
+                      })
+              }) ?? true,
               (action == nil) == (method == nil) else {
             throw PortableResearchRecordError.invalidRecord
         }
@@ -681,6 +703,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             $0.noteID.uuidString < $1.noteID.uuidString
         }
         self.statements = statements
+        self.resultDisposition = resultDisposition
+        self.academicResults = academicResults
+        self.contextUseReport = contextUseReport
         self.actuallyUsedMaterials = actuallyUsedMaterials.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
         }
@@ -696,6 +721,8 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.isPinned = isPinned
+        self.researcherEvaluation = researcherEvaluation
+        self.methodFeedbackComment = methodFeedbackComment
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -708,6 +735,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case primaryNoteID = "primary_note_id"
         case participatingNotes = "participating_notes"
         case statements
+        case resultDisposition = "result_disposition"
+        case academicResults = "academic_results"
+        case contextUseReport = "context_use_report"
         case actuallyUsedMaterials = "actually_used_materials"
         case fidelityCompletion = "fidelity_completion"
         case confirmedChanges = "confirmed_changes"
@@ -716,6 +746,8 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case isPinned = "is_pinned"
+        case researcherEvaluation = "researcher_evaluation"
+        case methodFeedbackComment = "method_feedback_comment"
     }
 
     public init(from decoder: Decoder) throws {
@@ -758,6 +790,18 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                 [PortableResearchStatement].self,
                 forKey: .statements
             ),
+            resultDisposition: container.decode(
+                ResearchAgentResultDisposition.self,
+                forKey: .resultDisposition
+            ),
+            academicResults: container.decode(
+                [PortableResearchAcademicFieldResult].self,
+                forKey: .academicResults
+            ),
+            contextUseReport: container.decodeIfPresent(
+                ContextUseReport.self,
+                forKey: .contextUseReport
+            ),
             actuallyUsedMaterials: container.decode(
                 [PortableResearchMaterialUse].self,
                 forKey: .actuallyUsedMaterials
@@ -780,7 +824,15 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             ),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decode(Date.self, forKey: .finishedAt),
-            isPinned: container.decode(Bool.self, forKey: .isPinned)
+            isPinned: container.decode(Bool.self, forKey: .isPinned),
+            researcherEvaluation: container.decodeIfPresent(
+                PortableResearcherEvaluation.self,
+                forKey: .researcherEvaluation
+            ),
+            methodFeedbackComment: container.decodeIfPresent(
+                PortableResearchMethodFeedbackComment.self,
+                forKey: .methodFeedbackComment
+            )
         )
     }
 }
@@ -910,35 +962,6 @@ private struct PortableResearchStrictPassage: Decodable {
         guard PortableResearchRecordValidation.isValidPassage(value) else {
             throw PortableResearchRecordError.invalidStatement
         }
-    }
-}
-
-private struct PortableResearchStrictResourceSnapshot: Decodable {
-    let value: ResearchActionResourceSnapshot
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case relativePath = "relative_path"
-        case revision
-    }
-
-    init(from decoder: Decoder) throws {
-        try PortableResearchRecordValidation.rejectUnknownFields(
-            in: decoder,
-            allowed: CodingKeys.allCases.map(\.stringValue)
-        )
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let relativePath = try container.decode(String.self, forKey: .relativePath)
-        let revision = try container.decode(
-            PortableResearchStrictFingerprint.self,
-            forKey: .revision
-        ).value
-        guard PortableResearchRecordValidation.isValidResourcePath(relativePath) else {
-            throw PortableResearchRecordError.invalidMethodReference
-        }
-        value = ResearchActionResourceSnapshot(
-            relativePath: relativePath,
-            revision: revision
-        )
     }
 }
 

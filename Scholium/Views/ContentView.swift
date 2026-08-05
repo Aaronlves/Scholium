@@ -23,7 +23,8 @@ struct ContentView: View {
     @ObservedObject private var documentController: DocumentController
     @ObservedObject private var documentTabController: DocumentTabController
     @ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController
-    @ObservedObject private var agentNoteChangeWindowController: AgentNoteChangeWindowController
+    @ObservedObject private var researchAgentPermissionWindowController:
+        ResearchAgentPermissionWindowController
     @ObservedObject private var cssSnippetStore: CSSSnippetStore
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
     let windowCoordinator: WorkspaceWindowCoordinator
@@ -53,8 +54,8 @@ struct ContentView: View {
         _workspaceProjectionController = ObservedObject(
             wrappedValue: appState.workspaceProjectionController
         )
-        _agentNoteChangeWindowController = ObservedObject(
-            wrappedValue: appState.agentNoteChangeWindowController
+        _researchAgentPermissionWindowController = ObservedObject(
+            wrappedValue: appState.researchAgentPermissionWindowController
         )
         _cssSnippetStore = ObservedObject(wrappedValue: appState.cssSnippetStore)
         _windowWorkspaceController = ObservedObject(
@@ -191,18 +192,19 @@ struct ContentView: View {
             value: appState.showSearchSurface
         )
         .sheet(item: presentedSheet, onDismiss: {
-            let agentRequest = appState.agentNoteChangeWindowController
-            if agentRequest.record != nil {
-                windowCoordinator.restoreAgentNoteChangeFocus()
-                agentRequest.finishDismissal()
+            let permissionController = appState
+                .researchAgentPermissionWindowController
+            if permissionController.claim != nil {
+                windowCoordinator.restoreResearchAgentPermissionFocus()
+                permissionController.finishDismissal()
             } else if researchActionController.isPresented {
                 let actionID = researchActionController.activeActionID
                 appState.presentationRouter.dismissSheet()
                 researchActionController.dismiss()
                 restoreResearchActionFocus(ifOwnedBy: actionID)
-                agentRequest.presentationBecameAvailable()
+                permissionController.presentationBecameAvailable()
             } else {
-                agentRequest.presentationBecameAvailable()
+                permissionController.presentationBecameAvailable()
             }
         }) { route in
             sheetContent(for: route)
@@ -710,22 +712,22 @@ struct ContentView: View {
                     }
                 }
             }
-        case .agentNoteChange(let requestID):
-            let controller = appState.agentNoteChangeWindowController
-            if let record = controller.record,
-               record.id == requestID {
-                AgentNoteChangeRequestView(
-                    record: record,
-                    targets: controller.displayTargets(for: record),
-                    identity: controller.identity,
-                    identityLoadFailed: controller.identityLoadFailed,
+        case .researchAgentPermission(let requestID):
+            let controller = appState.researchAgentPermissionWindowController
+            if let claim = controller.claim,
+               claim.id == requestID {
+                ResearchAgentPermissionView(
+                    claim: claim,
                     hasLocallyExpired: controller.hasLocallyExpired,
                     isResolving: controller.isResolving,
-                    resolve: { state, allowedNoteIDs in
-                        controller.resolve(
+                    resolveWriteSet: { state, allowedHandles in
+                        controller.resolveWriteSet(
                             state: state,
-                            allowedNoteIDs: allowedNoteIDs
+                            allowedHandles: allowedHandles
                         )
+                    },
+                    resolveContinuation: { allow in
+                        controller.resolveContinuation(allow: allow)
                     },
                     dismiss: {
                         controller.requestDismissal(id: requestID)

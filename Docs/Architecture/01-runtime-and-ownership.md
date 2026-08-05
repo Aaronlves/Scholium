@@ -17,7 +17,7 @@ values. This in-process module and ownership boundary is not XPC or a service.
 structured errors, and deterministic exact-source parsing and projection.
 `ScholiumCore` is an internal implementation target for repositories,
 registries, SQLite indexes, watchers, coordinated mutations, durable stores,
-Skill resources, and Zotero transport. The headless `ScholiumApplication`
+exact method/Practice files, and Zotero transport. The headless `ScholiumApplication`
 target composes Core into delivery-neutral workspace lifetimes and use cases.
 The macOS app and CLI depend only on Contracts and Application; Core is not a
 library product and cannot be imported by either delivery target.
@@ -33,6 +33,8 @@ ApplicationBootstrapController (one app-owned storage gate)
 └── Ready (explicit validated Application Support URL)
     └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
+        ├── ResearchConnectionCoordinator (one process generation)
+        ├── LocalAgentBridge (App Group AF_UNIX transport only)
         ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowShellState
@@ -51,7 +53,6 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   │   └── DocumentSessionStore
             │   ├── ResearchController
             │   │   └── ResearchActionController
-            │   ├── AgentNoteChangeWindowController
             │   ├── WindowPresentationRouter
             │   └── typed WindowIntent routing
             └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
@@ -63,7 +64,8 @@ ScholiumApplicationDelegate
 Research Records WindowGroup (one UUID value per Triptych)
 └── ScholiumResearchRecordsRoot
     ├── direct WindowWorkspaceCapabilities for that Triptych
-    └── ResearchRecordBrowserModel (rebuildable Records/Recommendations projections)
+    └── ResearchRecordBrowserModel (Application Record query plus local
+        presentation and rebuildable Recommendations projection)
 ```
 
 `ApplicationBootstrapController` is the only production composition route to
@@ -76,8 +78,8 @@ live reuses stable Triptych/vault runtimes, watchers, and derived refresh while
 any app window needs them; snapshot performs one-shot loading without watchers
 and shuts down after each CLI invocation.
 
-Each `WorkspaceHandle` owns one `TriptychSearchIndex` at
-`Triptychs/<triptych-id>/indexes/search-v4.sqlite`; pooled vault runtimes own
+Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
+`Triptychs/<triptych-id>/indexes/search-v6.sqlite`; pooled vault runtimes own
 repositories, watchers, and one shared `VaultSourceCatalog`, but no Search
 index. The catalog retains exact `NoteDocument`, descriptor-observed file
 metadata, `SourceVersion`, cached `MarkdownSemanticDocument`, and the
@@ -124,7 +126,7 @@ and portable-identity setup, before complete derived publication. The owning
 refresh task before releasing the source-mutation lease, coalesces later
 commits, and publishes either the refreshed snapshot or typed stale derived
 state. Matching watcher work waits behind that owned task instead of starting a
-competing refresh. A graph, Search, catalog, or snapshot failure therefore
+competing refresh. A Graph, Note Search, catalog, or snapshot failure therefore
 cannot become an Autosave Failed result or ask the editor to replay a committed
 mutation. Same-generation research and lifecycle workflows instead call
 `DocumentOperations.save`, which explicitly waits for derived publication.
@@ -147,8 +149,14 @@ exact rollback failure is observed rather than discarded. A proven retained
 source becomes the committed outcome with an identity warning; unreadable
 source presence becomes an explicit uncertain error that forbids blind
 recreation.
-Direct Related items are publishable only when the Graph and Search manifest
-hashes agree. Privacy-safe measurements record enumerate/read/parse/source-
+Direct relation queries are publishable only when the Graph and Note Search
+manifest hashes agree. A relation clause is part of one structured AND query;
+Graph absence, staleness, or mismatch fails that complete query closed rather
+than returning its lexical clauses as a broadened substitute. An ordinary
+lexical query remains independently available from its last complete compatible
+Note generation. There is no parallel direct-connection Search presentation;
+explicit relation clauses are the only Search consumer of Graph neighborhoods.
+Privacy-safe measurements record enumerate/read/parse/source-
 projection counts and durations, identity and research-state projection,
 graph construction, dynamic Search projection and synchronization, snapshot
 assembly, source-byte size, publication, and total duration without source
@@ -158,24 +166,36 @@ same generation's reconciled portable-identity state for Critique association;
 only `.resolved` identities participate, so ambiguous, pending, unresolved, or
 failed recovery remains closed without one storage lookup per Work.
 
-`ScholiumContracts` owns contract-v4 parsing, the visible semantic
-`SearchDocumentProjection`, exact source mappings, CJK query projection,
-requests, responses, diagnostics, availability, and generation IDs. Core owns
-the disposable SQLite schema, staging/validation/recovery, read transactions,
-cancellation, deterministic ranking, and in-memory **This Note** matcher.
-Application resolves presentation scope to execution scope and is the only
-search capability exposed to GUI and CLI. Saved Searches persist only query
-and presentation scope. `WindowSearchController` owns execution cancellation,
-freshness validation, and serialized Saved Search persistence;
-`DiscoveryController` owns the visible selection and Related projection. Search
+`ScholiumContracts` owns contract-v5 parsing and typed clauses, the closed
+Note/Record provider and capability tables, provider-mismatch diagnostics,
+completion and Explain Query descriptions, discriminated results, visible
+semantic `SearchDocumentProjection`, exact source mappings, CJK query
+projection, requests, responses, availability, and generation/freshness
+identities. Literal top-level YAML query projection remains distinct from the
+canonical `PropertyContract`: it can report key/value source ranges without
+granting an unknown key semantic or judgment authority. Core owns the Note
+provider's disposable SQLite schema, staging/validation/recovery, read
+transactions, cancellation, deterministic ranking, and in-memory **This Note**
+matcher. The portable Record store supplies exact decoded schema-5 objects and
+their source-byte fingerprints; Application owns the rebuildable Record query
+projection and provider routing, authorizes visible scope before query, and is
+the only Search capability exposed to GUI and CLI. No adapter, window model, or
+Agent route owns another parser, resolver, Record corpus, or ranking rule.
+
+Saved Searches persist only raw query, visible presentation scope, and Search
+contract version. `WindowSearchController` owns execution cancellation,
+provider-aware freshness validation, and serialized Saved Search persistence;
+`DiscoveryController` owns the visible completion/result selection. Search
 views and their composition consumer observe `DiscoveryController` directly;
 `WindowSearchController` never republishes Discovery changes as its own. None
-of that window state enters the persisted search definition.
+of that window state, parsed AST, resolved anchor, result bytes, or generation
+enters the persisted definition.
 
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 `DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
 `WindowResearchCapabilities` value composed from the narrow record,
-checkpoint, Skill, Action, and source-access ports plus immutable
+checkpoint, Skill/Practice/Profile, collaboration, Action/Run, Research
+Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
 `WorkspaceStore` coalesces duplicate runtime
 installation, retains one event subscription before publishing activation,
@@ -197,14 +217,13 @@ mirrors. Each window receives one atomic capability generation. CSS/App
 Support, Obsidian reads, and Zotero HTTP stay behind Application actors; the
 store owns no Core authority.
 
-The Beta agent-application handoff is one app-wide macOS presentation adapter
-owned by `WorkspaceStore`. `AgentApplicationHandoffController` coordinates the
-copy-first UI state, explicit `NSOpenPanel` selection, launch result, and
-recovery actions. `MacAgentApplicationSystem` alone resolves the app-scoped
-security bookmark and invokes `NSWorkspace`; the remembered reference is a
-small mode-0600 Application Support preference, never Triptych or vault state.
-No Application or Core use case receives the selected application or launch
-result, and no Function record treats launch as execution state.
+Direct local Agent connection is one App-wide Application boundary owned by
+`WorkspaceStore` through `ResearchConnectionCoordinator` and the App Group
+Unix bridge. The coordinator owns only current-process Pairing Codes/Sessions;
+each Run remains owned by its exact `WorkspaceHandle`. The bridge is a transport
+adapter and neither launches an Agent nor owns Run, context, authorization,
+research source, or recovery. Manual provider-neutral copy collaboration
+remains presentation-only and is never recorded as a Session.
 
 `WindowModel` is the per-window composition and focused-command root.
 `WindowShellState` is the sole owner of Library and Inspector presentation,
@@ -224,13 +243,16 @@ used by Triptych-wide operations, and tears both registrations down only after
 AppKit commits to closing the exact native window. Close preparation only
 flushes content and finalizes recoverable presentation; if another window
 cancels application termination, every still-open window retains its flush
-ownership for the next attempt. `AgentNoteChangeWindowController` owns
-the exact window's Agent request, display identity, expiry, decision tasks, and
-sheet route. `WindowSearchController` owns Search/temporary Find execution and
-cancellation, exact result-freshness validation, Search-generation reruns, and
-serialized Saved Search loading and persistence. It coordinates the
-`DiscoveryController` Search projection while borrowing only a checked current
-document snapshot and navigation/presentation effects from the window root;
+ownership for the next attempt. `ResearchActionController` owns the exact
+window's transient write-set subset sheet and unsaved evaluation draft, both
+keyed to one Run and discarded or retained according to their explicit close
+contracts; it owns no durable authorization or evaluation.
+`WindowSearchController` owns Search/temporary Find execution and
+cancellation, provider-aware exact result-freshness validation, generation or
+Record-manifest reruns, and serialized Saved Search loading and persistence. It
+coordinates the `DiscoveryController` completion/result projection while
+borrowing only a checked current document snapshot and navigation/presentation
+effects from the window root;
 consumers observe the two owners independently rather than using the execution
 controller as an invalidation relay.
 `WindowModel` composes these owners, publishes only its own remaining mutable
@@ -265,8 +287,8 @@ never Record data or authorization. `ContentView`, Inspector, Actions, and
 Research Records leaves observe only the owner whose state they render.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable catalog, per-vault snapshots, selected Location's
-Notes/tags/authors/years/revisions and property-filter options, graph, Search
-generation, derived-refresh status,
+Notes/tags/authors/years/revisions and property-filter options, graph, Note
+Search generation, derived-refresh status,
 and catalog refresh lifecycle. It accepts only the active runtime and increasing
 event generations, stages a complete `State`, and publishes that state once.
 The selected Location's revision map reuses each immutable document's existing
@@ -497,9 +519,8 @@ confirmation. Connect projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source
 anchor as a named secondary action without a trailing glyph. Actions resolves
-the public role-valid Action matrix, presents the
-canonical defaults under quiet Research and Review headings, keeps visible
-custom Profiles in one Researcher Skills group, and keeps Settle under
+the public role-valid closed Platform Action matrix, presents it under quiet
+Research and Review headings, and keeps Settle under
 Judgment. Every launcher remains the same direct full-row operation and invokes
 its exact Inspector-supplied window route; focused routing belongs to menu
 commands rather than row activation. Pointer activation does not write keyboard

@@ -417,7 +417,7 @@ private struct GuidedSetupFinishStep: View {
             Divider()
 
             Label {
-                Text("Agent changes will ask for permission every time. You can change this later for each Triptych or Skill in Research Guidance Settings.")
+                Text("Agent write-set extensions ask you every time by default. You can change the Triptych collaboration policy later in Research Guidance Settings.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

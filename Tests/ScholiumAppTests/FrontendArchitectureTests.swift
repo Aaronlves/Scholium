@@ -1369,7 +1369,7 @@ struct FrontendArchitectureTests {
         #expect(actionsSource.contains("BuiltInActionVisualGroup"))
         #expect(actionsSource.contains("title: \"RESEARCH\""))
         #expect(actionsSource.contains("title: \"REVIEW\""))
-        #expect(actionsSource.contains("title: \"RESEARCHER SKILLS\""))
+        #expect(!actionsSource.contains("title: \"RESEARCHER SKILLS\""))
         #expect(actionsSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
         #expect(!actionsSource.contains("@FocusedValue(\\.scholiumResearchActionActions)"))
         #expect(actionsSource.contains("if shouldRestoreKeyboardFocus"))
@@ -1645,14 +1645,19 @@ struct FrontendArchitectureTests {
         controller.receiveSearchResponse(SearchResponse(
             requestID: UUID(),
             scope: .triptych,
+            explanation: SearchExplanation(
+                provider: .note,
+                providerWasExplicit: false,
+                clauses: []
+            ),
             freshnessToken: .triptych(generation),
-            availability: .current(generation),
+            availability: .note(.current(generation)),
             results: [],
             hasMore: false
         ), for: request)
 
         #expect(controller.search.responseRequestID == nil)
-        #expect(controller.search.hits.isEmpty)
+        #expect(controller.search.results.isEmpty)
         #expect(controller.search.isRunning)
         #expect(controller.isCurrentSearch(request))
     }
@@ -1666,7 +1671,7 @@ struct FrontendArchitectureTests {
             sourceManifestHash: "manifest"
         )
         let freshness = SearchFreshnessToken.triptych(generation)
-        let hit = SearchHit(
+        let hit = NoteSearchResult(
             vaultID: UUID(),
             vaultName: "Analyses",
             vaultRole: .sourceCorpus,
@@ -1690,20 +1695,24 @@ struct FrontendArchitectureTests {
         controller.receiveSearchResponse(SearchResponse(
             requestID: first.id,
             scope: .triptych,
+            explanation: SearchExplanation(
+                provider: .note,
+                providerWasExplicit: false,
+                clauses: []
+            ),
             freshnessToken: freshness,
-            availability: .current(generation),
-            results: [hit],
+            availability: .note(.current(generation)),
+            results: [.note(hit)],
             hasMore: false
         ), for: first)
-        #expect(controller.search.hits.count == 1)
+        #expect(controller.search.results.count == 1)
         #expect(controller.search.selectedResultID == nil)
 
         controller.updateSearchQuery("second")
 
         #expect(controller.search.criteria.query == "second")
         #expect(controller.search.selectedResultID == nil)
-        #expect(controller.search.hits.isEmpty)
-        #expect(controller.search.relatedItems.isEmpty)
+        #expect(controller.search.results.isEmpty)
         #expect(controller.search.isRunning)
         #expect(!controller.isCurrentSearch(first))
 
@@ -1711,15 +1720,19 @@ struct FrontendArchitectureTests {
         controller.receiveSearchResponse(SearchResponse(
             requestID: second.id,
             scope: .thisNote,
+            explanation: SearchExplanation(
+                provider: .note,
+                providerWasExplicit: false,
+                clauses: []
+            ),
             freshnessToken: freshness,
-            availability: .current(generation),
-            results: [hit],
+            availability: .note(.current(generation)),
+            results: [.note(hit)],
             hasMore: false
         ), for: second)
         controller.selectSearchScope(.thisNote)
         #expect(controller.search.criteria.scope == .thisNote)
-        #expect(controller.search.hits.isEmpty)
-        #expect(controller.search.relatedItems.isEmpty)
+        #expect(controller.search.results.isEmpty)
         #expect(controller.search.isRunning)
         #expect(!controller.isCurrentSearch(second))
 
@@ -1727,9 +1740,14 @@ struct FrontendArchitectureTests {
         controller.receiveSearchResponse(SearchResponse(
             requestID: scoped.id,
             scope: .thisNote,
+            explanation: SearchExplanation(
+                provider: .note,
+                providerWasExplicit: false,
+                clauses: []
+            ),
             freshnessToken: freshness,
-            availability: .current(generation),
-            results: [hit],
+            availability: .note(.current(generation)),
+            results: [.note(hit)],
             hasMore: false
         ), for: scoped)
         controller.replaceSearchCriteria(SearchWorkspaceState(
@@ -1738,7 +1756,7 @@ struct FrontendArchitectureTests {
         ))
         #expect(controller.search.criteria.query == "saved")
         #expect(controller.search.criteria.scope == .currentVault)
-        #expect(controller.search.hits.isEmpty)
+        #expect(controller.search.results.isEmpty)
         #expect(controller.search.isRunning)
         #expect(!controller.isCurrentSearch(scoped))
     }
@@ -1770,6 +1788,113 @@ struct FrontendArchitectureTests {
         #expect(implementation.contains("discoveryController.presentSearch(invocation)"))
         #expect(!implementation.contains("flushRegisteredEditorIfNeeded"))
         #expect(!implementation.contains("save"))
+    }
+
+    @Test("Search completion and results share one keyboard-selection path")
+    func searchKeyboardSelectionIsExclusive() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/SearchWorkspaceView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("if !moveCompletion(.down) { moveSelection(.down) }"))
+        #expect(source.contains("if !moveCompletion(.up) { moveSelection(.up) }"))
+        let completionStart = try #require(
+            source.range(of: "private func moveCompletion(")
+        )
+        let completionEnd = try #require(source.range(
+            of: "private func acceptCompletion(",
+            range: completionStart.upperBound ..< source.endIndex
+        ))
+        let completionMove = source[
+            completionStart.lowerBound ..< completionEnd.lowerBound
+        ]
+        #expect(completionMove.contains("controller.selectSearchResult(nil)"))
+        #expect(source.contains("completion.replacementText"))
+        #expect(!source.contains("SearchToken("))
+        #expect(!source.contains("SearchChip("))
+    }
+
+    @Test("Explain Query presents every typed v5 clause without flattening provider identity")
+    func typedSearchExplanationPresentation() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/SearchWorkspaceView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(source.contains("switch clause.kind"))
+        #expect(source.contains("case .lexical("))
+        #expect(source.contains("case .structured("))
+        #expect(source.contains("case .property("))
+        #expect(source.contains("case .relation("))
+        #expect(source.contains("case .record("))
+        #expect(source.contains("Explain Query:"))
+
+        let parsed = SearchQueryParser.parse(
+            "kind:record participant:researcher date:30d"
+        )
+        let explanation = try #require(parsed.ast?.explanation)
+        #expect(explanation.provider == .record)
+        #expect(explanation.providerWasExplicit)
+        #expect(explanation.operator == .and)
+        #expect(explanation.clauses.count == 2)
+        guard case .record(.participant, "researcher", .term, false)
+                = explanation.clauses[0].kind,
+              case .record(.date, "30d", .term, false)
+                = explanation.clauses[1].kind else {
+            Issue.record("Expected typed participant and date explanation clauses")
+            return
+        }
+    }
+
+    @Test("Search has no parallel Related provider or selection path")
+    func searchHasOneResultPath() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let relativePaths = [
+            "Scholium/Views/SearchWorkspaceView.swift",
+            "Scholium/Features/Discovery/DiscoveryController.swift",
+            "Scholium/App/Window/WindowDomainTypes.swift",
+            "Scholium/App/Window/WindowSearchController.swift",
+            "ScholiumContracts/UseCases.swift",
+            "ScholiumApplication/Operations.swift",
+        ]
+        let sources = try relativePaths.map { path in
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }.joined(separator: "\n")
+
+        for removed in [
+            "Related" + "Search",
+            "related" + "Items",
+            "related" + "Availability",
+            "related" + "Results(",
+            "case " + "related(",
+            "case ." + "related",
+            "open(." + "related",
+        ] {
+            #expect(
+                !sources.contains(removed),
+                Comment(rawValue: "Search still contains removed path: \(removed)")
+            )
+        }
+        #expect(sources.contains("case result(SearchResult)"))
+        #expect(sources.contains("ForEach(controller.search.results)"))
     }
 
     @Test("Research Inspector has one trailing-context owner")

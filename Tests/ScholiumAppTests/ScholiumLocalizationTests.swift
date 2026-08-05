@@ -149,13 +149,9 @@ struct ScholiumLocalizationTests {
         )
     }
 
-    @Test("Application and Skill names remain verbatim")
-    func verbatimProductAndSkillNames() {
+    @Test("The application name remains verbatim")
+    func verbatimProductName() {
         #expect(ScholiumL10n.string("Scholium", locale: simplifiedChinese) == "Scholium")
-        #expect(
-            ScholiumL10n.string("Built-in Source Analyzer", locale: simplifiedChinese)
-                == "内置 Source Analyzer"
-        )
     }
 
     @Test("Application-owned Action modules and handoff controls localize")
@@ -164,8 +160,8 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Materials", locale: simplifiedChinese) == "材料")
         #expect(ScholiumL10n.string("Read-only", locale: simplifiedChinese) == "只读")
         #expect(
-            ScholiumL10n.string("REQUESTED AUTHORITY", locale: simplifiedChinese)
-                == "请求的权限"
+            ScholiumL10n.string("REQUESTED NOTES", locale: simplifiedChinese)
+                == "请求的笔记"
         )
         #expect(
             ScholiumL10n.string("Loading…", locale: simplifiedChinese)
@@ -173,25 +169,27 @@ struct ScholiumLocalizationTests {
         )
         #expect(
             ScholiumL10n.string(
-                "Current Action details are unavailable. Scholium will not allow this request.",
+                "Allow Selected Notes",
                 locale: simplifiedChinese
-            ) == "当前操作详情不可用。Scholium 不会允许此请求。"
+            ) == "允许所选笔记"
+        )
+        #expect(
+            ScholiumL10n.string("Cancel Request", locale: simplifiedChinese)
+                == "取消请求"
+        )
+        #expect(
+            ScholiumL10n.string("Pairing Code", locale: simplifiedChinese)
+                == "配对码"
         )
         #expect(
             ScholiumL10n.string(
-                "Allow These Notes Once",
+                "Generate New Pairing Code",
                 locale: simplifiedChinese
-            ) == "仅本次允许这些笔记"
+            ) == "生成新配对码"
         )
         #expect(
-            ScholiumL10n.string("Cancel the Run", locale: simplifiedChinese)
-                == "取消本次运行"
-        )
-        #expect(
-            ScholiumL10n.string(
-                "Expected revision %@; current revision matches",
-                locale: simplifiedChinese
-            ) == "预期修订为 %@；当前修订一致"
+            ScholiumL10n.string("Copy Only", locale: simplifiedChinese)
+                == "仅复制"
         )
         #expect(
             ScholiumL10n.string(

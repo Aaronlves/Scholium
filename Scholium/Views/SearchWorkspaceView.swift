@@ -30,6 +30,8 @@ struct SpotlightSearchPanelView: View {
     @State private var savedSearchName = ""
     @State private var renamingSearch: SavedSearch?
     @State private var renamedSearchName = ""
+    @State private var completionSelection: Int?
+    @State private var suppressedCompletionQuery: String?
 
     init(
         controller: DiscoveryController,
@@ -45,6 +47,10 @@ struct SpotlightSearchPanelView: View {
         VStack(spacing: 0) {
             searchBar
 
+            if !visibleCompletions.isEmpty {
+                completionList
+            }
+
             if let diagnostic = controller.search.diagnostics.first {
                 searchDiagnostic(diagnostic)
             }
@@ -54,6 +60,16 @@ struct SpotlightSearchPanelView: View {
                 .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
 
             searchScopeBar
+
+            if let explanationText {
+                Text(explanationText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+                    .padding(.bottom, 6)
+                    .accessibilityLabel("Explain Query: \(explanationText)")
+            }
 
             if isExpanded {
                 searchAvailabilityBanner
@@ -93,11 +109,10 @@ struct SpotlightSearchPanelView: View {
         .onChange(of: controller.search.criteria.query) { _, value in
             guard value != queryDraft, !searchFieldHasMarkedText else { return }
             queryDraft = value
+            completionSelection = nil
+            suppressedCompletionQuery = nil
         }
-        .onChange(of: controller.search.hits) { _, _ in
-            normalizeSelection()
-        }
-        .onChange(of: controller.search.relatedItems) { _, _ in
+        .onChange(of: controller.search.results) { _, _ in
             normalizeSelection()
         }
         .background {
@@ -106,13 +121,13 @@ struct SpotlightSearchPanelView: View {
                 PerformanceReadyBoundary(
                     generation: [
                         controller.search.criteria.query,
-                        String(controller.search.hits.count),
+                        String(controller.search.results.count),
                         String(controller.search.hasMore),
                     ].joined(separator: ":")
                 ) {
                     PerformanceProbe.shared.markSearchResultsReady(
                         query: controller.search.criteria.query,
-                        resultCount: controller.search.hits.count
+                        resultCount: controller.search.results.count
                     )
                 }
                 .frame(width: 0, height: 0)
@@ -123,7 +138,15 @@ struct SpotlightSearchPanelView: View {
             searchTask?.cancel()
             compositionTask?.cancel()
         }
-        .onExitCommand(perform: context.dismiss)
+        .onExitCommand {
+            if !visibleCompletions.isEmpty {
+                suppressedCompletionQuery = queryDraft
+                completionSelection = nil
+                searchFocused = true
+            } else {
+                context.dismiss()
+            }
+        }
         .alert("Save Search", isPresented: $showSaveSearch) {
             TextField("Search name", text: $savedSearchName)
             Button("Cancel", role: .cancel) {}
@@ -166,15 +189,19 @@ struct SpotlightSearchPanelView: View {
                 .accessibilityIdentifier("scholium.searchField")
                 .accessibilityLabel("Search")
                 .onKeyPress(.downArrow) {
-                    moveSelection(.down)
+                    if !moveCompletion(.down) { moveSelection(.down) }
                     return .handled
                 }
                 .onKeyPress(.upArrow) {
-                    moveSelection(.up)
+                    if !moveCompletion(.up) { moveSelection(.up) }
                     return .handled
+                }
+                .onKeyPress(.tab) {
+                    acceptCompletion(preferFirst: true) ? .handled : .ignored
                 }
                 .onSubmit {
                     compositionTask?.cancel()
+                    if acceptCompletion(preferFirst: false) { return }
                     let changed = applyQueryDraft()
                     if changed || controller.search.isRunning
                         || controller.search.selectedResultID == nil {
@@ -241,6 +268,77 @@ struct SpotlightSearchPanelView: View {
         .padding(.vertical, 6)
     }
 
+    private var visibleCompletions: [SearchCompletion] {
+        guard searchFocused,
+              suppressedCompletionQuery != queryDraft,
+              !searchFieldHasMarkedText else { return [] }
+        return SearchCapabilities.current.completions(for: queryDraft)
+    }
+
+    private var completionList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(visibleCompletions.enumerated()), id: \.element.id) {
+                index, completion in
+                Button {
+                    apply(completion)
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(completion.displayText)
+                            .font(.body.monospaced())
+                        Text(completion.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+                    .frame(minHeight: 32)
+                    .background(
+                        completionSelection == index
+                            ? ScholiumColorRole.accent.color.opacity(0.12)
+                            : Color.clear
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(completion.displayText), \(completion.detail)")
+                .accessibilityAddTraits(
+                    completionSelection == index ? .isSelected : []
+                )
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Search query completions")
+    }
+
+    private func moveCompletion(_ direction: MoveCommandDirection) -> Bool {
+        let completions = visibleCompletions
+        guard !completions.isEmpty else { return false }
+        let current = completionSelection
+            ?? (direction == .down ? -1 : completions.count)
+        completionSelection = direction == .down
+            ? min(current + 1, completions.count - 1)
+            : max(current - 1, 0)
+        controller.selectSearchResult(nil)
+        return true
+    }
+
+    private func acceptCompletion(preferFirst: Bool) -> Bool {
+        let completions = visibleCompletions
+        guard !completions.isEmpty,
+              let index = completionSelection ?? (preferFirst ? 0 : nil),
+              completions.indices.contains(index) else { return false }
+        apply(completions[index])
+        return true
+    }
+
+    private func apply(_ completion: SearchCompletion) {
+        queryDraft = completion.replacementText
+        completionSelection = nil
+        suppressedCompletionQuery = completion.replacementText
+        _ = applyQueryDraft()
+        searchFocused = true
+    }
+
     private func searchDiagnostic(_ diagnostic: SearchQueryDiagnostic) -> some View {
         let message = localizedDiagnostic(diagnostic)
         return Label(message, systemImage: "exclamationmark.circle")
@@ -265,6 +363,17 @@ struct SpotlightSearchPanelView: View {
             EmptyView()
         } else {
             switch controller.search.availability {
+            case .record(let availability):
+                recordAvailabilityBanner(availability)
+            case .note(let availability):
+                noteAvailabilityBanner(availability)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func noteAvailabilityBanner(_ availability: SearchAvailability) -> some View {
+        switch availability {
             case .unavailable:
                 EmptyView()
             case .building(let progress):
@@ -299,7 +408,39 @@ struct SpotlightSearchPanelView: View {
                     systemImage: "exclamationmark.triangle",
                     offersRetry: true
                 )
-            }
+        }
+    }
+
+    @ViewBuilder
+    private func recordAvailabilityBanner(
+        _ availability: RecordSearchAvailability
+    ) -> some View {
+        switch availability {
+        case .unavailable:
+            EmptyView()
+        case .building(let progress):
+            operationalBanner(
+                title: String(localized: "Preparing Research Records"),
+                message: String(localized: "Prepared \(progress.completed) of \(progress.total) records."),
+                systemImage: "arrow.triangle.2.circlepath",
+                offersRetry: false
+            )
+        case .current:
+            EmptyView()
+        case .refreshing:
+            operationalBanner(
+                title: String(localized: "Refreshing Research Records"),
+                message: String(localized: "The Record query projection is refreshing."),
+                systemImage: "arrow.triangle.2.circlepath",
+                offersRetry: false
+            )
+        case .stale(_, let reason), .failed(_, let reason):
+            operationalBanner(
+                title: String(localized: "Research Record Search Unavailable"),
+                message: reason,
+                systemImage: "exclamationmark.triangle",
+                offersRetry: true
+            )
         }
     }
 
@@ -374,18 +515,9 @@ struct SpotlightSearchPanelView: View {
         } else if suppressesNoMatchContent {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if controller.search.relatedErrorMessage != nil {
-            results
-        } else if showsRelatedAvailabilityState {
-            results
-        } else if controller.search.hits.isEmpty && controller.search.relatedItems.isEmpty {
-            if controller.search.isLoadingRelated {
-                ProgressView("Loading Related…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ContentUnavailableView.search(text: controller.search.criteria.query)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        } else if controller.search.results.isEmpty {
+            ContentUnavailableView.search(text: controller.search.criteria.query)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             results
         }
@@ -398,18 +530,14 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var suppressesNoMatchContent: Bool {
-        guard controller.search.hits.isEmpty else { return false }
+        guard controller.search.results.isEmpty else { return false }
         if controller.search.criteria.scope == .thisNote { return false }
         return switch controller.search.availability {
-        case .unavailable, .building, .failed(lastGood: nil, reason: _): true
-        case .current, .refreshing, .stale, .failed: false
-        }
-    }
-
-    private var showsRelatedAvailabilityState: Bool {
-        switch controller.search.relatedAvailability {
-        case .refreshing, .stale: true
-        case .notApplicable, .current: false
+        case .note(.unavailable), .note(.building), .note(.failed(lastGood: nil, reason: _)),
+             .record(.unavailable), .record(.building), .record(.failed(lastGood: nil, reason: _)):
+            true
+        case .note, .record:
+            false
         }
     }
 
@@ -480,43 +608,16 @@ struct SpotlightSearchPanelView: View {
     private var results: some View {
         ScrollViewReader { proxy in
             List {
-                if !controller.search.hits.isEmpty {
+                if !controller.search.results.isEmpty {
                     Section {
-                        ForEach(controller.search.hits, id: \.resultID) { hit in
-                            lexicalResultButton(hit)
+                        ForEach(controller.search.results) { result in
+                            searchResultButton(result)
                         }
                     } header: {
                         searchSectionHeader("Search Results")
                     }
                 }
 
-                if !controller.search.relatedItems.isEmpty {
-                    Section {
-                        ForEach(controller.search.relatedItems) { item in
-                            relatedResultButton(item)
-                        }
-                    } header: {
-                        searchSectionHeader(
-                            "Related",
-                            detail: "Direct Topic connections. Related items affect neither search ranking nor evidential status."
-                        )
-                    }
-                }
-
-                if controller.search.isLoadingRelated {
-                    Section("Related") {
-                        ProgressView("Loading Related…")
-                    }
-                } else if let relatedError = controller.search.relatedErrorMessage {
-                    Section("Related") {
-                        Label(relatedError, systemImage: "exclamationmark.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(String(localized: "Related items unavailable: \(relatedError)"))
-                    }
-                } else {
-                    relatedAvailabilityContent
-                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -529,17 +630,22 @@ struct SpotlightSearchPanelView: View {
         }
     }
 
-    private func lexicalResultButton(_ hit: SearchHit) -> some View {
-        let resultID = SearchResultIdentity.lexical(hit)
-        let matchContext = hit.context ?? localizedMatchedField(hit.matchedField)
-        let accessibilityLabel = "\(hit.title), \(matchContext), \(hit.vaultName), "
-            + String(localized: "Line \(hit.sourceLine)")
+    private func searchResultButton(_ result: SearchResult) -> some View {
+        let resultID = SearchResultIdentity.result(result)
+        let accessibilityLabel: String = switch result {
+        case .note(let note):
+            "\(note.title), \(note.context ?? localizedMatchedField(note.matchedField)), \(note.vaultName), "
+                + String(localized: "Line \(note.sourceLine)")
+                + (note.searchStructuredReasonDescription.map { ", \($0)" } ?? "")
+        case .record(let record):
+            "Research Record, \(record.context), \(record.matchedReason)"
+        }
         return Button {
             controller.selectSearchResult(resultID)
-            open(.lexical(hit))
+            open(.result(result))
         } label: {
             WorkspaceSearchResultRow(
-                hit: hit,
+                result: result,
                 scope: controller.search.criteria.scope
             )
         }
@@ -552,57 +658,8 @@ struct SpotlightSearchPanelView: View {
             controller.search.selectedResultID == resultID ? .isSelected : []
         )
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Opens the result at the matching source location")
-        .accessibilityIdentifier("scholium.searchResult." + hit.relativePath)
-    }
-
-    private func relatedResultButton(_ item: RelatedSearchItem) -> some View {
-        let resultID = SearchResultIdentity.related(item)
-        let accessibilityLabel = "\(item.note.title), \(localizedRelatedExplanation(item)), "
-            + item.note.reference.vaultName
-        return Button {
-            controller.selectSearchResult(resultID)
-            open(.related(item))
-        } label: {
-            RelatedSearchResultRow(item: item)
-        }
-        .buttonStyle(.plain)
-        .id(resultID)
-        .listRowInsets(searchResultInsets)
-        .listRowBackground(resultRowBackground(resultID))
-        .listRowSeparatorTint(resultSeparatorColor)
-        .accessibilityAddTraits(
-            controller.search.selectedResultID == resultID ? .isSelected : []
-        )
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Opens this directly connected note")
-        .accessibilityIdentifier(
-            "scholium.relatedSearchResult." + item.note.reference.relativePath
-        )
-    }
-
-    @ViewBuilder
-    private var relatedAvailabilityContent: some View {
-        switch controller.search.relatedAvailability {
-        case .refreshing:
-            Section("Related") {
-                Label("Related connections are refreshing.", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        case .stale(let reason):
-            Section("Related") {
-                Label(
-                    String(localized: "Related connections are stale. Details: \(reason)"),
-                    systemImage: "clock.badge.exclamationmark"
-                )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(String(localized: "Related connections are stale: \(reason)"))
-            }
-        case .notApplicable, .current:
-            EmptyView()
-        }
+        .accessibilityHint("Opens the selected Search result")
+        .accessibilityIdentifier("scholium.searchResult." + result.id)
     }
 
     private var searchResultInsets: EdgeInsets {
@@ -656,13 +713,61 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var searchResultSummary: String {
-        let searchCount = controller.search.hits.count
+        let searchCount = controller.search.results.count
         if controller.search.hasMore {
             return String(localized: "\(searchCount)+ Results")
         }
         return searchCount == 1
             ? String(localized: "1 Result")
             : String(localized: "\(searchCount) Results")
+    }
+
+    private var explanationText: String? {
+        let query = controller.search.criteria.query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return nil }
+        let parsed = SearchQueryParser.parse(query)
+        guard parsed.diagnostics.isEmpty, let ast = parsed.ast else { return nil }
+        let scope = localizedScopeTitle(controller.search.criteria.scope)
+        let provider = ast.provider == .note ? "Notes" : "Research Records"
+        let clauses = ast.explanation.clauses.map(explanationClause)
+        if clauses.isEmpty { return "Search \(provider) in \(scope)." }
+        return "Search \(provider) in \(scope) where "
+            + clauses.joined(separator: " and ") + "."
+    }
+
+    private func explanationClause(_ clause: SearchExplanationClause) -> String {
+        switch clause.kind {
+        case .lexical(let field, let value, let kind, let excluded):
+            let location = field.map { "\($0.rawValue) " } ?? "text "
+            let operation = kind == .prefix ? "begins with" : "contains"
+            return (excluded ? "not " : "") + location + operation + " ‘\(value)’"
+        case .structured(let field, let value, let excluded):
+            return (excluded ? "not " : "") + "\(field.rawValue) is \(value)"
+        case .property(let key, let value):
+            return value.map { "Property \(key) equals ‘\($0)’" }
+                ?? "Property \(key) is present"
+        case .relation(let direction, let identity, let relation, let symmetric):
+            if symmetric {
+                return "has a direct undirected \(relation.rawValue) connection with ‘\(identity)’"
+            }
+            switch (direction, relation) {
+            case (.fromNote, .supports):
+                return "is directly supported by ‘\(identity)’"
+            case (.fromNote, .opposes):
+                return "is directly opposed by ‘\(identity)’"
+            case (.toNote, .supports):
+                return "directly supports ‘\(identity)’"
+            case (.toNote, .opposes):
+                return "directly opposes ‘\(identity)’"
+            case (_, .neutral), (_, .incompatible):
+                preconditionFailure("Symmetric relations are handled above.")
+            }
+        case .record(let field, let value, let kind, let excluded):
+            let location = field.map { "\($0.rawValue) " } ?? "record text "
+            let operation = kind == .prefix ? "begins with" : "matches"
+            return (excluded ? "not " : "") + location + operation + " ‘\(value)’"
+        }
     }
 
     private func scheduleSearch() {
@@ -732,16 +837,10 @@ struct SpotlightSearchPanelView: View {
         guard let selected = controller.search.selectedResultID else {
             return
         }
-        if let hit = controller.search.hits.first(where: {
-            SearchResultIdentity.lexical($0) == selected
+        if let result = controller.search.results.first(where: {
+            SearchResultIdentity.result($0) == selected
         }) {
-            open(.lexical(hit))
-            return
-        }
-        if let item = controller.search.relatedItems.first(where: {
-            SearchResultIdentity.related($0) == selected
-        }) {
-            open(.related(item))
+            open(.result(result))
         }
     }
 
@@ -750,8 +849,7 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var allResultIDs: [String] {
-        controller.search.hits.map(SearchResultIdentity.lexical)
-            + controller.search.relatedItems.map(SearchResultIdentity.related)
+        controller.search.results.map(SearchResultIdentity.result)
     }
 
     private func localizedScopeTitle(_ scope: SearchPresentationScope) -> String {
@@ -776,20 +874,30 @@ struct SpotlightSearchPanelView: View {
             String(localized: "CJK clauses do not use *. Continuous character matching is automatic.")
         case .unknownField:
             String(localized: "This Search field is not supported.")
-        case .removedField:
-            String(localized: "This field was removed in Search v4. Choose the scope in the visible Search control.")
+        case .unsupportedField:
+            String(localized: "This known Search field is not available in the current contract.")
+        case .providerMismatch:
+            String(localized: "This field does not apply to the selected Search provider.")
+        case .unsupportedScopeSelector:
+            String(localized: "Choose Search scope with the visible scope control.")
+        case .duplicateClause:
+            String(localized: "This Search clause may appear only once.")
+        case .missingCompanion:
+            String(localized: "This Search clause requires its companion clause.")
+        case .ambiguousIdentity:
+            diagnostic.message
+        case .notApplicable:
+            diagnostic.message
         case .missingFieldValue:
             String(localized: "This Search field requires a value.")
         case .unknownStructuredValue:
             String(localized: "This structured value is not a canonical Scholium value.")
         case .unsupportedSyntax:
             String(localized: "This syntax is outside Scholium’s finite Search grammar.")
-        case .invalidScope:
-            String(localized: "Choose This Note, This Vault, or Triptych as the Search scope.")
         case .onlyExcludedFreeText:
             String(localized: "Add a positive term or a structured callout or broken-link condition.")
         case .needsEditing:
-            String(localized: "Edit this saved query before running it with Search v4.")
+            diagnostic.message
         }
     }
 
@@ -798,6 +906,7 @@ struct SpotlightSearchPanelView: View {
         case .title: String(localized: "title")
         case .alias: String(localized: "alias")
         case .heading: String(localized: "heading")
+        case .summary: String(localized: "summary")
         case .author: String(localized: "author")
         case .year: String(localized: "year")
         case .tag: String(localized: "tag")
@@ -809,38 +918,60 @@ struct SpotlightSearchPanelView: View {
         }
     }
 
-    private func localizedRelatedExplanation(_ item: RelatedSearchItem) -> String {
-        switch item.relationship {
-        case .conceptLinksToItem:
-            String(localized: "Linked from \(item.concept.title)")
-        case .itemLinksToConcept:
-            String(localized: "Links to \(item.concept.title)")
-        case .conceptSupportsItem:
-            String(localized: "Supported by \(item.concept.title)")
-        case .itemSupportsConcept:
-            String(localized: "Supports \(item.concept.title)")
-        case .conceptOpposesItem:
-            String(localized: "Opposed by \(item.concept.title)")
-        case .itemOpposesConcept:
-            String(localized: "Opposes \(item.concept.title)")
-        case .incompatible:
-            String(localized: "Incompatible with \(item.concept.title)")
+}
+
+private extension NoteSearchResult {
+    var searchStructuredReasonDescription: String? {
+        for reason in matchReasons {
+            switch reason {
+            case .lexical:
+                continue
+            case .property(let property):
+                if let value = property.normalizedValue {
+                    return "property:\(property.key)=\(value)"
+                }
+                return property.isEmpty
+                    ? "property:\(property.key) (present-empty)"
+                    : "property:\(property.key) (\(property.valueKind.rawValue))"
+            case .relationship(let relationship):
+                let source = relationship.occurrences.first.map {
+                    " @ \($0.sourceNote.relativePath):\($0.locator.line)"
+                } ?? ""
+                return "\(relationship.direction.rawValue):\(relationship.anchorIdentity) "
+                    + "relation:\(relationship.relation.rawValue)" + source
+            }
         }
+        return nil
     }
 }
 
 private struct WorkspaceSearchResultRow: View {
-    let hit: SearchHit
+    let result: SearchResult
+    let scope: SearchPresentationScope
+
+    @ViewBuilder
+    var body: some View {
+        switch result {
+        case .note(let note):
+            NoteSearchResultRow(note: note, scope: scope)
+        case .record(let record):
+            RecordSearchResultRow(record: record)
+        }
+    }
+}
+
+private struct NoteSearchResultRow: View {
+    let note: NoteSearchResult
     let scope: SearchPresentationScope
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(hit.title)
+                Text(note.title)
                     .font(ScholiumInterfaceTypography.rowTitle)
                     .lineLimit(1)
                 Spacer()
-                Text(hit.vaultName)
+                Text(note.vaultName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -852,12 +983,17 @@ private struct WorkspaceSearchResultRow: View {
                 .multilineTextAlignment(.leading)
 
             HStack(spacing: 8) {
-                Text(hit.vaultRole.displayName)
+                Text(note.vaultRole.displayName)
                 Text(parentPath)
                 if scope == .thisNote {
-                    Text(String(localized: "Line \(hit.sourceRange?.line ?? hit.sourceLine), Column \(hit.sourceRange?.column ?? 1)"))
+                    Text(String(localized: "Line \(note.sourceRange?.line ?? note.sourceLine), Column \(note.sourceRange?.column ?? 1)"))
                 }
-                Text(rankDescription)
+                if let reason = note.searchStructuredReasonDescription {
+                    Text(reason)
+                        .lineLimit(1)
+                } else {
+                    Text(rankDescription)
+                }
                 Text("Retrieval lead")
             }
             .font(ScholiumInterfaceTypography.metadata)
@@ -869,14 +1005,14 @@ private struct WorkspaceSearchResultRow: View {
     }
 
     private var highlightedSnippet: AttributedString {
-        var result = AttributedString(hit.snippet)
-        let utf16Count = hit.snippet.utf16.count
-        for highlight in hit.highlights
+        var result = AttributedString(note.snippet)
+        let utf16Count = note.snippet.utf16.count
+        for highlight in note.highlights
         where highlight.utf16LowerBound >= 0
             && highlight.utf16UpperBound >= highlight.utf16LowerBound
             && highlight.utf16UpperBound <= utf16Count {
-            let lower = String.Index(utf16Offset: highlight.utf16LowerBound, in: hit.snippet)
-            let upper = String.Index(utf16Offset: highlight.utf16UpperBound, in: hit.snippet)
+            let lower = String.Index(utf16Offset: highlight.utf16LowerBound, in: note.snippet)
+            let upper = String.Index(utf16Offset: highlight.utf16UpperBound, in: note.snippet)
             guard let lower = AttributedString.Index(lower, within: result),
                   let upper = AttributedString.Index(upper, within: result) else { continue }
             result[lower..<upper].backgroundColor = Color(nsColor: .findHighlightColor)
@@ -885,12 +1021,12 @@ private struct WorkspaceSearchResultRow: View {
     }
 
     private var parentPath: String {
-        let parent = (hit.relativePath as NSString).deletingLastPathComponent
+        let parent = (note.relativePath as NSString).deletingLastPathComponent
         return parent.isEmpty ? String(localized: "Root") : parent
     }
 
     private var rankDescription: String {
-        switch hit.rankReason {
+        switch note.rankReason {
         case .exactTitle: String(localized: "Exact title")
         case .exactAlias: String(localized: "Exact alias")
         case .exactFilename: String(localized: "Exact filename")
@@ -901,10 +1037,11 @@ private struct WorkspaceSearchResultRow: View {
     }
 
     private var localizedMatchedField: String {
-        switch hit.matchedField {
+        switch note.matchedField {
         case .title: String(localized: "title")
         case .alias: String(localized: "alias")
         case .heading: String(localized: "heading")
+        case .summary: String(localized: "summary")
         case .author: String(localized: "author")
         case .year: String(localized: "year")
         case .tag: String(localized: "tag")
@@ -917,31 +1054,32 @@ private struct WorkspaceSearchResultRow: View {
     }
 }
 
-private struct RelatedSearchResultRow: View {
-    let item: RelatedSearchItem
+private struct RecordSearchResultRow: View {
+    let record: RecordSearchResult
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(item.note.title)
+                Text(record.context)
                     .font(ScholiumInterfaceTypography.rowTitle)
                     .lineLimit(1)
                 Spacer()
-                Text(item.note.reference.vaultName)
+                Text("Research Record")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
-
-            Text(localizedExplanation)
+            Text(record.snippet)
                 .font(.body)
-                .lineLimit(1)
+                .lineLimit(2)
                 .multilineTextAlignment(.leading)
-
             HStack(spacing: 8) {
-                Text(item.note.reference.vaultRole.displayName)
-                Text(item.note.reference.relativePath)
-                Text("Graph relation")
+                if let actionID = record.actionID { Text(actionID) }
+                if let methodName = record.methodName { Text(methodName) }
+                Text(record.matchedReason)
+                if let author = record.statementAuthor {
+                    Text(author == .researcher ? "Researcher" : "Agent")
+                }
+                Text("Retrieval lead")
             }
             .font(ScholiumInterfaceTypography.metadata)
             .scholiumForeground(.secondaryText)
@@ -949,24 +1087,5 @@ private struct RelatedSearchResultRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
-    }
-
-    private var localizedExplanation: String {
-        switch item.relationship {
-        case .conceptLinksToItem:
-            String(localized: "Linked from \(item.concept.title)")
-        case .itemLinksToConcept:
-            String(localized: "Links to \(item.concept.title)")
-        case .conceptSupportsItem:
-            String(localized: "Supported by \(item.concept.title)")
-        case .itemSupportsConcept:
-            String(localized: "Supports \(item.concept.title)")
-        case .conceptOpposesItem:
-            String(localized: "Opposed by \(item.concept.title)")
-        case .itemOpposesConcept:
-            String(localized: "Opposes \(item.concept.title)")
-        case .incompatible:
-            String(localized: "Incompatible with \(item.concept.title)")
-        }
     }
 }

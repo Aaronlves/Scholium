@@ -40,6 +40,19 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
 - Provide complete keyboard and visible-focus paths. Restore focus after
   sheets, alerts, Search, popovers, Action sheets, conflict comparison, and
   Research Records close.
+- Search exposes provider, visible scope, query text, result count, matched
+  field/relation, source freshness, and destination without relying on color.
+  Provider-specific completion and results share one listbox position: only one
+  owns selection at a time; Up/Down Arrow moves it, Return accepts or opens,
+  Escape closes the current layer, and pointer acceptance preserves the same
+  semantics. Accepting completion edits plain query text and restores the
+  insertion point. **Explain Query** is keyboard and VoiceOver reachable and
+  reads the same provider, clauses, relation direction, normalization,
+  ordering, and limitations as the typed contract. Invalid, ambiguous,
+  provider-mismatch, not-applicable, Graph-unavailable, stale, and empty states
+  are separately named and keep a usable edit or retry target. Note results
+  identify their source context; Record results identify Record and speaker,
+  and opening either restores focus at the exact available destination.
 - Direct root creation has the Library Add menu's pointer and accessibility
   routes for both **New Note** and **New Folder**; unoccupied-space context
   actions are redundant. **New Note** additionally has **File → New Note** and
@@ -106,6 +119,24 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
 - A running Action exposes its Action name and **Running** state together while
   retaining a distinct, explicitly named Cancel control in the same linear
   Actions order. Its progress animation is not the sole state channel.
+- Pairing and re-pairing expose one linear keyboard order from Run identity and
+  local-connection explanation through Copy Handoff and status. One-time-code
+  expiry, invalid attempt, Session expiry/revocation, app-restart invalidation,
+  missing local Skill-folder path, and bridge unavailable are named in text
+  with one executable recovery route. Secrets, hashes, and opaque registration
+  keys are never presented as fields the researcher must read or enter.
+- Researcher Evaluation follows the returned result in the Action sheet and
+  uses the same label, help, choice, note, error, save-status, and focus order
+  in Record detail. Observed Issues, the mutually exclusive no-issue option,
+  Valuable Discovery, note, Save, and Clear are fully keyboard operable. Draft,
+  saving, saved, stale revision, conflict, deletion, and failure are announced
+  without color, hover, or visual position as the sole channel. Save returns a
+  useful focus target without moving focus away from the result unexpectedly;
+  a close confirmation keeps the unsaved draft available when cancelled.
+- Bounded Write Set permission presents every requested document identity,
+  role, operation, and stale/unavailable state in a linear group and supports
+  exact subset selection without drag, secondary click, or color. Rejecting or
+  disabling one member does not make another appear authorized.
 - Document-owned Autosave Failed and Conflict toasts announce their state,
   retained-buffer consequence, and available recovery action. Persistent
   failure remains reachable after its announcement; the transient Checkpoint

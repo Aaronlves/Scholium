@@ -275,6 +275,7 @@ public enum PropertyContractCatalog {
     private static let analysisContracts: [PropertyContract] = {
         [
             property("title", .text),
+            property("summary", .text),
             property("authors", .textList),
             property("year", .number),
             property("type", .choice, allowed: [
@@ -310,12 +311,14 @@ public enum PropertyContractCatalog {
     }()
 
     private static let topicContracts: [PropertyContract] = [
+        property("summary", .text),
         property("aliases", .textList),
         property("tags", .tags),
         property("research_unit", .mapping),
     ]
 
     private static let workContracts: [PropertyContract] = [
+        property("summary", .text),
         property("authors", .textList),
         property("kind", .choice, allowed: [
             "paper", "chapter", "book", "talk", "review", "teaching", "other",

@@ -1,12 +1,86 @@
 import Foundation
 
 public enum SearchMatchedField: String, Codable, Hashable, Sendable {
-    case title, alias, heading, author, year, tag, body, callout, footnote, path
+    case title, alias, heading, summary, author, year, tag, body, callout, footnote, path
     case brokenLink = "broken_link"
+}
+
+public enum RecordSearchMatchedField: String, Codable, Hashable, Sendable {
+    case context
+    case action
+    case skill
+    case participant
+    case researcherStatement = "researcher_statement"
+    case agentStatement = "agent_statement"
+    case material
+    case sourceReference = "source_reference"
 }
 
 public enum SearchResultClassification: String, Codable, Hashable, Sendable {
     case retrievalLead = "retrieval_lead"
+}
+
+public enum SearchPropertyMatchMode: String, Codable, Hashable, Sendable {
+    case presence
+    case exactStringValue = "exact_string_value"
+}
+
+public struct SearchPropertyMatch: Codable, Hashable, Sendable {
+    public let key: String
+    public let mode: SearchPropertyMatchMode
+    public let normalizedValue: String?
+    public let valueKind: SearchPropertyProjection.ValueKind
+    public let isEmpty: Bool
+    public let keySourceRange: SearchSourceRange
+    public let valueSourceRanges: [SearchSourceRange]
+
+    public init(
+        key: String,
+        mode: SearchPropertyMatchMode,
+        normalizedValue: String?,
+        valueKind: SearchPropertyProjection.ValueKind,
+        isEmpty: Bool,
+        keySourceRange: SearchSourceRange,
+        valueSourceRanges: [SearchSourceRange] = []
+    ) {
+        self.key = key
+        self.mode = mode
+        self.normalizedValue = normalizedValue
+        self.valueKind = valueKind
+        self.isEmpty = isEmpty
+        self.keySourceRange = keySourceRange
+        self.valueSourceRanges = valueSourceRanges
+    }
+}
+
+public struct SearchRelationshipMatch: Codable, Hashable, Sendable {
+    public let relation: SearchRelation
+    public let direction: SearchRelationDirection
+    public let symmetric: Bool
+    public let anchorIdentity: String
+    public let targetNote: VaultQualifiedNoteID
+    public let occurrences: [RelationshipSourceOccurrence]
+
+    public init(
+        relation: SearchRelation,
+        direction: SearchRelationDirection,
+        anchorIdentity: String,
+        targetNote: VaultQualifiedNoteID,
+        occurrences: [RelationshipSourceOccurrence]
+    ) {
+        self.relation = relation
+        self.direction = direction
+        symmetric = relation.isSymmetric
+        self.anchorIdentity = anchorIdentity
+        self.targetNote = targetNote
+        self.occurrences = occurrences
+    }
+}
+
+public enum NoteSearchMatchReason: Codable, Hashable, Sendable {
+    case lexical
+    case property(SearchPropertyMatch)
+    case relationship(SearchRelationshipMatch)
 }
 
 public struct SearchHighlight: Codable, Hashable, Sendable {
@@ -19,7 +93,7 @@ public struct SearchHighlight: Codable, Hashable, Sendable {
     }
 }
 
-public struct SearchHit: Codable, Hashable, Sendable {
+public struct NoteSearchResult: Codable, Hashable, Sendable {
     public let resultID: String
     public let vaultID: UUID
     public let vaultName: String
@@ -34,6 +108,8 @@ public struct SearchHit: Codable, Hashable, Sendable {
     public let highlights: [SearchHighlight]
     public let matchedFields: [SearchMatchedField]
     public let rankReason: SearchRankReason
+    public let primaryMatchReason: NoteSearchMatchReason
+    public let additionalMatchReasons: [NoteSearchMatchReason]
     public let sourceRange: SearchSourceRange?
     public let freshnessToken: SearchFreshnessToken
     public let fingerprint: DocumentFingerprint
@@ -55,6 +131,8 @@ public struct SearchHit: Codable, Hashable, Sendable {
         highlights: [SearchHighlight],
         matchedFields: [SearchMatchedField]? = nil,
         rankReason: SearchRankReason = .lexicalRelevance,
+        primaryMatchReason: NoteSearchMatchReason = .lexical,
+        additionalMatchReasons: [NoteSearchMatchReason] = [],
         sourceRange: SearchSourceRange? = nil,
         freshnessToken: SearchFreshnessToken,
         fingerprint: DocumentFingerprint,
@@ -76,6 +154,8 @@ public struct SearchHit: Codable, Hashable, Sendable {
         self.highlights = highlights
         self.matchedFields = matchedFields ?? [matchedField]
         self.rankReason = rankReason
+        self.primaryMatchReason = primaryMatchReason
+        self.additionalMatchReasons = additionalMatchReasons
         self.sourceRange = sourceRange
         self.freshnessToken = freshnessToken
         self.fingerprint = fingerprint
@@ -85,6 +165,118 @@ public struct SearchHit: Codable, Hashable, Sendable {
 
     public var noteReference: VaultQualifiedNoteID {
         VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
+    }
+
+    /// A nonempty, deterministic sequence. The primary ranking reason comes
+    /// first; further satisfied structured AND clauses follow query order.
+    public var matchReasons: [NoteSearchMatchReason] {
+        [primaryMatchReason] + additionalMatchReasons
+    }
+}
+
+public struct RecordSearchResult: Codable, Hashable, Sendable {
+    public let resultID: String
+    public let recordID: UUID
+    public let statementID: UUID?
+    public let statementAuthor: PortableResearchStatementAuthor?
+    public let matchedField: RecordSearchMatchedField
+    public let additionalMatchedFields: [RecordSearchMatchedField]
+    public let matchedReason: String
+    public let context: String
+    public let actionID: String?
+    public let methodName: String?
+    public let sourceDisplayName: String?
+    public let finishedAt: Date
+    public let pinned: Bool
+    public let participatingNotes: [VaultQualifiedNoteID]
+    public let snippet: String
+    public let highlights: [SearchHighlight]
+    public let sourceRange: SearchSourceRange?
+    public let freshnessToken: SearchFreshnessToken
+    public let fingerprint: DocumentFingerprint
+    public let classification: SearchResultClassification
+
+    public init(
+        resultID: String? = nil,
+        recordID: UUID,
+        statementID: UUID? = nil,
+        statementAuthor: PortableResearchStatementAuthor? = nil,
+        matchedField: RecordSearchMatchedField,
+        additionalMatchedFields: [RecordSearchMatchedField] = [],
+        matchedReason: String,
+        context: String,
+        actionID: String? = nil,
+        methodName: String? = nil,
+        sourceDisplayName: String? = nil,
+        finishedAt: Date,
+        pinned: Bool,
+        participatingNotes: [VaultQualifiedNoteID],
+        snippet: String,
+        highlights: [SearchHighlight] = [],
+        sourceRange: SearchSourceRange? = nil,
+        freshnessToken: SearchFreshnessToken,
+        fingerprint: DocumentFingerprint,
+        classification: SearchResultClassification = .retrievalLead
+    ) {
+        self.resultID = resultID
+            ?? "record:\(recordID.uuidString.lowercased()):\(statementID?.uuidString.lowercased() ?? matchedField.rawValue)"
+        self.recordID = recordID
+        self.statementID = statementID
+        self.statementAuthor = statementAuthor
+        self.matchedField = matchedField
+        self.additionalMatchedFields = additionalMatchedFields
+        self.matchedReason = matchedReason
+        self.context = context
+        self.actionID = actionID
+        self.methodName = methodName
+        self.sourceDisplayName = sourceDisplayName
+        self.finishedAt = finishedAt
+        self.pinned = pinned
+        self.participatingNotes = participatingNotes
+        self.snippet = snippet
+        self.highlights = highlights
+        self.sourceRange = sourceRange
+        self.freshnessToken = freshnessToken
+        self.fingerprint = fingerprint
+        self.classification = classification
+    }
+
+    /// A nonempty typed summary of all fields satisfied by this one Record.
+    public var matchedFields: [RecordSearchMatchedField] {
+        [matchedField] + additionalMatchedFields
+    }
+}
+
+public enum SearchResult: Codable, Hashable, Identifiable, Sendable {
+    case note(NoteSearchResult)
+    case record(RecordSearchResult)
+
+    public var id: String {
+        switch self {
+        case .note(let result): result.resultID
+        case .record(let result): result.resultID
+        }
+    }
+
+    public var provider: SearchProvider {
+        switch self {
+        case .note: .note
+        case .record: .record
+        }
+    }
+
+    public var freshnessToken: SearchFreshnessToken {
+        switch self {
+        case .note(let result): result.freshnessToken
+        case .record(let result): result.freshnessToken
+        }
+    }
+
+    public var fingerprint: DocumentFingerprint {
+        switch self {
+        case .note(let result): result.fingerprint
+        case .record(let result): result.fingerprint
+        }
     }
 }
 
@@ -104,6 +296,7 @@ public struct SearchIndexDocument: Sendable {
     public let evidentialLayer: EvidentialLayer
     public let hasBrokenLink: Bool
     public let projection: SearchDocumentProjection
+    public let propertyProjection: SearchPropertyProjection
 
     public init(
         vaultID: UUID,
@@ -190,6 +383,7 @@ public struct SearchIndexDocument: Sendable {
         projection = sourceProjection.applyingDynamicState(
             hasBrokenLink: hasBrokenLink
         )
+        propertyProjection = SearchPropertyProjection(document: document)
         evidentialLayer = switch vaultRole {
         case .sourceCorpus: .paperAnalysis
         case .topicKnowledge: .topicNote

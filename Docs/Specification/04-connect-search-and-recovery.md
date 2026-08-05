@@ -31,11 +31,16 @@ direction and exact source without permanent badge clutter.
 
 ## 13. Search and Attention
 
-One Search field has exactly three scopes:
+One Search field has exactly three visible scopes. Their meaning is specific to
+the selected provider:
 
-- **This Note**: occurrences in the open note;
-- **This Vault**: the selected Analyses, Topics, or Works vault;
-- **Triptych**: all three vaults.
+- **This Note** searches occurrences in the open Note, or Research Records in
+  which that Note is a participant;
+- **This Vault** searches active Notes in the selected Analyses, Topics, or
+  Works vault, or each Research Record with at least one participant in that
+  vault, returned once; and
+- **Triptych** searches all active Notes or all Research Records in the
+  Triptych.
 
 There is no All Workspace, Selected Roles, separate in-note Find, advanced
 Search workspace, Quick Open, Recents, or Back/Forward history. Exact title,
@@ -63,31 +68,97 @@ temporarily selects **This Note**. Dismissal restores the prior scope unless the
 researcher explicitly changed it, cancels work, rejects stale results, and
 clears query/results while retaining scope and saved searches.
 
-Beta Search uses one deterministic local SQLite FTS5 corpus for
-the active Triptych. **This Vault** is a predicate over that corpus and
+Search has a closed **Note / Record** provider contract. Omitting `kind:` means
+`kind:note`; `kind:record` selects Research Records. There is no `kind:any`,
+mixed-provider ranking, dynamic provider registration, or hidden corpus state.
+Application authorizes the visible scope before routing the parsed query. Scope
+is never changed by query text, and adapters do not strip clauses or implement
+a second parser.
+
+The Note provider uses one deterministic local SQLite FTS5 corpus for the
+active Triptych. **This Vault** is a predicate over that corpus and
 **Triptych** uses it without a vault predicate, so BM25 statistics remain
 comparable across Analyses, Topics, and Works. **This Note** instead searches
 the current editor's exact in-memory revision and returns one row per
 non-overlapping occurrence after the complete query is satisfied; invoking
 Search never saves or indexes that buffer. Vault and Triptych results remain
-one row per active note. Set Aside and Trash are excluded from the persisted
+one row per active Note. Set Aside and Trash are excluded from the persisted
 corpus but remain searchable while they are the open **This Note**.
 
-The finite expert syntax is space-as-AND, escaped exact phrases, trailing
-prefix `*`, clause exclusion, lexical fields `title`, `alias`, `heading`,
-`body`, `author`, `year`, `tag`, `footnote`, and `path`, and structured fields
-`callout` and `has:broken-link`. Structured filter-only queries are valid. A
-query containing only excluded free text is invalid. `status` produces an
-explicit unsupported-field diagnostic because it is not a Scholium property.
-Unknown fields or canonical values, `vault`, `role`, or `metadata` fields,
-malformed escapes, CJK prefix `*`, and unsupported OR, grouping, NEAR,
-regular-expression, fuzzy, range, or nested syntax produce an inline query
-diagnostic and never silently broaden retrieval. Scope is selected only by the
-visible interface or CLI option.
+The shared finite grammar is space-as-AND, escaped exact phrases, trailing
+prefix `*`, clause exclusion, Note lexical fields `title`, `alias`, `heading`,
+`summary`, `body`, `author`, `year`, `tag`, `footnote`, and `path`, Note structured fields
+`callout` and `has:broken-link`, and the clauses below. Structured filter-only
+queries are valid. A query containing only excluded free text is invalid.
+`status` remains unsupported. Unknown fields or canonical values, `vault`,
+`role`, or `metadata`, malformed escapes, CJK prefix `*`, structured clause
+exclusion, and unsupported OR, grouping, NEAR, regular-expression, fuzzy,
+range, or nested syntax produce an inline diagnostic and never broaden
+retrieval. One query is bounded to 16,384 UTF-16 code units and 64 tokens before
+provider execution; exceeding either bound returns an editable diagnostic.
+
+The Note provider adds only these structured clauses:
+
+- `property:<key>` matches explicit presence of one literal top-level YAML key;
+  `property:<key>=<value>` matches an entire source-bounded plain or quoted
+  string scalar, or one entire source-bounded string sequence member, after
+  versioned canonical Unicode, case, and whitespace normalization while
+  preserving diacritic distinctions. Key identity is
+  canonical-Unicode normalized and case-sensitive. Presence includes empty or
+  nonstring values but explains that condition; equality excludes numbers,
+  booleans, dates, nulls, mappings, nested keys, and mixed sequences without
+  coercion. Literal addressability of an unknown YAML key grants it no
+  canonical Property semantics, validation, philosophical meaning, or
+  researcher judgment.
+- A direct relation query contains exactly one `from-note:<anchor>` or
+  `to-note:<anchor>` plus exactly one
+  `relation:supports|opposes|neutral|incompatible`. `supports` and `opposes`
+  preserve containing-Note direction; `neutral` and `incompatible` are
+  undirected, so from/to return the same set and explain that fact. Resolution
+  uses the ordinary stable identity/title/alias/path rules and reports
+  ambiguity rather than guessing. Relation queries do not expand transitively.
+
+Property and relation clauses apply only to the Note provider in **This
+Vault** or **Triptych**. A complete query that includes a relation clause is an
+AND query over the direct-neighbor set and any lexical clauses. If Graph is
+unavailable, stale, or manifest-incompatible, that whole structured query
+fails closed; its lexical clauses are not returned as a broader substitute.
+An ordinary lexical query remains available from its last complete compatible
+Note generation. Relation presence remains only a retrieval reason: it does
+not certify evidence, successful support or opposition, truth, importance, or
+researcher acceptance.
+
+Search has no separately loaded direct-connection region. Researchers query
+direct resolved Connections through the explicit relation clauses above, so
+Graph compatibility, direction, explanation, failure, and App/CLI parity remain
+part of one versioned Search contract rather than a parallel retrieval path.
+
+The Record provider accepts unfielded lexical clauses plus `note`, `action`,
+`skill`, `participant:researcher|agent`, and
+`date:today|7d|30d`. Dates use `finishedAt` and the current local-calendar day:
+`today` is that day, while `7d` and `30d` include that day plus the preceding
+six or twenty-nine local calendar days. `note` resolves the ordinary stable
+Note identity; `action` matches the retained public Action identity and `skill`
+matches the exact retained Method display name, never a retired package ID or
+inferred prose; `participant` requires an attributed statement from that speaker.
+Unfielded terms search context, Action, Skill, participant Note titles,
+attributed statements, and Application-validated actually-used Material
+titles. Note-only fields, Property, and relation clauses fail with a provider-
+mismatch diagnostic.
+
+One result row always represents one provider object. Record results are one
+row per complete Research Record, sorted pinned first, then `finishedAt`
+descending and UUID; lexical matching does not invent a cross-object relevance
+score. A Record hit identifies the exact Record source fingerprint, matched
+field, and, when applicable, statement UUID, speaker, and snippet. Opening it
+uses the existing Triptych-keyed Research Records window and locates the Record
+or statement. A Note hit retains vault-qualified identity, matched field,
+reason, exact source range, and Note fingerprint. Neither provider may present
+itself as the other.
 
 Search indexes only visible semantic text and derived identity/filter fields,
 never raw Markdown source or link destinations. Title, alias, heading, author,
-year, tag, path, canonical callout, footnote, and residual body text are
+year, tag, path, canonical `summary`, callout, footnote, and residual body text are
 separate projections; the same heading, callout, or footnote content is not
 also weighted as body. Links contribute displayed text and images contribute
 alt text. Source mappings preserve exact UTF-16 ranges through Unicode
@@ -105,20 +176,66 @@ interface caps at 100 rows and reports only `N Results` or `N+ Results`; Search
 does not perform an expensive exact total count.
 
 Each response binds a versioned query contract, Triptych generation, sorted
-source-manifest hash, source fingerprint or editor revision, and freshness
-token. A stale result must refresh rather than navigate. Building, refreshing,
-stale, failed, and query-invalid are distinct states; cancellation is not a
-failure. A failed routine refresh continues serving the last complete
-generation, while a first or incompatible build never serves results from a
-different ranking contract. One generation publishes atomically or not at
-all and its disposable index stores no writable research authority.
+source-manifest hash, provider-specific source fingerprints, and freshness.
+Note and Record generations remain distinct and never mix in one response. A
+stale result must refresh rather than navigate. Building, refreshing, stale,
+failed, provider-mismatch, ambiguous, not-applicable, and query-invalid are
+distinct states; cancellation is not a failure. A failed routine refresh may
+serve only its last complete compatible generation. One generation publishes
+atomically or not at all, and no disposable index stores writable research
+authority.
 
-An exact Topic match may show its direct resolved Connections in a separately
-loaded **Related** section only when its graph manifest matches the lexical
-manifest. Related failure never removes lexical results; relations neither
-alter ranking nor imply evidence and never expand transitively here. Vector
-search, embeddings, AI query interpretation/ranking, and chat-style Search are
-excluded. **Vector-Link** means only researcher-authored relation markers.
+The parser exposes one typed capability description shared by field
+completion, **Explain Query**, and CLI help. Completion edits only visible
+query text and creates no hidden token or chip. Explain reports provider,
+scope, clauses, direction, normalization, ordering, and limitations without
+executing an alternate query. Saved Searches persist only raw query, visible
+scope, and query-contract version; they store no AST, resolved identity,
+result, or generation and are re-evaluated against current authority.
+
+The optional canonical YAML `summary` is an independently explainable Note
+field in this same projection, parser, ranking, source-range, freshness,
+completion, Saved Search, App, CLI, incremental-update, and clean-rebuild
+contract. Unfielded Note Search includes it; `summary:<text>` restricts lexical
+matching to it. A summary hit returns the complete Note identity and exact
+summary scalar range and opens the current Note, never a summary-only object.
+It is a discovery lead that requires current-body/source inspection before a
+substantive claim. Missing or source-unbounded summary values do not block the
+Note or acquire a machine-generated fallback. Search never writes or
+reconstructs the YAML field.
+
+Future fields or providers require a versioned typed clause, discriminated
+result identity, provider capability-table entry, source/freshness contract,
+and App/CLI parity. This is an extension boundary, not a plugin framework.
+Property contains/ranges/nested paths, Record arbitrary ranges, `section:`,
+OR, vector search, embeddings, AI query interpretation or ranking,
+automatic relation extraction, multi-hop expansion, context assembly, and
+chat-style Search remain deferred. **Vector-Link** means only the explicit
+researcher-visible relation markers in §12.
+
+Research Context is one versioned, read-only Application capability over this
+same Search owner, exact Note/section reading, explicit direct Relations,
+canonical Properties, Research Records, and narrow researcher-state views
+defined in Section 8. It authorizes Run and Triptych scope before provider
+execution and returns only closed Source Reference Envelopes with owner,
+identity, actor or unknown, role, exact revision, locator, authorized scope,
+currentness, evidential layer, retrieval reason, and material limitation.
+Current, Partial, Stale, Unavailable, and Invalid Query remain distinct.
+Research Context response schema 2 carries each Note result's typed Foundation
+match reasons as well: a direct relation retains predicate, direction, anchor,
+target, and exact Markdown occurrences, while a Property match retains its
+key/value source ranges. These are Search-owner facts, not Agent-generated
+explanations or a second Graph/Property interpretation.
+
+Research Context creates no second parser, ranker, Property or relation
+resolver, JSON scanner, persistent response, hidden Agent index, Researcher
+State store, confidence score, or writable source. Record queries call the
+same Application Record provider and preserve Record identity; Notes and
+Records are not co-ranked. A Run may report which verified references actually
+affected its result, but query, candidate, rank, provider ID, response, prompt,
+and interaction telemetry never become a Research Record. A next Run resolves
+and queries current owners again rather than inheriting an old response or
+cache.
 
 Attention may report possible-orphan conditions, Changed Since Settled, Broken
 Connections, malformed metadata, unresolved identity, or **Material Changed

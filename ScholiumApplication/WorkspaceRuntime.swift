@@ -74,10 +74,9 @@ public actor WorkspaceRuntime {
     private let vaultPool: WorkspaceVaultPool
     private let savedSearchStore: SavedSearchStore
     private let windowSessionStore: WindowSessionSnapshotStore
-    public nonisolated let researchGuidance: ResearchGuidanceOperations
     public nonisolated let zotero: ZoteroOperations
     public nonisolated let styles: StyleOperations
-    let researchSkillInstallationStore: ResearchSkillInstallationStore
+    nonisolated let researchAgentSessions: ResearchAgentSessionAuthority?
     private var handles: [UUID: WorkspaceHandle] = [:]
     private var openings: [UUID: Opening] = [:]
     /// A failed replacement must not destroy the activation already borrowed
@@ -90,7 +89,7 @@ public actor WorkspaceRuntime {
         configuration: Configuration,
         zotero injectedZotero: ZoteroOperations? = nil
     ) {
-        researchSkillInstallationStore = ResearchSkillInstallationStore()
+        researchAgentSessions = try? ResearchAgentSessionAuthority()
         switch configuration {
         case .live(let configuration):
             let identityRegistry = VaultIdentityRegistry(
@@ -112,12 +111,6 @@ public actor WorkspaceRuntime {
                 applicationSupportURL: configuration.applicationSupportURL,
                 mode: .live(identityRegistry: identityRegistry)
             )
-            researchGuidance = ResearchGuidanceOperations(store: ResearchSkillTransactionCoordinator(
-                controlURL: configuration.applicationSupportURL.appendingPathComponent(
-                    "BundledResearchGuidance",
-                    isDirectory: true
-                )
-            ))
             zotero = injectedZotero ?? ZoteroOperations()
             styles = StyleOperations(applicationSupportURL: configuration.applicationSupportURL)
             membership = .live(
@@ -137,12 +130,6 @@ public actor WorkspaceRuntime {
                 applicationSupportURL: configuration.applicationSupportURL,
                 mode: .snapshot
             )
-            researchGuidance = ResearchGuidanceOperations(store: ResearchSkillTransactionCoordinator(
-                controlURL: configuration.applicationSupportURL.appendingPathComponent(
-                    "BundledResearchGuidance",
-                    isDirectory: true
-                )
-            ))
             zotero = injectedZotero ?? ZoteroOperations()
             styles = StyleOperations(applicationSupportURL: configuration.applicationSupportURL)
             var assignments: [UUID: TriptychAssignment] = [:]
@@ -314,6 +301,11 @@ public actor WorkspaceRuntime {
         guard case .live(let registry, _, _, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
+        guard let current = handles[currentID] else {
+            throw ScholiumApplicationError.workspaceNotFound(currentID)
+        }
+        try await current.services.researchConfigurationStore
+            .validatePortableIdentityForReidentification(stableID)
         let assignment = try await registry.reidentifyTriptych(id: currentID, as: stableID)
         let prepared = await prepareChangedReplacements(
             registry: registry,
@@ -546,6 +538,7 @@ public actor WorkspaceRuntime {
                     windowSessionStore: windowSessionStore,
                     vaultPool: vaultPool,
                     zotero: zotero,
+                    researchAgentSessions: researchAgentSessions,
                     access: .live(
                         portableControlAccessRegistry: portableRegistry
                     )
@@ -560,6 +553,7 @@ public actor WorkspaceRuntime {
                     windowSessionStore: windowSessionStore,
                     vaultPool: vaultPool,
                     zotero: zotero,
+                    researchAgentSessions: researchAgentSessions,
                     access: .snapshot
                 )
             }
@@ -609,7 +603,6 @@ public actor WorkspaceRuntime {
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
-        await researchSkillInstallationStore.discardAll()
 
         let pending = openings.values.map(\.task)
         openings.removeAll()

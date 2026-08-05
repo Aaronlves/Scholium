@@ -740,8 +740,8 @@ struct AppCompositionRootTests {
                 !== secondWindow.workspaceProjectionController
         )
         #expect(
-            firstWindow!.agentNoteChangeWindowController
-                !== secondWindow.agentNoteChangeWindowController
+            firstWindow!.researchAgentPermissionWindowController
+                !== secondWindow.researchAgentPermissionWindowController
         )
 
         #expect(await configuredHandle.events.subscriberCount == 1)

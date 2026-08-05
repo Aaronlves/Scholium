@@ -159,31 +159,19 @@ struct ResearchLiteratureRecommendationContractsTests {
         }
     }
 
-    @Test("Completion JSON distinguishes an omitted array from an explicit empty array")
-    func completionArrayPresenceIsExplicit() throws {
-        let omitted = ResearchActionCompletionSubmission(
-            runID: UUID(),
-            confirmationToken: UUID(),
-            finalMaterialFingerprints: [:],
-            actuallyUsedMaterialNoteIDs: [],
-            summary: "Completed",
-            didModifyTarget: false,
-            fidelityOutcomes: [],
-            literatureRecommendations: nil,
-            childRunIDs: [],
-            submittedAt: Date(timeIntervalSince1970: 100)
+    @Test("Agent Result JSON distinguishes an omitted array from an explicit empty array")
+    func resultArrayPresenceIsExplicit() throws {
+        let academicResults = try ResearchAcademicFieldValues(
+            rawValues: [:],
+            definitions: []
         )
-        let explicit = ResearchActionCompletionSubmission(
-            runID: omitted.runID,
-            confirmationToken: omitted.confirmationToken,
-            finalMaterialFingerprints: [:],
-            actuallyUsedMaterialNoteIDs: [],
-            summary: "Completed",
-            didModifyTarget: false,
-            fidelityOutcomes: [],
-            literatureRecommendations: [],
-            childRunIDs: [],
-            submittedAt: omitted.submittedAt
+        let omitted = try ResearchAgentResultSubmission(
+            academicResults: academicResults,
+            literatureRecommendations: nil
+        )
+        let explicit = try ResearchAgentResultSubmission(
+            academicResults: academicResults,
+            literatureRecommendations: []
         )
         let omittedObject = try #require(
             JSONSerialization.jsonObject(
@@ -195,17 +183,16 @@ struct ResearchLiteratureRecommendationContractsTests {
                 with: recommendationJSONEncoder().encode(explicit)
             ) as? [String: Any]
         )
-        #expect(omittedObject["literatureRecommendations"] == nil)
-        #expect((explicitObject["literatureRecommendations"] as? [Any])?.isEmpty == true)
+        #expect(omittedObject["literature_recommendations"] == nil)
+        #expect((explicitObject["literature_recommendations"] as? [Any])?.isEmpty == true)
 
         var nullObject = explicitObject
-        nullObject["literatureRecommendations"] = NSNull()
-        #expect(throws: (any Error).self) {
-            _ = try recommendationJSONDecoder().decode(
-                ResearchActionCompletionSubmission.self,
-                from: JSONSerialization.data(withJSONObject: nullObject)
-            )
-        }
+        nullObject["literature_recommendations"] = NSNull()
+        let decodedNull = try recommendationJSONDecoder().decode(
+            ResearchAgentResultSubmission.self,
+            from: JSONSerialization.data(withJSONObject: nullObject)
+        )
+        #expect(decodedNull.literatureRecommendations == nil)
     }
 }
 

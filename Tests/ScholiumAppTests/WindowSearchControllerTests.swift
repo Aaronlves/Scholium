@@ -114,8 +114,8 @@ struct WindowSearchControllerTests {
         #expect(controller.savedSearches.map(\.name) == ["Second", "First", "Existing"])
     }
 
-    @Test("A stale lexical result is never routed and refreshes the active query")
-    func staleLexicalResult() async {
+    @Test("A stale Note result is never routed and refreshes the active query")
+    func staleNoteResult() async {
         let discovery = DiscoveryController()
         let generation = SearchGenerationID(
             triptychID: UUID(),
@@ -124,7 +124,7 @@ struct WindowSearchControllerTests {
         )
         let freshness = SearchFreshnessToken.triptych(generation)
         let fingerprint = DocumentFingerprint(content: "# Current\n")
-        let hit = SearchHit(
+        let hit = NoteSearchResult(
             vaultID: UUID(),
             vaultName: "Analyses",
             vaultRole: .sourceCorpus,
@@ -148,9 +148,10 @@ struct WindowSearchControllerTests {
         discovery.receiveSearchResponse(SearchResponse(
             requestID: request.id,
             scope: .triptych,
+            explanation: explanation(provider: .note),
             freshnessToken: freshness,
-            availability: .current(generation),
-            results: [hit],
+            availability: .note(.current(generation)),
+            results: [.note(hit)],
             hasMore: false
         ), for: request)
 
@@ -168,8 +169,8 @@ struct WindowSearchControllerTests {
                         currentVaultID: nil
                     )
                 },
-                lexicalEvidence: { _, _ in
-                    WindowLexicalSearchEvidence(
+                resultEvidence: { _, _ in
+                    WindowSearchResultEvidence(
                         freshness: freshness,
                         fingerprint: DocumentFingerprint(content: "# Changed\n")
                     )
@@ -186,46 +187,242 @@ struct WindowSearchControllerTests {
             )
         )
 
-        await controller.open(.lexical(hit), disposition: .replaceCurrent)
+        await controller.open(.result(.note(hit)), disposition: .replaceCurrent)
 
         #expect(probe.openCount == 0)
         #expect(probe.informationMessages.count == 1)
+        #expect(probe.informationMessages[0].contains("note changed"))
         #expect(probe.isPresented)
         #expect(discovery.search.errorMessage != nil)
+    }
+
+    @Test("A stale Research Record result is never routed")
+    func staleRecordResult() async {
+        let discovery = DiscoveryController()
+        let generation = RecordSearchGenerationID(
+            triptychID: UUID(),
+            sourceManifestHash: "records"
+        )
+        let freshness = SearchFreshnessToken.record(generation)
+        let fingerprint = DocumentFingerprint(content: #"{"record":"current"}"#)
+        let hit = RecordSearchResult(
+            recordID: UUID(),
+            matchedField: .researcherStatement,
+            matchedReason: "researcher statement matches ‘objection’",
+            context: "Reasons and value",
+            finishedAt: Date(timeIntervalSince1970: 100),
+            pinned: false,
+            participatingNotes: [],
+            snippet: "A narrower objection is needed.",
+            freshnessToken: freshness,
+            fingerprint: fingerprint
+        )
+        let request = discovery.beginSearch(SearchWorkspaceState(
+            query: "kind:record objection",
+            scope: .triptych
+        ))
+        discovery.receiveSearchResponse(SearchResponse(
+            requestID: request.id,
+            scope: .triptych,
+            explanation: explanation(provider: .record, explicit: true),
+            freshnessToken: freshness,
+            availability: .record(.current(generation)),
+            results: [.record(hit)],
+            hasMore: false
+        ), for: request)
+
+        let probe = WindowSearchPresentationProbe()
+        probe.isPresented = true
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(
+                resultEvidence: { _, _ in
+                    WindowSearchResultEvidence(
+                        freshness: freshness,
+                        fingerprint: DocumentFingerprint(
+                            content: #"{"record":"changed"}"#
+                        )
+                    )
+                },
+                open: { _, _ in probe.openCount += 1 },
+                isPresented: { probe.isPresented },
+                setPresented: { probe.isPresented = $0 },
+                reportInformation: { probe.informationMessages.append($0) }
+            )
+        )
+
+        await controller.open(.result(.record(hit)), disposition: .replaceCurrent)
+
+        #expect(probe.openCount == 0)
+        #expect(probe.informationMessages.count == 1)
+        #expect(
+            probe.informationMessages[0].contains("Research Record changed")
+        )
+        #expect(probe.isPresented)
+        #expect(discovery.search.errorMessage != nil)
+    }
+
+    @Test("Saved Searches from another Search contract require editing")
+    func savedSearchContractMismatch() {
+        let saved = SavedSearch(
+            name: "Old semantics",
+            definition: SearchDefinition(
+                contractVersion: SearchContract.currentVersion - 1,
+                query: "kind:record participant:researcher",
+                presentationScope: .triptych
+            )
+        )
+
+        let diagnostic = saved.needsEditingDiagnostic
+        #expect(diagnostic?.code == .needsEditing)
+        #expect(diagnostic?.needsEditing == true)
+        #expect(diagnostic?.utf16UpperBound == saved.definition.query.utf16.count)
+    }
+
+    @Test("A stale Saved Search opens for editing without executing")
+    func staleSavedSearchOpensForEditing() async {
+        let rawQuery = "kind:record participant:researcher"
+        let saved = SavedSearch(
+            name: "Old contract",
+            definition: SearchDefinition(
+                contractVersion: SearchContract.currentVersion - 1,
+                query: rawQuery,
+                presentationScope: .currentVault
+            )
+        )
+        let discovery = DiscoveryController()
+        let probe = WindowSearchPresentationProbe()
+        var executionContextCallCount = 0
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(
+                executionContext: { _ in
+                    executionContextCallCount += 1
+                    return DiscoverySearchExecutionContext(
+                        workspaceIsAvailable: true,
+                        currentNoteSnapshot: nil,
+                        currentVaultID: UUID()
+                    )
+                },
+                isPresented: { probe.isPresented },
+                setPresented: { probe.isPresented = $0 },
+                reportInformation: { probe.informationMessages.append($0) }
+            )
+        )
+
+        controller.run(saved)
+        await controller.waitForPendingWorkForTesting()
+
+        #expect(probe.isPresented)
+        #expect(controller.criteria.query == rawQuery)
+        #expect(controller.criteria.scope == .currentVault)
+        #expect(discovery.search.diagnostics.first?.code == .needsEditing)
+        #expect(discovery.search.diagnostics.first?.needsEditing == true)
+        #expect(probe.informationMessages.count == 1)
+        #expect(executionContextCallCount == 0)
+        #expect(!discovery.search.isRunning)
+        #expect(discovery.search.results.isEmpty)
+
+        discovery.updateSearchQuery("kind:record participant:agent")
+
+        #expect(discovery.search.diagnostics.isEmpty)
+        #expect(discovery.search.isRunning)
+        #expect(executionContextCallCount == 0)
+    }
+
+    @Test("Search completion replaces only plain query text and follows provider capabilities")
+    func completionContract() throws {
+        let capabilities = SearchCapabilities.current
+        let recordCompletion = try #require(
+            capabilities.completions(for: "kind:record part").first
+        )
+        #expect(recordCompletion.replacementText == "kind:record participant:")
+        #expect(
+            capabilities.completions(for: "kind:record prop").isEmpty
+        )
+        #expect(
+            capabilities.capability(for: .record)?.fields.contains {
+                $0.name == "participant"
+            } == true
+        )
+        #expect(
+            capabilities.capability(for: .record)?.fields.contains {
+                $0.name == "property"
+            } == false
+        )
+        #expect(
+            capabilities.capability(for: .note)?.fields.contains {
+                $0.name == "property"
+            } == true
+        )
+
+        let valueCompletion = try #require(
+            capabilities.completions(
+                for: "kind:record participant:r"
+            ).first
+        )
+        #expect(
+            valueCompletion.replacementText
+                == "kind:record participant:researcher"
+        )
+        let parsed = SearchQueryParser.parse(valueCompletion.replacementText)
+        #expect(parsed.diagnostics.isEmpty)
+        #expect(parsed.ast?.provider == .record)
+        #expect(parsed.ast?.providerWasExplicit == true)
     }
 
     private func dependencies(
         loadSavedSearches: @escaping @MainActor () async throws -> [SavedSearch] = { [] },
         saveSavedSearches: @escaping @MainActor ([SavedSearch]) async throws -> Void = { _ in },
+        executionContext: @escaping @MainActor (
+            SearchWorkspaceState
+        ) async throws -> DiscoverySearchExecutionContext = { _ in
+            DiscoverySearchExecutionContext(
+                workspaceIsAvailable: false,
+                currentNoteSnapshot: nil,
+                currentVaultID: nil
+            )
+        },
+        resultEvidence: @escaping @MainActor (
+            SearchResult,
+            SearchPresentationScope
+        ) async -> WindowSearchResultEvidence = { _, _ in
+            WindowSearchResultEvidence(freshness: nil, fingerprint: nil)
+        },
+        open: @escaping @MainActor (
+            SearchResultSelection,
+            WindowOpenDisposition
+        ) async -> Void = { _, _ in },
         hasCurrentNote: @escaping @MainActor () -> Bool = { true },
         isPresented: @escaping @MainActor () -> Bool = { false },
-        setPresented: @escaping @MainActor (Bool) -> Void = { _ in }
+        setPresented: @escaping @MainActor (Bool) -> Void = { _ in },
+        reportInformation: @escaping @MainActor (String) -> Void = { _ in }
     ) -> WindowSearchController.Dependencies {
         WindowSearchController.Dependencies(
             loadSavedSearches: loadSavedSearches,
             saveSavedSearches: saveSavedSearches,
-            executionContext: { _ in
-                DiscoverySearchExecutionContext(
-                    workspaceIsAvailable: false,
-                    currentNoteSnapshot: nil,
-                    currentVaultID: nil
-                )
-            },
-            lexicalEvidence: { _, _ in
-                WindowLexicalSearchEvidence(
-                    freshness: nil,
-                    fingerprint: nil
-                )
-            },
-            open: { _, _ in },
+            executionContext: executionContext,
+            resultEvidence: resultEvidence,
+            open: open,
             hasCurrentNote: hasCurrentNote,
             isPresented: isPresented,
             setPresented: setPresented,
-            reportInformation: { _ in },
+            reportInformation: reportInformation,
             reportLoadFailure: { _ in },
             reportSaveFailure: { _ in },
             setAvailabilityStatus: { _ in },
             reportCatalogFailure: { _ in }
+        )
+    }
+
+    private func explanation(
+        provider: SearchProvider,
+        explicit: Bool = false
+    ) -> SearchExplanation {
+        SearchExplanation(
+            provider: provider,
+            providerWasExplicit: explicit,
+            clauses: []
         )
     }
 }

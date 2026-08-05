@@ -68,6 +68,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public let titleUsesFilenameFallback: Bool
     public let aliases: [String]
     public let headings: [String]
+    public let summary: String?
     public let authors: [String]
     public let year: String?
     public let tags: [String]
@@ -100,6 +101,14 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
             ?? document.parsedFrontmatter["alias"]?.searchStrings
             ?? []
         headings = semantic.headings.map(\.text)
+        let propertyProjection = SearchPropertyProjection(document: document)
+        let summaryMember = propertyProjection.entry(forExactKey: "summary")
+            .flatMap { entry in
+                entry.valueKind == .string && entry.stringMembers.count == 1
+                    ? entry.stringMembers.first
+                    : nil
+            }
+        summary = summaryMember?.value
         authors = document.parsedFrontmatter["authors"]?.searchStrings
             ?? document.parsedFrontmatter["author"]?.searchStrings
             ?? []
@@ -185,6 +194,22 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 sourceLocator: sourceLocator,
                 explicitMap: SearchProjectionBuilder.alignedFragments(
                     text: heading.text,
+                    sourceRange: range,
+                    source: document.rawContent
+                )
+            ))
+        }
+        if let summaryMember {
+            let range: Range<Int> = summaryMember.sourceRange.utf16LowerBound..<summaryMember.sourceRange.utf16UpperBound
+            builtSegments.append(SearchProjectionBuilder.segment(
+                field: .summary,
+                ordinal: builtSegments.count,
+                text: summaryMember.value,
+                sourceRange: range,
+                source: document.rawContent,
+                sourceLocator: sourceLocator,
+                explicitMap: SearchProjectionBuilder.alignedFragments(
+                    text: summaryMember.value,
                     sourceRange: range,
                     source: document.rawContent
                 )
@@ -297,6 +322,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         case .title: title
         case .alias: aliases.joined(separator: "\n")
         case .heading: headings.joined(separator: "\n")
+        case .summary: summary ?? ""
         case .author: authors.joined(separator: "\n")
         case .year: year ?? ""
         case .tag: tags.joined(separator: "\n")

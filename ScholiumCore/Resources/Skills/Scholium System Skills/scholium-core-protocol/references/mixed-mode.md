@@ -10,7 +10,7 @@ Mode:
 Purpose:
 Required Method Skill:
 Required System adapter, if any:
-Optional Researcher Skills or Practices:
+Linked or explicitly relevant Practices:
 Read set:
 Write set:
 Permission:

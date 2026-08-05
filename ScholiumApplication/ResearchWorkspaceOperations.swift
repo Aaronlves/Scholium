@@ -687,6 +687,74 @@ extension WorkspaceHandle {
         return updated
     }
 
+    func saveResearcherEvaluation(
+        recordID: UUID,
+        draft: ResearcherEvaluationDraft,
+        expectedEvaluationRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        try requireActive()
+        let updated = try await services.portableResearchRecordStore
+            .setResearcherEvaluation(
+                draft,
+                recordID: recordID,
+                expectedEvaluationRevision: expectedEvaluationRevision,
+                expectedResultFingerprint: expectedResultFingerprint
+            )
+        try await refreshAfterResearchCommit("The Researcher Evaluation")
+        return updated
+    }
+
+    func clearResearcherEvaluation(
+        recordID: UUID,
+        expectedEvaluationRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        try requireActive()
+        let updated = try await services.portableResearchRecordStore
+            .clearResearcherEvaluation(
+                recordID: recordID,
+                expectedEvaluationRevision: expectedEvaluationRevision,
+                expectedResultFingerprint: expectedResultFingerprint
+            )
+        try await refreshAfterResearchCommit("The Researcher Evaluation clear")
+        return updated
+    }
+
+    func saveMethodFeedbackComment(
+        recordID: UUID,
+        draft: ResearchMethodFeedbackDraft,
+        expectedCommentRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        try requireActive()
+        let updated = try await services.portableResearchRecordStore
+            .setMethodFeedbackComment(
+                draft,
+                recordID: recordID,
+                expectedCommentRevision: expectedCommentRevision,
+                expectedResultFingerprint: expectedResultFingerprint
+            )
+        try await refreshAfterResearchCommit("The Method feedback comment")
+        return updated
+    }
+
+    func clearMethodFeedbackComment(
+        recordID: UUID,
+        expectedCommentRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        try requireActive()
+        let updated = try await services.portableResearchRecordStore
+            .clearMethodFeedbackComment(
+                recordID: recordID,
+                expectedCommentRevision: expectedCommentRevision,
+                expectedResultFingerprint: expectedResultFingerprint
+            )
+        try await refreshAfterResearchCommit("The Method feedback comment clear")
+        return updated
+    }
+
     func setResearchRecordRecommendationDisposition(
         recordID: UUID,
         recommendationID: UUID,
@@ -1003,310 +1071,6 @@ extension WorkspaceHandle {
         return association
     }
 
-    func requestCritique(
-        for workID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        scope: CritiqueRequestScope,
-        lens: String,
-        selectedRanges: String,
-        additionalInstructions: String,
-        preparedCheckpoint: TriptychCheckpoint? = nil,
-        roundID: UUID = UUID(),
-        functionSnapshotBuilder: ((ResearchFunctionOutputSnapshot) -> ResearchFunctionSnapshot)? = nil,
-        skillInstructionsOverride: ((ResearchFunctionOutputSnapshot) throws -> String)? = nil
-    ) async throws -> CritiquePreparation {
-        let workContext = try await researchContext(
-            for: workID,
-            expectedRevision: expectedRevision,
-            permits: { $0.allowsCritique },
-            unavailable: { ResearchOperationError.critiqueUnavailable($0) }
-        )
-        guard !CritiquePlacement.isManagedCritiquePath(workID.relativePath) else {
-            throw ResearchOperationError.critiqueTargetMustBeOrdinaryWork(
-                workID.relativePath
-            )
-        }
-        let settings = try await services.controlStore.settings()
-        let template = settings.activePromptTemplate(for: .critique)
-        guard template.validationIssues.isEmpty else {
-            throw ResearchGuidanceError.invalidActiveTemplate(
-                .critique,
-                template.validationIssues
-            )
-        }
-        if let issue = await services.critiqueRegistry.healthError() {
-            throw ResearchOperationError.critiqueRegistryUnavailable(issue)
-        }
-
-        let repository = try repository(vaultID: workID.vaultID)
-        let workTitle = ResearchNoteTitleResolver.resolve(
-            document: workContext.document,
-            vaultRole: workContext.vault.role
-        ).title
-        let requestedAt = Date()
-        let checkpoint: TriptychCheckpoint? = if let preparedCheckpoint {
-            preparedCheckpoint
-        } else if functionSnapshotBuilder == nil {
-            try await createCheckpoint(name: "Before Agent Work", kind: .automatic)
-        } else {
-            nil
-        }
-        let recheckedTarget = try await repository.load(
-            relativePath: workID.relativePath
-        )
-        guard recheckedTarget.fingerprint == expectedRevision else {
-            throw ResearchOperationError.critiqueTargetChanged
-        }
-
-        let critiquePath: String
-        var previousCritiqueDocument: NoteDocument?
-        var preparedRevision: DocumentFingerprint
-        var createdIdentity: NoteIdentityRecord?
-
-        if let existing = await services.critiqueRegistry.association(
-            workNoteID: workContext.identity.id
-        ) {
-            guard CritiquePlacement.isActiveCritiquePath(existing.critiqueRelativePath) else {
-                throw CritiquePlacementError.invalidCritiquePath(
-                    existing.critiqueRelativePath
-                )
-            }
-            critiquePath = existing.critiqueRelativePath
-            let critiqueDocument = try await repository.load(relativePath: critiquePath)
-            guard try await services.controlStore.identityRecord(
-                vaultID: workID.vaultID,
-                relativePath: critiquePath
-            ) != nil else {
-                throw NoteIdentityRecoveryError.identityUnresolved(critiquePath)
-            }
-            previousCritiqueDocument = critiqueDocument
-            let saved: SaveResult
-            if critiqueDocument.rawFrontmatter == nil {
-                let source = try CritiqueDocumentContract.sourceByAddingRequestMetadata(
-                    to: critiqueDocument,
-                    targetRelativePath: workID.relativePath,
-                    targetFingerprint: expectedRevision,
-                    scope: scope,
-                    requestedAt: requestedAt
-                )
-                saved = try await repository.save(
-                    relativePath: critiquePath,
-                    changeSet: .exactContent(source),
-                    expectedRevision: critiqueDocument.fingerprint
-                )
-            } else {
-                saved = try await repository.save(
-                    relativePath: critiquePath,
-                    changeSet: .frontmatter(CritiqueDocumentContract.requestEdits(
-                        targetRelativePath: workID.relativePath,
-                        targetFingerprint: expectedRevision,
-                        scope: scope,
-                        requestedAt: requestedAt
-                    )),
-                    expectedRevision: critiqueDocument.fingerprint
-                )
-            }
-            preparedRevision = saved.document.fingerprint
-        } else {
-            let base = (workID.relativePath as NSString).lastPathComponent
-                .replacingOccurrences(of: ".md", with: "")
-            critiquePath = try await availableCritiquePath(
-                base: base,
-                repository: repository
-            )
-            let scaffold = CritiqueDocumentContract.scaffold(
-                title: workTitle,
-                targetRelativePath: workID.relativePath,
-                targetFingerprint: expectedRevision,
-                scope: scope,
-                requestedAt: requestedAt
-            )
-            let created = try await repository.create(
-                relativePath: critiquePath,
-                content: scaffold
-            )
-            preparedRevision = created.fingerprint
-            do {
-                createdIdentity = try await services.controlStore.identity(
-                    forVaultID: workID.vaultID,
-                    relativePath: critiquePath,
-                    fingerprint: preparedRevision
-                )
-            } catch {
-                do {
-                    try await repository.removeCreatedFileForRollback(
-                        relativePath: critiquePath,
-                        createdRevision: preparedRevision
-                    )
-                } catch let rollbackError {
-                    throw ResearchOperationError.critiqueRollbackFailed(
-                        requestError: error.localizedDescription,
-                        rollbackError: rollbackError.localizedDescription
-                    )
-                }
-                throw error
-            }
-        }
-
-        func rollbackPreparedCritique() async throws {
-            if let previousCritiqueDocument {
-                _ = try await repository.save(
-                    relativePath: critiquePath,
-                    changeSet: .exactContent(previousCritiqueDocument.rawContent),
-                    expectedRevision: preparedRevision
-                )
-            } else {
-                try await repository.removeCreatedFileForRollback(
-                    relativePath: critiquePath,
-                    createdRevision: preparedRevision
-                )
-                if let createdIdentity {
-                    _ = try await services.controlStore.purgeIdentity(
-                        id: createdIdentity.id,
-                        vaultID: workID.vaultID,
-                        relativePath: critiquePath
-                    )
-                }
-            }
-        }
-
-        let outputSnapshot = ResearchFunctionOutputSnapshot(
-            note: VaultQualifiedNoteID(
-                vaultID: workID.vaultID,
-                relativePath: critiquePath
-            ),
-            fingerprint: preparedRevision
-        )
-
-        let skillInstructions: String
-        do {
-            if let skillInstructionsOverride {
-                skillInstructions = try skillInstructionsOverride(outputSnapshot)
-            } else {
-            let contract = try ResearchWorkflowRouteContracts.critique(
-                work: ResearchWorkflowObjectReference(
-                    kind: .note,
-                    identifier: workID.relativePath,
-                    fingerprint: expectedRevision
-                ),
-                critique: ResearchWorkflowObjectReference(
-                    kind: .note,
-                    identifier: critiquePath,
-                    fingerprint: preparedRevision
-                ),
-                purpose: "Conduct \(scope.rawValue.lowercased()) of the exact Work revision and write attributed findings to its current Critique document."
-            )
-            let envelope = try await ResearchWorkflowAssembler.resolve(
-                contract,
-                store: services.researchSkillStore
-            )
-            guard envelope.isExecutable else {
-                throw ResearchWorkflowContractError.invalid(
-                    envelope.blockingConflicts.joined(separator: " ")
-                )
-            }
-            skillInstructions = envelope.renderedInstructions
-            }
-        } catch {
-            let requestError = error
-            do {
-                try await rollbackPreparedCritique()
-            } catch let rollbackError {
-                throw ResearchOperationError.critiqueRollbackFailed(
-                    requestError: requestError.localizedDescription,
-                    rollbackError: rollbackError.localizedDescription
-                )
-            }
-            throw requestError
-        }
-
-        let functionSnapshot = functionSnapshotBuilder?(outputSnapshot)
-        if let functionSnapshot {
-            guard functionSnapshot.runID == roundID,
-                  functionSnapshot.recordID == roundID,
-                  functionSnapshot.checkpointID == checkpoint?.id,
-                  functionSnapshot.request.function == .critique,
-                  functionSnapshot.preparedOutput == outputSnapshot else {
-                try await rollbackPreparedCritique()
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "Critique function evidence does not match its prepared output."
-                )
-            }
-        }
-
-        let preparedFunctionInstructions = functionSnapshot.map { _ in
-            skillInstructions + "\n\n"
-                + researchFunctionCritiqueOutputBinding(outputSnapshot)
-        }
-        let association: CritiqueAssociation
-        do {
-            if let functionSnapshot,
-               functionSnapshot.actionSnapshot != nil,
-               let preparedFunctionInstructions {
-                try await services.localResearchExecutionStore.stageCritiqueHandoff(
-                    snapshot: functionSnapshot,
-                    preparedInstructions: preparedFunctionInstructions
-                )
-            }
-            association = try await services.critiqueRegistry.recordRequest(
-                workNoteID: workContext.identity.id,
-                workRelativePath: workID.relativePath,
-                targetFingerprint: expectedRevision,
-                critiqueRelativePath: critiquePath,
-                checkpointID: checkpoint?.id,
-                scope: scope,
-                roundID: roundID,
-                functionSnapshot: functionSnapshot,
-                functionInstructions: preparedFunctionInstructions,
-                requestedAt: requestedAt
-            )
-        } catch {
-            let requestError = error
-            if let functionSnapshot,
-               functionSnapshot.actionSnapshot != nil,
-               let preparedFunctionInstructions {
-                try? await services.localResearchExecutionStore
-                    .discardCritiqueHandoff(
-                        snapshot: functionSnapshot,
-                        preparedInstructions: preparedFunctionInstructions
-                    )
-            }
-            do {
-                try await rollbackPreparedCritique()
-            } catch let rollbackError {
-                throw ResearchOperationError.critiqueRollbackFailed(
-                    requestError: requestError.localizedDescription,
-                    rollbackError: rollbackError.localizedDescription
-                )
-            }
-            throw requestError
-        }
-
-        var instructions = CritiquePromptBuilder.build(CritiquePromptContext(
-            template: template.source,
-            scope: scope,
-            lens: lens,
-            selectedRanges: selectedRanges,
-            additionalInstructions: additionalInstructions,
-            workTitle: workTitle,
-            workRelativePath: workID.relativePath,
-            workFingerprint: expectedRevision,
-            critiqueRelativePath: association.critiqueRelativePath
-        ))
-        if !skillInstructions.isEmpty {
-            instructions += "\n\n" + skillInstructions
-        }
-        try await refreshAfterCommittedOperation(
-            "The Critique request",
-            publication: .explicit,
-            affectedVaultIDs: [workID.vaultID]
-        )
-        return CritiquePreparation(
-            association: association,
-            instructions: instructions,
-            checkpoint: checkpoint
-        )
-    }
 
     // MARK: Helpers
 

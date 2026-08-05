@@ -70,7 +70,7 @@ Read [references/mcp-contract.md](references/mcp-contract.md) completely before 
 - Do not infer import permission from a request to analyze, cite, verify, search, or open a source.
 - Do not silently select among ambiguous matches or destinations.
 - Do not claim that a Zotero record verifies a quotation, page locator, argument, definition, or interpretation.
-- Do not impose a citation style. Use a researcher-installed citation skill when formatting conventions matter.
+- Do not impose a citation style. Use the current Triptych citation-style Platform setting when formatting conventions matter.
 
 ## Handoff
 

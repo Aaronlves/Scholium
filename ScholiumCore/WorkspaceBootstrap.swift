@@ -66,10 +66,10 @@ public enum WorkspaceBootstrap {
         ## Scholium routing
 
         - Apply the protected Scholium Core Protocol to every Scholium task.
-        - Select one primary Method Skill, or an explicit isolated sequence for genuinely multi-operation work.
+        - Use the Platform Action's registered primary Method and its exact linked Practices.
         - Load Scholium Research Integration for live Triptych reads, writes, Properties, Research Units, or Discuss persistence.
         - Load Scholium Discussion Protocol for a Discussion ID; use the ordinary Discuss Method for the intellectual exchange.
-        - Load only explicitly selected Researcher Skills and Practices; never scan arbitrary global skill directories.
+        - Never scan arbitrary global skill directories or substitute an unregistered Method.
 
         ## Workspace boundaries
 

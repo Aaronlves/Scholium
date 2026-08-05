@@ -9,9 +9,8 @@ struct ResearchWorkflowPreviewCatalogTests {
 
         for proof in [
             "case actionSheet",
-            "case skillInstaller",
-            "case skillSettings",
-            "case changeRequest",
+            "case researchGuidance",
+            "case writeSetExtension",
         ] {
             #expect(source.contains(proof), "Missing interface proof: \(proof)")
         }
@@ -31,8 +30,8 @@ struct ResearchWorkflowPreviewCatalogTests {
 
         for category in [
             "Methods",
-            "Researcher Skills",
-            "Permissions",
+            "Profiles & Practices",
+            "Collaboration",
             "Sources & Integrations",
             "Recovery & Technical",
         ] {
@@ -40,36 +39,30 @@ struct ResearchWorkflowPreviewCatalogTests {
         }
 
         for customization in [
-            "Triptych",
-            "Note roles",
-            "Show in Actions",
-            "Order in Actions",
-            "PROFILE MODULES",
-            "Required authorization",
-            "Standing policy",
+            "one current primary Markdown Method",
+            "Exact Wikilinks select Practices",
+            "Flat researcher-facing fields",
+            "Exact Markdown linked from primary Methods",
             "Ask Me Every Time",
             "Ask Me Only for Works",
-            "Triptych-wide",
-            "Disable",
-            "Replace…",
-            "Restore Bundled Reference",
+            "Full Triptych Access",
+            "APA 7",
+            "Pairing and Session are short-lived and restart-invalidated",
+            "One previous primary Method edit",
         ] {
             #expect(source.contains(customization), "Missing Skill customization proof: \(customization)")
         }
 
-        let systemSkillSection = try #require(
-            source.components(separatedBy: "ResearchSkillGroup(title: \"SYSTEM SKILLS\"")
-                .dropFirst()
-                .first?
-                .components(separatedBy: "ResearchSkillGroup(title: \"BUNDLED REFERENCES\"")
-                .first
-        )
-        #expect(systemSkillSection.contains("actionTitle: nil"))
-
         for forbidden in [
+            "Install Researcher Skill",
+            "Installed Skills Start Disabled",
+            "SKILL OVERRIDE",
+            "PROFILE MODULES",
+            "Reveal Skills Folder",
+            "Skill recovery snapshots",
             "Research Activity",
             "Open Research Record",
-            "Develop",
+            "case develop",
             "Revise",
             "Deny",
             " · ",
@@ -85,7 +78,7 @@ struct ResearchWorkflowPreviewCatalogTests {
         for field in [
             "Target",
             "Starting revision",
-            "Permission",
+            "Collaboration policy",
             "Candidate write scope",
             "Conflicts",
             "Recovery",
@@ -96,10 +89,9 @@ struct ResearchWorkflowPreviewCatalogTests {
         #expect(source.contains("Ask Me Every Time"))
         #expect(source.contains("Exact written Notes"))
         #expect(source.contains("Retained displaced bytes"))
-        #expect(source.contains("Installed Skills Start Disabled"))
-        #expect(source.contains("Allow These Notes Once"))
+        #expect(source.contains("Allow Selected Notes"))
         #expect(source.contains("Continue Without Changes"))
-        #expect(source.contains("Cancel the Run"))
+        #expect(source.contains("Cancel Request"))
 
     }
 

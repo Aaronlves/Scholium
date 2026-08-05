@@ -41,15 +41,17 @@ struct CLIApplicationDelegationTests {
         #expect(sources.action.contains("handle.research.actionRun(id: runID)"))
         #expect(sources.action.contains("handle.research.prepareActionFidelity("))
         #expect(!sources.action.contains("select-resources"))
-        #expect(sources.action.contains("handle.research.completeAction(submission)"))
+        #expect(!sources.action.contains("completeAction"))
         #expect(sources.action.contains("handle.research.cancelAction(runID: runID)"))
+        #expect(sources.agent.contains("operations.submitResult("))
+        #expect(sources.agent.contains("operations.continueResearch("))
         #expect(!sources.action.contains("import " + "ScholiumCore"))
         #expect(!sources.action.contains("ResearchFunction"))
         #expect(!sources.action.contains("packageID"))
         #expect(!sources.action.contains("createCheckpoint"))
     }
 
-    @Test("Action CLI JSON uses only the public Action request and completion contracts")
+    @Test("CLI JSON uses the public Action request and authenticated Agent Result contracts")
     func actionJSONRoundTrips() throws {
         let target = ResearchActionNoteSnapshot(
             noteID: UUID(),
@@ -59,27 +61,40 @@ struct CLIApplicationDelegationTests {
             fingerprint: DocumentFingerprint(content: "work"),
             title: "Work"
         )
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .write
+            }
+        )
         let request = ResearchActionExecutionRequest(
             actionID: .write,
             expectedExecutionKind: .writing,
             expectedProfileRevision: DocumentFingerprint(content: "profile"),
             expectedProfileDocumentRevision: nil,
             target: target,
-            parameterValues: [:]
+            platformInputs: try ResearchActionPlatformInputs(),
+            academicInputs: try ResearchAcademicFieldValues(
+                values: [:],
+                definitions: profile.academicInputFields
+            )
         )
-        let submission = ResearchActionCompletionSubmission(
-            runID: UUID(),
-            confirmationToken: UUID(),
-            finalTargetFingerprint: DocumentFingerprint(content: "revised"),
-            summary: "Revised and checked.",
-            didModifyTarget: true,
-            fidelityOutcomes: [FidelityCheckOutcome(
-                check: .content,
-                state: .passed,
-                summary: "No unresolved fidelity finding."
-            )],
-            childRunIDs: [UUID()],
-            submittedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        var rawResults: [String: ResearchAcademicFieldValue] = [:]
+        for definition in profile.academicResultFields
+            where definition.requirement != .excluded {
+            rawResults[definition.fieldID.rawValue] = switch definition.kind {
+            case .freeText:
+                .freeText("Revised one bounded claim and retained uncertainty.")
+            case .singleChoice:
+                .singleChoice(try #require(definition.choices.first?.value))
+            case .multipleChoice:
+                .multipleChoice([try #require(definition.choices.first?.value)])
+            }
+        }
+        let submission = try ResearchAgentResultSubmission(
+            academicResults: ResearchAcademicFieldValues(
+                rawValues: rawResults,
+                definitions: profile.academicResultFields
+            )
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -92,27 +107,38 @@ struct CLIApplicationDelegationTests {
             from: encoder.encode(request)
         ) == request)
         #expect(try decoder.decode(
-            ResearchActionCompletionSubmission.self,
+            ResearchAgentResultSubmission.self,
             from: encoder.encode(submission)
         ) == submission)
     }
 
-    @Test("Search v4, catalog, read, and lifecycle output schemas remain stable")
+    @Test("Search v6, catalog, read, and lifecycle output schemas remain stable")
     func serializedOutputContractsRemainStable() throws {
         let sources = try CLISources.load()
 
         #expect(sources.workspace.contains(
-            #"[retrieval_lead; \(hit.rankReason.rawValue)]\n  \(hit.snippet)\n"#
+            "for result in response.results"
         ))
         #expect(sources.workspace.contains(
             "let summary = SearchSummaryRecord(response: response)"
         ))
         #expect(sources.workspace.contains(
-            "encoder.encode(SearchResultRecord(hit: hit))"
+            "encoder.encode(SearchResultJSONRecord("
         ))
         #expect(sources.workspace.contains(#"let type = "search_summary""#))
         #expect(sources.workspace.contains(#"let type = "search_result""#))
-        #expect(sources.workspace.contains("case contractVersion = \"contract_version\""))
+        #expect(sources.workspace.contains("let availability: SearchAvailabilityRecord"))
+        #expect(sources.workspace.contains("let provider = SearchProvider.note"))
+        #expect(sources.workspace.contains("let provider = SearchProvider.record"))
+        #expect(sources.workspace.contains("let matchReasons: [SearchMatchReasonRecord]"))
+        #expect(sources.workspace.contains("let locator: NoteSearchLocatorRecord"))
+        #expect(sources.workspace.contains("let locator: RecordSearchLocatorRecord"))
+        #expect(sources.workspace.contains("let statementAuthor: PortableResearchStatementAuthor?"))
+        #expect(sources.workspace.contains("let fingerprint: DocumentFingerprint"))
+        #expect(sources.workspace.contains("let freshnessToken: SearchFreshnessToken"))
+        #expect(sources.workspace.contains("encoder.keyEncodingStrategy = .convertToSnakeCase"))
+        #expect(sources.output.contains("let capabilities = SearchCapabilities.current"))
+        #expect(sources.output.contains(#""search": searchHelp"#))
         #expect(!sources.workspace.contains("raw_score"))
         #expect(sources.workspace.contains(
             "String(decoding: try encoder.encode(snapshot), as: UTF8.self) + \"\\n\""
@@ -143,9 +169,11 @@ private struct CLISources {
     let entry: String
     let context: String
     let workspace: String
+    let output: String
     let document: String
     let zotero: String
     let action: String
+    let agent: String
 
     static func load() throws -> Self {
         let root = URL(fileURLWithPath: #filePath)
@@ -166,6 +194,10 @@ private struct CLISources {
                 contentsOf: cli.appendingPathComponent("WorkspaceCommandHandlers.swift"),
                 encoding: .utf8
             ),
+            output: String(
+                contentsOf: cli.appendingPathComponent("CLIOutput.swift"),
+                encoding: .utf8
+            ),
             document: String(
                 contentsOf: cli.appendingPathComponent("DocumentCommandHandler.swift"),
                 encoding: .utf8
@@ -176,6 +208,10 @@ private struct CLISources {
             ),
             action: String(
                 contentsOf: cli.appendingPathComponent("ResearchActionCommandHandler.swift"),
+                encoding: .utf8
+            ),
+            agent: String(
+                contentsOf: cli.appendingPathComponent("AgentCommandHandler.swift"),
                 encoding: .utf8
             )
         )

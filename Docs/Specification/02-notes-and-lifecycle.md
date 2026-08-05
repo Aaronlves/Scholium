@@ -15,8 +15,8 @@ Analysis, Topic, and ordinary Work notes support:
   coordination;
 - source-located Connect relations, passage Comments inside Discussion, and
   authoritative Markdown annotation including semantic Callouts;
-- role-aware Properties, default Research Actions, and researcher-enabled
-  custom Actions;
+- role-aware Properties and the closed Platform Research Actions with
+  researcher-configured academic Profiles;
 - Search in **This Note**, **This Vault**, or **Triptych**, plus Attention; and
 - Research Record and independent checkpoint recovery.
 
@@ -249,6 +249,26 @@ Link Graph, and Research Actions.
 Creation/modification times are app-owned Research Record facts, not
 Properties; timestamp keys in Markdown remain exact custom source.
 
+`summary` is one optional canonical researcher-owned string Property shared by
+Analysis, Topic, and Work. It is a short human-readable navigation declaration
+about the current Note as a whole: what it studies, its distinctive scope or
+problem, and why a later researcher or Agent may need to open it. It is not a
+Skill, instruction, source, unified position, completeness assertion,
+Researcher State, or researcher acceptance. A substantive claim found through
+it must be checked against the current exact Note body and actual sources.
+
+Researcher and authorized Agent edits maintain the same YAML field through the
+ordinary exact-revision, attribution, conflict, and recovery boundary. There
+is no human/Agent pair, approval copy, pending summary, automatic backfill, or
+summary lifecycle. Missing, not-yet-written, and not-applicable are valid.
+Scholium never silently generates, overwrites, or claims freshness for it.
+Every mediated change retains the actual writer attribution; Agent authority
+does not turn the field into a researcher-authored stance. An uncommitted
+machine summary remains a disposable projection and can never write source.
+The field should preserve competing interpretations, historical differences,
+open questions, and mixed epistemic identities rather than compressing them
+into false consensus.
+
 An Analysis may pair whole-number `debate_importance` (0–10) with
 `debate_importance_scope`. Both are required together and comparable only
 within the same named debate, domain, tradition, period, or reception context.
@@ -264,6 +284,10 @@ order is defined in Appendix A. `status` has no Scholium semantics, query,
 index, filter, ordering, or UI. Work `deadline`, Topic/Work YAML `title`,
 required markers, and **Open Properties by Default** likewise do not exist.
 Unknown source YAML remains byte-preserved but acquires no Scholium semantics.
+Section 13 may address a literal top-level YAML key for presence or exact
+string-value retrieval. That addressability is a source-faithful Search lead,
+not admission to the canonical Property catalog, validation, display,
+philosophical interpretation, or researcher judgment.
 
 ### 5.3 Create, duplicate, rename, and identity
 
@@ -481,17 +505,18 @@ unanchored whole-note turn and focal notes, and opens the one active Discussion
 when it already has a resolved Discuss Action. A Comment-only draft first opens
 the ordinary Discuss Action. Every new Discuss Action begins with a concise,
 editable request to discuss the Note including any existing Comments, so the
-researcher need not restate this routine collection rule; preparation binds
-the researcher-selected Method/Profile revision to that same Discussion and
-preserves every Comment before any agent handoff. Later handoffs reload the
-machine-local instructions for that frozen run rather than constructing an
-application-owned substitute prompt. Comments and Discuss remain one Discussion model, not
+researcher need not restate this routine collection rule; preparation freezes
+the registered primary Skill text, resolved Practices, optional folder-path
+string, and Result Contract for that same Discussion and preserves every
+Comment before any Agent handoff. Later handoffs reload those Run-frozen
+contracts rather than constructing an application-owned substitute prompt.
+Comments and Discuss remain one Discussion model, not
 parallel archives, but adding a Comment never initiates Discuss or an agent
 handoff.
 
 Discussion begins without source mutation. It remains resumable through
-researcher turns, attributed agent replies, and any separately authorized
-child Action. Closing its sheet retains the draft. **Finish Discussion** moves
+researcher turns, attributed Agent replies, and any separately authorized
+next Action. Closing its sheet retains the draft. **Finish Discussion** moves
 the complete exchange into one portable Research Record; Finish means only
 that the exchange is no longer active and implies no approval, rejection,
 truth, failure, or settlement.

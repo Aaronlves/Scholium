@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 4 and Local Execution v3")
+@Suite("Portable Research Record storage v1/schema 5 and Local Execution schema 8")
 struct ResearchRecordV1StoresTests {
     @Test("A post-rename failure leaves exact committed bytes observable")
     func secureReplacementReportsPostRenameUncertainty() throws {
@@ -109,6 +109,56 @@ struct ResearchRecordV1StoresTests {
         #expect(try await reopened.record(id: record.id) == stored)
     }
 
+    @Test("Record listings fingerprint the exact persisted JSON bytes")
+    func portableListingFingerprintsExactBytes() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        _ = try await store.createFinishedRecord(record)
+        let recordURL = fixture.control
+            .appendingPathComponent("research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        let canonicalBytes = try Data(contentsOf: recordURL)
+        var exactBytes = canonicalBytes
+        exactBytes.append(contentsOf: Data("\n ".utf8))
+        try exactBytes.write(to: recordURL)
+
+        let listing = try await store.listing()
+        let revision = try #require(listing.revisions.first)
+
+        #expect(listing.issues.isEmpty)
+        #expect(revision.record == record)
+        #expect(revision.fingerprint == DocumentFingerprint(data: exactBytes))
+        #expect(revision.fingerprint != DocumentFingerprint(data: canonicalBytes))
+        #expect(record.schemaVersion == PortableResearchRecord.currentSchemaVersion)
+    }
+
+    @Test("Record listing order and source manifests are input-order independent")
+    func portableListingOrderAndManifestAreStable() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let first = try makePortableRecord(
+            id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!
+        )
+        let second = try makePortableRecord(
+            id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAB")!
+        )
+        _ = try await store.createFinishedRecord(second)
+        _ = try await store.createFinishedRecord(first)
+
+        let listing = try await store.listing()
+        let reversed = PortableResearchRecordListing(
+            revisions: Array(listing.revisions.reversed()),
+            issues: listing.issues
+        )
+
+        #expect(listing.revisions.map(\.id) == [first.id, second.id])
+        #expect(reversed.revisions == listing.revisions)
+        #expect(reversed.sourceManifestHash == listing.sourceManifestHash)
+    }
+
     @Test("Pinning replaces only the portable record pin")
     func portablePinReplacementPreservesRecord() async throws {
         let fixture = try Fixture()
@@ -120,8 +170,12 @@ struct ResearchRecordV1StoresTests {
             recommendations: [recommendation]
         )
         _ = try await store.createFinishedRecord(record)
+        let initialListing = try await store.listing()
+        let initialFingerprint = try #require(initialListing.revisions.first?.fingerprint)
 
         let pinned = try await store.setPinned(true, for: record.id)
+        let pinnedListing = try await store.listing()
+        let pinnedFingerprint = try #require(pinnedListing.revisions.first?.fingerprint)
 
         #expect(pinned.isPinned)
         #expect(pinned.id == record.id)
@@ -141,9 +195,14 @@ struct ResearchRecordV1StoresTests {
         #expect(pinned.startedAt == record.startedAt)
         #expect(pinned.finishedAt == record.finishedAt)
         #expect(try await store.record(id: record.id) == pinned)
+        #expect(pinnedFingerprint != initialFingerprint)
+        #expect(pinnedListing.sourceManifestHash != initialListing.sourceManifestHash)
 
         let restored = try await store.setPinned(false, for: record.id)
         #expect(restored == record)
+        let restoredListing = try await store.listing()
+        #expect(restoredListing.revisions.first?.fingerprint == initialFingerprint)
+        #expect(restoredListing.sourceManifestHash == initialListing.sourceManifestHash)
     }
 
     @Test("Disposition and researcher note replace only one recommendation occurrence")
@@ -292,12 +351,16 @@ struct ResearchRecordV1StoresTests {
         )
         _ = try await store.createFinishedRecord(record)
         _ = try await store.createFinishedRecord(unrelated)
+        let manifestBeforeDeletion = try await store.listing().sourceManifestHash
         let recordsURL = fixture.control
             .appendingPathComponent("research-records/v1/records", isDirectory: true)
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
         #expect(try await store.deletePermanently(id: record.id) == record)
         #expect(!FileManager.default.fileExists(atPath: recordsURL.path))
-        #expect(try await store.listing().records == [unrelated])
+        let listingAfterDeletion = try await store.listing()
+        #expect(listingAfterDeletion.records == [unrelated])
+        #expect(listingAfterDeletion.revisions.map(\.id) == [unrelated.id])
+        #expect(listingAfterDeletion.sourceManifestHash != manifestBeforeDeletion)
         #expect(try await store.record(id: unrelated.id) == unrelated)
         await #expect(throws: ResearchRecordStoreV1Error.self) {
             _ = try await store.record(id: record.id)
@@ -353,15 +416,30 @@ struct ResearchRecordV1StoresTests {
         let store = try fixture.portableStore()
         let record = try makePortableRecord()
         _ = try await store.createFinishedRecord(record)
+        let cleanListing = try await store.listing()
+        let recordsURL = fixture.control
+            .appendingPathComponent("research-records/v1/records", isDirectory: true)
         let corruptURL = fixture.control
             .appendingPathComponent("research-records/v1/records", isDirectory: true)
             .appendingPathComponent("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee.json")
         try Data("{\"schema_version\":1,".utf8).write(to: corruptURL)
+        let mismatchURL = recordsURL.appendingPathComponent(
+            "ffffffff-ffff-ffff-ffff-ffffffffffff.json"
+        )
+        let validRecordURL = recordsURL.appendingPathComponent(
+            record.id.uuidString.lowercased() + ".json"
+        )
+        try Data(contentsOf: validRecordURL).write(to: mismatchURL)
 
         let listing = try await store.listing()
         #expect(listing.records.map(\.id) == [record.id])
-        #expect(listing.issues.count == 1)
-        #expect(listing.issues.first?.fileName == corruptURL.lastPathComponent)
+        #expect(listing.revisions.map(\.id) == [record.id])
+        #expect(listing.issues.count == 2)
+        #expect(
+            Set(listing.issues.map(\.fileName))
+                == Set([corruptURL.lastPathComponent, mismatchURL.lastPathComponent])
+        )
+        #expect(listing.sourceManifestHash == cleanListing.sourceManifestHash)
     }
 
     @Test("An interrupted permanent-deletion rename restores on reopen")
@@ -842,87 +920,20 @@ struct ResearchRecordV1StoresTests {
             nestedURL.lastPathComponent,
         ])
     }
-
-
-    @Test("Local Execution v3 keeps only the Agent coordination digest")
-    func localCoordinationKeyIsTransient() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let runID = UUID()
-        let seed = try makeLocalExecutionRecord(runID: runID, grant: nil)
-        let actionSnapshot = try #require(seed.snapshot.actionSnapshot)
-        let authorization = try LocalResearchExecutionStore
-            .prepareAgentCoordination(
-                triptychID: seed.triptychID,
-                parentRunID: runID,
-                actionRevision: try AgentNoteChangeActionRevision(
-                    actionSnapshot: actionSnapshot
-                ),
-                issuedAt: Date(timeIntervalSince1970: 10),
-                validFor: 60
-            )
-        let record = try makeLocalExecutionRecord(
-            runID: runID,
-            grant: nil,
-            coordinationGrant: authorization.grant
-        )
-        let store = try fixture.localStore()
-        _ = try await store.create(record)
-        let data = try Data(contentsOf: store.storageURL
-            .appendingPathComponent(record.id.uuidString.lowercased() + ".json"))
-        let source = String(decoding: data, as: UTF8.self)
-        #expect(source.contains(authorization.grant.keyDigest))
-        #expect(!source.contains(authorization.coordinationKey))
-        #expect(try await store.record(id: record.id).agentCoordinationGrant
-            == authorization.grant)
-        let requestID = UUID()
-        #expect(try await store.bindAgentCoordinationRequest(
-            runID: record.id,
-            expectedGrant: authorization.grant,
-            requestID: requestID
-        ).agentCoordinationRequestID == requestID)
-        #expect(try await store.bindAgentCoordinationRequest(
-            runID: record.id,
-            expectedGrant: authorization.grant,
-            requestID: requestID
-        ).agentCoordinationRequestID == requestID)
-        await #expect(throws: ResearchRecordStoreV1Error.self) {
-            _ = try await store.bindAgentCoordinationRequest(
-                runID: record.id,
-                expectedGrant: authorization.grant,
-                requestID: UUID()
-            )
-        }
-    }
-
-    @Test("Local write grant and Function completion commit in one record transition")
-    func localGrantAndCompletionAreAtomic() async throws {
+    @Test("Bounded write facts and Function completion commit in one record transition")
+    func localWriteReportAndCompletionAreAtomic() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let runID = UUID()
         let store = try fixture.localStore()
-        let seed = try makeLocalExecutionRecord(runID: runID, grant: nil)
+        let seed = try makeLocalExecutionRecord(runID: runID)
         let target = seed.snapshot.request.target
-        let authorization = try LocalResearchExecutionStore.prepareGrant(
-            activityID: runID,
-            origin: activityReference(target),
-            writeScope: .currentNote,
-            allowedTargets: [activityReference(target)],
-            startingFingerprints: [target.noteID: target.fingerprint],
-            issuedAt: Date(timeIntervalSince1970: 10)
-        )
-        _ = try await store.create(try makeLocalExecutionRecord(
+        _ = try await store.create(seed)
+        let report = try ResearchRunWriteReport(
             runID: runID,
-            grant: authorization.grant
-        ))
-        let report = MultiTargetCompletionReport(
-            activityID: runID,
-            candidateModifiedNotes: [],
             confirmedModifiedNotes: [],
-            unmodifiedNotes: [],
-            unreportedChangedNotes: [],
+            unmodifiedNotes: [writeReference(target)],
             observedFingerprints: [target.noteID: target.fingerprint],
-            summary: "No change was warranted.",
             completedAt: Date(timeIntervalSince1970: 20)
         )
         let completion = ResearchFunctionCompletion(
@@ -937,27 +948,22 @@ struct ResearchRecordV1StoresTests {
             completedAt: report.completedAt
         )
 
-        let completed = try await store.completeExecution(
-            activityID: runID,
-            activityKey: authorization.activityKey,
-            completionPayloadDigest: "candidate-report-digest",
-            report: report,
-            completion: completion,
-            submissionDigest: "function-submission-digest"
+        let completed = try await store.setCompletion(
+            completion,
+            writeReport: report,
+            submissionDigest: "function-submission-digest",
+            runID: runID
         )
-        #expect(completed.grant?.state == .completed)
-        #expect(completed.grant?.completionReport == report)
+        #expect(completed.writeReport == report)
         #expect(completed.completion == completion)
         #expect(completed.completionSubmissionDigest == "function-submission-digest")
         #expect(try await store.record(id: runID) == completed)
 
-        let repeated = try await store.completeExecution(
-            activityID: runID,
-            activityKey: authorization.activityKey,
-            completionPayloadDigest: "candidate-report-digest",
-            report: report,
-            completion: completion,
-            submissionDigest: "function-submission-digest"
+        let repeated = try await store.setCompletion(
+            completion,
+            writeReport: report,
+            submissionDigest: "function-submission-digest",
+            runID: runID
         )
         #expect(repeated == completed)
     }
@@ -1002,19 +1008,19 @@ struct ResearchRecordV1StoresTests {
             fingerprint: DocumentFingerprint(content: "settled"),
             rationale: nil
         )
-        _ = try await local.create(makeLocalExecutionRecord(runID: UUID(), grant: nil))
+        _ = try await local.create(makeLocalExecutionRecord(runID: UUID()))
 
         for (url, canary) in before {
             #expect(try LegacyCanary(url: url) == canary)
         }
     }
 
-    @Test("A corrupt execution file is isolated and cannot authorize a grant")
+    @Test("A corrupt execution file is isolated and cannot become current Run state")
     func corruptLocalExecutionFailsClosed() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
-        let good = try makeLocalExecutionRecord(runID: UUID(), grant: nil)
+        let good = try makeLocalExecutionRecord(runID: UUID())
         _ = try await store.create(good)
         let corruptID = UUID()
         let corruptURL = store.storageURL
@@ -1025,20 +1031,16 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.records.map(\.id) == [good.id])
         #expect(listing.issues.count == 1)
         await #expect(throws: Error.self) {
-            _ = try await store.authorizeCompletion(
-                activityID: corruptID,
-                activityKey: "legacy-or-guessed-key",
-                at: Date()
-            )
+            _ = try await store.record(id: corruptID)
         }
     }
 
-    @Test("Local Execution v3 rejects undeclared fields including raw keys")
+    @Test("Current Local Execution rejects undeclared fields including raw keys")
     func localExecutionRejectsUnknownFields() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
-        let record = try makeLocalExecutionRecord(runID: UUID(), grant: nil)
+        let record = try makeLocalExecutionRecord(runID: UUID())
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .deferredToDate
         var object = try #require(
@@ -1066,7 +1068,6 @@ struct ResearchRecordV1StoresTests {
         let runID = UUID()
         let local = try makeLocalExecutionRecord(
             runID: runID,
-            grant: nil,
             actionID: .analyze
         )
         _ = try await store.create(local)
@@ -1090,8 +1091,19 @@ struct ResearchRecordV1StoresTests {
             literatureRecommendations: first,
             completedAt: Date(timeIntervalSince1970: 20)
         )
+        let report = try ResearchRunWriteReport(
+            runID: runID,
+            confirmedModifiedNotes: [writeReference(local.snapshot.request.target)],
+            unmodifiedNotes: [],
+            observedFingerprints: [
+                local.snapshot.request.target.noteID:
+                    local.snapshot.request.target.fingerprint,
+            ],
+            completedAt: awaiting.completedAt
+        )
         _ = try await store.setCompletion(
             awaiting,
+            writeReport: report,
             submissionDigest: "first-submission",
             runID: runID
         )
@@ -1110,6 +1122,7 @@ struct ResearchRecordV1StoresTests {
         await #expect(throws: ResearchRecordStoreV1Error.self) {
             _ = try await store.setCompletion(
                 tamperedTerminal,
+                writeReport: report,
                 submissionDigest: "replacement-submission",
                 runID: runID
             )
@@ -1147,12 +1160,10 @@ struct ResearchRecordV1StoresTests {
         let retainedNoteID = UUID(uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE")!
         let deletedRun = try makeLocalExecutionRecord(
             runID: UUID(),
-            grant: nil,
             noteID: deletedNoteID
         )
         let retainedRun = try makeLocalExecutionRecord(
             runID: UUID(),
-            grant: nil,
             noteID: retainedNoteID
         )
         _ = try await store.create(deletedRun)
@@ -1163,6 +1174,103 @@ struct ResearchRecordV1StoresTests {
         #expect(removed == [deletedRun.id])
         #expect(try await store.recordIfPresent(id: deletedRun.id) == nil)
         #expect(try await store.record(id: retainedRun.id) == retainedRun)
+    }
+
+    @Test("Researcher Evaluation CAS preserves the immutable result and fails stale writes closed")
+    func researcherEvaluationCAS() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let original = try makePortableRecord()
+        _ = try await store.createFinishedRecord(original)
+        let resultFingerprint = try original.finalizedResultFingerprint()
+        let first = try await store.setResearcherEvaluation(
+            ResearcherEvaluationDraft(
+                observedIssues: [.sourceOrAttribution],
+                note: "The attribution needs a narrower locator."
+            ),
+            recordID: original.id,
+            expectedEvaluationRevision: nil,
+            expectedResultFingerprint: resultFingerprint,
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+        let firstRevision = try #require(first.researcherEvaluation?.revision)
+        #expect(try first.finalizedResultFingerprint() == resultFingerprint)
+        #expect(first.researcherEvaluation?.author == .researcher)
+
+        await #expect(throws: PortableResearchEvaluationMutationError.self) {
+            _ = try await store.setResearcherEvaluation(
+                ResearcherEvaluationDraft(noIssuesObserved: true),
+                recordID: original.id,
+                expectedEvaluationRevision: nil,
+                expectedResultFingerprint: resultFingerprint
+            )
+        }
+        await #expect(throws: PortableResearchEvaluationMutationError.self) {
+            _ = try await store.clearResearcherEvaluation(
+                recordID: original.id,
+                expectedEvaluationRevision: firstRevision,
+                expectedResultFingerprint: DocumentFingerprint(content: "other")
+            )
+        }
+
+        let cleared = try await store.clearResearcherEvaluation(
+            recordID: original.id,
+            expectedEvaluationRevision: firstRevision,
+            expectedResultFingerprint: resultFingerprint
+        )
+        #expect(cleared.researcherEvaluation == nil)
+        #expect(try cleared.finalizedResultFingerprint() == resultFingerprint)
+    }
+
+    @Test("Method feedback is one explicit CAS comment and never a second Evaluation store")
+    func methodFeedbackCAS() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let original = try makePortableRecord()
+        _ = try await store.createFinishedRecord(original)
+        let resultFingerprint = try original.finalizedResultFingerprint()
+        let evaluated = try await store.setResearcherEvaluation(
+            ResearcherEvaluationDraft(valuableDiscovery: true),
+            recordID: original.id,
+            expectedEvaluationRevision: nil,
+            expectedResultFingerprint: resultFingerprint
+        )
+        let evaluationRevision = try #require(
+            evaluated.researcherEvaluation?.revision
+        )
+        let commented = try await store.setMethodFeedbackComment(
+            ResearchMethodFeedbackDraft(
+                text: "Ask for a counter-reading before final synthesis.",
+                sourceEvaluationRevision: evaluationRevision
+            ),
+            recordID: original.id,
+            expectedCommentRevision: nil,
+            expectedResultFingerprint: resultFingerprint
+        )
+        let commentRevision = try #require(
+            commented.methodFeedbackComment?.revision
+        )
+        #expect(commented.methodFeedbackComment?.author == .researcher)
+        #expect(commented.researcherEvaluation?.revision == evaluationRevision)
+        #expect(try commented.finalizedResultFingerprint() == resultFingerprint)
+
+        await #expect(throws: PortableResearchMethodFeedbackMutationError.self) {
+            _ = try await store.setMethodFeedbackComment(
+                ResearchMethodFeedbackDraft(text: "A stale replacement."),
+                recordID: original.id,
+                expectedCommentRevision: nil,
+                expectedResultFingerprint: resultFingerprint
+            )
+        }
+        let cleared = try await store.clearMethodFeedbackComment(
+            recordID: original.id,
+            expectedCommentRevision: commentRevision,
+            expectedResultFingerprint: resultFingerprint
+        )
+        #expect(cleared.methodFeedbackComment == nil)
+        #expect(cleared.researcherEvaluation?.revision == evaluationRevision)
     }
 
     private func makePortableRecord(
@@ -1285,8 +1393,6 @@ struct ResearchRecordV1StoresTests {
 
     private func makeLocalExecutionRecord(
         runID: UUID,
-        grant: ResearchActivityGrant?,
-        coordinationGrant: AgentCoordinationGrant? = nil,
         actionID: ResearchActionID = .synthesize,
         noteID: UUID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
     ) throws -> LocalResearchExecutionRecord {
@@ -1301,9 +1407,7 @@ struct ResearchRecordV1StoresTests {
         )
         let request = ResearchFunctionRequest(
             function: .develop,
-            target: target,
-            writeScope: .currentNote,
-            authorizedWriteTargets: [target]
+            target: target
         )
         let snapshot = ResearchFunctionSnapshot(
             runID: runID,
@@ -1311,16 +1415,16 @@ struct ResearchRecordV1StoresTests {
             actionSnapshot: action,
             recordKind: .functionEnvelope,
             recordID: runID,
-            activityID: grant?.activityID,
+            checkpointID: UUID(
+                uuidString: "ABABABAB-ABAB-ABAB-ABAB-ABABABABABAB"
+            ),
             confirmationToken: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!,
             preparedAt: Date(timeIntervalSince1970: 10)
         )
         return try LocalResearchExecutionRecord(
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
             snapshot: snapshot,
-            preparedInstructions: "Local protected instructions.",
-            grant: grant,
-            agentCoordinationGrant: coordinationGrant
+            preparedInstructions: "Local protected instructions."
         )
     }
 
@@ -1345,59 +1449,42 @@ struct ResearchRecordV1StoresTests {
             fingerprint: DocumentFingerprint(content: "# Topic\n"),
             title: actionID == .analyze ? "Analysis" : "Problem"
         )
-        let sourceModuleID = ResearchActionModuleID(rawValue: "source")!
-        let modules: [ResearchActionModuleDefinition] = actionID == .analyze
-            ? [try .sourceReference(
-                id: sourceModuleID,
-                label: "Source",
-                isRequired: true
-            )]
-            : []
-        let profile = try ResearchActionProfile(
-            definition: definition,
-            buttonName: actionID == .analyze ? "Analyze" : "Synthesize",
-            order: 100,
-            applicableRoles: [targetRole],
-            showInActions: true,
-            modules: modules,
-            sourceRequirement: actionID == .analyze ? .required : .none,
-            capabilities: try ResearchActionCapabilityDeclaration(
-                readableRoles: [targetRole],
-                candidateWritableRoles: [targetRole],
-                candidateWriteOperations: [.modifyMarkdown]
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == actionID
+            }
+        )
+        let profileRevision = try profile.contentRevision()
+        let registration = try ResearchSkillRegistration(
+            key: ResearchSkillRegistrationKey(
+                rawValue: UUID(uuidString: "10000000-0000-0000-0000-000000000006")!
             ),
-            feedbackRequirement: .requested
+            actionID: actionID,
+            displayName: profile.displayName,
+            primaryMarkdown: .machineLocal()
         )
         return try ResearchActionSnapshot(
             definition: definition,
             target: target,
-            method: try ResearchActionMethodSnapshot(
-                packageID: actionID == .analyze
-                    ? "scholium-analyze"
-                    : "scholium-synthesize",
-                origin: .triptych,
-                version: "working",
-                packageRevision: DocumentFingerprint(content: "package"),
-                loadedResources: [ResearchActionResourceSnapshot(
-                    relativePath: "SKILL.md",
-                    revision: DocumentFingerprint(content: "method")
-                )]
+            method: try ResearchMethodSnapshot(
+                registration: registration,
+                primaryMarkdownSource: "# \(profile.displayName)\n\nExact test method.\n",
+                practices: []
             ),
             resolvedProfile: try ResearchActionResolvedProfileSnapshot(
-                origin: .applicationDefault,
                 profile: profile,
-                profileRevision: profile.contentRevision(),
-                profileDocumentRevision: nil
+                profileRevision: profileRevision,
+                profileDocumentRevision: DocumentFingerprint(content: "profiles")
             ),
-            parameters: try ResearchActionParameterModel(
+            platformInputs: try ResearchActionPlatformInputs(),
+            academicInputs: try ResearchAcademicFieldValues(
+                values: [:],
+                definitions: profile.academicInputFields
+            ),
+            resultContract: try ResearchResultContract(
                 profile: profile,
-                values: actionID == .analyze
-                    ? [sourceModuleID: .source(try ResearchSourceReference(
-                        identity: .localFile(),
-                        displayName: "Source.pdf",
-                        fingerprint: DocumentFingerprint(content: "source")
-                    ))]
-                    : [:]
+                registrationKey: registration.key,
+                profileRevision: profileRevision
             ),
             authority: try ResearchAuthorityEnvelope(
                 readableNotes: [target],
@@ -1408,10 +1495,10 @@ struct ResearchRecordV1StoresTests {
         )
     }
 
-    private func activityReference(
+    private func writeReference(
         _ target: ResearchFunctionTarget
-    ) -> ResearchActivityNoteReference {
-        ResearchActivityNoteReference(
+    ) throws -> ResearchRunWriteNoteReference {
+        try ResearchRunWriteNoteReference(
             noteID: target.noteID,
             note: target.note,
             role: target.role,

@@ -3,60 +3,233 @@ import Foundation
 import ScholiumContracts
 
 public enum LocalAgentBridgeOperation: String, Codable, Sendable {
-    case submit
-    case status
-    case cancel
+    case pair
+    case context
+    case query
+    case extendWriteSet = "extend_write_set"
+    case writeDocument = "write_document"
+    case resolveWriteConflict = "resolve_write_conflict"
+    case submitResult = "submit_result"
+    case continueResearch = "continue_research"
+    case methodImprovementContext = "method_improvement_context"
+    case submitMethodImprovement = "submit_method_improvement"
+    case end
 }
 
-public struct LocalAgentBridgeRequest: Codable, Sendable {
-    public static let currentSchemaVersion = 1
+/// The bridge is the only JSON boundary allowed to unwrap a Session
+/// credential. Keeping this adapter private prevents the bearer value from
+/// becoming a generally Codable domain contract.
+private struct LocalAgentBridgeWireCredential: Codable {
+    let value: ResearchConnectionCredential
+
+    init(_ value: ResearchConnectionCredential) {
+        self.value = value
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case sessionID = "session_id"
+        case secret
+    }
+
+    init(from decoder: Decoder) throws {
+        try LocalAgentBridgeWireCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let sessionID = try container.decode(UUID.self, forKey: .sessionID)
+        let secret = try container.decode(String.self, forKey: .secret)
+        do {
+            value = try ResearchConnectionCredential(
+                sessionID: sessionID,
+                secret: secret
+            )
+        } catch {
+            throw DecodingError.dataCorruptedError(
+                forKey: .secret,
+                in: container,
+                debugDescription: "The protected Session credential is invalid."
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(value.sessionID, forKey: .sessionID)
+        try container.encode(value.secret, forKey: .secret)
+    }
+}
+
+public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
+    CustomDebugStringConvertible
+{
+    public static let currentSchemaVersion = 9
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let operation: LocalAgentBridgeOperation
-    public let triptychID: UUID
-    public let coordinationKey: String
-    public let changeRequest: AgentNoteChangeRequest?
-    public let changeRequestID: UUID?
+    public let run: ResearchRunLocator?
+    public let pairingCode: ResearchPairingCode?
+    public let credential: ResearchConnectionCredential?
+    public let contextRequest: ResearchContextRequest?
+    public let writeSetIntent: ResearchWriteSetExtensionIntent?
+    public let documentWriteIntent: ResearchDocumentWriteIntent?
+    public let conflictResolutionIntent: ResearchWriteConflictResolutionIntent?
+    public let resultSubmission: ResearchAgentResultSubmission?
+    public let continuationRequest: ResearchContinuationRequest?
+    public let methodImprovementSubmission: ResearchMethodImprovementSubmission?
 
     public init(
         correlationID: UUID = UUID(),
         operation: LocalAgentBridgeOperation,
-        triptychID: UUID,
-        coordinationKey: String,
-        changeRequest: AgentNoteChangeRequest? = nil,
-        changeRequestID: UUID? = nil
+        run: ResearchRunLocator? = nil,
+        pairingCode: ResearchPairingCode? = nil,
+        credential: ResearchConnectionCredential? = nil,
+        contextRequest: ResearchContextRequest? = nil,
+        writeSetIntent: ResearchWriteSetExtensionIntent? = nil,
+        documentWriteIntent: ResearchDocumentWriteIntent? = nil,
+        conflictResolutionIntent: ResearchWriteConflictResolutionIntent? = nil,
+        resultSubmission: ResearchAgentResultSubmission? = nil,
+        continuationRequest: ResearchContinuationRequest? = nil,
+        methodImprovementSubmission: ResearchMethodImprovementSubmission? = nil
     ) throws {
         let shapeIsValid = switch operation {
-        case .submit:
-            changeRequest?.triptychID == triptychID && changeRequestID == nil
-        case .status, .cancel:
-            changeRequest == nil && changeRequestID != nil
+        case .pair:
+            run != nil && pairingCode != nil && credential == nil
+                && contextRequest == nil
+                && writeSetIntent == nil && documentWriteIntent == nil
+                && conflictResolutionIntent == nil
+                && resultSubmission == nil && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .context:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil
+                && writeSetIntent == nil && documentWriteIntent == nil
+                && conflictResolutionIntent == nil
+                && resultSubmission == nil && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .query:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest != nil
+                && writeSetIntent == nil && documentWriteIntent == nil
+                && conflictResolutionIntent == nil
+                && resultSubmission == nil && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .extendWriteSet:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent != nil
+                && documentWriteIntent == nil && resultSubmission == nil
+                && conflictResolutionIntent == nil
+                && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .writeDocument:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent != nil && resultSubmission == nil
+                && conflictResolutionIntent == nil
+                && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .resolveWriteConflict:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && resultSubmission == nil
+                && conflictResolutionIntent != nil
+                && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .submitResult:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && resultSubmission != nil
+                && conflictResolutionIntent == nil
+                && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .continueResearch:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && resultSubmission == nil
+                && conflictResolutionIntent == nil
+                && continuationRequest != nil
+                && methodImprovementSubmission == nil
+        case .methodImprovementContext:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && resultSubmission == nil
+                && conflictResolutionIntent == nil
+                && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .submitMethodImprovement:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && resultSubmission == nil
+                && conflictResolutionIntent == nil
+                && continuationRequest == nil
+                && methodImprovementSubmission != nil
+        case .end:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && resultSubmission == nil
+                && conflictResolutionIntent == nil
+                && continuationRequest == nil
+                && methodImprovementSubmission == nil
         }
-        guard shapeIsValid,
-              coordinationKey.utf8.count == 73,
-              !coordinationKey.unicodeScalars.contains(where: {
-                  $0.value < 33 || $0.value > 126
-              }) else {
+        guard shapeIsValid else {
             throw LocalAgentBridgeError.invalidRequest
         }
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
         self.operation = operation
-        self.triptychID = triptychID
-        self.coordinationKey = coordinationKey
-        self.changeRequest = changeRequest
-        self.changeRequestID = changeRequestID
+        self.run = run
+        self.pairingCode = pairingCode
+        self.credential = credential
+        self.contextRequest = contextRequest
+        self.writeSetIntent = writeSetIntent
+        self.documentWriteIntent = documentWriteIntent
+        self.conflictResolutionIntent = conflictResolutionIntent
+        self.resultSubmission = resultSubmission
+        self.continuationRequest = continuationRequest
+        self.methodImprovementSubmission = methodImprovementSubmission
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
         case operation
-        case triptychID = "triptych_id"
-        case coordinationKey = "coordination_key"
-        case changeRequest = "change_request"
-        case changeRequestID = "change_request_id"
+        case run
+        case pairingCode = "pairing_code"
+        case credential
+        case contextRequest = "context_request"
+        case writeSetIntent = "write_set_intent"
+        case documentWriteIntent = "document_write_intent"
+        case conflictResolutionIntent = "conflict_resolution_intent"
+        case resultSubmission = "result_submission"
+        case continuationRequest = "continuation_request"
+        case methodImprovementSubmission = "method_improvement_submission"
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(correlationID, forKey: .correlationID)
+        try container.encode(operation, forKey: .operation)
+        try container.encodeIfPresent(run, forKey: .run)
+        try container.encodeIfPresent(pairingCode?.rawValue, forKey: .pairingCode)
+        try container.encodeIfPresent(
+            credential.map(LocalAgentBridgeWireCredential.init),
+            forKey: .credential
+        )
+        try container.encodeIfPresent(contextRequest, forKey: .contextRequest)
+        try container.encodeIfPresent(writeSetIntent, forKey: .writeSetIntent)
+        try container.encodeIfPresent(documentWriteIntent, forKey: .documentWriteIntent)
+        try container.encodeIfPresent(
+            conflictResolutionIntent,
+            forKey: .conflictResolutionIntent
+        )
+        try container.encodeIfPresent(resultSubmission, forKey: .resultSubmission)
+        try container.encodeIfPresent(continuationRequest, forKey: .continuationRequest)
+        try container.encodeIfPresent(
+            methodImprovementSubmission,
+            forKey: .methodImprovementSubmission
+        )
     }
 
     public init(from decoder: Decoder) throws {
@@ -69,18 +242,68 @@ public struct LocalAgentBridgeRequest: Codable, Sendable {
         guard version == Self.currentSchemaVersion else {
             throw LocalAgentBridgeError.unsupportedVersion(version)
         }
+        let pairingCode: ResearchPairingCode?
+        if let rawPairingCode = try container.decodeIfPresent(
+            String.self,
+            forKey: .pairingCode
+        ) {
+            guard let validated = ResearchPairingCode(rawValue: rawPairingCode) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .pairingCode,
+                    in: container,
+                    debugDescription: "The one-time Pairing Code is invalid."
+                )
+            }
+            pairingCode = validated
+        } else {
+            pairingCode = nil
+        }
+        let credential = try container.decodeIfPresent(
+            LocalAgentBridgeWireCredential.self,
+            forKey: .credential
+        )?.value
         try self.init(
             correlationID: container.decode(UUID.self, forKey: .correlationID),
             operation: container.decode(LocalAgentBridgeOperation.self, forKey: .operation),
-            triptychID: container.decode(UUID.self, forKey: .triptychID),
-            coordinationKey: container.decode(String.self, forKey: .coordinationKey),
-            changeRequest: container.decodeIfPresent(
-                AgentNoteChangeRequest.self,
-                forKey: .changeRequest
+            run: container.decodeIfPresent(ResearchRunLocator.self, forKey: .run),
+            pairingCode: pairingCode,
+            credential: credential,
+            contextRequest: container.decodeIfPresent(
+                ResearchContextRequest.self,
+                forKey: .contextRequest
             ),
-            changeRequestID: container.decodeIfPresent(UUID.self, forKey: .changeRequestID)
+            writeSetIntent: container.decodeIfPresent(
+                ResearchWriteSetExtensionIntent.self,
+                forKey: .writeSetIntent
+            ),
+            documentWriteIntent: container.decodeIfPresent(
+                ResearchDocumentWriteIntent.self,
+                forKey: .documentWriteIntent
+            ),
+            conflictResolutionIntent: container.decodeIfPresent(
+                ResearchWriteConflictResolutionIntent.self,
+                forKey: .conflictResolutionIntent
+            ),
+            resultSubmission: container.decodeIfPresent(
+                ResearchAgentResultSubmission.self,
+                forKey: .resultSubmission
+            ),
+            continuationRequest: container.decodeIfPresent(
+                ResearchContinuationRequest.self,
+                forKey: .continuationRequest
+            ),
+            methodImprovementSubmission: container.decodeIfPresent(
+                ResearchMethodImprovementSubmission.self,
+                forKey: .methodImprovementSubmission
+            )
         )
     }
+
+    public var description: String {
+        "<redacted local Agent bridge request \(operation.rawValue) \(correlationID.uuidString.lowercased())>"
+    }
+
+    public var debugDescription: String { description }
 }
 
 public enum LocalAgentBridgeErrorCode: String, Codable, Sendable {
@@ -122,101 +345,119 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
     }
 }
 
-public struct LocalAgentBridgeResponse: Codable, Sendable {
-    public static let currentSchemaVersion = 2
+public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
+    CustomDebugStringConvertible
+{
+    public static let currentSchemaVersion = 11
 
     public let schemaVersion: Int
     public let correlationID: UUID
-    public let record: AgentNoteChangeRequestRecord?
-    public let childPreparations: [AgentNoteChangeChildPreparation]
+    public let credential: ResearchConnectionCredential?
+    public let context: ResearchAuthenticatedRunContext?
+    public let researchContext: ResearchContextResponse?
+    public let writeSetResult: ResearchWriteSetExtensionResult?
+    public let documentWriteResult: ResearchDocumentWriteResult?
+    public let conflictResolutionResult: ResearchWriteConflictResolutionResult?
+    public let resultReceipt: ResearchAgentResultReceipt?
+    public let continuationResult: ResearchContinuationResult?
+    public let methodImprovementContext: ResearchMethodImprovementContext?
+    public let methodImprovementReceipt: ResearchMethodImprovementReceipt?
+    public let endReceipt: ResearchRunEndReceipt?
     public let error: LocalAgentBridgeErrorPayload?
 
     public init(
         correlationID: UUID,
-        record: AgentNoteChangeRequestRecord? = nil,
-        childPreparations: [AgentNoteChangeChildPreparation] = [],
+        credential: ResearchConnectionCredential? = nil,
+        context: ResearchAuthenticatedRunContext? = nil,
+        researchContext: ResearchContextResponse? = nil,
+        writeSetResult: ResearchWriteSetExtensionResult? = nil,
+        documentWriteResult: ResearchDocumentWriteResult? = nil,
+        conflictResolutionResult: ResearchWriteConflictResolutionResult? = nil,
+        resultReceipt: ResearchAgentResultReceipt? = nil,
+        continuationResult: ResearchContinuationResult? = nil,
+        methodImprovementContext: ResearchMethodImprovementContext? = nil,
+        methodImprovementReceipt: ResearchMethodImprovementReceipt? = nil,
+        endReceipt: ResearchRunEndReceipt? = nil,
         error: LocalAgentBridgeErrorPayload? = nil
     ) throws {
-        guard (record == nil) != (error == nil),
-              error == nil || childPreparations.isEmpty,
-              Self.validContinuationDelivery(
-                record: record,
-                childPreparations: childPreparations
-              ) else {
+        let payloadCount = [
+            credential != nil,
+            context != nil,
+            researchContext != nil,
+            writeSetResult != nil,
+            documentWriteResult != nil,
+            conflictResolutionResult != nil,
+            resultReceipt != nil,
+            continuationResult != nil,
+            methodImprovementContext != nil,
+            methodImprovementReceipt != nil,
+            endReceipt != nil,
+            error != nil,
+        ]
+            .filter { $0 }.count
+        guard payloadCount == 1 else {
             throw LocalAgentBridgeError.invalidResponse
         }
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
-        self.record = record
-        self.childPreparations = childPreparations.sorted {
-            $0.noteID.uuidString < $1.noteID.uuidString
-        }
+        self.credential = credential
+        self.context = context
+        self.researchContext = researchContext
+        self.writeSetResult = writeSetResult
+        self.documentWriteResult = documentWriteResult
+        self.conflictResolutionResult = conflictResolutionResult
+        self.resultReceipt = resultReceipt
+        self.continuationResult = continuationResult
+        self.methodImprovementContext = methodImprovementContext
+        self.methodImprovementReceipt = methodImprovementReceipt
+        self.endReceipt = endReceipt
         self.error = error
-    }
-
-    private static func validContinuationDelivery(
-        record: AgentNoteChangeRequestRecord?,
-        childPreparations: [AgentNoteChangeChildPreparation]
-    ) -> Bool {
-        guard let record else { return childPreparations.isEmpty }
-        guard record.decision.state == .allowedSubset else {
-            return childPreparations.isEmpty
-        }
-        // Schema-v1 allowed records predate continuation delivery and remain
-        // readable but nonauthorizing.
-        guard record.canDeliverContinuations else {
-            return childPreparations.isEmpty
-        }
-        guard let plan = record.continuationPlan,
-              childPreparations.count == plan.childPhases.count,
-              Set(childPreparations.map(\.noteID)).count
-                == childPreparations.count else {
-            return false
-        }
-        let phases = Dictionary(uniqueKeysWithValues: plan.childPhases.map {
-            ($0.noteID, $0)
-        })
-        return childPreparations.allSatisfy { child in
-            guard let phase = phases[child.noteID],
-                  let requested = record.request.targets.first(where: {
-                      $0.noteID == child.noteID
-                  }),
-                  phase.runID == child.preparation.runID,
-                  child.preparation.snapshot.request.target.noteID == child.noteID,
-                  child.preparation.snapshot.request.target.note == requested.note,
-                  child.preparation.snapshot.request.target.fingerprint
-                    == requested.expectedFingerprint,
-                  child.preparation.snapshot.checkpointID != nil,
-                  child.preparation.snapshot.activityID
-                    == child.preparation.runID,
-                  let action = child.preparation.snapshot.actionSnapshot,
-                  action.target.note == requested.note,
-                  action.target.role == requested.role,
-                  action.target.fingerprint == requested.expectedFingerprint,
-                  (try? AgentNoteChangeActionRevision(actionSnapshot: action))
-                    == record.request.requestedAction,
-                  action.authority.writableNotes.map(\.noteID) == [child.noteID],
-                  Set(action.authority.writeOperations).isSubset(
-                    of: Set(record.request.operations)
-                  ),
-                  let lineage = child.preparation.snapshot.continuationLineage else {
-                return false
-            }
-            return lineage == ResearchContinuationLineage(
-                groupID: plan.groupID,
-                parentRunID: plan.parentRunID,
-                requestID: plan.requestID,
-                kind: .approvedAction
-            )
-        }
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
-        case record
-        case childPreparations = "child_preparations"
+        case credential, context
+        case researchContext = "research_context"
+        case writeSetResult = "write_set_result"
+        case documentWriteResult = "document_write_result"
+        case conflictResolutionResult = "conflict_resolution_result"
+        case resultReceipt = "result_receipt"
+        case continuationResult = "continuation_result"
+        case methodImprovementContext = "method_improvement_context"
+        case methodImprovementReceipt = "method_improvement_receipt"
+        case endReceipt = "end_receipt"
         case error
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(correlationID, forKey: .correlationID)
+        try container.encodeIfPresent(
+            credential.map(LocalAgentBridgeWireCredential.init),
+            forKey: .credential
+        )
+        try container.encodeIfPresent(context, forKey: .context)
+        try container.encodeIfPresent(researchContext, forKey: .researchContext)
+        try container.encodeIfPresent(writeSetResult, forKey: .writeSetResult)
+        try container.encodeIfPresent(documentWriteResult, forKey: .documentWriteResult)
+        try container.encodeIfPresent(
+            conflictResolutionResult,
+            forKey: .conflictResolutionResult
+        )
+        try container.encodeIfPresent(resultReceipt, forKey: .resultReceipt)
+        try container.encodeIfPresent(continuationResult, forKey: .continuationResult)
+        try container.encodeIfPresent(
+            methodImprovementContext,
+            forKey: .methodImprovementContext
+        )
+        try container.encodeIfPresent(
+            methodImprovementReceipt,
+            forKey: .methodImprovementReceipt
+        )
+        try container.encodeIfPresent(endReceipt, forKey: .endReceipt)
+        try container.encodeIfPresent(error, forKey: .error)
     }
 
     public init(from decoder: Decoder) throws {
@@ -226,25 +467,67 @@ public struct LocalAgentBridgeResponse: Codable, Sendable {
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let version = try container.decode(Int.self, forKey: .schemaVersion)
-        guard version == 1 || version == Self.currentSchemaVersion else {
+        guard version == Self.currentSchemaVersion else {
             throw LocalAgentBridgeError.unsupportedVersion(version)
         }
         try self.init(
             correlationID: container.decode(UUID.self, forKey: .correlationID),
-            record: container.decodeIfPresent(
-                AgentNoteChangeRequestRecord.self,
-                forKey: .record
+            credential: container.decodeIfPresent(
+                LocalAgentBridgeWireCredential.self,
+                forKey: .credential
+            )?.value,
+            context: container.decodeIfPresent(
+                ResearchAuthenticatedRunContext.self,
+                forKey: .context
             ),
-            childPreparations: container.decodeIfPresent(
-                [AgentNoteChangeChildPreparation].self,
-                forKey: .childPreparations
-            ) ?? [],
+            researchContext: container.decodeIfPresent(
+                ResearchContextResponse.self,
+                forKey: .researchContext
+            ),
+            writeSetResult: container.decodeIfPresent(
+                ResearchWriteSetExtensionResult.self,
+                forKey: .writeSetResult
+            ),
+            documentWriteResult: container.decodeIfPresent(
+                ResearchDocumentWriteResult.self,
+                forKey: .documentWriteResult
+            ),
+            conflictResolutionResult: container.decodeIfPresent(
+                ResearchWriteConflictResolutionResult.self,
+                forKey: .conflictResolutionResult
+            ),
+            resultReceipt: container.decodeIfPresent(
+                ResearchAgentResultReceipt.self,
+                forKey: .resultReceipt
+            ),
+            continuationResult: container.decodeIfPresent(
+                ResearchContinuationResult.self,
+                forKey: .continuationResult
+            ),
+            methodImprovementContext: container.decodeIfPresent(
+                ResearchMethodImprovementContext.self,
+                forKey: .methodImprovementContext
+            ),
+            methodImprovementReceipt: container.decodeIfPresent(
+                ResearchMethodImprovementReceipt.self,
+                forKey: .methodImprovementReceipt
+            ),
+            endReceipt: container.decodeIfPresent(
+                ResearchRunEndReceipt.self,
+                forKey: .endReceipt
+            ),
             error: container.decodeIfPresent(
                 LocalAgentBridgeErrorPayload.self,
                 forKey: .error
             )
         )
     }
+
+    public var description: String {
+        "<redacted local Agent bridge response \(correlationID.uuidString.lowercased())>"
+    }
+
+    public var debugDescription: String { description }
 }
 
 public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable {
@@ -369,9 +652,23 @@ public final class LocalAgentBridgeClient: @unchecked Sendable {
     }
 }
 
+public enum LocalAgentBridgeHandlerResult: Sendable {
+    case credential(ResearchConnectionCredential)
+    case context(ResearchAuthenticatedRunContext)
+    case researchContext(ResearchContextResponse)
+    case writeSet(ResearchWriteSetExtensionResult)
+    case documentWrite(ResearchDocumentWriteResult)
+    case conflictResolution(ResearchWriteConflictResolutionResult)
+    case resultReceipt(ResearchAgentResultReceipt)
+    case continuation(ResearchContinuationResult)
+    case methodImprovementContext(ResearchMethodImprovementContext)
+    case methodImprovementReceipt(ResearchMethodImprovementReceipt)
+    case endReceipt(ResearchRunEndReceipt)
+}
+
 public final class LocalAgentBridgeServer: @unchecked Sendable {
     public typealias Handler = @Sendable (LocalAgentBridgeRequest) async throws
-        -> AgentNoteChangeContinuationResult
+        -> LocalAgentBridgeHandlerResult
 
     private let queue = DispatchQueue(label: "com.scholium.agent-bridge")
     private let socketURL: URL
@@ -593,11 +890,63 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
             let outcome = try result.value?.get() ?? {
                 throw LocalAgentBridgeError.invalidResponse
             }()
-            let response = try LocalAgentBridgeResponse(
-                correlationID: request.correlationID,
-                record: outcome.record,
-                childPreparations: outcome.childPreparations
-            )
+            let response: LocalAgentBridgeResponse = switch outcome {
+            case .credential(let credential):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    credential: credential
+                )
+            case .context(let context):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    context: context
+                )
+            case .researchContext(let context):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    researchContext: context
+                )
+            case .writeSet(let result):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    writeSetResult: result
+                )
+            case .documentWrite(let result):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    documentWriteResult: result
+                )
+            case .conflictResolution(let result):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    conflictResolutionResult: result
+                )
+            case .resultReceipt(let receipt):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    resultReceipt: receipt
+                )
+            case .continuation(let result):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    continuationResult: result
+                )
+            case .methodImprovementContext(let context):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    methodImprovementContext: context
+                )
+            case .methodImprovementReceipt(let receipt):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    methodImprovementReceipt: receipt
+                )
+            case .endReceipt(let receipt):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    endReceipt: receipt
+                )
+            }
             try LocalAgentBridgeIO.writeFrame(
                 LocalAgentBridgeWireCoding.encode(response),
                 to: peer
@@ -643,8 +992,8 @@ private final class LocalAgentBridgeStopWaiter: @unchecked Sendable {
 
 private final class LocalAgentBridgeResultBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var stored: Result<AgentNoteChangeContinuationResult, Error>?
-    var value: Result<AgentNoteChangeContinuationResult, Error>? {
+    private var stored: Result<LocalAgentBridgeHandlerResult, Error>?
+    var value: Result<LocalAgentBridgeHandlerResult, Error>? {
         get { lock.withLock { stored } }
         set { lock.withLock { stored = newValue } }
     }
@@ -681,8 +1030,9 @@ enum LocalAgentBridgeWireCoding {
         case LocalAgentBridgeError.unavailable:
             code = .unavailable
         case LocalAgentBridgeError.permissionDenied,
-             AgentNoteChangeOperationError.invalidCoordinationKey,
-             AgentNoteChangeOperationError.expiredCoordinationKey:
+             ResearchAgentSessionError.sessionRejected,
+             ResearchAgentSessionError.pairingRejected,
+             ResearchAgentSessionError.contextReferenceRejected:
             code = .permissionDenied
         case LocalAgentBridgeError.timeout: code = .timeout
         case LocalAgentBridgeError.outcomeUnknown: code = .outcomeUnknown

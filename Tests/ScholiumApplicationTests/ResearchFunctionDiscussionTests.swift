@@ -21,9 +21,9 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .discuss,
                 target: actionNote(target),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "researcher-request")!:
-                        .text("Change this Analysis into a stronger argument."),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Change this Analysis into a stronger argument."),
                 ]
             )
         )
@@ -57,7 +57,7 @@ extension ResearchFunctionOperationsTests {
             didModifyTarget: false
         )
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeProtectedFunction(incomplete)
+            _ = try await completeTestProtectedFunction(handle: handle, submission: incomplete)
         }
         _ = try await handle.research.appendDiscussionStatement(
             discussionID: preparation.runID,
@@ -65,7 +65,7 @@ extension ResearchFunctionOperationsTests {
             attribution: "Research Agent",
             text: "The requested change requires a separately authorized Analyze Action."
         )
-        let completed = try await handle.research.completeProtectedFunction(incomplete)
+        let completed = try await completeTestProtectedFunction(handle: handle, submission: incomplete)
         #expect(completed.state == .complete)
         #expect(!completed.didModifyTarget)
         let activeAfterCompletion = try await handle.research.activeDiscussions(noteID: nil)
@@ -94,10 +94,9 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .checkFidelity,
                 target: actionNote(target),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "fidelity-checks")!:
-                        .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
-                ]
+                platformInputs: try ResearchActionPlatformInputs(
+                    fidelityChecks: [.content]
+                )
             )
         )
         try await handle.research.cancelProtectedFunction(runID: fidelity.runID)
@@ -512,9 +511,9 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .discuss,
                 target: actionNote(target),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "researcher-request")!:
-                        .text("Continue at whole-note scope."),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Continue at whole-note scope."),
                 ]
             )
         )
@@ -548,9 +547,9 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .discuss,
                 target: actionNote(target),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "researcher-request")!:
-                        .text("Restore this interrupted preparation."),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Restore this interrupted preparation."),
                 ]
             )
         )
@@ -621,9 +620,9 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .discuss,
                 target: actionNote(target),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "researcher-request")!:
-                        .text("Clarify the argument without editing the Analysis."),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Clarify the argument without editing the Analysis."),
                 ]
             )
         )
@@ -639,7 +638,7 @@ extension ResearchFunctionOperationsTests {
         #expect(finished.primaryNoteID == target.noteID)
 
         let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
-        let completion = try await handle.research.completeProtectedFunction(
+        let completion = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: run.snapshot.confirmationToken,
@@ -662,13 +661,13 @@ extension ResearchFunctionOperationsTests {
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let target = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
+            fixture.topicID,
+            role: .topic,
             handle: handle
         )
-        let document = try await handle.documents.load(fixture.analysisID)
+        let document = try await handle.documents.load(fixture.topicID)
         let selectionRange = (document.rawContent as NSString).range(
-            of: "Exact philosophical claim"
+            of: "See [[Nested Topic]]"
         )
         let anchor = try #require(CommentAnchorBuilder.anchor(
             in: document.rawContent,
@@ -679,7 +678,7 @@ extension ResearchFunctionOperationsTests {
             try await handle.research.protectedMaterialCandidates(
                 for: target,
                 function: .develop
-            ).first { $0.material.note == fixture.topicID }?.material
+            ).first { $0.material.note == fixture.analysisID }?.material
         )
 
         let preparation = try await handle.research.prepareProtectedFunction(
@@ -687,7 +686,7 @@ extension ResearchFunctionOperationsTests {
                 function: .develop,
                 target: target,
                 materials: [material],
-                instruction: "Develop only the selected claim.",
+                instruction: "Synthesize only the selected connection.",
                 scope: .passage(anchor)
             )
         )
@@ -698,24 +697,26 @@ extension ResearchFunctionOperationsTests {
         #expect(packet.contains(preparation.snapshot.confirmationToken.uuidString.lowercased()))
         #expect(packet.contains(target.noteID.uuidString.lowercased()))
         #expect(packet.contains(material.noteID.uuidString.lowercased()))
-        #expect(packet.contains("\"quotation\" : \"Exact philosophical claim\""))
+        #expect(packet.contains("\"quotation\" : \"See [[Nested Topic]]\""))
         #expect(packet.contains("\"line\""))
         #expect(packet.contains("\"utf8Range\""))
-        #expect(packet.contains("\"mode\" : \"analyze\""))
-        #expect(packet.contains("\"action\" : \"analyze\""))
-        #expect(packet.contains("\"skillPackages\""))
-        #expect(packet.contains("\"packageRevision\""))
-        #expect(packet.contains("\"loadedResources\""))
-        #expect(packet.contains("scholium-working-analyze"))
-        #expect(!packet.contains("profileRevision"))
+        #expect(packet.contains("\"action\" : \"synthesize\""))
+        #expect(packet.contains("\"method\""))
+        #expect(packet.contains("\"registrationKey\""))
+        #expect(packet.contains("\"primaryMarkdownRevision\""))
+        #expect(packet.contains("\"practices\""))
+        #expect(!packet.contains("packageRevision"))
+        #expect(!packet.contains("loadedResources"))
+        #expect(packet.contains("\"profileRevision\""))
         #expect(!preparation.awaitsResourceSelection)
         #expect(!packet.contains("## Finalize conditional resources"))
         #expect(!packet.contains("scholium action select-resources"))
-        #expect(packet.contains("scholium action complete --from"))
+        #expect(packet.contains("frozen Result Contract"))
+        #expect(packet.contains("authenticated Agent CLI"))
         let storedRun = try #require(try await handle.services.localResearchExecutionStore.listing().records.first {
             $0.id == preparation.runID
         })
-        let persistedPacket = try #require(storedRun.preparedInstructions)
+        let persistedPacket = storedRun.preparedInstructions
         #expect(packet.hasPrefix(persistedPacket))
         #expect(!persistedPacket.contains("## Write authorization"))
         await runtime.shutdown()

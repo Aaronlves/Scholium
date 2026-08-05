@@ -591,6 +591,7 @@ struct LinkGraphTests {
         #expect(support[0].subjectPath == "Claims/A.md")
         #expect(support[0].objectPath == "Claims/B.md")
         #expect(support[0].occurrences.count == 2)
+        #expect(Set(support[0].occurrences.map(\.sourceNote)) == [id("Claims/A.md")])
         #expect(snapshot.diagnostics.contains { $0.code == .duplicateRelationship })
     }
 
@@ -629,6 +630,8 @@ struct LinkGraphTests {
         #expect(incompatibilities.count == 1)
         #expect(!incompatibilities[0].isDirectional)
         #expect(incompatibilities[0].occurrences.count == 2)
+        #expect(Set(incompatibilities[0].occurrences.map(\.sourceNote))
+            == [id("Claims/A.md"), id("Claims/B.md")])
         #expect(snapshot.diagnostics.contains { $0.code == .duplicateRelationship })
     }
 

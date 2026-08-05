@@ -172,7 +172,13 @@ struct WorkspaceRuntimeTests {
             executionScope: .triptych,
             limit: 20
         ))
-        #expect(hits.results.contains { $0.vaultID == fixture.analysisNoteID.vaultID })
+        let noteHits = hits.results.compactMap { result -> NoteSearchResult? in
+            guard case .note(let note) = result else { return nil }
+            return note
+        }
+        #expect(noteHits.contains {
+            $0.vaultID == fixture.analysisNoteID.vaultID
+        })
         #expect(try await runtime.availableWorkspaces().map(\.id) == [fixture.assignment.id])
 
         await runtime.shutdown()
@@ -185,51 +191,6 @@ struct WorkspaceRuntimeTests {
                 return
             }
         }
-    }
-
-    @Test("Related stays separate and refuses a lexical generation mismatch")
-    func relatedGenerationCompatibility() async throws {
-        let fixture = try await ApplicationFixture.make()
-        defer { fixture.remove() }
-        try Data("# Agency\n\n[[Freedom]]\n".utf8).write(
-            to: fixture.analysesURL.appendingPathComponent("Agency.md"),
-            options: .atomic
-        )
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let snapshot = try await handle.discovery.snapshot()
-        let generation = try #require(snapshot.searchGeneration)
-
-        let current = try await handle.discovery.related(
-            query: "Freedom",
-            scope: .triptych,
-            searchGeneration: generation,
-            excluding: []
-        )
-        #expect(current.availability == .current)
-        #expect(current.items.map(\.note.reference.relativePath) == ["Agency.md"])
-
-        let mismatched = SearchGenerationID(
-            triptychID: generation.triptychID,
-            sequence: generation.sequence + 1,
-            schemaVersion: generation.schemaVersion,
-            queryContractVersion: generation.queryContractVersion,
-            tokenizerPolicyVersion: generation.tokenizerPolicyVersion,
-            rankingPolicyVersion: generation.rankingPolicyVersion,
-            sourceManifestHash: generation.sourceManifestHash
-        )
-        let refreshing = try await handle.discovery.related(
-            query: "Freedom",
-            scope: .triptych,
-            searchGeneration: mismatched,
-            excluding: []
-        )
-        #expect(refreshing.availability == .refreshing)
-        #expect(refreshing.items.isEmpty)
-        await runtime.shutdown()
     }
 
     @Test("Document writes retain VaultRepository revision gates")
@@ -280,57 +241,6 @@ struct WorkspaceRuntimeTests {
         } else {
             Issue.record("A successful source commit did not publish sourceCommitted.")
         }
-        await runtime.shutdown()
-    }
-
-    @Test("Runtime installs one reviewed Skill as independent disabled Triptych packages")
-    func runtimeInstallsResearcherSkillAcrossTriptychs() async throws {
-        let fixture = try await ApplicationFixture.make()
-        defer { fixture.remove() }
-        let second = try await fixture.makeSecondAssignment(name: "Second")
-        let source = fixture.rootURL.appendingPathComponent(
-            "argument-pressure-test",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: source,
-            withIntermediateDirectories: true
-        )
-        let skill = """
-        ---
-        name: Argument Pressure Test
-        description: Return bounded criticism without changing Markdown.
-        scholium:
-          role: specialist
-          supported_actions: [critique]
-          capabilities: []
-          supported_modes: [review]
-          required_skills: []
-        ---
-        Distinguish reconstruction, objection, reply, and residual pressure.
-        """ + "\n"
-        try Data(skill.utf8).write(to: source.appendingPathComponent("SKILL.md"))
-
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment, second]
-        )))
-        let preparation = try await runtime.stageResearcherSkillInstallation(
-            from: source
-        )
-        let outcome = try await runtime.installResearcherSkill(
-            preparation,
-            to: [fixture.assignment.id, second.id]
-        )
-        #expect(outcome.installations.count == 2)
-        #expect(outcome.installations.allSatisfy { !$0.isEnabled })
-
-        let firstHandle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let secondHandle = try await runtime.openWorkspace(id: second.id)
-        #expect(try await firstHandle.research.skillPackage(id: preparation.packageID)
-            .revision == preparation.packageRevision)
-        #expect(try await secondHandle.research.skillPackage(id: preparation.packageID)
-            .revision == preparation.packageRevision)
         await runtime.shutdown()
     }
 
@@ -580,14 +490,18 @@ struct WorkspaceRuntimeTests {
         let second = try await runtime.openWorkspace(id: secondAssignment.id)
 
         func results(_ query: String, in handle: WorkspaceHandle) async throws
-            -> [SearchHit]
+            -> [NoteSearchResult]
         {
-            try await handle.discovery.search(SearchRequest(
+            let response = try await handle.discovery.search(SearchRequest(
                 query: query,
                 presentationScope: .triptych,
                 executionScope: .triptych,
                 limit: 50
-            )).results
+            ))
+            return response.results.compactMap { result in
+                guard case .note(let note) = result else { return nil }
+                return note
+            }
         }
 
         #expect(try await results("FirstTriptychTerm", in: first).map(\.relativePath)
@@ -606,17 +520,116 @@ struct WorkspaceRuntimeTests {
                 fixture.assignment.id.uuidString.lowercased(),
                 isDirectory: true
             )
-            .appendingPathComponent("indexes/search-v4.sqlite")
+            .appendingPathComponent("indexes/search-v6.sqlite")
         let secondIndex = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(
                 secondAssignment.id.uuidString.lowercased(),
                 isDirectory: true
             )
-            .appendingPathComponent("indexes/search-v4.sqlite")
+            .appendingPathComponent("indexes/search-v6.sqlite")
         #expect(firstIndex != secondIndex)
         #expect(FileManager.default.fileExists(atPath: firstIndex.path))
         #expect(FileManager.default.fileExists(atPath: secondIndex.path))
+        await runtime.shutdown()
+    }
+
+    @Test("Search rejects forged Vault and Note scopes before provider execution")
+    func searchScopeAuthorizationFailsClosed() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+
+        let forgedVault = UUID()
+        let vaultResponse = try await handle.discovery.search(SearchRequest(
+            query: "kind:record",
+            presentationScope: .currentVault,
+            executionScope: .currentVault(forgedVault),
+            limit: 20
+        ))
+        #expect(vaultResponse.results.isEmpty)
+        #expect(vaultResponse.diagnostics.map(\.code) == [.notApplicable])
+
+        let mismatched = try await handle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .triptych,
+            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+            limit: 20
+        ))
+        #expect(mismatched.results.isEmpty)
+        #expect(mismatched.diagnostics.map(\.code) == [.notApplicable])
+
+        let forgedNote = SearchSourceSnapshot(
+            noteID: VaultQualifiedNoteID(
+                vaultID: fixture.analysisNoteID.vaultID,
+                relativePath: "Not Authorized.md"
+            ),
+            editorSessionID: UUID(),
+            source: "# Forged",
+            editorRevision: 1
+        )
+        let noteResponse = try await handle.discovery.search(SearchRequest(
+            query: "property:language",
+            presentationScope: .thisNote,
+            executionScope: .currentNote(forgedNote),
+            limit: 20
+        ))
+        #expect(noteResponse.results.isEmpty)
+        #expect(noteResponse.diagnostics.map(\.code) == [.notApplicable])
+        await runtime.shutdown()
+    }
+
+    @Test("Direct relation Search uses the same complete Graph manifest and preserves source provenance")
+    func directRelationSearchIntegration() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        try Data("# Anchor\n\n+[[Target]]\n".utf8).write(
+            to: fixture.topicsURL.appendingPathComponent("Anchor.md"),
+            options: .atomic
+        )
+        try Data("# Target\n\nA bounded relation target.\n".utf8).write(
+            to: fixture.topicsURL.appendingPathComponent("Target.md"),
+            options: .atomic
+        )
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+
+        let response = try await handle.discovery.search(SearchRequest(
+            query: "from-note:Anchor relation:supports",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        #expect(response.diagnostics.isEmpty)
+        let target = try #require(response.results.compactMap { result -> NoteSearchResult? in
+            guard case .note(let note) = result else { return nil }
+            return note
+        }.first)
+        #expect(target.relativePath == "Target.md")
+        let relationship = try #require(target.matchReasons.compactMap {
+            reason -> SearchRelationshipMatch? in
+            guard case .relationship(let match) = reason else { return nil }
+            return match
+        }.first)
+        #expect(relationship.direction == .fromNote)
+        #expect(relationship.relation == .supports)
+        #expect(relationship.occurrences.first?.sourceNote.relativePath == "Anchor.md")
+        #expect(relationship.occurrences.first?.locator.line == 3)
+
+        let narrowed = try await handle.discovery.search(SearchRequest(
+            query: "missing-term from-note:Anchor relation:supports",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        #expect(narrowed.results.isEmpty)
         await runtime.shutdown()
     }
 
@@ -739,10 +752,20 @@ struct WorkspaceRuntimeTests {
         #expect(incrementalDocuments.map(\.lifecycle) == cleanDocuments.map(\.lifecycle))
         #expect(incrementalWorkspace.discovery.catalog.graph?.diagnostics
             == cleanWorkspace.discovery.catalog.graph?.diagnostics)
-        #expect(incrementalResults.results.map(\.vaultID)
-            == cleanResults.results.map(\.vaultID))
-        #expect(incrementalResults.results.map(\.relativePath)
-            == cleanResults.results.map(\.relativePath))
+        let incrementalNoteResults = incrementalResults.results.compactMap {
+            result -> NoteSearchResult? in
+            guard case .note(let note) = result else { return nil }
+            return note
+        }
+        let cleanNoteResults = cleanResults.results.compactMap {
+            result -> NoteSearchResult? in
+            guard case .note(let note) = result else { return nil }
+            return note
+        }
+        #expect(incrementalNoteResults.map(\.vaultID)
+            == cleanNoteResults.map(\.vaultID))
+        #expect(incrementalNoteResults.map(\.relativePath)
+            == cleanNoteResults.map(\.relativePath))
         await cleanRuntime.shutdown()
     }
 

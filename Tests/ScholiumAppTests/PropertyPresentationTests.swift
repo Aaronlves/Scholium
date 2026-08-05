@@ -158,6 +158,7 @@ struct PropertyPresentationTests {
         #expect(AboutProfileCatalog.entries(for: .analysis, visibleFields: nil) == [
             .completion,
             .limitations,
+            .property("summary"),
             .property("authors"),
             .property("year"),
             .property("type"),
@@ -166,11 +167,13 @@ struct PropertyPresentationTests {
         #expect(AboutProfileCatalog.entries(for: .topicMarkdown, visibleFields: nil) == [
             .scope(label: "Scope"),
             .limitations,
+            .property("summary"),
             .property("aliases"),
         ])
         #expect(AboutProfileCatalog.entries(for: .draftProject, visibleFields: nil) == [
             .scope(label: "Research Scope"),
             .limitations,
+            .property("summary"),
             .property("kind"),
             .property("authors"),
             .property("venue"),

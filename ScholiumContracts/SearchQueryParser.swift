@@ -1,9 +1,15 @@
 import Foundation
 
+public enum SearchProvider: String, Codable, CaseIterable, Hashable, Sendable {
+    case note
+    case record
+}
+
 public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendable {
     case title
     case alias
     case heading
+    case summary
     case body
     case author
     case year
@@ -15,6 +21,30 @@ public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendabl
 public enum SearchStructuredField: String, Codable, CaseIterable, Hashable, Sendable {
     case callout
     case has
+}
+
+public enum SearchRecordField: String, Codable, CaseIterable, Hashable, Sendable {
+    case note
+    case action
+    case skill
+    case participant
+    case date
+}
+
+public enum SearchRelationDirection: String, Codable, CaseIterable, Hashable, Sendable {
+    case fromNote = "from-note"
+    case toNote = "to-note"
+}
+
+public enum SearchRelation: String, Codable, CaseIterable, Hashable, Sendable {
+    case supports
+    case opposes
+    case neutral
+    case incompatible
+
+    public var isSymmetric: Bool {
+        self == .neutral || self == .incompatible
+    }
 }
 
 public enum SearchLexicalValue: Codable, Hashable, Sendable {
@@ -32,6 +62,20 @@ public enum SearchLexicalValue: Codable, Hashable, Sendable {
         if case .prefix = self { return true }
         return false
     }
+
+    public var matchKind: SearchLexicalMatchKind {
+        switch self {
+        case .term: .term
+        case .phrase: .phrase
+        case .prefix: .prefix
+        }
+    }
+}
+
+public enum SearchLexicalMatchKind: String, Codable, Hashable, Sendable {
+    case term
+    case phrase
+    case prefix
 }
 
 public struct SearchLexicalClause: Codable, Hashable, Sendable {
@@ -72,16 +116,128 @@ public struct SearchStructuredClause: Codable, Hashable, Sendable {
     }
 }
 
+public struct SearchPropertyClause: Codable, Hashable, Sendable {
+    /// Exact, case-sensitive top-level YAML key.
+    public let key: String
+    /// Normalized string equality value. `nil` means property presence.
+    public let value: String?
+    public let valueWasQuoted: Bool
+    public let sourceRange: Range<Int>
+
+    public init(
+        key: String,
+        value: String?,
+        valueWasQuoted: Bool,
+        sourceRange: Range<Int>
+    ) {
+        self.key = key
+        self.value = value
+        self.valueWasQuoted = valueWasQuoted
+        self.sourceRange = sourceRange
+    }
+}
+
+public struct SearchRelationQuery: Codable, Hashable, Sendable {
+    public let direction: SearchRelationDirection
+    public let noteIdentity: String
+    public let relation: SearchRelation
+    public let sourceRange: Range<Int>
+
+    public init(
+        direction: SearchRelationDirection,
+        noteIdentity: String,
+        relation: SearchRelation,
+        sourceRange: Range<Int>
+    ) {
+        self.direction = direction
+        self.noteIdentity = noteIdentity
+        self.relation = relation
+        self.sourceRange = sourceRange
+    }
+}
+
+public struct SearchRecordClause: Codable, Hashable, Sendable {
+    public let field: SearchRecordField?
+    public let value: SearchLexicalValue
+    public let excluded: Bool
+    public let sourceRange: Range<Int>
+
+    public init(
+        field: SearchRecordField?,
+        value: SearchLexicalValue,
+        excluded: Bool,
+        sourceRange: Range<Int>
+    ) {
+        self.field = field
+        self.value = value
+        self.excluded = excluded
+        self.sourceRange = sourceRange
+    }
+}
+
 public enum SearchClause: Codable, Hashable, Sendable {
     case lexical(SearchLexicalClause)
     case structured(SearchStructuredClause)
+    case property(SearchPropertyClause)
+    case relation(SearchRelationQuery)
+    case record(SearchRecordClause)
+}
+
+public enum SearchExplanationOperator: String, Codable, Hashable, Sendable {
+    case and
+}
+
+public enum SearchExplanationClauseKind: Codable, Hashable, Sendable {
+    case lexical(SearchLexicalField?, String, SearchLexicalMatchKind, Bool)
+    case structured(SearchStructuredField, String, Bool)
+    case property(String, String?)
+    case relation(SearchRelationDirection, String, SearchRelation, Bool)
+    case record(SearchRecordField?, String, SearchLexicalMatchKind, Bool)
+}
+
+public struct SearchExplanationClause: Codable, Hashable, Sendable {
+    public let kind: SearchExplanationClauseKind
+    public let sourceRange: Range<Int>
+
+    public init(kind: SearchExplanationClauseKind, sourceRange: Range<Int>) {
+        self.kind = kind
+        self.sourceRange = sourceRange
+    }
+}
+
+public struct SearchExplanation: Codable, Hashable, Sendable {
+    public let provider: SearchProvider
+    public let providerWasExplicit: Bool
+    public let `operator`: SearchExplanationOperator
+    public let clauses: [SearchExplanationClause]
+
+    public init(
+        provider: SearchProvider,
+        providerWasExplicit: Bool,
+        operator: SearchExplanationOperator = .and,
+        clauses: [SearchExplanationClause]
+    ) {
+        self.provider = provider
+        self.providerWasExplicit = providerWasExplicit
+        self.operator = `operator`
+        self.clauses = clauses
+    }
 }
 
 public struct SearchQueryAST: Codable, Hashable, Sendable {
+    public let provider: SearchProvider
+    public let providerWasExplicit: Bool
     public let clauses: [SearchClause]
     public let identityNeedle: String?
 
-    public init(clauses: [SearchClause], identityNeedle: String?) {
+    public init(
+        provider: SearchProvider,
+        providerWasExplicit: Bool,
+        clauses: [SearchClause],
+        identityNeedle: String?
+    ) {
+        self.provider = provider
+        self.providerWasExplicit = providerWasExplicit
         self.clauses = clauses
         self.identityNeedle = identityNeedle
     }
@@ -97,35 +253,122 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
         positiveLexicalClauses.first
     }
 
-    public var isFilterOnly: Bool {
-        !clauses.isEmpty && positiveLexicalClauses.isEmpty
-            && clauses.allSatisfy {
-                if case .structured = $0 { return true }
-                return false
-            }
+    public var recordClauses: [SearchRecordClause] {
+        clauses.compactMap {
+            guard case .record(let clause) = $0 else { return nil }
+            return clause
+        }
     }
 
-    /// The only query shape allowed to request direct graph neighbors.
-    public var relatedIdentityNeedle: String? {
-        guard clauses.count == 1,
-              case .lexical(let clause) = clauses[0],
-              clause.field == nil,
-              !clause.excluded,
-              !clause.value.isPrefix else { return nil }
-        return clause.value.text
+    public var relationQuery: SearchRelationQuery? {
+        clauses.compactMap {
+            guard case .relation(let query) = $0 else { return nil }
+            return query
+        }.first
+    }
+
+    public var hasPropertyClause: Bool {
+        clauses.contains {
+            if case .property = $0 { return true }
+            return false
+        }
+    }
+
+    public var isFilterOnly: Bool {
+        guard !clauses.isEmpty else { return providerWasExplicit }
+        return clauses.allSatisfy { clause in
+            switch clause {
+            case .structured, .property, .relation:
+                true
+            case .record(let value):
+                value.field != nil
+            case .lexical:
+                false
+            }
+        }
+    }
+
+    public var explanation: SearchExplanation {
+        SearchExplanation(
+            provider: provider,
+            providerWasExplicit: providerWasExplicit,
+            clauses: clauses.map { clause in
+                switch clause {
+                case .lexical(let value):
+                    SearchExplanationClause(
+                        kind: .lexical(
+                            value.field,
+                            value.value.text,
+                            value.value.matchKind,
+                            value.excluded
+                        ),
+                        sourceRange: value.sourceRange
+                    )
+                case .structured(let value):
+                    SearchExplanationClause(
+                        kind: .structured(value.field, value.value, value.excluded),
+                        sourceRange: value.sourceRange
+                    )
+                case .property(let value):
+                    SearchExplanationClause(
+                        kind: .property(value.key, value.value),
+                        sourceRange: value.sourceRange
+                    )
+                case .relation(let value):
+                    SearchExplanationClause(
+                        kind: .relation(
+                            value.direction,
+                            value.noteIdentity,
+                            value.relation,
+                            value.relation.isSymmetric
+                        ),
+                        sourceRange: value.sourceRange
+                    )
+                case .record(let value):
+                    SearchExplanationClause(
+                        kind: .record(
+                            value.field,
+                            value.value.text,
+                            value.value.matchKind,
+                            value.excluded
+                        ),
+                        sourceRange: value.sourceRange
+                    )
+                }
+            }
+        )
     }
 }
 
 public struct SearchQueryParseResult: Codable, Hashable, Sendable {
+    public let provider: SearchProvider
+    public let providerWasExplicit: Bool
     public let ast: SearchQueryAST?
     public let diagnostics: [SearchQueryDiagnostic]
 
-    public init(ast: SearchQueryAST?, diagnostics: [SearchQueryDiagnostic]) {
+    public init(
+        provider: SearchProvider? = nil,
+        providerWasExplicit: Bool? = nil,
+        ast: SearchQueryAST?,
+        diagnostics: [SearchQueryDiagnostic]
+    ) {
+        self.provider = provider ?? ast?.provider ?? .note
+        self.providerWasExplicit = providerWasExplicit
+            ?? ast?.providerWasExplicit
+            ?? false
         self.ast = ast
         self.diagnostics = diagnostics
     }
 
     public var isValid: Bool { ast != nil && diagnostics.isEmpty }
+
+    public var explanation: SearchExplanation {
+        ast?.explanation ?? SearchExplanation(
+            provider: provider,
+            providerWasExplicit: providerWasExplicit,
+            clauses: []
+        )
+    }
 }
 
 public enum SearchQueryParser {
@@ -134,55 +377,158 @@ public enum SearchQueryParser {
         let range: Range<Int>
     }
 
-    private static let removedFields: Set<String> = ["vault", "role", "metadata", "status"]
+    private struct RelationAnchor {
+        let direction: SearchRelationDirection
+        let identity: String
+        let sourceRange: Range<Int>
+    }
+
+    private struct RelationValue {
+        let relation: SearchRelation
+        let sourceRange: Range<Int>
+    }
+
     private static let calloutValues = Set(CalloutSemanticRole.allCases.map(\.rawValue))
+    private static let scopeSelectors: Set<String> = ["scope", "vault", "role"]
+    private static let knownUnsupportedFields: Set<String> = ["status", "review"]
 
     public static func parse(_ raw: String) -> SearchQueryParseResult {
+        guard raw.utf16.count <= SearchContract.maximumQueryUTF16Count else {
+            return SearchQueryParseResult(
+                ast: nil,
+                diagnostics: [SearchQueryDiagnostic(
+                    code: .unsupportedSyntax,
+                    message: "Search queries are limited to \(SearchContract.maximumQueryUTF16Count) UTF-16 code units.",
+                    utf16LowerBound: 0,
+                    utf16UpperBound: SearchContract.maximumQueryUTF16Count
+                )]
+            )
+        }
         let tokenized = tokenize(raw)
         guard tokenized.diagnostics.isEmpty else {
             return SearchQueryParseResult(ast: nil, diagnostics: tokenized.diagnostics)
         }
         guard !tokenized.tokens.isEmpty else {
             return SearchQueryParseResult(
-                ast: SearchQueryAST(clauses: [], identityNeedle: nil),
+                ast: SearchQueryAST(
+                    provider: .note,
+                    providerWasExplicit: false,
+                    clauses: [],
+                    identityNeedle: nil
+                ),
                 diagnostics: []
+            )
+        }
+        guard tokenized.tokens.count <= SearchContract.maximumQueryTokenCount else {
+            let overflow = tokenized.tokens[SearchContract.maximumQueryTokenCount]
+            return SearchQueryParseResult(
+                ast: nil,
+                diagnostics: [SearchQueryDiagnostic(
+                    code: .unsupportedSyntax,
+                    message: "Search queries are limited to \(SearchContract.maximumQueryTokenCount) tokens.",
+                    utf16LowerBound: overflow.range.lowerBound,
+                    utf16UpperBound: overflow.range.upperBound
+                )]
+            )
+        }
+
+        let providerResolution = resolveProvider(in: tokenized.tokens)
+        guard providerResolution.diagnostics.isEmpty else {
+            return SearchQueryParseResult(
+                provider: providerResolution.provider,
+                providerWasExplicit: providerResolution.explicit,
+                ast: nil,
+                diagnostics: providerResolution.diagnostics
             )
         }
 
         var clauses: [SearchClause] = []
         var diagnostics: [SearchQueryDiagnostic] = []
-        for token in tokenized.tokens {
-            switch parse(token) {
-            case .success(let clause): clauses.append(clause)
-            case .failure(let diagnostic): diagnostics.append(diagnostic)
+        var relationAnchors: [RelationAnchor] = []
+        var relationValues: [RelationValue] = []
+        for token in tokenized.tokens where !isKindToken(token) {
+            switch providerResolution.provider {
+            case .note:
+                switch parseNote(token) {
+                case .clause(let clause): clauses.append(clause)
+                case .anchor(let anchor): relationAnchors.append(anchor)
+                case .relation(let relation): relationValues.append(relation)
+                case .diagnostic(let diagnostic): diagnostics.append(diagnostic)
+                }
+            case .record:
+                switch parseRecord(token) {
+                case .success(let clause): clauses.append(.record(clause))
+                case .failure(let diagnostic): diagnostics.append(diagnostic)
+                }
             }
         }
-        if !diagnostics.isEmpty {
-            return SearchQueryParseResult(ast: nil, diagnostics: diagnostics)
+
+        if providerResolution.provider == .note {
+            diagnostics.append(contentsOf: relationDiagnostics(
+                anchors: relationAnchors,
+                relations: relationValues
+            ))
+            if diagnostics.isEmpty,
+               let anchor = relationAnchors.first,
+               let relation = relationValues.first {
+                clauses.append(.relation(SearchRelationQuery(
+                    direction: anchor.direction,
+                    noteIdentity: anchor.identity,
+                    relation: relation.relation,
+                    sourceRange: min(anchor.sourceRange.lowerBound, relation.sourceRange.lowerBound)
+                        ..< max(anchor.sourceRange.upperBound, relation.sourceRange.upperBound)
+                )))
+            }
+        }
+        guard diagnostics.isEmpty else {
+            return SearchQueryParseResult(
+                provider: providerResolution.provider,
+                providerWasExplicit: providerResolution.explicit,
+                ast: nil,
+                diagnostics: diagnostics
+            )
         }
 
-        let hasPositiveLexical = clauses.contains {
-            if case .lexical(let clause) = $0 { return !clause.excluded }
-            return false
+        let hasPositiveUnfielded = clauses.contains { clause in
+            switch clause {
+            case .lexical(let value): !value.excluded
+            case .record(let value): value.field == nil && !value.excluded
+            case .structured, .property, .relation: false
+            }
         }
-        let hasStructured = clauses.contains {
-            if case .structured = $0 { return true }
-            return false
+        let hasFilter = clauses.contains { clause in
+            switch clause {
+            case .structured, .property, .relation: true
+            case .record(let value): value.field != nil
+            case .lexical: false
+            }
         }
-        if !hasPositiveLexical && !hasStructured {
+        if !clauses.isEmpty, !hasPositiveUnfielded, !hasFilter,
+           clauses.allSatisfy({ clause in
+               switch clause {
+               case .lexical(let value): value.excluded
+               case .record(let value): value.field == nil && value.excluded
+               case .structured, .property, .relation: false
+               }
+           }) {
             let range = tokenized.tokens.first?.range ?? 0..<max(0, raw.utf16.count)
-            return SearchQueryParseResult(ast: nil, diagnostics: [
-                SearchQueryDiagnostic(
+            return SearchQueryParseResult(
+                provider: providerResolution.provider,
+                providerWasExplicit: providerResolution.explicit,
+                ast: nil,
+                diagnostics: [SearchQueryDiagnostic(
                     code: .onlyExcludedFreeText,
-                    message: "Add a positive term or a structured callout or broken-link condition.",
+                    message: "Add a positive term or a provider filter.",
                     utf16LowerBound: range.lowerBound,
                     utf16UpperBound: range.upperBound
-                ),
-            ])
+                )]
+            )
         }
 
         return SearchQueryParseResult(
             ast: SearchQueryAST(
+                provider: providerResolution.provider,
+                providerWasExplicit: providerResolution.explicit,
                 clauses: clauses,
                 identityNeedle: identityNeedle(for: clauses)
             ),
@@ -190,79 +536,227 @@ public enum SearchQueryParser {
         )
     }
 
-    private static func parse(_ token: Token) -> Result<SearchClause, SearchQueryDiagnostic> {
+    private static func resolveProvider(
+        in tokens: [Token]
+    ) -> (provider: SearchProvider, explicit: Bool, diagnostics: [SearchQueryDiagnostic]) {
+        let kindTokens = tokens.filter(isKindToken)
+        guard kindTokens.count <= 1 else {
+            return (.note, true, [diagnostic(
+                .duplicateClause,
+                "kind: may appear only once.",
+                kindTokens[1]
+            )])
+        }
+        guard let token = kindTokens.first else { return (.note, false, []) }
         var raw = token.raw
         let excluded = raw.hasPrefix("-")
         if excluded { raw.removeFirst() }
-        guard !raw.isEmpty else {
-            return .failure(diagnostic(.emptyClause, "A minus sign must be followed by a clause.", token))
-        }
-        if raw.caseInsensitiveCompare("OR") == .orderedSame
-            || raw.caseInsensitiveCompare("NEAR") == .orderedSame
-            || raw.contains("(") || raw.contains(")") || raw.contains("|") {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "OR, NEAR, grouping, and alternate-expression syntax are not supported.",
-                token
-            ))
-        }
-        if raw.hasSuffix("~")
-            || raw.contains("..")
-            || (raw.count > 1 && raw.hasPrefix("/") && raw.hasSuffix("/")) {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Regular-expression, fuzzy, and range syntax are not supported.",
-                token
-            ))
-        }
-
         let split = splitField(raw)
-        if let fieldName = split.field {
-            let field = fieldName.lowercased()
-            guard !split.value.isEmpty else {
-                return .failure(diagnostic(
-                    .missingFieldValue,
-                    "The \(field) field requires a value.",
-                    token
-                ))
-            }
-            if removedFields.contains(field) {
-                let message = field == "status"
-                    ? "The status: field is unsupported because status is not a Scholium property."
-                    : "The \(field): field was removed in Search v4. Choose scope in the visible interface or CLI option."
-                return .failure(SearchQueryDiagnostic(
-                    code: .removedField,
-                    message: message,
-                    utf16LowerBound: token.range.lowerBound,
-                    utf16UpperBound: token.range.upperBound,
-                    needsEditing: true
-                ))
-            }
-            if let lexicalField = SearchLexicalField(rawValue: field) {
-                return lexicalClause(
-                    field: lexicalField,
-                    rawValue: split.value,
-                    excluded: excluded,
-                    token: token
-                ).map(SearchClause.lexical)
-            }
-            if let structuredField = SearchStructuredField(rawValue: field) {
-                return structuredClause(
-                    field: structuredField,
-                    rawValue: split.value,
-                    excluded: excluded,
-                    token: token
-                ).map(SearchClause.structured)
-            }
-            return .failure(diagnostic(.unknownField, "Unknown Search field \(field):.", token))
+        guard !excluded else {
+            return (.note, true, [diagnostic(
+                .unsupportedSyntax,
+                "kind: cannot be excluded.",
+                token
+            )])
         }
+        guard !split.value.isEmpty else {
+            return (.note, true, [diagnostic(
+                .missingFieldValue,
+                "The kind field requires note or record.",
+                token
+            )])
+        }
+        let decoded: DecodedValue
+        switch decodeValue(split.value, token: token) {
+        case .success(let value): decoded = value
+        case .failure(let error): return (.note, true, [error])
+        }
+        guard !decoded.quoted, !decoded.hadTrailingAsterisk,
+              let provider = SearchProvider(rawValue: decoded.text.lowercased()) else {
+            return (.note, true, [diagnostic(
+                .unknownStructuredValue,
+                "kind: accepts only note or record.",
+                token
+            )])
+        }
+        return (provider, true, [])
+    }
 
-        return lexicalClause(
-            field: nil,
-            rawValue: raw,
-            excluded: excluded,
-            token: token
-        ).map(SearchClause.lexical)
+    private enum NoteParseResult {
+        case clause(SearchClause)
+        case anchor(RelationAnchor)
+        case relation(RelationValue)
+        case diagnostic(SearchQueryDiagnostic)
+    }
+
+    private static func parseNote(_ token: Token) -> NoteParseResult {
+        var raw = token.raw
+        let excluded = raw.hasPrefix("-")
+        if excluded { raw.removeFirst() }
+        if let syntaxDiagnostic = unsupportedSyntaxDiagnostic(raw: raw, token: token) {
+            return .diagnostic(syntaxDiagnostic)
+        }
+        let split = splitField(raw)
+        guard let fieldName = split.field else {
+            switch lexicalClause(field: nil, rawValue: raw, excluded: excluded, token: token) {
+            case .success(let value): return .clause(.lexical(value))
+            case .failure(let error): return .diagnostic(error)
+            }
+        }
+        let field = fieldName.lowercased()
+        guard !split.value.isEmpty else {
+            return .diagnostic(diagnostic(
+                .missingFieldValue,
+                "The \(field) field requires a value.",
+                token
+            ))
+        }
+        if scopeSelectors.contains(field) {
+            return .diagnostic(scopeSelectorDiagnostic(token))
+        }
+        if knownUnsupportedFields.contains(field) {
+            return .diagnostic(diagnostic(
+                .unsupportedField,
+                "The \(field): field is known but is not supported by the current Search contract.",
+                token
+            ))
+        }
+        if SearchRecordField(rawValue: field) != nil {
+            return .diagnostic(providerMismatch(field: field, provider: .note, token: token))
+        }
+        if let lexicalField = SearchLexicalField(rawValue: field) {
+            switch lexicalClause(
+                field: lexicalField,
+                rawValue: split.value,
+                excluded: excluded,
+                token: token
+            ) {
+            case .success(let value): return .clause(.lexical(value))
+            case .failure(let error): return .diagnostic(error)
+            }
+        }
+        if let structuredField = SearchStructuredField(rawValue: field) {
+            switch structuredClause(
+                field: structuredField,
+                rawValue: split.value,
+                excluded: excluded,
+                token: token
+            ) {
+            case .success(let value): return .clause(.structured(value))
+            case .failure(let error): return .diagnostic(error)
+            }
+        }
+        switch field {
+        case "property":
+            switch propertyClause(rawValue: split.value, excluded: excluded, token: token) {
+            case .success(let value): return .clause(.property(value))
+            case .failure(let error): return .diagnostic(error)
+            }
+        case SearchRelationDirection.fromNote.rawValue, SearchRelationDirection.toNote.rawValue:
+            switch relationAnchor(
+                direction: SearchRelationDirection(rawValue: field)!,
+                rawValue: split.value,
+                excluded: excluded,
+                token: token
+            ) {
+            case .success(let value): return .anchor(value)
+            case .failure(let error): return .diagnostic(error)
+            }
+        case "relation":
+            switch relationValue(rawValue: split.value, excluded: excluded, token: token) {
+            case .success(let value): return .relation(value)
+            case .failure(let error): return .diagnostic(error)
+            }
+        default:
+            return .diagnostic(diagnostic(.unknownField, "Unknown Search field \(field):.", token))
+        }
+    }
+
+    private static func parseRecord(
+        _ token: Token
+    ) -> Result<SearchRecordClause, SearchQueryDiagnostic> {
+        var raw = token.raw
+        let excluded = raw.hasPrefix("-")
+        if excluded { raw.removeFirst() }
+        if let syntaxDiagnostic = unsupportedSyntaxDiagnostic(raw: raw, token: token) {
+            return .failure(syntaxDiagnostic)
+        }
+        let split = splitField(raw)
+        guard let fieldName = split.field else {
+            return recordLexicalClause(
+                field: nil,
+                rawValue: raw,
+                excluded: excluded,
+                permitsPrefix: true,
+                token: token
+            )
+        }
+        let fieldNameLower = fieldName.lowercased()
+        guard !split.value.isEmpty else {
+            return .failure(diagnostic(
+                .missingFieldValue,
+                "The \(fieldNameLower) field requires a value.",
+                token
+            ))
+        }
+        if scopeSelectors.contains(fieldNameLower) {
+            return .failure(scopeSelectorDiagnostic(token))
+        }
+        if knownUnsupportedFields.contains(fieldNameLower) {
+            return .failure(diagnostic(
+                .unsupportedField,
+                "The \(fieldNameLower): field is known but is not supported by the current Search contract.",
+                token
+            ))
+        }
+        let noteOnlyFields = Set(SearchLexicalField.allCases.map(\.rawValue))
+            .union(SearchStructuredField.allCases.map(\.rawValue))
+            .union(["property", "from-note", "to-note", "relation"])
+        if noteOnlyFields.contains(fieldNameLower) {
+            return .failure(providerMismatch(
+                field: fieldNameLower,
+                provider: .record,
+                token: token
+            ))
+        }
+        guard let field = SearchRecordField(rawValue: fieldNameLower) else {
+            return .failure(diagnostic(
+                .unknownField,
+                "Unknown Search field \(fieldNameLower):.",
+                token
+            ))
+        }
+        guard !excluded else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "Record field clauses cannot be excluded.",
+                token
+            ))
+        }
+        switch field {
+        case .participant:
+            return canonicalRecordClause(
+                field: field,
+                rawValue: split.value,
+                allowed: ["researcher", "agent"],
+                token: token
+            )
+        case .date:
+            return canonicalRecordClause(
+                field: field,
+                rawValue: split.value,
+                allowed: ["today", "7d", "30d"],
+                token: token
+            )
+        case .note, .action, .skill:
+            return recordLexicalClause(
+                field: field,
+                rawValue: split.value,
+                excluded: false,
+                permitsPrefix: false,
+                token: token
+            )
+        }
     }
 
     private static func lexicalClause(
@@ -271,28 +765,58 @@ public enum SearchQueryParser {
         excluded: Bool,
         token: Token
     ) -> Result<SearchLexicalClause, SearchQueryDiagnostic> {
+        lexicalValue(rawValue, token: token, permitsPrefix: true).map {
+            SearchLexicalClause(
+                field: field,
+                value: $0,
+                excluded: excluded,
+                sourceRange: token.range
+            )
+        }
+    }
+
+    private static func recordLexicalClause(
+        field: SearchRecordField?,
+        rawValue: String,
+        excluded: Bool,
+        permitsPrefix: Bool,
+        token: Token
+    ) -> Result<SearchRecordClause, SearchQueryDiagnostic> {
+        lexicalValue(rawValue, token: token, permitsPrefix: permitsPrefix).map {
+            SearchRecordClause(
+                field: field,
+                value: $0,
+                excluded: excluded,
+                sourceRange: token.range
+            )
+        }
+    }
+
+    private static func lexicalValue(
+        _ rawValue: String,
+        token: Token,
+        permitsPrefix: Bool
+    ) -> Result<SearchLexicalValue, SearchQueryDiagnostic> {
         let value: DecodedValue
         switch decodeValue(rawValue, token: token) {
-        case .success(let decodedValue):
-            value = decodedValue
-        case .failure(let error):
-            return .failure(error)
+        case .success(let decoded): value = decoded
+        case .failure(let error): return .failure(error)
         }
         let normalized = SearchTextNormalization.normalize(value.text)
         guard !normalized.isEmpty else {
             return .failure(diagnostic(.emptyClause, "A Search clause cannot be empty.", token))
         }
-        let lexicalValue: SearchLexicalValue
         if value.quoted {
-            guard !value.hadTrailingAsterisk else {
+            return .success(.phrase(normalized))
+        }
+        if value.hadTrailingAsterisk {
+            guard permitsPrefix else {
                 return .failure(diagnostic(
-                    .invalidPrefix,
-                    "A quoted phrase cannot also be a prefix query.",
+                    .unsupportedSyntax,
+                    "This field does not support prefix values.",
                     token
                 ))
             }
-            lexicalValue = .phrase(normalized)
-        } else if value.hadTrailingAsterisk {
             if SearchTokenization.containsCJK(normalized) {
                 return .failure(diagnostic(
                     .cjkPrefixUnsupported,
@@ -300,24 +824,16 @@ public enum SearchQueryParser {
                     token
                 ))
             }
-            let scalarCount = normalized.unicodeScalars.count
-            guard scalarCount >= 2 else {
+            guard normalized.unicodeScalars.count >= 2 else {
                 return .failure(diagnostic(
                     .invalidPrefix,
                     "A prefix requires at least two non-CJK Unicode scalars before *.",
                     token
                 ))
             }
-            lexicalValue = .prefix(normalized)
-        } else {
-            lexicalValue = .term(normalized)
+            return .success(.prefix(normalized))
         }
-        return .success(SearchLexicalClause(
-            field: field,
-            value: lexicalValue,
-            excluded: excluded,
-            sourceRange: token.range
-        ))
+        return .success(.term(normalized))
     }
 
     private static func structuredClause(
@@ -328,10 +844,8 @@ public enum SearchQueryParser {
     ) -> Result<SearchStructuredClause, SearchQueryDiagnostic> {
         let value: DecodedValue
         switch decodeValue(rawValue, token: token) {
-        case .success(let decodedValue):
-            value = decodedValue
-        case .failure(let error):
-            return .failure(error)
+        case .success(let decoded): value = decoded
+        case .failure(let error): return .failure(error)
         }
         guard !value.quoted, !value.hadTrailingAsterisk else {
             return .failure(diagnostic(
@@ -360,6 +874,205 @@ public enum SearchQueryParser {
         ))
     }
 
+    private static func propertyClause(
+        rawValue: String,
+        excluded: Bool,
+        token: Token
+    ) -> Result<SearchPropertyClause, SearchQueryDiagnostic> {
+        guard !excluded else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "Property clauses cannot be excluded.",
+                token
+            ))
+        }
+        let equality = rawValue.firstIndex(of: "=")
+        let rawKey = equality.map { String(rawValue[..<$0]) } ?? rawValue
+        guard isUnambiguousPropertyKey(rawKey) else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "Property keys use an unquoted top-level identifier containing letters, numbers, _ or -.",
+                token
+            ))
+        }
+        let key = rawKey.precomposedStringWithCanonicalMapping
+        guard let equality else {
+            return .success(SearchPropertyClause(
+                key: key,
+                value: nil,
+                valueWasQuoted: false,
+                sourceRange: token.range
+            ))
+        }
+        let rawEqualityValue = String(rawValue[rawValue.index(after: equality)...])
+        guard !rawEqualityValue.isEmpty else {
+            return .failure(diagnostic(
+                .missingFieldValue,
+                "Property equality requires a string value.",
+                token
+            ))
+        }
+        let decoded: DecodedValue
+        switch decodeValue(rawEqualityValue, token: token) {
+        case .success(let value): decoded = value
+        case .failure(let error): return .failure(error)
+        }
+        guard !decoded.hadTrailingAsterisk else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "Property equality is exact and does not support prefixes.",
+                token
+            ))
+        }
+        let normalized = SearchTextNormalization.normalize(decoded.text)
+        guard !normalized.isEmpty else {
+            return .failure(diagnostic(.emptyClause, "A property value cannot be empty.", token))
+        }
+        return .success(SearchPropertyClause(
+            key: key,
+            value: normalized,
+            valueWasQuoted: decoded.quoted,
+            sourceRange: token.range
+        ))
+    }
+
+    private static func relationAnchor(
+        direction: SearchRelationDirection,
+        rawValue: String,
+        excluded: Bool,
+        token: Token
+    ) -> Result<RelationAnchor, SearchQueryDiagnostic> {
+        guard !excluded else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "Relation anchors cannot be excluded.",
+                token
+            ))
+        }
+        let value: DecodedValue
+        switch decodeValue(rawValue, token: token) {
+        case .success(let decoded): value = decoded
+        case .failure(let error): return .failure(error)
+        }
+        guard !value.hadTrailingAsterisk else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "Relation identities do not support prefixes.",
+                token
+            ))
+        }
+        let identity = SearchTextNormalization.normalize(value.text)
+        guard !identity.isEmpty else {
+            return .failure(diagnostic(.emptyClause, "A relation identity cannot be empty.", token))
+        }
+        return .success(RelationAnchor(
+            direction: direction,
+            identity: identity,
+            sourceRange: token.range
+        ))
+    }
+
+    private static func relationValue(
+        rawValue: String,
+        excluded: Bool,
+        token: Token
+    ) -> Result<RelationValue, SearchQueryDiagnostic> {
+        guard !excluded else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "Relation clauses cannot be excluded.",
+                token
+            ))
+        }
+        let value: DecodedValue
+        switch decodeValue(rawValue, token: token) {
+        case .success(let decoded): value = decoded
+        case .failure(let error): return .failure(error)
+        }
+        guard !value.quoted, !value.hadTrailingAsterisk,
+              let relation = SearchRelation(rawValue: value.text.lowercased()) else {
+            return .failure(diagnostic(
+                .unknownStructuredValue,
+                "relation: accepts supports, opposes, neutral, or incompatible.",
+                token
+            ))
+        }
+        return .success(RelationValue(relation: relation, sourceRange: token.range))
+    }
+
+    private static func canonicalRecordClause(
+        field: SearchRecordField,
+        rawValue: String,
+        allowed: Set<String>,
+        token: Token
+    ) -> Result<SearchRecordClause, SearchQueryDiagnostic> {
+        let value: DecodedValue
+        switch decodeValue(rawValue, token: token) {
+        case .success(let decoded): value = decoded
+        case .failure(let error): return .failure(error)
+        }
+        guard !value.quoted, !value.hadTrailingAsterisk else {
+            return .failure(diagnostic(
+                .unsupportedSyntax,
+                "\(field.rawValue): uses one canonical value.",
+                token
+            ))
+        }
+        let normalized = value.text.lowercased()
+        guard allowed.contains(normalized) else {
+            return .failure(diagnostic(
+                .unknownStructuredValue,
+                "Unknown canonical \(field.rawValue) value \(value.text).",
+                token
+            ))
+        }
+        return .success(SearchRecordClause(
+            field: field,
+            value: .term(normalized),
+            excluded: false,
+            sourceRange: token.range
+        ))
+    }
+
+    private static func relationDiagnostics(
+        anchors: [RelationAnchor],
+        relations: [RelationValue]
+    ) -> [SearchQueryDiagnostic] {
+        if anchors.count > 1 {
+            return [SearchQueryDiagnostic(
+                code: .duplicateClause,
+                message: "Use exactly one from-note: or to-note: anchor.",
+                utf16LowerBound: anchors[1].sourceRange.lowerBound,
+                utf16UpperBound: anchors[1].sourceRange.upperBound
+            )]
+        }
+        if relations.count > 1 {
+            return [SearchQueryDiagnostic(
+                code: .duplicateClause,
+                message: "relation: may appear only once.",
+                utf16LowerBound: relations[1].sourceRange.lowerBound,
+                utf16UpperBound: relations[1].sourceRange.upperBound
+            )]
+        }
+        if let anchor = anchors.first, relations.isEmpty {
+            return [SearchQueryDiagnostic(
+                code: .missingCompanion,
+                message: "\(anchor.direction.rawValue): requires one relation: clause.",
+                utf16LowerBound: anchor.sourceRange.lowerBound,
+                utf16UpperBound: anchor.sourceRange.upperBound
+            )]
+        }
+        if let relation = relations.first, anchors.isEmpty {
+            return [SearchQueryDiagnostic(
+                code: .missingCompanion,
+                message: "relation: requires one from-note: or to-note: anchor.",
+                utf16LowerBound: relation.sourceRange.lowerBound,
+                utf16UpperBound: relation.sourceRange.upperBound
+            )]
+        }
+        return []
+    }
+
     private struct DecodedValue {
         let text: String
         let quoted: Bool
@@ -383,8 +1096,7 @@ public enum SearchQueryParser {
             }
             var result = ""
             var escaped = false
-            let inner = raw.dropFirst().dropLast()
-            for character in inner {
+            for character in raw.dropFirst().dropLast() {
                 if escaped {
                     guard character == "\"" || character == "\\" else {
                         return .failure(diagnostic(
@@ -402,9 +1114,17 @@ public enum SearchQueryParser {
                 }
             }
             if escaped {
-                return .failure(diagnostic(.invalidEscape, "A phrase cannot end with an escape marker.", token))
+                return .failure(diagnostic(
+                    .invalidEscape,
+                    "A phrase cannot end with an escape marker.",
+                    token
+                ))
             }
-            return .success(DecodedValue(text: result, quoted: true, hadTrailingAsterisk: false))
+            return .success(DecodedValue(
+                text: result,
+                quoted: true,
+                hadTrailingAsterisk: false
+            ))
         }
         if raw.contains("\"") {
             return .failure(diagnostic(
@@ -429,6 +1149,37 @@ public enum SearchQueryParser {
         ))
     }
 
+    private static func unsupportedSyntaxDiagnostic(
+        raw: String,
+        token: Token
+    ) -> SearchQueryDiagnostic? {
+        if raw.caseInsensitiveCompare("OR") == .orderedSame
+            || raw.caseInsensitiveCompare("NEAR") == .orderedSame
+            || raw.contains("(") || raw.contains(")") || raw.contains("|") {
+            return diagnostic(
+                .unsupportedSyntax,
+                "OR, NEAR, grouping, and alternate-expression syntax are not supported.",
+                token
+            )
+        }
+        if raw.hasSuffix("~")
+            || raw.contains("..")
+            || (raw.count > 1 && raw.hasPrefix("/") && raw.hasSuffix("/")) {
+            return diagnostic(
+                .unsupportedSyntax,
+                "Regular-expression, fuzzy, and range syntax are not supported.",
+                token
+            )
+        }
+        return nil
+    }
+
+    private static func isKindToken(_ token: Token) -> Bool {
+        var raw = token.raw
+        if raw.hasPrefix("-") { raw.removeFirst() }
+        return splitField(raw).field?.lowercased() == "kind"
+    }
+
     private static func splitField(_ raw: String) -> (field: String?, value: String) {
         guard let colon = raw.firstIndex(of: ":") else { return (nil, raw) }
         let field = String(raw[..<colon])
@@ -436,19 +1187,27 @@ public enum SearchQueryParser {
         return (field, String(raw[raw.index(after: colon)...]))
     }
 
+    private static func isUnambiguousPropertyKey(_ value: String) -> Bool {
+        guard let first = value.unicodeScalars.first,
+              CharacterSet.letters.contains(first) || first == "_" else { return false }
+        return value.unicodeScalars.dropFirst().allSatisfy {
+            CharacterSet.alphanumerics.contains($0) || $0 == "_" || $0 == "-"
+        }
+    }
+
     private static func identityNeedle(for clauses: [SearchClause]) -> String? {
         var unfieldedValues: [String] = []
         var fieldedIdentityValues: [String] = []
         for clause in clauses {
-            guard case .lexical(let lexical) = clause else { continue }
-            guard !lexical.excluded else { continue }
-            guard !lexical.value.isPrefix else { return nil }
+            guard case .lexical(let lexical) = clause,
+                  !lexical.excluded,
+                  !lexical.value.isPrefix else { continue }
             switch lexical.field {
             case nil:
                 unfieldedValues.append(lexical.value.text)
             case .title, .alias, .path:
                 fieldedIdentityValues.append(lexical.value.text)
-            case .heading, .body, .author, .year, .tag, .footnote:
+            case .heading, .summary, .body, .author, .year, .tag, .footnote:
                 continue
             }
         }
@@ -457,6 +1216,26 @@ public enum SearchQueryParser {
         }
         guard fieldedIdentityValues.count == 1 else { return nil }
         return SearchTextNormalization.normalize(fieldedIdentityValues[0])
+    }
+
+    private static func providerMismatch(
+        field: String,
+        provider: SearchProvider,
+        token: Token
+    ) -> SearchQueryDiagnostic {
+        diagnostic(
+            .providerMismatch,
+            "The \(field): field is not available for kind:\(provider.rawValue).",
+            token
+        )
+    }
+
+    private static func scopeSelectorDiagnostic(_ token: Token) -> SearchQueryDiagnostic {
+        diagnostic(
+            .unsupportedScopeSelector,
+            "Choose This Note, This Vault, or Triptych outside the query.",
+            token
+        )
     }
 
     private static func diagnostic(
@@ -521,49 +1300,16 @@ public enum SearchQueryParser {
 
 public enum SearchTextNormalization {
     public static func normalize(_ value: String) -> String {
-        let folded = value.precomposedStringWithCanonicalMapping.folding(
-            options: [.caseInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
-        var result = ""
-        var pendingSpace = false
-        for character in folded {
-            if character.isWhitespace {
-                pendingSpace = !result.isEmpty
-            } else {
-                if pendingSpace { result.append(" ") }
-                result.append(character)
-                pendingSpace = false
-            }
-        }
-        return result.precomposedStringWithCanonicalMapping
+        normalize(value, options: [.caseInsensitive])
     }
 
     /// Deterministic comparison form corresponding to FTS5
     /// `unicode61 remove_diacritics 2`. Exact identity keys deliberately keep
     /// using `normalize(_:)`, which preserves diacritics and punctuation.
     public static func lexicalNormalize(_ value: String) -> String {
-        let folded = value.precomposedStringWithCanonicalMapping.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
-        var result = ""
-        var pendingSpace = false
-        for character in folded {
-            if character.isWhitespace {
-                pendingSpace = !result.isEmpty
-            } else {
-                if pendingSpace { result.append(" ") }
-                result.append(character)
-                pendingSpace = false
-            }
-        }
-        return result.precomposedStringWithCanonicalMapping
+        normalize(value, options: [.caseInsensitive, .diacriticInsensitive])
     }
 
-    /// Maps a range in `normalize(_:)` output back to the corresponding range
-    /// in the original UTF-16 string. This is used for presentation only; the
-    /// authoritative Markdown mapping remains the projection segment map.
     public static func originalUTF16Range(
         in value: String,
         forNormalizedUTF16Range requestedRange: Range<Int>
@@ -575,8 +1321,6 @@ public enum SearchTextNormalization {
         )
     }
 
-    /// Maps a range in `lexicalNormalize(_:)` output back to the exact
-    /// displayed UTF-16 range used to build a Search snippet.
     public static func originalUTF16RangeForLexicalNormalization(
         in value: String,
         requestedRange: Range<Int>
@@ -586,6 +1330,28 @@ public enum SearchTextNormalization {
             requestedRange: requestedRange,
             normalizer: lexicalNormalize
         )
+    }
+
+    private static func normalize(
+        _ value: String,
+        options: String.CompareOptions
+    ) -> String {
+        let folded = value.precomposedStringWithCanonicalMapping.folding(
+            options: options,
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+        var result = ""
+        var pendingSpace = false
+        for character in folded {
+            if character.isWhitespace {
+                pendingSpace = !result.isEmpty
+            } else {
+                if pendingSpace { result.append(" ") }
+                result.append(character)
+                pendingSpace = false
+            }
+        }
+        return result.precomposedStringWithCanonicalMapping
     }
 
     private static func mappedOriginalUTF16Range(
@@ -610,8 +1376,6 @@ public enum SearchTextNormalization {
             if character.isWhitespace {
                 guard !normalized.isEmpty else { continue }
                 if let existing = pendingWhitespace {
-                    // Keep all collapsed source whitespace in the one
-                    // normalized-space mapping.
                     pendingWhitespace = existing.lowerBound..<originalRange.upperBound
                 } else {
                     pendingWhitespace = originalRange
@@ -707,21 +1471,6 @@ public enum SearchTokenization {
              0x20000...0x2FA1F: true
         default: false
         }
-    }
-
-    private static func cjkRuns(in value: String) -> [String] {
-        var runs: [String] = []
-        var current = ""
-        for scalar in value.unicodeScalars {
-            if isCJK(scalar) {
-                current.unicodeScalars.append(scalar)
-            } else if !current.isEmpty {
-                runs.append(current)
-                current = ""
-            }
-        }
-        if !current.isEmpty { runs.append(current) }
-        return runs
     }
 
     private static func indexScriptTokens(in value: String) -> [String] {

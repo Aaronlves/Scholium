@@ -27,26 +27,26 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .discuss,
                 target: actionNote(analysis),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "researcher-request")!:
-                        .text("Clarify the current distinction."),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Clarify the current distinction."),
                 ]
             )
         )
-        #expect(discuss.instructions.contains("\"feedbackRequirement\" : \"none\""))
+        #expect(discuss.instructions.contains("Clarify the current distinction."))
         try await handle.research.cancelProtectedFunction(runID: discuss.runID)
 
         let fidelityRequest = try await actionRequest(
             handle: handle,
             actionID: .checkFidelity,
             target: actionNote(analysis),
-            parameterValues: [
-                ResearchActionModuleID(rawValue: "fidelity-checks")!:
-                    .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
-            ]
+            platformInputs: try ResearchActionPlatformInputs(
+                fidelityChecks: [.content]
+            )
         )
         let fidelity = try await handle.research.prepareAction(fidelityRequest)
         #expect(fidelity.snapshot.authority.readableNotes.map(\.noteID) == [analysis.noteID])
+        #expect(fidelity.snapshot.platformInputs.fidelityChecks == [.content])
         try await handle.research.cancelProtectedFunction(runID: fidelity.runID)
 
         let analyze = try await handle.research.prepareAction(
@@ -56,16 +56,25 @@ extension ResearchFunctionOperationsTests {
                 target: actionNote(analysis)
             )
         )
-        #expect(analyze.snapshot.parameters.values["source"] != nil)
+        #expect(analyze.snapshot.method.registration.actionID == .analyze)
         #expect(analyze.snapshot.authority.writableNotes.map(\.noteID) == [analysis.noteID])
         try await handle.research.cancelProtectedFunction(runID: analyze.runID)
 
-        let bindings = try #require(
-            try await handle.research.workingMethodBindings()
+        let registrations = try await handle.research.researchSkillRegistrations()
+        let active = try #require(
+            registrations.document.registration(for: .analyze)
         )
-        _ = try await handle.research.disableWorkingMethod(
-            for: .analyze,
-            expectedBindingRevision: bindings.revision
+        let disabledRegistration = try ResearchSkillRegistration(
+            key: active.key,
+            actionID: active.actionID,
+            displayName: active.displayName,
+            primaryMarkdown: active.primaryMarkdown,
+            skillFolder: active.skillFolder,
+            isEnabled: false
+        )
+        _ = try await handle.research.saveResearchSkillRegistrations(
+            try registrations.document.replacing(disabledRegistration),
+            expectedRevision: registrations.revision
         )
         let disabled = try #require(
             try await handle.research.availableActions(for: actionNote(analysis))
@@ -75,131 +84,6 @@ extension ResearchFunctionOperationsTests {
         #expect(disabled.repairReasons.contains {
             $0.code == .methodMissing || $0.code == .methodDisabled
         })
-        await runtime.shutdown()
-    }
-
-    @Test("A custom Action button resolves one Skill and freezes a reproducible snapshot")
-    func customActionResolutionAndPreparation() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let actionID = ResearchActionID(researcherOwnedRawValue: "socratic-pressure")!
-        let package = try await handle.research.createSkill(
-            id: "socratic-pressure",
-            source: customActionSkillSource(actionID: actionID)
-        )
-        let binding = try customActionProfileBinding(
-            actionID: actionID,
-            packageID: package.id,
-            moduleID: "question",
-            buttonName: "Socratic Pressure",
-            feedbackRequirement: .required
-        )
-        _ = try await handle.research.saveActionProfile(
-            binding,
-            expectedDocumentRevision: nil
-        )
-        let topic = try await researchFunctionTarget(
-            fixture.topicID,
-            role: .topic,
-            handle: handle
-        )
-        let work = try await researchFunctionTarget(
-            fixture.workID,
-            role: .work,
-            handle: handle
-        )
-
-        let topicActions = try await handle.research.availableActions(
-            for: actionNote(topic)
-        )
-        let custom = try #require(topicActions.first { $0.id == actionID })
-        #expect(custom.buttonName == "Socratic Pressure")
-        #expect(custom.group == .researcherSkill)
-        #expect(custom.isEnabled)
-        #expect(!(try await handle.research.availableActions(for: actionNote(work)))
-            .contains { $0.id == actionID })
-
-        let questionID = ResearchActionModuleID(rawValue: "question")!
-        let request = try await actionRequest(
-            handle: handle,
-            actionID: actionID,
-            target: actionNote(topic),
-            parameterValues: [
-                questionID: .text("What remains after the strongest reply?"),
-            ]
-        )
-        let first = try await handle.research.prepareAction(request)
-        _ = try await handle.research.finishDiscussion(discussionID: first.runID)
-        let second = try await handle.research.prepareAction(request)
-        #expect(first.snapshot == second.snapshot)
-        #expect(first.snapshot.actionID == actionID)
-        #expect(first.snapshot.method.packageID == package.id)
-        let expectedProfileRevision = try binding.profile.contentRevision()
-        #expect(first.snapshot.resolvedProfile.profileRevision
-            == expectedProfileRevision)
-        #expect(first.snapshot.authority.readableNotes.map(\.noteID) == [topic.noteID])
-        #expect(first.snapshot.authority.writableNotes.isEmpty)
-        #expect(first.instructions.contains("\"action\" : \"socratic-pressure\""))
-        #expect(first.instructions.contains("\"feedbackRequirement\" : \"required\""))
-        #expect(first.instructions.contains("What remains after the strongest reply?"))
-        #expect(first.instructions.contains("scholium-discussion-protocol"))
-        try await handle.research.cancelProtectedFunction(runID: first.runID)
-        _ = try await handle.research.finishDiscussion(discussionID: second.runID)
-        try await handle.research.cancelProtectedFunction(runID: second.runID)
-        await runtime.shutdown()
-    }
-
-    @Test("A stale Action Profile presentation cannot authorize preparation")
-    func staleActionProfileCannotReplay() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let actionID = ResearchActionID(researcherOwnedRawValue: "profile-race")!
-        let package = try await handle.research.createSkill(
-            id: "profile-race",
-            source: customActionSkillSource(actionID: actionID)
-        )
-        let firstBinding = try customActionProfileBinding(
-            actionID: actionID,
-            packageID: package.id,
-            moduleID: "question",
-            buttonName: "Profile Race"
-        )
-        let firstDocument = try await handle.research.saveActionProfile(
-            firstBinding,
-            expectedDocumentRevision: nil
-        )
-        let topic = try await researchFunctionTarget(
-            fixture.topicID,
-            role: .topic,
-            handle: handle
-        )
-        let staleRequest = try await actionRequest(
-            handle: handle,
-            actionID: actionID,
-            target: actionNote(topic),
-            parameterValues: [
-                ResearchActionModuleID(rawValue: "question")!: .text("Old input"),
-            ]
-        )
-        let replacement = try customActionProfileBinding(
-            actionID: actionID,
-            packageID: package.id,
-            moduleID: "question",
-            buttonName: "Profile Race",
-            readableRoles: [.topic, .analysis]
-        )
-        _ = try await handle.research.saveActionProfile(
-            replacement,
-            expectedDocumentRevision: firstDocument.revision
-        )
-
-        await #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try await handle.research.prepareAction(staleRequest)
-        }
         await runtime.shutdown()
     }
 
@@ -259,9 +143,9 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .discuss,
                 target: actionNote(analysis),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "researcher-request")!:
-                        .text("Clarify the distinction."),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Clarify the distinction."),
                 ]
             )
         )
@@ -272,7 +156,7 @@ extension ResearchFunctionOperationsTests {
             attribution: "Research Agent",
             text: "The distinction remains bounded to the current Analysis."
         )
-        _ = try await handle.research.completeProtectedFunction(
+        _ = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: protectedRun.snapshot.confirmationToken,
@@ -306,9 +190,9 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .discuss,
                 target: actionNote(analysis),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "researcher-request")!:
-                        .text("Clarify the frozen Action boundary."),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Clarify the frozen Action boundary."),
                 ]
             )
         )
@@ -334,7 +218,7 @@ extension ResearchFunctionOperationsTests {
             .write(to: activeURL, options: .atomic)
 
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeProtectedFunction(
+            _ = try await completeTestProtectedFunction(handle: handle, submission:
                 ResearchFunctionCompletionSubmission(
                     runID: preparation.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
@@ -357,7 +241,7 @@ extension ResearchFunctionOperationsTests {
     }
 
 
-    @Test("Action runs use Local Execution v3 and emit one whitelisted portable record")
+    @Test("Action Runs use current Local Execution and emit one whitelisted portable Record")
     func actionExecutionUsesSeparatedStoresWithoutTouchingLegacyData() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -417,41 +301,31 @@ extension ResearchFunctionOperationsTests {
             role: .analysis,
             handle: handle
         )
-        let materialsModuleID = try #require(
-            ResearchActionModuleID(rawValue: "materials")
-        )
         let action = try await handle.research.prepareAction(
             try await actionRequest(
                 handle: handle,
                 actionID: .synthesize,
                 target: actionNote(topic),
-                parameterValues: [
-                    materialsModuleID: .notes([actionNote(analysis)]),
-                ]
+                platformInputs: try ResearchActionPlatformInputs(
+                    focalNotes: [actionNote(analysis)]
+                )
             )
         )
         let protectedRun = try await handle.research.protectedFunctionRun(id: action.runID)
-        #expect(action.instructions.contains("actuallyUsedMaterialNoteIDs is required"))
-        #expect(action.instructions.contains("\"actuallyUsedMaterialNoteIDs\" : ["))
+        #expect(action.instructions.contains("authenticated Agent CLI"))
+        #expect(action.instructions.contains("frozen Result Contract"))
         // Keep the original and resynthesis completions on the same timestamp
         // to prove lineage wins the tie, while keeping that timestamp after
         // both preparations so each portable record remains temporally valid.
         let submittedAt = Date().addingTimeInterval(60)
-        let activity = try researchActivityCompletion(
-            for: protectedRun,
-            candidateModifiedNotes: [topic.note],
-            summary: "No Topic change was warranted by the selected information.",
-            submittedAt: submittedAt
-        )
         await #expect(throws: PortableResearchRecordError.self) {
-            _ = try await handle.research.completeProtectedFunction(
+            _ = try await completeTestProtectedFunction(handle: handle, submission:
                 ResearchFunctionCompletionSubmission(
                     runID: protectedRun.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
                     actuallyUsedMaterialNoteIDs: [analysis.noteID],
                     summary: "I read /Users/researcher/private/source.pdf.",
                     didModifyTarget: false,
-                    activityCompletion: activity,
                     submittedAt: submittedAt
                 )
             )
@@ -462,12 +336,11 @@ extension ResearchFunctionOperationsTests {
             actuallyUsedMaterialNoteIDs: [analysis.noteID],
             summary: "No Topic change was warranted by the selected information.",
             didModifyTarget: false,
-            activityCompletion: activity,
             submittedAt: submittedAt
         )
         let completed: ResearchFunctionCompletion
         do {
-            completed = try await handle.research.completeProtectedFunction(submission)
+            completed = try await completeTestProtectedFunction(handle: handle, submission: submission)
         } catch {
             Issue.record("Valid Action completion failed before record inspection: \(error)")
             throw error
@@ -476,28 +349,27 @@ extension ResearchFunctionOperationsTests {
         #expect(completed.actuallyUsedMaterialNoteIDs == [analysis.noteID])
         let repeated: ResearchFunctionCompletion
         do {
-            repeated = try await handle.research.completeProtectedFunction(submission)
+            repeated = try await completeTestProtectedFunction(handle: handle, submission: submission)
         } catch {
             Issue.record("Idempotent Action completion failed: \(error)")
             throw error
         }
         #expect(repeated == completed)
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeProtectedFunction(
+            _ = try await completeTestProtectedFunction(handle: handle, submission:
                 ResearchFunctionCompletionSubmission(
                     runID: protectedRun.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
                     actuallyUsedMaterialNoteIDs: [analysis.noteID],
                     summary: "No Topic change was warranted by the selected information.",
                     didModifyTarget: false,
-                    activityCompletion: activity,
                     submittedAt: submittedAt.addingTimeInterval(0.000_1)
                 )
             )
         }
 
         let localURL = triptychSupport
-            .appendingPathComponent("research-execution-v3", isDirectory: true)
+            .appendingPathComponent("research-execution-v8", isDirectory: true)
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
         let portableURL = fixture.rootURL
             .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
@@ -526,19 +398,10 @@ extension ResearchFunctionOperationsTests {
             revision: analysis.fingerprint
         )])
         #expect(portable.confirmedChanges.isEmpty)
-        #expect(portable.discrepancies == [PortableResearchDiscrepancy(
-            id: PortableResearchDiscrepancy.stableID(
-                runID: action.runID,
-                noteID: topic.noteID,
-                kind: .reportedButUnmodified
-            ),
-            noteID: topic.noteID,
-            kind: .reportedButUnmodified
-        )])
+        #expect(portable.discrepancies.isEmpty)
         let localSource = String(decoding: localData, as: UTF8.self)
         let portableSource = String(decoding: portableData, as: UTF8.self)
         #expect(localSource.contains("prepared_instructions"))
-        #expect(!localSource.contains(activity.activityKey))
         for forbidden in [
             "prepared_instructions", "activity_key", "confirmationToken",
             "function", "prompt", "bookmark", "absolute_path", "token_count",
@@ -582,9 +445,9 @@ extension ResearchFunctionOperationsTests {
             handle: handle,
             actionID: .synthesize,
             target: actionNote(refreshedTopic),
-            parameterValues: [
-                materialsModuleID: .notes([actionNote(refreshedAnalysis)]),
-            ]
+            platformInputs: try ResearchActionPlatformInputs(
+                focalNotes: [actionNote(refreshedAnalysis)]
+            )
         )
         let resynthesis = try await handle.research.prepareResynthesis(
             resynthesisRequest,
@@ -606,20 +469,13 @@ extension ResearchFunctionOperationsTests {
         #expect(try await handle.documents.load(fixture.topicID).sourceBytes == topicBytes)
         #expect(try Data(contentsOf: portableURL) == portableData)
 
-        let resynthesisActivity = try researchActivityCompletion(
-            for: child,
-            candidateModifiedNotes: [refreshedTopic.note],
-            summary: "The current Analysis revision was used without changing the Topic.",
-            submittedAt: submittedAt
-        )
-        _ = try await handle.research.completeProtectedFunction(
+        _ = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: child.runID,
                 confirmationToken: child.snapshot.confirmationToken,
                 actuallyUsedMaterialNoteIDs: [refreshedAnalysis.noteID],
                 summary: "The current Analysis revision was used without changing the Topic.",
                 didModifyTarget: false,
-                activityCompletion: resynthesisActivity,
                 submittedAt: submittedAt
             )
         )
@@ -654,38 +510,27 @@ extension ResearchFunctionOperationsTests {
             role: .analysis,
             handle: handle
         )
-        let materialsModuleID = try #require(
-            ResearchActionModuleID(rawValue: "materials")
-        )
         let preparation = try await handle.research.prepareAction(
             try await actionRequest(
                 handle: handle,
                 actionID: .synthesize,
                 target: actionNote(topic),
-                parameterValues: [
-                    materialsModuleID: .notes([actionNote(analysis)]),
-                ]
+                platformInputs: try ResearchActionPlatformInputs(
+                    focalNotes: [actionNote(analysis)]
+                )
             )
         )
         let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
         let submittedAt = Date()
-        let activity = try researchActivityCompletion(
-            for: run,
-            candidateModifiedNotes: [topic.note],
-            summary: "The selected Analysis was not used.",
-            submittedAt: submittedAt
-        )
-
         for invalid in [[UUID()], [analysis.noteID, analysis.noteID]] {
             await #expect(throws: ResearchFunctionContractError.self) {
-                _ = try await handle.research.completeProtectedFunction(
+                _ = try await completeTestProtectedFunction(handle: handle, submission:
                     ResearchFunctionCompletionSubmission(
                         runID: run.runID,
                         confirmationToken: run.snapshot.confirmationToken,
                         actuallyUsedMaterialNoteIDs: invalid,
                         summary: "Invalid actually-used testimony.",
                         didModifyTarget: false,
-                        activityCompletion: activity,
                         submittedAt: submittedAt
                     )
                 )
@@ -693,26 +538,24 @@ extension ResearchFunctionOperationsTests {
         }
 
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeProtectedFunction(
+            _ = try await completeTestProtectedFunction(handle: handle, submission:
                 ResearchFunctionCompletionSubmission(
                     runID: run.runID,
                     confirmationToken: run.snapshot.confirmationToken,
                     actuallyUsedMaterialNoteIDs: nil,
                     summary: "The Material-use report was omitted.",
                     didModifyTarget: false,
-                    activityCompletion: activity,
                     submittedAt: submittedAt
                 )
             )
         }
 
-        let completed = try await handle.research.completeProtectedFunction(
+        let completed = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: run.runID,
                 confirmationToken: run.snapshot.confirmationToken,
                 summary: "The selected Analysis was not used.",
                 didModifyTarget: false,
-                activityCompletion: activity,
                 submittedAt: submittedAt
             )
         )
@@ -756,27 +599,26 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .checkFidelity,
                 target: actionNote(analysis),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "fidelity-checks")!:
-                        .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
-                ]
+                platformInputs: try ResearchActionPlatformInputs(
+                    fidelityChecks: [.content]
+                )
             )
         )
         let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
-        let completion = try await handle.research.completeAction(
-            ResearchActionCompletionSubmission(
-                runID: preparation.runID,
-                confirmationToken: run.snapshot.confirmationToken,
-                finalTargetFingerprint: analysis.fingerprint,
-                actuallyUsedMaterialNoteIDs: [],
-                summary: "The exact recorded revision could not be checked.",
-                didModifyTarget: false,
-                fidelityOutcomes: [FidelityCheckOutcome(
-                    check: .content,
-                    state: .unavailable,
-                    summary: "The source was unavailable."
-                )]
-            )
+        let receipt = try await submitTestAgentResult(
+            for: run,
+            handle: handle,
+            fidelityOutcomes: [FidelityCheckOutcome(
+                check: .content,
+                state: .unavailable,
+                summary: "The source was unavailable."
+            )]
+        )
+        #expect(receipt.state == .unverified)
+        let completion = try #require(
+            try await handle.services.localResearchExecutionStore.record(
+                id: preparation.runID
+            ).completion
         )
         #expect(completion.state == .unverified)
         #expect(completion.actuallyUsedMaterialNoteIDs == [])
@@ -812,30 +654,23 @@ extension ResearchFunctionOperationsTests {
                 handle: handle,
                 actionID: .checkFidelity,
                 target: actionNote(topic),
-                parameterValues: [
-                    ResearchActionModuleID(rawValue: "fidelity-checks")!:
-                        .choices([ResearchActionModuleChoiceValue(rawValue: "content")!]),
-                ]
+                platformInputs: try ResearchActionPlatformInputs(
+                    fidelityChecks: [.content]
+                )
             )
         )
         let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
-        let completion = try await handle.research.completeAction(
-            ResearchActionCompletionSubmission(
-                runID: preparation.runID,
-                confirmationToken: run.snapshot.confirmationToken,
-                finalTargetFingerprint: topic.fingerprint,
-                actuallyUsedMaterialNoteIDs: [],
-                summary: "The exact revision was checked and one issue was retained.",
-                didModifyTarget: false,
-                fidelityOutcomes: [FidelityCheckOutcome(
-                    check: .content,
-                    state: .issuesFound,
-                    summary: "One claim remained unsupported.",
-                    findings: ["The final inference lacks textual support."]
-                )]
-            )
+        let receipt = try await submitTestAgentResult(
+            for: run,
+            handle: handle,
+            fidelityOutcomes: [FidelityCheckOutcome(
+                check: .content,
+                state: .issuesFound,
+                summary: "One claim remained unsupported.",
+                findings: ["The final inference lacks textual support."]
+            )]
         )
-        #expect(completion.state == .complete)
+        #expect(receipt.state == .finalized)
 
         let portableURL = fixture.rootURL
             .appendingPathComponent(
@@ -880,35 +715,24 @@ extension ResearchFunctionOperationsTests {
             role: .analysis,
             handle: handle
         )
-        let materialsModuleID = try #require(
-            ResearchActionModuleID(rawValue: "materials")
-        )
         let preparation = try await handle.research.prepareAction(
             try await actionRequest(
                 handle: handle,
                 actionID: .synthesize,
                 target: actionNote(topic),
-                parameterValues: [
-                    materialsModuleID: .notes([
-                        actionNote(first), actionNote(second),
-                    ]),
-                ]
+                platformInputs: try ResearchActionPlatformInputs(
+                    focalNotes: [actionNote(first), actionNote(second)]
+                )
             )
         )
         let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
-        let activity = try researchActivityCompletion(
-            for: run,
-            candidateModifiedNotes: [topic.note],
-            summary: "Both Analyses were used."
-        )
-        _ = try await handle.research.completeProtectedFunction(
+        _ = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: run.runID,
                 confirmationToken: run.snapshot.confirmationToken,
                 actuallyUsedMaterialNoteIDs: [first.noteID, second.noteID],
                 summary: "Both Analyses were used.",
-                didModifyTarget: false,
-                activityCompletion: activity
+                didModifyTarget: false
             )
         )
 
@@ -963,8 +787,8 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Action Critique records its separate modified output Note")
-    func actionCritiquePortableRecordIncludesOutput() async throws {
+    @Test("Action Critique forms one Result Record without a parallel output Note")
+    func actionCritiqueUsesCanonicalResult() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -981,364 +805,28 @@ extension ResearchFunctionOperationsTests {
                 target: actionNote(work)
             )
         )
-        let protectedRun = try await handle.research.protectedFunctionRun(id: action.runID)
-        let output = try #require(protectedRun.snapshot.preparedOutput)
-        let original = try await handle.documents.load(output.note)
-        let saved = try await handle.documents.save(
-            output.note,
-            changeSet: .exactContent(
-                original.rawContent
-                    + "\n## Specific Findings\n\n"
-                    + "### Untraced: The central inference needs one explicit premise\n"
-                    + "Target Line: 1\n"
-            ),
-            expectedRevision: original.fingerprint
-        ).committedValue
+        let run = try await handle.research.protectedFunctionRun(id: action.runID)
+        #expect(run.snapshot.request.target.fingerprint == work.fingerprint)
 
-        let submission = ResearchFunctionCompletionSubmission(
-            runID: protectedRun.runID,
-            confirmationToken: protectedRun.snapshot.confirmationToken,
-            finalTargetFingerprint: work.fingerprint,
-            summary: "Recorded one bounded Critique finding.",
-            didModifyTarget: false,
-            outputFingerprint: saved.document.fingerprint
-        )
-        let completion = try await handle.research.completeProtectedFunction(submission)
-        #expect(completion.state == .complete)
-        await runtime.shutdown()
+        let receipt = try await submitTestAgentResult(for: run, handle: handle)
+        #expect(receipt.state == .finalized)
+        #expect(receipt.recordFormed)
 
-        // Simulate a process failure after Local completion persistence but
-        // before the Critique association captured its findings.
-        let registryURL = fixture.rootURL
-            .appendingPathComponent(".scholium/critiques.json")
-        var registry = try #require(
-            JSONSerialization.jsonObject(with: Data(contentsOf: registryURL))
-                as? [String: Any]
+        let portable = try #require(
+            try await handle.research.finishedResearchRecords(noteID: work.noteID)
+                .first { $0.id == action.runID }
         )
-        var associations = try #require(registry["associations"] as? [Any])
-        let associationIndex = try #require(associations.firstIndex {
-            guard let value = $0 as? [String: Any],
-                  let rounds = value["rounds"] as? [[String: Any]] else {
-                return false
-            }
-            return rounds.contains {
-                ($0["id"] as? String)?.lowercased()
-                    == action.runID.uuidString.lowercased()
-            }
-        })
-        var association = try #require(
-            associations[associationIndex] as? [String: Any]
-        )
-        var rounds = try #require(association["rounds"] as? [[String: Any]])
-        let roundIndex = try #require(rounds.firstIndex {
-            ($0["id"] as? String)?.lowercased()
-                == action.runID.uuidString.lowercased()
-        })
-        rounds[roundIndex]["actionableFindings"] = []
-        rounds[roundIndex].removeValue(forKey: "localExecutionFindingsCaptured")
-        association["rounds"] = rounds
-        associations[associationIndex] = association
-        registry["associations"] = associations
-        try JSONSerialization.data(
-            withJSONObject: registry,
-            options: [.prettyPrinted, .sortedKeys]
-        ).write(to: registryURL, options: .atomic)
-
-        let reopenedRuntime = fixture.runtime()
-        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
-        #expect(try await reopened.research.completeProtectedFunction(submission) == completion)
-        let repairedRegistry = String(
-            decoding: try Data(contentsOf: registryURL),
-            as: UTF8.self
-        )
-        #expect(repairedRegistry.contains(
-            "The central inference needs one explicit premise"
-        ))
-        let laterOutput = try await reopened.documents.load(output.note)
-        _ = try await reopened.documents.save(
-            output.note,
-            changeSet: .exactContent(
-                laterOutput.rawContent + "\nA later researcher edit.\n"
-            ),
-            expectedRevision: laterOutput.fingerprint
-        )
-        try FileManager.default.removeItem(
-            at: fixture.rootURL
-                .appendingPathComponent("Works", isDirectory: true)
-                .appendingPathComponent(output.note.relativePath)
-        )
-        #expect(try await reopened.research.completeProtectedFunction(submission) == completion)
-
-        let portableURL = fixture.rootURL
-            .appendingPathComponent(
-                ".scholium/research-records/v1/records",
-                isDirectory: true
-            )
-            .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
-        let portable = try JSONDecoder.scholium.decode(
-            PortableResearchRecord.self,
-            from: Data(contentsOf: portableURL)
-        )
-        let outputParticipant = try #require(portable.participatingNotes.first {
-            $0.note == output.note
-        })
-        #expect(outputParticipant.startingRevision == output.fingerprint)
-        #expect(outputParticipant.endingRevision == saved.document.fingerprint)
-        #expect(portable.confirmedChanges == [try PortableResearchConfirmedChange(
-            noteID: outputParticipant.noteID,
-            startingRevision: output.fingerprint,
-            endingRevision: saved.document.fingerprint
-        )])
+        #expect(portable.action?.actionID == .critique)
+        #expect(portable.primaryNoteID == work.noteID)
+        #expect(!portable.academicResults.isEmpty)
+        #expect(portable.confirmedChanges.isEmpty)
         #expect(portable.fidelityCompletion == .notRequired)
-        await reopenedRuntime.shutdown()
-    }
-
-    @Test("A crashed Critique handoff reconciles Local-v3 as the sole execution authority")
-    func actionCritiqueHandoffRecoversAfterRestart() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let work = try await researchFunctionTarget(
-            fixture.workID,
-            role: .work,
-            handle: handle
-        )
-        let preparation = try await handle.research.prepareAction(
-            try await actionRequest(
-                handle: handle,
-                actionID: .critique,
-                target: actionNote(work)
-            )
-        )
-        let localURL = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v3", isDirectory: true)
-            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
-        let localDecoder = JSONDecoder()
-        localDecoder.dateDecodingStrategy = .deferredToDate
-        let local = try localDecoder.decode(
-            LocalExecutionTestProjection.self,
-            from: Data(contentsOf: localURL)
-        )
-        let registryURL = fixture.rootURL
-            .appendingPathComponent(".scholium/critiques.json")
-        var registry = try #require(
-            JSONSerialization.jsonObject(with: Data(contentsOf: registryURL))
-                as? [String: Any]
-        )
-        var associations = try #require(registry["associations"] as? [Any])
-        let associationIndex = try #require(associations.firstIndex {
-            guard let value = $0 as? [String: Any],
-                  let rounds = value["rounds"] as? [[String: Any]] else {
-                return false
-            }
-            return rounds.contains {
-                ($0["id"] as? String)?.lowercased()
-                    == preparation.runID.uuidString.lowercased()
-            }
+        #expect(try await handle.snapshot().research.critiques.allSatisfy { critique in
+            !critique.rounds.contains { $0.id == action.runID }
         })
-        var association = try #require(
-            associations[associationIndex] as? [String: Any]
-        )
-        var rounds = try #require(association["rounds"] as? [[String: Any]])
-        let roundIndex = try #require(rounds.firstIndex {
-            ($0["id"] as? String)?.lowercased()
-                == preparation.runID.uuidString.lowercased()
-        })
-        let registryEncoder = JSONEncoder()
-        registryEncoder.dateEncodingStrategy = .iso8601
-        rounds[roundIndex]["functionSnapshot"] = try JSONSerialization.jsonObject(
-            with: registryEncoder.encode(local.snapshot)
-        )
-        rounds[roundIndex]["functionInstructions"] = local.preparedInstructions
-        association["rounds"] = rounds
-        associations[associationIndex] = association
-        registry["associations"] = associations
-        try JSONSerialization.data(
-            withJSONObject: registry,
-            options: [.prettyPrinted, .sortedKeys]
-        ).write(to: registryURL, options: .atomic)
         await runtime.shutdown()
-
-        let reopenedRuntime = fixture.runtime()
-        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
-        let firstReopenedSnapshot = try await reopened.snapshot()
-        #expect(try await reopened.services.localResearchExecutionStore.listing().records.count {
-            $0.id == preparation.runID
-        } == 1)
-        let projectedRound = try #require(
-            firstReopenedSnapshot.research.critiques
-                .flatMap(\.rounds)
-                .first { $0.id == preparation.runID }
-        )
-        #expect(projectedRound.functionSnapshot == nil)
-        #expect(projectedRound.functionInstructions == nil)
-        let recovered = try await reopened.research.protectedFunctionRun(id: preparation.runID)
-        #expect(recovered.snapshot == local.snapshot)
-        let repairedSource = String(
-            decoding: try Data(contentsOf: registryURL),
-            as: UTF8.self
-        )
-        #expect(!repairedSource.contains("\"functionSnapshot\""))
-        #expect(!repairedSource.contains("\"functionInstructions\""))
-        try await reopened.research.cancelProtectedFunction(runID: preparation.runID)
-        await reopenedRuntime.shutdown()
     }
 
-    @Test("A pre-Local Critique handoff installs the exact staged run after restart")
-    func actionCritiquePreLocalHandoffIsInstalledAfterRestart() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let work = try await researchFunctionTarget(
-            fixture.workID,
-            role: .work,
-            handle: handle
-        )
-        let preparation = try await handle.research.prepareAction(
-            try await actionRequest(
-                handle: handle,
-                actionID: .critique,
-                target: actionNote(work)
-            )
-        )
-        let localURL = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v3", isDirectory: true)
-            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
-        let localDecoder = JSONDecoder()
-        localDecoder.dateDecodingStrategy = .deferredToDate
-        let local = try localDecoder.decode(
-            LocalExecutionTestProjection.self,
-            from: Data(contentsOf: localURL)
-        )
-        #expect(local.snapshot.checkpointID == nil)
-
-        let registryURL = fixture.rootURL
-            .appendingPathComponent(".scholium/critiques.json")
-        var registry = try #require(
-            JSONSerialization.jsonObject(with: Data(contentsOf: registryURL))
-                as? [String: Any]
-        )
-        var associations = try #require(registry["associations"] as? [Any])
-        let associationIndex = try #require(associations.firstIndex {
-            guard let value = $0 as? [String: Any],
-                  let rounds = value["rounds"] as? [[String: Any]] else {
-                return false
-            }
-            return rounds.contains {
-                ($0["id"] as? String)?.lowercased()
-                    == preparation.runID.uuidString.lowercased()
-            }
-        })
-        var association = try #require(
-            associations[associationIndex] as? [String: Any]
-        )
-        var rounds = try #require(association["rounds"] as? [[String: Any]])
-        let roundIndex = try #require(rounds.firstIndex {
-            ($0["id"] as? String)?.lowercased()
-                == preparation.runID.uuidString.lowercased()
-        })
-        let registryEncoder = JSONEncoder()
-        registryEncoder.dateEncodingStrategy = .iso8601
-        rounds[roundIndex]["functionSnapshot"] = try JSONSerialization.jsonObject(
-            with: registryEncoder.encode(local.snapshot)
-        )
-        rounds[roundIndex]["functionInstructions"] = local.preparedInstructions
-        association["rounds"] = rounds
-        associations[associationIndex] = association
-        registry["associations"] = associations
-        let stagedRegistryData = try JSONSerialization.data(
-            withJSONObject: registry,
-            options: [.prettyPrinted, .sortedKeys]
-        )
-        try stagedRegistryData.write(to: registryURL, options: .atomic)
-        try FileManager.default.removeItem(at: localURL)
-        let sourceMachineExecutionStore = await handle.services
-            .localResearchExecutionStore
-        try await sourceMachineExecutionStore.stageCritiqueHandoff(
-            snapshot: local.snapshot,
-            preparedInstructions: local.preparedInstructions
-        )
-        await runtime.shutdown()
-
-        // A different Mac sees the portable staging through sync but does not
-        // possess the machine-local intent. It must preserve the staging
-        // and refuse to manufacture an executable run on that machine.
-        let remoteApplicationSupport = fixture.rootURL.appendingPathComponent(
-            "Remote Application Support",
-            isDirectory: true
-        )
-        let remoteRuntime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: remoteApplicationSupport,
-            assignments: [fixture.assignment]
-        )))
-        let remote = try await remoteRuntime.openWorkspace(id: fixture.assignment.id)
-        let remoteSnapshot = try await remote.snapshot()
-        let remoteRound = try #require(
-            remoteSnapshot.research.critiques
-                .flatMap(\.rounds)
-                .first { $0.id == preparation.runID }
-        )
-        #expect(remoteRound.functionSnapshot == local.snapshot)
-        #expect(try await remote.services.localResearchExecutionStore.listing().records.allSatisfy {
-            $0.id != preparation.runID
-        })
-        #expect(remoteSnapshot.research.healthIssues.contains {
-            $0.contains("no matching machine-local intent")
-        })
-        await remoteRuntime.shutdown()
-
-        // Even on the source machine, externally changed portable prose is
-        // testimony to preserve, not authority from which Scholium may
-        // manufacture Local execution state.
-        rounds[roundIndex]["functionInstructions"] = local.preparedInstructions
-            + "\nExternally changed instructions."
-        association["rounds"] = rounds
-        associations[associationIndex] = association
-        registry["associations"] = associations
-        try JSONSerialization.data(
-            withJSONObject: registry,
-            options: [.prettyPrinted, .sortedKeys]
-        ).write(to: registryURL, options: .atomic)
-        let inconsistentRuntime = fixture.runtime()
-        let inconsistent = try await inconsistentRuntime.openWorkspace(
-            id: fixture.assignment.id
-        )
-        let inconsistentSnapshot = try await inconsistent.snapshot()
-        #expect(try await inconsistent.services.localResearchExecutionStore.listing().records.allSatisfy {
-            $0.id != preparation.runID
-        })
-        #expect(inconsistentSnapshot.research.healthIssues.contains {
-            $0.contains("no matching machine-local intent")
-        })
-        #expect(!FileManager.default.fileExists(atPath: localURL.path))
-        await inconsistentRuntime.shutdown()
-        try stagedRegistryData.write(to: registryURL, options: .atomic)
-
-        let reopenedRuntime = fixture.runtime()
-        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
-        let reopenedSnapshot = try await reopened.snapshot()
-        let projectedRound = try #require(
-            reopenedSnapshot.research.critiques
-                .flatMap(\.rounds)
-                .first { $0.id == preparation.runID }
-        )
-        #expect(projectedRound.functionSnapshot == nil)
-        #expect(projectedRound.functionInstructions == nil)
-        #expect(try await reopened.services.localResearchExecutionStore.listing().records.count {
-            $0.id == preparation.runID
-        } == 1)
-        let recovered = try await reopened.research.protectedFunctionRun(id: preparation.runID)
-        #expect(recovered.snapshot == local.snapshot)
-        #expect(recovered.instructions == local.preparedInstructions)
-        try await reopened.research.cancelProtectedFunction(runID: preparation.runID)
-        await reopenedRuntime.shutdown()
-    }
 
     @Test("Action Analyze records structured recommendations with safe source provenance")
     func actionAnalyzePortableRecordIncludesRecommendations() async throws {
@@ -1360,11 +848,9 @@ extension ResearchFunctionOperationsTests {
         )
         let protectedRun = try await handle.research.protectedFunctionRun(id: action.runID)
         let source = try #require(protectedRun.snapshot.sourceReference)
-        let submittedAt = Date()
-        let writeCompletion = try actionWriteCompletion(
-            for: action,
-            summary: "The source supports no warranted Analysis change.",
-            submittedAt: submittedAt
+        let client = try await connectTestResearchAgent(
+            to: protectedRun,
+            handle: handle
         )
         let portableURL = fixture.rootURL
             .appendingPathComponent(
@@ -1372,16 +858,15 @@ extension ResearchFunctionOperationsTests {
                 isDirectory: true
             )
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
-        let missingRecommendations = ResearchActionCompletionSubmission(
-            runID: protectedRun.runID,
-            confirmationToken: protectedRun.snapshot.confirmationToken,
-            summary: "The source supports no warranted Analysis change.",
-            didModifyTarget: false,
-            writeCompletion: writeCompletion,
-            submittedAt: submittedAt
+        let missingRecommendations = try makeTestAgentResultSubmission(
+            for: protectedRun
         )
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeAction(missingRecommendations)
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await submitTestAgentResult(
+                missingRecommendations,
+                client: client,
+                handle: handle
+            )
         }
         let privatePath = fixture.analysisSourceURL.path
         let embeddedPrivatePath = "opaque\(privatePath)"
@@ -1394,22 +879,22 @@ extension ResearchFunctionOperationsTests {
             reason: embeddedPrivatePath,
             uncertainty: embeddedPrivatePath
         )
+        let leakingSubmission = try makeTestAgentResultSubmission(
+            for: protectedRun,
+            literatureRecommendations: [leakingRecommendation]
+        )
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeAction(
-                ResearchActionCompletionSubmission(
-                    runID: protectedRun.runID,
-                    confirmationToken: protectedRun.snapshot.confirmationToken,
-                    summary: "The source supports no warranted Analysis change.",
-                    didModifyTarget: false,
-                    writeCompletion: writeCompletion,
-                    literatureRecommendations: [leakingRecommendation],
-                    submittedAt: submittedAt
-                )
+            _ = try await submitTestAgentResult(
+                leakingSubmission,
+                client: client,
+                handle: handle
             )
         }
-        #expect(try await handle.services.localResearchExecutionStore.record(
+        let rejected = try await handle.services.localResearchExecutionStore.record(
             id: action.runID
-        ).completion == nil)
+        )
+        #expect(rejected.resultPayload == nil)
+        #expect(rejected.completion == nil)
         #expect(!FileManager.default.fileExists(atPath: portableURL.path))
         let recommendations = [
             try ResearchLiteratureRecommendationSubmission(
@@ -1432,18 +917,21 @@ extension ResearchFunctionOperationsTests {
                 uncertainty: "The page range was not independently checked."
             ),
         ]
-        let submission = ResearchActionCompletionSubmission(
-            runID: protectedRun.runID,
-            confirmationToken: protectedRun.snapshot.confirmationToken,
-            summary: "The source supports no warranted Analysis change.",
-            didModifyTarget: false,
-            writeCompletion: writeCompletion,
-            literatureRecommendations: recommendations,
-            submittedAt: submittedAt
+        let submission = try makeTestAgentResultSubmission(
+            for: protectedRun,
+            literatureRecommendations: recommendations
         )
-        let completion = try await handle.research.completeAction(submission)
-        #expect(completion.literatureRecommendationCount == 2)
-        #expect(try await handle.research.completeAction(submission) == completion)
+        let receipt = try await submitTestAgentResult(
+            submission,
+            client: client,
+            handle: handle
+        )
+        #expect(receipt.state == .finalized)
+        #expect(try await submitTestAgentResult(
+            submission,
+            client: client,
+            handle: handle
+        ) == receipt)
 
         let data = try Data(contentsOf: portableURL)
         let portable = try JSONDecoder.scholium.decode(
@@ -1480,24 +968,12 @@ extension ResearchFunctionOperationsTests {
         let zeroRun = try await handle.research.protectedFunctionRun(
             id: zeroAction.runID
         )
-        let zeroSubmittedAt = Date().addingTimeInterval(1)
-        let zeroWriteCompletion = try actionWriteCompletion(
-            for: zeroAction,
-            summary: "No additional reading leads were warranted.",
-            submittedAt: zeroSubmittedAt
+        let zeroReceipt = try await submitTestAgentResult(
+            for: zeroRun,
+            handle: handle,
+            literatureRecommendations: []
         )
-        let zeroCompletion = try await handle.research.completeAction(
-            ResearchActionCompletionSubmission(
-                runID: zeroRun.runID,
-                confirmationToken: zeroRun.snapshot.confirmationToken,
-                summary: "No additional reading leads were warranted.",
-                didModifyTarget: false,
-                writeCompletion: zeroWriteCompletion,
-                literatureRecommendations: [],
-                submittedAt: zeroSubmittedAt
-            )
-        )
-        #expect(zeroCompletion.literatureRecommendationCount == 0)
+        #expect(zeroReceipt.state == .finalized)
         let records = try await handle.research.finishedResearchRecords(noteID: nil)
         #expect(records.count { $0.id == action.runID } == 1)
         #expect(records.count { $0.id == zeroAction.runID } == 1)
@@ -1515,8 +991,12 @@ extension ResearchFunctionOperationsTests {
         try await handle.research.deleteResearchRecordPermanently(id: action.runID)
         #expect(!FileManager.default.fileExists(atPath: portableURL.path))
         do {
-            _ = try await handle.research.completeAction(submission)
-            Issue.record("A stale completion replay bypassed permanent Record deletion.")
+            _ = try await submitTestAgentResult(
+                submission,
+                client: client,
+                handle: handle
+            )
+            Issue.record("A stale Result replay bypassed permanent Record deletion.")
         } catch ResearchFunctionContractError.invalidCompletion(let reason) {
             #expect(reason.contains("permanently deleted"))
         }
@@ -1552,11 +1032,9 @@ extension ResearchFunctionOperationsTests {
         let protectedRun = try await handle.research.protectedFunctionRun(
             id: action.runID
         )
-        let submittedAt = Date()
-        let writeCompletion = try actionWriteCompletion(
-            for: action,
-            summary: "The source supports no warranted Analysis change.",
-            submittedAt: submittedAt
+        let client = try await connectTestResearchAgent(
+            to: protectedRun,
+            handle: handle
         )
         let largeReason = String(repeating: "x", count: 60 * 1024)
         let recommendations = try (0..<144).map { ordinal in
@@ -1566,22 +1044,22 @@ extension ResearchFunctionOperationsTests {
             )
         }
 
+        let submission = try makeTestAgentResultSubmission(
+            for: protectedRun,
+            literatureRecommendations: recommendations
+        )
         await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeAction(
-                ResearchActionCompletionSubmission(
-                    runID: protectedRun.runID,
-                    confirmationToken: protectedRun.snapshot.confirmationToken,
-                    summary: "The source supports no warranted Analysis change.",
-                    didModifyTarget: false,
-                    writeCompletion: writeCompletion,
-                    literatureRecommendations: recommendations,
-                    submittedAt: submittedAt
-                )
+            _ = try await submitTestAgentResult(
+                submission,
+                client: client,
+                handle: handle
             )
         }
-        #expect(try await handle.services.localResearchExecutionStore.record(
+        let rejected = try await handle.services.localResearchExecutionStore.record(
             id: action.runID
-        ).completion == nil)
+        )
+        #expect(rejected.resultPayload == nil)
+        #expect(rejected.completion == nil)
         let portableURL = fixture.rootURL
             .appendingPathComponent(
                 ".scholium/research-records/v1/records",
@@ -1615,47 +1093,23 @@ extension ResearchFunctionOperationsTests {
         let protectedRun = try await handle.research.protectedFunctionRun(
             id: action.runID
         )
-        let writeCompletion = try actionWriteCompletion(
-            for: action,
-            summary: "No synthesis was warranted."
+        let client = try await connectTestResearchAgent(
+            to: protectedRun,
+            handle: handle
         )
-
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.completeAction(
-                ResearchActionCompletionSubmission(
-                    runID: action.runID,
-                    confirmationToken: protectedRun.snapshot.confirmationToken,
-                    summary: "No synthesis was warranted.",
-                    didModifyTarget: false,
-                    writeCompletion: writeCompletion,
-                    literatureRecommendations: []
-                )
+        let submission = try makeTestAgentResultSubmission(
+            for: protectedRun,
+            literatureRecommendations: []
+        )
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await submitTestAgentResult(
+                submission,
+                client: client,
+                handle: handle
             )
         }
         try await handle.research.cancelProtectedFunction(runID: action.runID)
         await runtime.shutdown()
-    }
-
-    private func actionWriteCompletion(
-        for preparation: ResearchActionPreparation,
-        summary: String,
-        submittedAt: Date = Date()
-    ) throws -> ResearchActionWriteCompletionSubmission {
-        let prefix = "Write key: "
-        let writeKey = try #require(
-            preparation.instructions
-                .split(separator: "\n")
-                .map(String.init)
-                .first(where: { $0.hasPrefix(prefix) })
-                .map { String($0.dropFirst(prefix.count)) }
-        )
-        return ResearchActionWriteCompletionSubmission(
-            runID: preparation.runID,
-            writeKey: writeKey,
-            candidateModifiedNotes: [],
-            summary: summary,
-            submittedAt: submittedAt
-        )
     }
 
 }

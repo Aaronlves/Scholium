@@ -3,11 +3,189 @@ import ScholiumContracts
 @testable import ScholiumApp
 import Testing
 
+@MainActor
+private final class ResearchRecordSearchProbe {
+    var requests: [SearchRequest] = []
+    let handler: @MainActor @Sendable (SearchRequest) async throws -> SearchResponse
+
+    init(
+        handler: @escaping @MainActor @Sendable (
+            SearchRequest
+        ) async throws -> SearchResponse
+    ) {
+        self.handler = handler
+    }
+
+    func search(_ request: SearchRequest) async throws -> SearchResponse {
+        requests.append(request)
+        return try await handler(request)
+    }
+}
+
+@MainActor
+private final class ResearchRecordProviderState {
+    var records: [PortableResearchRecord]
+
+    init(records: [PortableResearchRecord]) {
+        self.records = records
+    }
+}
+
 @Suite("Research Record browser")
 @MainActor
 struct ResearchRecordBrowserModelTests {
-    @Test("The derived index searches Unicode and composes scholarly filters")
-    func searchAndFiltersCompose() throws {
+    @Test("A Search Record locator selects only the exact Record revision and statement")
+    func exactSearchRecordLocator() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(41),
+            noteID: deterministicUUID(42),
+            title: "Located Record",
+            text: "The researcher's exact objection.",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let fingerprint = DocumentFingerprint(content: "exact record bytes")
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [record.id: fingerprint]
+            )
+        }
+
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: fingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                recordID: record.id,
+                expectedRecordFingerprint: fingerprint,
+                statementID: record.statements[0].id
+            )
+        )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.selectedRecord?.id == record.id)
+        #expect(model.focusedStatementID == record.statements[0].id)
+        #expect(!model.isShowingError)
+    }
+
+    @Test("A stale, deleted, or missing-statement Search Record locator fails closed")
+    func invalidSearchRecordLocatorsFailClosed() throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(51),
+            noteID: deterministicUUID(52),
+            title: "Changing Record",
+            text: "A statement whose identity matters.",
+            author: .agent,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let currentFingerprint = DocumentFingerprint(content: "current record bytes")
+
+        let stale = ResearchRecordBrowserModel()
+        stale.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: currentFingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                recordID: record.id,
+                expectedRecordFingerprint: DocumentFingerprint(
+                    content: "older record bytes"
+                ),
+                statementID: record.statements[0].id
+            )
+        )
+        #expect(stale.selectedRecord == nil)
+        #expect(stale.focusedStatementID == nil)
+        #expect(stale.isShowingError)
+
+        let deleted = ResearchRecordBrowserModel()
+        deleted.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [],
+            fingerprints: [:],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                recordID: record.id,
+                expectedRecordFingerprint: currentFingerprint,
+                statementID: record.statements[0].id
+            )
+        )
+        #expect(deleted.selectedRecord == nil)
+        #expect(deleted.focusedStatementID == nil)
+        #expect(deleted.isShowingError)
+
+        let missingStatement = ResearchRecordBrowserModel()
+        missingStatement.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: currentFingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                recordID: record.id,
+                expectedRecordFingerprint: currentFingerprint,
+                statementID: deterministicUUID(53)
+            )
+        )
+        #expect(missingStatement.selectedRecord == nil)
+        #expect(missingStatement.focusedStatementID == nil)
+        #expect(missingStatement.isShowingError)
+    }
+
+    @Test("An open Search Record locator fails closed after the Record changes")
+    func openSearchRecordLocatorRevalidatesOnRefresh() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(61),
+            noteID: deterministicUUID(62),
+            title: "Initially Current Record",
+            text: "The exact statement selected from Search.",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let initial = DocumentFingerprint(content: "initial record bytes")
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [record.id: initial]
+            )
+        }
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: initial],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                recordID: record.id,
+                expectedRecordFingerprint: initial,
+                statementID: record.statements[0].id
+            )
+        )
+        await model.waitForRecordSearchForTesting()
+        #expect(model.selectedRecord?.id == record.id)
+
+        model.receive(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [
+                record.id: DocumentFingerprint(content: "changed record bytes"),
+            ]
+        )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.selectedRecord == nil)
+        #expect(model.focusedStatementID == nil)
+        #expect(model.isShowingError)
+    }
+
+    @Test("The browser compiles filters for the Application Record provider")
+    func browserCompilesRecordProviderRequest() async throws {
         let now = Date(timeIntervalSince1970: 2_000_000)
         let topicID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!
         let workID = UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!
@@ -26,72 +204,194 @@ struct ResearchRecordBrowserModelTests {
             finishedAt: now.addingTimeInterval(-20 * 86_400),
             isPinned: true
         )
-        let model = ResearchRecordBrowserModel(
-            now: now,
-            calendar: Calendar(identifier: .gregorian)
-        )
+        let model = ResearchRecordBrowserModel()
+        let fingerprints = [
+            discussion.id: DocumentFingerprint(content: "discussion record"),
+            action.id: DocumentFingerprint(content: "action record"),
+        ]
+        let probe = ResearchRecordSearchProbe { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: discussion.triptychID,
+                records: [action, discussion],
+                fingerprints: fingerprints
+            )
+        }
+        model.bindRecordSearch { request in
+            try await probe.search(request)
+        }
         model.prepareForOpen(
             triptychID: discussion.triptychID,
             records: [discussion, action],
+            fingerprints: fingerprints,
             request: ResearchRecordsWindowRequest(
                 triptychID: discussion.triptychID,
                 noteID: topicID
             )
         )
+        await model.waitForRecordSearchForTesting()
 
-        #expect(model.visibleEntries.map(\.id) == [discussion.id])
-        model.scope = .triptych
         #expect(model.visibleEntries.map(\.id) == [action.id, discussion.id])
+        #expect(probe.requests.last?.query.contains(
+            "note:\"\(topicID.uuidString.lowercased())\""
+        ) == true)
+
+        model.scope = .triptych
         model.searchText = "cafe\u{301} 理由"
-        #expect(model.visibleEntries.map(\.id) == [discussion.id])
-        model.searchText = ""
         model.actionFilterID = .analyze
-        model.skillFilterID = "argument-analysis"
+        model.methodFilterName = "Argument Analysis"
         model.participantFilter = .author(.agent)
-        #expect(model.visibleEntries.map(\.id) == [action.id])
         model.dateFilter = .pastSevenDays
-        #expect(model.visibleEntries.isEmpty)
+        await model.waitForRecordSearchForTesting()
+
+        let query = try #require(probe.requests.last?.query)
+        #expect(query.hasPrefix("kind:record"))
+        #expect(query.contains("\"cafe\u{301}\""))
+        #expect(query.contains("\"理由\""))
+        #expect(query.contains("action:\"analyze\""))
+        #expect(query.contains("skill:\"Argument Analysis\""))
+        #expect(query.contains("participant:agent"))
+        #expect(query.contains("date:7d"))
+        #expect(model.visibleEntries.map(\.id) == [action.id, discussion.id])
     }
 
-    @Test("Rebuilding a large collection is deterministic and keeps tombstones filterable")
-    func deterministicLargeRebuild() throws {
-        let triptychID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
-        let now = Date(timeIntervalSince1970: 4_000_000)
-        let records = try (0..<5_000).map { index in
-            try makeDiscussion(
-                id: deterministicUUID(index),
-                triptychID: triptychID,
-                noteID: deterministicUUID(index + 10_000),
-                title: "Record \(index)",
-                text: "Bounded scholarly statement \(index)",
-                author: index.isMultiple(of: 2) ? .researcher : .agent,
-                finishedAt: now.addingTimeInterval(TimeInterval(-index)),
-                isTombstone: index == 4_999,
-                isPinned: index == 4_998
+    @Test("Binding the provider requeries and invalid provider or fingerprint fails closed")
+    func providerBindingAndResponseValidation() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(71),
+            noteID: deterministicUUID(72),
+            title: "Provider-owned Record",
+            text: "Application owns matching.",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let fingerprint = DocumentFingerprint(content: "record bytes")
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: fingerprint],
+            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
+        )
+        #expect(model.visibleEntries.isEmpty)
+
+        let valid = ResearchRecordSearchProbe { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [record.id: fingerprint]
             )
         }
-        let first = ResearchRecordDerivedIndex(records: records)
-        let second = ResearchRecordDerivedIndex(records: records.reversed())
+        model.bindRecordSearch { request in try await valid.search(request) }
+        await model.waitForRecordSearchForTesting()
+        #expect(valid.requests.count == 1)
+        #expect(model.visibleEntries.map(\.id) == [record.id])
 
-        #expect(first.entries.map(\.id) == second.entries.map(\.id))
-        #expect(first.entries.count == 5_000)
-        #expect(first.entries.first?.id == deterministicUUID(4_998))
-        let tombstoneID = deterministicUUID(14_999)
-        let matches = first.query(
-            text: "Record 4999",
-            noteID: nil,
-            dateFilter: .any,
-            skillID: nil,
-            actionID: nil,
-            participant: .note(tombstoneID),
-            now: now,
-            calendar: Calendar(identifier: .gregorian)
-        )
-        #expect(matches.map(\.id) == [deterministicUUID(4_999)])
-        #expect(matches.first?.noteParticipants.first?.isTombstone == true)
+        model.dismissError()
+        model.bindRecordSearch { request in
+            noteProviderResponse(request: request, triptychID: record.triptychID)
+        }
+        await model.waitForRecordSearchForTesting()
+        #expect(model.visibleEntries.isEmpty)
+        #expect(model.selectedRecord == nil)
+        #expect(model.isShowingError)
+
+        model.dismissError()
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [
+                    record.id: DocumentFingerprint(content: "wrong record bytes"),
+                ]
+            )
+        }
+        await model.waitForRecordSearchForTesting()
+        #expect(model.visibleEntries.isEmpty)
+        #expect(model.selectedRecord == nil)
+        #expect(model.isShowingError)
+
+        model.bindRecordSearch { request in try await valid.search(request) }
+        await model.waitForRecordSearchForTesting()
+        #expect(model.visibleEntries.map(\.id) == [record.id])
+        #expect(model.selectedRecord?.id == record.id)
+        #expect(!model.isShowingError)
+        #expect(model.errorMessage.isEmpty)
     }
 
-    @Test("Pin completion replaces the indexed record and preserves browser state")
+    @Test("A superseded noncooperative Record response cannot replace the current query")
+    func supersededRecordResponseIsIgnored() async throws {
+        let first = try makeDiscussion(
+            id: deterministicUUID(81),
+            noteID: deterministicUUID(82),
+            title: "First Record",
+            text: "A stale result.",
+            author: .agent,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let second = try makeDiscussion(
+            id: deterministicUUID(83),
+            noteID: deterministicUUID(84),
+            title: "Second Record",
+            text: "The current result.",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 200)
+        )
+        let fingerprints = [
+            first.id: DocumentFingerprint(content: "first record"),
+            second.id: DocumentFingerprint(content: "second record"),
+        ]
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: first.triptychID,
+            records: [first, second],
+            fingerprints: fingerprints,
+            request: ResearchRecordsWindowRequest(triptychID: first.triptychID)
+        )
+
+        var firstContinuation: CheckedContinuation<SearchResponse, Never>?
+        var callCount = 0
+        model.bindRecordSearch { request in
+            callCount += 1
+            if callCount == 1 {
+                return await withCheckedContinuation { continuation in
+                    firstContinuation = continuation
+                }
+            }
+            return recordSearchResponse(
+                request: request,
+                triptychID: first.triptychID,
+                records: [second],
+                fingerprints: fingerprints
+            )
+        }
+        while firstContinuation == nil { await Task.yield() }
+
+        model.searchText = "current"
+        await model.waitForRecordSearchForTesting()
+        #expect(model.visibleEntries.map(\.id) == [second.id])
+
+        let staleRequest = SearchRequest(
+            query: "kind:record",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: SearchContract.maximumInterfaceResults
+        )
+        firstContinuation?.resume(returning: recordSearchResponse(
+            request: staleRequest,
+            triptychID: first.triptychID,
+            records: [first],
+            fingerprints: fingerprints
+        ))
+        await Task.yield()
+
+        #expect(model.visibleEntries.map(\.id) == [second.id])
+        #expect(model.selectedRecord?.id == second.id)
+    }
+
+    @Test("Pin completion refreshes the provider row and preserves browser criteria")
     func pinCompletionReordersWithoutResettingFilters() async throws {
         let record = try makeDiscussion(
             id: deterministicUUID(1),
@@ -102,16 +402,28 @@ struct ResearchRecordBrowserModelTests {
             finishedAt: Date(timeIntervalSince1970: 100)
         )
         let model = ResearchRecordBrowserModel()
+        let fingerprint = DocumentFingerprint(content: "focused record")
+        let provider = ResearchRecordProviderState(records: [record])
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: provider.records,
+                fingerprints: [record.id: fingerprint]
+            )
+        }
         model.prepareForOpen(
             triptychID: record.triptychID,
             records: [record],
+            fingerprints: [record.id: fingerprint],
             request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
         )
+        await model.waitForRecordSearchForTesting()
         model.searchText = "Focused"
 
         await model.setPinned(recordID: record.id) { _, requestedPin in
             #expect(requestedPin)
-            return try PortableResearchRecord(
+            let updated = try PortableResearchRecord(
                 id: record.id,
                 triptychID: record.triptychID,
                 kind: record.kind,
@@ -130,7 +442,10 @@ struct ResearchRecordBrowserModelTests {
                 finishedAt: record.finishedAt,
                 isPinned: true
             )
+            provider.records = [updated]
+            return updated
         }
+        await model.waitForRecordSearchForTesting()
 
         #expect(model.searchText == "Focused")
         #expect(model.visibleEntries.first?.isPinned == true)
@@ -167,11 +482,23 @@ struct ResearchRecordBrowserModelTests {
             isPinned: true
         )
         let model = ResearchRecordBrowserModel()
+        let fingerprint = DocumentFingerprint(content: "concurrent record")
+        let provider = ResearchRecordProviderState(records: [record])
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: provider.records,
+                fingerprints: [record.id: fingerprint]
+            )
+        }
         model.prepareForOpen(
             triptychID: record.triptychID,
             records: [record],
+            fingerprints: [record.id: fingerprint],
             request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
         )
+        await model.waitForRecordSearchForTesting()
         var pinContinuation: CheckedContinuation<PortableResearchRecord, Never>?
         let pinTask = Task { @MainActor in
             await model.setPinned(recordID: record.id) { _, _ in
@@ -191,8 +518,10 @@ struct ResearchRecordBrowserModelTests {
         #expect(deletionCallCount == 0)
         #expect(model.visibleEntries.map(\.id) == [record.id])
 
+        provider.records = [pinned]
         pinContinuation?.resume(returning: pinned)
         await pinTask.value
+        await model.waitForRecordSearchForTesting()
         #expect(model.visibleEntries.map(\.id) == [record.id])
         #expect(model.selectedRecord?.isPinned == true)
 
@@ -220,8 +549,8 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.selectedRecord == nil)
     }
 
-    @Test("An Action title summarizes live participants without guessing its Target")
-    func actionTitleSummarizesLiveParticipants() throws {
+    @Test("An Action row summarizes live participants without guessing its Target")
+    func actionTitleSummarizesLiveParticipants() async throws {
         let targetID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
         let base = try makeAction(
             id: deterministicUUID(90),
@@ -255,10 +584,26 @@ struct ResearchRecordBrowserModelTests {
             finishedAt: base.finishedAt
         )
 
-        #expect(
-            ResearchRecordDerivedIndex(records: [record]).entries.first?.contextTitle
-                == "Additional Analysis, Live Analysis"
+        let fingerprint = DocumentFingerprint(content: "action row")
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [record.id: fingerprint]
+            )
+        }
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: fingerprint],
+            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
         )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.visibleEntries.first?.contextTitle
+            == "Additional Analysis, Live Analysis")
     }
 
     @Test("Confirmed record deletion removes only the selected disposable projection")
@@ -371,8 +716,8 @@ struct ResearchRecordBrowserModelTests {
         #expect(!model.isShowingError)
     }
 
-    @Test("Scope and View remain independent while This Note filters parent Records")
-    func scopeAndViewAreIndependent() throws {
+    @Test("Scope and View remain independent while Record scope uses the provider")
+    func scopeAndViewAreIndependent() async throws {
         let firstNoteID = deterministicUUID(601)
         let secondNoteID = deterministicUUID(602)
         let first = try makeAction(
@@ -400,15 +745,33 @@ struct ResearchRecordBrowserModelTests {
             )]
         )
         let model = ResearchRecordBrowserModel()
+        let fingerprints = [
+            first.id: DocumentFingerprint(content: "first record"),
+            second.id: DocumentFingerprint(content: "second record"),
+        ]
+        let probe = ResearchRecordSearchProbe { request in
+            let visible = request.query.contains(firstNoteID.uuidString.lowercased())
+                ? [first]
+                : [first, second]
+            return recordSearchResponse(
+                request: request,
+                triptychID: first.triptychID,
+                records: visible,
+                fingerprints: fingerprints
+            )
+        }
+        model.bindRecordSearch { request in try await probe.search(request) }
         model.prepareForOpen(
             triptychID: first.triptychID,
             records: [first, second],
+            fingerprints: fingerprints,
             request: ResearchRecordsWindowRequest(
                 triptychID: first.triptychID,
                 noteID: firstNoteID,
                 initialView: .recommendations
             )
         )
+        await model.waitForRecordSearchForTesting()
 
         #expect(model.scope == .thisNote)
         #expect(model.viewKind == .recommendations)
@@ -416,6 +779,7 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.visibleRecommendationGroups.flatMap(\.occurrences).count == 1)
 
         model.scope = .triptych
+        await model.waitForRecordSearchForTesting()
         #expect(model.viewKind == .recommendations)
         #expect(model.visibleEntries.count == 2)
         #expect(model.visibleRecommendationGroups.count == 1)
@@ -705,7 +1069,7 @@ struct ResearchRecordBrowserModelTests {
         let method = try JSONDecoder().decode(
             PortableResearchMethodReference.self,
             from: Data("""
-            {"package_id":"argument-analysis","origin":"bundled","version":"1.0.0","package_revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)},"loaded_resources":[{"relative_path":"SKILL.md","revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)}}],"profile_revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)}}
+            {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","practice_names":[],"profile_revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)}}
             """.utf8)
         )
         let recommendations = try recommendations.enumerated().map {
@@ -794,6 +1158,82 @@ struct ResearchRecordBrowserModelTests {
             startingRevision: fingerprint,
             endingRevision: isTombstone ? nil : fingerprint,
             isTombstone: isTombstone
+        )
+    }
+
+    private func recordSearchResponse(
+        request: SearchRequest,
+        triptychID: UUID,
+        records: [PortableResearchRecord],
+        fingerprints: [UUID: DocumentFingerprint]
+    ) -> SearchResponse {
+        let generation = RecordSearchGenerationID(
+            triptychID: triptychID,
+            sourceManifestHash: records.map {
+                fingerprints[$0.id]?.sha256 ?? $0.id.uuidString.lowercased()
+            }.joined(separator: ":")
+        )
+        let freshness = SearchFreshnessToken.record(generation)
+        let parsed = SearchQueryParser.parse(request.query)
+        let explanation = parsed.ast?.explanation ?? SearchExplanation(
+            provider: .record,
+            providerWasExplicit: true,
+            clauses: []
+        )
+        let results = records.compactMap { record -> SearchResult? in
+            guard let fingerprint = fingerprints[record.id] else { return nil }
+            let actionID = record.kind == .discussion
+                ? ResearchActionID.discuss
+                : record.action?.actionID ?? .discuss
+            return .record(RecordSearchResult(
+                recordID: record.id,
+                matchedField: .context,
+                matchedReason: "fixture provider result",
+                context: record.researchRecordContextTitle ?? actionID.rawValue,
+                actionID: actionID.rawValue,
+                methodName: record.method?.displayName,
+                sourceDisplayName: record.sourceReference?.displayName,
+                finishedAt: record.finishedAt,
+                pinned: record.isPinned,
+                participatingNotes: record.participatingNotes.map(\.note),
+                snippet: record.researchRecordContextTitle ?? actionID.rawValue,
+                freshnessToken: freshness,
+                fingerprint: fingerprint
+            ))
+        }
+        return SearchResponse(
+            requestID: request.id,
+            scope: request.presentationScope,
+            explanation: explanation,
+            freshnessToken: freshness,
+            availability: .record(.current(generation)),
+            results: results,
+            hasMore: false,
+            diagnostics: parsed.diagnostics
+        )
+    }
+
+    private func noteProviderResponse(
+        request: SearchRequest,
+        triptychID: UUID
+    ) -> SearchResponse {
+        let generation = SearchGenerationID(
+            triptychID: triptychID,
+            sequence: 1,
+            sourceManifestHash: "note-provider"
+        )
+        return SearchResponse(
+            requestID: request.id,
+            scope: request.presentationScope,
+            explanation: SearchExplanation(
+                provider: .note,
+                providerWasExplicit: false,
+                clauses: []
+            ),
+            freshnessToken: .triptych(generation),
+            availability: .note(.current(generation)),
+            results: [],
+            hasMore: false
         )
     }
 

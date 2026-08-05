@@ -13,6 +13,30 @@ struct ResearchRecordBrowserContext {
         UUID,
         String?
     ) async throws -> PortableResearchRecord
+    let saveEvaluation: @MainActor (
+        UUID,
+        ResearcherEvaluationDraft,
+        UUID?,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let clearEvaluation: @MainActor (
+        UUID,
+        UUID,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let saveMethodFeedback: @MainActor (
+        UUID,
+        ResearchMethodFeedbackDraft,
+        UUID?,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let clearMethodFeedback: @MainActor (
+        UUID,
+        UUID,
+        DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    let startMethodImprovement: @MainActor (UUID) async throws
+        -> ResearchAgentHandoff
     let deletePermanently: @MainActor (UUID) async throws -> Void
     let comparison: @MainActor (
         UUID,
@@ -1011,7 +1035,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
             }
             LabeledContent("Analysis", value: occurrence.contextTitle)
             if let method = occurrence.parentRecord.method {
-                LabeledContent("Method", value: "\(method.packageID), \(method.version)")
+                LabeledContent("Method", value: method.displayName)
             }
             LabeledContent("Finished") {
                 Text(
@@ -1205,11 +1229,11 @@ private struct ResearchRecordSkillPicker: View {
 
     var body: some View {
         @Bindable var model = model
-        LabeledContent("Skill") {
-            Picker("Skill", selection: $model.skillFilterID) {
-                Text("Any Skill").tag(Optional<String>.none)
-                ForEach(model.skillOptions, id: \.self) { skill in
-                    Text(skill).tag(Optional(skill))
+        LabeledContent("Method") {
+            Picker("Method", selection: $model.methodFilterName) {
+                Text("Any Method").tag(Optional<String>.none)
+                ForEach(model.methodOptions, id: \.self) { method in
+                    Text(method).tag(Optional(method))
                 }
             }
             .labelsHidden()
@@ -1347,9 +1371,55 @@ private struct ResearchRecordDetailView: View {
     @State private var confirmsPermanentDeletion = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 ResearchRecordDetailHeader(record: record)
+                ScholiumStructuralRule()
+                ResearchFinalizedResultView(record: record)
+                ScholiumStructuralRule()
+                ResearcherEvaluationView(
+                    record: record,
+                    save: { draft, expectedRevision, resultFingerprint in
+                        try await context.saveEvaluation(
+                            record.id,
+                            draft,
+                            expectedRevision,
+                            resultFingerprint
+                        )
+                    },
+                    clear: { expectedRevision, resultFingerprint in
+                        try await context.clearEvaluation(
+                            record.id,
+                            expectedRevision,
+                            resultFingerprint
+                        )
+                    },
+                    didUpdateRecord: model.acceptUpdatedRecord
+                )
+                ScholiumStructuralRule()
+                ResearchMethodFeedbackView(
+                    record: record,
+                    save: { draft, expectedRevision, resultFingerprint in
+                        try await context.saveMethodFeedback(
+                            record.id,
+                            draft,
+                            expectedRevision,
+                            resultFingerprint
+                        )
+                    },
+                    clear: { expectedRevision, resultFingerprint in
+                        try await context.clearMethodFeedback(
+                            record.id,
+                            expectedRevision,
+                            resultFingerprint
+                        )
+                    },
+                    startImprovement: {
+                        try await context.startMethodImprovement(record.id)
+                    },
+                    didUpdateRecord: model.acceptUpdatedRecord
+                )
                 ScholiumStructuralRule()
                 ResearchRecordParticipantSection(
                     recordID: record.id,
@@ -1363,6 +1433,7 @@ private struct ResearchRecordDetailView: View {
                 ScholiumStructuralRule()
                 ResearchRecordStatementSection(
                     statements: record.statements,
+                    focusedStatementID: model.focusedStatementID,
                     primaryParticipant: primaryParticipant,
                     openNote: context.openNote
                 )
@@ -1389,9 +1460,19 @@ private struct ResearchRecordDetailView: View {
                     confirmsPermanentDeletion: $confirmsPermanentDeletion
                 )
             }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: ResearchRecordLayout.readingMeasure, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .top)
+                .padding(ScholiumGrid.Spacing.regionContentInset)
+                .frame(maxWidth: ResearchRecordLayout.readingMeasure, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .onAppear {
+                if let statementID = model.focusedStatementID {
+                    proxy.scrollTo(statementID, anchor: .center)
+                }
+            }
+            .onChange(of: model.focusedStatementID) { _, statementID in
+                guard let statementID else { return }
+                proxy.scrollTo(statementID, anchor: .center)
+            }
         }
         .scholiumSurface(.document)
         .accessibilityIdentifier("scholium.researchRecord.detail")
@@ -1591,6 +1672,7 @@ private struct ResearchRecordParticipantSection: View {
 
 private struct ResearchRecordStatementSection: View {
     let statements: [PortableResearchStatement]
+    let focusedStatementID: UUID?
     let primaryParticipant: PortableResearchNoteRevision?
     let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
 
@@ -1613,6 +1695,20 @@ private struct ResearchRecordStatementSection: View {
                         lineReference: statement.lineReference,
                         primaryParticipant: primaryParticipant,
                         openNote: openNote
+                    )
+                    .id(statement.id)
+                    .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+                    .background(
+                        statement.id == focusedStatementID
+                            ? ScholiumColorRole.accent.color.opacity(0.10)
+                            : Color.clear,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                    .accessibilityAddTraits(
+                        statement.id == focusedStatementID ? .isSelected : []
                     )
                     if statement.id != statements.last?.id {
                         ScholiumStructuralRule()
@@ -1740,12 +1836,13 @@ private struct ResearchRecordDetailsDisclosure: View {
                     value: record.id.uuidString.lowercased()
                 )
                 if let method = record.method {
-                    LabeledContent("Skill", value: method.packageID)
-                    LabeledContent("Skill version", value: method.version)
-                    ResearchRecordIdentityValue(
-                        label: "Skill revision",
-                        value: method.packageRevision.sha256
-                    )
+                    LabeledContent("Method", value: method.displayName)
+                    if !method.practiceNames.isEmpty {
+                        LabeledContent(
+                            "Practices",
+                            value: method.practiceNames.joined(separator: ", ")
+                        )
+                    }
                 }
                 if let source = record.sourceReference {
                     LabeledContent("Source", value: source.displayName)

@@ -6,12 +6,10 @@ import Testing
 @MainActor
 @Suite("Research Action controller", .serialized)
 struct ResearchActionControllerTests {
-    @Test("Resolved Actions keep default and Researcher Skill order")
+    @Test("Resolved Platform Actions keep declared order")
     func availabilityOrder() async throws {
         let controller = ResearchActionController()
-        let custom = try #require(ResearchActionID(researcherOwnedRawValue: "counterexample"))
         controller.bind(client(actions: [
-            try availability(custom, order: 1, group: .researcherSkill),
             try availability(.checkFidelity, order: 300),
             try availability(.discuss, order: 0),
             try availability(.synthesize, order: 100),
@@ -20,44 +18,24 @@ struct ResearchActionControllerTests {
         await controller.refreshAvailability(for: target())
 
         #expect(controller.availability.map(\.id) == [
-            .discuss, .synthesize, .checkFidelity, custom,
+            .discuss, .synthesize, .checkFidelity,
         ])
     }
 
-    @Test("The common sheet builds only declared module parameters")
+    @Test("The common sheet separates academic values from protected Platform inputs")
     func declaredParameters() async throws {
-        let requestID = try #require(ResearchActionModuleID(rawValue: "request"))
-        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
-        let checksID = try #require(ResearchActionModuleID(rawValue: "checks"))
-        let content = try #require(ResearchActionModuleChoiceValue(rawValue: "content"))
-        let citations = try #require(ResearchActionModuleChoiceValue(rawValue: "citations"))
-        let modules = [
-            try ResearchActionModuleDefinition.boundedText(
-                id: requestID,
-                label: "Request",
-                isRequired: true,
-                maximumTextUTF8ByteCount: 64,
-                allowsMultipleLines: true
-            ),
-            try ResearchActionModuleDefinition.materialSelector(
-                id: materialsID,
-                label: "Materials",
-                isRequired: false,
-                roleScope: [.analysis, .topic, .work],
-                maximumSelectionCount: 2
-            ),
-            try ResearchActionModuleDefinition.enumeration(
-                id: checksID,
-                label: "Checks",
-                isRequired: true,
-                choices: [
-                    try ResearchActionModuleChoice(value: content, label: "Content"),
-                    try ResearchActionModuleChoice(value: citations, label: "Citations"),
-                ],
-                maximumSelectionCount: 2
-            ),
-        ]
-        let action = try availability(.discuss, order: 0, modules: modules)
+        let requestID = try #require(ResearchAcademicFieldID(rawValue: "request"))
+        let requestField = try ResearchAcademicFieldDefinition.freeText(
+            id: requestID,
+            label: "Request",
+            requirement: .required,
+            maximumTextUTF8Count: 64
+        )
+        let action = try availability(
+            .checkFidelity,
+            order: 0,
+            academicInputFields: [requestField]
+        )
         let candidate = target(title: "Material", path: "Analyses/Material.md", role: .analysis)
         var captured: ResearchActionExecutionRequest?
         let controller = ResearchActionController()
@@ -78,40 +56,29 @@ struct ResearchActionControllerTests {
         )
         await waitUntil { controller.materialCandidates == [candidate] }
 
-        controller.setText("Compare the arguments", module: modules[0])
-        controller.setNote(candidate.noteID, isSelected: true, module: modules[1])
-        controller.setChoice(content, isSelected: true, module: modules[2])
-        controller.setChoice(citations, isSelected: true, module: modules[2])
+        controller.setText("Compare the arguments", field: requestField)
+        controller.setFocalNote(candidate.noteID, isSelected: true)
+        controller.setFidelityCheck(.content, isSelected: true)
+        controller.setFidelityCheck(.citations, isSelected: true)
         #expect(controller.canPrepare)
         controller.prepare()
         await waitUntil { controller.phase == .failed }
 
-        #expect(captured?.actionID == .discuss)
+        #expect(captured?.actionID == .checkFidelity)
         #expect(captured?.expectedExecutionKind == action.definition.executionKind)
         #expect(captured?.expectedProfileRevision == action.profile.profileRevision)
         #expect(captured?.expectedProfileDocumentRevision
             == action.profile.profileDocumentRevision)
         #expect(captured?.target == target)
-        #expect(captured?.parameterValues[requestID.rawValue] == .text("Compare the arguments"))
-        #expect(captured?.parameterValues[materialsID.rawValue] == .notes([candidate]))
-        #expect(captured?.parameterValues[checksID.rawValue] == .choices([citations, content]))
+        #expect(captured?.academicInputs.values[requestID.rawValue]
+            == .freeText("Compare the arguments"))
+        #expect(captured?.platformInputs.focalNotes == [candidate])
+        #expect(captured?.platformInputs.fidelityChecks == [.citations, .content])
     }
 
     @Test("Resynthesize preselects the exact Material and preserves its revision context")
     func resynthesisContextReachesPreparation() async throws {
-        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
-        let module = try ResearchActionModuleDefinition.materialSelector(
-            id: materialsID,
-            label: "Materials",
-            isRequired: false,
-            roleScope: [.analysis],
-            maximumSelectionCount: 4
-        )
-        let action = try availability(
-            .synthesize,
-            order: 100,
-            modules: [module]
-        )
+        let action = try availability(.synthesize, order: 100)
         let topic = target()
         let material = target(
             title: "Analysis",
@@ -159,48 +126,33 @@ struct ResearchActionControllerTests {
             presentationID: UUID()
         ))
         await waitUntil { controller.materialCandidates == [material] }
-        #expect(controller.noteValues[materialsID.rawValue] == [material.noteID])
+        #expect(controller.selectedFocalNoteIDs == [material.noteID])
         #expect(controller.canPrepare)
         controller.prepare()
         await waitUntil { controller.phase == .failed }
         #expect(capturedContext == context)
-        #expect(capturedRequest?.parameterValues[materialsID.rawValue]
-            == .notes([material]))
+        #expect(capturedRequest?.platformInputs.focalNotes == [material])
     }
 
-    @Test("Single-selection modules replace the prior value")
+    @Test("Single-choice academic fields replace the prior value")
     func singleSelectionReplacement() async throws {
-        let choiceID = try #require(ResearchActionModuleID(rawValue: "approach"))
-        let noteID = try #require(ResearchActionModuleID(rawValue: "focal-note"))
-        let firstChoice = try #require(ResearchActionModuleChoiceValue(rawValue: "first"))
-        let secondChoice = try #require(ResearchActionModuleChoiceValue(rawValue: "second"))
-        let modules = [
-            try ResearchActionModuleDefinition.enumeration(
-                id: choiceID,
-                label: "Approach",
-                isRequired: true,
-                choices: [
-                    try ResearchActionModuleChoice(value: firstChoice, label: "First"),
-                    try ResearchActionModuleChoice(value: secondChoice, label: "Second"),
-                ],
-                maximumSelectionCount: 1
-            ),
-            try ResearchActionModuleDefinition.notePicker(
-                id: noteID,
-                label: "Focal note",
-                isRequired: false,
-                roleScope: [.topic],
-                maximumSelectionCount: 1
-            ),
-        ]
-        let firstNote = target(title: "First note", path: "Topics/First.md")
-        let secondNote = target(title: "Second note", path: "Topics/Second.md")
+        let choiceID = try #require(ResearchAcademicFieldID(rawValue: "approach"))
+        let choiceField = try ResearchAcademicFieldDefinition.singleChoice(
+            id: choiceID,
+            label: "Approach",
+            requirement: .required,
+            choices: [
+                try ResearchAcademicChoice(value: "first", label: "First"),
+                try ResearchAcademicChoice(value: "second", label: "Second"),
+            ]
+        )
         let controller = ResearchActionController()
-        let action = try availability(.discuss, order: 0, modules: modules)
-        controller.bind(client(
-            actions: [action],
-            candidates: [firstNote, secondNote]
-        ))
+        let action = try availability(
+            .discuss,
+            order: 0,
+            academicInputFields: [choiceField]
+        )
+        controller.bind(client(actions: [action]))
         controller.begin(
             target: target(),
             availability: action,
@@ -210,37 +162,25 @@ struct ResearchActionControllerTests {
         await waitUntil { controller.phase == .editing }
 
         #expect(controller.choiceValues[choiceID.rawValue]?.isEmpty == true)
-        controller.setChoice(secondChoice, isSelected: true, module: modules[0])
-        controller.setNote(firstNote.noteID, isSelected: true, module: modules[1])
-        controller.setNote(secondNote.noteID, isSelected: true, module: modules[1])
+        controller.setChoice("first", isSelected: true, field: choiceField)
+        controller.setChoice("second", isSelected: true, field: choiceField)
 
-        #expect(controller.choiceValues[choiceID.rawValue] == [secondChoice])
-        #expect(controller.noteValues[noteID.rawValue] == [secondNote.noteID])
+        #expect(controller.choiceValues[choiceID.rawValue] == ["second"])
     }
 
     @Test("A required source remains fail closed until machine-local access is available")
     func sourceRequirement() async throws {
-        let sourceID = try #require(ResearchActionModuleID(rawValue: "source"))
-        let sourceModule = try ResearchActionModuleDefinition.sourceReference(
-            id: sourceID,
-            label: "Source",
-            isRequired: true
-        )
         let unavailableAction = try availability(
             .analyze,
             role: .analysis,
             order: 100,
-            modules: [sourceModule],
-            sourceRequirement: .required,
             enabled: false,
             repairReasons: [ResearchActionRepairReason(code: .sourceAccessRequired)]
         )
         let availableAction = try availability(
             .analyze,
             role: .analysis,
-            order: 100,
-            modules: [sourceModule],
-            sourceRequirement: .required
+            order: 100
         )
         let reference = try ResearchSourceReference(
             identity: .localFile(),
@@ -282,30 +222,12 @@ struct ResearchActionControllerTests {
         #expect(controller.canPrepare)
     }
 
-    @Test("Action modules load independently and block preparation until settled")
+    @Test("Protected selector dependencies load independently and block preparation until settled")
     func moduleLoadsAreIndependent() async throws {
-        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
-        let sourceID = try #require(ResearchActionModuleID(rawValue: "source"))
-        let modules = [
-            try ResearchActionModuleDefinition.materialSelector(
-                id: materialsID,
-                label: "Materials",
-                isRequired: false,
-                roleScope: [.analysis],
-                maximumSelectionCount: 2
-            ),
-            try ResearchActionModuleDefinition.sourceReference(
-                id: sourceID,
-                label: "Source",
-                isRequired: true
-            ),
-        ]
         let action = try availability(
             .analyze,
             role: .analysis,
-            order: 100,
-            modules: modules,
-            sourceRequirement: .required
+            order: 100
         )
         let controller = ResearchActionController()
         controller.bind(ResearchActionClient(
@@ -347,7 +269,7 @@ struct ResearchActionControllerTests {
             selection: nil,
             presentationID: UUID()
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
 
         controller.invalidateIfTargetChanged(target(title: "Other", path: "Topics/Other.md"))
 
@@ -400,15 +322,7 @@ struct ResearchActionControllerTests {
 
     @Test("A late dependency load cannot overwrite a newer Action sheet")
     func dependencyLoadIsPresentationBound() async throws {
-        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
-        let module = try ResearchActionModuleDefinition.materialSelector(
-            id: materialsID,
-            label: "Materials",
-            isRequired: false,
-            roleScope: [.topic],
-            maximumSelectionCount: 2
-        )
-        let action = try availability(.discuss, order: 0, modules: [module])
+        let action = try availability(.discuss, order: 0)
         let firstTarget = target(title: "First", path: "Topics/First.md")
         let secondTarget = target(title: "Second", path: "Topics/Second.md")
         let firstMaterial = target(title: "Old material", path: "Topics/Old.md")
@@ -515,17 +429,9 @@ struct ResearchActionControllerTests {
         #expect(resolutionCount == 1)
     }
 
-    @Test("Dismissing a sheet while module data loads preserves launcher availability")
+    @Test("Dismissing a sheet while selector data loads preserves launcher availability")
     func cancelledDependencyLoadPreservesLauncherAvailability() async throws {
-        let materialsID = try #require(ResearchActionModuleID(rawValue: "materials"))
-        let module = try ResearchActionModuleDefinition.materialSelector(
-            id: materialsID,
-            label: "Materials",
-            isRequired: false,
-            roleScope: [.topic],
-            maximumSelectionCount: 2
-        )
-        let action = try availability(.synthesize, order: 100, modules: [module])
+        let action = try availability(.synthesize, order: 100)
         var dependencyContinuation: CheckedContinuation<
             [ResearchActionNoteSnapshot],
             Never
@@ -602,7 +508,7 @@ struct ResearchActionControllerTests {
             selection: nil,
             presentationID: presentationID
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
 
         controller.prepare()
         await waitUntil { preparationContinuation != nil }
@@ -644,6 +550,7 @@ struct ResearchActionControllerTests {
             sourceAccess: { _ in .repairRequired(.missingBinding) },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
             prepare: { _, _ in result },
+            handoff: { try testHandoff(runID: $0) },
             cancel: { requestedRunID in
                 cancelledRunIDs.append(requestedRunID)
                 if cancelledRunIDs.count == 1 {
@@ -662,9 +569,11 @@ struct ResearchActionControllerTests {
             selection: nil,
             presentationID: presentationID
         )
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
         controller.prepare()
         await waitUntil { controller.phase == .prepared }
+        #expect(controller.phase == .prepared)
+        #expect(controller.errorMessage == nil)
 
         controller.cancelPreparedRun()
         await waitUntil { cancellationContinuation != nil }
@@ -709,6 +618,7 @@ struct ResearchActionControllerTests {
                     preparationContinuation = continuation
                 }
             },
+            handoff: { try testHandoff(runID: $0) },
             cancel: { _ in
                 await withCheckedContinuation { continuation in
                     cancellationContinuation = continuation
@@ -723,7 +633,7 @@ struct ResearchActionControllerTests {
             selection: nil,
             presentationID: firstPresentationID
         ))
-        await waitUntil { controller.phase == .editing }
+        await waitUntil { controller.canPrepare }
 
         controller.prepare()
         await waitUntil { preparationContinuation != nil }
@@ -765,6 +675,59 @@ struct ResearchActionControllerTests {
         #expect(controller.target == secondTarget)
     }
 
+    @Test("A prepared Run can replace only its short pairing handoff")
+    func regeneratePairingHandoff() async throws {
+        let action = try availability(.discuss, order: 0)
+        let target = target()
+        let runID = UUID()
+        let result = try preparation(action: action, target: target, runID: runID)
+        let codes = [
+            "23456789ABCDEFGHJKLMNPQR",
+            "98765432RQPONMLKJHGFEDCB",
+        ]
+        var handoffCount = 0
+        let controller = ResearchActionController()
+        controller.bind(ResearchActionClient(
+            availableActions: { _ in [action] },
+            materialCandidates: { _, _ in [] },
+            sourceAccess: { _ in .repairRequired(.missingBinding) },
+            bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in result },
+            handoff: { _ in
+                let code = try #require(ResearchPairingCode(
+                    rawValue: codes[handoffCount]
+                ))
+                handoffCount += 1
+                return ResearchAgentHandoff(
+                    run: ResearchRunLocator(rawValue: "controllerfixturelocator")!,
+                    pairingCode: code,
+                    expiresAt: .distantFuture
+                )
+            },
+            cancel: { _ in },
+            openActiveDiscussion: { _ in }
+        ))
+        #expect(controller.begin(
+            target: target,
+            availability: action,
+            selection: nil,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.canPrepare }
+        controller.prepare()
+        await waitUntil { controller.phase == .prepared }
+        let first = try #require(controller.agentHandoff)
+
+        controller.regenerateHandoff()
+        await waitUntil {
+            controller.phase == .prepared
+                && controller.agentHandoff?.pairingCode != first.pairingCode
+        }
+
+        #expect(controller.preparation?.runID == runID)
+        #expect(handoffCount == 2)
+    }
+
     private func client(
         actions: [ResearchActionAvailability],
         candidates: [ResearchActionNoteSnapshot] = [],
@@ -779,8 +742,19 @@ struct ResearchActionControllerTests {
             sourceAccess: { _ in sourceStatus },
             bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
             prepare: { request, _ in try await prepare(request) },
+            handoff: { try testHandoff(runID: $0) },
             cancel: { _ in },
             openActiveDiscussion: { _ in }
+        )
+    }
+
+    private func testHandoff(runID: UUID) throws -> ResearchAgentHandoff {
+        ResearchAgentHandoff(
+            run: ResearchRunLocator(rawValue: "controllerfixturelocator")!,
+            pairingCode: ResearchPairingCode(
+                rawValue: "23456789ABCDEFGHJKLMNPQR"
+            )!,
+            expiresAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
     }
 
@@ -788,9 +762,7 @@ struct ResearchActionControllerTests {
         _ id: ResearchActionID,
         role: ResearchActionTargetRole = .topic,
         order: Int,
-        group: ResearchActionAvailabilityGroup = .defaultAction,
-        modules: [ResearchActionModuleDefinition] = [],
-        sourceRequirement: ResearchActionSourceRequirement = .none,
+        academicInputFields: [ResearchAcademicFieldDefinition] = [],
         enabled: Bool = true,
         repairReasons: [ResearchActionRepairReason] = []
     ) throws -> ResearchActionAvailability {
@@ -803,35 +775,30 @@ struct ResearchActionControllerTests {
         case .critique: definition = .critique
         case .checkFidelity: definition = .checkFidelity
         case .manuscript: definition = .manuscript
-        default:
-            definition = try ResearchActionDefinition(
-                researcherOwnedID: id,
-                executionKind: .discussion
-            )
+        default: definition = .discuss
         }
-        let profile = try ResearchActionProfile(
-            definition: definition,
-            buttonName: id.rawValue,
+        let resultField = try ResearchAcademicFieldDefinition.freeText(
+            id: .academicOutcome,
+            label: "Academic Outcome",
+            requirement: .required
+        )
+        let profile = try ResearchAcademicActionProfile(
+            actionID: id,
+            displayName: id.rawValue,
             order: order,
+            isEnabled: enabled,
             applicableRoles: [role],
-            showInActions: true,
-            modules: modules,
-            sourceRequirement: sourceRequirement,
-            capabilities: ResearchActionCapabilityDeclaration(
-                readableRoles: ResearchActionTargetRole.allCases
-            ),
-            feedbackRequirement: .none
+            academicInputFields: academicInputFields,
+            academicResultFields: [resultField]
         )
         return try ResearchActionAvailability(
             definition: definition,
-            buttonName: profile.buttonName,
+            buttonName: profile.displayName,
             order: order,
-            group: group,
             profile: ResearchActionResolvedProfileSnapshot(
-                origin: .applicationDefault,
                 profile: profile,
-                profileRevision: profile.contentRevision(),
-                profileDocumentRevision: nil
+                profileRevision: try profile.contentRevision(),
+                profileDocumentRevision: DocumentFingerprint(content: "profiles")
             ),
             isEnabled: enabled,
             repairReasons: repairReasons
@@ -844,9 +811,13 @@ struct ResearchActionControllerTests {
         runID: UUID
     ) throws -> ResearchActionPreparation {
         let profile = action.profile.profile
-        let parameters = try ResearchActionParameterModel(
-            profile: profile,
-            values: [:]
+        let registration = try ResearchSkillRegistration(
+            key: ResearchSkillRegistrationKey(
+                rawValue: UUID(uuidString: "10000000-0000-0000-0000-000000000008")!
+            ),
+            actionID: action.id,
+            displayName: action.buttonName,
+            primaryMarkdown: .machineLocal()
         )
         let authority = try ResearchAuthorityEnvelope(
             readableNotes: [target],
@@ -857,20 +828,22 @@ struct ResearchActionControllerTests {
         let snapshot = try ResearchActionSnapshot(
             definition: action.definition,
             target: target,
-            method: try ResearchActionMethodSnapshot(
-                packageID: "working-method",
-                origin: .triptych,
-                version: "1",
-                packageRevision: DocumentFingerprint(content: "package"),
-                loadedResources: [
-                    ResearchActionResourceSnapshot(
-                        relativePath: "SKILL.md",
-                        revision: DocumentFingerprint(content: "method")
-                    ),
-                ]
+            method: try ResearchMethodSnapshot(
+                registration: registration,
+                primaryMarkdownSource: "# Method\n\nExact controller fixture.\n",
+                practices: []
             ),
             resolvedProfile: action.profile,
-            parameters: parameters,
+            platformInputs: try ResearchActionPlatformInputs(),
+            academicInputs: try ResearchAcademicFieldValues(
+                values: [:],
+                definitions: profile.academicInputFields
+            ),
+            resultContract: try ResearchResultContract(
+                profile: profile,
+                registrationKey: registration.key,
+                profileRevision: action.profile.profileRevision
+            ),
             authority: authority
         )
         return ResearchActionPreparation(

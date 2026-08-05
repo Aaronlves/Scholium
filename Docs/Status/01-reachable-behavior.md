@@ -69,7 +69,7 @@ and source-bound Search projections. Ordinary changes reread/reparse affected no
 discontinuity requests full reconcile. Three independent catalog actors may prepare immutable
 generations concurrently inside the one cycle; Graph, Search, and publish remain ordered. Snapshot
 assembly reuses the same generation's fail-closed resolved identity and fingerprint-bound title
-projection. Graph still rebuilds completely, `WorkspaceSnapshot` remains intact, and Search v4
+projection. Graph still rebuilds completely, `WorkspaceSnapshot` remains intact, and Search v6
 applies a transactionally persisted, generation-checked delta in one database per Triptych; stale
 generations remain rejected after reopen. UTF-16 projection cursors are linear, and privacy-safe
 counters cover enumeration/read/parse, graph, Search, snapshot/source size, Application publication,
@@ -135,14 +135,14 @@ projection are absent. Review alone saves a selected-range Comment directly as o
 containing only the stable Note, current fingerprint, and inclusive line range; Edit and Source have
 no Comment route. The composer closes only after write acknowledgement and retains its text on
 failure. Comment opens no sheet or agent handoff. The first Discuss on a Comment-only draft resolves
-the editable Discuss Method/Profile into the same Discussion and Local-v3 run; later handoffs reload
+the editable Discuss Method/Profile into the same Discussion and current Run; later handoffs reload
 those frozen machine-local instructions. Bound Discussion reopens directly, and no duplicate
 active-Discussion row appears in Actions. Finished Discussions remain Research Records and are not
 silently injected as Critique evidence. Written annotation remains authoritative Markdown or a
 semantic Callout. D-105 cleanly removes Human Review, Qualification, ResearcherComment, app-owned
 Annotation, pre-Function Dialogue, and their stores, decoders, migrations, recovery, Search, and UI
 paths. A Work retains one attributed current Critique under `Works/Critiques`; Action-backed
-Critique execution uses a recoverable Local-v3 handoff and idempotently reconciles actionable
+Critique execution uses the recoverable authenticated Run handoff and idempotently reconciles actionable
 findings, while Accept/Reject/Rebut and researcher Complete Round remain separate scholarly
 decisions.
 
@@ -150,62 +150,65 @@ decisions.
 
 **Current reachable boundary**
 
-Contracts expose bounded Action IDs, a collision-free researcher-owned creation route, public
-execution kinds, Action-specific Target roles, the frozen default role matrix, a unified native
-parameter model, fail-closed schema-v2 snapshots, and a separate record identity that permits only
-schema version plus Action ID. Action Profile schema 1 adds bounded presentation, applicable roles,
-visibility/order, seven closed native module kinds, source and feedback requirements, readable-role
-declarations, direct-write role ceilings, two existing-note write operations, and exact property
-boundaries. A Triptych-portable, revision-checked Profile document stores those Profiles and their
-exact Skill-package binding; direct and explicit multi-Triptych copies remain independent.
-Application resolves role-valid default and researcher Actions, rechecks every preparation, and
-freezes exact Target, Method/resource revisions, Profile/document revisions, parameters, and
-concrete read/write authority without exposing the protected Function ID. Profile storage remains
-nonexecuting and a Profile cannot grant authority. Machine-local standing policy is now a separate
-bounded decision factor with exact Skill/Profile-envelope invalidation. Property-only custom
-mutation fails closed until its delta can be enforced.
+Contracts expose bounded Action IDs, public execution kinds, Action-specific Target roles, the
+closed `PlatformActionCatalog`, a unified native parameter model, fail-closed schema-3 Action
+snapshots, and a separate record identity that permits only schema version plus Action ID. The
+academic Profile document stores only bounded flat text/single/multi-choice input and Result fields,
+visible name/order/enabled state, and role-valid placement. Platform selectors, readable scope,
+operations, Properties, recovery, and permission no longer occur in Profiles. Registration schema 2
+binds each Action to one opaque key, display name, current primary Markdown, optional Skill-folder
+marker, and enabled state. Portable registration contains only a `.scholium`-relative location or a
+`machine_local` marker; absolute paths and security-scoped bookmarks live only in the Triptych's
+private Application Support locator store. Application resolves and rechecks these owners, then
+freezes the exact target, Method text/revision, ordered Practice text/revisions, Profile revision,
+Result Contract, read scope, and initial Bounded Write Set entry. One Triptych collaboration policy
+is evaluated separately. Neither Method prose nor Profile state can grant machine authority.
 
-### Agent change request coordination
+### Agent connection and Bounded Write Set coordination
 
 **Current reachable boundary**
 
-Schema-v1 requests bind one idempotent request ID to the exact Triptych, authenticated Local
-Execution v2 parent, parent and requested Skill/Profile revisions, stable Note identities, expected
-fingerprints, bounded existing-note operations, and attributed agent reason. Every new local Action
-run stores a short-lived coordination-key digest bound to the exact Triptych, parent run, and Action
-revision, while the plaintext key remains only in its live delivery packet. The App-wide AF_UNIX
-bridge retains its private ownership, same-UID, bounded-frame, timeout, and uncertain-outcome rules.
-One MainActor claim coordinator assigns each pending request to at most one exact matching Workspace
-window, prefers that Triptych's key window, safely transfers an unresolved claim when a window
-closes, and lets `show_note_change_request` focus only the existing sheet. One controller per exact
-window owns the transient request, display identity and retry, expiry refresh, decision task, and
-sheet route; asynchronous results are request-identity checked and teardown cancels every task
-family. The native sheet derives current titles, roles, and revision state; resolves current Action
-and Skill display names; shows operations and Method/Profile revisions; exposes subset selection,
-Allow These Notes Once, Continue Without Changes, and Cancel the Run; keeps stale/expired state
-readable; and restores the prior responder after dismissal. Allow stays disabled if display identity
-is loading or unavailable, while raw package ID remains separately labeled; bounded identity retry
-and later exact replay/refresh can recover a transient failure. An authenticated bridge submit binds
-the request before an App-wide Triptych editor flush. Manual and automatic decisions then revalidate
-parent, Action, Skill, Profile, standing policy, roles, lifecycle, identity, operation, and
-fingerprints; the automatic path additionally requires matching repeated policy evaluation bound to
-the frozen package and Action/Profile role revisions, followed by one final complete request
-revalidation. Active Working Method, Action Profile, Skill content/maintenance, and policy writes
-share that decision gate, so an in-App mutation cannot interleave before the durable decision write.
-At request expiry the sheet removes decision controls immediately and performs bounded durable-state
-retries before retaining a contract-derived expired state. A currently qualifying standing policy
-records the exact allowed subset without a sheet. Every result remains non-authorizing coordination
-state and never widens the parent snapshot or grant. An allowed schema-v2 record now stores a
-versioned correlation plan for the exact approved subset; Application re-resolves live Action,
-Profile, Method, identity, and fingerprints before preparing one independent single-Target Local
-Execution v2 child per approved Note. Each child owns its reserved run ID, frozen snapshot,
-exact-Note continuation recovery checkpoint outside rolling automatic retention, activity grant,
-completion validation, final-revision Fidelity route, cancellation/conflict recovery, and
-parent/request/group lineage. The bridge returns live `child_preparations` only when every packet
-matches that durable plan; keys stay delivery-only. Analyze to Synthesize, Critique to Write, and
-activated Manuscript to Write use the same mechanism. Synthetic UI evidence cannot certify genuine
-VoiceOver, Full Keyboard Access, installed IME, localization quality, or researcher visual
-acceptance.
+`ResearchConnectionCoordinator` owns one-time Pairing Codes and process-generation-bound Connection
+Sessions. Codes and secrets use independent Security-framework randomness; only digests and typed
+bindings are retained. The supported bridge location is the App Group container and contains only
+the protected AF_UNIX socket plus minimal rendezvous state. Pairing is the sole unauthenticated
+operation; Context, read, write-set extension, write capability, result, continuation, reload, end,
+status, and cancellation require the Session secret through stdin or another hidden channel. The
+copied Agent instructions contain the Run locator/route but no Pairing Code, method text, or local
+path; the privacy-sensitive code remains separately visible in Scholium and enters only CLI stdin.
+The code and credential are non-Codable/non-printable domain values, with explicit private
+bridge/storage adapters. Session schema 3 returns the frozen exact
+Method/Practices, Result Contract, and a capability-free view of the current Bounded Write Set only
+after authentication. Re-pairing one Run revokes its prior write-capable binding, application restart
+invalidates every Session, and the durable Run remains. `scholium agent end`
+authenticates before cancellation, revokes the Run, retains recovery truth, and
+removes the acknowledged protected CLI credential.
+
+Bridge request schema 9/response schema 11 also carries the separately paired
+Method-improvement boundary. An explicit Record action installs one current
+improvement Run on the parent Local Execution record and freezes the unchanged
+comment, finalized Result fingerprint, registration, primary Method, linked
+Practices, and exact revisions. Authenticated `method-context` exposes only
+those targets; `improve-method` may replace one target or save one no-change/
+unavailable diagnosis. Replacement uses a non-Codable, nonreusable capability
+bound to Run, Session, request, target, expiry, and expected revision before
+the existing exact configuration transaction and previous-edit recovery point.
+Interruption after commit reconciles without another write. Completion clears
+only unchanged feedback and retains one local terminal receipt, not a queue,
+history, portable opinion, or second knowledge owner.
+
+Each Local Execution schema-8 Run embeds one Bounded Write Set. Its initial object is inserted at
+preparation. An extension request binds one bounded proposed set to exact Triptych/Run, stable or
+reserved identities, roles, operations, expected fingerprints/proven absence, expiry, and attributed
+reason. The existing exact-window native sheet permits a subset, continues without changes, or
+cancels; Ask Me Every Time, Ask Me Only for Works, and Full Triptych Access are evaluated from the
+same current Triptych policy. Even Full Access only admits machine-validated Run members. Every
+actual write still receives a separate nonreusable short-lived capability bound to the Session,
+complete allowed-set digest, one member, one expected revision, and one idempotent operation ID.
+The former coordination key, allowed correlation plan, per-document child Run, activity grant, and
+parent/child execution lineage have no current decoder or route. Synthetic UI evidence does not
+certify genuine VoiceOver, Full Keyboard Access, installed IME, localization quality, or researcher
+visual acceptance.
 
 ### Analyze source access
 
@@ -231,41 +234,53 @@ source and an in-sheet Zotero attachment chooser remain unverified.
 **Current reachable boundary**
 
 One per-window Inspector exposes Overview, Connect, and Actions; Document has no Research Strip. The
-Inspector, Research menu, focused keyboard route, common modular sheet, CLI, and delivery contracts
-use public Action identity only. New-Target checks clear and bind availability to the exact Target;
-same-Target checks retain visible rows in a disabled state, and late results cannot become
-actionable. Opening saves only the current Target editor, presents the already-visible Profile
-immediately, and loads declared Note/Source data inside the sheet; preparation still rejects any
-change to the presented execution kind, complete Profile semantic revision, or Profile-document
-revision without flushing unrelated Notes. Current Actions create no automatic whole-Triptych
-checkpoint; mediated writes preserve exact displaced bytes per Note, while manual checkpoints remain
-available. Action preparation freezes the exact Action snapshot before delegating to the internal
-protected coordinator and persists protected state, instructions, grant digest, static Discuss
-transport contract, and completion evidence as independent Local Execution v3 files; a write report,
-grant completion, completion, and submission digest commit in one run-file replacement. Every
-current Action completion requires explicit actually-used Material testimony: `[]` means none,
-omission fails closed, and selection alone is not use. The Application persists each exact validated
-revision and role together with the primary Target. Portable record schema 4 also derives
-`not_required`, `completed`, or `unverified` Fidelity completion from Application evidence; it
-records no pass, truth, quality, or acceptance verdict. Analyze additionally requires an explicit
-bounded Literature Recommendations array, while every other Action rejects it. Only schema 4 is
-decoded and there is no pre-release record migration or compatibility path. Analyze resolves and
-rechecks one exact source before and after Method resolution; Synthesize
-does not. The durable snapshot stores only the safe source reference, while the assembled packet may
-carry its absolute path as a transient locator. The internal coordinator continues to own completion
-keys, revision/write validation, containment, conflicts, and recovery; Function-named public routes,
-controllers, panels, settings, record projection, and CLI are deleted.
+Inspector, Research menu, focused keyboard route, common modular sheet, CLI, and authenticated bridge
+use public Action identity only. Availability is target-bound, and late results cannot become
+actionable. Opening saves only the current initial-object editor and presents the academic Profile
+while declared Note/Source dependencies load. Preparation rechecks Action, target, focal Materials,
+source, registration, exact Method/Practices, Profile, collaboration policy, repository, and recovery
+readiness without flushing unrelated Notes. It creates one Local Execution schema-8 Run, freezes the
+Result Contract and method context, and inserts the initial object into its Bounded Write Set. There
+is no automatic whole-Triptych checkpoint; each confirmed mediated write preserves Before Agent Work
+exact bytes for that Note.
+
+The authenticated Agent may query the one Application Research Context across Search v6, exact Note
+read, direct Graph relations, Properties, Records, and explicit researcher state. Source Reference
+envelopes keep owner, identity, revision, locator/range, scope, currentness, evidential layer,
+retrieval reason, and limitation separate. Response schema 2 also retains each Note's typed Search
+match reasons, including direct-relation direction and exact occurrences and Property source ranges;
+research text is data, not an instruction source. Result submission
+must satisfy the frozen academic fields and Context Use references. A process-bound, 512-reference
+registry admits only exact envelopes actually returned to that Run before current-owner revalidation;
+it stores no response content or durable research state. Application adds machine fields
+from actual transactions and finalizes idempotently only after every initiated write has a known
+outcome and recovery responsibility is satisfied. Portable Record schema 5 retains the immutable
+finalized-result partition, minimal Method provenance, exact participating revisions, Context Use,
+confirmed changes/discrepancies, Fidelity completion, and Analyze-only Literature Recommendations.
+Other Actions reject recommendations. Unsupported Record schemas/fields have no compatibility
+decoder. Fidelity completion records that declared checks ran, not truth, quality, or acceptance.
+Analyze resolves one exact source; its path remains machine-local and transient.
+
+The return window and Record detail share one Researcher Evaluation editor. Evaluation and bounded
+Method-feedback updates compare the exact Record, expected subrevision, and immutable finalized-result
+fingerprint under the portable-record lock. They cannot overwrite Agent results or create a second
+evaluation store. Explicit Settle and explicit adopted/kept/rejected dispositions remain attributable
+researcher state; opening, selection, dwell, silence, and rank never become commitment.
 
 ### Action write scope and Fidelity
 
 **Current reachable boundary**
 
-Current Analyze, Synthesize, and Write preparation fixes the exact current Note as the sole write
-Target. The common Action sheet presents the Target, current fingerprint prefix, declared candidate
-authority, and revalidation/checkpoint/conflict/recovery boundary before its Profile modules.
-Contract validation rejects multi-target write payloads before checkpoint or grant creation.
-Write-report and Fidelity details remain protected execution data; independently authorized child
-phases are the only route to another Note.
+The initial object is one exact member, not a Triptych-wide write grant. The common Action sheet
+presents its current fingerprint and the revalidation/checkpoint/conflict/recovery boundary. During
+the same Run, an authenticated Agent may request a bounded set of additional existing or reserved-new
+documents. Admission is atomic for the approved subset; each later mutation names one member and one
+idempotent operation. Application reauthorizes current identity, role, operation, expected revision
+or proven absence, containment, Session, expiry, and complete-set digest before the sole repository
+transaction performs exact read/compare, Before Agent Work recovery, final recheck, atomic replace,
+and readback. A conflict or unknown outcome affects that member and recovery duty without widening
+any other authority. **Continue Research** creates a separate Run for a new Action/method purpose;
+it is not an authorization layer or a child write phase.
 
 ### Recovery and chronology
 
@@ -313,11 +328,21 @@ by relationship, shows one direct SF Symbol per cluster rather than per Note, an
 major heading and bounded current-cluster symbol sticky in its single scroll owner. Major headings alone
 carry counts; rows retain pointer help, keyboard activation, VoiceOver relationship names, and the
 named source-anchor alternative. Neutral/transitive paths never become evidence and retired syntax
-remains exact with diagnostics. Search contract v4 uses one normal-content SQLite FTS5 corpus per
-Triptych for GUI/CLI Vault and Triptych retrieval, while This Note searches the unsaved editor
-snapshot by occurrence. The removed `status` and `review` fields have no projection, index column,
-filters, or ordering; `status:` and `review:` fail explicitly without affecting ordinary lexical
-search. Attention is limited to specified structural, currency, connection, reliance, metadata, and
+remains exact with diagnostics. Search contract v6/schema 9 uses one normal-content SQLite FTS5 Note corpus
+per Triptych and one Application-owned projection over exact-byte-fingerprinted portable Research
+Records. GUI, Research Records, and CLI share one provider router and typed query semantics. This
+Note occurrence Search still reads the unsaved editor snapshot. Top-level Property presence/exact-
+string clauses retain source ranges and empty/type identity; direct relation clauses consume only
+same-manifest explicit Graph edges and replace the retired parallel Related Search path. The
+canonical YAML `summary` is an optional document declaration with its own source range and match
+reason; mediated writer attribution stays in the owning operation/Record rather than a second YAML
+field. A summary match only discovers the Note and rolls back into exact full
+source rather than becoming a summary-only Research Context result. No index, Record, or machine
+state can backfill or overwrite it. The removed `status` and `review` fields have no semantic projection, filters, or ordering; `status:` and
+`review:` fail explicitly without affecting ordinary lexical search. Search field/canonical-value
+completion and deterministic Explain Query use the same capability table; scope-specific Property-
+key and Note-identity candidate delivery remains deferred. Attention is limited to specified
+structural, currency, connection, reliance, metadata, and
 identity conditions. Material Changed Since Use is rebuilt only from the latest completed Synthesize
 record for each Topic/Material pair whose fully cross-validated actually-used Analysis revision
 differs from the current active resolved revision; unused, deleted-record, tombstoned, deleted,
@@ -429,74 +454,62 @@ timestamp.
 
 **Current reachable boundary**
 
-Catalog schema 4 separates protected mechanism from seven Action-addressed bundled Method
-references. A new Triptych now installs six independent editable working packages before its
-manifest, writes explicit Action-keyed binding v2 states, and records Manuscript as disabled.
-Analyze and Synthesize resolve independently over retained Develop; every current Action's primary
-Method uses only v2 and fails closed for missing, malformed, disabled, invalid, incompatible,
-dependency-broken, or Method-dependent state. Bundled Methods are read-only installation/restore
-references, never runtime fallback. Protected System mechanism remains independently seeded, exact
-Method resources are coherently fingerprinted, and direct edit/restore publish displaced packages
-through the existing machine-local maintenance snapshot lifecycle. Verified cross-volume copy
-retains and reports the hidden portable inode instead of deleting possible late writes. Source
-Analyzer, APA 7 verification, Philosophical Practices, and Prose Control remain opt-in Researcher
-templates.
+The code-owned Platform catalog defines seven public Actions and their machine capabilities. A new
+Triptych bootstraps one current editable primary Markdown Method per Action, with Manuscript disabled,
+and nine exact Practice Markdown references. Registration schema 2 is the only Action-to-Method
+relation. Exact Wikilinks in the primary Method resolve Practices once in first-use order and expose
+missing/ambiguous references without substitution. Each Method and Practice keeps one replaceable
+pre-edit recovery point. Restore Default writes the current app-bundled primary Markdown under exact
+revision checking; the bundle is never a runtime fallback. An optional ordinary local Skill folder
+is represented portably only by a machine-local marker; its absolute path and security-scoped
+bookmark remain in private Application Support, and authenticated delivery exposes only the frozen
+path string. Scholium neither inventories nor reads sibling folder content. No catalog YAML,
+package/version/digest/dependency/resource schema, package history, installer, resolver fallback, or
+protected Skill-ID collision path remains.
 
-### Researcher Skill installation
+### Research Skill registration
 
 **Current reachable boundary**
 
-An app-wide staged installer accepts one researcher-selected local directory, retains exact UTF-8
-bytes only in an expiring Core preparation, and exposes a nonexecuting inventory that contains no
-source path or file contents while showing purpose, declared metadata, proposed Action placement,
-and the explicit requirement for a later Action Profile. Descriptor-relative traversal accepts only
-`SKILL.md` plus one-level regular `references`, `templates`, and `evals`; bounded enumeration
-rejects the 129th file without first collecting an unbounded listing, and input also fails closed
-for network URLs, archives/non-directories, symlinks, hard links, executable or scripted files,
-unsupported/nested resources, malformed metadata, files over 1 MiB, and packages over 8 MiB.
-Application resolves explicitly selected Triptychs; Core preflights all destinations, rejects
-dangling current bindings or the retained Citation binding that can still execute,
-uses no-replace publication for each independent copy, and repeats bounded validation after
-publication. Ignored legacy Function/Skill/Practice fields cannot authorize or block new
-installation. A later-destination failure moves proved task-owned directories into hidden
-nonexecuting recovery quarantine without deleting possible late writes; moved/replaced or otherwise
-unprovable identities return recovery-required. The installer writes no Profile, binding, permission
-approval, or execution state, so an unbound package starts disabled.
+The researcher can create one simple primary Markdown under the Triptych control root, select one
+external Markdown file, or select a primary Markdown inside an ordinary local folder. Registration
+checks only the exact entry, unique Action relation, optional folder containment, and current
+revision. It does not inspect method structure or enumerate the folder. Triptych-controlled locations
+stay relative in portable state. External locations create one opaque registration marker and a
+private mode-0700/mode-0600 locator document containing the exact absolute paths and security-scoped
+bookmarks; reopening and wrong-Triptych replay tests pass. A missing, stale, changed-identity, linked,
+or inaccessible primary path fails closed. A missing optional folder is reported without replacing
+the primary Method or inventing a transport fallback. Schema 1 absolute-path registration is rejected
+and has no compatibility decoder.
 
 ### Research Guidance
 
 **Current reachable boundary**
 
-Production Settings presents one restrained categorized list-detail surface for Methods, Researcher
-Skills, Permissions, Sources and Integrations, and Recovery and Technical. It exposes explicit
-Working Method installation for established Triptychs; revision-checked direct edit, disable,
-compatible replacement, bundled comparison and restore; hidden Manuscript activation and direct
-edit; staged local-directory installation; local Skill creation, structural validation and
-recoverable guarded deletion; and Action Profile creation, confirmed deletion, global reordering,
-all seven declarative modules, capability declaration, nonexecuting preview, deliberate Show in
-Actions, and explicit independent copying to selected Triptychs. Recovery and Technical exposes the
-per-Note settled-version policy with a destructive confirmation only when lowering the limit
-enumerates older versions, machine-local Skill snapshots, and **Reveal Skills Folder**. Skill and
-Action Profile drafts are isolated by Triptych, package, and Action identity, survive category and
-Settings-tab navigation until saved or discarded, and cannot cross a Triptych switch; cancellation
-and identity checks also prevent stale Methods, Skills, Recovery, or Permissions reloads from
-repopulating a new Triptych. One Skill cannot silently claim an Action ID already configured by
-another. Function-keyed Settings are deleted and cannot enter Action resolution. Citation Fidelity
-owns a strict capability document; a retained `research-skill-bindings.json` is byte-preserved,
-read only for bounded Citation migration or explicit repair, and never supplies Function-keyed
-behavior or package-use constraints. Permissions edits the
-machine-local Triptych default and exact-envelope per-Skill overrides, exposes invalidation without
-broad fallback, and states the boundary around Scholium-mediated operations. Sources reuses current
-CLI/Zotero controls. Superseded flat Settings, maintenance Proposal, and legacy-data reveal source
-are deleted.
+Production Settings presents one restrained categorized list-detail surface for **Methods**,
+**Profiles & Practices**, **Collaboration**, **Sources & Integrations**, and **Recovery & Technical**.
+Methods exposes one primary Markdown per Action, enabled state, exact linked Practices, optional
+ordinary folder availability, direct edit, one previous-edit restore, current Scholium-default
+restore, simple creation, and external Markdown/folder registration. Profiles exposes visible
+name/order/enabled state and role-valid placement; its bounded editor adds, names, reorders, removes,
+and configures only flat free-text/single-choice/multiple-choice academic input and Result fields,
+including excluded/optional/required status and closed options, through the one Profile-document CAS
+writer. Practices exposes exact Markdown create/edit and one previous-edit restore. Collaboration
+edits one Triptych rule—Ask Me Every Time, Ask Me Only for
+Works, or Full Triptych Access—and explicitly states that no setting grants blanket writes or binds
+an Agent/Skill. Sources owns Zotero/CLI controls and a strict Triptych citation-style selection from
+the code catalog (currently APA 7); citation style is not a Method package. Recovery owns settled
+Note retention only because Method/Practice recovery stays beside their editors. Typed invalidation
+rechecks Actions across windows without replacing the Workspace snapshot. There is no package
+installer, staged disabled copy, per-Skill permission, capability module editor, version browser,
+snapshot history, **Reveal Skills Folder**, or retained binding repair path.
 
 ### Retained research workflow proofs
 
 **Current reachable boundary**
 
-One synthetic Debug-only PreviewCatalog remains for the modular Skill-run sheet, staged
-local-directory installer, responsibility-based Research Guidance categories, Agent-requested
-additional Notes, and Research Records auxiliary-window layout. It is suppressed by default
+One synthetic Debug-only PreviewCatalog remains for the modular Skill-run sheet, the current five
+Research Guidance categories, and Bounded Write Set extension. It is suppressed by default
 and its single QA command is available only to the Debug `com.scholium.qa` bundle with an explicit
 launch argument. It owns no Workspace, Triptych, document, Skill, permission, execution, record, or
 source authority and is not a production surface. Completed Sidebar, Attention, Inspector,
@@ -510,7 +523,7 @@ active route or compatibility alias.
 Line Comment, whole-note Discuss, and optional focal Notes now use one `PortableResearchDiscussion`;
 older exact-passage turns remain readable. A new Comment stores only its Note fingerprint and
 inclusive line range, never starts an agent run, and is collected when Discuss opens the active
-exchange. New runs keep only their static response transport contract in Local Execution v3;
+exchange. New Runs keep the frozen authenticated method/result transport contract in Local Execution;
 attributed turns live in the portable active exchange. Close has no storage effect. Agent reply
 evidence is required before a Discuss run can complete, while researcher Finish is a separate
 neutral transition into one portable Research Record and creates no legacy Discussed event. External
@@ -581,8 +594,9 @@ No migration or normalization of existing custom keys.
 **Implemented evidence**
 
 One source-level Analysis may record represented Completion such as `6/11`; this is a quiet reminder
-rather than a chapter ledger or adequacy claim. Source Analyzer remains an independent
-copy-on-adoption Skill, not a Research Action; mutation remains separately authorized.
+rather than a chapter ledger or adequacy claim. Analyze uses the Triptych's one current registered
+primary Markdown Method; source access and any mutation remain separately mediated Platform
+capabilities rather than authority conferred by that Method.
 
 **Still open**
 
@@ -592,7 +606,7 @@ Final Completion control and reminder presentation require human review.
 
 **Implemented evidence**
 
-Analyze completion now requires an explicit bounded recommendation array and writes one schema-4
+Analyze completion now requires an explicit bounded recommendation array and writes one schema-5
 Research Record. Application derives stable occurrence IDs and initial Unprocessed dispositions;
 other Actions reject the field. Occurrence disposition and optional researcher-note updates share
 the locked atomic replacement/readback path with Pin. The Triptych Recommendations index is rebuilt
@@ -601,14 +615,17 @@ Recommendation submissions and researcher notes now reject normalized,
 percent-encoded, POSIX, Windows-drive, UNC, and file-URL machine paths before
 portable persistence while retaining ordinary HTTPS bibliographic links.
 Permanent Record deletion now commits a machine-local tombstone under the same
-cross-process lock as portable creation/deletion, so a retained Local-v3
+cross-process lock as portable creation/deletion, so a retained Local Execution
 completion cannot resurrect the deleted Record; source access, checkpoints,
 and recovery evidence remain outside that deletion.
 
 One nonmodal resizable Research Records window is keyed by Triptych ID, reads that Triptych's
 capabilities directly, and does not follow Workspace focus. Document and Research-menu requests
 reapply This Note or Triptych Scope respectively; Scope and Records/Recommendations View remain
-independent. Recommendations exposes search, Unprocessed/Handled/All, occurrence-local checkboxes,
+independent. Its Record filters compile to the same Application Record provider used by global
+Search and CLI; the window retains no second Record matcher or flattened search corpus. Search
+result locators require the exact Record fingerprint and optional statement UUID before selection.
+Recommendations exposes search, Unprocessed/Handled/All, occurrence-local checkboxes,
 source and Record provenance, Open Analysis, Open Parent Record, and researcher notes. Sidebar,
 Attention, Settings, Method bindings, CLI, and Zotero acquire no parallel recommendation lifecycle
 or authority.
@@ -618,16 +635,21 @@ or authority.
 Complete Dark/Increase Contrast/RTL/200%/VoiceOver and physical Full Keyboard Access acceptance,
 plus genuine research-use evaluation of recommendation quality, remain researcher-owned acceptance.
 
-### Protected Skill IDs
+### Method-locator isolation
 
 **Implemented evidence**
 
-A colliding Triptych package stays visible, invalid, and recoverable while the bundled package
-remains authoritative.
+Portable registration stores no absolute path or bookmark. A private machine-local locator is keyed
+only by the opaque registration relation, Triptych-bound, strict-schema, descriptor-read, and
+mode-0700/mode-0600. Reopen, exact-byte readback, stale registration CAS, wrong-Triptych replay, and
+schema-1 rejection fixtures pass. Unused locator rows do not authorize a Method and are removed after
+a successful replacement when their old relation is still known.
 
 **Still open**
 
-Researcher must rename or delete the collision.
+Packaged sandbox reopen after an external Method or folder moves, loses its security scope, or is
+restored by a cloud provider remains a direct acceptance boundary; the product reports repair rather
+than adopting another path.
 
 ### Architecture stability cutover
 

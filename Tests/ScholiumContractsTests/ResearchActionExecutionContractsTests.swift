@@ -4,42 +4,79 @@ import Testing
 
 @Suite("Research Action execution contracts")
 struct ResearchActionExecutionContractsTests {
-    @Test("Unified parameters validate every declared native value")
-    func unifiedParameters() throws {
-        let profile = try parameterProfile()
-        let noteID = ResearchActionModuleID(rawValue: "focal-notes")!
-        let textID = ResearchActionModuleID(rawValue: "question")!
-        let toggleID = ResearchActionModuleID(rawValue: "preserve-pressure")!
-        let choiceID = ResearchActionModuleID(rawValue: "lenses")!
-        let model = try ResearchActionParameterModel(
-            profile: profile,
-            values: [
-                noteID: .notes([note(role: .analysis, seed: "material")]),
-                textID: .text("Test the strongest reply."),
-                toggleID: .boolean(true),
-                choiceID: .choices([
-                    ResearchActionModuleChoiceValue(rawValue: "counterexample")!,
-                ]),
+    @Test("Flat academic values validate kind, requirement, choices, and unknown IDs")
+    func academicValues() throws {
+        let request = try ResearchAcademicFieldDefinition.freeText(
+            id: ResearchAcademicFieldID(rawValue: "question")!,
+            label: "Question",
+            requirement: .required,
+            maximumTextUTF8Count: 64
+        )
+        let lens = try ResearchAcademicFieldDefinition.multipleChoice(
+            id: ResearchAcademicFieldID(rawValue: "lenses")!,
+            label: "Lenses",
+            requirement: .optional,
+            choices: [
+                ResearchAcademicChoice(value: "conceptual", label: "Conceptual"),
+                ResearchAcademicChoice(value: "dialectical", label: "Dialectical"),
             ]
         )
-
-        let data = try JSONEncoder().encode(model)
-        let decoded = try JSONDecoder().decode(
-            ResearchActionParameterModel.self,
-            from: data
+        let values = try ResearchAcademicFieldValues(
+            rawValues: [
+                "question": .freeText("Test the strongest reply."),
+                "lenses": .multipleChoice(["dialectical"]),
+            ],
+            definitions: [request, lens]
         )
-        #expect(decoded == model)
-        #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try ResearchActionParameterModel(
-                profile: profile,
-                rawValues: ["unknown": .text("value")]
+        #expect(try JSONDecoder().decode(
+            ResearchAcademicFieldValues.self,
+            from: JSONEncoder().encode(values)
+        ) == values)
+        #expect(throws: ResearchAcademicProfileError.invalidFieldValues) {
+            _ = try ResearchAcademicFieldValues(
+                rawValues: ["unknown": .freeText("value")],
+                definitions: [request, lens]
             )
         }
-        #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try ResearchActionParameterModel(
-                profile: profile,
-                values: [textID: .boolean(true)]
+        #expect(throws: ResearchAcademicProfileError.invalidFieldValues) {
+            _ = try ResearchAcademicFieldValues(
+                rawValues: ["question": .singleChoice("conceptual")],
+                definitions: [request, lens]
             )
+        }
+        #expect(throws: ResearchAcademicProfileError.invalidFieldValues) {
+            _ = try ResearchAcademicFieldValues(
+                values: [:],
+                definitions: [request, lens]
+            )
+        }
+    }
+
+    @Test("Platform inputs reject unsupported selectors, duplicates, and stale passages")
+    func platformInputs() throws {
+        let target = note(role: .work, seed: "target")
+        let focal = note(role: .analysis, seed: "focal")
+        #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try ResearchActionPlatformInputs(focalNotes: [focal, focal])
+        }
+        let write = try #require(PlatformActionCatalog.definition(for: .write))
+        let unsupportedChecks = try ResearchActionPlatformInputs(
+            fidelityChecks: [.content]
+        )
+        #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try unsupportedChecks.validated(for: write, target: target)
+        }
+        let stalePassage = CommentAnchor(
+            fingerprint: DocumentFingerprint(content: "stale"),
+            utf8Range: 0..<1,
+            utf16Range: 0..<1,
+            line: 1,
+            endLine: 1,
+            quotation: "x"
+        )
+        #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try ResearchActionPlatformInputs(passage: stalePassage)
+                .validated(for: write, target: target)
         }
     }
 
@@ -62,273 +99,73 @@ struct ResearchActionExecutionContractsTests {
                 editablePropertyKeys: []
             )
         }
-
-        let envelope = try ResearchAuthorityEnvelope(
-            readableNotes: [readable],
-            writableNotes: [readable],
-            writeOperations: [.modifyMarkdown],
-            editablePropertyKeys: []
-        )
-        #expect(try JSONDecoder().decode(
-            ResearchAuthorityEnvelope.self,
-            from: JSONEncoder().encode(envelope)
-        ) == envelope)
     }
 
-    @Test("Preparation may defer only the required machine-local source value")
-    func deferredRequiredSource() throws {
-        let requestID = ResearchActionModuleID(rawValue: "request")!
-        let sourceID = ResearchActionModuleID(rawValue: "source")!
-        let profile = try ResearchActionProfile(
-            definition: .analyze,
-            buttonName: "Analyze",
-            order: 10,
-            applicableRoles: [.analysis],
-            showInActions: true,
-            modules: [
-                try .boundedText(
-                    id: requestID,
-                    label: "Request",
-                    isRequired: true,
-                    maximumTextUTF8ByteCount: 512,
-                    allowsMultipleLines: true
-                ),
-                try .sourceReference(
-                    id: sourceID,
-                    label: "Source",
-                    isRequired: true
-                ),
-            ],
-            sourceRequirement: .required,
-            capabilities: try ResearchActionCapabilityDeclaration(
-                readableRoles: [.analysis],
-                candidateWritableRoles: [.analysis],
-                candidateWriteOperations: [.modifyMarkdown]
-            ),
-            feedbackRequirement: .requested
-        )
-
-        let deferred = try ResearchActionParameterModel(
-            deferringRequiredSourceFor: profile,
-            rawValues: [requestID.rawValue: .text("Reanalyze the source.")]
-        )
-        #expect(deferred.values[sourceID.rawValue] == nil)
-        #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try ResearchActionParameterModel(
-                profile: profile,
-                rawValues: deferred.values
-            )
-        }
-        #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try ResearchActionParameterModel(
-                deferringRequiredSourceFor: profile
-            )
-        }
-    }
-
-    @Test("Profile snapshots reject a revision that does not describe the Profile")
+    @Test("Resolved Profiles require their exact semantic and document revisions")
     func exactProfileRevision() throws {
-        let profile = try parameterProfile()
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .discuss
+            }
+        )
         #expect(throws: ResearchActionExecutionContractError.self) {
             _ = try ResearchActionResolvedProfileSnapshot(
-                origin: .applicationDefault,
                 profile: profile,
                 profileRevision: DocumentFingerprint(content: "different"),
-                profileDocumentRevision: nil
+                profileDocumentRevision: DocumentFingerprint(content: "profiles")
             )
         }
-        #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try ResearchActionResolvedProfileSnapshot(
-                origin: .researcher,
-                profile: profile,
-                profileRevision: profile.contentRevision(),
-                profileDocumentRevision: nil
-            )
-        }
-    }
-
-    @Test("Action snapshots cannot exceed their resolved Profile envelope")
-    func snapshotCannotExceedProfile() throws {
-        let actionID = ResearchActionID(researcherOwnedRawValue: "bounded-discussion")!
-        let definition = try ResearchActionDefinition(
-            researcherOwnedID: actionID,
-            executionKind: .discussion
-        )
-        let profile = try ResearchActionProfile(
-            definition: definition,
-            buttonName: "Bounded Discussion",
-            order: 10,
-            applicableRoles: [.topic],
-            showInActions: true,
-            modules: [],
-            sourceRequirement: .none,
-            capabilities: try ResearchActionCapabilityDeclaration(
-                readableRoles: [.topic]
-            ),
-            feedbackRequirement: .none
-        )
-        let target = note(role: .topic, seed: "target")
-        let outOfProfileRead = ResearchActionNoteSnapshot(
-            noteID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
-            note: VaultQualifiedNoteID(
-                vaultID: target.note.vaultID,
-                relativePath: "Analysis.md"
-            ),
-            role: .analysis,
-            lifecycle: .active,
-            fingerprint: DocumentFingerprint(content: "analysis"),
-            title: "Analysis"
-        )
-        let resolvedProfile = try ResearchActionResolvedProfileSnapshot(
-            origin: .researcher,
+        _ = try ResearchActionResolvedProfileSnapshot(
             profile: profile,
             profileRevision: profile.contentRevision(),
             profileDocumentRevision: DocumentFingerprint(content: "profiles")
         )
-        #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try ResearchActionSnapshot(
-                definition: definition,
-                target: target,
-                method: try ResearchActionMethodSnapshot(
-                    packageID: "bounded-discussion",
-                    origin: .triptych,
-                    version: "local",
-                    packageRevision: DocumentFingerprint(content: "package"),
-                    loadedResources: [ResearchActionResourceSnapshot(
-                        relativePath: "SKILL.md",
-                        revision: DocumentFingerprint(content: "method")
-                    )]
-                ),
-                resolvedProfile: resolvedProfile,
-                parameters: try ResearchActionParameterModel(profile: profile),
-                authority: try ResearchAuthorityEnvelope(
-                    readableNotes: [target, outOfProfileRead],
-                    writableNotes: [],
-                    writeOperations: [],
-                    editablePropertyKeys: []
-                )
-            )
-        }
     }
 
     @Test("Public Action mutation inputs reject unknown fields")
     func publicMutationInputsFailClosed() throws {
         let target = note(role: .work, seed: "target")
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .write
+            }
+        )
         let request = ResearchActionExecutionRequest(
             actionID: .write,
             expectedExecutionKind: .writing,
-            expectedProfileRevision: DocumentFingerprint(content: "profile"),
-            expectedProfileDocumentRevision: nil,
-            target: target
-        )
-        let completion = ResearchActionCompletionSubmission(
-            runID: UUID(),
-            confirmationToken: UUID(),
-            finalTargetFingerprint: target.fingerprint,
-            summary: "No change.",
-            didModifyTarget: false
-        )
-        let encoder = JSONEncoder()
-        let decoder = JSONDecoder()
-
-        var requestObject = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(request)) as? [String: Any]
-        )
-        requestObject["unsupported"] = true
-        #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try decoder.decode(
-                ResearchActionExecutionRequest.self,
-                from: JSONSerialization.data(withJSONObject: requestObject)
+            expectedProfileRevision: try profile.contentRevision(),
+            expectedProfileDocumentRevision: DocumentFingerprint(content: "profiles"),
+            target: target,
+            platformInputs: try ResearchActionPlatformInputs(),
+            academicInputs: try ResearchAcademicFieldValues(
+                values: [:],
+                definitions: profile.academicInputFields
             )
-        }
-
-        var completionObject = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(completion))
+        )
+        var object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(request))
                 as? [String: Any]
         )
-        completionObject["unsupported"] = true
+        object["unsupported"] = true
         #expect(throws: ResearchActionExecutionContractError.self) {
-            _ = try decoder.decode(
-                ResearchActionCompletionSubmission.self,
-                from: JSONSerialization.data(withJSONObject: completionObject)
+            _ = try JSONDecoder().decode(
+                ResearchActionExecutionRequest.self,
+                from: JSONSerialization.data(withJSONObject: object)
             )
         }
-
-        completionObject.removeValue(forKey: "unsupported")
-        completionObject.removeValue(forKey: "actuallyUsedMaterialNoteIDs")
-        #expect(throws: DecodingError.self) {
-            _ = try decoder.decode(
-                ResearchActionCompletionSubmission.self,
-                from: JSONSerialization.data(withJSONObject: completionObject)
-            )
-        }
-    }
-
-    private func parameterProfile() throws -> ResearchActionProfile {
-        let actionID = ResearchActionID(researcherOwnedRawValue: "stress-test")!
-        let definition = try ResearchActionDefinition(
-            researcherOwnedID: actionID,
-            executionKind: .discussion
-        )
-        let counterexample = try ResearchActionModuleChoice(
-            value: ResearchActionModuleChoiceValue(rawValue: "counterexample")!,
-            label: "Counterexample"
-        )
-        let strongestReply = try ResearchActionModuleChoice(
-            value: ResearchActionModuleChoiceValue(rawValue: "strongest-reply")!,
-            label: "Strongest Reply"
-        )
-        return try ResearchActionProfile(
-            definition: definition,
-            buttonName: "Stress Test",
-            order: 20,
-            applicableRoles: [.topic],
-            showInActions: true,
-            modules: [
-                try .notePicker(
-                    id: ResearchActionModuleID(rawValue: "focal-notes")!,
-                    label: "Focal Notes",
-                    isRequired: false,
-                    roleScope: [.analysis, .topic],
-                    maximumSelectionCount: 2
-                ),
-                try .boundedText(
-                    id: ResearchActionModuleID(rawValue: "question")!,
-                    label: "Question",
-                    isRequired: true,
-                    maximumTextUTF8ByteCount: 512,
-                    allowsMultipleLines: true
-                ),
-                try .boolean(
-                    id: ResearchActionModuleID(rawValue: "preserve-pressure")!,
-                    label: "Preserve Pressure",
-                    isRequired: false,
-                    defaultValue: true
-                ),
-                try .enumeration(
-                    id: ResearchActionModuleID(rawValue: "lenses")!,
-                    label: "Lenses",
-                    isRequired: true,
-                    choices: [counterexample, strongestReply],
-                    maximumSelectionCount: 2
-                ),
-            ],
-            sourceRequirement: .none,
-            capabilities: try ResearchActionCapabilityDeclaration(
-                readableRoles: [.analysis, .topic]
-            ),
-            feedbackRequirement: .requested
-        )
     }
 
     private func note(
         role: ResearchActionTargetRole,
         seed: String
     ) -> ResearchActionNoteSnapshot {
-        ResearchActionNoteSnapshot(
-            noteID: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
+        let noteID = seed == "target"
+            ? UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!
+            : UUID(uuidString: "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC")!
+        return ResearchActionNoteSnapshot(
+            noteID: noteID,
             note: VaultQualifiedNoteID(
-                vaultID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
+                vaultID: UUID(uuidString: "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB")!,
                 relativePath: "\(seed).md"
             ),
             role: role,

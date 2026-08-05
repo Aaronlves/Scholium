@@ -62,10 +62,8 @@ struct WindowWorkspaceCapabilities: Sendable {
 struct WindowResearchCapabilities: Sendable {
     let records: any ResearchRecordUseCases
     let checkpoints: any ResearchCheckpointUseCases
-    let skills: any ResearchSkillUseCases
     let actions: any ResearchActionUseCases
     let sourceAccess: any ResearchSourceAccessUseCases
-    let skillsURL: URL
     let recoveryRecordsURL: URL
 }
 
@@ -158,7 +156,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let zoteroBridge: ZoteroBridge
     let commandLineToolInstaller: CommandLineToolInstaller
     let agentApplicationHandoff: AgentApplicationHandoffController
-    let agentNoteChangeClaims: AgentNoteChangeClaimCoordinator
+    let researchAgentPermissionClaims: ResearchAgentPermissionClaimCoordinator
     private(set) var localAgentBridge: LocalAgentBridgeServer?
     private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
 
@@ -195,74 +193,186 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         agentApplicationHandoff = AgentApplicationHandoffController(
             applicationSupportURL: applicationSupportURL
         )
-        let agentNoteChangeClaims = AgentNoteChangeClaimCoordinator()
-        self.agentNoteChangeClaims = agentNoteChangeClaims
+        let researchAgentPermissionClaims =
+            ResearchAgentPermissionClaimCoordinator()
+        self.researchAgentPermissionClaims = researchAgentPermissionClaims
         do {
+            let bridgeContainerURL = try ScholiumPaths.agentBridgeContainerURL(
+                debugFallbackURL: applicationSupportURL
+            )
             localAgentBridge = try LocalAgentBridgeServer(
-                applicationSupportURL: applicationSupportURL
+                applicationSupportURL: bridgeContainerURL
             ) { [weak self] request in
                 try Task.checkCancellation()
                 guard let self else { throw LocalAgentBridgeError.unavailable }
-                let handle = try await runtime.openWorkspace(id: request.triptychID)
-                try Task.checkCancellation()
                 switch request.operation {
-                case .submit:
-                    guard let changeRequest = request.changeRequest else {
+                case .pair:
+                    guard let run = request.run,
+                          let pairingCode = request.pairingCode else {
                         throw LocalAgentBridgeError.invalidRequest
                     }
-                    var record = try await handle.research
-                        .submitAgentNoteChangeRequestFromBridge(
-                            changeRequest,
-                            coordinationKey: request.coordinationKey
+                    return .credential(try await runtime.pairResearchAgent(
+                        run: run,
+                        pairingCode: pairingCode
+                    ))
+                case .context:
+                    guard let run = request.run,
+                          let credential = request.credential else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .context(try await runtime.researchAgentContext(
+                        credential: credential,
+                        run: run
+                    ))
+                case .query:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let contextRequest = request.contextRequest else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .researchContext(try await runtime.queryResearchContext(
+                        credential: credential,
+                        run: run,
+                        request: contextRequest
+                    ))
+                case .extendWriteSet:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let intent = request.writeSetIntent else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let triptychID = try await runtime.researchAgentWorkspaceID(
+                        credential: credential,
+                        run: run
+                    )
+                    try await self.flushEditors(in: triptychID)
+                    let delivery = try await runtime.extendResearchWriteSet(
+                        credential: credential,
+                        run: run,
+                        intent: intent
+                    )
+                    if let record = delivery.record, record.isUnresolved {
+                        await researchAgentPermissionClaims.receive(
+                            .writeSetExtension(record),
+                            intent: .submit
                         )
-                    if record.isUnresolved {
-                        try await self.flushEditors(in: request.triptychID)
-                        try Task.checkCancellation()
-                        record = try await handle.research
-                            .applyStandingPermissionToAgentNoteChangeRequest(
-                                id: record.id
+                    }
+                    return .writeSet(delivery.result)
+                case .writeDocument:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let intent = request.documentWriteIntent else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .documentWrite(try await runtime.writeResearchDocument(
+                        credential: credential,
+                        run: run,
+                        intent: intent
+                    ))
+                case .resolveWriteConflict:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let intent = request.conflictResolutionIntent else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let triptychID = try await runtime.researchAgentWorkspaceID(
+                        credential: credential,
+                        run: run
+                    )
+                    try await self.flushEditors(in: triptychID)
+                    return .conflictResolution(
+                        try await runtime.resolveResearchWriteConflict(
+                            credential: credential,
+                            run: run,
+                            intent: intent
+                        )
+                    )
+                case .submitResult:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let submission = request.resultSubmission else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let triptychID = try await runtime.researchAgentWorkspaceID(
+                        credential: credential,
+                        run: run,
+                        allowFinalized: true
+                    )
+                    try await self.flushEditors(in: triptychID)
+                    return .resultReceipt(try await runtime.submitResearchAgentResult(
+                        credential: credential,
+                        run: run,
+                        submission: submission
+                    ))
+                case .continueResearch:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let continuation = request.continuationRequest else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let triptychID = try await runtime.researchAgentWorkspaceID(
+                        credential: credential,
+                        run: run,
+                        allowFinalized: true
+                    )
+                    try await self.flushEditors(in: triptychID)
+                    let result = try await runtime.continueResearch(
+                        credential: credential,
+                        run: run,
+                        request: continuation
+                    )
+                    if result.state == .pendingResearcherDecision {
+                        let decision = try await runtime
+                            .researchContinuationRequest(
+                                credential: credential,
+                                run: run,
+                                request: continuation
                             )
-                    }
-                    await agentNoteChangeClaims.receive(
-                        record,
-                        intent: .submit
-                    )
-                    if record.canDeliverContinuations {
-                        return try await handle.research
-                            .agentNoteChangeContinuations(id: record.id)
-                    }
-                    return AgentNoteChangeContinuationResult(record: record)
-                case .status:
-                    guard let requestID = request.changeRequestID else {
-                        throw LocalAgentBridgeError.invalidRequest
-                    }
-                    let record = try await handle.research.agentNoteChangeRequestFromBridge(
-                        id: requestID,
-                        coordinationKey: request.coordinationKey
-                    )
-                    await agentNoteChangeClaims.receive(
-                        record,
-                        intent: .showExisting
-                    )
-                    if record.canDeliverContinuations {
-                        return try await handle.research
-                            .agentNoteChangeContinuations(id: record.id)
-                    }
-                    return AgentNoteChangeContinuationResult(record: record)
-                case .cancel:
-                    guard let requestID = request.changeRequestID else {
-                        throw LocalAgentBridgeError.invalidRequest
-                    }
-                    let record = try await handle.research
-                        .cancelAgentNoteChangeRequestFromBridge(
-                            id: requestID,
-                            coordinationKey: request.coordinationKey
+                        await researchAgentPermissionClaims.receive(
+                            .continuation(decision),
+                            intent: .submit
                         )
-                    await agentNoteChangeClaims.receive(
-                        record,
-                        intent: .cancel
+                    }
+                    return .continuation(result)
+                case .methodImprovementContext:
+                    guard let run = request.run,
+                          let credential = request.credential else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .methodImprovementContext(
+                        try await runtime.researchMethodImprovementContext(
+                            credential: credential,
+                            run: run
+                        )
                     )
-                    return AgentNoteChangeContinuationResult(record: record)
+                case .submitMethodImprovement:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let submission = request.methodImprovementSubmission else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let triptychID = try await runtime.researchAgentWorkspaceID(
+                        credential: credential,
+                        run: run,
+                        allowFinalized: true
+                    )
+                    try await self.flushEditors(in: triptychID)
+                    return .methodImprovementReceipt(
+                        try await runtime.submitResearchMethodImprovement(
+                            credential: credential,
+                            run: run,
+                            submission: submission
+                        )
+                    )
+                case .end:
+                    guard let run = request.run,
+                          let credential = request.credential else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .endReceipt(try await runtime.endResearchAgentRun(
+                        credential: credential,
+                        run: run
+                    ))
                 }
             }
             localAgentBridgeStartupFailure = nil
@@ -609,15 +719,95 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 }
             ),
             researchGuidance: WorkspaceSettingsResearchGuidanceCapabilities(
-                researchSkills: { [self] id in
-                try await workspaceHandle(id: id).research.skills()
+            researchSkillRegistrations: { [self] id in
+                try await workspaceHandle(id: id).research.researchSkillRegistrations()
             },
-            inspectResearchSkillDraft: { [self] workspaceID, id, source, origin in
-                try await workspaceHandle(id: workspaceID).research.inspectSkillDraft(
-                    id: id,
-                    source: source,
-                    origin: origin
+            saveResearchSkillRegistrations: { [self] id, document, revision in
+                try await workspaceHandle(id: id).research.saveResearchSkillRegistrations(
+                    document,
+                    expectedRevision: revision
                 )
+            },
+            academicActionProfiles: { [self] id in
+                try await workspaceHandle(id: id).research.academicActionProfiles()
+            },
+            saveAcademicActionProfiles: { [self] id, document, revision in
+                try await workspaceHandle(id: id).research.saveAcademicActionProfiles(
+                    document,
+                    expectedRevision: revision
+                )
+            },
+            collaborationPolicy: { [self] id in
+                try await workspaceHandle(id: id).research.collaborationPolicy()
+            },
+            saveCollaborationPolicy: { [self] id, document, revision in
+                try await workspaceHandle(id: id).research.saveCollaborationPolicy(
+                    document,
+                    expectedRevision: revision
+                )
+            },
+            researchMethod: { [self] id, actionID in
+                try await workspaceHandle(id: id).research.researchMethod(for: actionID)
+            },
+            saveResearchMethod: { [self] id, key, source, revision in
+                try await workspaceHandle(id: id).research.saveResearchMethod(
+                    registrationKey: key,
+                    source: source,
+                    expectedRevision: revision
+                )
+            },
+            registerExternalResearchMethod: {
+                [self] id, actionID, name, primaryPath, folderPath, revision in
+                try await workspaceHandle(id: id).research.registerExternalResearchMethod(
+                    actionID: actionID,
+                    displayName: name,
+                    primaryMarkdownPath: primaryPath,
+                    skillFolderPath: folderPath,
+                    expectedRegistrationRevision: revision
+                )
+            },
+            createResearchMethod: { [self] id, actionID, name, source, revision in
+                try await workspaceHandle(id: id).research.createResearchMethod(
+                    actionID: actionID,
+                    displayName: name,
+                    source: source,
+                    expectedRegistrationRevision: revision
+                )
+            },
+            restorePreviousResearchMethod: { [self] id, key, revision in
+                try await workspaceHandle(id: id).research.restorePreviousResearchMethod(
+                    registrationKey: key,
+                    expectedRevision: revision
+                )
+            },
+            restoreDefaultResearchMethod: { [self] id, actionID, revision in
+                try await workspaceHandle(id: id).research.restoreDefaultResearchMethod(
+                    actionID: actionID,
+                    expectedRevision: revision
+                )
+            },
+            philosophicalPractices: { [self] id in
+                try await workspaceHandle(id: id).research.philosophicalPractices()
+            },
+            createPhilosophicalPractice: { [self] id, title, source in
+                try await workspaceHandle(id: id).research.createPhilosophicalPractice(
+                    title: title,
+                    source: source
+                )
+            },
+            savePhilosophicalPractice: { [self] id, path, source, revision in
+                try await workspaceHandle(id: id).research.savePhilosophicalPractice(
+                    relativePath: path,
+                    source: source,
+                    expectedRevision: revision
+                )
+            },
+            restorePreviousPhilosophicalPractice: { [self] id, path, revision in
+                try await workspaceHandle(id: id).research
+                    .restorePreviousPhilosophicalPractice(
+                        relativePath: path,
+                        expectedRevision: revision
+                    )
             },
             citationMethodStatus: { [self] workspaceID in
                 try await workspaceHandle(id: workspaceID).research.citationMethodStatus()
@@ -625,182 +815,13 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             activateCitationMethod: { [self] workspaceID, selection, revision in
                 try await workspaceHandle(id: workspaceID).research.activateCitationMethod(
                     selection: selection,
-                    expectedBindingRevision: revision
+                    expectedConfigurationRevision: revision
                 )
             },
             clearCitationMethod: { [self] workspaceID, revision in
                 try await workspaceHandle(id: workspaceID).research.clearCitationMethod(
-                    expectedBindingRevision: revision
+                    expectedConfigurationRevision: revision
                 )
-            },
-            adoptBundledCitationStarter: { [self] workspaceID, revision in
-                try await workspaceHandle(id: workspaceID).research
-                    .adoptBundledCitationStarter(expectedBindingRevision: revision)
-            },
-            createResearchSkill: { [self] workspaceID, id, source in
-                try await workspaceHandle(id: workspaceID).research.createSkill(
-                    id: id,
-                    source: source
-                )
-            },
-            duplicateBundledResearchSkill: { [self] workspaceID, id, newID in
-                try await workspaceHandle(id: workspaceID).research.duplicateBundledSkill(
-                    id: id,
-                    as: newID
-                )
-            },
-            renameResearchSkill: { [self] workspaceID, id, newID, revision in
-                try await workspaceHandle(id: workspaceID).research.renameSkill(
-                    id: id,
-                    to: newID,
-                    expectedRevision: revision
-                )
-            },
-            saveResearchSkill: { [self] workspaceID, id, source, revision in
-                try await workspaceHandle(id: workspaceID).research.saveSkill(
-                    id: id,
-                    source: source,
-                    expectedRevision: revision
-                )
-            },
-            deleteResearchSkill: { [self] workspaceID, id, revision in
-                try await workspaceHandle(id: workspaceID).research.deleteSkill(
-                    id: id,
-                    expectedRevision: revision
-                )
-            },
-            researchSkillResourcePaths: { [self] workspaceID, id in
-                try await workspaceHandle(id: workspaceID).research.skillResourcePaths(id: id)
-            },
-            researchSkillResource: { [self] workspaceID, id, relativePath in
-                try await workspaceHandle(id: workspaceID).research.skillResource(
-                    id: id,
-                    relativePath: relativePath
-                )
-            },
-            prepareResearchSkillMaintenance: { [self] workspaceID, request in
-                try await workspaceHandle(id: workspaceID).research.prepareSkillMaintenance(request)
-            },
-            applyResearchSkillMaintenance: {
-                [self] workspaceID, preparation, confirmationToken in
-                try await workspaceHandle(id: workspaceID).research.applySkillMaintenance(
-                    preparation,
-                    confirmationToken: confirmationToken
-                )
-            },
-            researchSkillMaintenanceSnapshots: { [self] workspaceID, packageID in
-                try await workspaceHandle(id: workspaceID).research.skillMaintenanceSnapshots(
-                    packageID: packageID
-                )
-            },
-            restoreResearchSkillMaintenance: { [self] workspaceID, snapshotID, expectedState in
-                try await workspaceHandle(id: workspaceID).research.restoreSkillMaintenance(
-                    snapshotID: snapshotID,
-                    expectedCurrentState: expectedState
-                )
-            },
-            researchSkillsURL: { [self] id in
-                try await workspaceHandle(id: id).research.skillsURL
-            },
-            workingMethodBindings: { [self] id in
-                try await workspaceHandle(id: id).research.workingMethodBindings()
-            },
-            installDefaultWorkingMethods: { [self] id in
-                try await workspaceHandle(id: id).research.installDefaultWorkingMethods()
-            },
-            saveWorkingMethod: {
-                [self] id, actionID, source, packageRevision, bindingRevision in
-                try await workspaceHandle(id: id).research.saveWorkingMethod(
-                    for: actionID,
-                    source: source,
-                    expectedPackageRevision: packageRevision,
-                    expectedBindingRevision: bindingRevision
-                )
-            },
-            disableWorkingMethod: { [self] id, actionID, revision in
-                try await workspaceHandle(id: id).research.disableWorkingMethod(
-                    for: actionID,
-                    expectedBindingRevision: revision
-                )
-            },
-            activateResearcherSkill: { [self] id, packageID, actionID, revision in
-                try await workspaceHandle(id: id).research.activateResearcherSkill(
-                    packageID: packageID,
-                    for: actionID,
-                    expectedBindingRevision: revision
-                )
-            },
-            restoreBundledWorkingMethod: {
-                [self] id, actionID, expectedPackageState, revision in
-                try await workspaceHandle(id: id).research.restoreBundledWorkingMethod(
-                    for: actionID,
-                    expectedPackageState: expectedPackageState,
-                    expectedBindingRevision: revision
-                )
-            },
-            actionProfiles: { [self] id in
-                try await workspaceHandle(id: id).research.actionProfiles()
-            },
-            saveActionProfile: { [self] id, binding, revision in
-                try await workspaceHandle(id: id).research.saveActionProfile(
-                    binding,
-                    expectedDocumentRevision: revision
-                )
-            },
-            removeActionProfile: { [self] id, actionID, revision in
-                try await workspaceHandle(id: id).research.removeActionProfile(
-                    actionID: actionID,
-                    expectedDocumentRevision: revision
-                )
-            },
-            saveActionProfileDocument: { [self] id, document, revision in
-                try await workspaceHandle(id: id).research.saveActionProfileDocument(
-                    document,
-                    expectedDocumentRevision: revision
-                )
-            },
-            stageResearcherSkillInstallation: { [self] directoryURL in
-                try await applicationRuntime.stageResearcherSkillInstallation(
-                    from: directoryURL
-                )
-            },
-            installResearcherSkill: { [self] preparation, triptychIDs in
-                try await applicationRuntime.installResearcherSkill(
-                    preparation,
-                    to: triptychIDs
-                )
-            },
-            discardResearcherSkillInstallation: { [self] preparationID in
-                await applicationRuntime.discardResearcherSkillInstallation(
-                    preparationID: preparationID
-                )
-            },
-            permissionSettings: { [self] id in
-                try await workspaceHandle(id: id).research.permissionSettings()
-            },
-            saveTriptychPermissionPolicy: { [self] id, policy, revision in
-                try await workspaceHandle(id: id).research
-                    .saveTriptychPermissionPolicy(
-                        policy,
-                        expectedRevision: revision
-                    )
-            },
-            saveSkillPermissionOverride: {
-                [self] id, packageID, policy, digest, revision in
-                try await workspaceHandle(id: id).research
-                    .saveSkillPermissionOverride(
-                        packageID: packageID,
-                        policy: policy,
-                        expectedEnvelopeDigest: digest,
-                        expectedRevision: revision
-                    )
-            },
-            removeSkillPermissionOverride: { [self] id, packageID, revision in
-                try await workspaceHandle(id: id).research
-                    .removeSkillPermissionOverride(
-                        packageID: packageID,
-                        expectedRevision: revision
-                    )
             },
             recoveryPolicy: { [self] id in
                 try await workspaceHandle(id: id).research.recoveryPolicy()
@@ -864,83 +885,92 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         }
     }
 
-    func refreshPendingAgentNoteChangeRequests(in triptychID: UUID) async {
-        guard let handle = handles[triptychID],
-              let records = try? await handle.research.pendingAgentNoteChangeRequests()
-        else { return }
-        for record in records {
-            agentNoteChangeClaims.receive(record, intent: .refresh)
+    func refreshPendingResearchAgentPermissions(in triptychID: UUID) async {
+        guard let handle = handles[triptychID] else { return }
+        if let records = try? await handle.research
+            .pendingAgentWriteSetExtensions() {
+            for record in records {
+                researchAgentPermissionClaims.receive(
+                    .writeSetExtension(record),
+                    intent: .refresh
+                )
+            }
+        }
+        if let records = try? await handle.research
+            .pendingContinuationRequests() {
+            for record in records {
+                researchAgentPermissionClaims.receive(
+                    .continuation(record),
+                    intent: .refresh
+                )
+            }
         }
     }
 
-    func agentNoteChangePresentationIdentity(
-        for record: AgentNoteChangeRequestRecord
-    ) async throws -> AgentNoteChangePresentationIdentity {
-        let handle = try await workspaceHandle(id: record.request.triptychID)
-        guard let target = record.request.targets.first,
-              let document = workspaceSnapshots[record.request.triptychID]?
-                .document(id: target.note),
-              document.stableIdentity.resolvedID == target.noteID else {
-            throw LocalAgentBridgeError.invalidResponse
-        }
-        let note = ResearchActionNoteSnapshot(
-            noteID: target.noteID,
-            note: target.note,
-            role: target.role,
-            lifecycle: document.lifecycle,
-            fingerprint: document.fingerprint,
-            title: ResearchNoteTitleResolver.resolve(
-                document: document.document,
-                vaultRole: document.vaultRole
-            ).title
-        )
-        let actions = try await handle.research.availableActions(for: note)
-        guard let action = actions.first(where: {
-            $0.definition == record.request.requestedAction.definition
-                && $0.profile.origin == record.request.requestedAction.profileOrigin
-                && $0.profile.profileRevision
-                    == record.request.requestedAction.profileRevision
-                && $0.profile.profileDocumentRevision
-                    == record.request.requestedAction.profileDocumentRevision
-        }) else {
-            throw LocalAgentBridgeError.invalidResponse
-        }
-        let skills = try await handle.research.skills()
-        guard let skill = skills.first(where: {
-            $0.id == record.request.requestedAction.packageID
-                && $0.revision == record.request.requestedAction.skillRevision
-        }) else {
-            throw LocalAgentBridgeError.invalidResponse
-        }
-        return AgentNoteChangePresentationIdentity(
-            actionName: action.buttonName,
-            skillName: skill.name
-        )
-    }
-
-    func refreshAgentNoteChangeRequest(
+    func refreshResearchWriteSetExtension(
         id: UUID,
         in triptychID: UUID
     ) async throws {
-        let handle = try await workspaceHandle(id: triptychID)
-        let record = try await handle.research.agentNoteChangeRequest(id: id)
-        agentNoteChangeClaims.receive(record, intent: .refresh)
+        let record = try await workspaceHandle(id: triptychID).research
+            .agentWriteSetExtension(requestID: id)
+        researchAgentPermissionClaims.receive(
+            .writeSetExtension(record),
+            intent: .refresh
+        )
     }
 
-    func resolveAgentNoteChangeRequest(
+    func resolveResearchWriteSetExtension(
         triptychID: UUID,
         requestID: UUID,
-        state: AgentNoteChangeDecisionState,
-        allowedNoteIDs: [UUID] = []
-    ) async throws -> AgentNoteChangeRequestRecord {
+        state: ResearchWriteSetExtensionState,
+        allowedHandles: [ResearchWriteTargetHandle]
+    ) async throws -> ResearchWriteSetExtensionRecord {
         try await flushEditors(in: triptychID)
         let record = try await workspaceHandle(id: triptychID).research
-            .resolveAgentNoteChangeRequest(
-                id: requestID,
+            .resolveAgentWriteSetExtension(
+                requestID: requestID,
                 state: state,
-                allowedNoteIDs: allowedNoteIDs
+                allowedHandles: allowedHandles
             )
-        agentNoteChangeClaims.receive(record, intent: .decision)
+        researchAgentPermissionClaims.receive(
+            .writeSetExtension(record),
+            intent: .decision
+        )
+        return record
+    }
+
+    func refreshResearchContinuation(
+        triptychID: UUID,
+        parentRunID: UUID,
+        requestID: UUID
+    ) async throws {
+        let record = try await workspaceHandle(id: triptychID).research
+            .continuationRequest(
+                parentRunID: parentRunID,
+                requestID: requestID
+            )
+        researchAgentPermissionClaims.receive(
+            .continuation(record),
+            intent: .refresh
+        )
+    }
+
+    func resolveResearchContinuation(
+        triptychID: UUID,
+        parentRunID: UUID,
+        requestID: UUID,
+        allow: Bool
+    ) async throws -> ResearchContinuationRequestRecord {
+        let record = try await workspaceHandle(id: triptychID).research
+            .resolveContinuationRequest(
+                parentRunID: parentRunID,
+                requestID: requestID,
+                allow: allow
+            )
+        researchAgentPermissionClaims.receive(
+            .continuation(record),
+            intent: .decision
+        )
         return record
     }
 
@@ -1074,10 +1104,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             research: WindowResearchCapabilities(
                 records: research,
                 checkpoints: research,
-                skills: research,
                 actions: research,
                 sourceAccess: research,
-                skillsURL: research.skillsURL,
                 recoveryRecordsURL: research.recoveryRecordsURL
             )
         )

@@ -1,0 +1,254 @@
+import Foundation
+import ScholiumContracts
+import Testing
+
+@Suite("Agent Result, Continue Research, and bounded-write contracts")
+struct ResearchAgentResultContractsTests {
+    @Test("Action defaults expose the staged academic Result Contract and fixed exclusivity rules")
+    func actionResultDefaults() throws {
+        let expected: [ResearchActionID: [String]] = [
+            .discuss: ["Overall Conclusion", "Open Question"],
+            .analyze: [
+                "Source Reconstruction", "Coverage", "Reliability",
+                "Agent Evaluation", "Further Research",
+            ],
+            .synthesize: [
+                "Synthesis Outcome", "Contribution", "Unresolved Tension",
+                "Next Step",
+            ],
+            .write: [
+                "Writing Outcome", "Change Kind", "Remaining Pressure",
+                "Evidence Basis",
+            ],
+            .critique: [
+                "Assessment", "Issue Kind", "Significance", "Recommendation",
+            ],
+            .checkFidelity: [
+                "Finding", "Finding Status", "Suggested Correction",
+            ],
+            .manuscript: [],
+        ]
+        for profile in ResearchAcademicProfileCatalog.defaultProfiles {
+            #expect(
+                profile.academicResultFields.map(\.label)
+                    == expected[profile.actionID]
+            )
+        }
+
+        let manuscript = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .manuscript
+            }
+        )
+        let contract = try ResearchResultContract(
+            profile: manuscript,
+            registrationKey: ResearchSkillRegistrationKey(rawValue: UUID()),
+            profileRevision: try manuscript.contentRevision()
+        )
+        #expect(contract.academicFields.isEmpty)
+
+        let synthesis = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .synthesize
+            }
+        )
+        let invalid = try ResearchAcademicFieldValues(
+            rawValues: [
+                "synthesis-outcome": .freeText("A bounded synthesis."),
+                "contribution": .multipleChoice([
+                    "adds", "no-warranted-change",
+                ]),
+            ],
+            definitions: synthesis.academicResultFields
+        )
+        #expect(throws: ResearchAcademicProfileError.self) {
+            try ResearchAcademicProfileCatalog.validatePlatformResultRules(
+                invalid,
+                actionID: .synthesize
+            )
+        }
+    }
+
+    @Test("Agent Result submission is strict and its receipt exposes no repository or Session identity")
+    func strictResultSubmissionAndMinimalReceipt() throws {
+        let submission = try ResearchAgentResultSubmission(
+            academicResults: ResearchAcademicFieldValues(
+                rawValues: [:],
+                definitions: []
+            )
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(submission)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object["session_secret"] = "must-not-be-accepted"
+        #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchAgentResultSubmission.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        let receipt = try ResearchAgentResultReceipt(
+            disposition: .completed,
+            state: .finalized,
+            recordFormed: true,
+            message: "The result was finalized."
+        )
+        let receiptObject = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(receipt))
+                as? [String: Any]
+        )
+        #expect(Set(receiptObject.keys) == [
+            "schema_version", "disposition", "state", "record_formed", "message",
+        ])
+        let source = String(decoding: try encoder.encode(receipt), as: UTF8.self)
+        for forbidden in [
+            "run_id", "record_id", "triptych_id", "fingerprint", "secret",
+            "nonce", "capability",
+        ] {
+            #expect(!source.contains(forbidden))
+        }
+    }
+
+    @Test("Stored Run Results accept only canonical SHA-256 fingerprints")
+    func strictStoredResultFingerprint() throws {
+        let academicResults = try ResearchAcademicFieldValues(
+            rawValues: [:],
+            definitions: []
+        )
+        func payload(_ fingerprint: DocumentFingerprint) throws {
+            _ = try ResearchRunResultPayload(
+                runID: UUID(),
+                submissionFingerprint: fingerprint,
+                disposition: .completed,
+                academicResults: academicResults,
+                contextUseReport: nil,
+                fidelityOutcomes: [],
+                literatureRecommendations: nil,
+                submittedAt: Date(timeIntervalSince1970: 1)
+            )
+        }
+
+        try payload(DocumentFingerprint(content: "canonical"))
+        #expect(throws: ResearchAgentResultContractError.self) {
+            try payload(DocumentFingerprint(
+                sha256: String(repeating: "A", count: 64),
+                byteCount: 1
+            ))
+        }
+        #expect(throws: ResearchAgentResultContractError.self) {
+            try payload(DocumentFingerprint(
+                sha256: String(repeating: "g", count: 64),
+                byteCount: 1
+            ))
+        }
+        #expect(throws: ResearchAgentResultContractError.self) {
+            try payload(DocumentFingerprint(
+                sha256: String(repeating: "0", count: 64),
+                byteCount: -1
+            ))
+        }
+    }
+
+    @Test("Continue Research records are strict and preserve one bounded non-authorizing handoff")
+    func strictContinuationRecord() throws {
+        let item = try ResearchContinuationHandoffItem(
+            content: "The prior source reconstructs the distinction narrowly.",
+            epistemicStatus: .agentReconstruction,
+            nextUse: "Test the distinction against the next Topic note."
+        )
+        let request = try ResearchContinuationRequest(
+            nextActionID: .synthesize,
+            targetRole: .topic,
+            targetRelativePath: "Topics/Agency.md",
+            academicPurpose: "Determine whether the distinction changes the Topic synthesis.",
+            handoff: [item]
+        )
+        let now = Date(timeIntervalSince1970: 10)
+        let record = try ResearchContinuationRequestRecord(
+            id: UUID(),
+            parentRunID: UUID(),
+            triptychID: UUID(),
+            request: request,
+            requestFingerprint: request.contentFingerprint(),
+            policy: .askEveryTime,
+            policyRevision: DocumentFingerprint(content: "policy"),
+            state: .pending,
+            receivedAt: now,
+            expiresAt: now.addingTimeInterval(600)
+        )
+        let data = try JSONEncoder().encode(record)
+        #expect(try JSONDecoder().decode(
+            ResearchContinuationRequestRecord.self,
+            from: data
+        ) == record)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object["inherited_context_cache"] = true
+        #expect(throws: ResearchContinuationContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchContinuationRequestRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+        let source = String(decoding: data, as: UTF8.self)
+        for forbidden in ["prompt", "write_capability", "query_response", "cache"] {
+            #expect(!source.contains(forbidden))
+        }
+    }
+
+    @Test("Bounded write-set stored contracts reject undeclared fields at every authority-bearing layer")
+    func strictBoundedWriteContracts() throws {
+        let runID = UUID()
+        let noteID = UUID()
+        let note = VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "Topics/Agency.md"
+        )
+        let entry = try ResearchBoundedWriteSetEntry(
+            handle: ResearchWriteTargetHandle(runID: runID, noteID: noteID),
+            noteID: noteID,
+            note: note,
+            role: .topic,
+            title: "Agency",
+            allowedOperations: [.modifyMarkdown],
+            expectedRevision: DocumentFingerprint(content: "before"),
+            checkpointID: UUID(),
+            authorizationBasis: .initialAction,
+            expiresAt: Date(timeIntervalSince1970: 600)
+        )
+        let writeSet = try ResearchBoundedWriteSet(
+            runID: runID,
+            triptychID: UUID(),
+            entries: [entry]
+        )
+        let data = try JSONEncoder().encode(writeSet)
+        #expect(try JSONDecoder().decode(
+            ResearchBoundedWriteSet.self,
+            from: data
+        ) == writeSet)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object["blanket_write"] = true
+        #expect(throws: ResearchBoundedWriteSetError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchBoundedWriteSet.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+        let entries = try #require(object["entries"] as? [[String: Any]])
+        var entryObject = try #require(entries.first)
+        entryObject["reusable_capability"] = "no"
+        #expect(throws: ResearchBoundedWriteSetError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchBoundedWriteSetEntry.self,
+                from: JSONSerialization.data(withJSONObject: entryObject)
+            )
+        }
+    }
+}

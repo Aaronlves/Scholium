@@ -362,9 +362,15 @@ struct ArchitectureBoundaryTests {
             ),
             encoding: .utf8
         )
-        let agentRequests = try String(
+        let boundedWrites = try String(
             contentsOf: applicationRoot.appendingPathComponent(
-                "AgentNoteChangeRequestOperations.swift"
+                "ResearchBoundedWriteOperations.swift"
+            ),
+            encoding: .utf8
+        )
+        let agentResults = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchAgentResultOperations.swift"
             ),
             encoding: .utf8
         )
@@ -390,13 +396,12 @@ struct ArchitectureBoundaryTests {
         #expect(completion.contains("func completeProtectedFunction"))
         #expect(completion.contains("func ensurePortableResearchRecord"))
         #expect(completion.contains("func validateResearchContinuation"))
-        #expect(completion.contains("func confirmWriteActivity"))
+        #expect(!completion.contains("func confirmWriteActivity"))
         #expect(completion.contains("func validateSnapshotResearchSourceAccess"))
         #expect(preparation.contains("func researchFunctionAvailability"))
         #expect(preparation.contains("func prepareResearchFunction"))
         #expect(preparation.contains("func prepareAutomaticFidelity"))
         #expect(preparation.contains("func researchFunctionRun"))
-        #expect(preparation.contains("func discardFailedAgentContinuation"))
         #expect(preparation.contains("host: isolated Host"))
         #expect(delivery.contains("func deliveryInstructions"))
         #expect(delivery.contains("func attachingAgentActions"))
@@ -426,20 +431,16 @@ struct ArchitectureBoundaryTests {
         #expect(operations.contains(
             "functionCoordinator.researchFunctionAvailability("
         ))
-        #expect(actionResolver.contains(
-            ".completeProtectedFunction("
-        ))
+        #expect(!actionResolver.contains(".completeProtectedFunction("))
+        #expect(agentResults.contains("func submitResearchAgentResult("))
+        #expect(agentResults.contains(".completeProtectedFunction("))
         #expect(actionResolver.contains(
             "researchFunctionCoordinator.prepareResearchFunction("
         ))
-        #expect(agentRequests.contains(
-            "researchFunctionCoordinator.discardFailedAgentContinuation("
-        ))
-        #expect(!agentRequests.contains("activeResearchActivityKeys["))
-        #expect(!agentRequests.contains("activeAgentCoordinationKeys["))
-        #expect(!agentRequests.contains(
-            "localResearchExecutionStore.discardFailedContinuation("
-        ))
+        #expect(boundedWrites.contains("func extendResearchWriteSet("))
+        #expect(boundedWrites.contains("func writeResearchDocument("))
+        #expect(!boundedWrites.contains("activeResearchActivityKeys["))
+        #expect(!boundedWrites.contains("raw_session_secret"))
         for retiredPath in [
             "func completeResearchFunction",
             "func cancelResearchFunction",
@@ -619,7 +620,7 @@ struct ArchitectureBoundaryTests {
 
         for fileName in [
             "ResearchMethodsSettingsView.swift",
-            "ResearcherSkillsSettingsView.swift",
+            "ProfilesPracticesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
             "ResearchRecoverySettingsView.swift",

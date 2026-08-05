@@ -29,30 +29,25 @@ struct CLIContext: Sendable {
     /// construct the ordinary snapshot runtime or touch vault state.
     static func makeAgentBridge() throws -> AgentBridgeOperations {
         let environment = ProcessInfo.processInfo.environment
-        let applicationSupportURL: URL
+        var bridgeEnvironment = environment
 #if DEBUG
-        if let explicit = environment["SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT"],
-           !explicit.isEmpty {
-            applicationSupportURL = URL(
-                fileURLWithPath: (explicit as NSString).expandingTildeInPath,
-                isDirectory: true
-            ).standardizedFileURL
-        } else if environment["SCHOLIUM_HOME"] != nil {
-            applicationSupportURL = ScholiumPaths.cliHomeURL()
-                .appendingPathComponent("ApplicationSupport", isDirectory: true)
-        } else {
-            applicationSupportURL = try ScholiumPaths.sharedApplicationSupportURL()
-        }
-#else
-        if environment["SCHOLIUM_HOME"] != nil {
-            applicationSupportURL = ScholiumPaths.cliHomeURL()
-                .appendingPathComponent("ApplicationSupport", isDirectory: true)
-        } else {
-            applicationSupportURL = try ScholiumPaths.sharedApplicationSupportURL()
+        if bridgeEnvironment["SCHOLIUM_AGENT_BRIDGE_CONTAINER"] == nil,
+           let legacy = bridgeEnvironment["SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT"] {
+            bridgeEnvironment["SCHOLIUM_AGENT_BRIDGE_CONTAINER"] = legacy
         }
 #endif
+        let bridgeContainerURL = try ScholiumPaths.agentBridgeContainerURL(
+            environment: bridgeEnvironment
+        )
         return try AgentBridgeOperations(
-            applicationSupportURL: applicationSupportURL
+            applicationSupportURL: bridgeContainerURL
+        )
+    }
+
+    static func makeAgentCredentialStore() -> AgentSessionCredentialStore {
+        AgentSessionCredentialStore(
+            directoryURL: ScholiumPaths.cliHomeURL()
+                .appendingPathComponent("sessions", isDirectory: true)
         )
     }
 

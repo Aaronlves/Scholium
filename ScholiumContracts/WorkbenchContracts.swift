@@ -53,38 +53,16 @@ public struct SavedSearch: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var needsEditingDiagnostic: SearchQueryDiagnostic? {
-        SearchQueryParser.parse(definition.query).diagnostics.first { $0.needsEditing }
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id, name, definition, state, createdAt
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        createdAt = try container.decode(Date.self, forKey: .createdAt)
-        if let current = try container.decodeIfPresent(
-            SearchDefinition.self,
-            forKey: .definition
-        ) {
-            definition = current
-        } else {
-            let legacy = try container.decode(SearchWorkspaceState.self, forKey: .state)
-            definition = SearchDefinition(
-                query: legacy.query,
-                presentationScope: legacy.scope
+        if definition.contractVersion != SearchContract.currentVersion {
+            return SearchQueryDiagnostic(
+                code: .needsEditing,
+                message: "This Saved Search uses Search contract \(definition.contractVersion); review it for contract \(SearchContract.currentVersion).",
+                utf16LowerBound: 0,
+                utf16UpperBound: definition.query.utf16.count,
+                needsEditing: true
             )
         }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(name, forKey: .name)
-        try container.encode(definition, forKey: .definition)
-        try container.encode(createdAt, forKey: .createdAt)
+        return SearchQueryParser.parse(definition.query).diagnostics.first { $0.needsEditing }
     }
 }
 

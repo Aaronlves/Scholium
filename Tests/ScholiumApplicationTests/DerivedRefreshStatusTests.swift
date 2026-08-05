@@ -410,7 +410,7 @@ struct DerivedRefreshStatusTests {
             $0.id == preparation.runID
         })
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
-        let completion = try await handle.research.completeProtectedFunction(
+        let completion = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: preparation.snapshot.confirmationToken,
@@ -461,7 +461,7 @@ struct DerivedRefreshStatusTests {
             )
         )
         #expect(preparation.derivedRefreshWarning?.isEmpty == false)
-        let completion = try await handle.research.completeProtectedFunction(
+        let completion = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: preparation.snapshot.confirmationToken,
@@ -519,17 +519,41 @@ struct DerivedRefreshStatusTests {
         let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
         defer { try? FileManager.default.removeItem(at: invalidURL) }
 
-        let manuscriptMethod = try await handle.research.duplicateBundledSkill(
-            id: "scholium-manuscript",
-            as: "refresh-manuscript-method"
+        let registrations = try await handle.research.researchSkillRegistrations()
+        let manuscriptRegistration = try #require(
+            registrations.document.registration(for: .manuscript)
         )
-        let manuscriptBindings = try #require(
-            try await handle.research.workingMethodBindings()
+        _ = try await handle.research.saveResearchSkillRegistrations(
+            try registrations.document.replacing(ResearchSkillRegistration(
+                key: manuscriptRegistration.key,
+                actionID: manuscriptRegistration.actionID,
+                displayName: manuscriptRegistration.displayName,
+                primaryMarkdown: manuscriptRegistration.primaryMarkdown,
+                skillFolder: manuscriptRegistration.skillFolder,
+                isEnabled: true
+            )),
+            expectedRevision: registrations.revision
         )
-        _ = try await handle.research.activateResearcherSkill(
-            packageID: manuscriptMethod.id,
-            for: .manuscript,
-            expectedBindingRevision: manuscriptBindings.revision
+        let profiles = try await handle.research.academicActionProfiles()
+        let manuscriptProfile = try #require(
+            profiles.document.profile(for: .manuscript)
+        )
+        let enabledProfile = try ResearchAcademicActionProfile(
+            actionID: manuscriptProfile.actionID,
+            displayName: manuscriptProfile.displayName,
+            order: manuscriptProfile.order,
+            isEnabled: true,
+            applicableRoles: manuscriptProfile.applicableRoles,
+            academicInputFields: manuscriptProfile.academicInputFields,
+            academicResultFields: manuscriptProfile.academicResultFields
+        )
+        _ = try await handle.research.saveAcademicActionProfiles(
+            try ResearchAcademicProfileDocument(
+                profiles: profiles.document.profiles.filter {
+                    $0.actionID != .manuscript
+                } + [enabledProfile]
+            ),
+            expectedRevision: profiles.revision
         )
 
         let manuscript = try await handle.research.prepareProtectedFunction(
@@ -543,10 +567,12 @@ struct DerivedRefreshStatusTests {
         let original = try await handle.documents.load(workID)
         let revisedSource = original.rawContent
             + "\nAn explicit premise now supports the inference.\n"
-        try Data(revisedSource.utf8).write(
-            to: fixture.worksURL.appendingPathComponent("Chapter.md"),
-            options: .atomic
+        let write = try await writePreparedResearchDocument(
+            for: revise,
+            content: revisedSource,
+            handle: handle
         )
+        #expect(write.state == .committed)
         let revisedFingerprint = DocumentFingerprint(content: revisedSource)
         let fidelityOutcomes = try #require(revise.snapshot.fidelityHandoff).checks
             .sorted(by: { $0.rawValue < $1.rawValue })
@@ -557,18 +583,12 @@ struct DerivedRefreshStatusTests {
                     summary: "The final Work revision passed the selected check."
                 )
             }
-        let reviseActivityCompletion = try derivedRefreshActivityCompletion(
-            for: revise,
-            candidateModifiedNotes: [workID],
-            summary: "Revised the Work."
-        )
-        let awaitingRevision = try await handle.research.completeProtectedFunction(
+        let awaitingRevision = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
                 summary: "Revised the Work; final Fidelity remains pending.",
-                didModifyTarget: true,
-                activityCompletion: reviseActivityCompletion
+                didModifyTarget: true
             )
         )
         #expect(awaitingRevision.state == .awaitingFidelity)
@@ -587,7 +607,7 @@ struct DerivedRefreshStatusTests {
                 checks: try #require(revise.snapshot.fidelityHandoff).checks
             )
         )
-        _ = try await handle.research.completeProtectedFunction(
+        _ = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: fidelity.runID,
                 confirmationToken: fidelity.snapshot.confirmationToken,
@@ -597,13 +617,12 @@ struct DerivedRefreshStatusTests {
                 fidelityOutcomes: fidelityOutcomes
             )
         )
-        let reviseCompletion = try await handle.research.completeProtectedFunction(
+        let reviseCompletion = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
                 summary: "Revised the Work and linked final Fidelity evidence.",
                 didModifyTarget: true,
-                activityCompletion: reviseActivityCompletion,
                 childRunIDs: [fidelity.runID]
             )
         )
@@ -615,7 +634,7 @@ struct DerivedRefreshStatusTests {
         #expect(try await handle.services.localResearchExecutionStore.record(
             id: revise.runID
         ).completion?.state == .complete)
-        let manuscriptCompletion = try await handle.research.completeProtectedFunction(
+        let manuscriptCompletion = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: manuscript.runID,
                 confirmationToken: manuscript.snapshot.confirmationToken,
@@ -653,29 +672,6 @@ private func functionTarget(
         lifecycle: note.lifecycle,
         fingerprint: note.fingerprint,
         title: note.document.parsedFrontmatter["title"]?.scalarString ?? id.relativePath
-    )
-}
-
-private func derivedRefreshActivityCompletion(
-    for preparation: ResearchFunctionPreparation,
-    candidateModifiedNotes: [VaultQualifiedNoteID],
-    summary: String,
-    submittedAt: Date = Date()
-) throws -> ResearchActivityCompletionSubmission {
-    let prefix = "Write key: "
-    let key = try #require(
-        preparation.instructions
-            .split(separator: "\n")
-            .map(String.init)
-            .first(where: { $0.hasPrefix(prefix) })?
-            .dropFirst(prefix.count)
-    )
-    return ResearchActivityCompletionSubmission(
-        activityID: try #require(preparation.snapshot.activityID),
-        activityKey: String(key),
-        candidateModifiedNotes: candidateModifiedNotes,
-        summary: summary,
-        submittedAt: submittedAt
     )
 }
 

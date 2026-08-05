@@ -14,8 +14,8 @@ export TMPDIR="${TEST_TEMP}"
 python3 "${ROOT}/Tools/Scripts/validate-documentation-authority.py"
 
 # The Core resource tree is the sole repository authority for release-shipped
-# product Skills. Every package must ship the local reference files named by
-# its SKILL.md before SwiftPM accepts it as a bundled Beta resource.
+# product Skills. Every shipped SKILL.md must have the local reference files
+# it names before SwiftPM accepts the tree as a bundled Beta resource.
 python3 - "${ROOT}/ScholiumCore/Resources/Skills" <<'PY'
 from pathlib import Path
 import re
@@ -23,20 +23,20 @@ import sys
 
 root = Path(sys.argv[1])
 missing = []
-packages = sorted(path.parent for path in root.rglob("SKILL.md"))
-for package in packages:
-    source = (package / "SKILL.md").read_text(encoding="utf-8")
+skill_roots = sorted(path.parent for path in root.rglob("SKILL.md"))
+for skill_root in skill_roots:
+    source = (skill_root / "SKILL.md").read_text(encoding="utf-8")
     references = sorted(set(re.findall(r"references/[A-Za-z0-9._/-]+", source)))
     for reference in references:
-        if not (package / reference).is_file():
-            missing.append(f"{package}: {reference}")
+        if not (skill_root / reference).is_file():
+            missing.append(f"{skill_root}: {reference}")
 
 if missing:
     print("Protected Skill reference check failed:", file=sys.stderr)
     print("\n".join(missing), file=sys.stderr)
     raise SystemExit(1)
 
-print(f"Protected Skill references: {len(packages)} packages validated")
+print(f"Shipped Skill references: {len(skill_roots)} SKILL.md roots validated")
 PY
 
 # Scholium's current interface contract is English-only. Keep this guard
@@ -68,7 +68,7 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-# Literature recommendations belong only to schema-4 Analyze Research Records.
+# Literature recommendations belong only to schema-5 Analyze Research Records.
 # Reject the retired standalone product object, its private files and commands,
 # and its dedicated interface tokens without banning ordinary bibliographic
 # metadata terminology used by Zotero and research documents.
@@ -105,7 +105,71 @@ if rg -n --hidden \
   --glob '!Tools/Scripts/verify.sh' \
   'Local Execution v2|Local-v2|research-execution-v2|execution-v2\.lock' \
   "${ROOT}"; then
-  echo "Local Execution v3 cutover guard failed: v2 residue remains." >&2
+  echo "Local Execution clean-cutover guard failed: v2 residue remains." >&2
+  exit 1
+fi
+
+# The pre-release Skill-package, standing-permission, custom-Action, workflow,
+# and additional-Note owners have no compatibility surface. Keep production
+# code and shipped resources on the registration/Profile/policy/Run-owned
+# write-set model after the clean cutover.
+LEGACY_RESEARCH_ROOTS=(
+  "${ROOT}/Scholium"
+  "${ROOT}/ScholiumCLI"
+  "${ROOT}/ScholiumApplication"
+  "${ROOT}/ScholiumContracts"
+  "${ROOT}/ScholiumCore"
+)
+if rg -n --glob '*.swift' \
+  '\b(ResearchSkillCatalog|ResearchSkillPackage|ResearchSkillInstallation|ResearchPermissionPolicy|ResearchActionProfile|ResearchWorkflowContract|ResearchWorkflowRoute|ResearchWorkingMethodBinding|ResearchCapabilityMethodStore|ResearchGuidanceDocumentStore|ResearchSkillInspector|ResearchSkillResolver|ResearchSkillTransactionCoordinator|AgentNoteChangeRequest)\b' \
+  "${LEGACY_RESEARCH_ROOTS[@]}"; then
+  echo "Research Skill clean-cutover guard failed: a retired production owner returned." >&2
+  exit 1
+fi
+
+if rg -n --glob '*.swift' \
+  'researcherOwnedRawValue|researcher_skill' \
+  "${LEGACY_RESEARCH_ROOTS[@]}"; then
+  echo "Platform Action guard failed: the retired custom-Action identity returned." >&2
+  exit 1
+fi
+
+if rg -n --glob '*.swift' --glob '*.sh' \
+  'scholium[[:space:]]+skills|skills[[:space:]]+catalog|scholium[[:space:]]+workflow' \
+  "${LEGACY_RESEARCH_ROOTS[@]}" \
+  "${ROOT}/Tools/Scripts/package-app.sh"; then
+  echo "Research CLI cutover guard failed: a retired Skill/workflow command returned." >&2
+  exit 1
+fi
+
+if rg -n --hidden \
+  --glob '!.git/**' \
+  --glob '!.build/**' \
+  --glob '!verify.sh' \
+  'skill-registrations-v1|method-edit-recovery-v1|research-execution-v[2-7]|execution-v[2-7]\.lock|Contents/Resources/Skills/catalog\.yaml|Researcher Skills/scholium-philosophical-practices' \
+  "${LEGACY_RESEARCH_ROOTS[@]}" \
+  "${ROOT}/Tools" \
+  "${ROOT}/Tests"; then
+  echo "Research storage/resource guard failed: a retired path or schema remains reachable." >&2
+  exit 1
+fi
+
+# Pairing and Session bearer values must be explicitly unwrapped only by the
+# narrow wire/protected-storage adapters. General Codable/printable conformance
+# or embedding the code in copied Agent instructions would leak authority.
+if rg -n -U \
+  'public struct (ResearchPairingCode|ResearchConnectionCredential|ResearchAgentHandoff):[^{]*\bCodable\b' \
+  "${ROOT}/ScholiumContracts/ResearchAgentConnectionContracts.swift" \
+  || rg -n -U \
+  'struct Research(Write|MethodWrite)Capability:[^{]*\bCodable\b' \
+  "${ROOT}/ScholiumApplication/ResearchAgentSessionAuthority.swift"; then
+  echo "Agent secret guard failed: a bearer value became generally Codable." >&2
+  exit 1
+fi
+
+if rg -n 'pairingCode\.rawValue' \
+  "${ROOT}/ScholiumContracts/ResearchAgentConnectionContracts.swift"; then
+  echo "Agent handoff guard failed: copied instructions contain the Pairing Code." >&2
   exit 1
 fi
 
@@ -267,8 +331,7 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/verify-action-cli.sh" \
   "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh" \
-  "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh" \
-  "${ROOT}/Tools/Scripts/verify-workflow-cli.sh"; do
+  "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh"; do
   zsh -n "${shell_script}"
 done
 zsh -n "${ROOT}/Manage Scholium Development Storage.command"
@@ -296,8 +359,8 @@ report_swift_test_success() {
     print "${label}: passed"
   fi
 
-  if rg -q 'SEARCH_V4_PERFORMANCE_REPORT' "${log}"; then
-    rg 'SEARCH_V4_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
+  if rg -q 'SEARCH_V6_PERFORMANCE_REPORT' "${log}"; then
+    rg 'SEARCH_V6_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
       "${log}" || true
   fi
 }
@@ -424,7 +487,6 @@ if rg -n 'ScholiumCore' \
   exit 1
 fi
 
-"${ROOT}/Tools/Scripts/verify-workflow-cli.sh" "${SCRATCH}/debug/scholium"
 "${ROOT}/Tools/Scripts/verify-action-cli.sh" \
   "${SCRATCH}/debug/scholium" \
   "${SCRATCH}"

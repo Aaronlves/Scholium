@@ -114,10 +114,6 @@ extension ScholiumCLI {
            !arguments[2].hasPrefix("-") {
             return arguments.prefix(3).joined(separator: " ")
         }
-        if command == "agent", arguments.count >= 3, arguments[1] == "mcp",
-           !arguments[2].hasPrefix("-") {
-            return arguments.prefix(3).joined(separator: " ")
-        }
         guard arguments.count >= 2 else { return command }
         return arguments.prefix(2).joined(separator: " ")
     }
@@ -129,7 +125,42 @@ extension ScholiumCLI {
             "--format": .value,
         ]
         var rules: [String: CLICommandRule] = [
-            "agent mcp serve": .init(pathLength: 3),
+            "agent pair": .init(pathLength: 2, options: ["--run": .value]),
+            "agent context": .init(pathLength: 2, options: ["--run": .value]),
+            "agent reload": .init(pathLength: 2, options: ["--run": .value]),
+            "agent query": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
+            "agent extend-write-set": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
+            "agent write": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
+            "agent resolve-write-conflict": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
+            "agent submit-result": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
+            "agent continue": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
+            "agent method-context": .init(
+                pathLength: 2,
+                options: ["--run": .value]
+            ),
+            "agent improve-method": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
+            "agent end": .init(pathLength: 2, options: ["--run": .value]),
             "doctor": .init(pathLength: 1, options: format),
             "vault list": .init(pathLength: 2, options: format),
             "search": .init(
@@ -173,34 +204,10 @@ extension ScholiumCLI {
                     "--format": .value,
                 ]
             ),
-            "skills catalog": .init(pathLength: 2, options: selected),
-            "skills show": .init(
-                pathLength: 2,
-                positionalCount: 1 ... 1,
-                options: ["--triptych": .value, "--resource": .value, "--format": .value]
-            ),
-            "skills resources": .init(
-                pathLength: 2,
-                positionalCount: 1 ... 1,
-                options: selected
-            ),
-            "workflow validate": .init(
-                pathLength: 2,
-                options: ["--from": .value, "--triptych": .value, "--format": .value]
-            ),
-            "workflow assemble": .init(
-                pathLength: 2,
-                options: ["--from": .value, "--triptych": .value, "--format": .value]
-            ),
-            "workflow audit-plan": .init(
-                pathLength: 2,
-                options: ["--from": .value, "--format": .value]
-            ),
             "action available": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
             "action prepare": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
             "action show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "action prepare-fidelity": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
-            "action complete": .init(pathLength: 2, options: ["--from": .value, "--triptych": .value, "--format": .value]),
             "action cancel": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "read": .init(pathLength: 1, positionalCount: 1 ... 1, options: format),
             "note create": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--from": .value]),

@@ -120,11 +120,21 @@ public struct SourceLocator: Codable, Hashable, Sendable {
 }
 
 public struct RelationshipSourceOccurrence: Codable, Hashable, Sendable {
+    /// The exact Note whose Markdown contains this relationship marker.
+    /// This remains distinct from normalized subject/object direction,
+    /// especially for undirected neutral and incompatible Connections.
+    public let sourceNote: VaultQualifiedNoteID
     public let locator: SourceLocator
     public let syntax: LinkSyntax
     public let vectorKind: VectorLinkKind?
 
-    public init(locator: SourceLocator, syntax: LinkSyntax, vectorKind: VectorLinkKind?) {
+    public init(
+        sourceNote: VaultQualifiedNoteID,
+        locator: SourceLocator,
+        syntax: LinkSyntax,
+        vectorKind: VectorLinkKind?
+    ) {
+        self.sourceNote = sourceNote
         self.locator = locator
         self.syntax = syntax
         self.vectorKind = vectorKind
@@ -323,7 +333,12 @@ public struct RelationshipEdge: Codable, Hashable, Identifiable, Sendable {
             isExplicit: explicit,
             isDirectional: directional,
             vectorKind: kind,
-            occurrences: [RelationshipSourceOccurrence(locator: locator, syntax: syntax, vectorKind: kind)]
+            occurrences: [RelationshipSourceOccurrence(
+                sourceNote: containing,
+                locator: locator,
+                syntax: syntax,
+                vectorKind: kind
+            )]
         )
     }
 

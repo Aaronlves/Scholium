@@ -67,7 +67,9 @@ cp "${ROOT}/Tools/Packaging/Info.plist" "${APP}/Contents/Info.plist"
   "${APP}/Contents/Info.plist"
 
 xattr -cr "${APP}"
-codesign --force --options runtime --sign - "${APP}/Contents/Helpers/scholium"
+codesign --force --options runtime \
+  --entitlements "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements" \
+  --sign - "${APP}/Contents/Helpers/scholium"
 codesign --force --options runtime \
   --entitlements "${ROOT}/Tools/Packaging/Scholium.entitlements" \
   --sign - "${APP}"
@@ -83,18 +85,20 @@ if rg -q 'com\.apple\.security\.app-sandbox' "${CLI_ENTITLEMENTS}"; then
   print -u2 "The probe CLI unexpectedly inherited the App Sandbox."
   exit 65
 fi
+rg -q 'group\.com\.scholium\.app' "${APP_ENTITLEMENTS}"
+rg -q 'group\.com\.scholium\.app' "${CLI_ENTITLEMENTS}"
 
-TRIPTYCH_ID="11111111-1111-1111-1111-111111111111"
-REQUEST_ID="22222222-2222-2222-2222-222222222222"
-COORDINATION_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-MCP_INPUT="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"show_note_change_request\",\"arguments\":{\"triptych_id\":\"${TRIPTYCH_ID}\",\"request_id\":\"${REQUEST_ID}\",\"coordination_key\":\"${COORDINATION_KEY}\"}}}"
+RUN_LOCATOR="sandbox-agent-bridge-probe"
+PAIRING_CODE="ABCD-EFGH-JKLM-NPQR-STUV-WXYZ"
 
-BEFORE="$(print -r -- "${MCP_INPUT}" | \
-  SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT="${SUPPORT}" \
-  "${APP}/Contents/Helpers/scholium" agent mcp serve)"
+BEFORE="$(print -r -- "${PAIRING_CODE}" | \
+  SCHOLIUM_AGENT_BRIDGE_CONTAINER="${SUPPORT}" \
+  "${APP}/Contents/Helpers/scholium" agent pair --run "${RUN_LOCATOR}" \
+  2>&1 || true)"
 print -r -- "${BEFORE}" | rg -qi 'unavailable'
 
 SCHOLIUM_HOME="${PROBE_HOME}" \
+SCHOLIUM_AGENT_BRIDGE_CONTAINER="${SUPPORT}" \
   "${APP}/Contents/MacOS/Scholium" \
   > "${SCRATCH}/app.stdout" 2> "${SCRATCH}/app.stderr" &
 APP_PID=$!
@@ -116,17 +120,18 @@ done
 [[ "$(stat -f '%Lp' "${SUPPORT}/b")" == "700" ]]
 [[ "$(stat -f '%Lp' "${SOCKET}")" == "600" ]]
 
-AFTER="$(print -r -- "${MCP_INPUT}" | \
-  SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT="${SUPPORT}" \
-  "${APP}/Contents/Helpers/scholium" agent mcp serve)"
-print -r -- "${AFTER}" | rg -q 'operation'
+AFTER="$(print -r -- "${PAIRING_CODE}" | \
+  SCHOLIUM_AGENT_BRIDGE_CONTAINER="${SUPPORT}" \
+  "${APP}/Contents/Helpers/scholium" agent pair --run "${RUN_LOCATOR}" \
+  2>&1 || true)"
+print -r -- "${AFTER}" | rg -qi 'bridge request was not authorized'
 if print -r -- "${AFTER}" | rg -qi 'unavailable'; then
   print -u2 "The unpackaged CLI could not reach the sandboxed App bridge."
   exit 1
 fi
-if rg -Fq "${COORDINATION_KEY}" \
+if rg -Fq "${PAIRING_CODE}" \
   "${SCRATCH}/app.stdout" "${SCRATCH}/app.stderr"; then
-  print -u2 "The sandboxed App logged the raw coordination key."
+  print -u2 "The sandboxed App logged the raw Pairing Code."
   exit 1
 fi
 
@@ -137,3 +142,4 @@ APP_PID=""
 print "Sandboxed AF_UNIX bridge probe passed."
 print "App sandbox: enabled; bundled CLI sandbox: disabled."
 print "Directory mode: 0700; socket mode: 0600; closed-App path: typed unavailable."
+print "An invalid but well-formed Pairing Code reached the App, received the generic authorization denial, and was not logged."

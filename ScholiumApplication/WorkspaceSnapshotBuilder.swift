@@ -294,7 +294,7 @@ enum WorkspaceSnapshotBuilder {
                             expected: expected
                         ) else {
                             throw ResearchFunctionContractError.invalidCompletion(
-                                "The active Discussion does not match its Local-v3 run."
+                                "The active Discussion does not match its current Run."
                             )
                         }
                     } else if let finished = finishedByID[local.id] {
@@ -303,7 +303,7 @@ enum WorkspaceSnapshotBuilder {
                             expected: expected
                         ) else {
                             throw ResearchFunctionContractError.invalidCompletion(
-                                "The finished Discussion does not match its Local-v3 run."
+                                "The finished Discussion does not match its current Run."
                             )
                         }
                     } else if local.completion == nil,
@@ -314,7 +314,7 @@ enum WorkspaceSnapshotBuilder {
                             .createActiveDiscussion(expected)
                     } else {
                         throw ResearchFunctionContractError.invalidCompletion(
-                            "The Local-v3 Discuss run has no exact portable Discussion pair."
+                            "The current Discuss Run has no exact portable Discussion pair."
                         )
                     }
                 } catch {
@@ -350,7 +350,6 @@ enum WorkspaceSnapshotBuilder {
         }
         activeDiscussionListing = try await services.portableResearchRecordStore
             .activeDiscussions()
-        let actionGrants = localExecutionListing.records.compactMap(\.grant)
         let latestSettlementByNoteID = Dictionary(
             settlements.map { ($0.noteID, $0) },
             uniquingKeysWith: { lhs, rhs in
@@ -421,33 +420,6 @@ enum WorkspaceSnapshotBuilder {
                 )
             }
         }
-        let loadedVaultsByID = Dictionary(
-            uniqueKeysWithValues: loadedVaults.map { ($0.vault.id, $0) }
-        )
-        let attributionAttention = actionGrants.flatMap { grant -> [AttentionQueueItem] in
-            guard let report = grant.completionReport else { return [] }
-            return report.unreportedChangedNotes.compactMap { changed in
-                guard let loaded = loadedVaultsByID[changed.note.vaultID],
-                      loaded.activeDocuments.contains(where: {
-                          $0.relativePath == changed.note.relativePath
-                      }),
-                      case .resolved(let currentID) = loaded.identityStates[
-                          changed.note.relativePath
-                      ],
-                      currentID == changed.noteID else { return nil }
-                return AttentionQueueItem(
-                    kind: .changeAttributionNeeded,
-                    severity: .warning,
-                    note: VaultNoteReference(
-                        vaultID: loaded.vault.id,
-                        vaultName: loaded.vault.name,
-                        vaultRole: loaded.vault.role,
-                        relativePath: changed.note.relativePath
-                    ),
-                    message: "This note changed inside a frozen Write scope but was not included in the agent's completion report. Review its attribution before treating it as part of the activity from \(grant.origin.title)."
-                )
-            }
-        }
         let materialChangedSinceUseAttention = Self.materialChangedSinceUseAttention(
             records: finishedResearchRecordListing.records,
             loadedVaults: loadedVaults
@@ -457,7 +429,7 @@ enum WorkspaceSnapshotBuilder {
             documents: documentsByVault,
             semanticDocuments: semanticDocuments,
             settlementStates: settlementStates,
-            additionalAttention: attributionAttention + materialChangedSinceUseAttention,
+            additionalAttention: materialChangedSinceUseAttention,
             graph: graph
         )
 
@@ -567,158 +539,7 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: localExecutionListing.issues.map {
             "Local Research Execution \($0.fileName): \($0.reason)"
         })
-        var critiqueAssociations = critiquesByID.values.sorted {
-            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
-            return $0.id.uuidString < $1.id.uuidString
-        }
-        let retainedCritiqueFunctionRuns = critiqueAssociations.flatMap { association in
-                association.rounds.compactMap { round in
-                    round.functionSnapshot.map {
-                        ResearchFunctionRecordProjection(
-                            snapshot: $0,
-                            completion: round.functionCompletion,
-                            preparedInstructions: round.functionInstructions
-                        )
-                    }
-                }
-            }
-        var localFunctionRuns = localExecutionListing.records.map { record in
-            ResearchFunctionRecordProjection(
-                snapshot: record.snapshot,
-                completion: record.completion,
-                preparedInstructions: record.preparedInstructions
-            )
-        }
-        var localRunIDs = Set(localFunctionRuns.map(\.id))
-        let unhealthyLocalFileNames = Set(localExecutionListing.issues.map(\.fileName))
-        let stagedCritiqueRounds = critiqueAssociations.flatMap { association in
-            association.rounds.compactMap { round in
-                round.functionSnapshot.map { (association, round, $0) }
-            }
-        }
-        for (association, round, snapshot) in stagedCritiqueRounds {
-            guard !localRunIDs.contains(round.id) else { continue }
-            let localFileName = round.id.uuidString.lowercased() + ".json"
-            guard !unhealthyLocalFileNames.contains(localFileName) else {
-                healthIssues.append(
-                    "Critique handoff \(round.id.uuidString) has unreadable Local Execution v3 evidence; its portable staging evidence was preserved."
-                )
-                continue
-            }
-            guard snapshot.actionSnapshot?.actionID == .critique,
-                  snapshot.request.function == .critique,
-                  snapshot.runID == round.id,
-                  snapshot.recordKind == .critique,
-                  snapshot.recordID == round.id,
-                  snapshot.checkpointID == round.checkpointID,
-                  snapshot.request.target.noteID == association.workNoteID,
-                  snapshot.request.target.fingerprint == round.targetFingerprint,
-                  snapshot.actionSnapshot?.target.noteID == association.workNoteID,
-                  snapshot.actionSnapshot?.target.note == snapshot.request.target.note,
-                  snapshot.actionSnapshot?.target.fingerprint
-                    == round.targetFingerprint,
-                  snapshot.preparedOutput?.note.vaultID
-                    == snapshot.request.target.note.vaultID,
-                  snapshot.preparedOutput?.note.relativePath
-                    == association.critiqueRelativePath,
-                  snapshot.preparedOutput?.fingerprint != nil,
-                  round.functionCompletion == nil,
-                  round.actionableFindings.isEmpty,
-                  !round.localExecutionFindingsCaptured,
-                  round.findingDispositions.isEmpty,
-                  round.completedAt == nil,
-                  let preparedInstructions = round.functionInstructions else {
-                healthIssues.append(
-                    "Critique handoff \(round.id.uuidString) has inconsistent portable staging evidence; it was preserved without creating Local Execution v3."
-                )
-                continue
-            }
-            do {
-                guard try await services.localResearchExecutionStore
-                    .hasMatchingCritiqueHandoff(
-                        snapshot: snapshot,
-                        preparedInstructions: preparedInstructions
-                    ) else {
-                    healthIssues.append(
-                        "Critique handoff \(round.id.uuidString) has no matching machine-local intent; its portable staging evidence was preserved."
-                    )
-                    continue
-                }
-                if let checkpointID = snapshot.checkpointID {
-                    let checkpoint = try await services.checkpointStore.checkpoint(
-                        id: checkpointID
-                    )
-                    guard checkpoint.kind == .automatic else {
-                        throw ResearchFunctionContractError.invalidCompletion(
-                            "The legacy Critique staging checkpoint is not automatic."
-                        )
-                    }
-                }
-                let recovered = try LocalResearchExecutionRecord(
-                    triptychID: services.manifest.id,
-                    snapshot: snapshot,
-                    preparedInstructions: preparedInstructions
-                )
-                let stored = try await services.localResearchExecutionStore
-                    .create(recovered)
-                localFunctionRuns.append(ResearchFunctionRecordProjection(
-                    snapshot: stored.snapshot,
-                    completion: stored.completion,
-                    preparedInstructions: stored.preparedInstructions
-                ))
-                localRunIDs.insert(stored.id)
-                do {
-                    try await services.localResearchExecutionStore
-                        .discardCritiqueHandoff(
-                            snapshot: snapshot,
-                            preparedInstructions: preparedInstructions
-                        )
-                } catch {
-                    healthIssues.append(
-                        "Critique handoff \(round.id.uuidString) was installed, but its machine-local intent could not be discarded: \(error.localizedDescription)"
-                    )
-                }
-            } catch {
-                healthIssues.append(
-                    "Critique handoff \(round.id.uuidString) could not be installed in Local Execution v3; its portable staging evidence was preserved: \(error.localizedDescription)"
-                )
-            }
-        }
-        for local in localFunctionRuns {
-            let duplicates = retainedCritiqueFunctionRuns.filter { $0.id == local.id }
-            guard !duplicates.isEmpty else { continue }
-            let isExactCritiqueHandoff = duplicates.count == 1
-                && duplicates[0].snapshot == local.snapshot
-                && duplicates[0].completion == local.completion
-                && duplicates[0].preparedInstructions == local.preparedInstructions
-                && critiqueAssociations.contains { association in
-                    association.rounds.contains {
-                        $0.functionSnapshot?.runID == local.id
-                    }
-                }
-            if isExactCritiqueHandoff {
-                do {
-                    let updated = try await services.critiqueRegistry.detachFunctionEvidence(
-                        runID: local.id,
-                        matching: local.snapshot
-                    )
-                    if let index = critiqueAssociations.firstIndex(where: {
-                        $0.id == updated.id
-                    }) {
-                        critiqueAssociations[index] = updated
-                    }
-                } catch {
-                    healthIssues.append(
-                        "Critique handoff \(local.id.uuidString): \(error.localizedDescription)"
-                    )
-                }
-            } else {
-                healthIssues.append(
-                    "Research execution \(local.id.uuidString) has conflicting retained evidence; Local Execution v3 was projected read-only."
-                )
-            }
-        }
-        critiqueAssociations.sort {
+        let critiqueAssociations = critiquesByID.values.sorted {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
         }
@@ -728,6 +549,15 @@ enum WorkspaceSnapshotBuilder {
                 ? activeDiscussionListing.discussions
                 : [],
             finishedResearchRecords: finishedResearchRecordListing.records,
+            finishedResearchRecordFingerprints: Dictionary(
+                uniqueKeysWithValues: finishedResearchRecordListing.revisions.map {
+                    ($0.record.id, $0.fingerprint)
+                }
+            ),
+            finishedResearchRecordSourceManifestHash:
+                finishedResearchRecordListing.sourceManifestHash,
+            finishedResearchRecordProjectionIsComplete:
+                finishedResearchRecordListing.issues.isEmpty,
             critiques: critiqueAssociations,
             checkpointListing: await services.checkpointStore.listing(),
             recoveryRecords: recoveryRecords,

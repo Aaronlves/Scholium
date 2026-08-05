@@ -387,6 +387,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var pendingInspectorVisibility: Bool?
     private var noteResearchRecordsPresenter: @MainActor () -> Void = {}
     private var triptychResearchRecordsPresenter: @MainActor () -> Void = {}
+    private var researchRecordsWindowPresenter: @MainActor () -> Void = {}
     private var researchRecordsWorkspaceToken: UUID?
     private var researchRecordsTriptychID: UUID?
     private var attentionPresenter:
@@ -399,6 +400,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var agentRequestWindowIsRegistered = false
     #if DEBUG
     private var qaFocusNotificationToken: Int32?
+    private var qaWriteSetExtensionNotificationToken: Int32?
     #endif
 
     init(
@@ -420,14 +422,21 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         loadingToolbar.itemIdentifiers = [.flexibleSpace]
         self.loadingToolbar = loadingToolbar
         super.init()
+        appState.bindResearchRecordSearchPresentation { [weak self] result in
+            self?.presentResearchRecordSearchResult(result)
+        }
         registerLifecycle()
         registerQAFocusRequest()
+        registerQAWriteSetExtensionRequest()
     }
 
     deinit {
         #if DEBUG
         if let qaFocusNotificationToken {
             notify_cancel(qaFocusNotificationToken)
+        }
+        if let qaWriteSetExtensionNotificationToken {
+            notify_cancel(qaWriteSetExtensionNotificationToken)
         }
         #endif
     }
@@ -465,6 +474,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     func activate(
         showNoteResearchRecords: @escaping @MainActor () -> Void,
         showTriptychResearchRecords: @escaping @MainActor () -> Void,
+        showResearchRecordsWindow: @escaping @MainActor () -> Void,
         showAttention: @escaping @MainActor (
             AttentionPopoverAnchor,
             WorkspaceVaultSlot?,
@@ -474,6 +484,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         registerLifecycle()
         noteResearchRecordsPresenter = showNoteResearchRecords
         triptychResearchRecordsPresenter = showTriptychResearchRecords
+        researchRecordsWindowPresenter = showResearchRecordsWindow
         attentionPresenter = showAttention
     }
 
@@ -500,6 +511,21 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         }
     }
 
+    private func presentResearchRecordSearchResult(
+        _ result: RecordSearchResult
+    ) {
+        guard let triptychID = researchRecordsTriptychID,
+              let researchRecordsWindowCoordinator else { return }
+        researchRecordsWindowCoordinator.submit(ResearchRecordsWindowRequest(
+            triptychID: triptychID,
+            initialView: .records,
+            recordID: result.recordID,
+            expectedRecordFingerprint: result.fingerprint,
+            statementID: result.statementID
+        ))
+        researchRecordsWindowPresenter()
+    }
+
     func attach(to window: NSWindow) {
         if self.window === window, window.delegate === self {
             installLoadingToolbarIfNeeded()
@@ -519,7 +545,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         installLoadingToolbarIfNeeded()
         previousDelegate = window.delegate
         window.delegate = self
-        registerAgentNoteChangeWindow()
+        registerResearchAgentPermissionWindow()
         installToolbarIfPossible()
         markReadyIfPossible()
     }
@@ -558,11 +584,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         appState.finalizeWindowClose()
         removeToolbar()
         splitController = nil
-        unregisterAgentNoteChangeWindow()
+        unregisterResearchAgentPermissionWindow()
         unregisterResearchRecordsWorkspace()
         detachWindow()
         noteResearchRecordsPresenter = {}
         triptychResearchRecordsPresenter = {}
+        researchRecordsWindowPresenter = {}
         attentionPresenter = { _, _, _ in }
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
@@ -582,10 +609,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         isRegistered = true
     }
 
-    private func registerAgentNoteChangeWindow() {
+    private func registerResearchAgentPermissionWindow() {
         guard !agentRequestWindowIsRegistered else { return }
         agentRequestWindowIsRegistered = true
-        appState.agentNoteChangeWindowController.registerWindowEndpoint(
+        appState.researchAgentPermissionWindowController.registerWindowEndpoint(
             activeTriptychID: { [weak appState] in
                 appState?.activeTriptychServicesID
             },
@@ -605,14 +632,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 self?.agentRequestPriorResponder = self?.window?.firstResponder
             },
             focus: { [weak self] in
-                self?.focusAgentNoteChangeSheet()
+                self?.focusResearchAgentPermissionSheet()
             }
         )
     }
 
-    private func unregisterAgentNoteChangeWindow() {
+    private func unregisterResearchAgentPermissionWindow() {
         guard agentRequestWindowIsRegistered else { return }
-        appState.agentNoteChangeWindowController.unregisterWindow()
+        appState.researchAgentPermissionWindowController.unregisterWindow()
         agentRequestWindowIsRegistered = false
         agentRequestPriorResponder = nil
     }
@@ -633,14 +660,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         self.researchRecordsWorkspaceToken = nil
     }
 
-    private func focusAgentNoteChangeSheet() {
+    private func focusResearchAgentPermissionSheet() {
         guard let window else { return }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.attachedSheet?.makeKeyAndOrderFront(nil)
     }
 
-    func restoreAgentNoteChangeFocus() {
+    func restoreResearchAgentPermissionFocus() {
         defer { agentRequestPriorResponder = nil }
         guard let window, let responder = agentRequestPriorResponder else { return }
         window.makeFirstResponder(responder)
@@ -650,7 +677,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if lifecycleRegistry.noteWorkspaceWindowActivated(windowID) {
             appState.attentionPopoverSession.resetForWorkspaceSwitch()
         }
-        appState.agentNoteChangeWindowController.noteWindowActivated()
+        appState.researchAgentPermissionWindowController.noteWindowActivated()
         if let researchRecordsTriptychID, let researchRecordsWorkspaceToken {
             researchRecordsWindowCoordinator?.workspaceDidActivate(
                 triptychID: researchRecordsTriptychID,
@@ -664,7 +691,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         // Release App-wide claims before SwiftUI tears down the per-window
         // model so an unresolved request can move to another exact window.
         appState.finalizeWindowClose()
-        unregisterAgentNoteChangeWindow()
+        unregisterResearchAgentPermissionWindow()
         unregisterResearchRecordsWorkspace()
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
@@ -742,6 +769,83 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         }
         #endif
     }
+
+    private func registerQAWriteSetExtensionRequest() {
+        #if DEBUG
+        guard Bundle.main.bundleIdentifier == "com.scholium.qa",
+              ProcessInfo.processInfo.arguments.contains(
+                "--scholium-write-set-extension-fixture"
+              ) else { return }
+        var token: Int32 = 0
+        let name = "com.scholium.qa.present-write-set-extension.\(windowID.uuidString)"
+        let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let triptychID = appState.activeTriptychServicesID,
+                      let record = try? Self.qaWriteSetExtensionRecord(
+                        triptychID: triptychID
+                      ) else { return }
+                appState.researchAgentPermissionWindowController.present(
+                    .writeSetExtension(record),
+                    activeTriptychID: triptychID
+                )
+            }
+        }
+        if status == NOTIFY_STATUS_OK {
+            qaWriteSetExtensionNotificationToken = token
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private static func qaWriteSetExtensionRecord(
+        triptychID: UUID
+    ) throws -> ResearchWriteSetExtensionRecord {
+        let runID = UUID(
+            uuidString: "11000000-0000-0000-0000-000000000001"
+        )!
+        let noteID = UUID(
+            uuidString: "22000000-0000-0000-0000-000000000001"
+        )!
+        let selector = try ResearchWriteSetTargetSelector(
+            role: .topic,
+            relativePath: "QA Autosave B.md",
+            operations: [.modifyMarkdown]
+        )
+        let intent = try ResearchWriteSetExtensionIntent(
+            targets: [selector],
+            academicReason: "The current argument requires one bounded update to the related Topic."
+        )
+        let candidate = try ResearchWriteSetCandidate(
+            handle: ResearchWriteTargetHandle(runID: runID, noteID: noteID),
+            noteID: noteID,
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(
+                    uuidString: "33000000-0000-0000-0000-000000000001"
+                )!,
+                relativePath: selector.relativePath
+            ),
+            role: selector.role,
+            title: "QA Autosave B",
+            operations: selector.operations,
+            expectedRevision: DocumentFingerprint(content: "# QA Autosave B\n")
+        )
+        let receivedAt = Date()
+        return try ResearchWriteSetExtensionRecord(
+            id: UUID(),
+            runID: runID,
+            triptychID: triptychID,
+            intent: intent,
+            intentDigest: DocumentFingerprint(content: "qa-write-set-extension"),
+            candidates: [candidate],
+            policy: .askEveryTime,
+            policyRevision: DocumentFingerprint(content: "qa-policy"),
+            state: .pending,
+            receivedAt: receivedAt,
+            expiresAt: receivedAt.addingTimeInterval(5 * 60)
+        )
+    }
+    #endif
 
     private func setLibraryVisible(_ visible: Bool) {
         guard let splitController else {

@@ -544,11 +544,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
     public let targetFingerprint: DocumentFingerprint
     public let checkpointID: UUID?
     public let scope: CritiqueRequestScope
-    public let functionSnapshot: ResearchFunctionSnapshot?
-    public let functionCompletion: ResearchFunctionCompletion?
-    public let functionInstructions: String?
     public let actionableFindings: [CritiqueFinding]
-    public let localExecutionFindingsCaptured: Bool
     public let findingDispositions: [CritiqueFindingDisposition]
     public let completedAt: Date?
 
@@ -558,11 +554,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         targetFingerprint: DocumentFingerprint,
         checkpointID: UUID?,
         scope: CritiqueRequestScope,
-        functionSnapshot: ResearchFunctionSnapshot? = nil,
-        functionCompletion: ResearchFunctionCompletion? = nil,
-        functionInstructions: String? = nil,
         actionableFindings: [CritiqueFinding] = [],
-        localExecutionFindingsCaptured: Bool = false,
         findingDispositions: [CritiqueFindingDisposition] = [],
         completedAt: Date? = nil
     ) {
@@ -571,14 +563,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         self.targetFingerprint = targetFingerprint
         self.checkpointID = checkpointID
         self.scope = scope
-        self.functionSnapshot = functionSnapshot
-        self.functionCompletion = functionCompletion
-        let normalized = functionInstructions?.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        self.functionInstructions = normalized?.isEmpty == false ? normalized : nil
         self.actionableFindings = Self.uniqueFindings(actionableFindings)
-        self.localExecutionFindingsCaptured = localExecutionFindingsCaptured
         let actionableIDs = Set(self.actionableFindings.map(\.id))
         self.findingDispositions = Dictionary(
             findingDispositions
@@ -591,8 +576,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, requestedAt, targetFingerprint, checkpointID, scope
-        case functionSnapshot, functionCompletion, functionInstructions
-        case actionableFindings, localExecutionFindingsCaptured
+        case actionableFindings
         case findingDispositions, completedAt
     }
 
@@ -607,26 +591,10 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
             ),
             checkpointID: try container.decodeIfPresent(UUID.self, forKey: .checkpointID),
             scope: try container.decode(CritiqueRequestScope.self, forKey: .scope),
-            functionSnapshot: try container.decodeIfPresent(
-                ResearchFunctionSnapshot.self,
-                forKey: .functionSnapshot
-            ),
-            functionCompletion: try container.decodeIfPresent(
-                ResearchFunctionCompletion.self,
-                forKey: .functionCompletion
-            ),
-            functionInstructions: try container.decodeIfPresent(
-                String.self,
-                forKey: .functionInstructions
-            ),
             actionableFindings: try container.decodeIfPresent(
                 [CritiqueFinding].self,
                 forKey: .actionableFindings
             ) ?? [],
-            localExecutionFindingsCaptured: try container.decodeIfPresent(
-                Bool.self,
-                forKey: .localExecutionFindingsCaptured
-            ) ?? false,
             findingDispositions: try container.decodeIfPresent(
                 [CritiqueFindingDisposition].self,
                 forKey: .findingDispositions
@@ -642,14 +610,8 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         try container.encode(targetFingerprint, forKey: .targetFingerprint)
         try container.encodeIfPresent(checkpointID, forKey: .checkpointID)
         try container.encode(scope, forKey: .scope)
-        try container.encodeIfPresent(functionSnapshot, forKey: .functionSnapshot)
-        try container.encodeIfPresent(functionCompletion, forKey: .functionCompletion)
-        try container.encodeIfPresent(functionInstructions, forKey: .functionInstructions)
         if !actionableFindings.isEmpty {
             try container.encode(actionableFindings, forKey: .actionableFindings)
-        }
-        if localExecutionFindingsCaptured {
-            try container.encode(true, forKey: .localExecutionFindingsCaptured)
         }
         if !findingDispositions.isEmpty {
             try container.encode(findingDispositions, forKey: .findingDispositions)

@@ -7,7 +7,7 @@ import ScholiumCore
 
 struct ResolvedFunctionPhase: Sendable {
     let function: ResearchFunctionID
-    let envelope: ResolvedResearchWorkflowEnvelope
+    let method: ResearchMethodSnapshot
     let citationStyle: String?
 }
 
@@ -37,8 +37,8 @@ struct ResearchFunctionAuthorityBinding: Encodable {
 
 struct ResearchFunctionTaskDirective: Encodable {
     let action: ResearchActionID
-    let actionParameters: ResearchActionParameterModel
-    let feedbackRequirement: ResearchActionFeedbackRequirement
+    let academicInputs: ResearchAcademicFieldValues
+    let resultContract: ResearchResultContract
     let triptychID: String
     let runID: String
     let confirmationToken: String
@@ -47,39 +47,35 @@ struct ResearchFunctionTaskDirective: Encodable {
     let sourceReference: ResearchSourceReference?
     let readSet: [ResearchFunctionAuthorityBinding]
     let writeSet: [ResearchFunctionAuthorityBinding]
-    /// A separately prepared non-Target output such as the current Critique
-    /// record. Its identity and revision are authority, unlike explanatory
-    /// prose appended for readability.
-    let output: ResearchFunctionOutputSnapshot?
     let checks: [FidelityCheck]
-    let skillPackages: [ResearchFunctionSkillAuthorityBinding]
+    let method: ResearchFunctionMethodAuthorityBinding
 }
 
-struct ResearchFunctionSkillAuthorityBinding: Encodable {
-    let packageID: String
-    let origin: ResearchSkillOrigin
-    let version: String
-    let packageRevision: DocumentFingerprint
-    let loadedResources: [ResearchFunctionSkillResourceAuthorityBinding]
+struct ResearchFunctionMethodAuthorityBinding: Encodable {
+    let registrationKey: String
+    let action: ResearchActionID
+    let primaryMarkdownRevision: DocumentFingerprint
+    let practices: [ResearchFunctionPracticeAuthorityBinding]
+    let skillFolderPath: String?
 
-    init(_ selection: ResolvedResearchSkillSelection) {
-        packageID = selection.id
-        origin = selection.origin
-        version = selection.version
-        packageRevision = selection.packageRevision
-        loadedResources = selection.loadedResources.map(
-            ResearchFunctionSkillResourceAuthorityBinding.init
-        )
+    init(_ method: ResearchMethodSnapshot) {
+        registrationKey = method.registration.key.description
+        action = method.registration.actionID
+        primaryMarkdownRevision = method.primaryMarkdownRevision
+        practices = method.practices.map(ResearchFunctionPracticeAuthorityBinding.init)
+        skillFolderPath = method.skillFolderPath
     }
 }
 
-struct ResearchFunctionSkillResourceAuthorityBinding: Encodable {
+struct ResearchFunctionPracticeAuthorityBinding: Encodable {
+    let title: String
     let relativePath: String
     let revision: DocumentFingerprint
 
-    init(_ resource: ResolvedResearchSkillResource) {
-        relativePath = resource.relativePath
-        revision = resource.revision
+    init(_ practice: ResearchPracticeSnapshot) {
+        title = practice.title
+        relativePath = practice.relativePath
+        revision = practice.revision
     }
 }
 
@@ -149,13 +145,20 @@ extension ResearchFunctionCoordinator {
                     for: function,
                     targetRole: target.role
                 )
-                let resolution = try await dependencies.researchSkillStore
-                    .functionBindingResolution(
-                        for: function,
-                        actionID: action.id
-                    )
-                if let issue = resolution.issue {
-                    reasons.append(repairReason(for: issue, function: function))
+                do {
+                    let method = try await dependencies.researchConfigurationStore
+                        .methodSnapshot(for: action.id)
+                    if !method.registration.isEnabled {
+                        reasons.append(ResearchFunctionRepairReason(
+                            code: .missingWorkflow,
+                            function: function
+                        ))
+                    }
+                } catch {
+                    reasons.append(ResearchFunctionRepairReason(
+                        code: .missingWorkflow,
+                        function: function
+                    ))
                 }
             }
 
@@ -165,16 +168,15 @@ extension ResearchFunctionCoordinator {
                     check: .content,
                     isEnabled: true
                 ))
-                let citation = try await dependencies.researchSkillStore
-                    .citationBindingResolution()
-                if let issue = citation.issue {
+                let citation = try await dependencies.researchConfigurationStore
+                    .citationMethodSnapshot()
+                if citation?.document.activeCitationStyle == nil {
                     fidelityChecks.append(ResearchFunctionCheckAvailability(
                         check: .citations,
                         isEnabled: false,
-                        repairReasons: [repairReason(
-                            for: issue,
-                            function: .fidelity,
-                            citation: true
+                        repairReasons: [ResearchFunctionRepairReason(
+                            code: .citationStyleUnavailable,
+                            function: .fidelity
                         )]
                     ))
                 } else {
@@ -430,29 +432,6 @@ extension ResearchFunctionCoordinator {
         )
     }
 
-    func discardFailedAgentContinuation<Host: ResearchFunctionCoordinatorHost>(
-        _ child: LocalResearchExecutionRecord,
-        expectedLineage: ResearchContinuationLineage,
-        host: isolated Host
-    ) async throws {
-        try requireMatchingActiveHost(host)
-        guard child.snapshot.continuationLineage == expectedLineage,
-              let checkpointID = child.snapshot.checkpointID else {
-            throw AgentNoteChangeOperationError.continuationUnavailable(
-                expectedLineage.requestID
-            )
-        }
-        try await dependencies.localExecutionStore.discardFailedContinuation(
-            runID: child.id,
-            expectedLineage: expectedLineage
-        )
-        host.clearResearchActivityKey(runID: child.id)
-        host.clearAgentCoordinationKey(runID: child.id)
-        _ = try? await dependencies.checkpointStore.discardAutomaticCheckpoint(
-            id: checkpointID
-        )
-    }
-
     func prepareResearchFunction<Host: ResearchFunctionCoordinatorHost>(
         _ proposedRequest: ResearchFunctionRequest,
         fidelityInvocation: FidelityInvocationKind? = nil,
@@ -475,8 +454,9 @@ extension ResearchFunctionCoordinator {
         actionContext: ResolvedResearchActionContext,
         runIDOverride: UUID? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
+        continuationHandoff: ResearchContinuationHandoffContext? = nil,
         resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
-        requiresAutomaticCheckpoint: Bool = false,
+        requiresAutomaticCheckpoint: Bool = true,
         suppressRefresh: Bool = false,
         host: isolated Host
     ) async throws -> ResearchFunctionPreparation {
@@ -486,6 +466,13 @@ extension ResearchFunctionCoordinator {
             throw ResearchFunctionContractError.invalidCompletion(
                 "A Resynthesize child requires its exact revision-bound context."
             )
+        }
+        guard (continuationLineage?.kind == .continueResearch)
+                == (continuationHandoff != nil),
+              continuationHandoff?.parentRecordID
+                == continuationLineage?.parentRunID
+                || continuationHandoff == nil else {
+            throw ResearchContinuationContractError.invalidHandoff
         }
         guard actionContext.function == proposedRequest.function,
               actionContext.availability.definition.id
@@ -514,10 +501,6 @@ extension ResearchFunctionCoordinator {
             for: target,
             function: request.function
         )
-        let actionParameters = try resolvedActionParameters(
-            context: actionContext,
-            sourceReference: sourceAccess?.reference
-        )
         let zoteroContext = await zoteroBibliographicContext(
             for: target,
             sourceReference: sourceAccess?.reference
@@ -538,25 +521,10 @@ extension ResearchFunctionCoordinator {
             includeZoteroIntegration: zoteroContext != nil
                 || sourceAccess?.reference.identity.route == .zoteroAttachment
         )
-        let phaseSnapshots = phases.enumerated().map { index, resolved in
-            ResearchFunctionPhaseSnapshot(
-                phase: index + 1,
-                function: resolved.function,
-                skills: resolved.envelope.phases
-                    .flatMap(\.packages)
-                    .map(ResearchFunctionSkillSnapshot.init),
-                citationStyle: resolved.citationStyle
-            )
-        }
-        let allSkills = mergedFunctionSkillSnapshots(
-            phaseSnapshots.flatMap(\.skills)
-        )
         let actionSnapshot = try resolvedActionSnapshot(
             context: actionContext,
-            parameters: actionParameters,
             authority: actionAuthority,
-            target: request.target.actionNote,
-            skills: allSkills
+            target: request.target.actionNote
         )
 
         let commentOnlyDiscussion: PortableResearchDiscussion?
@@ -584,27 +552,22 @@ extension ResearchFunctionCoordinator {
         }
 
         let runID = runIDOverride ?? commentOnlyDiscussion?.id ?? UUID()
-        guard continuationLineage?.kind != .approvedAction
-                || runIDOverride != nil else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "A continuation child requires its reserved run identity."
-            )
-        }
-
-        // Current Actions rely on exact-note recovery only when a mediated
-        // write actually replaces bytes. An agent-requested
-        // write child is the narrow exception: its allowed decision reserves an
-        // independently restorable exact-Note recovery checkpoint before the
-        // child grant; it does not enter rolling automatic retention.
+        // Every writable Action reserves exact source recovery before Agent
+        // access. Continuations use the same one-Note checkpoint primitive;
+        // extension targets add their own checkpoints only after authorization.
         let checkpoint: TriptychCheckpoint?
         if requiresAutomaticCheckpoint,
            request.function.requiresCheckpoint,
            request.function != .critique {
+            let checkpointName: String
+            if resynthesisContext != nil {
+                checkpointName = "Before Resynthesis"
+            } else {
+                checkpointName = "Before Agent Work"
+            }
             checkpoint = try await dependencies.checkpointStore
                 .createResearchContinuation(
-                name: resynthesisContext == nil
-                    ? "Before Agent-Requested Continuation"
-                    : "Before Resynthesis",
+                name: checkpointName,
                 key: researchContinuationCheckpointKey(for: request.target),
                 expectedFingerprint: request.target.fingerprint,
                 roots: dependencies.roots
@@ -645,29 +608,6 @@ extension ResearchFunctionCoordinator {
 
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
-        let activityAuthorization: ResearchActivityGrantAuthorization?
-        if [.develop, .revise].contains(request.function) {
-            do {
-                activityAuthorization = try await issueResearchActivityGrant(
-                    request: request,
-                    activityID: runID,
-                    issuedAt: preparedAt
-                )
-                host.setResearchActivityKey(
-                    activityAuthorization?.activityKey,
-                    runID: runID
-                )
-            } catch {
-                if let checkpoint {
-                    _ = try? await dependencies.checkpointStore.discardAutomaticCheckpoint(
-                        id: checkpoint.id
-                    )
-                }
-                throw error
-            }
-        } else {
-            activityAuthorization = nil
-        }
         let evidenceRevisions: [DocumentFingerprint] = []
         let handoff = request.function.requiresFinalFidelity && request.function != .manuscript
             ? ResearchFunctionFidelityHandoff(
@@ -677,20 +617,6 @@ extension ResearchFunctionCoordinator {
             )
             : nil
 
-        if request.function == .critique {
-            return try await prepareCritiqueFunction(
-                request,
-                actionSnapshot: actionSnapshot,
-                action: actionContext.availability.definition,
-                phases: phases,
-                phaseSnapshots: phaseSnapshots,
-                allSkills: allSkills,
-                evidenceRevisions: evidenceRevisions,
-                zoteroContext: zoteroContext,
-                host: host
-            )
-        }
-
         let snapshot = ResearchFunctionSnapshot(
             runID: runID,
             request: request,
@@ -698,9 +624,6 @@ extension ResearchFunctionCoordinator {
             recordKind: request.function == .discuss ? .discuss : .functionEnvelope,
             recordID: runID,
             checkpointID: checkpoint?.id,
-            activityID: activityAuthorization?.grant.activityID,
-            skills: allSkills,
-            phases: phaseSnapshots,
             // Manuscript does not impose one universal philosophical pipeline.
             // Develop and Revise expose only a pending Fidelity child here: its
             // exact workflow is prepared later against the final fingerprint.
@@ -708,7 +631,9 @@ extension ResearchFunctionCoordinator {
             evidenceRevisions: evidenceRevisions,
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
+            citationStyle: phases.first?.citationStyle,
             continuationLineage: continuationLineage,
+            continuationHandoff: continuationHandoff,
             resynthesisContext: resynthesisContext,
             fidelityHandoff: handoff,
             fidelityInvocation: fidelityInvocation,
@@ -741,8 +666,8 @@ extension ResearchFunctionCoordinator {
         let functionInstructions = try renderFunctionInstructions(
             request: request,
             action: actionContext.availability.definition,
-            parameters: actionParameters,
-            feedbackRequirement: actionContext.availability.profile.profile.feedbackRequirement,
+            academicInputs: actionContext.academicInputs,
+            resultContract: actionContext.resultContract,
             phases: phases,
             runID: runID,
             confirmationToken: confirmationToken,
@@ -754,31 +679,9 @@ extension ResearchFunctionCoordinator {
             base: functionInstructions,
             sourceAccess: sourceAccess
         )
-        let activityDeliveryInstructions = try researchActivityDeliveryInstructions(
-            base: liveInstructions,
-            request: request,
-            actionID: actionSnapshot.actionID,
-            runID: runID,
-            confirmationToken: confirmationToken,
-            authorization: activityAuthorization
-        )
-        let coordinationAuthorization: AgentCoordinationAuthorization?
-        coordinationAuthorization = try LocalResearchExecutionStore
-            .prepareAgentCoordination(
-                triptychID: workspaceID,
-                parentRunID: runID,
-                actionRevision: try AgentNoteChangeActionRevision(
-                    actionSnapshot: actionSnapshot
-                ),
-                issuedAt: preparedAt
-            )
-        let deliveryInstructions = agentCoordinationDeliveryInstructions(
-            base: activityDeliveryInstructions,
-            runID: runID,
-            authorization: coordinationAuthorization
-        )
+        let deliveryInstructions = liveInstructions
         do {
-            // Close the race opened by skill loading and checkpoint creation.
+            // Close the race opened by method loading and checkpoint creation.
             _ = try await validateResearchFunctionTarget(
                 request.target,
                 expected: request.target.fingerprint,
@@ -808,9 +711,7 @@ extension ResearchFunctionCoordinator {
                         triptychID: workspaceID,
                         snapshot: snapshot,
                         preparedInstructions: functionInstructions,
-                        discussion: localDiscussion,
-                        grant: activityAuthorization?.grant,
-                        agentCoordinationGrant: coordinationAuthorization?.grant
+                        discussion: localDiscussion
                     )
                 )
             if request.function == .discuss {
@@ -840,11 +741,6 @@ extension ResearchFunctionCoordinator {
                     }
             }
         } catch {
-            if let activityID = activityAuthorization?.grant.activityID {
-                _ = try? await dependencies.localExecutionStore
-                    .transitionGrant(activityID: activityID, to: .revoked)
-                host.clearResearchActivityKey(runID: runID)
-            }
             if let checkpoint {
                 _ = try? await dependencies.checkpointStore.discardAutomaticCheckpoint(
                     id: checkpoint.id
@@ -853,13 +749,8 @@ extension ResearchFunctionCoordinator {
             try? await dependencies.localExecutionStore.discardUncompleted(
                 runID: runID
             )
-            host.clearAgentCoordinationKey(runID: runID)
             throw error
         }
-        host.setAgentCoordinationKey(
-            coordinationAuthorization?.coordinationKey,
-            runID: runID
-        )
         let refreshWarning: String?
         if suppressRefresh {
             refreshWarning = nil
@@ -880,11 +771,7 @@ extension ResearchFunctionCoordinator {
                 triptychID: workspaceID,
                 contract: responseContract
             )
-            returnedInstructions = agentCoordinationDeliveryInstructions(
-                base: discussionInstructions,
-                runID: runID,
-                authorization: coordinationAuthorization
-            )
+            returnedInstructions = discussionInstructions
         }
         return ResearchFunctionPreparation(
             snapshot: snapshot,
@@ -916,207 +803,6 @@ extension ResearchFunctionCoordinator {
         )
     }
 
-    private func prepareCritiqueFunction<Host: ResearchFunctionCoordinatorHost>(
-        _ request: ResearchFunctionRequest,
-        actionSnapshot: ResearchActionSnapshot,
-        action: ResearchActionDefinition,
-        phases: [ResolvedFunctionPhase],
-        phaseSnapshots: [ResearchFunctionPhaseSnapshot],
-        allSkills: [ResearchFunctionSkillSnapshot],
-        evidenceRevisions: [DocumentFingerprint],
-        zoteroContext: ZoteroBibliographicContext?,
-        host: isolated Host
-    ) async throws -> ResearchFunctionPreparation {
-        let checkpoint: TriptychCheckpoint? = nil
-        let runID = UUID()
-        let confirmationToken = UUID()
-        let preparedAt = researchFunctionRecordTimestamp()
-        let passage = request.scope?.selection?.quotation ?? ""
-        let preparation: CritiquePreparation
-        var refreshWarning: String?
-        do {
-            preparation = try await host.prepareResearchFunctionCritique(
-                for: request.target.note,
-                expectedRevision: request.target.fingerprint,
-                scope: request.scope?.kind == .passage ? .specific : .overall,
-                selectedRanges: passage,
-                additionalInstructions: request.instruction ?? "",
-                roundID: runID,
-                functionSnapshotBuilder: { output in
-                    ResearchFunctionSnapshot(
-                        runID: runID,
-                        request: request,
-                        actionSnapshot: actionSnapshot,
-                        recordKind: .critique,
-                        recordID: runID,
-                        checkpointID: checkpoint?.id,
-                        skills: allSkills,
-                        phases: phaseSnapshots,
-                        preparedOutput: output,
-                        evidenceRevisions: evidenceRevisions,
-                        zoteroBibliographicContext: zoteroContext,
-                        confirmationToken: confirmationToken,
-                        preparedAt: preparedAt
-                    )
-                },
-                skillInstructionsOverride: { output in
-                    try self.renderFunctionInstructions(
-                        request: request,
-                        action: action,
-                        parameters: actionSnapshot.parameters,
-                        feedbackRequirement: actionSnapshot.resolvedProfile.profile.feedbackRequirement,
-                        phases: phases,
-                        runID: runID,
-                        confirmationToken: confirmationToken,
-                        fidelityHandoffChecks: [],
-                        zoteroContext: zoteroContext,
-                        preparedOutput: output
-                    )
-                }
-            )
-        } catch let error as ScholiumApplicationError
-            where error.durableMutationWasCommitted {
-            guard let association = await dependencies.critiqueRegistry.association(
-                workNoteID: request.target.noteID
-            ), association.rounds.contains(where: { $0.id == runID }) else {
-                throw error
-            }
-            refreshWarning = error.localizedDescription
-            host.scheduleResearchFunctionRefreshRecovery()
-            guard let recoveredOutput = association.rounds.first(where: {
-                $0.id == runID
-            })?.functionSnapshot?.preparedOutput else {
-                throw ResearchFunctionContractError.preparationNotFound(runID)
-            }
-            let recoveredInstructions = try renderFunctionInstructions(
-                request: request,
-                action: action,
-                parameters: actionSnapshot.parameters,
-                feedbackRequirement: actionSnapshot.resolvedProfile.profile.feedbackRequirement,
-                phases: phases,
-                runID: runID,
-                confirmationToken: confirmationToken,
-                fidelityHandoffChecks: [],
-                zoteroContext: zoteroContext,
-                preparedOutput: recoveredOutput
-            )
-            preparation = CritiquePreparation(
-                association: association,
-                instructions: recoveredInstructions,
-                checkpoint: checkpoint
-            )
-        } catch {
-            let didCommit = (try? await dependencies.critiqueRegistry.functionRecord(
-                runID: runID
-            )) != nil
-            if !didCommit {
-                if let checkpoint {
-                    _ = try? await dependencies.checkpointStore.discardAutomaticCheckpoint(
-                        id: checkpoint.id
-                    )
-                }
-            }
-            throw error
-        }
-        guard let snapshot = preparation.association.rounds.last(where: {
-            $0.id == runID
-        })?.functionSnapshot else {
-            throw ResearchFunctionContractError.preparationNotFound(runID)
-        }
-        guard let output = snapshot.preparedOutput else {
-            throw ResearchFunctionContractError.preparationNotFound(runID)
-        }
-        let exactInstructions = try renderFunctionInstructions(
-            request: request,
-            action: action,
-            parameters: actionSnapshot.parameters,
-            feedbackRequirement: actionSnapshot.resolvedProfile.profile.feedbackRequirement,
-            phases: phases,
-            runID: runID,
-            confirmationToken: confirmationToken,
-            fidelityHandoffChecks: [],
-            zoteroContext: zoteroContext,
-            preparedOutput: output
-        )
-        let outputBinding = researchFunctionCritiqueOutputBinding(output)
-        let coordinationAuthorization = try LocalResearchExecutionStore
-            .prepareAgentCoordination(
-                triptychID: workspaceID,
-                parentRunID: runID,
-                actionRevision: try AgentNoteChangeActionRevision(
-                    actionSnapshot: actionSnapshot
-                ),
-                issuedAt: preparedAt
-            )
-        let coordinationGrant = coordinationAuthorization.grant
-            let localRecord = try LocalResearchExecutionRecord(
-                triptychID: workspaceID,
-                snapshot: snapshot,
-                preparedInstructions: exactInstructions + "\n\n" + outputBinding,
-                agentCoordinationGrant: coordinationGrant
-            )
-            do {
-                _ = try await dependencies.localExecutionStore.create(localRecord)
-            } catch {
-                let committed = try? await dependencies.localExecutionStore
-                    .installAgentCoordinationGrant(
-                        runID: runID,
-                        expectedSnapshot: snapshot,
-                        expectedPreparedInstructions: localRecord.preparedInstructions,
-                        grant: coordinationGrant
-                    )
-                guard committed == localRecord else {
-                    try? await dependencies.critiqueRegistry.discardUninstalledActionRound(
-                        runID: runID
-                    )
-                    try? await dependencies.localExecutionStore
-                        .discardCritiqueHandoff(
-                            snapshot: snapshot,
-                            preparedInstructions: localRecord.preparedInstructions
-                        )
-                    if let checkpoint {
-                        _ = try? await dependencies.checkpointStore.discardAutomaticCheckpoint(
-                            id: checkpoint.id
-                        )
-                    }
-                    host.clearAgentCoordinationKey(runID: runID)
-                    throw error
-                }
-            }
-            host.setAgentCoordinationKey(
-                coordinationAuthorization.coordinationKey,
-                runID: runID
-            )
-            try? await dependencies.localExecutionStore
-                .discardCritiqueHandoff(
-                    snapshot: snapshot,
-                    preparedInstructions: localRecord.preparedInstructions
-                )
-            do {
-                _ = try await dependencies.critiqueRegistry.detachFunctionEvidence(
-                    runID: runID,
-                    matching: snapshot
-                )
-            } catch {
-                // The Local-v3 copy is already durable. Retain it as the
-                // authority and let the idempotent reconciliation path finish
-                // detaching the staging evidence now or after process restart.
-                _ = try await record(runID: runID)
-            }
-            refreshWarning = try await host.publishCommittedResearchFunctionChange(
-                "The Critique Action preparation"
-            )
-        return ResearchFunctionPreparation(
-            snapshot: snapshot,
-            // The function packet and exact prepared output are the complete
-            // read/write authority for the selected Actions workflow.
-            instructions: agentCoordinationDeliveryInstructions(
-                base: exactInstructions + "\n\n" + outputBinding,
-                runID: runID,
-                authorization: coordinationAuthorization
-            ),
-            derivedRefreshWarning: refreshWarning
-        )
-    }
+
 
 }

@@ -1,6 +1,6 @@
 import ScholiumContracts
 
-/// Compatibility-only routing from the public Action contract into the
+/// Closed routing from the public Platform Action contract into the
 /// protected Function coordinator. This mapping is internal to Application
 /// and never enters an Action snapshot or researcher-facing record.
 enum ResearchActionFunctionMapping {
@@ -30,8 +30,8 @@ enum ResearchActionFunctionMapping {
     }
 
     /// Derives the public bundled Action selected by the retained Function
-    /// coordinator for the exact Target role. This is a transition adapter,
-    /// not a second source of product semantics.
+    /// coordinator for the exact Target role. The closed mapping is not a
+    /// second source of product semantics.
     static func definition(
         for function: ResearchFunctionID,
         targetRole: ResearchFunctionTargetRole

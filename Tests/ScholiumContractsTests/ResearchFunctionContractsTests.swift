@@ -10,7 +10,7 @@ struct ResearchFunctionContractsTests {
             groupID: UUID(),
             parentRunID: UUID(),
             requestID: UUID(),
-            kind: .approvedAction
+            kind: .fidelity
         )
         let data = try JSONEncoder().encode(lineage)
         #expect(try JSONDecoder().decode(
@@ -331,31 +331,28 @@ struct ResearchFunctionContractsTests {
         }
     }
 
-    @Test("Legacy multi-target writes round-trip but cannot authorize a current Action")
-    func legacyMultiTargetWriteRoundTripIsInactive() throws {
+    @Test("Retired Function write-scope fields fail closed while shared Fidelity targets remain typed")
+    func retiredWriteScopeFieldsAreRejected() throws {
         let analysis = target(role: .analysis)
         let topic = target(role: .topic)
         let write = ResearchFunctionRequest(
             function: .develop,
             target: analysis,
-            conditionalResources: [],
-            writeScope: .selectedNotes,
-            authorizedWriteTargets: [analysis, topic]
+            conditionalResources: []
         )
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
-        let storedWrite = try decoder.decode(
-            ResearchFunctionRequest.self,
-            from: encoder.encode(write)
+        var retired = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(write))
+                as? [String: Any]
         )
-        #expect(storedWrite == write)
-        #expect(storedWrite.writeScope == .selectedNotes)
-        #expect(Set(storedWrite.authorizedWriteTargets.map(\.noteID)) == [
-            analysis.noteID,
-            topic.noteID,
-        ])
+        retired["writeScope"] = "selected_notes"
+        retired["authorizedWriteTargets"] = []
         #expect(throws: ResearchFunctionContractError.self) {
-            try storedWrite.validate()
+            _ = try decoder.decode(
+                ResearchFunctionRequest.self,
+                from: JSONSerialization.data(withJSONObject: retired)
+            )
         }
 
         let fidelity = ResearchFunctionRequest(
@@ -379,7 +376,6 @@ struct ResearchFunctionContractsTests {
     @Test("Citation style selection is explicit")
     func citationStyleSelection() throws {
         let selected = ResearchCitationMethodSelection(
-            packageID: "local-citations",
             citationStyle: " APA-7 "
         )
         #expect(selected.citationStyle == "apa-7")
@@ -485,8 +481,8 @@ struct ResearchFunctionContractsTests {
 
     }
 
-    @Test("Fidelity evidence identity changes with revision, scope, comments, and loaded audit resources")
-    func fidelityEvidenceIdentity() {
+    @Test("Fidelity evidence identity changes with revision, scope, comments, and exact Method context")
+    func fidelityEvidenceIdentity() throws {
         let target = target(role: .analysis)
         let anchor = CommentAnchor(
             fingerprint: target.fingerprint,
@@ -496,60 +492,48 @@ struct ResearchFunctionContractsTests {
             endLine: 1,
             quotation: "claim"
         )
-        let skill = ResearchFunctionSkillSnapshot(
-            packageID: "scholium-content-fidelity",
-            origin: .bundled,
-            version: "1.0.0",
-            packageRevision: DocumentFingerprint(content: "package-v1"),
-            loadedResources: [ResearchFunctionResourceSnapshot(
-                relativePath: "references/content.md",
-                revision: DocumentFingerprint(content: "content-v1")
-            )]
+        let exactMethod = try method(
+            primarySource: "# Fidelity\n\nCheck exact content.\n",
+            practiceSource: "# Conceptual Analyst\n\nContent v1.\n"
         )
-        let whole = snapshot(
+        let whole = try snapshot(
             target: target,
             scope: .whole,
             evidence: [DocumentFingerprint(content: "comment-v1")],
-            skill: skill
+            method: exactMethod
         )
-        let implicitWhole = snapshot(
+        let implicitWhole = try snapshot(
             target: target,
             scope: nil,
             evidence: [DocumentFingerprint(content: "comment-v1")],
-            skill: skill
+            method: exactMethod
         )
-        let passage = snapshot(
+        let passage = try snapshot(
             target: target,
             scope: .passage(anchor),
             evidence: [DocumentFingerprint(content: "comment-v1")],
-            skill: skill
+            method: exactMethod
         )
-        let changedComment = snapshot(
+        let changedComment = try snapshot(
             target: target,
             scope: .whole,
             evidence: [DocumentFingerprint(content: "comment-v2")],
-            skill: skill
+            method: exactMethod
         )
-        let changedResource = snapshot(
+        let changedPractice = try snapshot(
             target: target,
             scope: .whole,
             evidence: [DocumentFingerprint(content: "comment-v1")],
-            skill: ResearchFunctionSkillSnapshot(
-                packageID: skill.packageID,
-                origin: skill.origin,
-                version: skill.version,
-                packageRevision: skill.packageRevision,
-                loadedResources: [ResearchFunctionResourceSnapshot(
-                    relativePath: "references/content.md",
-                    revision: DocumentFingerprint(content: "content-v2")
-                )]
+            method: method(
+                primarySource: exactMethod.primaryMarkdownSource,
+                practiceSource: "# Conceptual Analyst\n\nContent v2.\n"
             )
         )
-        let changedCitationStyle = snapshot(
+        let changedCitationStyle = try snapshot(
             target: target,
             scope: .whole,
             evidence: [DocumentFingerprint(content: "comment-v1")],
-            skill: skill,
+            method: exactMethod,
             citationStyle: "chicago-author-date"
         )
         let makeKey: (ResearchFunctionSnapshot) -> ResearchFidelityEvidenceKey = {
@@ -564,7 +548,7 @@ struct ResearchFunctionContractsTests {
         #expect(makeKey(whole) == makeKey(implicitWhole))
         #expect(makeKey(whole) != makeKey(passage))
         #expect(makeKey(whole) != makeKey(changedComment))
-        #expect(makeKey(whole) != makeKey(changedResource))
+        #expect(makeKey(whole) != makeKey(changedPractice))
         #expect(makeKey(whole) != makeKey(changedCitationStyle))
         #expect(ResearchFidelityEvidenceKey(
             snapshot: whole,
@@ -605,39 +589,6 @@ struct ResearchFunctionContractsTests {
         }
     }
 
-    @Test("Returned maintenance files derive and verify exact source revisions")
-    func maintenanceProposalFileRevisionDecoding() throws {
-        let source = "---\nname: Evolving Method\ndescription: Test.\n---\nInstructions."
-        let revisionlessData = try JSONSerialization.data(withJSONObject: [
-            "files": [[
-                "relativePath": "SKILL.md",
-                "source": source,
-            ]],
-        ])
-        let package = try JSONDecoder().decode(
-            ResearchSkillProposedPackage.self,
-            from: revisionlessData
-        )
-        #expect(package.entryPoint?.revision == DocumentFingerprint(content: source))
-        try package.validate()
-
-        let mismatchedData = try JSONSerialization.data(withJSONObject: [
-            "files": [[
-                "relativePath": "SKILL.md",
-                "source": source,
-                "revision": [
-                    "sha256": DocumentFingerprint(content: "different").sha256,
-                    "byteCount": 9,
-                ],
-            ]],
-        ])
-        #expect(throws: DecodingError.self) {
-            _ = try JSONDecoder().decode(
-                ResearchSkillProposedPackage.self,
-                from: mismatchedData
-            )
-        }
-    }
 
     private func target(role: ResearchFunctionTargetRole) -> ResearchFunctionTarget {
         ResearchFunctionTarget(
@@ -653,10 +604,56 @@ struct ResearchFunctionContractsTests {
         target: ResearchFunctionTarget,
         scope: ResearchFunctionScope?,
         evidence: [DocumentFingerprint],
-        skill: ResearchFunctionSkillSnapshot,
+        method: ResearchMethodSnapshot,
         citationStyle: String? = "apa-7"
-    ) -> ResearchFunctionSnapshot {
-        ResearchFunctionSnapshot(
+    ) throws -> ResearchFunctionSnapshot {
+        let actionTarget = ResearchActionNoteSnapshot(
+            noteID: target.noteID,
+            note: target.note,
+            role: .analysis,
+            lifecycle: target.lifecycle,
+            fingerprint: target.fingerprint,
+            title: target.title
+        )
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .checkFidelity
+            }
+        )
+        let resolvedProfile = try ResearchActionResolvedProfileSnapshot(
+            profile: profile,
+            profileRevision: profile.contentRevision(),
+            profileDocumentRevision: DocumentFingerprint(content: "profiles")
+        )
+        let platformInputs = try ResearchActionPlatformInputs(
+            passage: scope?.selection,
+            fidelityChecks: [.content]
+        )
+        let academicInputs = try ResearchAcademicFieldValues(
+            values: [:],
+            definitions: profile.academicInputFields
+        )
+        let resultContract = try ResearchResultContract(
+            profile: profile,
+            registrationKey: method.registration.key,
+            profileRevision: resolvedProfile.profileRevision
+        )
+        let action = try ResearchActionSnapshot(
+            definition: .checkFidelity,
+            target: actionTarget,
+            method: method,
+            resolvedProfile: resolvedProfile,
+            platformInputs: platformInputs,
+            academicInputs: academicInputs,
+            resultContract: resultContract,
+            authority: ResearchAuthorityEnvelope(
+                readableNotes: [actionTarget],
+                writableNotes: [],
+                writeOperations: [],
+                editablePropertyKeys: []
+            )
+        )
+        return ResearchFunctionSnapshot(
             request: ResearchFunctionRequest(
                 function: .fidelity,
                 target: target,
@@ -664,15 +661,35 @@ struct ResearchFunctionContractsTests {
                 checks: [.content],
                 commentIDs: [target.noteID]
             ),
+            actionSnapshot: action,
             recordKind: .functionEnvelope,
-            skills: [skill],
-            phases: [ResearchFunctionPhaseSnapshot(
-                phase: 1,
-                function: .fidelity,
-                skills: [skill],
-                citationStyle: citationStyle
-            )],
-            evidenceRevisions: evidence
+            evidenceRevisions: evidence,
+            citationStyle: citationStyle
+        )
+    }
+
+    private func method(
+        primarySource: String,
+        practiceSource: String
+    ) throws -> ResearchMethodSnapshot {
+        let registration = try ResearchSkillRegistration(
+            key: ResearchSkillRegistrationKey(
+                rawValue: UUID(
+                    uuidString: "00000000-0000-4000-8000-000000000050"
+                )!
+            ),
+            actionID: .checkFidelity,
+            displayName: "Content Fidelity",
+            primaryMarkdown: .machineLocal()
+        )
+        return try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: primarySource,
+            practices: [ResearchPracticeSnapshot(
+                title: "Conceptual Analyst",
+                relativePath: "Conceptual-Analyst.md",
+                source: practiceSource
+            )]
         )
     }
 

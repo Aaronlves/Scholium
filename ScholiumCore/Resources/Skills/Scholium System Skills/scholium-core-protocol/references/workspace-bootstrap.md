@@ -52,10 +52,10 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 ## Scholium routing
 
 - Apply the protected Scholium Core Protocol to every Scholium task.
-- Select one primary Method Skill, or an explicit isolated sequence for genuinely multi-operation work.
+- Use the Platform Action's registered primary Method and its exact linked Practices.
 - Load Scholium Research Integration for live Triptych reads, writes, Properties, Research Units, or Discuss persistence.
 - Load Scholium Discussion Protocol for a Discussion ID; the ordinary Discuss Method supplies the intellectual procedure.
-- Load only explicitly selected Researcher Skills and Practices; never scan arbitrary global skill directories.
+- Never scan arbitrary global skill directories or substitute an unregistered Method.
 
 ## Workspace boundaries
 
@@ -96,7 +96,7 @@ After successful promotion and read-back validation:
 
 - delete only the exact temporary bootstrap file named in the bootstrap packet, when that file was created for this task;
 - remove any task-owned candidate residue;
-- do not delete this bundled reference, an installed Skill, an existing `AGENTS.md`, another agent's instructions, or any researcher-created file.
+- do not delete this bundled reference, a registered Method or ordinary Skill folder, an existing `AGENTS.md`, another agent's instructions, or any researcher-created file.
 
 When the bootstrap arrived through a clipboard or conversation, there is no bootstrap file to delete. Do not create one merely to satisfy cleanup.
 

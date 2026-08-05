@@ -38,13 +38,16 @@ completion/recovery transaction.
 
 **Current boundary**
 
-`AgentNoteChangeClaimCoordinator` owns cross-window claims; one `AgentNoteChangeWindowController`
-owns each exact window's request, expiry, decision tasks, and sheet route.
+One Local Execution Run owns its bounded multi-document write set. Application
+mediates exact-revision membership approval, one-shot write capabilities,
+transactions, conflicts, and recovery; the Action sheet presents that same
+owner. The former additional-Note request and cross-window claim surface are
+absent.
 
 **Invariant retained**
 
-At most one claim per request, exact-Triptych routing, durable Application decisions, and
-stale-result rejection after teardown.
+One exact Triptych, no blanket write authority, no Proposal authorization
+layer, and stale or cross-Run decisions fail closed after teardown.
 
 ### Migration batches 6 and 12
 
@@ -63,13 +66,17 @@ unsaved This Note search, and no root-level duplicate tasks.
 
 **Current boundary**
 
-Package repository, capability-document stores, and the pure resolver are separate;
-`ResearchSkillTransactionCoordinator` remains the sole cross-store transaction owner.
+`ResearchConfigurationStore` owns strict registration-schema-2, academic Profile,
+collaboration-policy, citation-style, primary Method, Practice, and one-previous-edit
+transactions. External absolute paths/bookmarks belong only to the private
+Triptych-bound `ResearchMethodLocatorStore`.
 
 **Invariant retained**
 
-Package/binding/Profile mutations and recovery stay atomic; retained Function-era bytes are bounded
-compatibility input and never regain write or execution authority.
+Exact Markdown and Practice bytes remain authoritative; portable registration
+contains no machine path; Profile prose cannot grant capability; package,
+binding-v2, per-Skill permission, installer, history, and fallback owners cannot
+write or authorize.
 
 ### Migration batches 8
 
@@ -98,7 +105,7 @@ File organization adds no state owner, runtime, transaction, or duplicate test s
 
 **Current boundary**
 
-Analyze Literature Recommendations are schema-4 content owned only by their parent Research Record;
+Analyze Literature Recommendations are schema-5 content owned only by their parent Research Record;
 the Triptych view is a reconstructable projection.
 
 **Invariant retained**
@@ -218,3 +225,52 @@ gaining a pass-through facade.
 Presentation restore, replaceable saves, and bounded final save share one owner; document flush and
 window identity ordering remain unchanged; a new direct Store call now fails the architecture guard
 until classified.
+
+### Search Foundation cutover
+
+**Current boundary**
+
+Contract v6 owns one closed Note/Record provider router, typed clauses/results, capability table,
+completion context, Explain Query, diagnostics, scope, and freshness identities. Core owns only the
+rebuildable schema-9 Note index; Application composes same-manifest direct Graph relations and owns
+the exact-byte-fingerprinted portable Record query projection. Global Search, the Research Records
+window, and CLI consume that one Application capability. The UI-owned Record matcher, parallel
+Related Search use case/presentation, v4 contracts, and legacy result types are deleted.
+
+**Invariant retained**
+
+Markdown and schema-5 Record bytes remain authoritative; Graph and every index remain rebuildable;
+scope is authorized before provider execution; Note and Record generations never mix; stale,
+ambiguous, incomplete, or contract-drifted results fail closed; Search remains a retrieval lead and
+never writes research content or upgrades a relation into evidence.
+
+### Research Skill and Agent co-construction cutover
+
+**Current boundary**
+
+The implementation-precondition ledger and four dependent stages now use one
+current owner chain: closed Platform Actions; registration schema 2 and exact
+Method/Practices; academic Profiles and Result Contracts; one Triptych
+collaboration policy; process-bound Pairing/Session over the App Group bridge;
+Local Execution schema 8 with an embedded Bounded Write Set; Application-owned
+Research Context; strict Agent Result finalization into Record schema 5;
+Continue Research; Researcher Evaluation; bounded Method feedback; and one
+explicitly researcher-started, separately paired Method-improvement Run whose
+single exact Method/Practice target uses CAS, previous-edit recovery, readback,
+idempotent interruption reconciliation, and one machine-local terminal
+outcome. Search v6/schema 9 adds canonical YAML `summary` through the existing
+Note projection.
+No Agent memory or second Research Memory backend was introduced.
+
+**Invariant retained**
+
+Exact Markdown/YAML bytes remain the only writable research source; indices,
+Graph, summaries outside YAML, and context responses remain projections.
+Authentication precedes retrieval, credentials never enter prompts/arguments/
+logs, each write is revision/capability/recovery bound, finalized results are
+immutable under evaluation edits, and explicit researcher acts remain
+attributed without becoming philosophical truth. Method improvement creates
+neither a feedback history nor a second research knowledge owner.
+Package/catalog/binding,
+per-Skill permission, custom Action, child Run, old Record, workflow CLI, and
+parallel result owners are physically absent.

@@ -131,13 +131,6 @@ public protocol DiscoveryUseCases: Sendable {
     func snapshot() async throws -> WorkspaceDiscoverySnapshot
     func refresh() async throws -> WorkspaceSnapshot
     func search(_ request: SearchRequest) async throws -> SearchResponse
-    func related(
-        query: String,
-        scope: SearchExecutionScope,
-        searchGeneration: SearchGenerationID?,
-        excluding: Set<VaultQualifiedNoteID>,
-        limit: Int
-    ) async throws -> RelatedSearchResponse
 }
 
 public protocol ResearchRecordUseCases: Sendable {
@@ -174,6 +167,32 @@ public protocol ResearchRecordUseCases: Sendable {
         id: UUID,
         isPinned: Bool
     ) async throws -> PortableResearchRecord
+    func saveResearcherEvaluation(
+        recordID: UUID,
+        draft: ResearcherEvaluationDraft,
+        expectedEvaluationRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    func clearResearcherEvaluation(
+        recordID: UUID,
+        expectedEvaluationRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    func saveMethodFeedbackComment(
+        recordID: UUID,
+        draft: ResearchMethodFeedbackDraft,
+        expectedCommentRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    func clearMethodFeedbackComment(
+        recordID: UUID,
+        expectedCommentRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord
+    func issueMethodImprovementHandoff(
+        recordID: UUID,
+        validity: TimeInterval
+    ) async throws -> ResearchAgentHandoff
     func setResearchRecordRecommendationDisposition(
         recordID: UUID,
         recommendationID: UUID,
@@ -222,19 +241,50 @@ public protocol ResearchCheckpointUseCases: Sendable {
     func restoreCheckpoint(_ checkpointID: UUID, selection: TriptychCheckpointRestoreSelection) async throws -> TriptychCheckpointRestoreResult
 }
 
-public protocol ResearchSkillUseCases: Sendable {
-    func skills() async throws -> [ResearchSkillPackage]
-    func skillCatalog() async throws -> ResearchSkillCatalog
-    func skillPackage(id: String) async throws -> ResearchSkillPackage
-    func createSkill(id: String, source: String) async throws -> ResearchSkillPackage
-    func duplicateBundledSkill(id: String, as newID: String) async throws -> ResearchSkillPackage
-    func saveSkill(id: String, source: String, expectedRevision: DocumentFingerprint) async throws -> ResearchSkillPackage
-    func renameSkill(id: String, to newID: String, expectedRevision: DocumentFingerprint) async throws -> ResearchSkillPackage
-    func deleteSkill(id: String, expectedRevision: DocumentFingerprint) async throws
-    func skillResourcePaths(id: String) async throws -> [String]
-    func skillResource(id: String, relativePath: String) async throws -> String
-    func skillInstructionAssembly(mode: ResearchSkillMode, requestedSkillIDs: [String], mixedPhases: [ResearchSkillAssemblyPhase]) async throws -> String
-    func resolveWorkflow(_ contract: ResearchWorkflowContract) async throws -> ResolvedResearchWorkflowEnvelope
+public protocol ResearchConfigurationUseCases: Sendable {
+    func researchSkillRegistrations() async throws -> ResearchSkillRegistrationSnapshot
+    func saveResearchSkillRegistrations(
+        _ document: ResearchSkillRegistrationDocument,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchSkillRegistrationSnapshot
+    func academicActionProfiles() async throws -> ResearchAcademicProfileSnapshot
+    func saveAcademicActionProfiles(
+        _ document: ResearchAcademicProfileDocument,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchAcademicProfileSnapshot
+    func collaborationPolicy() async throws -> ResearchCollaborationPolicySnapshot
+    func saveCollaborationPolicy(
+        _ document: ResearchCollaborationPolicyDocument,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchCollaborationPolicySnapshot
+    func researchMethod(for actionID: ResearchActionID) async throws -> ResearchMethodSnapshot
+    func saveResearchMethod(
+        registrationKey: ResearchSkillRegistrationKey,
+        source: String,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchMethodSnapshot
+    func restorePreviousResearchMethod(
+        registrationKey: ResearchSkillRegistrationKey,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchMethodSnapshot
+    func restoreDefaultResearchMethod(
+        actionID: ResearchActionID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchMethodSnapshot
+    func philosophicalPractices() async throws -> [ResearchPracticeSnapshot]
+    func createPhilosophicalPractice(
+        title: String,
+        source: String
+    ) async throws -> ResearchPracticeSnapshot
+    func savePhilosophicalPractice(
+        relativePath: String,
+        source: String,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchPracticeSnapshot
+    func restorePreviousPhilosophicalPractice(
+        relativePath: String,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> ResearchPracticeSnapshot
 }
 
 public protocol ResearchActionUseCases: Sendable {
@@ -254,6 +304,11 @@ public protocol ResearchActionUseCases: Sendable {
     func actionRun(id: UUID) async throws -> ResearchActionPreparation
 
     func cancelAction(runID: UUID) async throws
+
+    func issueAgentHandoff(
+        runID: UUID,
+        validity: TimeInterval
+    ) async throws -> ResearchAgentHandoff
 
     func prepareResynthesis(
         _ request: ResearchActionExecutionRequest,
@@ -333,7 +388,57 @@ public protocol ZoteroUseCases: Sendable {
 /// bridge. The CLI owns stdio framing; Application owns bridge discovery,
 /// authentication, and request execution.
 public protocol AgentBridgeUseCases: Sendable {
-    func handle(requestData: Data) async -> Data?
+    func pair(
+        run: ResearchRunLocator,
+        pairingCode: ResearchPairingCode
+    ) async throws -> ResearchConnectionCredential
+    func context(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential
+    ) async throws -> ResearchAuthenticatedRunContext
+    func query(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        request: ResearchContextRequest
+    ) async throws -> ResearchContextResponse
+    func extendWriteSet(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        intent: ResearchWriteSetExtensionIntent
+    ) async throws -> ResearchWriteSetExtensionResult
+    func writeDocument(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        intent: ResearchDocumentWriteIntent
+    ) async throws -> ResearchDocumentWriteResult
+    func resolveWriteConflict(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        intent: ResearchWriteConflictResolutionIntent
+    ) async throws -> ResearchWriteConflictResolutionResult
+    func submitResult(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        submission: ResearchAgentResultSubmission
+    ) async throws -> ResearchAgentResultReceipt
+    func continueResearch(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        request: ResearchContinuationRequest
+    ) async throws -> ResearchContinuationResult
+    func methodImprovementContext(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential
+    ) async throws -> ResearchMethodImprovementContext
+    func submitMethodImprovement(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        submission: ResearchMethodImprovementSubmission
+    ) async throws -> ResearchMethodImprovementReceipt
+    func end(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential
+    ) async throws -> ResearchRunEndReceipt
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

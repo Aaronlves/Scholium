@@ -136,102 +136,50 @@ extension WorkspaceHandle {
 
     func researchCitationMethodStatus() async throws -> ResearchCitationMethodStatus {
         try requireActive()
-        let resolution = try await services.researchSkillStore
-            .citationBindingResolution()
-        let candidates = try await services.researchSkillStore.skills().filter { package in
-            package.origin == .triptych
-                && package.isValid
-                && package.supports(.fidelity)
-                && package.provides(.citationVerification)
-                && package.provides(.citationFormatting)
-                && !package.citationStyleResources.isEmpty
-        }.map { package in
-            ResearchCitationMethodCandidate(
-                packageID: package.id,
-                name: package.name,
-                description: package.description,
-                version: package.version,
-                citationStyles: package.citationStyles.filter {
-                    package.citationStyleResources[$0] != nil
-                }
-            )
-        }
+        let snapshot = try await services.researchConfigurationStore
+            .citationMethodSnapshot()
         return ResearchCitationMethodStatus(
-            bundledTemplateAvailable: resolution.bundledTemplateAvailable,
-            candidates: candidates,
-            activePackageID: resolution.package?.id,
-            activeCitationStyle: resolution.citationStyle,
-            bindingRevision: resolution.bindingRevision,
-            issue: citationMethodIssue(resolution.issue)
+            availableStyles: ResearchCitationStyleCatalog.options,
+            activeCitationStyle: snapshot?.document.activeCitationStyle,
+            configurationRevision: snapshot?.revision
         )
     }
 
     func activateResearchCitationMethod(
         _ selection: ResearchCitationMethodSelection,
-        expectedBindingRevision: DocumentFingerprint?
+        expectedConfigurationRevision: DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus {
         try requireActive()
-        guard !selection.citationStyle.isEmpty else {
-            throw ResearchSkillBindingError.invalidBindingDocument(
-                "Choose an explicit citation style before activating this method."
+        guard ResearchCitationStyleCatalog.option(
+            for: selection.citationStyle
+        ) != nil else {
+            throw ResearchCitationMethodContractError.unsupportedCitationStyle(
+                selection.citationStyle
             )
         }
-        let citationStyle = selection.citationStyle
-        _ = try await services.researchSkillStore.activateCitationBinding(
-            packageID: selection.packageID,
-            citationStyle: citationStyle,
-            expectedBindingRevision: expectedBindingRevision
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
+        _ = try await services.researchConfigurationStore.saveCitationMethod(
+            try ResearchCitationMethodDocument(
+                triptychID: id,
+                activeCitationStyle: selection.citationStyle
+            ),
+            expectedRevision: expectedConfigurationRevision
         )
         return try await researchCitationMethodStatus()
     }
 
     func clearResearchCitationMethod(
-        expectedBindingRevision: DocumentFingerprint?
+        expectedConfigurationRevision: DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus {
         try requireActive()
-        _ = try await services.researchSkillStore.clearCitationBinding(
-            expectedBindingRevision: expectedBindingRevision
+        let mutationLease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(mutationLease) }
+        _ = try await services.researchConfigurationStore.saveCitationMethod(
+            try ResearchCitationMethodDocument(triptychID: id),
+            expectedRevision: expectedConfigurationRevision
         )
         return try await researchCitationMethodStatus()
     }
 
-    func adoptBundledCitationStarter(
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus {
-        try requireActive()
-        _ = try await services.researchSkillStore.adoptAPACitationStarter(
-            expectedBindingRevision: expectedBindingRevision
-        )
-        return try await researchCitationMethodStatus()
-    }
-
-    private func citationMethodIssue(
-        _ issue: ResearchSkillBindingIssue?
-    ) -> ResearchCitationMethodIssue? {
-        guard let issue else { return nil }
-        switch issue {
-        case .missing, .disabled:
-            return ResearchCitationMethodIssue(code: .missing)
-        case .malformed:
-            return ResearchCitationMethodIssue(code: .malformedBinding)
-        case .invalidPackage(let id):
-            return ResearchCitationMethodIssue(code: .invalidPackage, selectedPackageID: id)
-        case .unsupportedFunction(let id, _):
-            return ResearchCitationMethodIssue(code: .invalidPackage, selectedPackageID: id)
-        case .unsupportedAction(let id, _):
-            return ResearchCitationMethodIssue(code: .invalidPackage, selectedPackageID: id)
-        case .missingCapability:
-            return ResearchCitationMethodIssue(code: .missingCapability)
-        case .citationStyleMissing(let id):
-            return ResearchCitationMethodIssue(
-                code: .citationStyleMissing,
-                selectedPackageID: id
-            )
-        case .citationStyleMismatch(let id, _):
-            return ResearchCitationMethodIssue(
-                code: .citationStyleMismatch,
-                selectedPackageID: id
-            )
-        }
-    }
 }

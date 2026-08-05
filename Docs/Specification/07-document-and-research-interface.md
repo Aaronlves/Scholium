@@ -149,6 +149,12 @@ pane, while a borderless native Scope menu sits in the list-context row above
 search. The reading plane begins directly beneath the ordinary titlebar; no
 full-width control band, toolbar, or glass treatment crosses it. Focus changes
 in other windows never retarget either control.
+The auxiliary window's Scope remains **This Note / Triptych**. A Record result
+found through global **This Vault** Search still opens this existing Triptych-
+keyed window, reapplies its **Triptych** Scope, selects Records View and the
+exact Record, and locates its matched attributed statement when one was
+returned. The window does not add a This Vault control, reconstruct cached
+result prose, or create a second Record-query owner.
 Normal Action Material-use and Fidelity facts remain in the existing collapsed
 **Record Details**. An `unverified` Fidelity state instead appears once in the
 evidence area as a complete textual statement; it is not duplicated in Details
@@ -242,11 +248,9 @@ Discuss Action itself reopens the current Note's resumable active Discussion
 and automatically includes its existing line Comments. It has no second
 active-Discussion row or parallel destination.
 
-Researcher-enabled custom Actions follow under one **Researcher Skills** group
-in the researcher-chosen order. Only Profiles with **Show in Actions** enabled
-appear. This is an open ordered collection using the same generic row and
-direct per-window Action route; adding a Skill never requires a new Inspector
-component or case-specific visual branch. Availability fails closed while checking; an unavailable Action states
+Profiles configure only the closed Platform Actions and do not create a third
+custom-Action group or another visual branch. Availability fails closed while
+checking; an unavailable Action states
 only its first executable repair. Settle remains a quiet direct current-note
 action under one **Judgment** group, and Attention remains in Overview/Library
 rather than becoming completed history.
@@ -255,7 +259,7 @@ Each Action is one native full-row button with a direct symbol, the shortest
 accurate title, explanation only under §19.6, and only when useful a trailing
 chevron or shortcut. Its modular sheet shows the necessary scholarly inputs
 and app-owned authority or recovery facts without exposing assembled prompts,
-package internals, or technical mode names. The active Action and its sheet
+registration keys, Session secrets, or technical mode names. The active Action and its sheet
 retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.
 All Action launchers use one shared visual row recipe with a **44pt** minimum
 operation rhythm and no default row or group separator. Availability checking,
@@ -273,6 +277,25 @@ title axis; trailing text states **Running**; and a separately named direct
 Cancel control replaces the ready-state chevron. It adds no ordinary second
 line. Larger interface text or localization may grow the row rather than clip
 its title, state, or cancellation route.
+
+An Action sheet keeps one linear journey: request and focal context; exact
+method/Practice and capability availability; pairing or current Session state;
+Run progress and any bounded write-set decision; returned canonical result;
+then optional Researcher Evaluation. Copied Agent instructions reveal only the
+Run locator and local connection route. The one-time Pairing Code is visibly
+separate in the Action sheet, marked privacy-sensitive, and entered only at the
+CLI standard-input request; it is never copied into Agent instructions. Pairing,
+re-pairing, Session expiry or revocation, missing local Skill-folder path,
+conflict, write result unknown, and recovery each use complete text and an
+executable next route without displaying the real Session secret or internal
+fingerprints as tasks for the researcher.
+
+The evaluation appears after, never before or over, the returned result. It
+uses the same semantic fields and focus order as Record detail and exposes
+**Unsaved Draft**, **Saving**, **Saved**, **Out of Date**, and **Save Failed**
+as full accessible states rather than color or position. A closing sheet with
+unsaved evaluation input asks whether to keep the sheet open or discard the
+draft. An old evaluation revision never silently overwrites a newer save.
 
 Functional text is never a generic blue link or a separate **Open** button.
 Body and secondary colors, hover surface, focus ring, button semantics, and

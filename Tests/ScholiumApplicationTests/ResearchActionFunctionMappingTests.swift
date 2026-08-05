@@ -2,7 +2,7 @@ import ScholiumContracts
 @testable import ScholiumApplication
 import Testing
 
-@Suite("Research Action compatibility mapping")
+@Suite("Research Action protected-function mapping")
 struct ResearchActionFunctionMappingTests {
     @Test("Every bundled Action maps to one protected Function")
     func fixedMapping() throws {
@@ -24,8 +24,8 @@ struct ResearchActionFunctionMappingTests {
         }
     }
 
-    @Test("The retained Function coordinator recovers the exact bundled Action from Target role")
-    func reverseCompatibilityMapping() throws {
+    @Test("The protected Function coordinator recovers the exact Platform Action from Target role")
+    func reverseMapping() throws {
         let cases: [(ResearchFunctionID, ResearchFunctionTargetRole, ResearchActionID)] = [
             (.discuss, .work, .discuss),
             (.develop, .analysis, .analyze),
@@ -47,28 +47,6 @@ struct ResearchActionFunctionMappingTests {
             try ResearchActionFunctionMapping.definition(
                 for: .develop,
                 targetRole: .work
-            )
-        }
-    }
-
-    @Test("Custom Actions inherit only their declared execution boundary")
-    func customMapping() throws {
-        let identifier = try #require(
-            ResearchActionID(researcherOwnedRawValue: "reanalyze-with-counterexamples")
-        )
-        let definition = try ResearchActionDefinition(
-            researcherOwnedID: identifier,
-            executionKind: .analysis
-        )
-
-        #expect(try ResearchActionFunctionMapping.function(
-            for: definition,
-            targetRole: .analysis
-        ) == .develop)
-        #expect(throws: ResearchActionContractError.self) {
-            try ResearchActionFunctionMapping.function(
-                for: definition,
-                targetRole: .topic
             )
         }
     }

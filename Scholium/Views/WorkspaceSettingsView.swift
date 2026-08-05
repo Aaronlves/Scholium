@@ -8,7 +8,6 @@ struct ScholiumSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "vaults"
-    @StateObject private var researchGuidanceDraftStore = ResearchGuidanceDraftStore()
 
     var body: some View {
         TabView(selection: selectedPane) {
@@ -34,7 +33,7 @@ struct ScholiumSettingsView: View {
                 }
                 .tag(WorkspaceSettingsPane.properties)
 
-            ResearchGuidanceSettingsView(draftStore: researchGuidanceDraftStore)
+            ResearchGuidanceSettingsView()
                 .tabItem {
                     Label(ScholiumL10n.Settings.researchGuidance, systemImage: "text.bubble")
                 }
@@ -573,15 +572,9 @@ struct AgentCLISettingsView: View {
     }
 }
 
-/// Settings is the only presentation surface that activates Triptych-local
-/// Researcher Skills. Actions receive semantic availability, never package
-/// identifiers or routing metadata.
+/// Citation style is a protected Platform integration setting. It does not
+/// select, install, or grant authority to a Skill package.
 struct ResearchCitationMethodSettingsView: View {
-    private struct CitationMethodChoice: Hashable {
-        let packageID: String
-        let citationStyle: String
-    }
-
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     let onStatusChange: (ResearchCitationMethodStatus) -> Void
     @State private var status: ResearchCitationMethodStatus?
@@ -593,22 +586,15 @@ struct ResearchCitationMethodSettingsView: View {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     if let status {
-                        if status.candidates.isEmpty {
-                            Text("No Triptych citation method is installed.")
+                        if status.availableStyles.isEmpty {
+                            Text("No citation styles are available in this build.")
                                 .foregroundStyle(.secondary)
                         } else {
-                            Picker("Method", selection: activeMethodChoice) {
-                                Text("None").tag(CitationMethodChoice?.none)
-                                ForEach(status.candidates) { candidate in
-                                    ForEach(candidate.citationStyles, id: \.self) { style in
-                                        Text("\(candidate.name) — \(citationStyleTitle(style))")
-                                            .tag(CitationMethodChoice?.some(
-                                                CitationMethodChoice(
-                                                    packageID: candidate.packageID,
-                                                    citationStyle: style
-                                                )
-                                            ))
-                                    }
+                            Picker("Citation style", selection: activeStyleSelection) {
+                                Text("None").tag(String?.none)
+                                ForEach(status.availableStyles) { option in
+                                    Text(option.displayName)
+                                        .tag(Optional(option.citationStyle))
                                 }
                             }
                             .frame(maxWidth: 420)
@@ -616,29 +602,20 @@ struct ResearchCitationMethodSettingsView: View {
                                 "scholium.researchGuidance.citationMethod"
                             )
                         }
-
-                        if let active = activeCandidate(in: status) {
+                        if let active = status.availableStyles.first(where: {
+                            $0.citationStyle == status.activeCitationStyle
+                        }) {
                             Text(active.description)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
-                        } else if status.bundledTemplateAvailable {
-                            Button("Adopt APA 7 Starter") {
-                                adoptStarter()
-                            }
-                            .disabled(isWorking)
-                            .accessibilityIdentifier(
-                                "scholium.researchGuidance.adoptAPAStarter"
-                            )
-                        }
-
-                        if let issue = status.issue {
-                            Label(issueDescription(issue.code), systemImage: "exclamationmark.triangle")
+                        } else {
+                            Text("Citation checking remains unavailable until a style is selected.")
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.secondary)
                         }
                     } else {
-                        ProgressView("Loading citation methods…")
+                        ProgressView("Loading citation styles…")
                     }
                 }
                 Spacer()
@@ -646,11 +623,11 @@ struct ResearchCitationMethodSettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
-            Label("Citation Method", systemImage: "text.book.closed")
+            Label("Citation Style", systemImage: "text.book.closed")
                 .font(.headline)
         }
         .task(id: settingsModel.activeTriptychServicesID) { await reload() }
-        .alert("Could Not Update Citation Method", isPresented: Binding(
+        .alert("Could Not Update Citation Style", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -661,26 +638,11 @@ struct ResearchCitationMethodSettingsView: View {
         .accessibilityIdentifier("scholium.researchGuidance.citationMethodSection")
     }
 
-    private var activeMethodChoice: Binding<CitationMethodChoice?> {
+    private var activeStyleSelection: Binding<String?> {
         Binding(
-            get: {
-                guard let packageID = status?.activePackageID,
-                      let citationStyle = status?.activeCitationStyle else { return nil }
-                return CitationMethodChoice(
-                    packageID: packageID,
-                    citationStyle: citationStyle
-                )
-            },
+            get: { status?.activeCitationStyle },
             set: { newValue in
-                let current = status.flatMap { current -> CitationMethodChoice? in
-                    guard let packageID = current.activePackageID,
-                          let citationStyle = current.activeCitationStyle else { return nil }
-                    return CitationMethodChoice(
-                        packageID: packageID,
-                        citationStyle: citationStyle
-                    )
-                }
-                guard newValue != current else { return }
+                guard newValue != status?.activeCitationStyle else { return }
                 if let newValue {
                     activate(newValue)
                 } else {
@@ -688,40 +650,6 @@ struct ResearchCitationMethodSettingsView: View {
                 }
             }
         )
-    }
-
-    private func activeCandidate(
-        in status: ResearchCitationMethodStatus
-    ) -> ResearchCitationMethodCandidate? {
-        guard let activePackageID = status.activePackageID else { return nil }
-        return status.candidates.first { $0.packageID == activePackageID }
-    }
-
-    private func citationStyleTitle(_ style: String) -> String {
-        switch style.lowercased() {
-        case "apa-7": "APA 7"
-        case "chicago": "Chicago"
-        case "mla": "MLA"
-        case "oxford": "Oxford"
-        default: style.replacingOccurrences(of: "-", with: " ").capitalized
-        }
-    }
-
-    private func issueDescription(_ code: ResearchCitationMethodIssueCode) -> String {
-        switch code {
-        case .missing:
-            "Choose a citation method for Citations in Fidelity."
-        case .malformedBinding:
-            "The citation method selection needs repair."
-        case .invalidPackage:
-            "The selected citation method is invalid."
-        case .missingCapability:
-            "The selected skill does not provide citation verification."
-        case .citationStyleMissing:
-            "Choose the citation style that this method should apply."
-        case .citationStyleMismatch:
-            "The selected citation method has incompatible style metadata."
-        }
     }
 
     private func reload() async {
@@ -740,12 +668,11 @@ struct ResearchCitationMethodSettingsView: View {
         }
     }
 
-    private func activate(_ choice: CitationMethodChoice) {
+    private func activate(_ citationStyle: String) {
         perform {
             status = try await settingsModel.activateCitationMethod(
-                packageID: choice.packageID,
-                citationStyle: choice.citationStyle,
-                expectedBindingRevision: status?.bindingRevision
+                citationStyle: citationStyle,
+                expectedConfigurationRevision: status?.configurationRevision
             )
         }
     }
@@ -753,15 +680,7 @@ struct ResearchCitationMethodSettingsView: View {
     private func clear() {
         perform {
             status = try await settingsModel.clearCitationMethod(
-                expectedBindingRevision: status?.bindingRevision
-            )
-        }
-    }
-
-    private func adoptStarter() {
-        perform {
-            status = try await settingsModel.adoptBundledCitationStarter(
-                expectedBindingRevision: status?.bindingRevision
+                expectedConfigurationRevision: status?.configurationRevision
             )
         }
     }
@@ -773,8 +692,9 @@ struct ResearchCitationMethodSettingsView: View {
             do {
                 try await operation()
                 if let status { onStatusChange(status) }
+            } catch {
+                errorMessage = error.localizedDescription
             }
-            catch { errorMessage = error.localizedDescription }
         }
     }
 }

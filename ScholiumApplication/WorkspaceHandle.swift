@@ -16,10 +16,8 @@ struct WorkspaceServices: Sendable {
     let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
-    let researchSkillStore: ResearchSkillTransactionCoordinator
-    let researchSkillMaintenanceStore: ResearchSkillMaintenanceStore
-    let researchPermissionPolicyStore: ResearchPermissionPolicyStore
-    let agentNoteChangeRequestStore: AgentNoteChangeRequestStore
+    let researchConfigurationStore: ResearchConfigurationStore
+    let researchAgentSessions: ResearchAgentSessionAuthority?
     let researchRecoveryPolicyStore: ResearchRecoveryPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
     let zotero: ZoteroOperations
@@ -374,14 +372,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func endResearchRecoveryMutation() {
         researchRecoveryMutationIsActive = false
     }
-    /// Plaintext activity keys live only for this open WorkspaceHandle. The
-    /// durable grant store keeps a digest, so reopening never reconstructs a
-    /// credential from persisted state.
-    var activeResearchActivityKeys: [UUID: String] = [:]
-    /// Plaintext Agent coordination keys are likewise process-local. Local
-    /// Execution v2 persists only their digest and expiry.
-    var activeAgentCoordinationKeys: [UUID: String] = [:]
-
     private init(
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,
@@ -431,6 +421,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         windowSessionStore: WindowSessionSnapshotStore,
         vaultPool: WorkspaceVaultPool,
         zotero: ZoteroOperations,
+        researchAgentSessions: ResearchAgentSessionAuthority?,
         access: WorkspaceAccessConfiguration
     ) async throws -> WorkspaceHandle {
         try Task.checkCancellation()
@@ -487,26 +478,19 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }
             }
 
-            let workingMethodRecoveryStore = ResearchWorkingMethodRecoveryStore(
-                snapshotRootURL: triptychStorage
+            let researchConfigurationStore = ResearchConfigurationStore(
+                controlURL: controlURL,
+                triptychID: assignment.id,
+                machineStorageURL: triptychStorage
+                    .appendingPathComponent("research-guidance", isDirectory: true),
+                recoveryStorageURL: triptychStorage
                     .appendingPathComponent("research-guidance", isDirectory: true)
                     .appendingPathComponent(
-                        "skill-snapshots",
-                        isDirectory: true
+                        "method-edit-recovery-v2.json",
+                        isDirectory: false
                     )
             )
-            let researchSkillStore = ResearchSkillTransactionCoordinator(
-                controlURL: controlURL,
-                workingMethodRecoveryStore: workingMethodRecoveryStore
-            )
-            if !manifestExists {
-                // Working Methods are installed before the manifest becomes
-                // the durable new-Triptych marker. A failed or interrupted
-                // bootstrap can therefore retry exact partial task-owned
-                // packages without mutating an established Triptych.
-                _ = try await researchSkillStore
-                    .installDefaultWorkingMethods()
-            }
+            try await researchConfigurationStore.bootstrapDefaults()
 
             let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
                 ($0, assignment.triptych.vaultID(for: $0))
@@ -555,12 +539,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     isDirectory: true
                 )
             )
-            let researchSkillMaintenanceStore = ResearchSkillMaintenanceStore(
-                skillStore: researchSkillStore,
-                snapshotRootURL: triptychStorage
-                    .appendingPathComponent("research-guidance", isDirectory: true)
-                    .appendingPathComponent("skill-snapshots", isDirectory: true)
-            )
             let services = WorkspaceServices(
                 manifest: manifest,
                 repositories: repositories,
@@ -569,16 +547,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }),
                 searchIndex: openedSearchIndex.index,
                 controlStore: controlStore,
-                researchSkillStore: researchSkillStore,
-                researchSkillMaintenanceStore: researchSkillMaintenanceStore,
-                researchPermissionPolicyStore: ResearchPermissionPolicyStore(
-                    applicationSupportURL: applicationSupportURL,
-                    triptychID: manifest.id
-                ),
-                agentNoteChangeRequestStore: try AgentNoteChangeRequestStore(
-                    applicationSupportURL: applicationSupportURL,
-                    triptychID: manifest.id
-                ),
+                researchConfigurationStore: researchConfigurationStore,
+                researchAgentSessions: researchAgentSessions,
                 researchRecoveryPolicyStore: try ResearchRecoveryPolicyStore(
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
@@ -645,12 +615,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     }),
                     roots: services.roots,
                     controlStore: services.controlStore,
-                    researchSkillStore: services.researchSkillStore,
+                    researchConfigurationStore: services.researchConfigurationStore,
                     sourceAccessStore: services.researchSourceAccessStore,
-                    agentNoteChangeRequestStore: services.agentNoteChangeRequestStore,
                     portableResearchRecordStore: services.portableResearchRecordStore,
                     localExecutionStore: services.localResearchExecutionStore,
-                    critiqueRegistry: services.critiqueRegistry,
                     checkpointStore: services.checkpointStore,
                     zotero: services.zotero
                 )
@@ -658,7 +626,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let researchOperations = ResearchOperations(
                 reference: reference,
                 functionCoordinator: researchFunctionCoordinator,
-                skillsURL: services.researchSkillStore.skillsURL,
                 recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
             let handle = WorkspaceHandle(
@@ -1582,7 +1549,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             sourceAccessStore: services.researchSourceAccessStore,
             portableRecordStore: services.portableResearchRecordStore,
             localExecutionStore: services.localResearchExecutionStore,
-            agentNoteChangeRequestStore: services.agentNoteChangeRequestStore
         )
         let commit = try await coordinator.delete(
             noteID: identity.id,
@@ -1728,7 +1694,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 sourceAccessStore: services.researchSourceAccessStore,
                 portableRecordStore: services.portableResearchRecordStore,
                 localExecutionStore: services.localResearchExecutionStore,
-                agentNoteChangeRequestStore: services.agentNoteChangeRequestStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -2147,15 +2112,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    /// Agent change-request validation reads source-bound identities and local
-    /// executions that permanent deletion may remove. Borrowing the same gate
-    /// keeps those checks and their store write on one side of every source
-    /// mutation instead of leaving an orphaned private request across actor
-    /// reentrancy.
-    func beginAgentNoteChangeCoordination() async throws -> WorkspaceSourceOperationLease {
-        try await beginSourceMutation()
-    }
-
     /// Research Method, Profile, Skill, and standing-policy writes share the
     /// Agent decision gate so an exact-current check and its non-authorizing
     /// durable decision cannot be separated by an in-App configuration edit.
@@ -2166,10 +2122,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
         releaseWorkspaceSourceOperation(lease)
         startLiveIndexRefreshIfNeeded()
-    }
-
-    func endAgentNoteChangeCoordination(_ lease: WorkspaceSourceOperationLease) {
-        endSourceMutation(lease)
     }
 
     func endResearchConfigurationMutation(_ lease: WorkspaceSourceOperationLease) {
@@ -2450,47 +2402,191 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func search(_ request: SearchRequest) async throws -> SearchResponse {
         try requireActive()
-        return try await services.searchIndex.search(request)
-    }
-
-    func related(
-        query: String,
-        scope: SearchExecutionScope,
-        searchGeneration: SearchGenerationID?,
-        excluding: Set<VaultQualifiedNoteID>,
-        limit: Int
-    ) throws -> RelatedSearchResponse {
-        try requireActive()
-        let parsed = SearchQueryParser.parse(query)
-        guard parsed.diagnostics.isEmpty,
-              parsed.ast?.relatedIdentityNeedle != nil else {
-            return RelatedSearchResponse(availability: .notApplicable)
-        }
-        guard let searchGeneration else {
-            return RelatedSearchResponse(availability: .notApplicable)
-        }
-        guard currentSnapshot.discovery.searchGeneration == searchGeneration else {
-            return RelatedSearchResponse(availability: .refreshing)
-        }
-        guard let graph = currentSnapshot.discovery.catalog.graph else {
-            return RelatedSearchResponse(availability: .refreshing)
-        }
-        guard graph.sourceManifestHash == searchGeneration.sourceManifestHash else {
-            return RelatedSearchResponse(
-                availability: .stale(
-                    reason: "Related connections were derived from an older source manifest."
+        if let diagnostic = searchScopeDiagnostic(request) {
+            return await searchDiagnosticResponse(
+                request: request,
+                parsed: SearchQueryParseResult(
+                    ast: nil,
+                    diagnostics: [diagnostic]
                 )
             )
         }
-        return RelatedSearchResponse(
-            availability: .current,
-            items: currentSnapshot.discovery.catalog.relatedSearchResults(
-            for: query,
-            scope: scope,
-            searchGeneration: currentSnapshot.discovery.searchGeneration,
-            excluding: excluding,
-            limit: limit
+
+        let parsed = SearchQueryParser.parse(request.query)
+        guard let ast = parsed.ast, parsed.diagnostics.isEmpty else {
+            return await searchDiagnosticResponse(request: request, parsed: parsed)
+        }
+        switch ast.provider {
+        case .note:
+            if case .currentNote = request.executionScope,
+               ast.clauses.contains(where: { clause in
+                   switch clause {
+                   case .property, .relation: true
+                   case .lexical, .structured, .record: false
+                   }
+               }) {
+                return await searchDiagnosticResponse(
+                    request: request,
+                    parsed: SearchQueryParseResult(
+                        provider: .note,
+                        providerWasExplicit: ast.providerWasExplicit,
+                        ast: ast,
+                        diagnostics: [SearchQueryDiagnostic(
+                            code: .notApplicable,
+                            message: "Property and direct relation clauses are not applicable to This Note occurrence Search.",
+                            utf16LowerBound: 0,
+                            utf16UpperBound: request.query.utf16.count
+                        )]
+                    )
+                )
+            }
+            let relation = NoteRelationSearchResolver.resolve(
+                ast: ast,
+                scope: request.executionScope,
+                catalog: currentSnapshot.discovery.catalog,
+                searchGeneration: currentSnapshot.discovery.searchGeneration
             )
+            if let diagnostic = relation.diagnostic {
+                return await searchDiagnosticResponse(
+                    request: request,
+                    parsed: SearchQueryParseResult(
+                        provider: .note,
+                        providerWasExplicit: ast.providerWasExplicit,
+                        ast: ast,
+                        diagnostics: [diagnostic]
+                    )
+                )
+            }
+            return try await services.searchIndex.search(
+                request,
+                ast: ast,
+                relationshipMatches: relation.matches
+            )
+
+        case .record:
+            return try searchRecords(request, ast: ast)
+        }
+    }
+
+    /// Rebuilds the Record query projection from the current immutable
+    /// snapshot. `search(_:)` has already validated the resolved scope before
+    /// parsing or dispatching to this provider.
+    func searchRecords(
+        _ request: SearchRequest,
+        ast: SearchQueryAST
+    ) throws -> SearchResponse {
+        try requireActive()
+        precondition(ast.provider == .record)
+        let index = ResearchRecordSearchIndex(
+            triptychID: assignment.id,
+            research: currentSnapshot.research,
+            catalog: currentSnapshot.discovery.catalog
+        )
+        let execution = try index.search(
+            ast: ast,
+            scope: request.executionScope,
+            limit: request.limit
+        )
+        return SearchResponse(
+            requestID: request.id,
+            scope: request.presentationScope,
+            explanation: ast.explanation,
+            freshnessToken: .record(execution.generation),
+            availability: .record(execution.availability),
+            results: execution.results.map(SearchResult.record),
+            hasMore: execution.hasMore,
+            diagnostics: execution.diagnostics
+        )
+    }
+
+    private func searchScopeDiagnostic(
+        _ request: SearchRequest
+    ) -> SearchQueryDiagnostic? {
+        guard request.hasConsistentScopes else {
+            return SearchQueryDiagnostic(
+                code: .notApplicable,
+                message: "Search presentation and execution scopes do not match.",
+                utf16LowerBound: 0,
+                utf16UpperBound: 0
+            )
+        }
+        let authorizedVaultIDs = Set(assignment.vaults.values.map(\.id))
+        switch request.executionScope {
+        case .triptych:
+            return nil
+        case .currentVault(let vaultID):
+            guard authorizedVaultIDs.contains(vaultID) else {
+                return SearchQueryDiagnostic(
+                    code: .notApplicable,
+                    message: "The selected Search vault is not part of this Triptych.",
+                    utf16LowerBound: 0,
+                    utf16UpperBound: 0
+                )
+            }
+        case .currentNote(let source):
+            guard authorizedVaultIDs.contains(source.noteID.vaultID),
+                  currentSnapshot.discovery.catalog.notes.contains(where: {
+                      $0.reference.vaultID == source.noteID.vaultID
+                          && $0.reference.relativePath == source.noteID.relativePath
+                  }) else {
+                return SearchQueryDiagnostic(
+                    code: .notApplicable,
+                    message: "The selected Search Note is not part of this Triptych.",
+                    utf16LowerBound: 0,
+                    utf16UpperBound: 0
+                )
+            }
+        }
+        return nil
+    }
+
+    private func searchDiagnosticResponse(
+        request: SearchRequest,
+        parsed: SearchQueryParseResult
+    ) async -> SearchResponse {
+        let availability: SearchProviderAvailability
+        let freshness: SearchFreshnessToken
+        switch parsed.provider {
+        case .note:
+            let noteAvailability = await services.searchIndex.availability()
+            availability = .note(noteAvailability)
+            switch request.executionScope {
+            case .currentNote(let source):
+                freshness = .currentNote(source)
+            case .currentVault, .triptych:
+                if let generation = noteAvailability.lastGoodGeneration {
+                    freshness = .triptych(generation)
+                } else {
+                    freshness = SearchFreshnessToken(
+                        "triptych:\(id.uuidString.lowercased()):unavailable"
+                    )
+                }
+            }
+        case .record:
+            let generation = RecordSearchGenerationID(
+                triptychID: id,
+                sourceManifestHash:
+                    currentSnapshot.research.finishedResearchRecordSourceManifestHash
+            )
+            if currentSnapshot.research.finishedResearchRecordProjectionIsComplete {
+                availability = .record(.current(generation))
+            } else {
+                availability = .record(.failed(
+                    lastGood: nil,
+                    reason: "The portable Research Record corpus is incomplete."
+                ))
+            }
+            freshness = .record(generation)
+        }
+        return SearchResponse(
+            requestID: request.id,
+            scope: request.presentationScope,
+            explanation: parsed.explanation,
+            freshnessToken: freshness,
+            availability: availability,
+            results: [],
+            hasMore: false,
+            diagnostics: parsed.diagnostics
         )
     }
 
@@ -2518,113 +2614,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    func skills() async throws -> [ResearchSkillPackage] {
-        try requireActive()
-        return try await services.researchSkillStore.skills()
-    }
-
-    func skillCatalog() async throws -> ResearchSkillCatalog {
-        try requireActive()
-        return try await services.researchSkillStore.catalog()
-    }
-
-    func skillPackage(id: String) async throws -> ResearchSkillPackage {
-        try requireActive()
-        return try await services.researchSkillStore.package(id: id)
-    }
-
-    func createSkill(id: String, source: String) async throws -> ResearchSkillPackage {
-        try requireActive()
-        let mutationLease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationLease) }
-        return try await services.researchSkillStore.create(id: id, source: source)
-    }
-
-    func duplicateBundledSkill(
-        id: String,
-        as newID: String
-    ) async throws -> ResearchSkillPackage {
-        try requireActive()
-        let mutationLease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationLease) }
-        return try await services.researchSkillStore.duplicateBundled(id: id, as: newID)
-    }
-
-    func saveSkill(
-        id: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillPackage {
-        try requireActive()
-        let mutationLease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationLease) }
-        return try await services.researchSkillStore.save(
-            id: id,
-            source: source,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func renameSkill(
-        id: String,
-        to newID: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillPackage {
-        try requireActive()
-        let mutationLease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationLease) }
-        return try await services.researchSkillStore.rename(
-            id: id,
-            to: newID,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func deleteSkill(id: String, expectedRevision: DocumentFingerprint) async throws {
-        try requireActive()
-        let mutationLease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationLease) }
-        try await services.researchSkillStore.delete(
-            id: id,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func skillResourcePaths(id: String) async throws -> [String] {
-        try requireActive()
-        return try await services.researchSkillStore.resourcePaths(id: id)
-    }
-
-    func skillResource(id: String, relativePath: String) async throws -> String {
-        try requireActive()
-        return try await services.researchSkillStore.resource(
-            id: id,
-            relativePath: relativePath
-        )
-    }
-
-    func skillInstructionAssembly(
-        mode: ResearchSkillMode,
-        requestedSkillIDs: [String],
-        mixedPhases: [ResearchSkillAssemblyPhase]
-    ) async throws -> String {
-        try requireActive()
-        return try await services.researchSkillStore.instructionAssembly(
-            mode: mode,
-            requestedSkillIDs: requestedSkillIDs,
-            mixedPhases: mixedPhases
-        )
-    }
-
-    func resolveWorkflow(
-        _ contract: ResearchWorkflowContract
-    ) async throws -> ResolvedResearchWorkflowEnvelope {
-        try requireActive()
-        return try await ResearchWorkflowAssembler.resolve(
-            contract,
-            store: services.researchSkillStore
-        )
-    }
 
     private func coordinatedMoveDocument(
         _ source: VaultQualifiedNoteID,

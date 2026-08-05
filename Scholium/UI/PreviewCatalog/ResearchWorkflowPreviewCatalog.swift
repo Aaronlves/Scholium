@@ -29,27 +29,24 @@ struct ResearchWorkflowPreviewCatalog: View {
 
 enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
     case actionSheet
-    case skillInstaller
-    case skillSettings
-    case changeRequest
+    case researchGuidance
+    case writeSetExtension
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .actionSheet: "Skill-run Sheet"
-        case .skillInstaller: "Skill Installer"
-        case .skillSettings: "Skill Settings"
-        case .changeRequest: "Agent Change Request"
+        case .researchGuidance: "Research Guidance"
+        case .writeSetExtension: "Bounded Write Set"
         }
     }
 
     var systemImage: String {
         switch self {
         case .actionSheet: "list.bullet.rectangle"
-        case .skillInstaller: "square.and.arrow.down"
-        case .skillSettings: "slider.horizontal.3"
-        case .changeRequest: "doc.badge.ellipsis"
+        case .researchGuidance: "slider.horizontal.3"
+        case .writeSetExtension: "doc.badge.ellipsis"
         }
     }
 }
@@ -71,12 +68,10 @@ private struct ResearchWorkflowProofDetail: View {
         switch proof {
         case .actionSheet:
             ResearchActionSheetProof()
-        case .skillInstaller:
-            ResearchSkillInstallerProof()
-        case .skillSettings:
-            ResearchSkillSettingsProof()
-        case .changeRequest:
-            AgentChangeRequestProof()
+        case .researchGuidance:
+            ResearchGuidanceSettingsProof()
+        case .writeSetExtension:
+            ResearchWriteSetExtensionProof()
         }
     }
 }
@@ -98,74 +93,6 @@ private struct ResearchProofHeader: View {
         .accessibilityAddTraits(.isHeader)
     }
 }
-
-// MARK: - Researcher Skill fixtures
-
-private enum ResearchProofRole: String, CaseIterable, Hashable {
-    case analysis = "Analysis"
-    case topic = "Topic"
-    case work = "Work"
-}
-
-private struct ResearcherSkillProofFixture: Identifiable {
-    let id: String
-    let name: String
-    let revision: Int
-    let isEnabled: Bool
-    let showsInActions: Bool
-    let applicableRoles: Set<ResearchProofRole>
-    let readableRoles: Set<ResearchProofRole>
-    let candidateWriteScope: String
-    let requiredAuthorization: String
-
-    var applicableRoleDescription: String {
-        roleDescription(for: applicableRoles)
-    }
-
-    var readableRoleDescription: String {
-        roleDescription(for: readableRoles)
-    }
-
-    var settingsStatus: String {
-        if !isEnabled { return "disabled" }
-        return showsInActions ? "enabled" : "enabled and hidden"
-    }
-
-    var settingsDescription: String {
-        "\(name), revision \(revision), \(settingsStatus)"
-    }
-
-    private func roleDescription(for roles: Set<ResearchProofRole>) -> String {
-        ResearchProofRole.allCases
-            .filter(roles.contains)
-            .map(\.rawValue)
-            .joined(separator: ", ")
-    }
-}
-
-private let counterexampleStressTestFixture = ResearcherSkillProofFixture(
-    id: "counterexample-stress-test",
-    name: "Counterexample Stress Test",
-    revision: 4,
-    isEnabled: true,
-    showsInActions: true,
-    applicableRoles: [.topic, .work],
-    readableRoles: [.analysis, .topic, .work],
-    candidateWriteScope: "None",
-    requiredAuthorization: "No Markdown write"
-)
-
-private let compareInterpretationsFixture = ResearcherSkillProofFixture(
-    id: "compare-interpretations",
-    name: "Compare Interpretations",
-    revision: 2,
-    isEnabled: false,
-    showsInActions: false,
-    applicableRoles: [.analysis, .topic],
-    readableRoles: [.analysis, .topic],
-    candidateWriteScope: "None",
-    requiredAuthorization: "No Markdown write"
-)
 
 // MARK: - Generic modular Skill-run sheet
 
@@ -333,7 +260,7 @@ private struct ResearchAuthorityFacts: View {
     var body: some View {
         ResearchProofSection(title: "APP-OWNED BOUNDARY") {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                LabeledContent("Permission", value: "Ask Me Every Time")
+                LabeledContent("Collaboration policy", value: "Ask Me Every Time")
                 LabeledContent("Candidate write scope", value: action.candidateWriteScope)
                 LabeledContent(
                     "Recovery",
@@ -343,7 +270,7 @@ private struct ResearchAuthorityFacts: View {
                 )
                 LabeledContent("Conflicts", value: "Revalidated before write")
                 LabeledContent("Conflict recovery", value: "Retained displaced bytes")
-                Text("The Skill can declare requirements, but it cannot hide or expand these fields.")
+                Text("The Method may guide scholarly work, but it cannot hide or expand these app-owned facts.")
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -381,85 +308,19 @@ private struct ResearchSheetButtons: View {
     }
 }
 
-// MARK: - Skill installation and settings
-
-private struct ResearchSkillInstallerProof: View {
-    @State private var triptychSelected = true
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                Text("Install Researcher Skill")
-                    .font(ScholiumInterfaceTypography.documentTitle)
-                    .accessibilityAddTraits(.isHeader)
-                Text("Review this local directory before Scholium creates a disabled, Triptych-local snapshot.")
-                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                ResearchProofSection(title: "SOURCE") {
-                    LabeledContent("Directory", value: counterexampleStressTestFixture.name)
-                    LabeledContent("Origin", value: "Local directory chosen by researcher")
-                }
-                ResearchProofSection(title: "ACCEPTED FILES") {
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        Label("SKILL.md", systemImage: "doc.plaintext")
-                        Label("references/evaluation-questions.md", systemImage: "doc.plaintext")
-                        Label("evals/strong-objection.md", systemImage: "doc.plaintext")
-                    }
-                }
-                ResearchProofSection(title: "DECLARED USE") {
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        LabeledContent(
-                            "Note roles",
-                            value: counterexampleStressTestFixture.applicableRoleDescription
-                        )
-                        LabeledContent("Action placement", value: "Researcher Skills")
-                        LabeledContent(
-                            "Capabilities",
-                            value: "Read \(counterexampleStressTestFixture.readableRoleDescription) focal Notes; return feedback"
-                        )
-                        LabeledContent(
-                            "Requested writes",
-                            value: counterexampleStressTestFixture.candidateWriteScope
-                        )
-                    }
-                }
-                ResearchProofSection(title: "INSTALL TO") {
-                    Toggle("Immediate Results Triptych", isOn: $triptychSelected)
-                    Text("Each selected Triptych receives an independent snapshot. Installation does not create hidden synchronization.")
-                        .font(ScholiumInterfaceTypography.apparatusResearchContent)
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                ResearchProofNotice(
-                    title: "Installed Skills Start Disabled",
-                    detail: "Review the working Skill and its permissions before enabling its Action.",
-                    systemImage: "exclamationmark.triangle",
-                    colorRole: .attention
-                )
-                ResearchSheetButtons(primary: "Install Disabled")
-            }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: 720, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
-        .accessibilityIdentifier("scholium.proofs.installer")
-    }
-}
+// MARK: - Research Guidance
 
 private enum ResearchGuidanceProofCategory: String, CaseIterable, Identifiable {
     case methods = "Methods"
-    case researcherSkills = "Researcher Skills"
-    case permissions = "Permissions"
+    case profilesPractices = "Profiles & Practices"
+    case collaboration = "Collaboration"
     case sources = "Sources & Integrations"
     case recovery = "Recovery & Technical"
 
     var id: String { rawValue }
 }
 
-private struct ResearchSkillSettingsProof: View {
+private struct ResearchGuidanceSettingsProof: View {
     @State private var category: ResearchGuidanceProofCategory = .methods
 
     var body: some View {
@@ -475,7 +336,7 @@ private struct ResearchSkillSettingsProof: View {
             ScholiumStructuralRule(orientation: .vertical)
 
             ScrollView {
-                ResearchSkillSettingsDetail(category: category)
+                ResearchGuidanceSettingsDetail(category: category)
                     .padding(ScholiumGrid.Spacing.regionContentInset)
                     .frame(maxWidth: 680, alignment: .topLeading)
                     .frame(maxWidth: .infinity, alignment: .top)
@@ -485,19 +346,9 @@ private struct ResearchSkillSettingsProof: View {
     }
 }
 
-private struct ResearchSkillSettingsDetail: View {
+private struct ResearchGuidanceSettingsDetail: View {
     let category: ResearchGuidanceProofCategory
-    @State private var buttonName = counterexampleStressTestFixture.name
-    @State private var selectedTriptych = "Dissertation"
-    @State private var appliesToAnalysis = counterexampleStressTestFixture.applicableRoles
-        .contains(.analysis)
-    @State private var appliesToTopic = counterexampleStressTestFixture.applicableRoles
-        .contains(.topic)
-    @State private var appliesToWork = counterexampleStressTestFixture.applicableRoles
-        .contains(.work)
-    @State private var showsInActions = counterexampleStressTestFixture.showsInActions
-    @State private var actionOrder = 4
-    @State private var standingPolicy = "Inherit Triptych Policy"
+    @State private var collaborationPolicy = "Ask Me Every Time"
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
@@ -512,106 +363,73 @@ private struct ResearchSkillSettingsDetail: View {
     private var settingsContent: some View {
         switch category {
         case .methods:
-            ResearchProofSection(title: "WORKING METHOD SKILLS") {
-                Text("Editable for this Triptych. A working method may be changed, disabled, replaced, or restored from its bundled reference.")
+            ResearchProofSection(title: "RESEARCH SKILLS") {
+                        Text("Each Platform Action routes to one current primary Markdown Method. Exact Wikilinks select Practices; an optional local folder is ordinary Agent-readable storage, not a package.")
                     .font(ScholiumInterfaceTypography.apparatusResearchContent)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
-                VStack(spacing: 0) {
-                    ForEach([
-                        ("Discuss", "Enabled"),
-                        ("Analyze", "Enabled"),
-                        ("Synthesize", "Enabled"),
-                        ("Write", "Enabled"),
-                        ("Critique", "Enabled"),
-                        ("Content Fidelity", "Enabled"),
-                        ("Manuscript", "Disabled and hidden"),
-                    ], id: \.0) { name, status in
-                        ResearchWorkingMethodProofRow(name: name, status: status)
+                        VStack(spacing: 0) {
+                            ForEach([
+                                ("Discuss", "Argument Mapping, Counterexample Testing"),
+                                ("Analyze", "Source Analysis, Conceptual Analysis"),
+                                ("Synthesize", "Dialectical Mapping"),
+                                ("Write", "Objection Development, Reply Construction"),
+                                ("Critique", "Argument Mapping, Counterexample Testing"),
+                                ("Check Fidelity", "Interpretive Triangulation"),
+                                ("Manuscript", "Thesis Stabilization, Terminological Audit"),
+                            ], id: \.0) { name, practices in
+                        ResearchWorkingMethodProofRow(name: name, practices: practices)
                         ScholiumStructuralRule()
                     }
                 }
             }
-            ResearchSkillGroup(title: "SYSTEM SKILLS", detail: "Read-only application mechanisms", rows: [
-                "Identity and revision",
-                "Permission and recovery",
-                "Conflict and completion validation",
-            ], actionTitle: nil)
-            ResearchSkillGroup(title: "BUNDLED REFERENCES", detail: "Compare, restore, or reinstall explicitly", rows: [
-                "Scholium Analyze reference",
-                "Scholium Synthesize reference",
-            ], actionTitle: "Compare")
-        case .researcherSkills:
-            ResearchSkillGroup(title: "INSTALLED", detail: "Local, editable, and versioned", rows: [
-                counterexampleStressTestFixture.settingsDescription,
-                compareInterpretationsFixture.settingsDescription,
-            ])
-            ResearchProofSection(title: "APPLICABILITY") {
-                Picker("Triptych", selection: $selectedTriptych) {
-                    Text("Dissertation").tag("Dissertation")
-                    Text("Article Project").tag("Article Project")
-                }
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text("Note roles")
-                        .font(ScholiumInterfaceTypography.apparatusBody)
-                    Toggle("Analysis", isOn: $appliesToAnalysis)
-                    Toggle("Topic", isOn: $appliesToTopic)
-                    Toggle("Work", isOn: $appliesToWork)
-                }
+            ResearchProofSection(title: "BOUNDARY") {
+                Text("Method and Practice prose can guide scholarly work. It cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery.")
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            ResearchProofSection(title: "ACTION PLACEMENT") {
-                TextField("Button name", text: $buttonName)
-                Toggle("Show in Actions", isOn: $showsInActions)
-                Stepper("Order in Actions: \(actionOrder)", value: $actionOrder, in: 1 ... 12)
-            }
-            ResearchProofSection(title: "PROFILE MODULES") {
-                ResearchSettingsValueRow(label: "Passage anchor", value: "Optional")
-                ResearchSettingsValueRow(label: "Material selector", value: "Required")
-                ResearchSettingsValueRow(label: "Bounded instruction", value: "1,200 characters")
-                Button("Add Declarative Module…") {}
-            }
-            ResearchProofSection(title: "DECLARED PERMISSIONS") {
-                ResearchSettingsValueRow(
-                    label: "Readable roles",
-                    value: counterexampleStressTestFixture.readableRoleDescription
-                )
-                ResearchSettingsValueRow(
-                    label: "Candidate write scope",
-                    value: counterexampleStressTestFixture.candidateWriteScope
-                )
-                ResearchSettingsValueRow(
-                    label: "Required authorization",
-                    value: counterexampleStressTestFixture.requiredAuthorization
-                )
-            }
-            Button("Install from Local Directory…") {}
-        case .permissions:
-            ResearchSkillGroup(title: "TRIPTYCH POLICY", detail: "Ask Me Every Time", rows: [
-                "Discuss inherits Triptych policy",
-                "Write asks only for new Notes or an expanded phase",
-            ], actionTitle: nil)
-            ResearchProofSection(title: "SKILL OVERRIDE") {
-                Picker("Standing policy", selection: $standingPolicy) {
-                    Text("Inherit Triptych Policy").tag("Inherit Triptych Policy")
+        case .profilesPractices:
+                   ResearchSkillGroup(title: "ACADEMIC PROFILES", detail: "Flat researcher-facing fields", rows: [
+                       "Analyze: source and passage inputs; evidence Result fields",
+                       "Critique: target and standard inputs; objection Result fields",
+                   ], actionTitle: "Enable")
+            ResearchSkillGroup(title: "PHILOSOPHICAL PRACTICES", detail: "Exact Markdown linked from primary Methods", rows: [
+                "Argument Mapping.md",
+                "Counterexample Testing.md",
+                "Interpretive Triangulation.md",
+            ], actionTitle: "Edit")
+            Text("A Practice keeps one replaceable previous edit. It guides research but never grants authority.")
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .fixedSize(horizontal: false, vertical: true)
+        case .collaboration:
+            ResearchProofSection(title: "TRIPTYCH COLLABORATION") {
+                Picker("Collaboration policy", selection: $collaborationPolicy) {
                     Text("Ask Me Every Time").tag("Ask Me Every Time")
                     Text("Ask Me Only for Works").tag("Ask Me Only for Works")
-                    Text("Triptych-wide").tag("Triptych-wide")
+                    Text("Full Triptych Access").tag("Full Triptych Access")
                 }
-                Text("A Skill declares what it needs. This separate standing policy only decides when Scholium asks the researcher.")
+                Text("The policy only controls when Scholium asks to extend one Run's bounded write set. It is not attached to a Skill or Agent and never grants blanket writes.")
                     .font(ScholiumInterfaceTypography.apparatusResearchContent)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
         case .sources:
-            ResearchSkillGroup(title: "ANALYZE SOURCES", detail: "Explicit source identity", rows: [
+            ResearchSkillGroup(title: "SOURCE ROUTES", detail: "Explicit source identity", rows: [
                 "Zotero local attachment route",
                 "Researcher-selected local file route",
             ], actionTitle: nil)
+            ResearchSkillGroup(title: "CITATION STYLE", detail: "Triptych-owned configuration", rows: [
+                "APA 7",
+            ], actionTitle: "Select")
+            ResearchSkillGroup(title: "AGENT & CLI", detail: "Local authenticated handoff", rows: [
+                "Pairing and Session are short-lived and restart-invalidated",
+                "CLI uses the same Application owner as the app",
+            ], actionTitle: nil)
         case .recovery:
             ResearchSkillGroup(title: "RECOVERY", detail: "Machine-local operational state", rows: [
-                "Reveal Skills Folder",
-                "Settled version policy",
-                "Skill recovery snapshots",
+                "Settled Note version retention",
+                "One previous primary Method edit",
+                "One previous Practice edit",
             ], actionTitle: nil)
         }
     }
@@ -619,38 +437,28 @@ private struct ResearchSkillSettingsDetail: View {
 
 private struct ResearchWorkingMethodProofRow: View {
     let name: String
-    let status: String
+    let practices: String
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(name)
-                Text(status)
+                Text("Practices: \(practices)")
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
             }
             Spacer()
             Menu("Manage") {
-                Button("Edit Method") {}
-                Button(status == "Enabled" ? "Disable" : "Enable") {}
-                Button("Replace…") {}
+                Button("Edit Primary Markdown") {}
+                Button("Register Markdown…") {}
+                Button("Register Skill Folder…") {}
                 Divider()
-                Button("Restore Bundled Reference") {}
+                Button("Restore Previous Edit") {}
+                Button("Restore Scholium Default…") {}
             }
             .menuStyle(.borderlessButton)
         }
         .font(ScholiumInterfaceTypography.apparatusBody)
         .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
-    }
-}
-
-private struct ResearchSettingsValueRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        LabeledContent(label, value: value)
-            .font(ScholiumInterfaceTypography.apparatusBody)
-            .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
     }
 }
 
@@ -684,34 +492,34 @@ private struct ResearchSkillGroup: View {
     }
 }
 
-// MARK: - Agent change request
+// MARK: - Bounded write-set extension
 
-private struct AgentChangeRequestNote: Identifiable {
+private struct ResearchWriteSetExtensionNote: Identifiable {
     let id: String
     let title: String
     var isSelected: Bool
 }
 
-private struct AgentChangeRequestProof: View {
+private struct ResearchWriteSetExtensionProof: View {
     @State private var notes = [
-        AgentChangeRequestNote(id: "topic-attention", title: "Topic: Attention", isSelected: true),
-        AgentChangeRequestNote(id: "topic-normative-reasons", title: "Topic: Normative Reasons", isSelected: false),
-        AgentChangeRequestNote(id: "work-chapter-three", title: "Work: Chapter Three", isSelected: true),
+        ResearchWriteSetExtensionNote(id: "topic-attention", title: "Topic: Attention", isSelected: true),
+        ResearchWriteSetExtensionNote(id: "topic-normative-reasons", title: "Topic: Normative Reasons", isSelected: false),
+        ResearchWriteSetExtensionNote(id: "work-chapter-three", title: "Work: Chapter Three", isSelected: true),
     ]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                Text("The Agent Wants to Change Additional Notes")
+                Text("Allow Additional Notes for This Research Run?")
                     .font(ScholiumInterfaceTypography.documentTitle)
                     .accessibilityAddTraits(.isHeader)
-                Text("The current Analyze run remains frozen. An allowed selection would begin a separate authorized phase.")
+                Text("One decision may add any selected subset to this Run. Each later write remains independently revision checked and recoverable.")
                     .font(ScholiumInterfaceTypography.apparatusResearchContent)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
 
                 ResearchProofSection(title: "REQUEST") {
-                    LabeledContent("Parent run", value: "Analyze Attention and Salience")
+                    LabeledContent("Current Run", value: "Analyze Attention and Salience")
                     LabeledContent("Reason", value: "Two claims now bear directly on the current Topic and one Work section.")
                 }
 
@@ -728,7 +536,7 @@ private struct AgentChangeRequestProof: View {
 
                 ResearchProofNotice(
                     title: "Revalidated Before Decision",
-                    detail: "Note identity, revision, Skill revision, Profile, and standing policy remain current.",
+                    detail: "Note identity, role, operation, current revision, and Triptych collaboration policy remain current.",
                     systemImage: "checkmark.circle",
                     colorRole: .confirmed
                 )
@@ -736,10 +544,10 @@ private struct AgentChangeRequestProof: View {
                 ViewThatFits(in: .horizontal) {
                     HStack {
                         Spacer()
-                        changeRequestButtons
+                        writeSetExtensionButtons
                     }
                     VStack(alignment: .trailing) {
-                        changeRequestButtons
+                        writeSetExtensionButtons
                     }
                 }
             }
@@ -747,14 +555,14 @@ private struct AgentChangeRequestProof: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .accessibilityIdentifier("scholium.proofs.changeRequest")
+        .accessibilityIdentifier("scholium.proofs.writeSetExtension")
     }
 
-    private var changeRequestButtons: some View {
+    private var writeSetExtensionButtons: some View {
         Group {
-            Button("Cancel the Run", role: .destructive) {}
+            Button("Cancel Request", role: .destructive) {}
             Button("Continue Without Changes") {}
-            Button("Allow These Notes Once") {}
+            Button("Allow Selected Notes") {}
                 .keyboardShortcut(.defaultAction)
                 .disabled(!notes.contains(where: \.isSelected))
         }
@@ -812,18 +620,13 @@ private struct ResearchProofNotice: View {
         .frame(width: 760, height: 720)
 }
 
-#Preview("Skill Installer") {
-    ResearchWorkflowProofDetail(proof: .skillInstaller)
-        .frame(width: 760, height: 720)
-}
-
-#Preview("Skill Settings") {
-    ResearchWorkflowProofDetail(proof: .skillSettings)
+#Preview("Research Guidance") {
+    ResearchWorkflowProofDetail(proof: .researchGuidance)
         .frame(width: 900, height: 720)
 }
 
-#Preview("Agent Change Request") {
-    ResearchWorkflowProofDetail(proof: .changeRequest)
+#Preview("Bounded Write Set") {
+    ResearchWorkflowProofDetail(proof: .writeSetExtension)
         .frame(width: 760, height: 720)
 }
 
@@ -857,7 +660,7 @@ private struct ResearchProofNotice: View {
 }
 
 #Preview("Workflow 200% Legibility") {
-    ResearchWorkflowProofDetail(proof: .changeRequest)
+    ResearchWorkflowProofDetail(proof: .writeSetExtension)
         .dynamicTypeSize(.accessibility2)
         .frame(width: 900, height: 760)
 }

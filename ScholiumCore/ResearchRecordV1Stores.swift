@@ -16,16 +16,66 @@ public struct PortableResearchRecordStoreIssue: Hashable, Identifiable, Sendable
     }
 }
 
-public struct PortableResearchRecordListing: Sendable {
-    public let records: [PortableResearchRecord]
-    public let issues: [PortableResearchRecordStoreIssue]
+/// One decoded portable Record bound to the exact persisted JSON bytes from
+/// which it was read. The fingerprint is derived evidence only: it is never
+/// written into the schema-5 Record or reconstructed from a re-encoding.
+public struct PortableResearchRecordRevision: Hashable, Identifiable, Sendable {
+    public let record: PortableResearchRecord
+    public let fingerprint: DocumentFingerprint
+
+    public var id: UUID { record.id }
 
     public init(
-        records: [PortableResearchRecord],
+        record: PortableResearchRecord,
+        fingerprint: DocumentFingerprint
+    ) {
+        self.record = record
+        self.fingerprint = fingerprint
+    }
+}
+
+public struct PortableResearchRecordListing: Sendable {
+    public let revisions: [PortableResearchRecordRevision]
+    public let issues: [PortableResearchRecordStoreIssue]
+    /// A deterministic identity for the complete valid Record source set.
+    /// Malformed and identity-mismatched files remain issues and never enter
+    /// this manifest.
+    public let sourceManifestHash: String
+
+    public var records: [PortableResearchRecord] {
+        revisions.map(\.record)
+    }
+
+    public init(
+        revisions: [PortableResearchRecordRevision],
         issues: [PortableResearchRecordStoreIssue]
     ) {
-        self.records = records
+        self.revisions = revisions.sorted(by: Self.ordersRevisions)
         self.issues = issues
+        sourceManifestHash = Self.manifestHash(revisions)
+    }
+
+    private static func ordersRevisions(
+        _ lhs: PortableResearchRecordRevision,
+        _ rhs: PortableResearchRecordRevision
+    ) -> Bool {
+        if lhs.record.finishedAt != rhs.record.finishedAt {
+            return lhs.record.finishedAt > rhs.record.finishedAt
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+
+    private static func manifestHash(
+        _ revisions: [PortableResearchRecordRevision]
+    ) -> String {
+        let material = revisions.sorted {
+            $0.id.uuidString < $1.id.uuidString
+        }.map {
+            "\($0.id.uuidString.lowercased())\u{1F}"
+                + "\($0.fingerprint.sha256)\u{1F}"
+                + "\($0.fingerprint.byteCount)"
+        }.joined(separator: "\u{1E}")
+        return DocumentFingerprint(content: material).sha256
     }
 }
 
@@ -386,7 +436,7 @@ public actor PortableResearchRecordStore {
     public func listing() throws -> PortableResearchRecordListing {
         try lock.withSharedLock {
             try Self.coordinateRead(at: storageURL) {
-                var records: [PortableResearchRecord] = []
+                var revisions: [PortableResearchRecordRevision] = []
                 var issues: [PortableResearchRecordStoreIssue] = []
                 let files = try storage.fileNames(in: Self.recordsDirectory)
                 for fileName in files where fileName.hasSuffix(".json") {
@@ -405,7 +455,10 @@ public actor PortableResearchRecordStore {
                                 record.id
                             )
                         }
-                        records.append(record)
+                        revisions.append(PortableResearchRecordRevision(
+                            record: record,
+                            fingerprint: DocumentFingerprint(data: data)
+                        ))
                     } catch {
                         issues.append(PortableResearchRecordStoreIssue(
                             location: Self.recordsDirectory,
@@ -415,12 +468,7 @@ public actor PortableResearchRecordStore {
                     }
                 }
                 return PortableResearchRecordListing(
-                    records: records.sorted {
-                        if $0.finishedAt != $1.finishedAt {
-                            return $0.finishedAt > $1.finishedAt
-                        }
-                        return $0.id.uuidString < $1.id.uuidString
-                    },
+                    revisions: revisions,
                     issues: issues.sorted { $0.id < $1.id }
                 )
             }
@@ -438,6 +486,126 @@ public actor PortableResearchRecordStore {
         try replaceFinishedRecord(id: id) { current in
             guard current.isPinned != isPinned else { return current }
             return try Self.replacingPin(in: current, isPinned: isPinned)
+        }
+    }
+
+    /// Atomically replaces the one current evaluation partition after both
+    /// its own optimistic revision and the immutable finalized result have
+    /// been revalidated under the portable-record lock.
+    @discardableResult
+    public func setResearcherEvaluation(
+        _ draft: ResearcherEvaluationDraft,
+        recordID: UUID,
+        expectedEvaluationRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint,
+        updatedAt: Date = Date()
+    ) throws -> PortableResearchRecord {
+        try replaceFinishedRecord(id: recordID) { current in
+            guard try current.finalizedResultFingerprint()
+                    == expectedResultFingerprint else {
+                throw PortableResearchEvaluationMutationError.finalizedResultChanged
+            }
+            guard current.researcherEvaluation?.revision
+                    == expectedEvaluationRevision else {
+                throw PortableResearchEvaluationMutationError.staleEvaluationRevision
+            }
+            let evaluation = try PortableResearcherEvaluation(
+                observedIssues: draft.observedIssues,
+                noIssuesObserved: draft.noIssuesObserved,
+                valuableDiscovery: draft.valuableDiscovery,
+                note: draft.note,
+                updatedAt: updatedAt
+            )
+            return try Self.replacingEvaluation(
+                in: current,
+                evaluation: evaluation
+            )
+        }
+    }
+
+    /// Clearing is the same compare-and-swap operation as save. Absence is
+    /// represented only by nil; no tombstone or second evaluation owner is
+    /// created.
+    @discardableResult
+    public func clearResearcherEvaluation(
+        recordID: UUID,
+        expectedEvaluationRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) throws -> PortableResearchRecord {
+        try replaceFinishedRecord(id: recordID) { current in
+            guard try current.finalizedResultFingerprint()
+                    == expectedResultFingerprint else {
+                throw PortableResearchEvaluationMutationError.finalizedResultChanged
+            }
+            guard current.researcherEvaluation?.revision
+                    == expectedEvaluationRevision else {
+                throw PortableResearchEvaluationMutationError.staleEvaluationRevision
+            }
+            return try Self.replacingEvaluation(in: current, evaluation: nil)
+        }
+    }
+
+    /// Atomically replaces the one current, still-unhandled Method feedback
+    /// comment. The optional source evaluation revision is revalidated under
+    /// the same lock; no evaluation text is copied into a second owner.
+    @discardableResult
+    public func setMethodFeedbackComment(
+        _ draft: ResearchMethodFeedbackDraft,
+        recordID: UUID,
+        expectedCommentRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint,
+        updatedAt: Date = Date()
+    ) throws -> PortableResearchRecord {
+        try replaceFinishedRecord(id: recordID) { current in
+            guard try current.finalizedResultFingerprint()
+                    == expectedResultFingerprint else {
+                throw PortableResearchMethodFeedbackMutationError
+                    .finalizedResultChanged
+            }
+            guard current.methodFeedbackComment?.revision
+                    == expectedCommentRevision else {
+                throw PortableResearchMethodFeedbackMutationError
+                    .staleCommentRevision
+            }
+            if let sourceRevision = draft.sourceEvaluationRevision {
+                guard current.researcherEvaluation?.revision == sourceRevision else {
+                    throw PortableResearchMethodFeedbackMutationError
+                        .sourceEvaluationChanged
+                }
+            }
+            let comment = try PortableResearchMethodFeedbackComment(
+                text: draft.text,
+                sourceEvaluationRevision: draft.sourceEvaluationRevision,
+                updatedAt: updatedAt
+            )
+            return try Self.replacingMethodFeedbackComment(
+                in: current,
+                comment: comment
+            )
+        }
+    }
+
+    @discardableResult
+    public func clearMethodFeedbackComment(
+        recordID: UUID,
+        expectedCommentRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) throws -> PortableResearchRecord {
+        try replaceFinishedRecord(id: recordID) { current in
+            guard try current.finalizedResultFingerprint()
+                    == expectedResultFingerprint else {
+                throw PortableResearchMethodFeedbackMutationError
+                    .finalizedResultChanged
+            }
+            guard current.methodFeedbackComment?.revision
+                    == expectedCommentRevision else {
+                throw PortableResearchMethodFeedbackMutationError
+                    .staleCommentRevision
+            }
+            return try Self.replacingMethodFeedbackComment(
+                in: current,
+                comment: nil
+            )
         }
     }
 
@@ -1448,6 +1616,9 @@ public actor PortableResearchRecordStore {
             primaryNoteID: record.primaryNoteID,
             participatingNotes: participatingNotes,
             statements: record.statements,
+            resultDisposition: record.resultDisposition,
+            academicResults: record.academicResults,
+            contextUseReport: record.contextUseReport,
             actuallyUsedMaterials: record.actuallyUsedMaterials,
             fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
@@ -1455,7 +1626,9 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            isPinned: record.isPinned
+            isPinned: record.isPinned,
+            researcherEvaluation: record.researcherEvaluation,
+            methodFeedbackComment: record.methodFeedbackComment
         )
     }
 
@@ -1474,6 +1647,9 @@ public actor PortableResearchRecordStore {
             primaryNoteID: record.primaryNoteID,
             participatingNotes: record.participatingNotes,
             statements: record.statements,
+            resultDisposition: record.resultDisposition,
+            academicResults: record.academicResults,
+            contextUseReport: record.contextUseReport,
             actuallyUsedMaterials: record.actuallyUsedMaterials,
             fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
@@ -1481,7 +1657,9 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            isPinned: isPinned
+            isPinned: isPinned,
+            researcherEvaluation: record.researcherEvaluation,
+            methodFeedbackComment: record.methodFeedbackComment
         )
     }
 
@@ -1500,6 +1678,9 @@ public actor PortableResearchRecordStore {
             primaryNoteID: record.primaryNoteID,
             participatingNotes: record.participatingNotes,
             statements: record.statements,
+            resultDisposition: record.resultDisposition,
+            academicResults: record.academicResults,
+            contextUseReport: record.contextUseReport,
             actuallyUsedMaterials: record.actuallyUsedMaterials,
             fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
@@ -1507,7 +1688,71 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: recommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            isPinned: record.isPinned
+            isPinned: record.isPinned,
+            researcherEvaluation: record.researcherEvaluation,
+            methodFeedbackComment: record.methodFeedbackComment
+        )
+    }
+
+    private static func replacingEvaluation(
+        in record: PortableResearchRecord,
+        evaluation: PortableResearcherEvaluation?
+    ) throws -> PortableResearchRecord {
+        try PortableResearchRecord(
+            id: record.id,
+            triptychID: record.triptychID,
+            kind: record.kind,
+            action: record.action,
+            method: record.method,
+            sourceReference: record.sourceReference,
+            continuationLineage: record.continuationLineage,
+            primaryNoteID: record.primaryNoteID,
+            participatingNotes: record.participatingNotes,
+            statements: record.statements,
+            resultDisposition: record.resultDisposition,
+            academicResults: record.academicResults,
+            contextUseReport: record.contextUseReport,
+            actuallyUsedMaterials: record.actuallyUsedMaterials,
+            fidelityCompletion: record.fidelityCompletion,
+            confirmedChanges: record.confirmedChanges,
+            discrepancies: record.discrepancies,
+            literatureRecommendations: record.literatureRecommendations,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            isPinned: record.isPinned,
+            researcherEvaluation: evaluation,
+            methodFeedbackComment: record.methodFeedbackComment
+        )
+    }
+
+    private static func replacingMethodFeedbackComment(
+        in record: PortableResearchRecord,
+        comment: PortableResearchMethodFeedbackComment?
+    ) throws -> PortableResearchRecord {
+        try PortableResearchRecord(
+            id: record.id,
+            triptychID: record.triptychID,
+            kind: record.kind,
+            action: record.action,
+            method: record.method,
+            sourceReference: record.sourceReference,
+            continuationLineage: record.continuationLineage,
+            primaryNoteID: record.primaryNoteID,
+            participatingNotes: record.participatingNotes,
+            statements: record.statements,
+            resultDisposition: record.resultDisposition,
+            academicResults: record.academicResults,
+            contextUseReport: record.contextUseReport,
+            actuallyUsedMaterials: record.actuallyUsedMaterials,
+            fidelityCompletion: record.fidelityCompletion,
+            confirmedChanges: record.confirmedChanges,
+            discrepancies: record.discrepancies,
+            literatureRecommendations: record.literatureRecommendations,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            isPinned: record.isPinned,
+            researcherEvaluation: record.researcherEvaluation,
+            methodFeedbackComment: comment
         )
     }
 
@@ -1751,52 +1996,25 @@ private struct StrictResearchRecordFingerprint: Decodable {
     }
 }
 
-public enum LocalResearchExecutionGrantError: LocalizedError, Sendable {
-    case emptyWriteSet
-    case incompleteStartingFingerprints
-    case notFound(UUID)
-    case keyMismatch
-    case inactive(ResearchActivityGrantState)
-    case activityMismatch
-    case completionAlreadyRecorded(UUID)
-    case invalidConfirmedSets
-
-    public var errorDescription: String? {
-        switch self {
-        case .emptyWriteSet:
-            "A write-capable Action requires at least one explicitly authorized Note."
-        case .incompleteStartingFingerprints:
-            "Every authorized Note requires one frozen starting fingerprint."
-        case .notFound(let id):
-            "The Action write grant was not found: \(id.uuidString)"
-        case .keyMismatch:
-            "The write key does not match this Action run."
-        case .inactive(let state):
-            "The Action write grant is no longer active: \(state.rawValue)"
-        case .activityMismatch:
-            "The completion report does not belong to this Action run."
-        case .completionAlreadyRecorded(let id):
-            "A different completion is already recorded for Action run \(id.uuidString)."
-        case .invalidConfirmedSets:
-            "The confirmed, unmodified, and unreported sets must be disjoint and remain inside the frozen authorization."
-        }
-    }
-}
-
 /// Machine-local execution evidence. Protected Function identity and assembled
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 8
 
     public let schemaVersion: Int
     public let triptychID: UUID
     public let snapshot: ResearchFunctionSnapshot
     public let preparedInstructions: String
     public var discussion: ResearchDiscussionExecutionContract?
-    public var grant: ResearchActivityGrant?
-    public var agentCoordinationGrant: AgentCoordinationGrant?
-    public var agentCoordinationRequestID: UUID?
+    public var boundedWriteSet: ResearchBoundedWriteSet
+    public var writeSetExtensionRecords: [ResearchWriteSetExtensionRecord]
+    public var documentWriteRecords: [ResearchDocumentWriteRecord]
+    public var writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord]
+    public var continuationRequests: [ResearchContinuationRequestRecord]
+    public var methodImprovementRun: ResearchMethodImprovementRun?
+    public var resultPayload: ResearchRunResultPayload?
+    public var writeReport: ResearchRunWriteReport?
     public var completion: ResearchFunctionCompletion?
     public var completionSubmissionDigest: String?
 
@@ -1807,20 +2025,17 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         snapshot: ResearchFunctionSnapshot,
         preparedInstructions: String,
         discussion: ResearchDiscussionExecutionContract? = nil,
-        grant: ResearchActivityGrant? = nil,
-        agentCoordinationGrant: AgentCoordinationGrant? = nil,
-        agentCoordinationRequestID: UUID? = nil,
+        boundedWriteSet: ResearchBoundedWriteSet? = nil,
+        writeSetExtensionRecords: [ResearchWriteSetExtensionRecord] = [],
+        documentWriteRecords: [ResearchDocumentWriteRecord] = [],
+        writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord] = [],
+        continuationRequests: [ResearchContinuationRequestRecord] = [],
+        methodImprovementRun: ResearchMethodImprovementRun? = nil,
+        resultPayload: ResearchRunResultPayload? = nil,
+        writeReport: ResearchRunWriteReport? = nil,
         completion: ResearchFunctionCompletion? = nil,
         completionSubmissionDigest: String? = nil
     ) throws {
-        let coordinationRevision = snapshot.actionSnapshot.flatMap {
-            try? AgentNoteChangeActionRevision(actionSnapshot: $0)
-        }
-        let coordinationGrantMatches = agentCoordinationGrant.map {
-            $0.triptychID == triptychID
-                && $0.parentRunID == snapshot.runID
-                && $0.actionRevision == coordinationRevision
-        } ?? true
         let completionRecommendationShapeMatches: Bool
         if let completion {
             if snapshot.actionSnapshot?.actionID == .analyze {
@@ -1839,17 +2054,21 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         } else {
             completionRecommendationShapeMatches = true
         }
+        let resolvedWriteSet = try boundedWriteSet ?? Self.initialBoundedWriteSet(
+            triptychID: triptychID,
+            snapshot: snapshot
+        )
         let continuationMatches: Bool
         switch snapshot.continuationLineage?.kind {
         case nil:
-            continuationMatches = true
-        case .approvedAction:
-            continuationMatches = snapshot.continuationLineage?.parentRunID
-                    != snapshot.runID
-                && snapshot.checkpointID != nil
-                && grant?.activityID == snapshot.runID
-                && grant?.allowedTargets.map(\.noteID)
-                    == snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
+            continuationMatches = snapshot.continuationHandoff == nil
+        case .continueResearch:
+            continuationMatches = snapshot.continuationLineage?.requestID
+                    == snapshot.runID
+                && snapshot.continuationHandoff?.parentRecordID
+                    == snapshot.continuationLineage?.parentRunID
+                && snapshot.continuationHandoff?.initiator == .agent
+                && snapshot.resynthesisContext == nil
         case .resynthesis:
             continuationMatches = snapshot.continuationLineage?.requestID
                     == snapshot.runID
@@ -1858,34 +2077,85 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 && snapshot.resynthesisContext?.topicNoteID
                     == snapshot.request.target.noteID
                 && snapshot.checkpointID != nil
-                && grant?.activityID == snapshot.runID
-                && grant?.allowedTargets.map(\.noteID)
-                    == snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
+                && snapshot.continuationHandoff == nil
+                && Set(resolvedWriteSet.entries.map(\.noteID))
+                    .isSuperset(of: Set(
+                        snapshot.actionSnapshot?.authority.writableNotes
+                            .map(\.noteID) ?? []
+                    ))
         case .fidelity:
             if case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
                 continuationMatches = snapshot.request.function == .fidelity
                     && snapshot.continuationLineage?.parentRunID == parentRunID
                     && snapshot.checkpointID == nil
-                    && grant == nil
+                    && snapshot.continuationHandoff == nil
             } else {
                 continuationMatches = false
             }
         }
+        let initialWritableIDs = Set(
+            snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID) ?? []
+        )
+        let writeSetIDs = Set(resolvedWriteSet.entries.map(\.noteID))
+        let methodImprovementMatches = methodImprovementRun.map { improvement in
+            improvement.parentRecordID == snapshot.runID
+                && improvement.triptychID == triptychID
+                && improvement.registrationKey
+                    == snapshot.actionSnapshot?.method.registration.key
+                && improvement.actionID
+                    == snapshot.actionSnapshot?.actionID
+        } ?? true
         guard snapshot.actionSnapshot != nil,
               snapshot.runID == snapshot.recordID,
               preparedInstructions.utf8.count <= 2 * 1024 * 1024,
               discussion?.id == snapshot.runID || discussion == nil,
-              grant?.activityID == snapshot.activityID || grant == nil,
-              coordinationGrantMatches,
               continuationMatches,
-              agentCoordinationRequestID == nil
-                || agentCoordinationGrant != nil,
+              resolvedWriteSet.runID == snapshot.runID,
+              resolvedWriteSet.triptychID == triptychID,
+              initialWritableIDs.isSubset(of: writeSetIDs),
+              writeSetExtensionRecords.count <= 256,
+              Set(writeSetExtensionRecords.map(\.id)).count
+                == writeSetExtensionRecords.count,
+              writeSetExtensionRecords.allSatisfy({
+                  $0.runID == snapshot.runID && $0.triptychID == triptychID
+              }),
+              documentWriteRecords.count
+                <= ResearchBoundedWriteSet.maximumWritesPerRun,
+              Set(documentWriteRecords.map(\.id)).count
+                == documentWriteRecords.count,
+              documentWriteRecords.allSatisfy({ $0.runID == snapshot.runID }),
+              writeConflictResolutionRecords.count <= 256,
+              Set(writeConflictResolutionRecords.map(\.id)).count
+                == writeConflictResolutionRecords.count,
+              writeConflictResolutionRecords.allSatisfy({ resolution in
+                  guard resolution.runID == snapshot.runID,
+                        let entry = resolvedWriteSet.entry(
+                            handle: resolution.target
+                        ) else { return false }
+                  return resolution.targetView.role == entry.role
+                      && resolution.targetView.relativePath
+                        == entry.note.relativePath
+                      && resolution.targetView.operations
+                        == entry.allowedOperations
+              }),
+              continuationRequests.count <= 64,
+              Set(continuationRequests.map(\.id)).count
+                == continuationRequests.count,
+              continuationRequests.allSatisfy({
+                  $0.parentRunID == snapshot.runID && $0.triptychID == triptychID
+              }),
+              methodImprovementMatches,
+              resultPayload?.runID == snapshot.runID || resultPayload == nil,
+              writeReport?.runID == snapshot.runID || writeReport == nil,
+              writeReport.map({ report in
+                  let reportIDs = Set(report.confirmedModifiedNotes.map(\.noteID))
+                    .union(report.unmodifiedNotes.map(\.noteID))
+                  return reportIDs == Set(resolvedWriteSet.entries.map(\.noteID))
+              }) ?? true,
               completion?.runID == snapshot.runID || completion == nil,
               completion?.function == snapshot.request.function || completion == nil,
               completionRecommendationShapeMatches,
-              grant?.state != .completed || completion != nil,
-              grant?.state != .completed || grant?.completionReport != nil,
-              grant?.state != .completed || grant?.completionPayloadDigest != nil else {
+              writeReport == nil || completion != nil else {
             throw ResearchRecordStoreV1Error.unsafeStore(
                 "The local execution does not match its frozen Action run."
             )
@@ -1895,9 +2165,14 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         self.snapshot = snapshot
         self.preparedInstructions = preparedInstructions
         self.discussion = discussion
-        self.grant = grant
-        self.agentCoordinationGrant = agentCoordinationGrant
-        self.agentCoordinationRequestID = agentCoordinationRequestID
+        self.boundedWriteSet = resolvedWriteSet
+        self.writeSetExtensionRecords = writeSetExtensionRecords
+        self.documentWriteRecords = documentWriteRecords
+        self.writeConflictResolutionRecords = writeConflictResolutionRecords
+        self.continuationRequests = continuationRequests
+        self.methodImprovementRun = methodImprovementRun
+        self.resultPayload = resultPayload
+        self.writeReport = writeReport
         self.completion = completion
         self.completionSubmissionDigest = completionSubmissionDigest
     }
@@ -1907,9 +2182,15 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         case triptychID = "triptych_id"
         case snapshot
         case preparedInstructions = "prepared_instructions"
-        case discussion, grant
-        case agentCoordinationGrant = "agent_coordination_grant"
-        case agentCoordinationRequestID = "agent_coordination_request_id"
+        case discussion
+        case boundedWriteSet = "bounded_write_set"
+        case writeSetExtensionRecords = "write_set_extension_records"
+        case documentWriteRecords = "document_write_records"
+        case writeConflictResolutionRecords = "write_conflict_resolution_records"
+        case continuationRequests = "continuation_requests"
+        case methodImprovementRun = "method_improvement_run"
+        case resultPayload = "result_payload"
+        case writeReport = "write_report"
         case completion
         case completionSubmissionDigest = "completion_submission_digest"
     }
@@ -1935,14 +2216,37 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 ResearchDiscussionExecutionContract.self,
                 forKey: .discussion
             ),
-            grant: container.decodeIfPresent(ResearchActivityGrant.self, forKey: .grant),
-            agentCoordinationGrant: container.decodeIfPresent(
-                AgentCoordinationGrant.self,
-                forKey: .agentCoordinationGrant
+            boundedWriteSet: container.decode(
+                ResearchBoundedWriteSet.self,
+                forKey: .boundedWriteSet
             ),
-            agentCoordinationRequestID: container.decodeIfPresent(
-                UUID.self,
-                forKey: .agentCoordinationRequestID
+            writeSetExtensionRecords: container.decode(
+                [ResearchWriteSetExtensionRecord].self,
+                forKey: .writeSetExtensionRecords
+            ),
+            documentWriteRecords: container.decode(
+                [ResearchDocumentWriteRecord].self,
+                forKey: .documentWriteRecords
+            ),
+            writeConflictResolutionRecords: container.decode(
+                [ResearchWriteConflictResolutionRecord].self,
+                forKey: .writeConflictResolutionRecords
+            ),
+            continuationRequests: container.decode(
+                [ResearchContinuationRequestRecord].self,
+                forKey: .continuationRequests
+            ),
+            methodImprovementRun: container.decodeIfPresent(
+                ResearchMethodImprovementRun.self,
+                forKey: .methodImprovementRun
+            ),
+            resultPayload: container.decodeIfPresent(
+                ResearchRunResultPayload.self,
+                forKey: .resultPayload
+            ),
+            writeReport: container.decodeIfPresent(
+                ResearchRunWriteReport.self,
+                forKey: .writeReport
             ),
             completion: container.decodeIfPresent(
                 ResearchFunctionCompletion.self,
@@ -1954,6 +2258,44 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
             )
         )
     }
+
+    private static func initialBoundedWriteSet(
+        triptychID: UUID,
+        snapshot: ResearchFunctionSnapshot
+    ) throws -> ResearchBoundedWriteSet {
+        guard let action = snapshot.actionSnapshot else {
+            throw ResearchRecordStoreV1Error.unsafeStore(
+                "A local execution has no frozen Action for its bounded write set."
+            )
+        }
+        guard action.authority.writableNotes.isEmpty || snapshot.checkpointID != nil else {
+            throw ResearchRecordStoreV1Error.unsafeStore(
+                "A writable Action has no Before Agent Work checkpoint."
+            )
+        }
+        let entries = try action.authority.writableNotes.map { note in
+            try ResearchBoundedWriteSetEntry(
+                handle: ResearchWriteTargetHandle(
+                    runID: snapshot.runID,
+                    noteID: note.noteID
+                ),
+                noteID: note.noteID,
+                note: note.note,
+                role: note.role,
+                title: note.title,
+                allowedOperations: action.authority.writeOperations,
+                expectedRevision: note.fingerprint,
+                checkpointID: snapshot.checkpointID!,
+                authorizationBasis: .initialAction,
+                expiresAt: snapshot.preparedAt.addingTimeInterval(24 * 60 * 60)
+            )
+        }
+        return try ResearchBoundedWriteSet(
+            runID: snapshot.runID,
+            triptychID: triptychID,
+            entries: entries
+        )
+    }
 }
 
 public struct LocalResearchExecutionListing: Sendable {
@@ -1961,64 +2303,9 @@ public struct LocalResearchExecutionListing: Sendable {
     public let issues: [PortableResearchRecordStoreIssue]
 }
 
-private struct LocalCritiqueHandoffIntent: Codable, Equatable {
-    static let currentSchemaVersion = 1
-
-    let schemaVersion: Int
-    let triptychID: UUID
-    let runID: UUID
-    let checkpointID: UUID?
-    let evidenceDigest: DocumentFingerprint
-
-    init(
-        triptychID: UUID,
-        runID: UUID,
-        checkpointID: UUID?,
-        evidenceDigest: DocumentFingerprint
-    ) {
-        schemaVersion = Self.currentSchemaVersion
-        self.triptychID = triptychID
-        self.runID = runID
-        self.checkpointID = checkpointID
-        self.evidenceDigest = evidenceDigest
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion = "schema_version"
-        case triptychID = "triptych_id"
-        case runID = "run_id"
-        case checkpointID = "checkpoint_id"
-        case evidenceDigest = "evidence_digest"
-    }
-
-    init(from decoder: Decoder) throws {
-        try ResearchRecordStoreCodingValidation.rejectUnknownFields(
-            in: decoder,
-            allowed: CodingKeys.allCases.map(\.stringValue)
-        )
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == Self.currentSchemaVersion else {
-            throw PortableResearchRecordError.unsupportedSchemaVersion(schemaVersion)
-        }
-        self.schemaVersion = schemaVersion
-        triptychID = try container.decode(UUID.self, forKey: .triptychID)
-        runID = try container.decode(UUID.self, forKey: .runID)
-        checkpointID = try container.decodeIfPresent(UUID.self, forKey: .checkpointID)
-        evidenceDigest = try container.decode(
-            StrictResearchRecordFingerprint.self,
-            forKey: .evidenceDigest
-        ).value
-    }
-}
-
-private struct LocalCritiqueHandoffEvidence: Encodable {
-    let snapshot: ResearchFunctionSnapshot
-    let preparedInstructions: String
-}
 
 /// Private per-run execution storage. Each run is isolated so one malformed or
-/// partially synchronized file cannot make unrelated completion grants usable.
+/// partially synchronized file cannot make unrelated completion state usable.
 public actor LocalResearchExecutionStore {
     private static let maximumExecutionByteCount = 16 * 1024 * 1024
 
@@ -2032,13 +2319,13 @@ public actor LocalResearchExecutionStore {
         storageURL = applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v3", isDirectory: true)
+            .appendingPathComponent("research-execution-v8", isDirectory: true)
         storage = SecureRecordDirectory(
             trustedRootURL: applicationSupportURL,
             components: [
                 "Triptychs",
                 triptychID.uuidString,
-                "research-execution-v3",
+                "research-execution-v8",
             ],
             directoryMode: 0o700,
             fileMode: 0o600,
@@ -2047,87 +2334,11 @@ public actor LocalResearchExecutionStore {
         try storage.ensureDirectories(["critique-handoffs"])
         lock = try AdvisoryFileLock(
             directory: storage,
-            fileName: "execution-v3.lock"
+            fileName: "execution-v8.lock"
         )
         try lock.withExclusiveLock {
             try storage.removeAbandonedStagingFiles(in: [nil, "critique-handoffs"])
         }
-    }
-
-    public nonisolated static func prepareGrant(
-        activityID: UUID,
-        origin: ResearchActivityNoteReference,
-        writeScope: ResearchWriteScope,
-        allowedTargets: [ResearchActivityNoteReference],
-        startingFingerprints: [UUID: DocumentFingerprint],
-        issuedAt: Date,
-        validFor requestedDuration: TimeInterval = 60 * 60
-    ) throws -> ResearchActivityGrantAuthorization {
-        let distinctTargets = Dictionary(
-            allowedTargets.map { ($0.noteID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        guard !distinctTargets.isEmpty else {
-            throw LocalResearchExecutionGrantError.emptyWriteSet
-        }
-        guard Set(distinctTargets.keys) == Set(startingFingerprints.keys) else {
-            throw LocalResearchExecutionGrantError.incompleteStartingFingerprints
-        }
-        let duration = min(max(1, requestedDuration), 24 * 60 * 60)
-        let rawKey = [UUID().uuidString, UUID().uuidString]
-            .joined(separator: "-")
-            .lowercased()
-        let grant = ResearchActivityGrant(
-            activityID: activityID,
-            keyDigest: DocumentFingerprint(content: rawKey).sha256,
-            origin: origin,
-            writeScope: writeScope,
-            allowedTargets: Array(distinctTargets.values),
-            startingFingerprints: startingFingerprints,
-            issuedAt: issuedAt,
-            expiresAt: issuedAt.addingTimeInterval(duration)
-        )
-        return ResearchActivityGrantAuthorization(
-            grant: grant,
-            activityKey: rawKey
-        )
-    }
-
-    public nonisolated static func prepareAgentCoordination(
-        triptychID: UUID,
-        parentRunID: UUID,
-        actionRevision: AgentNoteChangeActionRevision,
-        issuedAt: Date,
-        validFor requestedDuration: TimeInterval = 60 * 60
-    ) throws -> AgentCoordinationAuthorization {
-        guard requestedDuration.isFinite,
-              issuedAt.timeIntervalSinceReferenceDate.isFinite else {
-            throw AgentNoteChangeContractError.invalidCoordinationGrant
-        }
-        let duration = min(
-            max(1, requestedDuration),
-            AgentCoordinationGrant.maximumLifetime
-        )
-        let rawKey = [UUID().uuidString, UUID().uuidString]
-            .joined(separator: "-")
-            .lowercased()
-        let grant = try AgentCoordinationGrant(
-            triptychID: triptychID,
-            parentRunID: parentRunID,
-            actionRevision: actionRevision,
-            keyDigest: AgentCoordinationGrant.boundKeyDigest(
-                coordinationKey: rawKey,
-                triptychID: triptychID,
-                parentRunID: parentRunID,
-                actionRevision: actionRevision
-            ),
-            issuedAt: issuedAt,
-            expiresAt: issuedAt.addingTimeInterval(duration)
-        )
-        return AgentCoordinationAuthorization(
-            grant: grant,
-            coordinationKey: rawKey
-        )
     }
 
     @discardableResult
@@ -2175,41 +2386,334 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    /// Installs the digest-only Agent coordination grant when Critique's
-    /// crash-recovery handoff won the race to create the otherwise identical
-    /// local execution. It never replaces a different run or grant.
-    public func installAgentCoordinationGrant(
-        runID: UUID,
-        expectedSnapshot: ResearchFunctionSnapshot,
-        expectedPreparedInstructions: String,
-        grant: AgentCoordinationGrant
+    @discardableResult
+    public func installWriteSetExtension(
+        _ extensionRecord: ResearchWriteSetExtensionRecord
     ) throws -> LocalResearchExecutionRecord {
-        try update(runID) { current in
-            guard current.snapshot == expectedSnapshot,
-                  current.preparedInstructions == expectedPreparedInstructions,
-                  current.agentCoordinationGrant == nil
-                    || current.agentCoordinationGrant == grant else {
-                throw ResearchRecordStoreV1Error.executionAlreadyExists(runID)
+        try update(extensionRecord.runID) { current in
+            guard current.triptychID == extensionRecord.triptychID else {
+                throw ResearchBoundedWriteSetError.invalidExtensionRecord
             }
-            current.agentCoordinationGrant = grant
+            if let existing = current.writeSetExtensionRecords.first(where: {
+                $0.id == extensionRecord.id
+            }) {
+                guard existing == extensionRecord else {
+                    throw ResearchBoundedWriteSetError.invalidExtensionRecord
+                }
+                return
+            }
+            guard !current.writeSetExtensionRecords.contains(where: \.isUnresolved),
+                  current.writeSetExtensionRecords.count < 256 else {
+                throw ResearchBoundedWriteSetError.requestPending
+            }
+            current.writeSetExtensionRecords.append(extensionRecord)
+            current.writeSetExtensionRecords.sort { $0.receivedAt < $1.receivedAt }
         }
     }
 
-    /// Atomically consumes one coordination grant for one immutable request
-    /// identity. Exact retry of that ID is allowed; no later ID may reuse the
-    /// bearer key even after the request reaches a terminal state.
-    public func bindAgentCoordinationRequest(
+    public func writeSetExtension(
         runID: UUID,
-        expectedGrant: AgentCoordinationGrant,
         requestID: UUID
+    ) throws -> ResearchWriteSetExtensionRecord {
+        let record = try self.record(id: runID)
+        guard let request = record.writeSetExtensionRecords.first(where: {
+            $0.id == requestID
+        }) else {
+            throw ResearchBoundedWriteSetError.targetUnavailable
+        }
+        return request
+    }
+
+    @discardableResult
+    public func resolveWriteSetExtension(
+        runID: UUID,
+        requestID: UUID,
+        state: ResearchWriteSetExtensionState,
+        entries: [ResearchBoundedWriteSetEntry],
+        decidedAt: Date
     ) throws -> LocalResearchExecutionRecord {
         try update(runID) { current in
-            guard current.agentCoordinationGrant == expectedGrant,
-                  current.agentCoordinationRequestID == nil
-                    || current.agentCoordinationRequestID == requestID else {
-                throw ResearchRecordStoreV1Error.executionAlreadyExists(runID)
+            guard let index = current.writeSetExtensionRecords.firstIndex(where: {
+                $0.id == requestID
+            }) else {
+                throw ResearchBoundedWriteSetError.targetUnavailable
             }
-            current.agentCoordinationRequestID = requestID
+            let pending = current.writeSetExtensionRecords[index]
+            if !pending.isUnresolved {
+                let handles = entries.map(\.handle).sorted { $0.rawValue < $1.rawValue }
+                guard pending.state == state,
+                      pending.allowedHandles == handles else {
+                    throw ResearchBoundedWriteSetError.invalidExtensionRecord
+                }
+                return
+            }
+            guard pending.expiresAt > decidedAt else {
+                current.writeSetExtensionRecords[index] = try ResearchWriteSetExtensionRecord(
+                    id: pending.id,
+                    runID: pending.runID,
+                    triptychID: pending.triptychID,
+                    intent: pending.intent,
+                    intentDigest: pending.intentDigest,
+                    candidates: pending.candidates,
+                    policy: pending.policy,
+                    policyRevision: pending.policyRevision,
+                    state: .expired,
+                    receivedAt: pending.receivedAt,
+                    expiresAt: pending.expiresAt,
+                    decidedAt: decidedAt
+                )
+                return
+            }
+            let allowedHandles = entries.map(\.handle).sorted {
+                $0.rawValue < $1.rawValue
+            }
+            guard state == .allowedSubset || entries.isEmpty,
+                  state != .allowedSubset || !entries.isEmpty,
+                  Set(allowedHandles).isSubset(of: Set(pending.candidates.map(\.handle)))
+            else {
+                throw ResearchBoundedWriteSetError.invalidExtensionRecord
+            }
+            var allEntries = current.boundedWriteSet.entries
+            for entry in entries {
+                if let existing = allEntries.first(where: { $0.noteID == entry.noteID }) {
+                    guard existing == entry else {
+                        throw ResearchBoundedWriteSetError.invalidEntry
+                    }
+                } else {
+                    allEntries.append(entry)
+                }
+            }
+            guard allEntries.count <= ResearchBoundedWriteSet.maximumEntriesPerRun else {
+                throw ResearchBoundedWriteSetError.limitExceeded
+            }
+            current.boundedWriteSet = try ResearchBoundedWriteSet(
+                runID: current.snapshot.runID,
+                triptychID: current.triptychID,
+                entries: allEntries
+            )
+            current.writeSetExtensionRecords[index] = try ResearchWriteSetExtensionRecord(
+                id: pending.id,
+                runID: pending.runID,
+                triptychID: pending.triptychID,
+                intent: pending.intent,
+                intentDigest: pending.intentDigest,
+                candidates: pending.candidates,
+                policy: pending.policy,
+                policyRevision: pending.policyRevision,
+                state: state,
+                allowedHandles: allowedHandles,
+                receivedAt: pending.receivedAt,
+                expiresAt: pending.expiresAt,
+                decidedAt: decidedAt
+            )
+        }
+    }
+
+    /// Narrows a member that has no in-progress or unknown write fail closed.
+    /// A write already in progress keeps its transaction state and must settle
+    /// through recovery instead of being relabeled underneath the write.
+    @discardableResult
+    public func markWriteSetEntryStale(
+        runID: UUID,
+        handle: ResearchWriteTargetHandle
+    ) throws -> LocalResearchExecutionRecord {
+        try update(runID) { current in
+            guard let index = current.boundedWriteSet.entries.firstIndex(where: {
+                $0.handle == handle
+            }) else {
+                throw ResearchBoundedWriteSetError.targetNotAuthorized
+            }
+            guard [.ready, .conflict].contains(
+                current.boundedWriteSet.entries[index].state
+            ) else {
+                throw ResearchBoundedWriteSetError.staleAuthorization
+            }
+            current.boundedWriteSet.entries[index].state = .stale
+        }
+    }
+
+    /// Atomically records one explicit conflict decision and narrows or
+    /// refreshes only its exact write-set member. Existing checkpoints and
+    /// conflict records remain immutable recovery evidence.
+    @discardableResult
+    public func resolveWriteConflict(
+        _ resolution: ResearchWriteConflictResolutionRecord,
+        refreshedEntry: ResearchBoundedWriteSetEntry?
+    ) throws -> LocalResearchExecutionRecord {
+        try update(resolution.runID) { current in
+            if let existing = current.writeConflictResolutionRecords.first(where: {
+                $0.id == resolution.id
+            }) {
+                guard existing == resolution else {
+                    throw ResearchBoundedWriteSetError.invalidConflictResolution
+                }
+                return
+            }
+            guard current.writeConflictResolutionRecords.count < 256,
+                  let entryIndex = current.boundedWriteSet.entries.firstIndex(where: {
+                      $0.handle == resolution.target
+                  }),
+                  current.boundedWriteSet.entries[entryIndex].state == .conflict,
+                  let conflict = current.documentWriteRecords
+                    .filter({
+                        $0.target == resolution.target && $0.state == .conflict
+                    })
+                    .max(by: { $0.startedAt < $1.startedAt }),
+                  conflict.id == resolution.conflictOperationID else {
+                throw ResearchBoundedWriteSetError.invalidConflictResolution
+            }
+            let entry = current.boundedWriteSet.entries[entryIndex]
+            switch resolution.action {
+            case .refreshAuthority:
+                guard let refreshedEntry,
+                      resolution.state == .readyToRetry,
+                      resolution.checkpointID == refreshedEntry.checkpointID,
+                      resolution.observedRevision
+                        == refreshedEntry.expectedRevision,
+                      resolution.targetView
+                        == ResearchBoundedWriteSetViewEntry(refreshedEntry),
+                      refreshedEntry.handle == entry.handle,
+                      refreshedEntry.noteID == entry.noteID,
+                      refreshedEntry.note == entry.note,
+                      refreshedEntry.role == entry.role,
+                      refreshedEntry.title == entry.title,
+                      refreshedEntry.allowedOperations == entry.allowedOperations,
+                      refreshedEntry.authorizationBasis == entry.authorizationBasis,
+                      refreshedEntry.authorizationPolicy == entry.authorizationPolicy,
+                      refreshedEntry.policyRevision == entry.policyRevision,
+                      refreshedEntry.expiresAt == entry.expiresAt,
+                      refreshedEntry.state == .ready else {
+                    throw ResearchBoundedWriteSetError.invalidConflictResolution
+                }
+                current.boundedWriteSet.entries[entryIndex] = refreshedEntry
+            case .abandonWrite:
+                guard refreshedEntry == nil,
+                      resolution.state == .abandoned,
+                      resolution.checkpointID == nil else {
+                    throw ResearchBoundedWriteSetError.invalidConflictResolution
+                }
+                current.boundedWriteSet.entries[entryIndex].state = .abandoned
+                guard resolution.targetView == ResearchBoundedWriteSetViewEntry(
+                    current.boundedWriteSet.entries[entryIndex]
+                ) else {
+                    throw ResearchBoundedWriteSetError.invalidConflictResolution
+                }
+            }
+            current.writeConflictResolutionRecords.append(resolution)
+            current.writeConflictResolutionRecords.sort {
+                $0.resolvedAt < $1.resolvedAt
+            }
+        }
+    }
+
+    @discardableResult
+    public func beginDocumentWrite(
+        _ write: ResearchDocumentWriteRecord
+    ) throws -> LocalResearchExecutionRecord {
+        try update(write.runID) { current in
+            if let existing = current.documentWriteRecords.first(where: {
+                $0.id == write.id
+            }) {
+                guard existing == write else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+                return
+            }
+            guard write.state == .writing,
+                  current.documentWriteRecords.count
+                    < ResearchBoundedWriteSet.maximumWritesPerRun,
+                  let entryIndex = current.boundedWriteSet.entries.firstIndex(where: {
+                      $0.handle == write.target
+                  }),
+                  current.boundedWriteSet.entries[entryIndex].state == .ready,
+                  current.boundedWriteSet.entries[entryIndex].expectedRevision
+                    == write.expectedRevision,
+                  current.boundedWriteSet.entries[entryIndex].checkpointID
+                    == write.checkpointID else {
+                throw ResearchBoundedWriteSetError.staleAuthorization
+            }
+            current.boundedWriteSet.entries[entryIndex].state = .writing
+            current.documentWriteRecords.append(write)
+            current.documentWriteRecords.sort { $0.startedAt < $1.startedAt }
+        }
+    }
+
+    @discardableResult
+    public func recordDocumentWriteOutcome(
+        _ write: ResearchDocumentWriteRecord,
+        entryState: ResearchWriteSetEntryState
+    ) throws -> LocalResearchExecutionRecord {
+        try update(write.runID) { current in
+            if let existing = current.documentWriteRecords.first(where: {
+                $0.id == write.id
+            }) {
+                guard existing == write else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+                return
+            }
+            guard write.state != .writing,
+                  current.documentWriteRecords.count
+                    < ResearchBoundedWriteSet.maximumWritesPerRun,
+                  let index = current.boundedWriteSet.entries.firstIndex(where: {
+                      $0.handle == write.target
+                  }) else {
+                throw ResearchBoundedWriteSetError.invalidWriteRecord
+            }
+            current.boundedWriteSet.entries[index].state = entryState
+            current.documentWriteRecords.append(write)
+            current.documentWriteRecords.sort { $0.startedAt < $1.startedAt }
+        }
+    }
+
+    @discardableResult
+    public func finishDocumentWrite(
+        runID: UUID,
+        operationID: UUID,
+        state: ResearchDocumentWriteState,
+        observedRevision: DocumentFingerprint?,
+        warning: String?,
+        finishedAt: Date
+    ) throws -> LocalResearchExecutionRecord {
+        try update(runID) { current in
+            guard let writeIndex = current.documentWriteRecords.firstIndex(where: {
+                $0.id == operationID
+            }),
+            let entryIndex = current.boundedWriteSet.entries.firstIndex(where: {
+                $0.handle == current.documentWriteRecords[writeIndex].target
+            }) else {
+                throw ResearchBoundedWriteSetError.invalidWriteRecord
+            }
+            var write = current.documentWriteRecords[writeIndex]
+            if write.state != .writing {
+                guard write.state == state,
+                      write.observedRevision == observedRevision,
+                      write.warning == warning else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+                return
+            }
+            write.state = state
+            write.observedRevision = observedRevision
+            write.finishedAt = finishedAt
+            write.warning = warning
+            current.documentWriteRecords[writeIndex] = write
+            switch state {
+            case .committed, .unchanged:
+                if let observedRevision {
+                    current.boundedWriteSet.entries[entryIndex].expectedRevision
+                        = observedRevision
+                }
+                current.boundedWriteSet.entries[entryIndex].state = .ready
+            case .conflict:
+                current.boundedWriteSet.entries[entryIndex].state = .conflict
+            case .recoveryRequired:
+                current.boundedWriteSet.entries[entryIndex].state = .recoveryRequired
+            case .abandoned:
+                current.boundedWriteSet.entries[entryIndex].state = .ready
+            case .writing:
+                throw ResearchBoundedWriteSetError.invalidWriteRecord
+            }
         }
     }
 
@@ -2219,82 +2723,123 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    /// Persists only a machine-local digest before portable Critique staging
-    /// commits. Portable prose can therefore be resumed after process loss
-    /// only when it still matches intent established on this machine.
-    public func stageCritiqueHandoff(
-        snapshot: ResearchFunctionSnapshot,
-        preparedInstructions: String
-    ) throws {
-        let intent = try makeCritiqueHandoffIntent(
-            snapshot: snapshot,
-            preparedInstructions: preparedInstructions
-        )
-        try lock.withExclusiveLock {
-            let data = try Self.makeEncoder().encode(intent)
-            do {
-                _ = try storage.createExclusive(
-                    data,
-                    directory: "critique-handoffs",
-                    fileName: Self.critiqueHandoffFileName(snapshot.runID)
-                )
-            } catch let error as SecureRecordDirectoryError {
-                if case .alreadyExists = error {
-                    let current = try readCritiqueHandoffIntent(runID: snapshot.runID)
-                    guard current == intent else {
-                        throw ResearchRecordStoreV1Error.executionAlreadyExists(
-                            snapshot.runID
-                        )
-                    }
-                    return
-                }
-                throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
+    /// Installs the one current, explicitly researcher-started Method
+    /// improvement Run on its source Action execution. A later feedback
+    /// revision replaces the terminal prior Run instead of creating history.
+    @discardableResult
+    public func installMethodImprovement(
+        _ improvement: ResearchMethodImprovementRun
+    ) throws -> LocalResearchExecutionRecord {
+        try update(improvement.parentRecordID) { record in
+            guard record.triptychID == improvement.triptychID,
+                  record.completion.map({
+                      [.complete, .unverified].contains($0.state)
+                  }) == true,
+                  record.resultPayload != nil else {
+                throw ResearchMethodImprovementError.runUnavailable
             }
+            if let existing = record.methodImprovementRun,
+               existing.id == improvement.id {
+                guard existing == improvement else {
+                    throw ResearchMethodImprovementError.invalidContract
+                }
+                return
+            }
+            if let existing = record.methodImprovementRun,
+               existing.state == .writing {
+                throw ResearchMethodImprovementError.runUnavailable
+            }
+            record.methodImprovementRun = improvement
         }
     }
 
-    public func hasMatchingCritiqueHandoff(
-        snapshot: ResearchFunctionSnapshot,
-        preparedInstructions: String
-    ) throws -> Bool {
-        let expected = try makeCritiqueHandoffIntent(
-            snapshot: snapshot,
-            preparedInstructions: preparedInstructions
-        )
-        return try lock.withSharedLock {
-            do {
-                return try readCritiqueHandoffIntent(runID: snapshot.runID) == expected
-            } catch let error as SecureRecordDirectoryError {
-                if case .notFound = error { return false }
-                throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
+    public func methodImprovement(
+        id: UUID
+    ) throws -> ResearchMethodImprovementRun {
+        let listing = try self.listing()
+        guard listing.issues.isEmpty,
+              let improvement = listing.records.compactMap(
+                \.methodImprovementRun
+              ).first(where: { $0.id == id }) else {
+            throw ResearchMethodImprovementError.runUnavailable
+        }
+        return improvement
+    }
+
+    @discardableResult
+    public func beginMethodImprovement(
+        runID: UUID,
+        submission: ResearchMethodImprovementSubmission,
+        submissionFingerprint: DocumentFingerprint
+    ) throws -> LocalResearchExecutionRecord {
+        let improvement = try methodImprovement(id: runID)
+        return try update(improvement.parentRecordID) { record in
+            guard let current = record.methodImprovementRun,
+                  current.id == runID else {
+                throw ResearchMethodImprovementError.runUnavailable
             }
+            if current.state == .writing {
+                guard current.submissionFingerprint == submissionFingerprint,
+                      current.pendingSubmission == submission else {
+                    throw ResearchMethodImprovementError.resultAlreadySubmitted
+                }
+                return
+            }
+            guard current.state == .prepared else {
+                throw ResearchMethodImprovementError.resultAlreadySubmitted
+            }
+            record.methodImprovementRun = try current.beginning(
+                submission: submission,
+                submissionFingerprint: submissionFingerprint
+            )
         }
     }
 
-    public func discardCritiqueHandoff(
-        snapshot: ResearchFunctionSnapshot,
-        preparedInstructions: String
-    ) throws {
-        let expected = try makeCritiqueHandoffIntent(
-            snapshot: snapshot,
-            preparedInstructions: preparedInstructions
-        )
-        try lock.withExclusiveLock {
-            do {
-                let current = try readCritiqueHandoffIntent(runID: snapshot.runID)
-                guard current == expected else {
-                    throw ResearchRecordStoreV1Error.executionAlreadyExists(snapshot.runID)
-                }
-                try storage.removeIfPresent(
-                    directory: "critique-handoffs",
-                    fileName: Self.critiqueHandoffFileName(snapshot.runID)
-                )
-            } catch let error as SecureRecordDirectoryError {
-                if case .notFound = error { return }
-                throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
+    @discardableResult
+    public func completeMethodImprovement(
+        runID: UUID,
+        submissionFingerprint: DocumentFingerprint,
+        receipt: ResearchMethodImprovementReceipt
+    ) throws -> LocalResearchExecutionRecord {
+        let improvement = try methodImprovement(id: runID)
+        return try update(improvement.parentRecordID) { record in
+            guard let current = record.methodImprovementRun,
+                  current.id == runID else {
+                throw ResearchMethodImprovementError.runUnavailable
             }
+            if current.state == .completed {
+                guard current.submissionFingerprint == submissionFingerprint,
+                      current.receipt == receipt else {
+                    throw ResearchMethodImprovementError.resultAlreadySubmitted
+                }
+                return
+            }
+            guard current.state == .writing,
+                  current.submissionFingerprint == submissionFingerprint else {
+                throw ResearchMethodImprovementError.runUnavailable
+            }
+            record.methodImprovementRun = try current.completing(
+                submissionFingerprint: submissionFingerprint,
+                receipt: receipt
+            )
         }
     }
+
+    @discardableResult
+    public func cancelMethodImprovement(
+        runID: UUID
+    ) throws -> LocalResearchExecutionRecord {
+        let improvement = try methodImprovement(id: runID)
+        return try update(improvement.parentRecordID) { record in
+            guard let current = record.methodImprovementRun,
+                  current.id == runID else {
+                throw ResearchMethodImprovementError.runUnavailable
+            }
+            if current.state == .cancelled { return }
+            record.methodImprovementRun = try current.cancelling()
+        }
+    }
+
 
     /// Fails closed before a destructive note transaction begins. A malformed
     /// execution file may contain note-specific private state, so Scholium may
@@ -2353,139 +2898,135 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    public func authorizeCompletion(
-        activityID: UUID,
-        activityKey: String,
-        at date: Date
-    ) throws -> ResearchActivityGrant {
-        let record = try update(activityID) { record in
-            guard var grant = record.grant else {
-                throw LocalResearchExecutionGrantError.notFound(activityID)
-            }
-            if grant.state == .active, date > grant.expiresAt {
-                grant.state = .expired
-                record.grant = grant
-            }
-        }
-        guard let grant = record.grant else {
-            throw LocalResearchExecutionGrantError.notFound(activityID)
-        }
-        guard grant.keyDigest == DocumentFingerprint(content: activityKey).sha256 else {
-            throw LocalResearchExecutionGrantError.keyMismatch
-        }
-        switch grant.state {
-        case .active, .completed:
-            return grant
-        case .cancelled, .revoked, .expired:
-            throw LocalResearchExecutionGrantError.inactive(grant.state)
-        }
-    }
-
-    public func grant(activityID: UUID) throws -> ResearchActivityGrant? {
-        try recordIfPresent(id: activityID)?.grant
-    }
-
-    /// Commits the write grant report and the Function completion in one
-    /// replacement of the same Local Execution file. A process can therefore
-    /// observe either the active grant with no completion or the complete pair,
-    /// never a consumed grant whose completion evidence is missing.
+    /// Stages the one canonical Agent/Scholium result payload on its Run.
+    /// Exact replay is idempotent; a second, different payload fails closed so
+    /// a timeout cannot silently replace already submitted academic content.
     @discardableResult
-    public func completeExecution(
-        activityID: UUID,
-        activityKey: String,
-        completionPayloadDigest: String,
-        report: MultiTargetCompletionReport,
-        completion: ResearchFunctionCompletion,
-        submissionDigest: String
+    public func stageResultPayload(
+        _ payload: ResearchRunResultPayload
     ) throws -> LocalResearchExecutionRecord {
-        try update(activityID) { record in
-            guard var grant = record.grant else {
-                throw LocalResearchExecutionGrantError.notFound(activityID)
+        try update(payload.runID) { record in
+            guard record.snapshot.runID == payload.runID,
+                  record.completion == nil else {
+                throw ResearchAgentResultContractError.invalidSubmission
             }
-            guard grant.keyDigest == DocumentFingerprint(content: activityKey).sha256 else {
-                throw LocalResearchExecutionGrantError.keyMismatch
-            }
-            if grant.state == .active, report.completedAt > grant.expiresAt {
-                throw LocalResearchExecutionGrantError.inactive(.expired)
-            }
-            guard report.activityID == activityID else {
-                throw LocalResearchExecutionGrantError.activityMismatch
-            }
-            guard completion.runID == activityID,
-                  completion.function == record.snapshot.request.function else {
-                throw ResearchFunctionRecordStoreError.completionMismatch(activityID)
-            }
-            if grant.state == .completed || record.completion != nil {
-                guard grant.state == .completed,
-                      grant.completionPayloadDigest == completionPayloadDigest,
-                      grant.completionReport == report,
-                      let existing = record.completion else {
-                    throw LocalResearchExecutionGrantError.completionAlreadyRecorded(activityID)
+            if let existing = record.resultPayload {
+                guard existing == payload else {
+                    throw ResearchAgentResultContractError.resultAlreadySubmitted
                 }
-                if existing == completion,
-                   record.completionSubmissionDigest == submissionDigest {
-                    return
-                }
-                guard Self.canAdvance(
-                    existing,
-                    to: completion,
-                    snapshot: record.snapshot
-                ) else {
-                    throw LocalResearchExecutionGrantError.completionAlreadyRecorded(activityID)
-                }
-                record.completion = completion
-                record.completionSubmissionDigest = submissionDigest
                 return
             }
-            guard grant.state == .active else {
-                throw LocalResearchExecutionGrantError.inactive(grant.state)
-            }
-            let allowed = Set(grant.allowedTargets.map(\.noteID))
-            let confirmed = Set(report.confirmedModifiedNotes.map(\.noteID))
-            let unmodified = Set(report.unmodifiedNotes.map(\.noteID))
-            let unreported = Set(report.unreportedChangedNotes.map(\.noteID))
-            guard confirmed.isDisjoint(with: unmodified),
-                  confirmed.isDisjoint(with: unreported),
-                  unmodified.isDisjoint(with: unreported),
-                  confirmed.union(unmodified).union(unreported).isSubset(of: allowed),
-                  Set(report.observedFingerprints.keys) == allowed else {
-                throw LocalResearchExecutionGrantError.invalidConfirmedSets
-            }
-            grant.state = .completed
-            grant.completionPayloadDigest = completionPayloadDigest
-            grant.completionReport = report
-            record.grant = grant
-            record.completion = completion
-            record.completionSubmissionDigest = submissionDigest
+            record.resultPayload = payload
         }
     }
 
-    public func transitionGrant(
-        activityID: UUID,
-        to state: ResearchActivityGrantState
-    ) throws {
-        _ = try update(activityID) { record in
-            guard var grant = record.grant else {
-                throw LocalResearchExecutionGrantError.notFound(activityID)
+    @discardableResult
+    public func installContinuationRequest(
+        _ request: ResearchContinuationRequestRecord
+    ) throws -> LocalResearchExecutionRecord {
+        try update(request.parentRunID) { record in
+            guard record.triptychID == request.triptychID,
+                  record.resultPayload != nil,
+                  record.completion.map({
+                      [.complete, .unverified].contains($0.state)
+                  }) == true else {
+                throw ResearchContinuationContractError.parentNotFinalized
             }
-            if grant.state == state { return }
-            guard grant.state == .active else {
-                throw LocalResearchExecutionGrantError.inactive(grant.state)
+            if let existing = record.continuationRequests.first(where: {
+                $0.id == request.id
+            }) {
+                guard existing == request else {
+                    throw ResearchContinuationContractError.invalidRecord
+                }
+                return
             }
-            grant.state = state
-            record.grant = grant
+            guard record.continuationRequests.count < 64 else {
+                throw ResearchContinuationContractError.invalidRecord
+            }
+            record.continuationRequests.append(request)
+            record.continuationRequests.sort { $0.receivedAt < $1.receivedAt }
+        }
+    }
+
+    public func continuationRequest(
+        parentRunID: UUID,
+        requestID: UUID
+    ) throws -> ResearchContinuationRequestRecord {
+        let record = try self.record(id: parentRunID)
+        guard let request = record.continuationRequests.first(where: {
+            $0.id == requestID
+        }) else {
+            throw ResearchContinuationContractError.invalidRecord
+        }
+        return request
+    }
+
+    @discardableResult
+    public func transitionContinuationRequest(
+        parentRunID: UUID,
+        requestID: UUID,
+        state: ResearchContinuationRequestState,
+        authorizationBasis: ResearchContinuationAuthorizationBasis? = nil,
+        childRunID: UUID? = nil,
+        decidedAt: Date
+    ) throws -> LocalResearchExecutionRecord {
+        try update(parentRunID) { record in
+            guard let index = record.continuationRequests.firstIndex(where: {
+                $0.id == requestID
+            }) else {
+                throw ResearchContinuationContractError.invalidRecord
+            }
+            let current = record.continuationRequests[index]
+            if current.state == state, current.childRunID == childRunID { return }
+            let allowedTransition: Bool = switch (current.state, state) {
+            case (.pending, .allowed), (.pending, .declined),
+                 (.pending, .stale), (.pending, .expired),
+                 (.allowed, .created), (.allowed, .stale): true
+            default: false
+            }
+            guard allowedTransition else {
+                throw ResearchContinuationContractError.invalidRecord
+            }
+            let resolvedBasis = authorizationBasis
+                ?? (state == .created ? current.authorizationBasis : nil)
+            record.continuationRequests[index] = try ResearchContinuationRequestRecord(
+                id: current.id,
+                parentRunID: current.parentRunID,
+                triptychID: current.triptychID,
+                request: current.request,
+                requestFingerprint: current.requestFingerprint,
+                policy: current.policy,
+                policyRevision: current.policyRevision,
+                state: state,
+                authorizationBasis: resolvedBasis,
+                receivedAt: current.receivedAt,
+                expiresAt: current.expiresAt,
+                decidedAt: decidedAt,
+                childRunID: childRunID
+            )
         }
     }
 
     @discardableResult
     public func setCompletion(
         _ completion: ResearchFunctionCompletion,
+        resultPayload: ResearchRunResultPayload? = nil,
+        writeReport: ResearchRunWriteReport? = nil,
         submissionDigest: String?,
         runID: UUID
     ) throws -> LocalResearchExecutionRecord {
         try update(runID) { record in
             guard completion.runID == runID,
-                  completion.function == record.snapshot.request.function else {
+                  completion.function == record.snapshot.request.function,
+                  resultPayload?.runID == runID || resultPayload == nil,
+                  record.resultPayload == nil
+                    || resultPayload == nil
+                    || record.resultPayload == resultPayload,
+                  writeReport?.runID == runID || writeReport == nil,
+                  completion.state == .cancelled
+                    || ([.develop, .revise].contains(completion.function)
+                        == (writeReport != nil)),
+                  record.writeReport == nil || record.writeReport == writeReport else {
                 throw ResearchFunctionRecordStoreError.completionMismatch(runID)
             }
             if let existing = record.completion {
@@ -2509,6 +3050,10 @@ public actor LocalResearchExecutionStore {
                     throw ResearchRecordStoreV1Error.executionAlreadyCompleted(runID)
                 }
             }
+            if record.resultPayload == nil {
+                record.resultPayload = resultPayload
+            }
+            record.writeReport = writeReport
             record.completion = completion
             record.completionSubmissionDigest = submissionDigest
         }
@@ -2521,32 +3066,6 @@ public actor LocalResearchExecutionStore {
                 throw ResearchRecordStoreV1Error.executionAlreadyCompleted(runID)
             }
             try storage.removeIfPresent(directory: nil, fileName: Self.fileName(runID))
-        }
-    }
-
-    /// Removes one preparation that was never deliverable because its sibling
-    /// child set failed to prepare. The exact lineage prevents an unrelated
-    /// reserved run identity from being treated as rollback debris. A
-    /// cancelled record is accepted so older interrupted preparation cleanup
-    /// can converge on retry; completed scholarly work is never removed.
-    public func discardFailedContinuation(
-        runID: UUID,
-        expectedLineage: ResearchContinuationLineage
-    ) throws {
-        try lock.withExclusiveLock {
-            let current = try readRecord(id: runID)
-            guard expectedLineage.kind == .approvedAction,
-                  current.snapshot.continuationLineage == expectedLineage,
-                  current.snapshot.checkpointID != nil,
-                  current.completion == nil
-                    || current.completion?.state == .cancelled,
-                  current.grant?.state != .completed else {
-                throw ResearchRecordStoreV1Error.executionAlreadyCompleted(runID)
-            }
-            try storage.removeIfPresent(
-                directory: nil,
-                fileName: Self.fileName(runID)
-            )
         }
     }
 
@@ -2587,7 +3106,7 @@ public actor LocalResearchExecutionStore {
                 records.append(record)
             } catch {
                 issues.append(PortableResearchRecordStoreIssue(
-                    location: "research-execution-v3",
+                    location: "research-execution-v8",
                     fileName: fileName,
                     reason: error.localizedDescription
                 ))
@@ -2653,7 +3172,6 @@ public actor LocalResearchExecutionStore {
               existing.materialFingerprints == replacement.materialFingerprints,
               existing.summary == replacement.summary,
               existing.didModifyTarget == replacement.didModifyTarget,
-              existing.outputFingerprint == replacement.outputFingerprint,
               existing.actuallyUsedMaterialNoteIDs
                 == replacement.actuallyUsedMaterialNoteIDs,
               existing.literatureRecommendations
@@ -2684,29 +3202,19 @@ public actor LocalResearchExecutionStore {
         let request = record.snapshot.request
         var noteIDs: Set<UUID> = [request.target.noteID]
         noteIDs.formUnion(request.materials.map(\.noteID))
-        noteIDs.formUnion(request.authorizedWriteTargets.map(\.noteID))
         noteIDs.formUnion(request.fidelityTargets?.map(\.noteID) ?? [])
 
         if let action = record.snapshot.actionSnapshot {
             noteIDs.insert(action.target.noteID)
             noteIDs.formUnion(action.authority.readableNotes.map(\.noteID))
             noteIDs.formUnion(action.authority.writableNotes.map(\.noteID))
-            for value in action.parameters.values.values {
-                if case .notes(let notes) = value {
-                    noteIDs.formUnion(notes.map(\.noteID))
-                }
-            }
+            noteIDs.formUnion(action.platformInputs.focalNotes.map(\.noteID))
         }
-        if let grant = record.grant {
-            noteIDs.insert(grant.origin.noteID)
-            noteIDs.formUnion(grant.allowedTargets.map(\.noteID))
-            noteIDs.formUnion(grant.startingFingerprints.keys)
-            if let report = grant.completionReport {
-                noteIDs.formUnion(report.confirmedModifiedNotes.map(\.noteID))
-                noteIDs.formUnion(report.unmodifiedNotes.map(\.noteID))
-                noteIDs.formUnion(report.unreportedChangedNotes.map(\.noteID))
-                noteIDs.formUnion(report.observedFingerprints.keys)
-            }
+        noteIDs.formUnion(record.boundedWriteSet.entries.map(\.noteID))
+        if let report = record.writeReport {
+            noteIDs.formUnion(report.confirmedModifiedNotes.map(\.noteID))
+            noteIDs.formUnion(report.unmodifiedNotes.map(\.noteID))
+            noteIDs.formUnion(report.observedFingerprints.keys)
         }
         return noteIDs
     }
@@ -2715,51 +3223,6 @@ public actor LocalResearchExecutionStore {
         id.uuidString.lowercased() + ".json"
     }
 
-    private static func critiqueHandoffFileName(_ id: UUID) -> String {
-        id.uuidString.lowercased() + ".json"
-    }
-
-    private func makeCritiqueHandoffIntent(
-        snapshot: ResearchFunctionSnapshot,
-        preparedInstructions: String
-    ) throws -> LocalCritiqueHandoffIntent {
-        guard snapshot.actionSnapshot?.actionID == .critique,
-              snapshot.request.function == .critique,
-              snapshot.runID == snapshot.recordID,
-              snapshot.preparedOutput != nil,
-              !preparedInstructions.isEmpty,
-              preparedInstructions.utf8.count <= 2 * 1024 * 1024 else {
-            throw ResearchRecordStoreV1Error.unsafeStore(
-                "The Critique handoff does not match a frozen Action run."
-            )
-        }
-        let evidence = LocalCritiqueHandoffEvidence(
-            snapshot: snapshot,
-            preparedInstructions: preparedInstructions
-        )
-        let digest = DocumentFingerprint(data: try Self.makeEncoder().encode(evidence))
-        return LocalCritiqueHandoffIntent(
-            triptychID: triptychID,
-            runID: snapshot.runID,
-            checkpointID: snapshot.checkpointID,
-            evidenceDigest: digest
-        )
-    }
-
-    private func readCritiqueHandoffIntent(
-        runID: UUID
-    ) throws -> LocalCritiqueHandoffIntent {
-        let data = try storage.read(
-            directory: "critique-handoffs",
-            fileName: Self.critiqueHandoffFileName(runID)
-        )
-        let intent = try Self.decode(LocalCritiqueHandoffIntent.self, from: data)
-        guard intent.triptychID == triptychID,
-              intent.runID == runID else {
-            throw ResearchRecordStoreV1Error.recordIdentityMismatch(runID)
-        }
-        return intent
-    }
 
     private static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()

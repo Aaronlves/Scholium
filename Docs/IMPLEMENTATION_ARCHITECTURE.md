@@ -20,7 +20,7 @@ the final implementation evidence.
 | [Runtime and Ownership](Architecture/01-runtime-and-ownership.md) | Compiler/runtime composition, module dependencies, state owners, windows, refresh, Library mutations, tabs, and shell construction. |
 | [Research Actions and Execution](Architecture/02-research-actions-and-execution.md) | Action preparation, protected execution, Research Records, permissions, agent coordination, and completion/recovery. |
 | [Source Layout and Presentation](Architecture/03-source-layout-and-presentation.md) | Repository source layout, native presentation composition, window routes, Attention, Research Inspector, and localization. |
-| [Product Skills and Maintenance](Architecture/04-product-skills-and-maintenance.md) | Release-shipped Skill packages, binding/Profile state, installation, editing, replacement, deletion, and maintenance recovery. |
+| [Research Skills and Agent Collaboration](Architecture/04-product-skills-and-maintenance.md) | Skill/Practice registration, Action configuration, collaboration policy, local pairing/Sessions, Bounded Write Sets, and evaluation maintenance. |
 | [Source Storage and Read Models](Architecture/05-source-storage-and-read-models.md) | Descriptor-relative source writes, macOS coordination, prewrite recovery, immutable Note snapshots, metadata, and targeted YAML edits. |
 | [Documents and Editor](Architecture/06-documents-and-editor.md) | Document sessions, CodeMirror/WebKit, exact-source mirroring, rendering, interaction, recovery, and performance boundaries. |
 | [Design System and Boundary Enforcement](Architecture/07-design-system-and-boundaries.md) | Semantic design-system implementation, component ownership, import guards, and executable architecture checks. |

@@ -11,7 +11,7 @@ This chapter owns current interface implementation, bounded evidence, and open a
 
 D-118 is reachable end to end: Markdown dialect 4 and editor protocol 7 expose neutral, support,
 opposition, and undirected incompatibility; Graph contract 5 canonicalizes reciprocal
-incompatibility without rewriting source; Related Search and Read use the same meaning. The native
+incompatibility without rewriting source; explicit relation Search and Read use the same meaning. The native
 Connect projection groups rows by relationship, places one direct SF Symbol in a shared leading track
 per cluster, keeps counts only on major role headings, and bounds the current symbol below the pinned
 original group header in the existing single scroll owner. The current repository gate covers the
@@ -93,14 +93,15 @@ physical Full Keyboard Access, genuine spoken VoiceOver, or researcher visual ac
 **Current state**
 
 Filter, scoped Debate Importance ordering, root-level Notes, Set Aside, and Trash are reachable.
-Search exposes This Note, This Vault, and Triptych only; current v4 parsing rejects `status:`
-explicitly. This Note reads the current in-memory editor revision without saving; all scopes cancel
+Search exposes This Note, This Vault, and Triptych only; current v6 parsing routes Note and Record
+providers and rejects unsupported fields explicitly. This Note reads the current in-memory editor revision without saving; all scopes cancel
 superseded requests and reject stale request, generation, fingerprint, session, or revision results.
-Related remains a separately loaded direct-connection region and has no vector/AI/chat path. The
+Direct relation clauses use the Graph through that same Search contract; there is no parallel
+direct-connection Search region. The
 per-window Inspector restores Overview, Connect, or Actions. Overview omits empty About fields and
 Zotero metadata/key presentation while exposing the D-131 exact-item action only for a keyed current
-Analysis; Connect preserves counted empty groups without filler; Actions presents Research and
-Review default groups, grouped Researcher Skills, and Judgment without chronology, a duplicate
+Analysis; Connect preserves counted empty groups without filler; Actions presents the closed Platform
+Actions in Research and Review groups, plus Judgment without chronology, a duplicate
 record launcher, or a separate active-Discussion row. Discuss itself opens an existing exchange.
 Research Records remains separate and identity-bound to the Triptych that opened its keyed window;
 later Workspace or document focus changes do not retarget it. D-114 gives all three Inspector modes one
@@ -113,14 +114,14 @@ values selectable, gives diagnostic names the label face, and converts Connect t
 single-button rows without the trailing diagonal glyph. Each Connect group now uses its original
 collapse button as a sticky section header inside the existing scroll owner; no overlay, second
 title, divider, or scroll region is added. The distinct source anchor remains a named
-context/accessibility action. Action rows call the exact current-window route; arbitrary enabled
-Skills remain generic ordered Researcher Skill rows, and pointer activation no longer forces or
+context/accessibility action. Action rows call the exact current-window route; Profile ordering
+cannot create a parallel custom-Action group, and pointer activation no longer forces or
 later restores a keyboard-only focus ring. Research Guidance mutation completion now publishes one
 typed configuration invalidation without replacing the workspace snapshot or clearing derived
 freshness; every active window re-resolves its current Action availability and shows Checking rather
 than a stale repair while that read is pending. The Inspector Preview Catalog consumes the
 production ModeIndex and mirrors the current Attention, About, Connect-cluster,
-Research/Review/Researcher Skills, and Judgment grammar. Focused Inspector-geometry, Working Method
+Research/Review, and Judgment grammar. Focused Inspector-geometry, Working Method
 invalidation, and Attention-destination checks pass; an isolated Debug QA confirms hidden launch,
 current-Note Attention routing, the About heading route, relaxed Connect rows, sticky long-list
 headings that remain pointer-collapsible, an enabled Action presentation, and pointer activation
@@ -132,8 +133,9 @@ Inspector implementation, Action-availability invalidation path, and converged P
 Researcher side-by-side approval at 320/278 pt; keyed/nonkeyed role-switch visual acceptance for
 D-131; sticky-header behavior under long localized titles; launch and pointer-focus visual
 acceptance; mixed-script/RTL, dark and increased-contrast, Reduce Transparency/Motion,
-inactive-window, physical Full Keyboard Access, and genuine spoken VoiceOver acceptance; current
-Search timing and broader ranking review.
+inactive-window, physical Full Keyboard Access, and genuine spoken VoiceOver acceptance; the Search
+GUI first-paint protocol, a future host-unblocked XCTest regression for the already observed
+direct-relation QA behavior, and broader ranking review.
 
 ### Library creation and context actions
 
@@ -307,6 +309,12 @@ consumes the same persisted System/Light/Dark choice as Workspace instead of fal
 system Light. Recommendations still reuses the same list/detail split, search, empty/error states,
 checkbox, sheet, typography, surfaces, and focus behavior. The Sidebar,
 Attention, and Inspector have no count, entry, or reserved gap for this view.
+
+Records search and filter controls now call the Application Record provider used by global Search
+and CLI. The browser owns only Record presentation/options plus the separate Recommendations
+projection; async supersession, incomplete corpus, provider mismatch, fingerprint drift, deletion,
+and missing-statement locators fail closed. A Search-opened Record is submitted as one exact
+Triptych-keyed request, without first applying an ordinary unscoped Record request.
 
 **Still open**
 

@@ -930,7 +930,7 @@ extension ScholiumUITests {
 
 
     @MainActor
-    func testResearchGuidanceUsesCategorizedResearcherGovernance() throws {
+    func testResearchGuidanceUsesCurrentOwnerCategories() throws {
         let appMenu = app.menuBars.menuBarItems["Scholium QA"]
         XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
         appMenu.click()
@@ -944,8 +944,8 @@ extension ScholiumUITests {
         XCTAssertTrue(categoryList.waitForExistence(timeout: 10))
         for category in [
             "Methods",
-            "Researcher Skills",
-            "Permissions",
+            "Profiles & Practices",
+            "Collaboration",
             "Sources & Integrations",
             "Recovery & Technical",
         ] {
@@ -953,17 +953,12 @@ extension ScholiumUITests {
                 "scholium.researchGuidance.category.\(category)"
             ].exists)
         }
+        XCTAssertFalse(app.staticTexts["Researcher Skills"].exists)
+        XCTAssertFalse(app.staticTexts["Permissions"].exists)
 
-        let methods = app.descendants(matching: .any)[
+        app.descendants(matching: .any)[
             "scholium.researchGuidance.category.Methods"
-        ]
-        methods.click()
-        let installWorkingMethods = app.descendants(matching: .any)[
-            "scholium.researchGuidance.installWorkingMethods"
-        ]
-        if installWorkingMethods.waitForExistence(timeout: 3) {
-            installWorkingMethods.click()
-        }
+        ].click()
         for actionID in [
             "discuss", "analyze", "synthesize", "write", "critique",
             "check-fidelity", "manuscript",
@@ -972,78 +967,36 @@ extension ScholiumUITests {
                 "scholium.researchGuidance.method.\(actionID)"
             ].waitForExistence(timeout: 8))
         }
-        let manuscriptStatus = app.descendants(matching: .any)[
-            "scholium.researchGuidance.method.manuscript.status"
-        ]
-        XCTAssertTrue(manuscriptStatus.waitForExistence(timeout: 8))
-        XCTAssertEqual(manuscriptStatus.value as? String, "Disabled and hidden")
-        let manuscriptManage = app.descendants(matching: .any)[
-            "scholium.researchGuidance.method.manuscript.manage"
-        ]
-        XCTAssertTrue(manuscriptManage.waitForExistence(timeout: 5))
-        manuscriptManage.click()
-        let enableManuscript = app.menuItems["Enable as Work Action"]
-        XCTAssertTrue(enableManuscript.waitForExistence(timeout: 5))
-        enableManuscript.click()
-        XCTAssertTrue(waitUntil(timeout: 10) {
-            (manuscriptStatus.value as? String) != "Disabled and hidden"
-        })
-        manuscriptManage.click()
-        XCTAssertTrue(app.menuItems["Edit Method"].waitForExistence(timeout: 5))
-        app.typeKey(.escape, modifierFlags: [])
 
         app.descendants(matching: .any)[
-            "scholium.researchGuidance.category.Researcher Skills"
-        ].click()
-        XCTAssertTrue(app.menuButtons["Add Skill"].waitForExistence(timeout: 8))
-        XCTAssertEqual(
-            app.popUpButtons.firstMatch.value as? String,
-            "No Researcher Skills"
-        )
-
-        app.descendants(matching: .any)[
-            "scholium.researchGuidance.category.Permissions"
+            "scholium.researchGuidance.category.Profiles & Practices"
         ].click()
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchGuidance.permissions"
+            "scholium.researchGuidance.profilesPractices"
         ].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchGuidance.profile.analyze.enabled"
+        ].exists)
+        XCTAssertTrue(app.buttons["New Practice…"].exists)
+        XCTAssertFalse(app.menuButtons["Add Skill"].exists)
+
+        app.descendants(matching: .any)[
+            "scholium.researchGuidance.category.Collaboration"
+        ].click()
         let askEveryTime = app.radioButtons["Ask Me Every Time"]
         let askOnlyForWorks = app.radioButtons["Ask Me Only for Works"]
-        let triptychWide = app.radioButtons["Triptych-wide"]
+        let fullTriptychAccess = app.radioButtons["Full Triptych Access"]
         XCTAssertTrue(askEveryTime.waitForExistence(timeout: 8))
         XCTAssertTrue(askOnlyForWorks.exists)
-        XCTAssertTrue(triptychWide.exists)
+        XCTAssertTrue(fullTriptychAccess.exists)
         askOnlyForWorks.click()
         XCTAssertTrue(waitUntil(timeout: 8) {
             (askOnlyForWorks.value as? Int) == 1
                 || (askOnlyForWorks.value as? String) == "1"
         })
-
-        let analyzePolicy = app.popUpButtons[
-            "scholium.researchGuidance.permissions.skill.scholium-working-analyze.policy"
-        ]
-        XCTAssertTrue(analyzePolicy.waitForExistence(timeout: 8))
-        analyzePolicy.click()
-        let skillWide = app.menuItems["Triptych-wide"]
-        XCTAssertTrue(skillWide.waitForExistence(timeout: 5))
-        skillWide.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            (analyzePolicy.value as? String) == "Triptych-wide"
-        })
-
-        app.descendants(matching: .any)[
-            "scholium.researchGuidance.category.Methods"
-        ].click()
-        app.descendants(matching: .any)[
-            "scholium.researchGuidance.category.Permissions"
-        ].click()
-        XCTAssertTrue(askOnlyForWorks.waitForExistence(timeout: 8))
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            (askOnlyForWorks.value as? Int) == 1
-                || (askOnlyForWorks.value as? String) == "1"
-        })
-        XCTAssertTrue(analyzePolicy.waitForExistence(timeout: 8))
-        XCTAssertEqual(analyzePolicy.value as? String, "Triptych-wide")
+        XCTAssertFalse(app.popUpButtons.matching(
+            NSPredicate(format: "identifier CONTAINS %@", ".skill.")
+        ).firstMatch.exists)
 
         app.descendants(matching: .any)[
             "scholium.researchGuidance.category.Sources & Integrations"
@@ -1070,92 +1023,50 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 8) {
             settledRetention.value as? String == "50 versions"
         })
-        XCTAssertTrue(app.buttons["Reveal Skills Folder"].waitForExistence(timeout: 8))
-        XCTAssertFalse(
-            app.buttons["Reveal Legacy Data"].exists,
-            "The unshipped clean cutover keeps legacy bytes invisible and has no product entry."
-        )
-
-        app.descendants(matching: .any)[
-            "scholium.researchGuidance.category.Methods"
-        ].click()
-        app.descendants(matching: .any)[
-            "scholium.researchGuidance.category.Recovery & Technical"
-        ].click()
-        XCTAssertTrue(settledRetention.waitForExistence(timeout: 8))
-        XCTAssertEqual(settledRetention.value as? String, "50 versions")
+        XCTAssertFalse(app.buttons["Reveal Skills Folder"].exists)
+        XCTAssertFalse(app.buttons["Reveal Legacy Data"].exists)
     }
 
+
     @MainActor
-    func testResearcherSkillActionProfilePersistsAcrossSettingsReopen() throws {
-        openResearchGuidanceSkills()
+    func testAcademicProfilePersistsAcrossSettingsReopen() throws {
+        openResearchGuidance()
 
-        let addSkill = app.menuButtons["Add Skill"]
-        XCTAssertTrue(addSkill.waitForExistence(timeout: 10))
-        addSkill.click()
-        let newLocalSkill = app.menuItems["New Local Skill…"]
-        XCTAssertTrue(newLocalSkill.waitForExistence(timeout: 5))
-        newLocalSkill.click()
-
-        let createSkill = app.buttons["Create Skill"]
-        XCTAssertTrue(createSkill.waitForExistence(timeout: 5))
-        XCTAssertTrue(createSkill.isEnabled)
-        createSkill.click()
-
-        let newAction = app.menuButtons["New Action"]
-        XCTAssertTrue(newAction.waitForExistence(timeout: 10))
-        newAction.click()
-        let declaredAction = app.menuItems["New Research Action"]
-        XCTAssertTrue(declaredAction.waitForExistence(timeout: 5))
-        declaredAction.click()
-
-        let researcherSkills = app.scrollViews[
-            "scholium.researchGuidance.researcherSkills"
+        let toggle = app.descendants(matching: .any)[
+            "scholium.researchGuidance.profile.analyze.enabled"
         ]
-        XCTAssertTrue(researcherSkills.waitForExistence(timeout: 5))
-        let showInActions = app.descendants(matching: .any)[
-            "scholium.researchGuidance.profile.showInActions"
-        ]
-        XCTAssertTrue(showInActions.waitForExistence(timeout: 5))
-        showInActions.click()
-
-        let saveProfile = app.descendants(matching: .any)[
-            "scholium.researchGuidance.profile.save"
-        ]
-        XCTAssertTrue(saveProfile.waitForExistence(timeout: 5))
-        XCTAssertTrue(saveProfile.isEnabled)
-        saveProfile.click()
-        XCTAssertTrue(waitUntil(timeout: 10) {
-            saveProfile.exists && saveProfile.label == "Save Profile"
-        })
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10))
+        toggle.click()
 
         let profileURL = triptychDirectory
             .appendingPathComponent(".scholium", isDirectory: true)
-            .appendingPathComponent("research-action-profiles-v1.json")
+            .appendingPathComponent("academic-action-profiles-v1.json")
         XCTAssertTrue(waitUntil(timeout: 10) {
-            FileManager.default.fileExists(atPath: profileURL.path)
+            guard let data = try? Data(contentsOf: profileURL),
+                  let root = try? JSONSerialization.jsonObject(with: data)
+                    as? [String: Any],
+                  let profiles = root["profiles"] as? [[String: Any]],
+                  let analyze = profiles.first(where: {
+                      $0["actionID"] as? String == "analyze"
+                  }) else { return false }
+            return analyze["isEnabled"] as? Bool == false
         })
-        let data = try Data(contentsOf: profileURL)
-        let root = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: data) as? [String: Any]
-        )
-        let bindings = try XCTUnwrap(root["action_bindings"] as? [String: Any])
-        let binding = try XCTUnwrap(bindings["new-research-action"] as? [String: Any])
-        let profile = try XCTUnwrap(binding["profile"] as? [String: Any])
-        XCTAssertEqual(profile["show_in_actions"] as? Bool, true)
 
         let settingsWindow = app.windows["Research Guidance"]
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
         settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
-        openResearchGuidanceSkills()
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchGuidance.profile.save"
-        ].waitForExistence(timeout: 10))
+        openResearchGuidance()
+        let reopened = app.descendants(matching: .any)[
+            "scholium.researchGuidance.profile.analyze.enabled"
+        ]
+        XCTAssertTrue(reopened.waitForExistence(timeout: 10))
+        XCTAssertEqual(reopened.value as? String, "0")
     }
+
 
     @MainActor
     func testScholiumCLIInstallsFromSettings() throws {
-        openResearchGuidanceSkills(openAdvanced: true)
+        openResearchGuidance(openAdvanced: true)
 
         let section = app.descendants(matching: .any)["scholium.agentCLI.section"]
         let status = app.descendants(matching: .any)["scholium.agentCLI.status"]
@@ -1168,12 +1079,12 @@ extension ScholiumUITests {
         install.click()
 
         let installedTool = testDirectory.appendingPathComponent("cli-bin/scholium")
-        let installedCatalog = testDirectory.appendingPathComponent(
-            "cli-bin/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml"
+        let installedMethodResources = testDirectory.appendingPathComponent(
+            "cli-bin/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/README.md"
         )
         XCTAssertTrue(waitUntil(timeout: 15) {
             FileManager.default.isExecutableFile(atPath: installedTool.path)
-                && FileManager.default.fileExists(atPath: installedCatalog.path)
+                && FileManager.default.fileExists(atPath: installedMethodResources.path)
         })
         XCTAssertTrue(waitUntil(timeout: 10) {
             (status.value as? String) == "Installed"
@@ -2127,7 +2038,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testSearchKeepsDirectResultsSeparateFromRelatedConnections() throws {
+    func testSearchQueriesExplicitDirectRelationsWithoutParallelResults() throws {
         waitForDocumentSurface()
 
         app.typeKey("f", modifierFlags: [.command, .shift])
@@ -2137,23 +2048,23 @@ extension ScholiumUITests {
         let triptych = app.radioButtons["Triptych"]
         XCTAssertTrue(triptych.waitForExistence(timeout: 5))
         triptych.click()
-        typeCommittedText("\"QA Related Search Concept 947\"", into: field, in: app)
+        typeCommittedText(
+            "from-note:\"QA Direct Relation Concept 947\" relation:supports",
+            into: field,
+            in: app
+        )
 
-        let directTopic = app.descendants(matching: .any)[
-            "scholium.searchResult.QA Related Search Topic.md"
-        ]
         let relatedAnalysis = app.descendants(matching: .any)[
-            "scholium.relatedSearchResult.QA Autosave A.md"
+            "scholium.searchResult.QA Autosave A.md"
         ]
-        XCTAssertTrue(directTopic.waitForExistence(timeout: 10))
         XCTAssertTrue(relatedAnalysis.waitForExistence(timeout: 10))
         XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.searchResult.QA Autosave A.md"
+            "scholium.searchResult.QA Direct Relation Topic.md"
         ].exists)
-        XCTAssertTrue(app.staticTexts["Related"].exists)
-        XCTAssertTrue(app.staticTexts[
-            "Direct Topic connections. Related items affect neither search ranking nor evidential status."
-        ].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@",
+            "directly supported"
+        )).firstMatch.exists)
 
         let resultScroll = app.outlines["scholium.searchResults"].firstMatch
         XCTAssertTrue(resultScroll.waitForExistence(timeout: 5))
@@ -2288,12 +2199,12 @@ extension ScholiumUITests {
         )
         XCTAssertTrue(proofWindow.staticTexts["SYSTEM SKILLS"].exists)
 
-        proofWindow.staticTexts["Agent Change Request"].click()
+        proofWindow.staticTexts["Bounded Write Set"].click()
         XCTAssertTrue(
-            proofWindow.buttons["Allow These Notes Once"].waitForExistence(timeout: 3)
+            proofWindow.buttons["Allow Selected Notes"].waitForExistence(timeout: 3)
         )
         XCTAssertTrue(proofWindow.buttons["Continue Without Changes"].exists)
-        XCTAssertTrue(proofWindow.buttons["Cancel the Run"].exists)
+        XCTAssertTrue(proofWindow.buttons["Cancel Request"].exists)
 
         proofWindow.staticTexts["Research Record"].click()
         XCTAssertTrue(proofWindow.textFields["Search records"].waitForExistence(timeout: 3))
@@ -2305,7 +2216,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testAgentNoteChangeRequestSheetUsesNativeBoundedDecisionUI() {
+    func testResearchWriteSetExtensionSheetUsesNativeBoundedDecisionUI() {
         let window = app.windows.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
         ).firstMatch
@@ -2317,20 +2228,19 @@ extension ScholiumUITests {
 
         XCTAssertEqual(
             notify_post(
-                "com.scholium.qa.present-agent-change-request.\(windowID.uuidString)"
+                "com.scholium.qa.present-write-set-extension.\(windowID.uuidString)"
             ),
             UInt32(NOTIFY_STATUS_OK)
         )
 
         let sheet = app.descendants(matching: .any)[
-            "scholium.agentNoteChange.sheet"
+            "scholium.researchWriteSetExtension.sheet"
         ]
         XCTAssertTrue(sheet.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["Allow These Notes Once"].exists)
+        XCTAssertTrue(app.buttons["Allow Selected Notes"].exists)
         XCTAssertTrue(app.buttons["Continue Without Changes"].exists)
-        XCTAssertTrue(app.buttons["Cancel the Run"].exists)
-        XCTAssertTrue(app.staticTexts["AGENT REASON"].exists)
-        XCTAssertTrue(app.staticTexts["REQUESTED AUTHORITY"].exists)
+        XCTAssertTrue(app.buttons["Cancel Request"].exists)
+        XCTAssertTrue(app.staticTexts["ACADEMIC REASON"].exists)
         XCTAssertTrue(app.staticTexts["REQUESTED NOTES"].exists)
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })

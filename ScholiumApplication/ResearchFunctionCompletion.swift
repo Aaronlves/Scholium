@@ -7,9 +7,8 @@ private struct ResearchFunctionManuscriptChildEvidence: Sendable {
     let hasRevision: Bool
 }
 
-private struct ResearchFunctionConfirmedWriteActivity: Sendable {
-    let report: MultiTargetCompletionReport
-    let completionPayloadDigest: String
+private struct ResearchFunctionConfirmedWriteSet: Sendable {
+    let report: ResearchRunWriteReport
     let currentFingerprints: [UUID: DocumentFingerprint]
 }
 
@@ -18,16 +17,24 @@ private struct ResearchFunctionConfirmedWriteActivity: Sendable {
 extension ResearchFunctionCoordinator {
     /// Completes one protected run as a single coordinator-owned transaction.
     /// The coordinator validates current source evidence before committing the
-    /// Local-v3 transition, then repairs any later portable-record or derived
+    /// Local Execution transition, then repairs any later portable-record or derived
     /// publication work idempotently on the same submission.
     func completeProtectedFunction<Host: ResearchFunctionCoordinatorHost>(
         _ submission: ResearchFunctionCompletionSubmission,
         acceptedSubmissionDigest: String? = nil,
+        candidateResultPayload: ResearchRunResultPayload? = nil,
         host: isolated Host
     ) async throws -> ResearchFunctionCompletion {
         try requireMatchingActiveHost(host)
         let stored = try await record(runID: submission.runID)
         let snapshot = stored.snapshot
+        guard candidateResultPayload?.runID == submission.runID
+                || candidateResultPayload == nil,
+              stored.resultPayload == nil
+                || candidateResultPayload == nil
+                || stored.resultPayload == candidateResultPayload else {
+            throw ResearchAgentResultContractError.resultAlreadySubmitted
+        }
         let submissionDigest = try acceptedSubmissionDigest
             ?? completionSubmissionDigest(submission)
         guard snapshot.confirmationToken == submission.confirmationToken else {
@@ -42,15 +49,12 @@ extension ResearchFunctionCoordinator {
                         submission.runID
                     )
                 }
-                try await reconcileLocalCritiqueFindings(
-                    completion: existing,
-                    stored: stored
-                )
                 try await ensurePortableResearchRecord(
                     completion: existing,
                     stored: stored,
-                    confirmedWrite: local.grant?.completionReport
+                    confirmedWrite: local.writeReport
                 )
+                await host.finalizeResearchAgentRunAccess(runID: existing.runID)
                 return existing
             case .cancelled:
                 throw ResearchFunctionContractError.completionAlreadyRecorded(submission.runID)
@@ -86,7 +90,7 @@ extension ResearchFunctionCoordinator {
             )
         }
         // A prepared Analyze never outlives its exact source authority. Check
-        // before consuming a write grant, then check again against the final
+        // before confirming bounded writes, then check again against the final
         // Target below so source loss cannot be converted into a completion.
         let validatedSourceAccess = try await validateSnapshotResearchSourceAccess(snapshot)
         try validateRecommendationSourcePrivacy(
@@ -94,7 +98,6 @@ extension ResearchFunctionCoordinator {
             sourceAccess: validatedSourceAccess
         )
 
-        var completedCritiqueFindings: [CritiqueFinding] = []
         switch snapshot.request.function {
         case .discuss:
             let durableStatements = try await validatedDiscussionStatements(
@@ -112,102 +115,23 @@ extension ResearchFunctionCoordinator {
                     "Keep a valid stored Discuss response contract and record a durable attributed reply before completing Discuss."
                 )
             }
-            guard submission.outputFingerprint == nil else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "Discuss has no separate document output fingerprint."
-                )
-            }
-        case .critique:
-            guard let association = await dependencies.critiqueRegistry.association(
-                workNoteID: snapshot.request.target.noteID
-            ), association.rounds.contains(where: { $0.id == submission.runID }) else {
-                throw ResearchFunctionContractError.preparationNotFound(
-                    submission.runID
-                )
-            }
-            guard let preparedOutput = snapshot.preparedOutput,
-                  let outputFingerprint = submission.outputFingerprint else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "Critique completion requires its separate Critique document fingerprint."
-                )
-            }
-            let critiqueDocument = try await repository(
-                vaultID: preparedOutput.note.vaultID
-            ).load(relativePath: preparedOutput.note.relativePath)
-            guard critiqueDocument.fingerprint == outputFingerprint,
-                  outputFingerprint != preparedOutput.fingerprint else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The separate Critique document has not been updated from its prepared revision."
-                )
-            }
-            let metadata = CritiqueDocumentContract.metadata(in: critiqueDocument)
-            guard metadata.targetFingerprintSHA256
-                    == snapshot.request.target.fingerprint.sha256 else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The Critique document is no longer bound to the prepared Work revision."
-                )
-            }
-            completedCritiqueFindings = CritiqueDocumentContract.findings(
-                in: critiqueDocument
-            )
-        case .develop, .fidelity, .revise, .manuscript:
-            guard submission.outputFingerprint == nil else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "This Research Action has no separate output record."
-                )
-            }
+        case .critique, .develop, .fidelity, .revise, .manuscript:
+            break
         }
 
-        let confirmedWriteActivity: ResearchFunctionConfirmedWriteActivity?
+        let confirmedWriteSet: ResearchFunctionConfirmedWriteSet?
         let finalTargetFingerprint: DocumentFingerprint
         let finalMaterialFingerprints: [UUID: DocumentFingerprint]
-        if [.develop, .revise].contains(snapshot.request.function),
-           let activityID = snapshot.activityID {
-            let requestedTargetsByID = Dictionary(
-                uniqueKeysWithValues: snapshot.request.authorizedWriteTargets.map {
-                    ($0.noteID, $0)
-                }
+        if [.develop, .revise].contains(snapshot.request.function) {
+            let confirmed = try await confirmBoundedWriteSet(
+                stored: stored,
+                snapshot: snapshot,
+                completedAt: stored.writeReport?.completedAt
+                    ?? stored.completion?.completedAt
+                    ?? submission.submittedAt,
+                host: host
             )
-            let confirmed: ResearchFunctionConfirmedWriteActivity
-            if let activitySubmission = submission.activityCompletion {
-                confirmed = try await confirmWriteActivity(
-                    activitySubmission,
-                    snapshot: snapshot,
-                    host: host
-                )
-            } else if let existing = stored.completion,
-                      [.awaitingFidelity, .unverified, .stale].contains(existing.state),
-                      let grant = try await researchActivityGrant(
-                        activityID: activityID
-                      ),
-                      grant.state == .completed,
-                      let report = grant.completionReport,
-                      let completionPayloadDigest = grant.completionPayloadDigest,
-                      report.activityID == activityID,
-                      grant.origin.noteID == snapshot.request.target.noteID,
-                      grant.origin.note == snapshot.request.target.note,
-                      grant.writeScope == snapshot.request.writeScope,
-                      Set(grant.allowedTargets.map(\.noteID))
-                        == Set(requestedTargetsByID.keys),
-                      grant.allowedTargets.allSatisfy({ reference in
-                          requestedTargetsByID[reference.noteID]?.note == reference.note
-                      }),
-                      Set(report.observedFingerprints.keys)
-                        == Set(grant.allowedTargets.map(\.noteID)) {
-                // The delivery-only key has already been consumed. A later
-                // parent completion may attach final Fidelity evidence using
-                // only the Application-confirmed durable report.
-                confirmed = ResearchFunctionConfirmedWriteActivity(
-                    report: report,
-                    completionPayloadDigest: completionPayloadDigest,
-                    currentFingerprints: report.observedFingerprints
-                )
-            } else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "A keyed Write completion requires its write key and candidate path report."
-                )
-            }
-            confirmedWriteActivity = confirmed
+            confirmedWriteSet = confirmed
             if let current = confirmed.currentFingerprints[
                 snapshot.request.target.noteID
             ] {
@@ -229,17 +153,12 @@ extension ResearchFunctionCoordinator {
             }
             finalMaterialFingerprints = materialFingerprints
         } else {
-            guard submission.activityCompletion == nil else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "Only a keyed write-capable Action accepts a write completion."
-                )
-            }
             guard let submittedTargetFingerprint = submission.finalTargetFingerprint else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "This Action requires the exact final Target fingerprint."
                 )
             }
-            confirmedWriteActivity = nil
+            confirmedWriteSet = nil
             finalTargetFingerprint = submittedTargetFingerprint
             finalMaterialFingerprints = submission.finalMaterialFingerprints
         }
@@ -293,11 +212,16 @@ extension ResearchFunctionCoordinator {
 
         let targetChanged = finalTargetFingerprint
             != snapshot.request.target.fingerprint
-        let didConfirmWrite = confirmedWriteActivity.map {
+        let didConfirmWrite = confirmedWriteSet.map {
             !$0.report.confirmedModifiedNotes.isEmpty
         } ?? targetChanged
+        let didConfirmTargetWrite = confirmedWriteSet.map { confirmed in
+            confirmed.report.confirmedModifiedNotes.contains {
+                $0.noteID == snapshot.request.target.noteID
+            }
+        } ?? targetChanged
         if snapshot.request.function.writesTarget {
-            guard confirmedWriteActivity != nil
+            guard confirmedWriteSet != nil
                     || submission.didModifyTarget == targetChanged else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "Target modification status does not match its final fingerprint."
@@ -324,8 +248,8 @@ extension ResearchFunctionCoordinator {
                     "An unchanged write-capable Action cannot select final Fidelity evidence."
                 )
             }
-            if let confirmedWriteActivity,
-               confirmedWriteActivity.report.confirmedModifiedNotes.count > 1,
+            if let confirmedWriteSet,
+               confirmedWriteSet.report.confirmedModifiedNotes.count > 1,
                !submittedChildRunIDs.isEmpty {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "A multi-note Write uses per-note Fidelity results and cannot attach one single-target child run."
@@ -530,8 +454,7 @@ extension ResearchFunctionCoordinator {
             materialFingerprints: finalMaterialFingerprints,
             actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
             summary: stored.completion?.summary ?? submission.summary,
-            didModifyTarget: targetChanged,
-            outputFingerprint: submission.outputFingerprint,
+            didModifyTarget: didConfirmTargetWrite,
             fidelityOutcomes: outcomes,
             fidelityTargetResults: fidelityTargetResults,
             literatureRecommendations: submission.literatureRecommendations,
@@ -559,7 +482,8 @@ extension ResearchFunctionCoordinator {
            let candidateRecord = try await portableResearchRecord(
                 completion: completion,
                 stored: stored,
-                confirmedWrite: confirmedWriteActivity?.report,
+                confirmedWrite: confirmedWriteSet?.report,
+                resultPayloadOverride: candidateResultPayload,
                 storagePreflightForAwaitingFidelity: true
            ) {
             do {
@@ -572,35 +496,13 @@ extension ResearchFunctionCoordinator {
                 )
             }
         }
-        var didPersistLocalCompletionWithGrant = false
-        if let confirmedWriteActivity,
-           let activitySubmission = submission.activityCompletion {
-            _ = try await dependencies.localExecutionStore.completeExecution(
-                activityID: activitySubmission.activityID,
-                activityKey: activitySubmission.activityKey,
-                completionPayloadDigest: confirmedWriteActivity.completionPayloadDigest,
-                report: confirmedWriteActivity.report,
-                completion: completion,
-                submissionDigest: submissionDigest
-            )
-            didPersistLocalCompletionWithGrant = true
-            host.clearResearchActivityKey(runID: submission.runID)
-        }
-        if !didPersistLocalCompletionWithGrant {
-            try await persistCompletion(
-                completion,
-                in: stored,
-                submissionDigest: submissionDigest
-            )
-        }
-        if completion.function == .critique,
-           completion.state == .complete {
-            _ = try await dependencies.critiqueRegistry.captureLocalExecutionFindings(
-                runID: completion.runID,
-                findings: completedCritiqueFindings
-            )
-        }
-
+        try await persistCompletion(
+            completion,
+            in: stored,
+            resultPayload: candidateResultPayload,
+            writeReport: confirmedWriteSet?.report,
+            submissionDigest: submissionDigest
+        )
         // The substantive completion is authoritative before orchestration
         // begins. Automatic Fidelity preparation is therefore recoverable.
         if let advanced = try await advanceWithAutomaticFidelityIfAvailable(
@@ -610,12 +512,22 @@ extension ResearchFunctionCoordinator {
             host: host
         ) {
             let refreshed = try await record(runID: advanced.runID)
-            let grant = try await researchActivityGrant(activityID: advanced.runID)
+            let refreshedWrite = [.develop, .revise].contains(
+                refreshed.snapshot.request.function
+            ) ? try await confirmBoundedWriteSet(
+                stored: refreshed,
+                snapshot: refreshed.snapshot,
+                completedAt: advanced.completedAt,
+                host: host
+            ) : nil
             try await ensurePortableResearchRecord(
                 completion: advanced,
                 stored: refreshed,
-                confirmedWrite: grant?.completionReport
+                confirmedWrite: refreshedWrite?.report
             )
+            if [.complete, .unverified, .stale, .cancelled].contains(advanced.state) {
+                await host.finalizeResearchAgentRunAccess(runID: advanced.runID)
+            }
             return advanced
         }
 
@@ -624,13 +536,16 @@ extension ResearchFunctionCoordinator {
             try await ensurePortableResearchRecord(
                 completion: completion,
                 stored: try await record(runID: completion.runID),
-                confirmedWrite: confirmedWriteActivity?.report
+                confirmedWrite: confirmedWriteSet?.report
             )
         }
 
         let refreshWarning = try await host.publishCommittedResearchFunctionChange(
             "The Research Action completion"
         )
+        if [.complete, .unverified, .stale, .cancelled].contains(completion.state) {
+            await host.finalizeResearchAgentRunAccess(runID: completion.runID)
+        }
         guard let refreshWarning else { return completion }
         return ResearchFunctionCompletion(
             runID: completion.runID,
@@ -641,7 +556,6 @@ extension ResearchFunctionCoordinator {
             actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
-            outputFingerprint: completion.outputFingerprint,
             fidelityOutcomes: completion.fidelityOutcomes,
             fidelityTargetResults: completion.fidelityTargetResults ?? [],
             literatureRecommendations: completion.literatureRecommendations,
@@ -668,7 +582,6 @@ extension ResearchFunctionCoordinator {
         guard completion.state == .awaitingFidelity,
               completion.didModifyTarget,
               [.develop, .revise].contains(completion.function),
-              submission.activityCompletion == nil,
               (submission.childRunIDs ?? []).isEmpty else { return nil }
         do {
             let automatic = try await prepareAutomaticFidelity(
@@ -687,7 +600,6 @@ extension ResearchFunctionCoordinator {
                     actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
                     summary: submission.summary,
                     didModifyTarget: submission.didModifyTarget,
-                    outputFingerprint: submission.outputFingerprint,
                     fidelityOutcomes: submission.fidelityOutcomes,
                     literatureRecommendations: submission.literatureRecommendations,
                     childRunIDs: [automatic.effectiveFidelityRunID],
@@ -700,51 +612,21 @@ extension ResearchFunctionCoordinator {
             if let durable = try? await record(runID: completion.runID),
                let advanced = durable.completion,
                [.complete, .unverified].contains(advanced.state) {
-                guard case .local(let local) = durable else { return nil }
+                let write = try await confirmBoundedWriteSet(
+                    stored: durable,
+                    snapshot: durable.snapshot,
+                    completedAt: advanced.completedAt,
+                    host: host
+                )
                 try await ensurePortableResearchRecord(
                     completion: advanced,
                     stored: durable,
-                    confirmedWrite: local.grant?.completionReport
+                    confirmedWrite: write.report
                 )
                 return advanced
             }
             return nil
         }
-    }
-
-    private func reconcileLocalCritiqueFindings(
-        completion: ResearchFunctionCompletion,
-        stored: StoredFunctionRecord
-    ) async throws {
-        guard completion.function == .critique,
-              completion.state == .complete,
-              let preparedOutput = stored.snapshot.preparedOutput,
-              let outputFingerprint = completion.outputFingerprint else {
-            return
-        }
-        if await dependencies.critiqueRegistry.localExecutionFindingsWereCaptured(
-            runID: completion.runID
-        ) {
-            return
-        }
-        let document = try await repository(vaultID: preparedOutput.note.vaultID)
-            .load(relativePath: preparedOutput.note.relativePath)
-        guard document.fingerprint == outputFingerprint else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The completed Critique output no longer matches its recorded revision."
-            )
-        }
-        let metadata = CritiqueDocumentContract.metadata(in: document)
-        guard metadata.targetFingerprintSHA256
-                == stored.snapshot.request.target.fingerprint.sha256 else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The Critique document is no longer bound to the prepared Work revision."
-            )
-        }
-        _ = try await dependencies.critiqueRegistry.captureLocalExecutionFindings(
-            runID: completion.runID,
-            findings: CritiqueDocumentContract.findings(in: document)
-        )
     }
 
     private func completionSubmissionDigest(
@@ -754,12 +636,6 @@ extension ResearchFunctionCoordinator {
         encoder.dateEncodingStrategy = .deferredToDate
         encoder.outputFormatting = [.sortedKeys]
         return DocumentFingerprint(data: try encoder.encode(submission)).sha256
-    }
-
-    func researchActivityGrant(
-        activityID: UUID
-    ) async throws -> ResearchActivityGrant? {
-        try await dependencies.localExecutionStore.grant(activityID: activityID)
     }
 
     func validatedDiscussionStatements(
@@ -798,7 +674,7 @@ extension ResearchFunctionCoordinator {
     private func ensurePortableResearchRecord(
         completion: ResearchFunctionCompletion,
         stored: StoredFunctionRecord,
-        confirmedWrite: MultiTargetCompletionReport?
+        confirmedWrite: ResearchRunWriteReport?
     ) async throws {
         guard [.complete, .unverified].contains(completion.state) else { return }
         do {
@@ -867,7 +743,8 @@ extension ResearchFunctionCoordinator {
     private func portableResearchRecord(
         completion: ResearchFunctionCompletion,
         stored: StoredFunctionRecord,
-        confirmedWrite: MultiTargetCompletionReport?,
+        confirmedWrite: ResearchRunWriteReport?,
+        resultPayloadOverride: ResearchRunResultPayload? = nil,
         storagePreflightForAwaitingFidelity: Bool = false
     ) async throws -> PortableResearchRecord? {
         let canBuildRecord = [.complete, .unverified].contains(completion.state)
@@ -877,6 +754,12 @@ extension ResearchFunctionCoordinator {
               completion.function != .discuss,
               let actionSnapshot = stored.snapshot.actionSnapshot else {
             return nil
+        }
+        guard let resultPayload = resultPayloadOverride ?? stored.resultPayload,
+              resultPayload.runID == completion.runID else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "A current Action cannot form a Record without its canonical Result payload."
+            )
         }
         let snapshot = stored.snapshot
         var noteSnapshots: [UUID: ResearchActionNoteSnapshot] = [
@@ -888,6 +771,23 @@ extension ResearchFunctionCoordinator {
         for note in actionSnapshot.authority.writableNotes {
             noteSnapshots[note.noteID] = note
         }
+        let writeRecords = stored.documentWriteRecords
+        var boundedWriteStartingRevisions: [UUID: DocumentFingerprint] = [:]
+        for entry in stored.boundedWriteSet.entries {
+            let starting = writeRecords
+                .filter { $0.target == entry.handle }
+                .min(by: { $0.startedAt < $1.startedAt })?
+                .expectedRevision ?? entry.expectedRevision
+            boundedWriteStartingRevisions[entry.noteID] = starting
+            noteSnapshots[entry.noteID] = ResearchActionNoteSnapshot(
+                noteID: entry.noteID,
+                note: entry.note,
+                role: entry.role,
+                lifecycle: .active,
+                fingerprint: starting,
+                title: entry.title
+            )
+        }
 
         var endingRevisions: [UUID: DocumentFingerprint] = [:]
         endingRevisions[snapshot.request.target.noteID] = completion.targetFingerprint
@@ -896,36 +796,6 @@ extension ResearchFunctionCoordinator {
         }
         for (noteID, fingerprint) in confirmedWrite?.observedFingerprints ?? [:] {
             endingRevisions[noteID] = fingerprint
-        }
-        var preparedOutputNoteID: UUID?
-        if let output = snapshot.preparedOutput,
-           let endingRevision = completion.outputFingerprint {
-            guard let identity = try await dependencies.controlStore.identityRecord(
-                vaultID: output.note.vaultID,
-                relativePath: output.note.relativePath
-            ) else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The completed output has no stable Note identity."
-                )
-            }
-            let document = try await repository(vaultID: output.note.vaultID)
-                .load(relativePath: output.note.relativePath)
-            let outputNote = ResearchActionNoteSnapshot(
-                noteID: identity.id,
-                note: output.note,
-                role: .work,
-                lifecycle: WorkspaceDocumentLifecycle(
-                    relativePath: output.note.relativePath
-                ),
-                fingerprint: output.fingerprint,
-                title: ResearchNoteTitleResolver.resolve(
-                    document: document,
-                    vaultRole: try vault(id: output.note.vaultID).role
-                ).title
-            )
-            noteSnapshots[identity.id] = outputNote
-            endingRevisions[identity.id] = endingRevision
-            preparedOutputNoteID = identity.id
         }
         let participatingNotes = try noteSnapshots.values.map { note in
             try PortableResearchNoteRevision(
@@ -940,17 +810,13 @@ extension ResearchFunctionCoordinator {
 
         var changes: [PortableResearchConfirmedChange] = []
         if let confirmedWrite {
-            let start = Dictionary(
-                uniqueKeysWithValues: actionSnapshot.authority.writableNotes.map {
-                    ($0.noteID, $0.fingerprint)
-                }
-            )
             for note in confirmedWrite.confirmedModifiedNotes {
-                guard let starting = start[note.noteID],
+                guard let starting = boundedWriteStartingRevisions[note.noteID],
                       let ending = confirmedWrite.observedFingerprints[note.noteID],
                       starting != ending else { continue }
                 changes.append(try PortableResearchConfirmedChange(
                     noteID: note.noteID,
+                    actor: .agent,
                     startingRevision: starting,
                     endingRevision: ending
                 ))
@@ -958,48 +824,12 @@ extension ResearchFunctionCoordinator {
         } else if completion.targetFingerprint != actionSnapshot.target.fingerprint {
             changes.append(try PortableResearchConfirmedChange(
                 noteID: actionSnapshot.target.noteID,
+                actor: .agent,
                 startingRevision: actionSnapshot.target.fingerprint,
                 endingRevision: completion.targetFingerprint
             ))
         }
-        if let preparedOutputNoteID,
-           let output = snapshot.preparedOutput,
-           let endingRevision = completion.outputFingerprint,
-           output.fingerprint != endingRevision {
-            changes.append(try PortableResearchConfirmedChange(
-                noteID: preparedOutputNoteID,
-                startingRevision: output.fingerprint,
-                endingRevision: endingRevision
-            ))
-        }
-
-        var discrepancies: [PortableResearchDiscrepancy] = []
-        if let confirmedWrite {
-            discrepancies.append(contentsOf: confirmedWrite.unreportedChangedNotes.map {
-                PortableResearchDiscrepancy(
-                    id: PortableResearchDiscrepancy.stableID(
-                        runID: completion.runID,
-                        noteID: $0.noteID,
-                        kind: .changedButNotReported
-                    ),
-                    noteID: $0.noteID,
-                    kind: .changedButNotReported
-                )
-            })
-            let reportedLocations = Set(confirmedWrite.candidateModifiedNotes)
-            discrepancies.append(contentsOf: confirmedWrite.unmodifiedNotes.compactMap {
-                guard reportedLocations.contains($0.note) else { return nil }
-                return PortableResearchDiscrepancy(
-                    id: PortableResearchDiscrepancy.stableID(
-                        runID: completion.runID,
-                        noteID: $0.noteID,
-                        kind: .reportedButUnmodified
-                    ),
-                    noteID: $0.noteID,
-                    kind: .reportedButUnmodified
-                )
-            })
-        }
+        let discrepancies: [PortableResearchDiscrepancy] = []
 
         let feedback = try PortableResearchStatement(
             id: completion.runID,
@@ -1009,6 +839,15 @@ extension ResearchFunctionCoordinator {
             text: completion.summary,
             createdAt: completion.completedAt
         )
+        let academicResults = try actionSnapshot.resultContract.academicFields.map {
+            definition in
+            try PortableResearchAcademicFieldResult(
+                definition: definition,
+                value: resultPayload.academicResults.values[
+                    definition.fieldID.rawValue
+                ]
+            )
+        }
         let materialsByID = Dictionary(
             uniqueKeysWithValues: snapshot.request.materials.map { ($0.noteID, $0) }
         )
@@ -1080,6 +919,9 @@ extension ResearchFunctionCoordinator {
             primaryNoteID: actionSnapshot.target.noteID,
             participatingNotes: participatingNotes,
             statements: [feedback],
+            resultDisposition: resultPayload.disposition,
+            academicResults: academicResults,
+            contextUseReport: resultPayload.contextUseReport,
             actuallyUsedMaterials: actuallyUsedMaterials,
             fidelityCompletion: storagePreflightForAwaitingFidelity
                     && completion.state == .awaitingFidelity
@@ -1123,22 +965,6 @@ extension ResearchFunctionCoordinator {
     func authoritativeFunctionRecords() async throws
         -> [ResearchFunctionRecordProjection] {
         let localRecords = try await dependencies.localExecutionStore.listing().records
-        var critique = try await dependencies.critiqueRegistry.functionRecords()
-        for localRecord in localRecords {
-            guard let duplicate = critique.first(where: { $0.id == localRecord.id }) else {
-                continue
-            }
-            guard duplicate.snapshot == localRecord.snapshot,
-                  duplicate.completion == localRecord.completion,
-                  duplicate.preparedInstructions == localRecord.preparedInstructions else {
-                throw ResearchFunctionRecordStoreError.duplicateRun(localRecord.id)
-            }
-            _ = try await dependencies.critiqueRegistry.detachFunctionEvidence(
-                runID: localRecord.id,
-                matching: localRecord.snapshot
-            )
-            critique.removeAll { $0.id == localRecord.id }
-        }
         let local = localRecords.map {
             ResearchFunctionRecordProjection(
                 snapshot: $0.snapshot,
@@ -1182,7 +1008,6 @@ extension ResearchFunctionCoordinator {
                     actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
                     summary: completion.summary,
                     didModifyTarget: completion.didModifyTarget,
-                    outputFingerprint: completion.outputFingerprint,
                     fidelityOutcomes: completion.fidelityOutcomes,
                     fidelityTargetResults: completion.fidelityTargetResults ?? [],
                     literatureRecommendations: completion.literatureRecommendations,
@@ -1238,17 +1063,6 @@ extension ResearchFunctionCoordinator {
                           lifecycle: material.lifecycle,
                           fingerprint: fingerprint
                       ) else { return false }
-            }
-
-            if let output = snapshot.preparedOutput {
-                guard let outputFingerprint = completion.outputFingerprint else {
-                    return false
-                }
-                let outputDocument = try await repository(vaultID: output.note.vaultID)
-                    .load(relativePath: output.note.relativePath)
-                guard outputDocument.fingerprint == outputFingerprint else { return false }
-            } else if completion.outputFingerprint != nil {
-                return false
             }
 
             return snapshot.request.commentIDs.isEmpty
@@ -1466,45 +1280,17 @@ extension ResearchFunctionCoordinator {
         _ = stored
 
         switch lineage.kind {
-        case .approvedAction:
-            let record = try await dependencies.agentNoteChangeRequestStore
-                .recordForAuthentication(id: lineage.requestID)
-            guard record.decision.state == .allowedSubset,
-                  let plan = record.continuationPlan,
-                  plan.groupID == lineage.groupID,
-                  plan.requestID == lineage.requestID,
-                  lineage.parentRunID == record.request.parentRunID,
-                  plan.parentRunID == lineage.parentRunID,
-                  plan.childPhases.contains(where: {
-                      $0.runID == snapshot.runID
-                          && $0.noteID == snapshot.request.target.noteID
-                  }),
-                  let target = record.request.targets.first(where: {
-                      $0.noteID == snapshot.request.target.noteID
-                  }),
-                  target.note == snapshot.request.target.note,
-                  target.expectedFingerprint == snapshot.request.target.fingerprint,
-                  let action = snapshot.actionSnapshot,
-                  try AgentNoteChangeActionRevision(actionSnapshot: action)
-                    == record.request.requestedAction,
-                  action.authority.writableNotes == [action.target],
-                  !action.authority.writeOperations.isEmpty,
-                  Set(action.authority.writeOperations).isSubset(
-                    of: Set(record.request.operations)
-                  ),
-                  let checkpointID = snapshot.checkpointID,
-                  let checkpoint = try? await dependencies.checkpointStore
-                    .checkpoint(id: checkpointID),
-                  checkpoint.triptychID == workspaceID,
-                  checkpoint.kind == .researchContinuation,
-                  checkpoint.files == [TriptychCheckpointFile(
-                    key: researchContinuationCheckpointKey(
-                        for: snapshot.request.target
-                    ),
-                    fingerprint: snapshot.request.target.fingerprint
-                  )] else {
+        case .continueResearch:
+            guard lineage.requestID == snapshot.runID,
+                  let handoff = snapshot.continuationHandoff,
+                  handoff.parentRecordID == lineage.parentRunID,
+                  handoff.initiator == .agent,
+                  let parent = try? await dependencies.portableResearchRecordStore
+                    .record(id: lineage.parentRunID),
+                  parent.triptychID == workspaceID,
+                  parent.id != snapshot.runID else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "The continuation child no longer matches its parent, approved subset, Action, or checkpoint."
+                    "The Continue Research child no longer matches one finalized parent Record and its explicit Agent handoff."
                 )
             }
         case .resynthesis:
@@ -1550,7 +1336,7 @@ extension ResearchFunctionCoordinator {
                   let parent = try await dependencies.localExecutionStore
                     .recordIfPresent(id: lineage.parentRunID),
                   let parentLineage = parent.snapshot.continuationLineage,
-                  [.approvedAction, .resynthesis].contains(parentLineage.kind),
+                  parentLineage.kind == .resynthesis,
                   parentLineage.groupID == lineage.groupID,
                   parentLineage.requestID == lineage.requestID,
                   parent.completion.map({
@@ -1561,17 +1347,7 @@ extension ResearchFunctionCoordinator {
                     "The continuation Fidelity run no longer matches its independently completed write child."
                 )
             }
-            if parentLineage.kind == .approvedAction {
-                let record = try await dependencies.agentNoteChangeRequestStore
-                    .recordForAuthentication(id: parentLineage.requestID)
-                guard record.decision.state == .allowedSubset,
-                      record.continuationPlan?.groupID == parentLineage.groupID,
-                      record.continuationPlan?.requestID == parentLineage.requestID else {
-                    throw ResearchFunctionContractError.invalidCompletion(
-                        "The continuation Fidelity run no longer has its exact allowed request decision."
-                    )
-                }
-            } else if parent.snapshot.resynthesisContext == nil {
+            if parent.snapshot.resynthesisContext == nil {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "The continuation Fidelity run lost its Resynthesize preparation evidence."
                 )
@@ -1581,111 +1357,91 @@ extension ResearchFunctionCoordinator {
 
 }
 
-// MARK: - Current evidence and write-grant validation
+// MARK: - Current evidence and bounded-write validation
 
 extension ResearchFunctionCoordinator {
-    private func confirmWriteActivity<Host: ResearchFunctionCoordinatorHost>(
-        _ submission: ResearchActivityCompletionSubmission,
+    private func confirmBoundedWriteSet<Host: ResearchFunctionCoordinatorHost>(
+        stored: StoredFunctionRecord,
         snapshot: ResearchFunctionSnapshot,
+        completedAt: Date,
         host: isolated Host
-    ) async throws -> ResearchFunctionConfirmedWriteActivity {
-        guard let activityID = snapshot.activityID,
-              submission.activityID == activityID,
-              !submission.summary.isEmpty else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The keyed completion must match this activity and include a summary."
-            )
-        }
-        let grant = try await dependencies.localExecutionStore.authorizeCompletion(
-            activityID: activityID,
-            activityKey: submission.activityKey,
-            at: submission.submittedAt
+    ) async throws -> ResearchFunctionConfirmedWriteSet {
+        let writeSet = stored.boundedWriteSet
+        let writes = stored.documentWriteRecords
+        let resolvedConflictIDs = Set(
+            stored.writeConflictResolutionRecords.map(\.conflictOperationID)
         )
-        let requestTargetsByID = Dictionary(
-            uniqueKeysWithValues: snapshot.request.authorizedWriteTargets.map {
-                ($0.noteID, $0)
-            }
-        )
-        guard grant.origin.noteID == snapshot.request.target.noteID,
-              grant.origin.note == snapshot.request.target.note,
-              grant.writeScope == snapshot.request.writeScope,
-              Set(grant.allowedTargets.map(\.noteID)) == Set(requestTargetsByID.keys),
-              grant.allowedTargets.allSatisfy({ reference in
-                  requestTargetsByID[reference.noteID]?.note == reference.note
+        guard writeSet.runID == snapshot.runID,
+              writeSet.triptychID == workspaceID,
+              !writeSet.entries.isEmpty,
+              writeSet.entries.allSatisfy({
+                  [.ready, .stale, .abandoned].contains($0.state)
+              }),
+              writes.allSatisfy({
+                  ![.writing, .recoveryRequired].contains($0.state)
+              }),
+              writes.filter({ $0.state == .conflict }).allSatisfy({
+                  resolvedConflictIDs.contains($0.id)
               }) else {
-            _ = try? await dependencies.localExecutionStore.transitionGrant(
-                activityID: activityID,
-                to: .revoked
-            )
-            host.clearResearchActivityKey(runID: snapshot.runID)
             throw ResearchFunctionContractError.invalidCompletion(
-                "The stored activity authorization no longer matches this frozen Write request."
+                "Every started bounded document write must have a known, recoverable outcome before Result finalization."
             )
         }
-
-        let allowedLocations = Set(grant.allowedTargets.map(\.note))
-        let candidateLocations = Set(submission.candidateModifiedNotes)
-        guard candidateLocations.isSubset(of: allowedLocations) else {
-            _ = try? await dependencies.localExecutionStore.transitionGrant(
-                activityID: activityID,
-                to: .revoked
-            )
-            host.clearResearchActivityKey(runID: snapshot.runID)
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The candidate report contains a path outside the frozen Write authorization. The write key was revoked and the checkpoint was retained."
-            )
-        }
-
         var currentFingerprints: [UUID: DocumentFingerprint] = [:]
-        for reference in grant.allowedTargets {
-            guard let target = requestTargetsByID[reference.noteID] else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "An authorized note no longer has a matching request identity."
-                )
+        var references: [ResearchRunWriteNoteReference] = []
+        for entry in writeSet.entries {
+            let role: ResearchFunctionTargetRole = switch entry.role {
+            case .analysis: .analysis
+            case .topic: .topic
+            case .work: .work
             }
-            currentFingerprints[reference.noteID] = try await currentFingerprint(
+            let target = ResearchFunctionTarget(
+                noteID: entry.noteID,
+                note: entry.note,
+                role: role,
+                lifecycle: .active,
+                fingerprint: entry.expectedRevision,
+                title: entry.title
+            )
+            let current = try await currentFingerprint(
                 for: target,
                 host: host
             )
+            guard entry.state != .ready || current == entry.expectedRevision else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "A bounded write-set member changed after its last confirmed operation."
+                )
+            }
+            currentFingerprints[entry.noteID] = current
+            references.append(try ResearchRunWriteNoteReference(
+                noteID: entry.noteID,
+                note: entry.note,
+                role: role,
+                title: entry.title
+            ))
         }
 
-        let changedIDs: Set<UUID> = Set(grant.allowedTargets.compactMap { reference in
-            guard let starting = grant.startingFingerprints[reference.noteID],
-                  let current = currentFingerprints[reference.noteID],
-                  starting != current else { return nil }
-            return reference.noteID
+        let handlesWithCommittedWrites = Set(writes.compactMap { write in
+            write.state == .committed && write.intendedRevision != write.expectedRevision
+                ? write.target
+                : nil
         })
-        let candidateIDs: Set<UUID> = Set(grant.allowedTargets.compactMap { reference in
-            candidateLocations.contains(reference.note) ? reference.noteID : nil
+        let changedIDs = Set(writeSet.entries.compactMap { entry in
+            handlesWithCommittedWrites.contains(entry.handle) ? entry.noteID : nil
         })
-        let confirmedIDs = changedIDs.intersection(candidateIDs)
-        let unreportedIDs = changedIDs.subtracting(candidateIDs)
-        let unmodifiedIDs = candidateIDs.subtracting(changedIDs)
-        let report = MultiTargetCompletionReport(
-            activityID: activityID,
-            candidateModifiedNotes: submission.candidateModifiedNotes,
-            confirmedModifiedNotes: grant.allowedTargets.filter {
-                confirmedIDs.contains($0.noteID)
+        let report = try ResearchRunWriteReport(
+            runID: snapshot.runID,
+            confirmedModifiedNotes: references.filter {
+                changedIDs.contains($0.noteID)
             },
-            unmodifiedNotes: grant.allowedTargets.filter {
-                unmodifiedIDs.contains($0.noteID)
-            },
-            unreportedChangedNotes: grant.allowedTargets.filter {
-                unreportedIDs.contains($0.noteID)
+            unmodifiedNotes: references.filter {
+                !changedIDs.contains($0.noteID)
             },
             observedFingerprints: currentFingerprints,
-            summary: submission.summary,
-            completedAt: submission.submittedAt
+            completedAt: completedAt
         )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys]
-        let payloadDigest = DocumentFingerprint(
-            data: try encoder.encode(submission)
-        ).sha256
-        return ResearchFunctionConfirmedWriteActivity(
+        return ResearchFunctionConfirmedWriteSet(
             report: report,
-            completionPayloadDigest: payloadDigest,
             currentFingerprints: currentFingerprints
         )
     }

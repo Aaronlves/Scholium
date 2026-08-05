@@ -329,6 +329,14 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let settlements: [SettlementRecord]
     public let activeDiscussions: [PortableResearchDiscussion]
     public let finishedResearchRecords: [PortableResearchRecord]
+    /// Exact fingerprints of the authoritative portable JSON bytes read for
+    /// this snapshot. Missing entries are never reconstructed by re-encoding.
+    public let finishedResearchRecordFingerprints: [UUID: DocumentFingerprint]
+    /// Stable hash of the valid Record UUID + exact-byte fingerprint set.
+    public let finishedResearchRecordSourceManifestHash: String
+    /// False when any portable Record file failed exact reading or validation;
+    /// Search must not present the remaining subset as a complete corpus.
+    public let finishedResearchRecordProjectionIsComplete: Bool
     public let critiques: [CritiqueAssociation]
     public let checkpointListing: TriptychCheckpointListing
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
@@ -338,6 +346,9 @@ public struct WorkspaceResearchSnapshot: Sendable {
         settlements: [SettlementRecord] = [],
         activeDiscussions: [PortableResearchDiscussion] = [],
         finishedResearchRecords: [PortableResearchRecord] = [],
+        finishedResearchRecordFingerprints: [UUID: DocumentFingerprint] = [:],
+        finishedResearchRecordSourceManifestHash: String = "",
+        finishedResearchRecordProjectionIsComplete: Bool = true,
         critiques: [CritiqueAssociation],
         checkpointListing: TriptychCheckpointListing,
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
@@ -346,6 +357,10 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.settlements = settlements
         self.activeDiscussions = activeDiscussions
         self.finishedResearchRecords = finishedResearchRecords
+        self.finishedResearchRecordFingerprints = finishedResearchRecordFingerprints
+        self.finishedResearchRecordSourceManifestHash = finishedResearchRecordSourceManifestHash
+        self.finishedResearchRecordProjectionIsComplete =
+            finishedResearchRecordProjectionIsComplete
         self.critiques = critiques
         self.checkpointListing = checkpointListing
         self.recoveryRecords = recoveryRecords

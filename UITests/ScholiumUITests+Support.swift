@@ -161,8 +161,8 @@ extension ScholiumUITests {
         if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
             application.launchArguments += ["--scholium-document-heading-proof"]
         }
-        if name.contains("testAgentNoteChangeRequestSheet") {
-            application.launchArguments += ["--scholium-agent-change-request-fixture"]
+        if name.contains("testResearchWriteSetExtensionSheet") {
+            application.launchArguments += ["--scholium-write-set-extension-fixture"]
         }
         if let appearance {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
@@ -676,7 +676,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func openResearchGuidanceSkills(openAdvanced: Bool = false) {
+    func openResearchGuidance(openAdvanced: Bool = false) {
         let appMenu = app.menuBars.menuBarItems["Scholium QA"]
         XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
         appMenu.click()
@@ -690,7 +690,7 @@ extension ScholiumUITests {
         let category = app.descendants(matching: .any)[
             openAdvanced
                 ? "scholium.researchGuidance.category.Sources & Integrations"
-                : "scholium.researchGuidance.category.Researcher Skills"
+                : "scholium.researchGuidance.category.Profiles & Practices"
         ]
         XCTAssertTrue(category.waitForExistence(timeout: 5))
         category.click()
@@ -700,46 +700,6 @@ extension ScholiumUITests {
                     .waitForExistence(timeout: 10)
             )
         }
-    }
-
-    func packageRevision(_ files: [(String, String)]) -> (String, Int) {
-        var bytes = Data()
-        for (path, source) in files.sorted(by: { $0.0 < $1.0 }) {
-            let sourceData = Data(source.utf8)
-            bytes.append(Data(path.utf8))
-            bytes.append(0)
-            bytes.append(Data(String(sourceData.count).utf8))
-            bytes.append(0)
-            bytes.append(sourceData)
-            bytes.append(0)
-        }
-        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
-        return (digest, bytes.count)
-    }
-
-    func maintenanceEvidence(revision: (String, Int)) throws -> String {
-        let payload: [String: Any] = [
-            "proposedPackageRevision": [
-                "sha256": revision.0,
-                "byteCount": revision.1,
-            ],
-            "evaluator": "Synthetic UI transport fixture",
-            "method": "Structural, boundary, and rollback gating only",
-            "status": "passed",
-            "cases": [[
-                "id": "synthetic-transport-gate",
-                "status": "passed",
-                "summary": "Fixture evidence exercises transport and gating; it makes no philosophical-quality claim.",
-            ]],
-            "evaluatedAt": ISO8601DateFormatter().string(from: Date()),
-        ]
-        return String(
-            decoding: try JSONSerialization.data(
-                withJSONObject: payload,
-                options: [.prettyPrinted, .sortedKeys]
-            ),
-            as: UTF8.self
-        )
     }
 
     private struct QAStoredNoteIdentity {
@@ -808,7 +768,6 @@ extension ScholiumUITests {
         let sourceID = UUID(uuidString: "5E551019-0000-4000-8000-000000000005")!
         let startedAt = "2026-07-27T04:00:00Z"
         let finishedAt = "2026-07-27T04:01:00Z"
-        let methodRevision = qaFingerprint("QA bounded Analyze Method")
         let profileRevision = qaFingerprint("QA bounded Analyze Profile")
         let deletedRevision = qaFingerprint("Deleted QA Note starting bytes")
 
@@ -850,7 +809,7 @@ extension ScholiumUITests {
         topicParticipant["starting_revision"] = topicStartingRevision
 
         var portableRecord: [String: Any] = [
-            "schema_version": 4,
+            "schema_version": 5,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "kind": "action",
@@ -859,16 +818,13 @@ extension ScholiumUITests {
                 "action_id": createsSynthesisAttention ? "synthesize" : "analyze",
             ],
             "method": [
-                "package_id": createsSynthesisAttention
-                    ? "scholium-synthesize"
-                    : "scholium-analyze",
-                "origin": "bundled",
-                "version": "1.0.0",
-                "package_revision": methodRevision,
-                "loaded_resources": [[
-                    "relative_path": "SKILL.md",
-                    "revision": methodRevision,
-                ]],
+                "registration_key": createsSynthesisAttention
+                    ? "10000000-0000-0000-0000-000000000003"
+                    : "10000000-0000-0000-0000-000000000002",
+                "display_name": createsSynthesisAttention
+                    ? "Synthesize"
+                    : "Analyze Note",
+                "practice_names": [],
                 "profile_revision": profileRevision,
             ],
             "participating_notes": [
@@ -894,6 +850,8 @@ extension ScholiumUITests {
                 "text": "A bounded nonconversational analysis report.",
                 "created_at": finishedAt,
             ]],
+            "result_disposition": "completed",
+            "academic_results": [],
             "actually_used_materials": [[
                 "note_id": createsSynthesisAttention
                     ? analysis.noteID.uuidString
@@ -1196,19 +1154,19 @@ extension ScholiumUITests {
                 to: footnoteNoteURL
             )
         }
-        if name.contains("testSearchKeepsDirectResultsSeparateFromRelatedConnections") {
+        if name.contains("testSearchQueriesExplicitDirectRelationsWithoutParallelResults") {
             try write(
                 """
                 ---
-                title: "QA Related Search Concept 947"
-                aliases: ["QA Related Search Alias 947"]
+                title: "QA Direct Relation Concept 947"
+                aliases: ["QA Direct Relation Alias 947"]
                 status: seed
                 ---
-                # QA Related Search Concept 947
+                # QA Direct Relation Concept 947
 
                 Synthetic navigation fixture: +[[QA Autosave A|A distinct analysis relation]].
                 """ + "\n",
-                to: topics.appendingPathComponent("QA Related Search Topic.md")
+                to: topics.appendingPathComponent("QA Direct Relation Topic.md")
             )
         }
         if name.contains("testSearchExplainsTitleAliasHeadingAndBodyRanking") {

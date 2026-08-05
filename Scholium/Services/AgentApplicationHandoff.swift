@@ -63,7 +63,7 @@ final class MacAgentApplicationSystem: AgentApplicationSystemProviding {
     func chooseApplication() throws -> URL? {
         let panel = NSOpenPanel()
         panel.title = ScholiumL10n.string("Choose Agent Application")
-        panel.message = "Scholium will remember this application on this Mac. Prepared instructions are copied, but never pasted or sent automatically."
+        panel.message = "Scholium will remember this application on this Mac. Non-secret connection instructions are copied, but never pasted or sent automatically. The Pairing Code remains separate in Scholium."
         panel.prompt = "Choose"
         panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
         panel.allowedContentTypes = [.applicationBundle]
@@ -201,13 +201,13 @@ final class AgentApplicationHandoffController: ObservableObject {
     var primaryActionAccessibilityHint: String {
         if let application = rememberedApplication {
             return String(
-                localized: "Copies the prepared instructions, then opens \(application.displayName). You paste and submit them yourself.",
+                localized: "Copies non-secret connection instructions, then opens \(application.displayName). You paste and submit them yourself; the Pairing Code remains separate in Scholium.",
                 table: "Localizable",
                 bundle: .module
             )
         }
         return String(
-            localized: "Copies the prepared instructions, then asks you to choose an application to remember and open. You paste and submit them yourself.",
+            localized: "Copies non-secret connection instructions, then asks you to choose an application to remember and open. You paste and submit them yourself; the Pairing Code remains separate in Scholium.",
             table: "Localizable",
             bundle: .module
         )

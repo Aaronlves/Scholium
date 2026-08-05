@@ -90,10 +90,13 @@ struct PortableResearchRecordContractsTests {
             "participating_notes", "statements", "actually_used_materials",
             "fidelity_completion", "confirmed_changes", "discrepancies",
             "literature_recommendations", "started_at", "finished_at",
-            "is_pinned", "primary_note_id",
+            "is_pinned", "primary_note_id", "result_disposition",
+            "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 4)
+        #expect(object["schema_version"] as? Int == 5)
         #expect(object["fidelity_completion"] as? String == "not_required")
+        let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
+        #expect(changes.first?["actor"] as? String == "agent")
         let source = String(decoding: data, as: UTF8.self)
         for forbidden in [
             "function", "execution_kind", "prepared_instructions", "prompt",
@@ -108,8 +111,8 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 4 requires every authoritative array and rejects earlier schemas")
-    func schemaFourIsStrict() throws {
+    @Test("Schema 5 requires every authoritative array and rejects earlier schemas")
+    func schemaFiveIsStrict() throws {
         for fidelity in [
             PortableResearchFidelityCompletion.notRequired,
             .completed,
@@ -128,7 +131,7 @@ struct PortableResearchRecordContractsTests {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
 
-        for version in [1, 2, 3] {
+        for version in [1, 2, 3, 4] {
             object["schema_version"] = version
             #expect(throws: PortableResearchRecordError.self) {
                 _ = try JSONDecoder.scholium.decode(
@@ -393,11 +396,7 @@ struct PortableResearchRecordContractsTests {
                 as? [String: Any]
         )
         var method = try #require(nested["method"] as? [String: Any])
-        var resources = try #require(
-            method["loaded_resources"] as? [[String: Any]]
-        )
-        resources[0]["relative_path"] = "C:\\Users\\researcher\\SKILL.md"
-        method["loaded_resources"] = resources
+        method["display_name"] = "C:\\Users\\researcher\\SKILL.md"
         nested["method"] = method
         #expect(throws: PortableResearchRecordError.self) {
             _ = try JSONDecoder.scholium.decode(
@@ -428,20 +427,22 @@ struct PortableResearchRecordContractsTests {
         ))
     }
 
-    @Test("Portable Method resources allow safe non-Markdown templates and evals")
-    func nonMarkdownMethodResourcesRemainPortable() throws {
-        let snapshot = try makeActionSnapshot(resourcePaths: [
-            "SKILL.md",
-            "templates/completion.json",
-            "evals/cases.yaml",
+    @Test("Portable Method attribution retains only registration, display name, and Practice names")
+    func methodAttributionIsMinimal() throws {
+        let snapshot = try makeActionSnapshot(practiceNames: [
+            "Conceptual Analyst",
+            "Dialectical Partner",
         ])
         let reference = try PortableResearchMethodReference(snapshot: snapshot)
-        #expect(reference.loadedResources.map(\.relativePath) == [
-            "SKILL.md",
-            "evals/cases.yaml",
-            "templates/completion.json",
+        #expect(reference.practiceNames == [
+            "Conceptual Analyst",
+            "Dialectical Partner",
         ])
         let data = try JSONEncoder.scholium.encode(reference)
+        let encoded = String(decoding: data, as: UTF8.self)
+        #expect(!encoded.localizedCaseInsensitiveContains("package"))
+        #expect(!encoded.contains("resource"))
+        #expect(!encoded.contains("method_source"))
         #expect(try JSONDecoder.scholium.decode(
             PortableResearchMethodReference.self,
             from: data
@@ -500,6 +501,7 @@ struct PortableResearchRecordContractsTests {
                 fidelityCompletion: .notRequired,
                 confirmedChanges: [try PortableResearchConfirmedChange(
                     noteID: participant.noteID,
+                    actor: .agent,
                     startingRevision: snapshot.target.fingerprint,
                     endingRevision: DocumentFingerprint(content: "another ending")
                 )],
@@ -532,6 +534,71 @@ struct PortableResearchRecordContractsTests {
             PortableResearchRecord.self,
             from: data
         ) == record)
+    }
+
+    @Test("Researcher evaluation and Method feedback are separate authored partitions")
+    func evaluationAndMethodFeedbackPartitions() throws {
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try PortableResearcherEvaluation(
+                observedIssues: [.sourceOrAttribution],
+                noIssuesObserved: true
+            )
+        }
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try ResearcherEvaluationDraft(note: "/Users/private/claim.md")
+        }
+
+        let base = try makeRecord()
+        let evaluation = try PortableResearcherEvaluation(
+            observedIssues: [.conceptOrInterpretation],
+            valuableDiscovery: true,
+            note: "The distinction is useful, but the interpretation needs qualification.",
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+        let comment = try PortableResearchMethodFeedbackComment(
+            text: "Require an explicit alternative-reading check before conclusion.",
+            sourceEvaluationRevision: evaluation.revision,
+            updatedAt: Date(timeIntervalSince1970: 31)
+        )
+        let evaluated = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            sourceReference: base.sourceReference,
+            continuationLineage: base.continuationLineage,
+            primaryNoteID: base.primaryNoteID,
+            participatingNotes: base.participatingNotes,
+            statements: base.statements,
+            resultDisposition: base.resultDisposition,
+            academicResults: base.academicResults,
+            contextUseReport: base.contextUseReport,
+            actuallyUsedMaterials: base.actuallyUsedMaterials,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: base.confirmedChanges,
+            discrepancies: base.discrepancies,
+            literatureRecommendations: base.literatureRecommendations,
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt,
+            isPinned: true,
+            researcherEvaluation: evaluation,
+            methodFeedbackComment: comment
+        )
+
+        #expect(try base.finalizedResultFingerprint()
+            == evaluated.finalizedResultFingerprint())
+        #expect(evaluated.researcherEvaluation?.author == .researcher)
+        #expect(evaluated.methodFeedbackComment?.author == .researcher)
+        let data = try JSONEncoder.scholium.encode(evaluated)
+        let source = String(decoding: data, as: UTF8.self)
+        #expect(source.contains("researcher_evaluation"))
+        #expect(source.contains("method_feedback_comment"))
+        #expect(!source.contains("evaluation_history"))
+        #expect(try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: data
+        ) == evaluated)
     }
 
     private func makeRecord(
@@ -593,6 +660,7 @@ struct PortableResearchRecordContractsTests {
             fidelityCompletion: fidelityCompletion,
             confirmedChanges: [try PortableResearchConfirmedChange(
                 noteID: snapshot.target.noteID,
+                actor: .agent,
                 startingRevision: snapshot.target.fingerprint,
                 endingRevision: ending
             )],
@@ -634,7 +702,7 @@ struct PortableResearchRecordContractsTests {
     }
 
     private func makeActionSnapshot(
-        resourcePaths: [String] = ["SKILL.md"]
+        practiceNames: [String] = []
     ) throws -> ResearchActionSnapshot {
         let definition = ResearchActionDefinition.synthesize
         let target = ResearchActionNoteSnapshot(
@@ -648,43 +716,53 @@ struct PortableResearchRecordContractsTests {
             fingerprint: DocumentFingerprint(content: "# Topic\n"),
             title: "Problem"
         )
-        let profile = try ResearchActionProfile(
-            definition: definition,
-            buttonName: "Synthesize",
-            order: 100,
-            applicableRoles: [.topic],
-            showInActions: true,
-            modules: [],
-            sourceRequirement: .none,
-            capabilities: try ResearchActionCapabilityDeclaration(
-                readableRoles: [.analysis, .topic],
-                candidateWritableRoles: [.topic],
-                candidateWriteOperations: [.modifyMarkdown]
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .synthesize
+            }
+        )
+        let profileRevision = try profile.contentRevision()
+        let registration = try ResearchSkillRegistration(
+            key: ResearchSkillRegistrationKey(
+                rawValue: UUID(
+                    uuidString: "EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE"
+                )!
             ),
-            feedbackRequirement: .requested
+            actionID: .synthesize,
+            displayName: "Synthesize",
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Synthesize\n\nExact method.\n",
+            practices: try practiceNames.enumerated().map { index, name in
+                try ResearchPracticeSnapshot(
+                    title: name,
+                    relativePath: "Practice-\(index).md",
+                    source: "# \(name)\n\nExact Practice.\n"
+                )
+            }
+        )
+        let resolvedProfile = try ResearchActionResolvedProfileSnapshot(
+            profile: profile,
+            profileRevision: profileRevision,
+            profileDocumentRevision: DocumentFingerprint(content: "profiles")
         )
         return try ResearchActionSnapshot(
             definition: definition,
             target: target,
-            method: try ResearchActionMethodSnapshot(
-                packageID: "scholium-synthesize",
-                origin: .triptych,
-                version: "working",
-                packageRevision: DocumentFingerprint(content: "package"),
-                loadedResources: resourcePaths.map {
-                    ResearchActionResourceSnapshot(
-                        relativePath: $0,
-                        revision: DocumentFingerprint(content: "method:\($0)")
-                    )
-                }
+            method: method,
+            resolvedProfile: resolvedProfile,
+            platformInputs: ResearchActionPlatformInputs(),
+            academicInputs: ResearchAcademicFieldValues(
+                values: [:],
+                definitions: profile.academicInputFields
             ),
-            resolvedProfile: try ResearchActionResolvedProfileSnapshot(
-                origin: .applicationDefault,
+            resultContract: ResearchResultContract(
                 profile: profile,
-                profileRevision: profile.contentRevision(),
-                profileDocumentRevision: nil
+                registrationKey: registration.key,
+                profileRevision: profileRevision
             ),
-            parameters: try ResearchActionParameterModel(profile: profile),
             authority: try ResearchAuthorityEnvelope(
                 readableNotes: [target],
                 writableNotes: [target],

@@ -40,7 +40,7 @@ Task-specific operational references remain separate:
 
 - [CSS Snippet Contract](Docs/CSS_SNIPPETS.md)
 - [First-party Zotero MCP transport](Docs/ZOTERO_MCP.md)
-- [Product Skill packages](ScholiumCore/Resources/Skills/README.md)
+- [Research method resources](ScholiumCore/Resources/Skills/README.md)
 
 ## Current implementation
 
@@ -53,11 +53,13 @@ delivery target imports Core.
 The current product supports independent Triptychs and windows, exact-source
 Markdown editing, Search and Connections, note/folder lifecycle, external-edit
 conflicts, checkpoints and per-Note recovery, Settle, unified Discussion,
-Critique, Research Actions, editable Working Methods, Researcher Skills,
-standing permissions, agent Note-change requests with independently bounded
-child phases, schema-4 portable Research Records with Analyze Literature
-Recommendations, local read-only Zotero context, and an optional first-party
-Zotero MCP transport.
+Critique, and Research Actions with editable current Methods, academic
+Profiles, and Philosophical Practices. One Triptych collaboration policy,
+process-bound local pairing, Run-owned bounded write sets, strict schema-5
+portable Research Records and researcher evaluation replace the retired
+package, standing-permission, and child-change-request owners. Analyze Records
+may carry Literature Recommendations. Local read-only Zotero context and the
+optional first-party Zotero MCP transport remain available.
 
 Library, Set Aside, and Trash share one native AppKit folder-and-note outline
 and the same browsing grammar. Library creates notes and folders and retains

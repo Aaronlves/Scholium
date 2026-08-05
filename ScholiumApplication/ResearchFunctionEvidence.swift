@@ -105,15 +105,11 @@ extension ResearchFunctionCoordinator {
         host: isolated Host
     ) async throws -> [ValidatedFunctionObject] {
         guard [.develop, .revise].contains(request.function) else { return [] }
-        var validated: [ValidatedFunctionObject] = []
-        for target in request.authorizedWriteTargets {
-            validated.append(try await validateResearchFunctionTarget(
-                target,
-                expected: target.fingerprint,
-                host: host
-            ))
-        }
-        return validated
+        return [try await validateResearchFunctionTarget(
+            request.target,
+            expected: request.target.fingerprint,
+            host: host
+        )]
     }
 
     func validateResearchFunctionFidelityTargets<
@@ -200,59 +196,6 @@ extension ResearchFunctionCoordinator {
         return nil
     }
 
-    func repairReason(
-        for issue: ResearchSkillBindingIssue,
-        function: ResearchFunctionID,
-        citation: Bool = false
-    ) -> ResearchFunctionRepairReason {
-        switch issue {
-        case .missing, .disabled:
-            return ResearchFunctionRepairReason(
-                code: citation ? .missingCapability : .missingWorkflow,
-                function: function,
-                capability: citation ? .citationVerification : nil
-            )
-        case .malformed:
-            return ResearchFunctionRepairReason(
-                code: .malformedBinding,
-                function: function,
-                capability: citation ? .citationVerification : nil
-            )
-        case .invalidPackage(let packageID):
-            return ResearchFunctionRepairReason(
-                code: citation ? .missingCapability : .invalidWorkflow,
-                function: function,
-                capability: citation ? .citationVerification : nil,
-                packageID: packageID
-            )
-        case .unsupportedFunction(let packageID, _):
-            return ResearchFunctionRepairReason(
-                code: .invalidWorkflow,
-                function: function,
-                packageID: packageID
-            )
-        case .unsupportedAction(let packageID, _):
-            return ResearchFunctionRepairReason(
-                code: .invalidWorkflow,
-                function: function,
-                packageID: packageID
-            )
-        case .missingCapability(let capability):
-            return ResearchFunctionRepairReason(
-                code: .missingCapability,
-                function: function,
-                capability: capability
-            )
-        case .citationStyleMissing(let packageID),
-             .citationStyleMismatch(let packageID, _):
-            return ResearchFunctionRepairReason(
-                code: .missingCapability,
-                function: function,
-                capability: .citationFormatting,
-                packageID: packageID
-            )
-        }
-    }
 
     func researchFunctionTitle(for note: WorkspaceNoteSnapshot) -> String {
         ResearchNoteTitleResolver.resolve(

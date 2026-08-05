@@ -156,9 +156,18 @@ public actor CommandLineToolInstaller {
 
     private func validResourceBundle(_ url: URL) -> Bool {
         guard !isSymbolicLink(url) else { return false }
-        let catalog = url
-            .appendingPathComponent("Contents/Resources/Skills/catalog.yaml")
-        return fingerprintOfRegularFile(catalog) != nil
+        let skills = url.appendingPathComponent(
+            "Contents/Resources/Skills",
+            isDirectory: true
+        )
+        let currentSentinels = [
+            "README.md",
+            "Scholium System Skills/scholium-core-protocol/SKILL.md",
+            "Scholium Method Skills/scholium-analyze/SKILL.md",
+        ]
+        return currentSentinels.allSatisfy { relativePath in
+            fingerprintOfRegularFile(skills.appendingPathComponent(relativePath)) != nil
+        }
     }
 
     private func fingerprintOfRegularFile(_ url: URL) -> DocumentFingerprint? {

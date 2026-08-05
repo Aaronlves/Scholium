@@ -5,16 +5,15 @@ import Testing
 
 @Suite("Executable Research Action CLI lifecycle")
 struct ActionCLIExecutableLifecycleTests {
-    @Test("The Agent MCP wrapper stays on stdio and reports an absent App without opening a snapshot runtime")
-    func agentMCPUnavailableContract() async throws {
+    @Test("The real CLI pairs through stdin, hides the Session secret, and reloads authenticated context")
+    func agentPairingAndContext() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
 
         let fixture = try await ActionCLIFixture.make()
         defer { fixture.remove() }
-        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
-        let bridgeSupport = URL(
+        let bridgeContainer = URL(
             fileURLWithPath: FileManager.default.currentDirectoryPath,
             isDirectory: true
         ).appendingPathComponent(
@@ -22,73 +21,318 @@ struct ActionCLIExecutableLifecycleTests {
             isDirectory: true
         )
         try FileManager.default.createDirectory(
-            at: bridgeSupport,
+            at: bridgeContainer,
             withIntermediateDirectories: true
         )
-        defer { try? FileManager.default.removeItem(at: bridgeSupport) }
-        let triptychID = fixture.assignment.id.uuidString.lowercased()
-        let requestID = UUID().uuidString.lowercased()
-        let messages: [[String: Any]] = [
-            [
-                "jsonrpc": "2.0", "id": 1, "method": "initialize",
-                "params": ["protocolVersion": "2025-06-18"],
-            ],
-            ["jsonrpc": "2.0", "id": 2, "method": "tools/list"],
-            [
-                "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-                "params": [
-                    "name": "show_note_change_request",
-                    "arguments": [
-                        "triptych_id": triptychID,
-                        "request_id": requestID,
-                        "coordination_key": String(repeating: "a", count: 73),
-                    ],
-                ],
-            ],
-        ]
-        let input = try messages.reduce(into: Data()) { result, message in
-            result.append(try JSONSerialization.data(
-                withJSONObject: message,
-                options: [.sortedKeys]
-            ))
-            result.append(0x0A)
-        }
-        let result = try cli.run(
-            ["agent", "mcp", "serve"],
-            stdin: input,
-            environment: [
-                "SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT": bridgeSupport.path,
-            ]
+        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
+
+        let run = try #require(
+            ResearchRunLocator(rawValue: "abcdefghijklmnopqrstuvwx")
         )
-        #expect(result.stderr.isEmpty)
-        let responses = try String(decoding: result.stdout, as: UTF8.self)
-            .split(separator: "\n")
-            .map {
-                try #require(JSONSerialization.jsonObject(
-                    with: Data($0.utf8)
-                ) as? [String: Any])
+        let code = try #require(
+            ResearchPairingCode(rawValue: "23456789ABCDEFGHJKLMNPQR")
+        )
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "s", count: 48)
+        )
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .discuss
             }
-        #expect(responses.count == 3)
-        let tools = try #require(
-            (responses[1]["result"] as? [String: Any])?["tools"]
-                as? [[String: Any]]
         )
-        #expect(Set(tools.compactMap { $0["name"] as? String }) == [
-            "request_note_changes",
-            "show_note_change_request",
-            "cancel_note_change_request",
-        ])
-        let callResult = try #require(responses[2]["result"] as? [String: Any])
-        #expect(callResult["isError"] as? Bool == true)
-        let structured = try #require(
-            callResult["structuredContent"] as? [String: Any]
+        let registration = try ResearchSkillRegistration(
+            actionID: .discuss,
+            displayName: "Discussion Method",
+            primaryMarkdown: .machineLocal()
         )
-        let bridgeError = try #require(structured["error"] as? [String: Any])
-        #expect(bridgeError["code"] as? String == "unavailable")
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Discussion Method\n\nPreserve alternatives.\n",
+            practices: []
+        )
+        let profileRevision = try profile.contentRevision()
+        let context = ResearchAuthenticatedRunContext(
+            coreProtocol: "Scholium Core Protocol",
+            brief: ResearchRunBrief(
+                run: run,
+                actionID: .discuss,
+                initialObjectTitle: "Agency",
+                initialObjectRole: .topic,
+                academicPurpose: nil,
+                capabilities: ResearchRunCapabilityAvailability(
+                    search: true,
+                    read: true,
+                    relations: true,
+                    properties: true,
+                    records: true,
+                    researchState: true,
+                    zotero: true,
+                    writeInitialObject: false,
+                    extendWriteSet: false
+                )
+            ),
+            method: ResearchMethodContext(snapshot: method),
+            resultContract: try ResearchResultContract(
+                profile: profile,
+                registrationKey: registration.key,
+                profileRevision: profileRevision
+            ),
+            boundedWriteSet: []
+        )
+        let endReceipt = try ResearchRunEndReceipt(
+            run: run,
+            recoveryRetained: false,
+            message: "The Run ended and refuses new Agent operations."
+        )
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            switch request.operation {
+            case .pair:
+                guard request.run == run, request.pairingCode == code else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .credential(credential)
+            case .context:
+                guard request.run == run, request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .context(context)
+            case .end:
+                guard request.run == run, request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .endReceipt(endReceipt)
+            case .query, .extendWriteSet, .writeDocument,
+                    .resolveWriteConflict, .submitResult, .continueResearch,
+                    .methodImprovementContext, .submitMethodImprovement:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        try cli.expectFailure(
+            ["agent", "pair", "--run", run.rawValue],
+            stdin: Data(repeating: 0x41, count: 257),
+            environment: environment,
+            contains: "exceeded its 256-byte limit"
+        )
+        let paired = try cli.run(
+            ["agent", "pair", "--run", run.rawValue],
+            stdin: Data((code.rawValue + "\n").utf8),
+            environment: environment
+        )
+        let pairingOutput = String(decoding: paired.stdout, as: UTF8.self)
+        #expect(pairingOutput.contains("\"paired\" : true"))
+        #expect(!pairingOutput.contains(credential.secret))
+        #expect(!pairingOutput.contains(code.rawValue))
+        let credentialURL = fixture.homeURL
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(run.rawValue + ".json")
+        let mode = try #require(
+            FileManager.default.attributesOfItem(atPath: credentialURL.path)[
+                .posixPermissions
+            ] as? NSNumber
+        ).intValue
+        #expect(mode == 0o600)
+
+        let loaded = try cli.run(
+            ["agent", "context", "--run", run.rawValue],
+            environment: environment
+        )
+        let contextOutput = String(decoding: loaded.stdout, as: UTF8.self)
+        #expect(contextOutput.contains("Preserve alternatives."))
+        #expect(contextOutput.contains("Scholium Core Protocol"))
+        #expect(!contextOutput.contains(credential.secret))
+
+        var storedCredential = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: credentialURL)
+            ) as? [String: Any]
+        )
+        storedCredential["unexpected_authority"] = "must fail closed"
+        try JSONSerialization.data(withJSONObject: storedCredential)
+            .write(to: credentialURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: credentialURL.path
+        )
+        try cli.expectFailure(
+            ["agent", "context", "--run", run.rawValue],
+            environment: environment,
+            contains: "No valid local Connection Session exists"
+        )
+        storedCredential.removeValue(forKey: "unexpected_authority")
+        try JSONSerialization.data(withJSONObject: storedCredential)
+            .write(to: credentialURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: credentialURL.path
+        )
+
+        let ended = try cli.run(
+            ["agent", "end", "--run", run.rawValue],
+            environment: environment
+        )
+        let endOutput = String(decoding: ended.stdout, as: UTF8.self)
+        #expect(endOutput.contains("\"ended\" : true"))
+        #expect(endOutput.contains("\"recovery_retained\" : false"))
+        #expect(!endOutput.contains(credential.secret))
+        #expect(!FileManager.default.fileExists(atPath: credentialURL.path))
     }
 
-    @Test("The real CLI exposes the Search v4 text and JSONL contracts")
-    func searchV4Contract() async throws {
+    @Test("The real CLI hides write identities while extending and retrying one bounded document write")
+    func agentBoundedWriteCLI() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(
+            ".build/m/\(String(UUID().uuidString.prefix(8)))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
+        let run = try #require(ResearchRunLocator(
+            rawValue: "zyxwvutsrqponmlkjihgfedc"
+        ))
+        let code = try #require(ResearchPairingCode(
+            rawValue: "RQPNMLKJHGFEDCBA98765432"
+        ))
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "w", count: 48)
+        )
+        let hiddenRequestID = UUID()
+        let hiddenOperationID = UUID()
+        let entry = try ResearchBoundedWriteSetEntry(
+            handle: ResearchWriteTargetHandle(runID: UUID(), noteID: UUID()),
+            noteID: UUID(),
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(),
+                relativePath: "Agency.md"
+            ),
+            role: .topic,
+            title: "Agency",
+            allowedOperations: [.modifyMarkdown],
+            expectedRevision: DocumentFingerprint(content: "before"),
+            checkpointID: UUID(),
+            authorizationBasis: .initialAction,
+            expiresAt: Date().addingTimeInterval(600)
+        )
+        let observedIDs = LockedAgentWriteRequestIDs()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            guard request.run == run else {
+                throw LocalAgentBridgeError.permissionDenied
+            }
+            switch request.operation {
+            case .pair:
+                guard request.pairingCode == code else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .credential(credential)
+            case .extendWriteSet:
+                guard request.credential == credential,
+                      request.writeSetIntent?.targets.first?.relativePath
+                        == "Agency.md" else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .writeSet(ResearchWriteSetExtensionResult(
+                    requestID: hiddenRequestID,
+                    state: .allowedSubset,
+                    entries: [ResearchBoundedWriteSetViewEntry(entry)],
+                    message: "The approved document is ready."
+                ))
+            case .writeDocument:
+                guard request.credential == credential,
+                      let intent = request.documentWriteIntent,
+                      intent.role == .topic,
+                      intent.relativePath == "Agency.md" else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                observedIDs.append(intent.requestID)
+                return .documentWrite(ResearchDocumentWriteResult(
+                    operationID: hiddenOperationID,
+                    state: .committed,
+                    target: ResearchBoundedWriteSetViewEntry(entry),
+                    message: "The exact document write committed and read back."
+                ))
+            case .context, .query, .resolveWriteConflict, .submitResult,
+                    .continueResearch, .methodImprovementContext,
+                    .submitMethodImprovement, .end:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        _ = try cli.run(
+            ["agent", "pair", "--run", run.rawValue],
+            stdin: Data((code.rawValue + "\n").utf8),
+            environment: environment
+        )
+        let extensionIntent = try ResearchWriteSetExtensionIntent(
+            targets: [try ResearchWriteSetTargetSelector(
+                role: .topic,
+                relativePath: "Agency.md",
+                operations: [.modifyMarkdown]
+            )],
+            academicReason: "Update the relevant topic note."
+        )
+        let encoder = JSONEncoder()
+        let extended = try cli.run(
+            ["agent", "extend-write-set", "--run", run.rawValue, "--from", "-"],
+            stdin: try encoder.encode(extensionIntent),
+            environment: environment
+        )
+        let extensionOutput = String(decoding: extended.stdout, as: UTF8.self)
+        #expect(extensionOutput.contains("Agency.md"))
+        #expect(!extensionOutput.contains(hiddenRequestID.uuidString))
+        #expect(!extensionOutput.contains("request_id"))
+
+        let writeJSON = try JSONSerialization.data(withJSONObject: [
+            "role": "topic",
+            "relative_path": "Agency.md",
+            "content": "# Agency\n\nBounded update.\n",
+        ])
+        let first = try cli.run(
+            ["agent", "write", "--run", run.rawValue, "--from", "-"],
+            stdin: writeJSON,
+            environment: environment
+        )
+        let second = try cli.run(
+            ["agent", "write", "--run", run.rawValue, "--from", "-"],
+            stdin: writeJSON,
+            environment: environment
+        )
+        #expect(first.stdout == second.stdout)
+        let writeOutput = String(decoding: first.stdout, as: UTF8.self)
+        #expect(writeOutput.contains("committed"))
+        #expect(!writeOutput.contains(hiddenOperationID.uuidString))
+        #expect(!writeOutput.contains("operation_id"))
+        #expect(observedIDs.values.count == 2)
+        #expect(Set(observedIDs.values).count == 1)
+    }
+
+    @Test("The real CLI exposes the provider-discriminated Search v6 text and JSONL contracts")
+    func searchV6Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
@@ -110,22 +354,116 @@ struct ActionCLIExecutableLifecycleTests {
             try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
         }
         #expect(records.first?["type"] as? String == "search_summary")
-        #expect(records.first?["contract_version"] as? Int == SearchContractV4.contractVersion)
+        #expect(records.first?["contract_version"] as? Int == SearchContract.currentVersion)
+        #expect(records.first?["provider"] as? String == SearchProvider.note.rawValue)
         #expect(records.first?["scope"] as? String == SearchPresentationScope.triptych.rawValue)
+        let availability = try #require(records.first?["availability"] as? [String: Any])
+        #expect(availability["provider"] as? String == SearchProvider.note.rawValue)
+        #expect(availability["status"] as? String == "current")
+        #expect(records.first?["freshness_token"] as? [String: Any] != nil)
+        #expect(records.first?["explanation"] as? [String: Any] != nil)
         #expect(records.dropFirst().allSatisfy { $0["type"] as? String == "search_result" })
+        #expect(records.dropFirst().allSatisfy {
+            $0["provider"] as? String == SearchProvider.note.rawValue
+                && $0["contract_version"] as? Int == SearchContract.currentVersion
+                && $0["vault_id"] != nil
+                && $0["relative_path"] != nil
+                && $0["match_reasons"] != nil
+                && $0["locator"] != nil
+                && $0["fingerprint"] != nil
+                && $0["freshness_token"] != nil
+        })
         #expect(records.dropFirst().allSatisfy { $0["score"] == nil && $0["index_generation"] == nil })
 
         let text = String(decoding: try cli.run([
             "search", "synthetic", "--vault", analyses.id.uuidString,
             "--triptych", triptych, "--format", "text",
         ]).stdout, as: UTF8.self)
-        #expect(text.contains("Analyses:Analysis.md:"))
+        #expect(text.contains("Search contract=\(SearchContract.currentVersion) provider=note"))
+        #expect(text.contains("Explain: provider=note"))
+        #expect(text.contains("note Analyses:Analysis.md:"))
         #expect(text.contains("[retrieval_lead;"))
+        #expect(text.contains("fingerprint="))
+        #expect(text.contains("freshness="))
+
+        let propertySearch = try cli.run([
+            "search", #"property:language="Greek""#,
+            "--triptych", triptych, "--format", "jsonl",
+        ])
+        let propertyRows = try String(decoding: propertySearch.stdout, as: UTF8.self)
+            .split(separator: "\n")
+            .map { line in
+                try #require(
+                    JSONSerialization.jsonObject(with: Data(line.utf8))
+                        as? [String: Any]
+                )
+            }
+        #expect(propertyRows.first?["provider"] as? String == SearchProvider.note.rawValue)
+        #expect(propertyRows.dropFirst().contains {
+            $0["relative_path"] as? String == "Analysis.md"
+                && $0["match_reasons"] != nil
+        })
+
+        let summarySearch = try cli.run([
+            "search", "summary:inheritance",
+            "--triptych", triptych, "--format", "jsonl",
+        ])
+        let summaryRows = try String(decoding: summarySearch.stdout, as: UTF8.self)
+            .split(separator: "\n")
+            .map { line in
+                try #require(
+                    JSONSerialization.jsonObject(with: Data(line.utf8))
+                        as? [String: Any]
+                )
+            }
+        #expect(summaryRows.dropFirst().count == 1)
+        #expect(summaryRows.dropFirst().first?["relative_path"] as? String == "Analysis.md")
+        #expect(summaryRows.dropFirst().first?["matched_field"] as? String == "summary")
+        #expect(summaryRows.dropFirst().first?["locator"] as? [String: Any] != nil)
+
+        let relationSearch = try cli.run([
+            "search", #"from-note:"Analysis" relation:supports"#,
+            "--triptych", triptych, "--format", "jsonl",
+        ])
+        let relationRows = try String(decoding: relationSearch.stdout, as: UTF8.self)
+            .split(separator: "\n")
+            .map { line in
+                try #require(
+                    JSONSerialization.jsonObject(with: Data(line.utf8))
+                        as? [String: Any]
+                )
+            }
+        #expect(relationRows.first?["provider"] as? String == SearchProvider.note.rawValue)
+        #expect(relationRows.dropFirst().contains {
+            $0["relative_path"] as? String == "Topic.md"
+                && $0["match_reasons"] != nil
+        })
 
         let noMatch = try cli.run([
             "search", "no-such-search-term", "--triptych", triptych,
         ])
-        #expect(String(decoding: noMatch.stdout, as: UTF8.self) == "No matches.\n")
+        let noMatchText = String(decoding: noMatch.stdout, as: UTF8.self)
+        #expect(noMatchText.contains("provider=note"))
+        #expect(noMatchText.hasSuffix("No matches.\n"))
+
+        let recordSearch = try cli.run([
+            "search", "kind:record synthetic", "--triptych", triptych,
+            "--format", "jsonl",
+        ])
+        let recordSummaryLine = try #require(
+            String(decoding: recordSearch.stdout, as: UTF8.self)
+                .split(separator: "\n")
+                .first
+        )
+        let recordSummary = try #require(
+            JSONSerialization.jsonObject(with: Data(recordSummaryLine.utf8)) as? [String: Any]
+        )
+        #expect(recordSummary["contract_version"] as? Int == SearchContract.currentVersion)
+        #expect(recordSummary["provider"] as? String == SearchProvider.record.rawValue)
+        let recordAvailability = try #require(
+            recordSummary["availability"] as? [String: Any]
+        )
+        #expect(recordAvailability["provider"] as? String == SearchProvider.record.rawValue)
 
         let negativeStructured = try cli.run([
             "search", "-has:broken-link", "--triptych", triptych,
@@ -140,416 +478,206 @@ struct ActionCLIExecutableLifecycleTests {
             JSONSerialization.jsonObject(with: Data(negativeSummary.utf8)) as? [String: Any]
         )
         #expect(negativeRecord["type"] as? String == "search_summary")
+        #expect(negativeRecord["contract_version"] as? Int == SearchContract.currentVersion)
+
+        let typedFailure = try cli.runExpectingFailure([
+            "search", "review:reviewed", "--triptych", triptych,
+            "--format", "jsonl",
+        ])
+        let failureLines = String(decoding: typedFailure.stderr, as: UTF8.self)
+            .split(separator: "\n")
+        #expect(failureLines.count == 1)
+        let failure = try #require(
+            JSONSerialization.jsonObject(with: Data(failureLines[0].utf8))
+                as? [String: Any]
+        )
+        #expect(failure["code"] as? String == "search_query_diagnostic")
+        let diagnostic = try #require(failure["diagnostic"] as? [String: Any])
+        #expect(diagnostic["code"] as? String == "unsupportedField")
+        #expect(diagnostic["utf16_lower_bound"] as? Int == 0)
+        #expect(diagnostic["utf16_upper_bound"] as? Int == 15)
 
         try cli.expectFailure(
             ["search", "review:reviewed", "--triptych", triptych],
-            contains: "Unknown Search field review:"
+            contains: "not supported by the current Search contract"
         )
 
         try cli.expectFailure(
             ["search", "role:analyses", "--triptych", triptych],
-            contains: "removed"
+            contains: "outside the query"
         )
         try cli.expectFailure(
             ["search", "synthetic", "--workspace"],
             contains: "unknown option"
         )
+        for unsupportedAlias in ["--record", "--property", "--relation"] {
+            try cli.expectFailure(
+                ["search", "synthetic", unsupportedAlias, "value", "--triptych", triptych],
+                contains: "unknown option"
+            )
+        }
         try cli.expectFailure(
             ["search", "synthetic"],
             contains: "choose --vault"
         )
     }
 
-    @Test("The real CLI preserves one complete Action lifecycle")
-    func lifecycle() async throws {
+    @Test("The real CLI submits one canonical Result and Continue request through the authenticated bridge")
+    func agentResultAndContinuationCLI() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
-        ], !binaryPath.isEmpty else {
-            // The dedicated verifier supplies the built executable. Ordinary
-            // package-test runs retain their delivery-neutral unit coverage.
-            return
-        }
+        ], !binaryPath.isEmpty else { return }
 
         let fixture = try await ActionCLIFixture.make()
         defer { fixture.remove() }
+        let bridgeContainer = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(
+            ".build/m/\(String(UUID().uuidString.prefix(8)))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
+
+        let run = try #require(ResearchRunLocator(
+            rawValue: "resultcontinueabcdefghij"
+        ))
+        let code = try #require(ResearchPairingCode(
+            rawValue: "BCDEFGHJKLMNPQR23456789A"
+        ))
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "r", count: 48)
+        )
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .critique
+            }
+        )
+        var rawResults: [String: ResearchAcademicFieldValue] = [:]
+        for definition in profile.academicResultFields
+            where definition.requirement != .excluded {
+            rawResults[definition.fieldID.rawValue] = switch definition.kind {
+            case .freeText:
+                .freeText("The fixture preserves one bounded philosophical assessment.")
+            case .singleChoice:
+                .singleChoice(try #require(definition.choices.first?.value))
+            case .multipleChoice:
+                .multipleChoice([try #require(definition.choices.first?.value)])
+            }
+        }
+        let resultSubmission = try ResearchAgentResultSubmission(
+            academicResults: ResearchAcademicFieldValues(
+                rawValues: rawResults,
+                definitions: profile.academicResultFields
+            )
+        )
+        let continuation = try ResearchContinuationRequest(
+            nextActionID: .write,
+            targetRole: .work,
+            targetRelativePath: "Draft Argument.md",
+            academicPurpose: "Test one explicit premise in a separate Run.",
+            handoff: [ResearchContinuationHandoffItem(
+                content: "The prior assessment identifies one premise gap.",
+                epistemicStatus: .agentReconstruction,
+                nextUse: "Revise only if the current Work still has the gap."
+            )]
+        )
+        let expectedReceipt = try ResearchAgentResultReceipt(
+            disposition: .completed,
+            state: .finalized,
+            recordFormed: true,
+            message: "The canonical Result formed one Research Record."
+        )
+        let expectedContinuation = try ResearchContinuationResult(
+            state: .pendingResearcherDecision,
+            message: "The bounded Continue request awaits researcher approval."
+        )
+        let observed = LockedAgentLifecycleRequests()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            guard request.run == run else {
+                throw LocalAgentBridgeError.permissionDenied
+            }
+            switch request.operation {
+            case .pair:
+                guard request.pairingCode == code else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .credential(credential)
+            case .submitResult:
+                guard request.credential == credential,
+                      let submission = request.resultSubmission else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                observed.capture(result: submission)
+                return .resultReceipt(expectedReceipt)
+            case .continueResearch:
+                guard request.credential == credential,
+                      let continuation = request.continuationRequest else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                observed.capture(continuation: continuation)
+                return .continuation(expectedContinuation)
+            case .context, .query, .extendWriteSet, .writeDocument,
+                    .resolveWriteConflict, .methodImprovementContext,
+                    .submitMethodImprovement, .end:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        _ = try cli.run(
+            ["agent", "pair", "--run", run.rawValue],
+            stdin: Data((code.rawValue + "\n").utf8),
+            environment: environment
+        )
         let encoder = Self.encoder()
         let decoder = Self.decoder()
+        let resultOutput = try cli.run(
+            ["agent", "submit-result", "--run", run.rawValue, "--from", "-"],
+            stdin: try encoder.encode(resultSubmission),
+            environment: environment
+        )
+        let resultReceipt = try decoder.decode(
+            ResearchAgentResultReceipt.self,
+            from: resultOutput.stdout
+        )
+        #expect(resultReceipt == expectedReceipt)
+        #expect(observed.result == resultSubmission)
+        #expect(!String(decoding: resultOutput.stdout, as: UTF8.self).contains(
+            credential.secret
+        ))
 
-        let availability = try cli.run(
-            ["action", "available", "--from", "-", "--format", "json"],
-            stdin: try encoder.encode(fixture.analysisTarget)
+        let continuationOutput = try cli.run(
+            ["agent", "continue", "--run", run.rawValue, "--from", "-"],
+            stdin: try encoder.encode(continuation),
+            environment: environment
         )
-        let available = try decoder.decode(
-            [ResearchActionAvailability].self,
-            from: availability.stdout
-        )
-        #expect(available.contains { $0.id == .discuss && $0.isEnabled })
-
-        let dialogueRequest = try Self.actionRequest(
-            actionID: .discuss,
-            target: fixture.analysisTarget,
-            availability: available,
-            instruction: "State the synthetic fixture's bounded academic outcome."
-        )
-        let dialogueRequestURL = fixture.rootURL.appendingPathComponent("dialogue.json")
-        try encoder.encode(dialogueRequest).write(to: dialogueRequestURL, options: .atomic)
-        let dialogueResult = try cli.run([
-            "action", "prepare", "--from", dialogueRequestURL.path,
-            "--format", "json",
-        ])
-        let dialogue = try decoder.decode(
-            ResearchActionPreparation.self,
-            from: dialogueResult.stdout
-        )
-        #expect(dialogue.snapshot.actionID == .discuss)
-        #expect(Set(dialogue.nextActions.map(\.kind)) == [
-            .reply, .complete, .inspect, .cancel,
-        ])
-        let shownDialogueRun = try decoder.decode(
-            ResearchActionPreparation.self,
-            from: try cli.run([
-                "action", "show", dialogue.runID.uuidString,
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ]).stdout
-        )
-        #expect(shownDialogueRun.snapshot == dialogue.snapshot)
-
-        let shownResult = try cli.run([
-            "discuss", "show", dialogue.runID.uuidString,
-            "--triptych", fixture.assignment.id.uuidString,
-            "--format", "json",
-        ])
-        let shown = try decoder.decode(
-            PortableResearchDiscussion.self,
-            from: shownResult.stdout
-        )
-        #expect(shown.id == dialogue.runID)
-        #expect(shown.statements.last?.author == .researcher)
-        #expect(shown.statements.last?.attribution == "Researcher")
-        #expect(
-            shown.statements.last?.text
-                == "State the synthetic fixture's bounded academic outcome."
-        )
-
-        let replyURL = fixture.rootURL.appendingPathComponent("reply.md")
-        try Data("Synthetic attributed transport evidence only.\n".utf8)
-            .write(to: replyURL, options: .atomic)
-        _ = try cli.run([
-            "discuss", "reply", dialogue.runID.uuidString,
-            "--triptych", fixture.assignment.id.uuidString,
-            "--agent", "CLI Acceptance Fixture",
-            "--from", replyURL.path,
-        ])
-        let replied = try decoder.decode(
-            PortableResearchDiscussion.self,
-            from: try cli.run([
-                "discuss", "show", dialogue.runID.uuidString,
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ]).stdout
-        )
-        #expect(replied.statements.last?.author == .agent)
-        #expect(replied.statements.last?.attribution == "CLI Acceptance Fixture")
-        #expect(
-            replied.statements.last?.text
-                == "Synthetic attributed transport evidence only."
-        )
-
-        let dialogueCompletion = ResearchActionCompletionSubmission(
-            runID: dialogue.runID,
-            confirmationToken: try Self.confirmationToken(for: dialogue),
-            finalTargetFingerprint: fixture.analysisTarget.fingerprint,
-            summary: "Recorded synthetic Discuss transport evidence.",
-            didModifyTarget: false
-        )
-        let dialogueCompleted = try decoder.decode(
-            ResearchActionCompletion.self,
-            from: try cli.run([
-                "action", "complete", "--from", "-",
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ], stdin: try encoder.encode(dialogueCompletion)).stdout
-        )
-        #expect(dialogueCompleted.state == .complete)
-
-        let analyzeRequest = try Self.actionRequest(
-            actionID: .analyze,
-            target: fixture.analysisTarget,
-            availability: available,
-            instruction: "Retain one source-grounded reading lead."
-        )
-        let analyze = try decoder.decode(
-            ResearchActionPreparation.self,
-            from: try cli.run([
-                "action", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(analyzeRequest)).stdout
-        )
-        let analyzeWriteCompletion = ResearchActionWriteCompletionSubmission(
-            runID: analyze.runID,
-            writeKey: try Self.writeKey(for: analyze),
-            candidateModifiedNotes: [],
-            summary: "Reported no candidate Markdown change."
-        )
-        let analyzeCompleted = try decoder.decode(
-            ResearchActionCompletion.self,
-            from: try cli.run([
-                "action", "complete", "--from", "-",
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ], stdin: try encoder.encode(ResearchActionCompletionSubmission(
-                runID: analyze.runID,
-                confirmationToken: try Self.confirmationToken(for: analyze),
-                finalTargetFingerprint: fixture.analysisTarget.fingerprint,
-                summary: "Retained one source-grounded reading lead.",
-                didModifyTarget: false,
-                writeCompletion: analyzeWriteCompletion,
-                literatureRecommendations: [
-                    try ResearchLiteratureRecommendationSubmission(
-                        rawCitation: "A. Author, A Relevant Work (2020)",
-                        title: "A Relevant Work",
-                        authors: ["A. Author"],
-                        year: 2020,
-                        doi: "10.1000/relevant",
-                        sourceLocators: ["p. 42"],
-                        reason: "The analyzed source presents this work as a live rival."
-                    ),
-                ]
-            ))).stdout
-        )
-        #expect(analyzeCompleted.state == .complete)
-        #expect(analyzeCompleted.literatureRecommendationCount == 1)
-        let analyzeRecordURL = fixture.rootURL
-            .appendingPathComponent(
-                ".scholium/research-records/v1/records",
-                isDirectory: true
-            )
-            .appendingPathComponent(analyze.runID.uuidString.lowercased() + ".json")
-        let analyzeRecord = try decoder.decode(
-            PortableResearchRecord.self,
-            from: Data(contentsOf: analyzeRecordURL)
-        )
-        #expect(analyzeRecord.schemaVersion == 4)
-        #expect(analyzeRecord.literatureRecommendations.count == 1)
-        #expect(
-            analyzeRecord.literatureRecommendations[0].disposition.status
-                == .unprocessed
-        )
-
-        let workAvailable = try decoder.decode(
-            [ResearchActionAvailability].self,
-            from: try cli.run(
-                ["action", "available", "--from", "-", "--format", "json"],
-                stdin: try encoder.encode(fixture.workTarget)
-            ).stdout
-        )
-        let writeRequest = try Self.actionRequest(
-            actionID: .write,
-            target: fixture.workTarget,
-            availability: workAvailable,
-            instruction: "Strengthen only the stated inference."
-        )
-        let write = try decoder.decode(
-            ResearchActionPreparation.self,
-            from: try cli.run([
-                "action", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(writeRequest)).stdout
-        )
-        #expect(write.snapshot.actionID == .write)
-
-        let readBefore = try Self.readPayload(try cli.run([
-            "read", "Works:Draft Argument.md", "--format", "json",
-        ]).stdout)
-        let revisedSourceURL = fixture.rootURL.appendingPathComponent("revised-work.md")
-        try Data("---\ntitle: Draft Argument\nkind: chapter\n---\n# Draft Argument\n\nA synthetically revised claim.\n".utf8)
-            .write(to: revisedSourceURL, options: .atomic)
-        try cli.expectFailure([
-            "note", "replace", "Works:Draft Argument.md",
-            "--from", revisedSourceURL.path,
-            "--expected", String(repeating: "0", count: 64),
-        ], contains: "Revision mismatch")
-        _ = try cli.run([
-            "note", "replace", "Works:Draft Argument.md",
-            "--from", revisedSourceURL.path,
-            "--expected", readBefore.sha256,
-        ])
-        let readAfter = try Self.readPayload(try cli.run([
-            "read", "Works:Draft Argument.md", "--format", "json",
-        ]).stdout)
-        #expect(readAfter.sha256 != readBefore.sha256)
-        let finalWorkFingerprint = DocumentFingerprint(
-            sha256: readAfter.sha256,
-            byteCount: Data(readAfter.content.utf8).count
-        )
-        let writeCompletion = ResearchActionWriteCompletionSubmission(
-            runID: write.runID,
-            writeKey: try Self.writeKey(for: write),
-            candidateModifiedNotes: [fixture.workTarget.note],
-            summary: "Reported the candidate Work path after the synthetic revision."
-        )
-
-        let awaiting = try decoder.decode(
-            ResearchActionCompletion.self,
-            from: try cli.run([
-                "action", "complete", "--from", "-",
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ], stdin: try encoder.encode(ResearchActionCompletionSubmission(
-                runID: write.runID,
-                confirmationToken: try Self.confirmationToken(for: write),
-                finalTargetFingerprint: finalWorkFingerprint,
-                summary: "Reported a synthetic Work revision.",
-                didModifyTarget: true,
-                writeCompletion: writeCompletion
-            ))).stdout
-        )
-        #expect(awaiting.state == .awaitingFidelity)
-        #expect(awaiting.nextActions.first?.kind == .prepareFidelity)
-
-        let automatic = try decoder.decode(
-            ResearchActionFidelityPreparation.self,
-            from: try cli.run([
-                "action", "prepare-fidelity", write.runID.uuidString,
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ]).stdout
-        )
-        let fidelity = automatic.preparation
-        #expect(fidelity.snapshot.target.fingerprint == finalWorkFingerprint)
-        #expect(fidelity.snapshot.actionID == .checkFidelity)
-        let fidelityCompletion = try decoder.decode(
-            ResearchActionCompletion.self,
-            from: try cli.run([
-                "action", "complete", "--from", "-",
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ], stdin: try encoder.encode(ResearchActionCompletionSubmission(
-                runID: fidelity.runID,
-                confirmationToken: try Self.confirmationToken(for: fidelity),
-                finalTargetFingerprint: finalWorkFingerprint,
-                summary: "Synthetic revision-bound transport evidence.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.init(
-                    check: .content,
-                    state: .passed,
-                    summary: "The fixture reported no structural fidelity issue."
-                )]
-            ))).stdout
-        )
-        #expect(fidelityCompletion.state == .complete)
-
-        let reusedAutomatic = try decoder.decode(
-            ResearchActionFidelityPreparation.self,
-            from: try cli.run([
-                "action", "prepare-fidelity", write.runID.uuidString,
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ]).stdout
-        )
-        #expect(reusedAutomatic.reusedExistingEvidence)
-        let parentAction = try #require(reusedAutomatic.nextActions.first {
-            $0.kind == .complete
-        })
-        let parentInput = try #require(parentAction.inputTemplate)
-        let parentSubmission = try decoder.decode(
-            ResearchActionCompletionSubmission.self,
-            from: Data(parentInput.utf8)
-        )
-        let verifiedParent = try decoder.decode(
-            ResearchActionCompletion.self,
-            from: try cli.run([
-                "action", "complete", "--from", "-",
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ], stdin: try encoder.encode(parentSubmission)).stdout
-        )
-        #expect(verifiedParent.state == .complete)
-        #expect(verifiedParent.childRunIDs == [fidelity.runID])
-
-        let currentWorkTarget = ResearchActionNoteSnapshot(
-            noteID: fixture.workTarget.noteID,
-            note: fixture.workTarget.note,
-            role: .work,
-            lifecycle: fixture.workTarget.lifecycle,
-            fingerprint: finalWorkFingerprint,
-            title: fixture.workTarget.title
-        )
-        let currentWorkAvailable = try decoder.decode(
-            [ResearchActionAvailability].self,
-            from: try cli.run(
-                ["action", "available", "--from", "-", "--format", "json"],
-                stdin: try encoder.encode(currentWorkTarget)
-            ).stdout
-        )
-        let cancellable = try decoder.decode(
-            ResearchActionPreparation.self,
-            from: try cli.run([
-                "action", "prepare", "--from", "-", "--format", "json",
-            ], stdin: try encoder.encode(Self.actionRequest(
-                actionID: .discuss,
-                target: currentWorkTarget,
-                availability: currentWorkAvailable,
-                instruction: "Prepare a cancellable synthetic Discussion."
-            ))).stdout
-        )
-        for _ in 0..<2 {
-            let cancellation = try decoder.decode(
-                CLICancellationReport.self,
-                from: try cli.run([
-                    "action", "cancel", cancellable.runID.uuidString,
-                    "--triptych", fixture.assignment.id.uuidString,
-                ]).stdout
-            )
-            #expect(cancellation.runID == cancellable.runID)
-        }
-        let cancelledDiscussion = try decoder.decode(
-            PortableResearchDiscussion.self,
-            from: try cli.run([
-                "discuss", "show", cancellable.runID.uuidString,
-                "--triptych", fixture.assignment.id.uuidString,
-                "--format", "json",
-            ]).stdout
-        )
-        #expect(cancelledDiscussion.id == cancellable.runID)
-        #expect(cancelledDiscussion.awaitsAgentReply)
-        #expect(
-            cancelledDiscussion.statements.last?.text
-                == "Prepare a cancellable synthetic Discussion."
-        )
+        #expect(try decoder.decode(
+            ResearchContinuationResult.self,
+            from: continuationOutput.stdout
+        ) == expectedContinuation)
+        #expect(observed.continuation == continuation)
+        #expect(!String(decoding: continuationOutput.stdout, as: UTF8.self).contains(
+            credential.secret
+        ))
         try cli.expectFailure(
-            ["action", "prepare", "--from", "-", "--format", "json"],
-            stdin: try encoder.encode(Self.actionRequest(
-                actionID: .discuss,
-                target: currentWorkTarget,
-                availability: currentWorkAvailable,
-                instruction: "This second Discussion must remain blocked."
-            )),
-            contains: "already active"
-        )
-
-        let markdown = try cli.run([
-            "action", "prepare", "--from", "-", "--format", "markdown",
-        ], stdin: try encoder.encode(Self.actionRequest(
-            actionID: .discuss,
-            target: fixture.topicTarget,
-            availability: try decoder.decode(
-                [ResearchActionAvailability].self,
-                from: cli.run(
-                    ["action", "available", "--from", "-", "--format", "json"],
-                    stdin: try encoder.encode(fixture.topicTarget)
-                ).stdout
-            ),
-            instruction: "Render a Markdown handoff fixture."
-        )))
-        #expect(String(decoding: markdown.stdout, as: UTF8.self).contains("Scholium"))
-
-        try cli.expectFailure(
-            ["action", "prepare", "--from", "-", "--format", "json"],
-            stdin: Data("{malformed".utf8),
-            contains: "invalid_json"
+            ["action", "complete", "--from", "-"],
+            stdin: try encoder.encode(resultSubmission),
+            contains: "Unknown command 'action complete'"
         )
     }
+
 
     @Test("Help, version, doctor, and strict parsing work without a configured Triptych")
     func discoveryAndStrictParsing() throws {
@@ -574,12 +702,179 @@ struct ActionCLIExecutableLifecycleTests {
         let doctor = try cli.run(["doctor", "--format", "json"])
         #expect(String(decoding: doctor.stdout, as: UTF8.self).contains("triptych_count"))
         try cli.expectFailure(
-            ["skills", "catalog", "--resouce", "references/method.md", "--format", "json"],
-            contains: "Unknown option '--resouce'"
+            ["skills", "catalog", "--format", "json"],
+            contains: "Unknown command 'skills catalog'"
         )
         try cli.expectFailure(
-            ["skills", "catalog", "--format"],
-            contains: "requires a value"
+            ["workflow", "validate", "--from", "-", "--format", "json"],
+            contains: "Unknown command 'workflow validate'"
+        )
+    }
+
+    @Test("The real CLI fills Method-improvement revisions from authenticated context and submits one bounded target")
+    func agentMethodImprovementCLI() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(
+            ".build/m/\(String(UUID().uuidString.prefix(8)))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
+
+        let locator = try #require(ResearchRunLocator(
+            rawValue: "methodimprovementrunabcd"
+        ))
+        let code = try #require(ResearchPairingCode(
+            rawValue: "ABCDEFGHJKLMNPQR23456789"
+        ))
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "m", count: 48)
+        )
+        let registration = try ResearchSkillRegistration(
+            actionID: .synthesize,
+            displayName: "Synthesis Method",
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Synthesis Method\n",
+            practices: []
+        )
+        let improvement = try ResearchMethodImprovementRun(
+            id: UUID(),
+            parentRecordID: UUID(),
+            triptychID: UUID(),
+            registrationKey: registration.key,
+            actionID: .synthesize,
+            method: method,
+            feedbackRevision: UUID(),
+            feedbackText: "Clarify how rival formulations remain visible.",
+            expectedResultFingerprint: DocumentFingerprint(content: "result")
+        )
+        let context = try ResearchMethodImprovementContext(
+            run: locator,
+            improvement: improvement
+        )
+        let replacement = "# Revised Synthesis Method\n"
+        let expectedReceipt = try ResearchMethodImprovementReceipt(
+            runID: improvement.id,
+            requestID: UUID(),
+            disposition: .replace,
+            targetID: "primary-method",
+            startingRevision: method.primaryMarkdownRevision,
+            endingRevision: DocumentFingerprint(content: replacement),
+            feedbackCleared: true,
+            diagnosis: "The primary Method needs one bounded clarification."
+        )
+        let observed = LockedMethodImprovementSubmission()
+        let endReceipt = try ResearchRunEndReceipt(
+            run: locator,
+            recoveryRetained: false,
+            message: "The Method improvement Run ended."
+        )
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            guard request.run == locator else {
+                throw LocalAgentBridgeError.permissionDenied
+            }
+            switch request.operation {
+            case .pair:
+                guard request.pairingCode == code else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .credential(credential)
+            case .methodImprovementContext:
+                guard request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .methodImprovementContext(context)
+            case .submitMethodImprovement:
+                guard request.credential == credential,
+                      let submission = request.methodImprovementSubmission else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                observed.capture(submission)
+                return .methodImprovementReceipt(try ResearchMethodImprovementReceipt(
+                    runID: expectedReceipt.runID,
+                    requestID: submission.requestID,
+                    disposition: expectedReceipt.disposition,
+                    targetID: expectedReceipt.targetID,
+                    startingRevision: expectedReceipt.startingRevision,
+                    endingRevision: expectedReceipt.endingRevision,
+                    feedbackCleared: expectedReceipt.feedbackCleared,
+                    diagnosis: expectedReceipt.diagnosis,
+                    completedAt: expectedReceipt.completedAt
+                ))
+            case .end:
+                guard request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .endReceipt(endReceipt)
+            case .context, .query, .extendWriteSet, .writeDocument,
+                    .resolveWriteConflict, .submitResult, .continueResearch:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        _ = try cli.run(
+            ["agent", "pair", "--run", locator.rawValue],
+            stdin: Data((code.rawValue + "\n").utf8),
+            environment: environment
+        )
+        let loaded = try cli.run(
+            ["agent", "method-context", "--run", locator.rawValue],
+            environment: environment
+        )
+        #expect(try Self.decoder().decode(
+            ResearchMethodImprovementContext.self,
+            from: loaded.stdout
+        ) == context)
+        let draft = try ResearchMethodImprovementDraft(
+            targetID: "primary-method",
+            disposition: .replace,
+            replacementSource: replacement,
+            diagnosis: expectedReceipt.diagnosis
+        )
+        let submitted = try cli.run(
+            ["agent", "improve-method", "--run", locator.rawValue, "--from", "-"],
+            stdin: try Self.encoder().encode(draft),
+            environment: environment
+        )
+        let receipt = try Self.decoder().decode(
+            ResearchMethodImprovementReceipt.self,
+            from: submitted.stdout
+        )
+        #expect(receipt.feedbackCleared)
+        let captured = try #require(observed.value)
+        #expect(captured.feedbackRevision == context.feedbackRevision)
+        #expect(captured.expectedResultFingerprint
+            == context.expectedResultFingerprint)
+        #expect(captured.expectedTargetRevision
+            == method.primaryMarkdownRevision)
+        #expect(captured.replacementSource == replacement)
+        #expect(!String(decoding: submitted.stdout, as: UTF8.self).contains(
+            credential.secret
+        ))
+        _ = try cli.run(
+            ["agent", "end", "--run", locator.rawValue],
+            environment: environment
         )
     }
 
@@ -610,12 +905,12 @@ struct ActionCLIExecutableLifecycleTests {
         let presented = try #require(availability.first {
             $0.id == actionID && $0.isEnabled
         }, "Expected enabled \(actionID.rawValue); repair reasons: \(repairReasons)")
-        var values: [ResearchActionModuleID: ResearchActionParameterValue] = [:]
+        var values: [ResearchAcademicFieldID: ResearchAcademicFieldValue] = [:]
         if let instruction,
-           let module = presented.profile.profile.modules.first(where: {
-               $0.kind == .boundedText
+           let field = presented.profile.profile.academicInputFields.first(where: {
+               $0.kind == .freeText
            }) {
-            values[module.id] = .text(instruction)
+            values[field.fieldID] = .freeText(instruction)
         }
         return ResearchActionExecutionRequest(
             actionID: actionID,
@@ -624,35 +919,12 @@ struct ActionCLIExecutableLifecycleTests {
             expectedProfileDocumentRevision:
                 presented.profile.profileDocumentRevision,
             target: target,
-            parameterValues: values
+            platformInputs: try ResearchActionPlatformInputs(),
+            academicInputs: try ResearchAcademicFieldValues(
+                values: values,
+                definitions: presented.profile.profile.academicInputFields
+            )
         )
-    }
-
-    private static func confirmationToken(
-        for preparation: ResearchActionPreparation
-    ) throws -> UUID {
-        let template = try #require(preparation.nextActions.first {
-            $0.kind == .complete
-        }?.inputTemplate)
-        let object = try #require(
-            JSONSerialization.jsonObject(with: Data(template.utf8))
-                as? [String: Any]
-        )
-        let rawToken = try #require(object["confirmationToken"] as? String)
-        return try #require(UUID(uuidString: rawToken))
-    }
-
-    private static func writeKey(
-        for preparation: ResearchActionPreparation
-    ) throws -> String {
-        let prefix = "Write key: "
-        return String(try #require(
-            preparation.instructions
-                .split(separator: "\n")
-                .map(String.init)
-                .first(where: { $0.hasPrefix(prefix) })?
-                .dropFirst(prefix.count)
-        ))
     }
 
 }
@@ -664,6 +936,52 @@ private struct CLIReadPayload: Decodable {
 
 private struct CLICancellationReport: Decodable {
     let runID: UUID
+}
+
+private final class LockedAgentWriteRequestIDs: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [UUID] = []
+
+    var values: [UUID] { lock.withLock { storage } }
+
+    func append(_ value: UUID) {
+        lock.withLock { storage.append(value) }
+    }
+}
+
+private final class LockedAgentLifecycleRequests: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedResult: ResearchAgentResultSubmission?
+    private var storedContinuation: ResearchContinuationRequest?
+
+    var result: ResearchAgentResultSubmission? {
+        lock.withLock { storedResult }
+    }
+
+    var continuation: ResearchContinuationRequest? {
+        lock.withLock { storedContinuation }
+    }
+
+    func capture(result: ResearchAgentResultSubmission) {
+        lock.withLock { storedResult = result }
+    }
+
+    func capture(continuation: ResearchContinuationRequest) {
+        lock.withLock { storedContinuation = continuation }
+    }
+}
+
+private final class LockedMethodImprovementSubmission: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: ResearchMethodImprovementSubmission?
+
+    var value: ResearchMethodImprovementSubmission? {
+        lock.withLock { stored }
+    }
+
+    func capture(_ submission: ResearchMethodImprovementSubmission) {
+        lock.withLock { stored = submission }
+    }
 }
 
 private struct ActionCLIProcess {
@@ -718,19 +1036,40 @@ private struct ActionCLIProcess {
     func expectFailure(
         _ arguments: [String],
         stdin: Data? = nil,
+        environment: [String: String] = [:],
         contains expected: String
     ) throws {
+        let result = try runExpectingFailure(
+            arguments,
+            stdin: stdin,
+            environment: environment
+        )
+        let stderr = String(decoding: result.stderr, as: UTF8.self)
+        #expect(stderr.localizedCaseInsensitiveContains(expected))
+    }
+
+    func runExpectingFailure(
+        _ arguments: [String],
+        stdin: Data? = nil,
+        environment: [String: String] = [:]
+    ) throws -> Result {
         do {
-            _ = try run(arguments, stdin: stdin)
+            _ = try run(
+                arguments,
+                stdin: stdin,
+                environment: environment
+            )
             Issue.record("CLI command unexpectedly succeeded: \(arguments.joined(separator: " "))")
+            throw ActionCLIProcessError.unexpectedSuccess(arguments)
         } catch let ActionCLIProcessError.failed(_, stderr) {
-            #expect(stderr.localizedCaseInsensitiveContains(expected))
+            return Result(stdout: Data(), stderr: Data(stderr.utf8), status: 1)
         }
     }
 }
 
 private enum ActionCLIProcessError: Error {
     case failed([String], String)
+    case unexpectedSuccess([String])
 }
 
 private struct ActionCLIFixture {
@@ -762,7 +1101,9 @@ private struct ActionCLIFixture {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
         let analysisURL = analyses.appendingPathComponent("Analysis.md")
-        try Data("---\ntitle: Analysis\n---\n# Analysis\n\nA synthetic analysis claim.\n".utf8)
+        try Data(
+            "---\ntitle: Analysis\nsummary: inheritance-handoff map\nlanguage: Greek\n---\n# Analysis\n\nA synthetic analysis claim.\n\n+[[Topic]]\n".utf8
+        )
             .write(to: analysisURL, options: .atomic)
         try Data("---\ntitle: Topic\n---\n# Topic\n\nA synthetic topic.\n".utf8)
             .write(to: topics.appendingPathComponent("Topic.md"), options: .atomic)

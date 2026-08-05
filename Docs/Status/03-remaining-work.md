@@ -5,6 +5,128 @@ This chapter owns remaining implementation, acceptance, performance, and release
 
 ## Remaining implementation and release work
 
+### Research Skill and Agent co-construction acceptance
+
+**Proposal target**
+
+The approved 2026-08-04 Skill/Agent co-construction proposal required an
+implementation-precondition audit and four dependent vertical stages. The
+separate Search Foundation engineering exit was the nonrevertible starting
+baseline; its schema-8 performance measurement remains historical evidence,
+not a label for the current schema-9 index.
+
+**Canonical target**
+
+Specification Sections 2, 5, 8, 13, 16–17, 18, 20, 21 and Architecture
+chapters 01, 02, 04, and 05 now own the adopted target: current primary
+Markdown Skill registration, exact-Wikilink Practices, academic-only Profiles
+and Result Contracts, one Triptych collaboration policy, process-bound local
+pairing/Sessions, Run-owned Bounded Write Sets, provider-neutral Research
+Context, one canonical result/Record, Record-owned Researcher Evaluation, and
+canonical YAML `summary` through the same Search owner.
+
+**Historical implementation at audit start**
+
+The audited starting snapshot implemented catalog/package schema 4, Working Method binding
+v2, Action Profile schema 1 with platform capability declarations, permission
+schema 1 with per-Skill digest overrides, Local Execution v3 single-Target
+runs, Agent Note Change request/allowed correlation plans and one child Run per
+extra document, coordination grants over the Application Support Unix socket,
+and Record schema 4 without Researcher Evaluation. The bridge has submit,
+status, and cancel coordination but no Pairing Code or Connection Session.
+`ResearchContext.swift` contained only existing evidential-layer and Note
+reference values. This paragraph is chronology, not current behavior or an
+alternative product rule.
+
+**Current implementation**
+
+All four automated implementation stages are now reachable through one owner
+chain. Registration schema 2, exact primary Markdown/Practice resolution,
+academic Profiles, one collaboration policy, citation-style configuration,
+Search v6/schema 9 `summary`, process-bound Pairing/Session, App Group bridge,
+Local Execution schema 8, provider-neutral Research Context, Run-owned Bounded
+Write Sets, nonreusable per-write capabilities, Result submission, Continue
+Research, strict Record schema 5, Researcher Evaluation, bounded Method
+feedback, and a separately paired one-target Method-improvement Run are wired
+through App, CLI, and shared Application capabilities. The
+old package/catalog/installer/history, binding-v2, capability Profile,
+per-Skill permission, coordination grant/correlation/child-Run, workflow CLI,
+parallel Critique-output, custom Action, and old Record decoders are deleted.
+Portable registration no longer contains machine paths; its machine-local
+locator is Triptych-bound and bookmark-backed.
+
+**Owner, target, and delete condition ledger**
+
+| Audit-start owner | Current owner | Physical delete evidence |
+| --- | --- | --- |
+| Package catalog/repository/installer/history | Registration + exact primary Markdown + machine-local folder locator + one undo point | Types, sources, resources, CLI routes, previews, and compatibility tests deleted |
+| Working Method binding v2/package ID | One hidden registration relation per closed Platform Action | Binding decoder/encoder and package ID absent; schema-1 path registration rejected |
+| Practice selections/resource names | Exact Method Wikilinks + Practice Markdown | First-use resolver is sole route; selection/Connections route absent |
+| Profile modules and capabilities | Platform Action Definition + flat academic Profile/Result Contract | Profile capability/module/custom-Action fields and UI branches absent |
+| Triptych default + per-Skill digest override | One Triptych collaboration policy | Per-Skill override/digest/fallback contracts and settings absent |
+| Coordination grant/request authentication | Pairing Code + process-bound Connection Session | Old grant/correlation/child-Run types and bridge operations absent |
+| Application Support socket discovery | App Group socket/rendezvous | Production private-container discovery absent; App Group contract excludes research bytes |
+| Single Target + request/plan/child Runs | One Run + Bounded Write Set + independent operations | Extension and two-document transaction fixtures exist; child authority absent |
+| Function/package/Profile snapshot | Registration/Method/Practices/folder path + Result Contract | Authenticated schema-3 `reload` is exact; no package revisions/resources encoded |
+| Separate Search/read/Graph/Property/Record calls | One Application Research Context with replaceable providers | Provider calls Application owners; no parser/index/response store exists |
+| Completion fields + Record schema 4 | One Run result + strict Record schema 5/Source Reference | Finalization is singular/idempotent; schema 4 is rejected |
+| No Evaluation owner | One optional current partition in exact Record | Both editors share revision/fingerprint CAS and one storage writer |
+| Method comment without an execution owner | One current improvement Run in the parent Local Execution record | Explicit App start, authenticated CLI context/submission, exact Method/Practice transaction, terminal receipt, and no queue/history |
+| Search v5/schema 8 without summary | Search v6/schema 9 under the same owner | Summary field/range/reason/App/CLI/Saved Search/rebuild paths share the existing index |
+
+**Field migration ledger**
+
+- Primary `SKILL.md` bytes and researcher-authored Practice Markdown remained
+  exact. Existing method package folders become ordinary folders; no sibling
+  file is deleted or rewritten by semantic cutover.
+- Profile text, choices, order, and included/optional/required meaning moved to
+  flat academic fields. Note/Material/source selectors and machine facts move
+  to Platform Action definitions. Read/write roles, operations, Property
+  boundaries, and capability declarations deliberately do not migrate as
+  hidden authority.
+- Current permission mapped only to the one Triptych policy when its effective
+  researcher choice is determinate. Per-Skill digest approval never migrates
+  into a secret fallback.
+- Repository-owned Record fixtures and callers moved directly to the new
+  strict schema. Unsupported pre-release record bytes remain untouched and
+  unread; no product compatibility decoder is added.
+- `summary` is optional and never backfilled. Index/Record/machine values can
+  neither create nor overwrite it.
+
+**Implemented stage boundaries**
+
+1. Stage 1 cut over registration/Practice/Profile/policy ownership and added
+   canonical `summary`, Source Reference, Context Use, and Result Contract.
+2. Stage 2 added secure local Pairing/Session, App Group bridge, layered Run
+   delivery, restart invalidation, replay/scope/user rejection, and hidden
+   credential channels.
+3. Stage 3 added Research Context, Bounded Write Set, independent multi-document
+   operations, one result, conflict/recovery, and Continue Research.
+4. Stage 4 added Action-specific defaults, Researcher Evaluation, bounded
+   Method feedback, one separately authenticated Method-improvement Run with
+   exact-revision recovery, shared UI editors, and disposable experiment seams
+   without a production Research Memory backend.
+
+**Required next evidence or work**
+
+The 2026-08-04 automated implementation closure passed the complete repository
+gate, optimized Release build, isolated source-first package smoke, documentation
+authority and localization validators, and diff check. A separate final
+proposal-conformance pass found no P0/P1; it removed stale current Search-v5
+labels and aligned the sandbox probe with the generic authorization-denial wire
+contract before the final gate. Production residue scans found no retired
+package/workflow/permission/Profile-module/Agent-note-change owner and no
+Research Memory, Agent-only parser/ranker/index, or direct-JSON context side
+path.
+
+Developer ID signed and externally installed App/CLI operation through the
+production App Group, long-term research use, independent blind philosophical
+review, genuine VoiceOver/Full Keyboard Access/200% mixed-script acceptance,
+and final experiential acceptance remain separate human/distribution evidence.
+The explicit direct-relation XCTest host regression also remains pending even
+though its isolated product journey passed. All automated fixtures remain
+disposable and nonprivate.
+
 ### Physical editor input
 
 **Implemented boundary**
@@ -144,29 +266,35 @@ freeze/tag/package the source, and run the 5-warm-up/30-sample G7 protocol on R1
 
 **Implemented boundary**
 
-Contract v4 retains one Triptych corpus and the v3 lexical behavior while deleting semantic `status`
-projection and query support. Finite syntax, visible-semantic projection, CJK verification, exact
-identity, rank reasons, This Note occurrences, CLI parity, atomic generations, and direct Related
-remain implemented.
+Contract v6 retains one Note Triptych corpus, adds the Application-owned Record provider, Property
+and direct-relation clauses, and deletes semantic `status` projection and the parallel direct-
+connection path. Finite syntax, visible-semantic projection, CJK verification, exact identity, rank
+reasons, This Note occurrences, provider-aware freshness, Saved Search needs-editing, CLI parity,
+and atomic generations remain implemented. Field/canonical-value completion is reachable; the typed
+scope-first context for Property-key and Note-identity candidates is not yet supplied by Application.
 
 **Required next evidence or work**
 
-Complete the 30-sample GUI first-paint protocol, disposable UI matrix, and human
-pointer/VoiceOver/Voice Control/Dictation/CJK IME/visual/ranking acceptance.
+Complete the 30-sample GUI first-paint protocol, remaining disposable UI matrix, dynamic scoped-
+candidate completion only if real use warrants it, and human pointer/VoiceOver/Voice Control/
+Dictation/CJK IME/visual/ranking and research-use acceptance.
 
 ### Research Guidance recovery
 
 **Implemented boundary**
 
-Working Methods, Researcher Skills, Action Profiles, staged disabled-first installation, independent
-Triptych copies, standing policies, and guarded package maintenance are reachable and fail closed on
-invalid state.
+Primary Methods, exact-Wikilink Practices, academic Profiles, one Triptych collaboration policy,
+one code-catalog citation style, one previous Method/Practice edit, and settled Note retention are
+reachable and fail closed on invalid state. Package installation/history and per-Skill policy are
+retired rather than recoverable product surfaces. External Method/folder paths use a private
+Triptych-bound bookmark locator and never enter portable registration.
 
 **Required next evidence or work**
 
-Complete retained staged-install/cross-volume recovery cleanup and define the researcher-visible
-quarantine/reset route for malformed binding-v2 or Profile state; retain process-interruption and
-late-write evidence.
+Verify moved/evicted external Method bookmarks in a packaged sandbox and retain process-interruption,
+late-write, one-previous-edit, and machine-locator corruption evidence. Unsupported pre-release
+registration/Profile bytes stay untouched and fail closed; no binding-v2 reset or compatibility UI
+will be added.
 
 ### Interface writing
 

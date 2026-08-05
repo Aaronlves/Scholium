@@ -18,15 +18,24 @@ struct ResearchRecordsWindowRequest: Hashable, Sendable {
     let triptychID: UUID
     let noteID: UUID?
     let initialView: ResearchRecordsViewKind
+    let recordID: UUID?
+    let expectedRecordFingerprint: DocumentFingerprint?
+    let statementID: UUID?
 
     init(
         triptychID: UUID,
         noteID: UUID? = nil,
-        initialView: ResearchRecordsViewKind = .records
+        initialView: ResearchRecordsViewKind = .records,
+        recordID: UUID? = nil,
+        expectedRecordFingerprint: DocumentFingerprint? = nil,
+        statementID: UUID? = nil
     ) {
         self.triptychID = triptychID
         self.noteID = noteID
         self.initialView = initialView
+        self.recordID = recordID
+        self.expectedRecordFingerprint = expectedRecordFingerprint
+        self.statementID = statementID
     }
 }
 

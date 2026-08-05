@@ -10,9 +10,10 @@ This chapter owns source layout, native presentation, interface ownership, and l
 - `Scholium/UI/Components` contains stateless Scholium building blocks plus
   the bounded native window-shell adapters described below.
 - `Scholium/UI/PreviewCatalog` contains the retained deterministic Debug-only
-  research-workflow catalog for the modular Skill-run sheet, staged installer,
-  categorized Skill settings, Agent change request, and resizable Triptych-keyed
-  Research Records window. It resolves or mutates no production
+  research-workflow catalog for the modular Skill-run sheet, categorized
+  Research Guidance, bounded write-set permission, pairing, returned result,
+  Researcher Evaluation, and resizable Triptych-keyed Research Records window.
+  It resolves or mutates no production
   state and is reachable only through one suppressed Debug window and an
   explicitly enabled QA command. Completed Sidebar, Inspector, generic-state,
   complete-window, and paired-window acceptance harnesses are removed after
@@ -23,7 +24,7 @@ This chapter owns source layout, native presentation, interface ownership, and l
   delivery-safe errors. It has no filesystem, database, network, UI, watcher,
   store, or global mutable authority.
 - `ScholiumCore` contains internal I/O and persistence implementations plus the
-  protected Skill resource bundle; it is not a public SwiftPM product.
+  app-default method resource bundle; it is not a public SwiftPM product.
 - `ScholiumApplication` contains runtime configuration and pooling, capability
   actors, the typed event stream, CSS/App Support I/O, Obsidian appearance
   projection, and Zotero transport.
@@ -92,11 +93,13 @@ Triptych UUID. Its root resolves the exact Triptych capability from
 `WorkspaceStore` and consumes only that Triptych's snapshots; focused Workspace
 or document changes cannot retarget it. A transient
 `ResearchRecordsWindowCoordinator` routes explicit Note-scoped or
-Triptych-scoped presentation requests and same-Triptych Note openings without
-retaining Record data. Each Triptych window owns one
-`ResearchRecordBrowserModel`: disposable deterministic Record and recommendation
-indexes, independent Scope and View, search and scholarly filters, selection,
-and at most one cancellable comparison task. The native resizable list/detail
+Triptych-scoped presentation requests, global-Search Record/statement
+selection, and same-Triptych Note openings without retaining Record data. Each
+Triptych window owns one `ResearchRecordBrowserModel`: Application Record-query
+requests, a disposable recommendation index, independent Scope and View,
+presentation filters, selection, and at most one cancellable comparison task.
+It owns no Record parser, flattened Record corpus, ranking, or freshness rule.
+The native resizable list/detail
 split has a 760 × 680 default frame and 700 × 520 minimum. Its left list is a
 secondary navigation surface, not a Workspace Sidebar, and receives no Sidebar
 toolbar treatment. The standard titlebar shows the window identity without a
@@ -118,6 +121,9 @@ checkpoints, a document buffer, autosave, undo, conflict, retained trash, or a
 second recommendation store. Its diff and recommendation grouping are
 disposable projections over retained exact bytes. Closing Research Records
 therefore cannot reveal or resize Research Inspector or mutate its presentation.
+Its visible Scope remains This Note/Triptych; a Record found through global
+This Vault Search reapplies Triptych Scope before selection without adding a
+third auxiliary-window Scope or changing the shared provider semantics.
 
 Attention is one native transient SwiftUI popover owned by each exact
 `WindowModel`, not an app-wide Scene, sheet, inline Library destination,
@@ -232,8 +238,8 @@ paths, and internal execution IDs never change with locale. Researcher-authored
 prose, note titles, quotations, citations, imported text, exact source, and
 filesystem paths bypass the interface catalog and render verbatim. Purely
 internal vocabulary that has no researcher-facing presentation is not a
-translation surface. Product Skill package names and researcher-owned Skill
-names also render verbatim; surrounding application labels and explanations
+translation surface. App-default and researcher-owned Skill/Practice names
+render verbatim; surrounding application labels and explanations
 remain localizable. Translator comments record interface context without
 becoming product authority.
 

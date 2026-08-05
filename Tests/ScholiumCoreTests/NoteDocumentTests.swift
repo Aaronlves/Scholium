@@ -31,6 +31,19 @@ struct NoteDocumentTests {
         #expect(result.hasSuffix("---\nBody\n"))
     }
 
+    @Test("Canonical summary shares the exact targeted YAML write path")
+    func canonicalSummaryPreservesUnknownYAMLAndBody() throws {
+        let source = "\u{FEFF}---\r\n# researcher context\r\nsummary: Old map   # keep attribution-adjacent comment\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body 😀\r\n\r\nUnchanged evidence."
+        let document = NoteDocument(relativePath: "Topics/Map.md", rawContent: source)
+        let result = try document.applying(
+            .frontmatter(["summary": .string("Agent-refined: claim remains contested")]),
+            timestampKey: nil
+        )
+
+        #expect(result == "\u{FEFF}---\r\n# researcher context\r\nsummary: \"Agent-refined: claim remains contested\"   # keep attribution-adjacent comment\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body 😀\r\n\r\nUnchanged evidence.")
+        #expect(NoteDocument(relativePath: "Topics/Map.md", rawContent: result).body == document.body)
+    }
+
     @Test("Scalar patches preserve BOM, CRLF, inline comments, and body final-newline state")
     func scalarPatchPreservesExactSurroundings() throws {
         let source = "\u{FEFF}---\r\n# before\r\ntitle: Old value   # keep inline\r\ncustom:\r\n  nested: true\r\n---\r\nBody without final newline"

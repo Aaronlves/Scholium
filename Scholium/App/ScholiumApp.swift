@@ -249,7 +249,8 @@ private struct ScholiumResearchRecordsRoot: View {
             let snapshot = event.snapshot
             browserModel.receive(
                 triptychID: triptychID,
-                records: snapshot.research.finishedResearchRecords
+                records: snapshot.research.finishedResearchRecords,
+                fingerprints: snapshot.research.finishedResearchRecordFingerprints
             )
             recordLoadIssues = researchRecordIssues(in: snapshot)
         }
@@ -260,7 +261,9 @@ private struct ScholiumResearchRecordsRoot: View {
             if isPrepared {
                 browserModel.receive(
                     triptychID: triptychID,
-                    records: activation.snapshot.research.finishedResearchRecords
+                    records: activation.snapshot.research.finishedResearchRecords,
+                    fingerprints:
+                        activation.snapshot.research.finishedResearchRecordFingerprints
                 )
             }
         }
@@ -307,6 +310,51 @@ private struct ScholiumResearchRecordsRoot: View {
                                 note: note
                             )
                     },
+                    saveEvaluation: {
+                        recordID, draft, expectedEvaluationRevision, resultFingerprint in
+                        try await capabilities.research.records
+                            .saveResearcherEvaluation(
+                                recordID: recordID,
+                                draft: draft,
+                                expectedEvaluationRevision: expectedEvaluationRevision,
+                                expectedResultFingerprint: resultFingerprint
+                            )
+                    },
+                    clearEvaluation: {
+                        recordID, expectedEvaluationRevision, resultFingerprint in
+                        try await capabilities.research.records
+                            .clearResearcherEvaluation(
+                                recordID: recordID,
+                                expectedEvaluationRevision: expectedEvaluationRevision,
+                                expectedResultFingerprint: resultFingerprint
+                            )
+                    },
+                    saveMethodFeedback: {
+                        recordID, draft, expectedCommentRevision, resultFingerprint in
+                        try await capabilities.research.records
+                            .saveMethodFeedbackComment(
+                                recordID: recordID,
+                                draft: draft,
+                                expectedCommentRevision: expectedCommentRevision,
+                                expectedResultFingerprint: resultFingerprint
+                            )
+                    },
+                    clearMethodFeedback: {
+                        recordID, expectedCommentRevision, resultFingerprint in
+                        try await capabilities.research.records
+                            .clearMethodFeedbackComment(
+                                recordID: recordID,
+                                expectedCommentRevision: expectedCommentRevision,
+                                expectedResultFingerprint: resultFingerprint
+                            )
+                    },
+                    startMethodImprovement: { recordID in
+                        try await capabilities.research.records
+                            .issueMethodImprovementHandoff(
+                                recordID: recordID,
+                                validity: 10 * 60
+                            )
+                    },
                     deletePermanently: { id in
                         try await capabilities.research.records
                             .deleteResearchRecordPermanently(id: id)
@@ -336,18 +384,25 @@ private struct ScholiumResearchRecordsRoot: View {
             let capabilities = try await workspaceStore.workspaceCapabilities(id: triptychID)
             try Task.checkCancellation()
             self.capabilities = capabilities
+            browserModel.bindRecordSearch { request in
+                try await capabilities.discovery.search(request)
+            }
             let records: [PortableResearchRecord]
+            let fingerprints: [UUID: DocumentFingerprint]
             if let snapshot = workspaceStore.workspaceSnapshots[triptychID] {
                 records = snapshot.research.finishedResearchRecords
+                fingerprints = snapshot.research.finishedResearchRecordFingerprints
                 recordLoadIssues = researchRecordIssues(in: snapshot)
             } else {
-                records = try await capabilities.research.records
-                    .finishedResearchRecords(noteID: nil)
+                let research = try await capabilities.research.records.snapshot()
+                records = research.finishedResearchRecords
+                fingerprints = research.finishedResearchRecordFingerprints
                 recordLoadIssues = []
             }
             browserModel.prepareForOpen(
                 triptychID: triptychID,
                 records: records,
+                fingerprints: fingerprints,
                 request: currentRequest
             )
             isPrepared = true
@@ -790,6 +845,15 @@ private struct ScholiumWindowObservedRoot: View {
                                 initialView: .records
                             )
                         )
+                        openWindow(
+                            id: "scholium-research-records",
+                            value: triptychID
+                        )
+                    },
+                    showResearchRecordsWindow: {
+                        guard let triptychID = appState.workspaceAssignment?.id else {
+                            return
+                        }
                         openWindow(
                             id: "scholium-research-records",
                             value: triptychID
@@ -1243,11 +1307,7 @@ private struct ScholiumCommands: Commands {
                     Button {
                         researchActionActions?.open(action.id)
                     } label: {
-                        if action.profile.origin == .applicationDefault {
-                            Text(LocalizedStringKey(action.buttonName))
-                        } else {
-                            Text(verbatim: action.buttonName)
-                        }
+                        Text(verbatim: action.buttonName)
                     }
                     .keyboardShortcut(action.definition.interfaceKeyboardShortcut)
                     .disabled(
@@ -1446,15 +1506,15 @@ final class WindowModel: ObservableObject {
                     currentVaultID: self.currentRegisteredVault?.id
                 )
             },
-            lexicalEvidence: { [weak self] hit, scope in
+            resultEvidence: { [weak self] result, scope in
                 guard let self else {
-                    return WindowLexicalSearchEvidence(
+                    return WindowSearchResultEvidence(
                         freshness: nil,
                         fingerprint: nil
                     )
                 }
-                return await self.currentLexicalSearchEvidence(
-                    for: hit,
+                return await self.currentSearchResultEvidence(
+                    for: result,
                     scope: scope
                 )
             },
@@ -1531,31 +1591,43 @@ final class WindowModel: ObservableObject {
             }
         )
     )
-    lazy var agentNoteChangeWindowController = AgentNoteChangeWindowController(
-        windowID: nativeWindowID,
-        presentationRouter: presentationRouter,
-        claimCoordinator: workspaceStore.agentNoteChangeClaims,
-        dependencies: .init(
-            presentationIdentity: { [workspaceStore] record in
-                try await workspaceStore.agentNoteChangePresentationIdentity(
-                    for: record
-                )
-            },
-            refresh: { [workspaceStore] requestID, triptychID in
-                try await workspaceStore.refreshAgentNoteChangeRequest(
+    lazy var researchAgentPermissionWindowController =
+        ResearchAgentPermissionWindowController(
+            windowID: nativeWindowID,
+            presentationRouter: presentationRouter,
+            claimCoordinator: workspaceStore.researchAgentPermissionClaims,
+            dependencies: .init(
+            refreshWriteSet: { [workspaceStore] requestID, triptychID in
+                try await workspaceStore.refreshResearchWriteSetExtension(
                     id: requestID,
                     in: triptychID
                 )
             },
-            resolve: { [workspaceStore] triptychID, requestID, state, noteIDs in
-                try await workspaceStore.resolveAgentNoteChangeRequest(
+            resolveWriteSet: { [workspaceStore] triptychID, requestID, state, handles in
+                try await workspaceStore.resolveResearchWriteSetExtension(
                     triptychID: triptychID,
                     requestID: requestID,
                     state: state,
-                    allowedNoteIDs: noteIDs
+                    allowedHandles: handles
                 )
             },
-            snapshot: { [workspaceStore] in workspaceStore.snapshot(for: $0) }
+            refreshContinuation: {
+                [workspaceStore] triptychID, parentRunID, requestID in
+                try await workspaceStore.refreshResearchContinuation(
+                    triptychID: triptychID,
+                    parentRunID: parentRunID,
+                    requestID: requestID
+                )
+            },
+            resolveContinuation: {
+                [workspaceStore] triptychID, parentRunID, requestID, allow in
+                try await workspaceStore.resolveResearchContinuation(
+                    triptychID: triptychID,
+                    parentRunID: parentRunID,
+                    requestID: requestID,
+                    allow: allow
+                )
+            }
         ),
         reportError: { [weak self] message in
             self?.showToast(message, kind: .error)
@@ -1894,6 +1966,8 @@ final class WindowModel: ObservableObject {
     private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
     private var identityRefreshGeneration: UInt64 = 0
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
+    private var presentResearchRecordSearchResult:
+        @MainActor (RecordSearchResult) -> Void = { _ in }
     #if DEBUG
     private var qaPerformanceModeNotificationTokens: [Int32] = []
     #endif
@@ -1960,24 +2034,6 @@ final class WindowModel: ObservableObject {
                 }
             }
         }
-        if Bundle.main.bundleIdentifier == "com.scholium.qa",
-           ProcessInfo.processInfo.arguments.contains(
-               "--scholium-agent-change-request-fixture"
-           ) {
-            var token: Int32 = 0
-            let name = "com.scholium.qa.present-agent-change-request.\(resolvedWindowID.uuidString)"
-            let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.agentNoteChangeWindowController.presentQASyntheticRequest(
-                        activeTriptychID: self.activeTriptychServicesID
-                    )
-                }
-            }
-            if status == NOTIFY_STATUS_OK {
-                qaPerformanceModeNotificationTokens.append(token)
-            }
-        }
         #endif
         if let saved = UserDefaults.standard.string(forKey: "noteSortOrder"),
            let order = NoteSortOrder(rawValue: saved) {
@@ -1989,6 +2045,12 @@ final class WindowModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "libraryViewMode")
         searchController.loadSavedSearches()
         observeWindowSessionChanges()
+    }
+
+    func bindResearchRecordSearchPresentation(
+        _ present: @escaping @MainActor (RecordSearchResult) -> Void
+    ) {
+        presentResearchRecordSearchResult = present
     }
 
     deinit {
@@ -2658,45 +2720,31 @@ final class WindowModel: ObservableObject {
         disposition: WindowOpenDisposition
     ) async {
         switch result {
-        case .related:
-            var route = result.documentRoute
-            route = WindowDocumentRoute(
-                reference: route.reference,
-                sourceLocator: route.sourceLocator,
-                disposition: disposition
-            )
-            if disposition == .newTab {
-                requestOpenNote(route.reference, disposition: .newTab)
-            } else {
-                await openWorkspaceReference(
-                    route.reference,
-                    line: route.sourceLocator?.line,
-                    mode: route.sourceLocator == nil ? .read : .source
-                )
-            }
-        case .lexical(let hit):
+        case .result(.note(let note)):
             let reference = VaultNoteReference(
-                vaultID: hit.vaultID,
-                vaultName: hit.vaultName,
-                vaultRole: hit.vaultRole,
-                relativePath: hit.relativePath,
-                stableNoteID: hit.stableNoteID
+                vaultID: note.vaultID,
+                vaultName: note.vaultName,
+                vaultRole: note.vaultRole,
+                relativePath: note.relativePath,
+                stableNoteID: note.stableNoteID
             )
-            let isCurrentDocument = currentDocumentDescriptor?.reference.vaultID == hit.vaultID
-                && currentDocumentDescriptor?.reference.relativePath == hit.relativePath
+            let isCurrentDocument = currentDocumentDescriptor?.reference.vaultID == note.vaultID
+                && currentDocumentDescriptor?.reference.relativePath == note.relativePath
             if isCurrentDocument {
-                pendingSourceRange = hit.sourceRange
-                pendingSourceLine = hit.sourceRange?.line ?? hit.sourceLine
+                pendingSourceRange = note.sourceRange
+                pendingSourceLine = note.sourceRange?.line ?? note.sourceLine
                 requestPresentationMode = .source
             } else if disposition == .newTab {
                 requestOpenNote(reference, disposition: .newTab)
             } else {
                 openWorkspaceReference(
                     reference,
-                    sourceRange: hit.sourceRange,
-                    fallbackLine: hit.sourceLine
+                    sourceRange: note.sourceRange,
+                    fallbackLine: note.sourceLine
                 )
             }
+        case .result(.record(let record)):
+            presentResearchRecordSearchResult(record)
         }
     }
 
@@ -3731,9 +3779,7 @@ final class WindowModel: ObservableObject {
                 documents: capabilities.documents,
                 records: capabilities.research.records,
                 checkpoints: capabilities.research.checkpoints,
-                skills: capabilities.research.skills,
                 actions: capabilities.research.actions,
-                skillsURL: capabilities.research.skillsURL,
                 recoveryRecordsURL: capabilities.research.recoveryRecordsURL
             ),
             snapshot: snapshot
@@ -3775,8 +3821,55 @@ final class WindowModel: ObservableObject {
                 }
                 return try await capabilities.research.actions.prepareAction(request)
             },
+            handoff: { runID in
+                try await capabilities.research.actions.issueAgentHandoff(
+                    runID: runID,
+                    validity: 10 * 60
+                )
+            },
             cancel: { runID in
                 try await capabilities.research.actions.cancelAction(runID: runID)
+            },
+            saveEvaluation: {
+                recordID, draft, expectedEvaluationRevision, resultFingerprint in
+                try await capabilities.research.records.saveResearcherEvaluation(
+                    recordID: recordID,
+                    draft: draft,
+                    expectedEvaluationRevision: expectedEvaluationRevision,
+                    expectedResultFingerprint: resultFingerprint
+                )
+            },
+            clearEvaluation: {
+                recordID, expectedEvaluationRevision, resultFingerprint in
+                try await capabilities.research.records.clearResearcherEvaluation(
+                    recordID: recordID,
+                    expectedEvaluationRevision: expectedEvaluationRevision,
+                    expectedResultFingerprint: resultFingerprint
+                )
+            },
+            saveMethodFeedback: {
+                recordID, draft, expectedCommentRevision, resultFingerprint in
+                try await capabilities.research.records.saveMethodFeedbackComment(
+                    recordID: recordID,
+                    draft: draft,
+                    expectedCommentRevision: expectedCommentRevision,
+                    expectedResultFingerprint: resultFingerprint
+                )
+            },
+            clearMethodFeedback: {
+                recordID, expectedCommentRevision, resultFingerprint in
+                try await capabilities.research.records.clearMethodFeedbackComment(
+                    recordID: recordID,
+                    expectedCommentRevision: expectedCommentRevision,
+                    expectedResultFingerprint: resultFingerprint
+                )
+            },
+            startMethodImprovement: { recordID in
+                try await capabilities.research.records
+                    .issueMethodImprovementHandoff(
+                        recordID: recordID,
+                        validity: 10 * 60
+                    )
             },
             openActiveDiscussion: { [weak self] discussionID in
                 guard let self else { return }
@@ -3824,7 +3917,7 @@ final class WindowModel: ObservableObject {
             try await self.documentController.flushLeasedOrPinnedSessions()
         }
         Task { [weak self] in
-            await self?.workspaceStore.refreshPendingAgentNoteChangeRequests(
+            await self?.workspaceStore.refreshPendingResearchAgentPermissions(
                 in: activation.workspaceID
             )
         }
@@ -3854,7 +3947,7 @@ final class WindowModel: ObservableObject {
             context: workspaceProjectionContext
         )
         applyWorkspaceProjectionCommit(projectionCommit)
-        agentNoteChangeWindowController.refreshForWorkspaceSnapshot(
+        researchAgentPermissionWindowController.refreshForWorkspaceSnapshot(
             triptychID: activation.snapshot.triptych.id
         )
     }
@@ -5450,26 +5543,48 @@ final class WindowModel: ObservableObject {
             : trimmed + ".md"
     }
 
-    private func currentLexicalSearchEvidence(
-        for hit: SearchHit,
+    private func currentSearchResultEvidence(
+        for result: SearchResult,
         scope: SearchPresentationScope
-    ) async -> WindowLexicalSearchEvidence {
-        if scope == .thisNote {
-            let snapshot = try? await currentSearchSourceSnapshot()
-            return WindowLexicalSearchEvidence(
-                freshness: snapshot.map(SearchFreshnessToken.currentNote),
-                fingerprint: snapshot?.fingerprint
+    ) async -> WindowSearchResultEvidence {
+        switch result {
+        case .note(let note):
+            if scope == .thisNote {
+                let snapshot = try? await currentSearchSourceSnapshot()
+                return WindowSearchResultEvidence(
+                    freshness: snapshot.map(SearchFreshnessToken.currentNote),
+                    fingerprint: snapshot?.fingerprint
+                )
+            }
+            let discovery = try? await discoveryController.discoverySnapshot()
+            return WindowSearchResultEvidence(
+                freshness: discovery?.searchGeneration.map(SearchFreshnessToken.triptych),
+                fingerprint: workspaceProjectionController.cachedNote(
+                    vaultID: note.vaultID,
+                    stableNoteID: note.stableNoteID.flatMap(UUID.init(uuidString:)),
+                    relativePath: note.relativePath
+                )?.fingerprint
+            )
+        case .record(let record):
+            guard let snapshot = try? await researchController.researchSnapshot(),
+                  snapshot.finishedResearchRecordProjectionIsComplete,
+                  let fingerprint = snapshot.finishedResearchRecordFingerprints[
+                    record.recordID
+                  ], let triptychID = workspaceAssignment?.id else {
+                return WindowSearchResultEvidence(
+                    freshness: nil,
+                    fingerprint: nil
+                )
+            }
+            let generation = RecordSearchGenerationID(
+                triptychID: triptychID,
+                sourceManifestHash: snapshot.finishedResearchRecordSourceManifestHash
+            )
+            return WindowSearchResultEvidence(
+                freshness: .record(generation),
+                fingerprint: fingerprint
             )
         }
-        let discovery = try? await discoveryController.discoverySnapshot()
-        return WindowLexicalSearchEvidence(
-            freshness: discovery?.searchGeneration.map(SearchFreshnessToken.triptych),
-            fingerprint: workspaceProjectionController.cachedNote(
-                vaultID: hit.vaultID,
-                stableNoteID: hit.stableNoteID.flatMap(UUID.init(uuidString:)),
-                relativePath: hit.relativePath
-            )?.fingerprint
-        )
     }
 
     /// Captures CodeMirror's checked in-memory source without flushing or
@@ -6245,7 +6360,7 @@ final class WindowModel: ObservableObject {
             openDocuments: documentTabController.tabs.map(\.document)
         )
         researchController.receive(event.snapshot)
-        agentNoteChangeWindowController.refreshForWorkspaceSnapshot(
+        researchAgentPermissionWindowController.refreshForWorkspaceSnapshot(
             triptychID: event.snapshot.triptych.id
         )
         if let commit = workspaceProjectionController.receive(

@@ -31,107 +31,10 @@ public enum ResearchFunctionRecordStoreError: LocalizedError, Sendable {
     }
 }
 
-private func canFinalizeFunctionPreflight(
-    _ current: ResearchFunctionSnapshot,
-    as replacement: ResearchFunctionSnapshot
-) -> Bool {
-    guard current.request.awaitsResourceSelection,
-          replacement.request.conditionalResources != nil,
-          current.runID == replacement.runID,
-          current.recordKind == replacement.recordKind,
-          current.recordID == replacement.recordID,
-          current.checkpointID == replacement.checkpointID,
-          current.requiredChildFunctions == replacement.requiredChildFunctions,
-          current.preparedOutput == replacement.preparedOutput,
-          current.evidenceRevisions == replacement.evidenceRevisions,
-          current.fidelityHandoff == replacement.fidelityHandoff,
-          current.confirmationToken == replacement.confirmationToken,
-          current.preparedAt == replacement.preparedAt,
-          functionRequestsMatchExceptMethods(current.request, replacement.request),
-          skillSelections(current.skills, areRetainedBy: replacement.skills),
-          current.phases.count == replacement.phases.count else {
-        return false
-    }
-
-    return zip(current.phases, replacement.phases).allSatisfy { old, new in
-        old.phase == new.phase
-            && old.function == new.function
-            && old.citationStyle == new.citationStyle
-            && skillSelections(old.skills, areRetainedBy: new.skills)
-    }
-}
-
-private func functionRequestsMatchExceptMethods(
-    _ lhs: ResearchFunctionRequest,
-    _ rhs: ResearchFunctionRequest
-) -> Bool {
-    ResearchFunctionRequest(
-        function: lhs.function,
-        target: lhs.target,
-        materials: lhs.materials,
-        instruction: lhs.instruction,
-        scope: lhs.scope,
-        checks: lhs.checks,
-        commentIDs: lhs.commentIDs,
-        conditionalResources: nil
-    ) == ResearchFunctionRequest(
-        function: rhs.function,
-        target: rhs.target,
-        materials: rhs.materials,
-        instruction: rhs.instruction,
-        scope: rhs.scope,
-        checks: rhs.checks,
-        commentIDs: rhs.commentIDs,
-        conditionalResources: nil
-    )
-}
-
-private func skillSelections(
-    _ current: [ResearchFunctionSkillSnapshot],
-    areRetainedBy replacement: [ResearchFunctionSkillSnapshot]
-) -> Bool {
-    guard current.count == replacement.count else { return false }
-    return current.allSatisfy { old in
-        guard let new = replacement.first(where: {
-            $0.packageID == old.packageID && $0.origin == old.origin
-        }),
-        new.version == old.version,
-        new.packageRevision == old.packageRevision else {
-            return false
-        }
-        return Set(old.loadedResources).isSubset(of: Set(new.loadedResources))
-    }
-}
-
-private func canAdvanceFunctionCompletion(
-    from existing: ResearchFunctionCompletion,
-    to replacement: ResearchFunctionCompletion,
-    snapshot: ResearchFunctionSnapshot
-) -> Bool {
-    let stateAdvances: Bool
-    switch (existing.state, replacement.state) {
-    case (.awaitingFidelity, .complete),
-         (.awaitingFidelity, .unverified),
-         (.unverified, .complete),
-         (.stale, .complete):
-        stateAdvances = true
-    default:
-        stateAdvances = false
-    }
-    guard existing.runID == replacement.runID,
-          existing.function == replacement.function,
-          existing.targetFingerprint == replacement.targetFingerprint,
-          existing.materialFingerprints == replacement.materialFingerprints,
-          existing.didModifyTarget == replacement.didModifyTarget,
-          replacement.completedAt >= existing.completedAt,
-          stateAdvances else {
-        return false
-    }
-    let allowedChecks = snapshot.fidelityHandoff?.checks ?? snapshot.request.checks
-    return Set(replacement.fidelityOutcomes.map(\.check)).isSubset(of: allowedChecks)
-}
 
 public actor CritiqueRegistry {
+    private static let currentSchemaVersion = 3
+
     private struct Payload: Codable {
         let schemaVersion: Int
         var associations: [UUID: CritiqueAssociation]
@@ -151,14 +54,17 @@ public actor CritiqueRegistry {
             do {
                 let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
                 let payload = try decoder.decode(Payload.self, from: data)
-                let normalized = Self.normalized(payload.associations)
-                associations = normalized
-                if payload.schemaVersion != 2 {
+                if payload.schemaVersion != Self.currentSchemaVersion {
+                    associations = [:]
                     loadFailure = "Unsupported Critique schema version \(payload.schemaVersion)."
-                } else if normalized.count != payload.associations.count {
-                    loadFailure = "The file contains duplicate Work or Critique associations. Scholium selected the newest entries for reading but will not rewrite the file automatically."
                 } else {
-                    loadFailure = nil
+                    let normalized = Self.normalized(payload.associations)
+                    associations = normalized
+                    if normalized.count != payload.associations.count {
+                        loadFailure = "The file contains duplicate Work or Critique associations. Scholium selected the newest entries for reading but will not rewrite the file automatically."
+                    } else {
+                        loadFailure = nil
+                    }
                 }
             } catch {
                 associations = [:]
@@ -185,57 +91,6 @@ public actor CritiqueRegistry {
         associations.values.first { $0.critiqueRelativePath == critiqueRelativePath }
     }
 
-    public func localExecutionFindingsWereCaptured(runID: UUID) -> Bool {
-        associations.values
-            .flatMap(\.rounds)
-            .first(where: { $0.id == runID })?
-            .localExecutionFindingsCaptured == true
-    }
-
-    public func functionRecord(
-        runID: UUID
-    ) throws -> ResearchFunctionRecordProjection? {
-        let matches = associations.values.flatMap(\.rounds).filter {
-            $0.functionSnapshot?.runID == runID
-        }
-        guard matches.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let round = matches.first, let snapshot = round.functionSnapshot else {
-            return nil
-        }
-        return ResearchFunctionRecordProjection(
-            snapshot: snapshot,
-            completion: round.functionCompletion,
-            preparedInstructions: round.functionInstructions
-        )
-    }
-
-    /// Returns the durable Research Function projections owned by Critique.
-    /// Application keeps these evidential records distinct while merging their
-    /// projections with Dialogue-backed runs for authoritative planning.
-    public func functionRecords() throws -> [ResearchFunctionRecordProjection] {
-        let records = associations.values.flatMap(\.rounds).compactMap { round in
-            round.functionSnapshot.map {
-                ResearchFunctionRecordProjection(
-                    snapshot: $0,
-                    completion: round.functionCompletion,
-                    preparedInstructions: round.functionInstructions
-                )
-            }
-        }
-        guard Set(records.map(\.id)).count == records.count else {
-            let duplicated = Dictionary(grouping: records, by: \.id)
-                .first(where: { $0.value.count > 1 })!.key
-            throw ResearchFunctionRecordStoreError.duplicateRun(duplicated)
-        }
-        return records.sorted {
-            if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
-                return $0.snapshot.preparedAt > $1.snapshot.preparedAt
-            }
-            return $0.id.uuidString < $1.id.uuidString
-        }
-    }
 
     func associationsRelated(noteID: UUID, relativePath: String) -> [CritiqueAssociation] {
         associations.values.filter {
@@ -274,9 +129,6 @@ public actor CritiqueRegistry {
         checkpointID: UUID?,
         scope: CritiqueRequestScope,
         roundID: UUID = UUID(),
-        functionSnapshot: ResearchFunctionSnapshot? = nil,
-        functionCompletion: ResearchFunctionCompletion? = nil,
-        functionInstructions: String? = nil,
         requestedAt: Date = Date()
     ) throws -> CritiqueAssociation {
         var association = association(workNoteID: workNoteID) ?? CritiqueAssociation(
@@ -295,200 +147,22 @@ public actor CritiqueRegistry {
             requestedAt: requestedAt,
             targetFingerprint: targetFingerprint,
             checkpointID: checkpointID,
-            scope: scope,
-            functionSnapshot: functionSnapshot,
-            functionCompletion: functionCompletion,
-            functionInstructions: functionInstructions
+            scope: scope
         ))
         return try save(association)
     }
 
-    /// Removes protected execution evidence after the same run has been
-    /// durably installed in Local Execution v3. The Critique round remains a
-    /// portable scholarly association identified by its own round ID.
-    @discardableResult
-    public func detachFunctionEvidence(
-        runID: UUID,
-        matching expectedSnapshot: ResearchFunctionSnapshot? = nil
-    ) throws -> CritiqueAssociation {
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.id == runID
-                    ? (association.id, index, round)
-                    : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let (associationID, index, round) = locations.first,
-              var association = associations[associationID] else {
-            throw ResearchFunctionRecordStoreError.runNotFound(runID)
-        }
-        if round.functionSnapshot == nil {
-            return association
-        }
-        if let expectedSnapshot,
-           round.functionSnapshot != expectedSnapshot {
-            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
-        }
-        association.rounds[index] = CritiqueRound(
-            id: round.id,
-            requestedAt: round.requestedAt,
-            targetFingerprint: round.targetFingerprint,
-            checkpointID: round.checkpointID,
-            scope: round.scope,
-            actionableFindings: round.actionableFindings,
-            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
-            findingDispositions: round.findingDispositions,
-            completedAt: round.completedAt
-        )
-        return try save(association)
-    }
-
-    /// Removes an Action-backed Critique staging round when Local Execution
-    /// v2 was never durably installed. This never discards a completed round
-    /// or researcher dispositions, and retained Function-era rounds have no
-    /// Action snapshot so they are outside this recovery path.
-    public func discardUninstalledActionRound(runID: UUID) throws {
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.id == runID ? (association.id, index, round) : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let (associationID, index, round) = locations.first,
-              var association = associations[associationID] else {
-            return
-        }
-        guard round.functionSnapshot?.actionSnapshot != nil,
-              round.functionCompletion == nil,
-              round.actionableFindings.isEmpty,
-              round.findingDispositions.isEmpty,
-              round.completedAt == nil else {
-            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
-        }
-        association.rounds.remove(at: index)
-        _ = try save(association)
-    }
-
-    /// Captures findings for a Critique whose execution evidence is owned by
-    /// Local Execution v3 rather than this portable association file.
-    @discardableResult
-    public func captureLocalExecutionFindings(
-        runID: UUID,
-        findings: [CritiqueFinding]
-    ) throws -> CritiqueAssociation {
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.id == runID ? (association.id, index, round) : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let (associationID, index, round) = locations.first,
-              var association = associations[associationID] else {
-            throw CritiqueRegistryError.roundNotReady(runID)
-        }
-        let normalized = CritiqueRound(
-            id: round.id,
-            requestedAt: round.requestedAt,
-            targetFingerprint: round.targetFingerprint,
-            checkpointID: round.checkpointID,
-            scope: round.scope,
-            actionableFindings: findings,
-            localExecutionFindingsCaptured: true,
-            findingDispositions: round.findingDispositions,
-            completedAt: round.completedAt
-        )
-        if !round.actionableFindings.isEmpty,
-           round.actionableFindings != normalized.actionableFindings {
-            throw CritiqueRegistryError.findingSetAlreadyCaptured(round.id)
-        }
-        if round == normalized { return association }
-        association.rounds[index] = normalized
-        return try save(association)
-    }
-
-    @discardableResult
-    public func setFunctionCompletion(
-        _ completion: ResearchFunctionCompletion,
-        runID: UUID
-    ) throws -> CritiqueAssociation {
-        guard completion.runID == runID else {
-            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
-        }
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.functionSnapshot?.runID == runID
-                    ? (association.id, index, round)
-                    : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let (associationID, index, round) = locations.first,
-              var association = associations[associationID],
-              let snapshot = round.functionSnapshot else {
-            throw ResearchFunctionRecordStoreError.runNotFound(runID)
-        }
-        guard snapshot.request.function == completion.function else {
-            throw ResearchFunctionRecordStoreError.completionMismatch(runID)
-        }
-        if let existing = round.functionCompletion {
-            if existing == completion { return association }
-            guard canAdvanceFunctionCompletion(
-                from: existing,
-                to: completion,
-                snapshot: snapshot
-            ) else {
-                throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
-            }
-        }
-        association.rounds[index] = CritiqueRound(
-            id: round.id,
-            requestedAt: round.requestedAt,
-            targetFingerprint: round.targetFingerprint,
-            checkpointID: round.checkpointID,
-            scope: round.scope,
-            functionSnapshot: snapshot,
-            functionCompletion: completion,
-            functionInstructions: round.functionInstructions,
-            actionableFindings: round.actionableFindings,
-            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
-            findingDispositions: round.findingDispositions,
-            completedAt: round.completedAt
-        )
-        return try save(association)
-    }
-
-    /// Freezes the actionable finding set from the completed, version-bound
-    /// Critique document. Later disposition never reparses or silently changes
-    /// this researcher-facing round boundary.
+    /// Freezes the findings parsed from one exact Critique document revision.
+    /// Repeating the same set is idempotent; a different set fails closed.
     @discardableResult
     public func captureActionableFindings(
-        runID: UUID,
+        roundID: UUID,
         findings: [CritiqueFinding]
     ) throws -> CritiqueAssociation {
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.functionSnapshot?.runID == runID
-                    ? (association.id, index, round)
-                    : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let (associationID, index, round) = locations.first,
+        guard let (associationID, index, round) = roundLocation(roundID: roundID),
               var association = associations[associationID],
-              round.functionCompletion?.function == .critique,
-              round.functionCompletion?.state == .complete else {
-            throw CritiqueRegistryError.roundNotReady(runID)
+              round.completedAt == nil else {
+            throw CritiqueRegistryError.roundNotReady(roundID)
         }
         let normalized = CritiqueRound(
             id: round.id,
@@ -496,11 +170,7 @@ public actor CritiqueRegistry {
             targetFingerprint: round.targetFingerprint,
             checkpointID: round.checkpointID,
             scope: round.scope,
-            functionSnapshot: round.functionSnapshot,
-            functionCompletion: round.functionCompletion,
-            functionInstructions: round.functionInstructions,
             actionableFindings: findings,
-            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: round.findingDispositions,
             completedAt: round.completedAt
         )
@@ -512,6 +182,7 @@ public actor CritiqueRegistry {
         association.rounds[index] = normalized
         return try save(association)
     }
+
 
     /// Records one researcher disposition without creating Research Activity.
     /// Accept is valid only against an observed changed Work revision or with
@@ -568,11 +239,7 @@ public actor CritiqueRegistry {
             targetFingerprint: round.targetFingerprint,
             checkpointID: round.checkpointID,
             scope: round.scope,
-            functionSnapshot: round.functionSnapshot,
-            functionCompletion: round.functionCompletion,
-            functionInstructions: round.functionInstructions,
             actionableFindings: round.actionableFindings,
-            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: dispositions,
             completedAt: nil
         )
@@ -600,101 +267,13 @@ public actor CritiqueRegistry {
             targetFingerprint: round.targetFingerprint,
             checkpointID: round.checkpointID,
             scope: round.scope,
-            functionSnapshot: round.functionSnapshot,
-            functionCompletion: round.functionCompletion,
-            functionInstructions: round.functionInstructions,
             actionableFindings: round.actionableFindings,
-            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
             findingDispositions: round.findingDispositions,
             completedAt: completedAt
         )
         return try save(association)
     }
 
-    /// Critique keeps the prepared output and round identity fixed while the
-    /// external agent finalizes only its conditional method references.
-    @discardableResult
-    public func finalizeFunctionPreflight(
-        snapshot replacement: ResearchFunctionSnapshot,
-        instructions: String,
-        runID: UUID
-    ) throws -> CritiqueAssociation {
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.functionSnapshot?.runID == runID
-                    ? (association.id, index, round)
-                    : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let (associationID, index, round) = locations.first,
-              var association = associations[associationID],
-              let snapshot = round.functionSnapshot else {
-            throw ResearchFunctionRecordStoreError.runNotFound(runID)
-        }
-        guard round.functionCompletion == nil else {
-            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
-        }
-        if snapshot == replacement, round.functionInstructions == instructions {
-            return association
-        }
-        guard canFinalizeFunctionPreflight(snapshot, as: replacement) else {
-            throw ResearchFunctionRecordStoreError.preparationMismatch(runID)
-        }
-        association.rounds[index] = CritiqueRound(
-            id: round.id,
-            requestedAt: round.requestedAt,
-            targetFingerprint: round.targetFingerprint,
-            checkpointID: round.checkpointID,
-            scope: round.scope,
-            functionSnapshot: replacement,
-            functionCompletion: nil,
-            functionInstructions: instructions,
-            actionableFindings: round.actionableFindings,
-            localExecutionFindingsCaptured: round.localExecutionFindingsCaptured,
-            findingDispositions: round.findingDispositions,
-            completedAt: round.completedAt
-        )
-        return try save(association)
-    }
-
-    /// Rolls back only the incomplete Critique round prepared for this run.
-    /// An association with older rounds is retained; an otherwise empty
-    /// association is removed.
-    @discardableResult
-    public func discardPreparedFunctionRecord(
-        runID: UUID
-    ) throws -> CritiqueRound {
-        let locations = associations.values.flatMap { association in
-            association.rounds.enumerated().compactMap { index, round in
-                round.functionSnapshot?.runID == runID
-                    ? (association.id, index, round)
-                    : nil
-            }
-        }
-        guard locations.count <= 1 else {
-            throw ResearchFunctionRecordStoreError.duplicateRun(runID)
-        }
-        guard let (associationID, index, round) = locations.first,
-              var association = associations[associationID] else {
-            throw ResearchFunctionRecordStoreError.runNotFound(runID)
-        }
-        guard round.functionCompletion == nil else {
-            throw ResearchFunctionRecordStoreError.runAlreadyCompleted(runID)
-        }
-        association.rounds.remove(at: index)
-        var proposed = associations
-        if association.rounds.isEmpty {
-            proposed.removeValue(forKey: associationID)
-        } else {
-            association.updatedAt = Date()
-            proposed[associationID] = association
-        }
-        try commit(proposed)
-        return round
-    }
 
     /// Keeps a Work association and its Critique destination attached to a
     /// stable note after a confirmed move. Historical target fingerprints are
@@ -797,7 +376,10 @@ public actor CritiqueRegistry {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(Payload(schemaVersion: 2, associations: proposed))
+        let data = try encoder.encode(Payload(
+            schemaVersion: Self.currentSchemaVersion,
+            associations: proposed
+        ))
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let canonicalAssociations = try decoder.decode(

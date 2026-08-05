@@ -4,10 +4,10 @@ import ScholiumContracts
 ///
 /// Researcher-authored prose, quotations, citations, note titles, paths, and
 /// imported source text must bypass this namespace and remain verbatim. Purely
-/// internal identifiers never enter a catalog, and Skill package names and
-/// package-authored descriptions remain verbatim at their presentation sites.
+/// internal identifiers never enter a catalog, and researcher-owned Method or
+/// Practice text remains verbatim at its presentation sites.
 enum ScholiumL10n {
-    /// Resolves application-authored interface copy from the package resource
+    /// Resolves application-authored interface copy from the app resource
     /// bundle. Do not pass researcher-authored or imported text here.
     static func string(
         _ keyAndValue: String.LocalizationValue,

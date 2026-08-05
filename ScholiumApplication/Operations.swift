@@ -343,33 +343,15 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         let handle = try await reference.requireHandle()
         return try await handle.search(request)
     }
-
-    public func related(
-        query: String,
-        scope: SearchExecutionScope,
-        searchGeneration: SearchGenerationID?,
-        excluding: Set<VaultQualifiedNoteID> = [],
-        limit: Int = 12
-    ) async throws -> RelatedSearchResponse {
-        let handle = try await reference.requireHandle()
-        return try await handle.related(
-            query: query,
-            scope: scope,
-            searchGeneration: searchGeneration,
-            excluding: excluding,
-            limit: limit
-        )
-    }
 }
 
 public actor ResearchOperations:
     ResearchRecordUseCases,
     ResearchCheckpointUseCases,
-    ResearchSkillUseCases,
+    ResearchConfigurationUseCases,
     ResearchActionUseCases,
     ResearchSourceAccessUseCases
 {
-    public nonisolated let skillsURL: URL
     public nonisolated let recoveryRecordsURL: URL
     let reference: WorkspaceHandleReference
     private let functionCoordinator: ResearchFunctionCoordinator
@@ -377,42 +359,11 @@ public actor ResearchOperations:
     init(
         reference: WorkspaceHandleReference,
         functionCoordinator: ResearchFunctionCoordinator,
-        skillsURL: URL,
         recoveryRecordsURL: URL,
     ) {
         self.reference = reference
         self.functionCoordinator = functionCoordinator
-        self.skillsURL = skillsURL
         self.recoveryRecordsURL = recoveryRecordsURL
-    }
-
-    public nonisolated static func inspectSkillDraft(
-        id: String,
-        source: String,
-        origin: ResearchSkillOrigin
-    ) -> ResearchSkillPackage {
-        ResearchSkillTransactionCoordinator.inspectDraft(id: id, source: source, origin: origin)
-    }
-
-    public func inspectSkillDraft(
-        id: String,
-        source: String,
-        origin: ResearchSkillOrigin
-    ) async -> ResearchSkillPackage {
-        let inspected = Self.inspectSkillDraft(id: id, source: source, origin: origin)
-        guard origin == .triptych,
-              let handle = try? await reference.requireHandle(),
-              let persistedSkills = try? await handle.services.researchSkillStore.skills(),
-              let persisted = persistedSkills.first(where: {
-                  $0.id == id && $0.origin == origin
-              }) else {
-            return inspected
-        }
-        let packageBoundaryIssues = persisted.validationIssues.filter { issue in
-            issue.contains("protected Scholium package")
-                && !inspected.validationIssues.contains(issue)
-        }
-        return inspected.addingValidationIssues(packageBoundaryIssues)
     }
 
     // Protected execution seams remain internal so owning tests can exercise
@@ -468,10 +419,7 @@ public actor ResearchOperations:
             parentRunID: parentRunID,
             host: handle
         )
-        return try await functionCoordinator.attachingAgentActions(
-            to: preparation,
-            host: handle
-        )
+        return try functionCoordinator.attachingAgentActions(to: preparation)
     }
 
     func completeProtectedFunction(
@@ -661,6 +609,62 @@ public actor ResearchOperations:
         return try await handle.setResearchRecordPinned(id: id, isPinned: isPinned)
     }
 
+    public func saveResearcherEvaluation(
+        recordID: UUID,
+        draft: ResearcherEvaluationDraft,
+        expectedEvaluationRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveResearcherEvaluation(
+            recordID: recordID,
+            draft: draft,
+            expectedEvaluationRevision: expectedEvaluationRevision,
+            expectedResultFingerprint: expectedResultFingerprint
+        )
+    }
+
+    public func clearResearcherEvaluation(
+        recordID: UUID,
+        expectedEvaluationRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        let handle = try await reference.requireHandle()
+        return try await handle.clearResearcherEvaluation(
+            recordID: recordID,
+            expectedEvaluationRevision: expectedEvaluationRevision,
+            expectedResultFingerprint: expectedResultFingerprint
+        )
+    }
+
+    public func saveMethodFeedbackComment(
+        recordID: UUID,
+        draft: ResearchMethodFeedbackDraft,
+        expectedCommentRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveMethodFeedbackComment(
+            recordID: recordID,
+            draft: draft,
+            expectedCommentRevision: expectedCommentRevision,
+            expectedResultFingerprint: expectedResultFingerprint
+        )
+    }
+
+    public func clearMethodFeedbackComment(
+        recordID: UUID,
+        expectedCommentRevision: UUID,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        let handle = try await reference.requireHandle()
+        return try await handle.clearMethodFeedbackComment(
+            recordID: recordID,
+            expectedCommentRevision: expectedCommentRevision,
+            expectedResultFingerprint: expectedResultFingerprint
+        )
+    }
+
     public func setResearchRecordRecommendationDisposition(
         recordID: UUID,
         recommendationID: UUID,
@@ -833,105 +837,6 @@ public actor ResearchOperations:
         try await handle.resolveRecoveryRecord(id)
     }
 
-    public func skills() async throws -> [ResearchSkillPackage] {
-        let handle = try await reference.requireHandle()
-        return try await handle.skills()
-    }
-
-    public func skillCatalog() async throws -> ResearchSkillCatalog {
-        let handle = try await reference.requireHandle()
-        return try await handle.skillCatalog()
-    }
-
-    public func skillPackage(id: String) async throws -> ResearchSkillPackage {
-        let handle = try await reference.requireHandle()
-        return try await handle.skillPackage(id: id)
-    }
-
-    public func createSkill(id: String, source: String) async throws -> ResearchSkillPackage {
-        let handle = try await reference.requireHandle()
-        return try await handle.createSkill(id: id, source: source)
-    }
-
-    public func duplicateBundledSkill(
-        id: String,
-        as newID: String
-    ) async throws -> ResearchSkillPackage {
-        let handle = try await reference.requireHandle()
-        return try await handle.duplicateBundledSkill(id: id, as: newID)
-    }
-
-    public func saveSkill(
-        id: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillPackage {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveSkill(
-            id: id,
-            source: source,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func renameSkill(
-        id: String,
-        to newID: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillPackage {
-        let handle = try await reference.requireHandle()
-        return try await handle.renameSkill(
-            id: id,
-            to: newID,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func deleteSkill(
-        id: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws {
-        let handle = try await reference.requireHandle()
-        try await handle.deleteSkill(id: id, expectedRevision: expectedRevision)
-    }
-
-    public func skillResourcePaths(id: String) async throws -> [String] {
-        let handle = try await reference.requireHandle()
-        return try await handle.skillResourcePaths(id: id)
-    }
-
-    public func skillResource(id: String, relativePath: String) async throws -> String {
-        let handle = try await reference.requireHandle()
-        return try await handle.skillResource(id: id, relativePath: relativePath)
-    }
-
-    public func skillInstructionAssembly(
-        mode: ResearchSkillMode = .discuss,
-        requestedSkillIDs: [String] = [],
-        mixedPhases: [ResearchSkillAssemblyPhase] = []
-    ) async throws -> String {
-        let handle = try await reference.requireHandle()
-        return try await handle.skillInstructionAssembly(
-            mode: mode,
-            requestedSkillIDs: requestedSkillIDs,
-            mixedPhases: mixedPhases
-        )
-    }
-
-    public func resolveWorkflow(
-        _ contract: ResearchWorkflowContract
-    ) async throws -> ResolvedResearchWorkflowEnvelope {
-        let handle = try await reference.requireHandle()
-        return try await handle.resolveWorkflow(contract)
-    }
-
-    public func workingMethodBindings()
-        async throws -> ResearchWorkingMethodBindingSnapshot?
-    {
-        let handle = try await reference.requireHandle()
-        return try await handle.workingMethodBindings()
-    }
-
     public func availableActions(
         for target: ResearchActionNoteSnapshot
     ) async throws -> [ResearchActionAvailability] {
@@ -969,13 +874,6 @@ public actor ResearchOperations:
         return try await handle.prepareResearchActionFidelity(parentRunID: parentRunID)
     }
 
-    public func completeAction(
-        _ submission: ResearchActionCompletionSubmission
-    ) async throws -> ResearchActionCompletion {
-        let handle = try await reference.requireHandle()
-        return try await handle.completeResearchAction(submission)
-    }
-
     public func cancelAction(runID: UUID) async throws {
         let handle = try await reference.requireHandle()
         try await functionCoordinator.cancelAction(runID: runID, host: handle)
@@ -992,103 +890,6 @@ public actor ResearchOperations:
         )
     }
 
-    public func actionProfiles() async throws -> ResearchActionProfileSnapshot? {
-        let handle = try await reference.requireHandle()
-        return try await handle.actionProfiles()
-    }
-
-    public func saveActionProfile(
-        _ binding: ResearchActionProfileBinding,
-        expectedDocumentRevision: DocumentFingerprint?
-    ) async throws -> ResearchActionProfileSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveActionProfile(
-            binding,
-            expectedDocumentRevision: expectedDocumentRevision
-        )
-    }
-
-    public func removeActionProfile(
-        actionID: ResearchActionID,
-        expectedDocumentRevision: DocumentFingerprint
-    ) async throws -> ResearchActionProfileSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.removeActionProfile(
-            actionID: actionID,
-            expectedDocumentRevision: expectedDocumentRevision
-        )
-    }
-
-    public func saveActionProfileDocument(
-        _ document: ResearchActionProfileDocument,
-        expectedDocumentRevision: DocumentFingerprint?
-    ) async throws -> ResearchActionProfileSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveActionProfileDocument(
-            document,
-            expectedDocumentRevision: expectedDocumentRevision
-        )
-    }
-
-    public func installDefaultWorkingMethods()
-        async throws -> ResearchWorkingMethodBindingSnapshot
-    {
-        let handle = try await reference.requireHandle()
-        return try await handle.installDefaultWorkingMethods()
-    }
-
-    public func saveWorkingMethod(
-        for actionID: ResearchActionID,
-        source: String,
-        expectedPackageRevision: DocumentFingerprint,
-        expectedBindingRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillPackage {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveWorkingMethod(
-            for: actionID,
-            source: source,
-            expectedPackageRevision: expectedPackageRevision,
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
-    public func disableWorkingMethod(
-        for actionID: ResearchActionID,
-        expectedBindingRevision: DocumentFingerprint
-    ) async throws -> ResearchWorkingMethodBindingSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.disableWorkingMethod(
-            for: actionID,
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
-    public func activateResearcherSkill(
-        packageID: String,
-        for actionID: ResearchActionID,
-        expectedBindingRevision: DocumentFingerprint
-    ) async throws -> ResearchWorkingMethodBindingSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.activateResearcherSkill(
-            packageID: packageID,
-            for: actionID,
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
-    public func restoreBundledWorkingMethod(
-        for actionID: ResearchActionID,
-        expectedPackageState: ResearchWorkingMethodExpectedPackageState,
-        expectedBindingRevision: DocumentFingerprint
-    ) async throws -> ResearchWorkingMethodRestoreOutcome {
-        let handle = try await reference.requireHandle()
-        return try await handle.restoreBundledWorkingMethod(
-            for: actionID,
-            expectedPackageState: expectedPackageState,
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
     public func citationMethodStatus() async throws -> ResearchCitationMethodStatus {
         let handle = try await reference.requireHandle()
         return try await handle.researchCitationMethodStatus()
@@ -1096,144 +897,22 @@ public actor ResearchOperations:
 
     public func activateCitationMethod(
         selection: ResearchCitationMethodSelection,
-        expectedBindingRevision: DocumentFingerprint?
+        expectedConfigurationRevision: DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus {
         let handle = try await reference.requireHandle()
         return try await handle.activateResearchCitationMethod(
             selection,
-            expectedBindingRevision: expectedBindingRevision
+            expectedConfigurationRevision: expectedConfigurationRevision
         )
     }
 
     public func clearCitationMethod(
-        expectedBindingRevision: DocumentFingerprint?
+        expectedConfigurationRevision: DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus {
         let handle = try await reference.requireHandle()
         return try await handle.clearResearchCitationMethod(
-            expectedBindingRevision: expectedBindingRevision
+            expectedConfigurationRevision: expectedConfigurationRevision
         )
     }
 
-    public func adoptBundledCitationStarter(
-        expectedBindingRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.adoptBundledCitationStarter(
-            expectedBindingRevision: expectedBindingRevision
-        )
-    }
-
-    public func prepareSkillMaintenance(
-        _ request: ResearchSkillMaintenanceRequest
-    ) async throws -> ResearchSkillMaintenancePreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.services.researchSkillMaintenanceStore.prepare(request)
-    }
-
-    public func applySkillMaintenance(
-        _ preparation: ResearchSkillMaintenancePreparation,
-        confirmationToken: ResearchSkillMaintenanceConfirmationToken
-    ) async throws -> ResearchSkillMaintenanceApplyOutcome {
-        let handle = try await reference.requireHandle()
-        return try await handle.applyCoordinatedSkillMaintenance(
-            preparation,
-            confirmationToken: confirmationToken
-        )
-    }
-
-    public func restoreSkillMaintenance(
-        snapshotID: UUID,
-        expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
-    ) async throws -> ResearchSkillMaintenanceRestoreOutcome {
-        let handle = try await reference.requireHandle()
-        return try await handle.restoreCoordinatedSkillMaintenance(
-            snapshotID: snapshotID,
-            expectedCurrentState: expectedCurrentState
-        )
-    }
-
-    public func skillMaintenanceSnapshots(
-        packageID: String? = nil
-    ) async throws -> ResearchSkillMaintenanceSnapshotListing {
-        let handle = try await reference.requireHandle()
-        return try await handle.services.researchSkillMaintenanceStore.snapshots(
-            packageID: packageID
-        )
-    }
-
-}
-
-extension WorkspaceHandle {
-    fileprivate func applyCoordinatedSkillMaintenance(
-        _ preparation: ResearchSkillMaintenancePreparation,
-        confirmationToken: ResearchSkillMaintenanceConfirmationToken
-    ) async throws -> ResearchSkillMaintenanceApplyOutcome {
-        let mutationLease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationLease) }
-        return try await services.researchSkillMaintenanceStore.apply(
-            preparation,
-            confirmationToken: confirmationToken
-        )
-    }
-
-    fileprivate func restoreCoordinatedSkillMaintenance(
-        snapshotID: UUID,
-        expectedCurrentState: ResearchSkillMaintenanceExpectedCurrentState
-    ) async throws -> ResearchSkillMaintenanceRestoreOutcome {
-        let mutationLease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(mutationLease) }
-        return try await services.researchSkillMaintenanceStore.restore(
-            snapshotID: snapshotID,
-            expectedCurrentState: expectedCurrentState
-        )
-    }
-}
-
-/// Delivery-neutral access to the protected bundled research-guidance
-/// catalog. Its private control root has no Triptych-local packages, so these
-/// operations remain available before a workspace is configured.
-public actor ResearchGuidanceOperations {
-    private let store: ResearchSkillTransactionCoordinator
-
-    init(store: ResearchSkillTransactionCoordinator) {
-        self.store = store
-    }
-
-    public func skills() async throws -> [ResearchSkillPackage] {
-        try await store.skills()
-    }
-
-    public func catalog() async throws -> ResearchSkillCatalog {
-        try await store.catalog()
-    }
-
-    public func package(id: String) async throws -> ResearchSkillPackage {
-        try await store.package(id: id)
-    }
-
-    public func resourcePaths(id: String) async throws -> [String] {
-        try await store.resourcePaths(id: id)
-    }
-
-    public func resource(id: String, relativePath: String) async throws -> String {
-        try await store.resource(id: id, relativePath: relativePath)
-    }
-
-    public func instructionAssembly(
-        mode: ResearchSkillMode = .discuss,
-        requestedSkillIDs: [String] = [],
-        mixedPhases: [ResearchSkillAssemblyPhase] = []
-    ) async throws -> String {
-        try await store.instructionAssembly(
-            mode: mode,
-            requestedSkillIDs: requestedSkillIDs,
-            mixedPhases: mixedPhases
-        )
-    }
-
-    public func resolveWorkflow(
-        _ contract: ResearchWorkflowContract
-    ) async throws -> ResolvedResearchWorkflowEnvelope {
-        try await ResearchWorkflowAssembler.resolve(contract, store: store)
-    }
 }

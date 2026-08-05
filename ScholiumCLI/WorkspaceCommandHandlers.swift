@@ -99,30 +99,63 @@ extension ScholiumCLI {
             limit: limit
         ))
         if let diagnostic = response.diagnostics.first {
-            throw CLIError.usage(diagnostic.message)
+            throw CLIError.searchDiagnostic(diagnostic)
         }
         let format = option("--format", in: arguments) ?? "text"
         switch format {
         case "jsonl":
             let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
             let summary = SearchSummaryRecord(response: response)
             write(String(decoding: try encoder.encode(summary), as: UTF8.self) + "\n")
-            for hit in response.results {
+            for result in response.results {
                 write(String(
-                    decoding: try encoder.encode(SearchResultRecord(hit: hit)),
+                    decoding: try encoder.encode(SearchResultJSONRecord(
+                        result: result,
+                        contractVersion: response.contractVersion,
+                        scope: response.scope
+                    )),
                     as: UTF8.self
                 ) + "\n")
             }
         case "text":
+            let availability = SearchAvailabilityRecord(response.availability)
+            write(
+                "Search contract=\(response.contractVersion) provider=\(response.provider.rawValue) "
+                    + "scope=\(response.scope.rawValue) availability=\(availability.textDescription) "
+                    + "freshness=\(response.freshnessToken.rawValue)\n"
+            )
+            write("Explain: \(SearchExplanationRecord(response.explanation).textDescription)\n")
             if response.results.isEmpty { write("No matches.\n") }
-            for hit in response.results {
-                let line = hit.sourceRange?.line ?? hit.sourceLine
-                let column = hit.sourceRange?.column ?? 1
-                write(
-                    "\(hit.vaultName):\(hit.relativePath):\(line):\(column) "
-                        + "[retrieval_lead; \(hit.rankReason.rawValue)]\n  \(hit.snippet)\n"
-                )
+            for result in response.results {
+                switch result {
+                case .note(let hit):
+                    let line = hit.sourceRange?.line ?? hit.sourceLine
+                    let column = hit.sourceRange?.column ?? 1
+                    let reasons = hit.matchReasons
+                        .map(SearchMatchReasonRecord.init)
+                        .map(\.textDescription)
+                        .joined(separator: ", ")
+                    write(
+                        "note \(hit.vaultName):\(hit.relativePath):\(line):\(column) "
+                            + "[\(hit.classification.rawValue); \(hit.rankReason.rawValue); \(reasons)] "
+                            + "fingerprint=\(hit.fingerprint.sha256):\(hit.fingerprint.byteCount) "
+                            + "freshness=\(hit.freshnessToken.rawValue)\n  \(hit.snippet)\n"
+                    )
+                case .record(let hit):
+                    let statement = hit.statementID?.uuidString.lowercased() ?? "none"
+                    let author = hit.statementAuthor?.rawValue ?? "none"
+                    let fields = hit.matchedFields.map(\.rawValue).joined(separator: ",")
+                    write(
+                        "record \(hit.recordID.uuidString.lowercased()) "
+                            + "statement=\(statement) author=\(author) "
+                            + "[\(hit.classification.rawValue); \(hit.matchedReason); fields=\(fields)] "
+                            + "fingerprint=\(hit.fingerprint.sha256):\(hit.fingerprint.byteCount) "
+                            + "freshness=\(hit.freshnessToken.rawValue)\n  \(hit.snippet)\n"
+                    )
+                }
             }
         default:
             throw CLIError.usage("--format must be text or jsonl.")
@@ -132,39 +165,315 @@ extension ScholiumCLI {
     private struct SearchSummaryRecord: Encodable {
         let type = "search_summary"
         let contractVersion: Int
-        let generation: SearchGenerationID?
+        let requestID: UUID
+        let provider: SearchProvider
         let scope: String
-        let status: String
+        let availability: SearchAvailabilityRecord
+        let freshnessToken: SearchFreshnessToken
+        let explanation: SearchExplanationRecord
         let resultCount: Int
         let hasMore: Bool
 
         init(response: SearchResponse) {
             contractVersion = response.contractVersion
-            generation = response.availability.lastGoodGeneration
+            requestID = response.requestID
+            provider = response.provider
             scope = response.scope.rawValue
-            status = switch response.availability {
-            case .unavailable: "unavailable"
-            case .building: "building"
-            case .current: "current"
-            case .refreshing: "refreshing"
-            case .stale: "stale"
-            case .failed: "failed"
-            }
+            availability = SearchAvailabilityRecord(response.availability)
+            freshnessToken = response.freshnessToken
+            explanation = SearchExplanationRecord(response.explanation)
             resultCount = response.results.count
             hasMore = response.hasMore
         }
+    }
 
-        enum CodingKeys: String, CodingKey {
-            case type
-            case contractVersion = "contract_version"
-            case generation, scope, status
-            case resultCount = "result_count"
-            case hasMore = "has_more"
+    private struct SearchAvailabilityRecord: Encodable {
+        let provider: SearchProvider
+        let status: String
+        let noteGeneration: SearchGenerationID?
+        let recordGeneration: RecordSearchGenerationID?
+        let progress: SearchBuildProgress?
+        let reason: String?
+
+        init(_ availability: SearchProviderAvailability) {
+            switch availability {
+            case .note(let value):
+                provider = .note
+                recordGeneration = nil
+                switch value {
+                case .unavailable:
+                    status = "unavailable"
+                    noteGeneration = nil
+                    progress = nil
+                    reason = nil
+                case .building(let value):
+                    status = "building"
+                    noteGeneration = nil
+                    progress = value
+                    reason = nil
+                case .current(let generation):
+                    status = "current"
+                    noteGeneration = generation
+                    progress = nil
+                    reason = nil
+                case .refreshing(let generation):
+                    status = "refreshing"
+                    noteGeneration = generation
+                    progress = nil
+                    reason = nil
+                case .stale(let generation, let value):
+                    status = "stale"
+                    noteGeneration = generation
+                    progress = nil
+                    reason = value
+                case .failed(let generation, let value):
+                    status = "failed"
+                    noteGeneration = generation
+                    progress = nil
+                    reason = value
+                }
+            case .record(let value):
+                provider = .record
+                noteGeneration = nil
+                switch value {
+                case .unavailable:
+                    status = "unavailable"
+                    recordGeneration = nil
+                    progress = nil
+                    reason = nil
+                case .building(let value):
+                    status = "building"
+                    recordGeneration = nil
+                    progress = value
+                    reason = nil
+                case .current(let generation):
+                    status = "current"
+                    recordGeneration = generation
+                    progress = nil
+                    reason = nil
+                case .refreshing(let generation):
+                    status = "refreshing"
+                    recordGeneration = generation
+                    progress = nil
+                    reason = nil
+                case .stale(let generation, let value):
+                    status = "stale"
+                    recordGeneration = generation
+                    progress = nil
+                    reason = value
+                case .failed(let generation, let value):
+                    status = "failed"
+                    recordGeneration = generation
+                    progress = nil
+                    reason = value
+                }
+            }
+        }
+
+        var textDescription: String {
+            guard let reason, !reason.isEmpty else { return status }
+            return "\(status)(\(reason.replacingOccurrences(of: "\n", with: " ")))"
         }
     }
 
-    private struct SearchResultRecord: Encodable {
+    private struct SearchQuerySourceRangeRecord: Encodable {
+        let utf16LowerBound: Int
+        let utf16UpperBound: Int
+
+        init(_ range: Range<Int>) {
+            utf16LowerBound = range.lowerBound
+            utf16UpperBound = range.upperBound
+        }
+    }
+
+    private struct SearchExplanationClauseRecord: Encodable {
+        let kind: String
+        let field: String?
+        let value: String?
+        let propertyKey: String?
+        let matchKind: SearchLexicalMatchKind?
+        let excluded: Bool
+        let relation: SearchRelation?
+        let relationDirection: SearchRelationDirection?
+        let symmetric: Bool?
+        let sourceRange: SearchQuerySourceRangeRecord
+
+        init(_ clause: SearchExplanationClause) {
+            sourceRange = SearchQuerySourceRangeRecord(clause.sourceRange)
+            switch clause.kind {
+            case .lexical(let lexicalField, let lexicalValue, let lexicalKind, let isExcluded):
+                kind = "lexical"
+                field = lexicalField?.rawValue
+                value = lexicalValue
+                propertyKey = nil
+                matchKind = lexicalKind
+                excluded = isExcluded
+                relation = nil
+                relationDirection = nil
+                symmetric = nil
+            case .structured(let structuredField, let structuredValue, let isExcluded):
+                kind = "structured"
+                field = structuredField.rawValue
+                value = structuredValue
+                propertyKey = nil
+                matchKind = nil
+                excluded = isExcluded
+                relation = nil
+                relationDirection = nil
+                symmetric = nil
+            case .property(let key, let exactValue):
+                kind = "property"
+                field = "property"
+                value = exactValue
+                propertyKey = key
+                matchKind = nil
+                excluded = false
+                relation = nil
+                relationDirection = nil
+                symmetric = nil
+            case .relation(let direction, let identity, let relationValue, let isSymmetric):
+                kind = "relationship"
+                field = direction.rawValue
+                value = identity
+                propertyKey = nil
+                matchKind = nil
+                excluded = false
+                relation = relationValue
+                relationDirection = direction
+                symmetric = isSymmetric
+            case .record(let recordField, let recordValue, let lexicalKind, let isExcluded):
+                kind = "record"
+                field = recordField?.rawValue
+                value = recordValue
+                propertyKey = nil
+                matchKind = lexicalKind
+                excluded = isExcluded
+                relation = nil
+                relationDirection = nil
+                symmetric = nil
+            }
+        }
+
+        var textDescription: String {
+            let prefix = excluded ? "NOT " : ""
+            switch kind {
+            case "property":
+                let key = propertyKey ?? "unknown"
+                if let value { return "property \(key)=\"\(value)\"" }
+                return "property \(key) present"
+            case "relationship":
+                return "\(relationDirection?.rawValue ?? field ?? "relation") \"\(value ?? "")\" "
+                    + "relation \(relation?.rawValue ?? "unknown")"
+                    + (symmetric == true ? " (symmetric)" : "")
+            default:
+                let fieldPrefix = field.map { "\($0):" } ?? ""
+                let renderedValue = matchKind == .phrase ? "\"\(value ?? "")\"" : (value ?? "")
+                let suffix = matchKind == .prefix ? "*" : ""
+                return "\(prefix)\(fieldPrefix)\(renderedValue)\(suffix)"
+            }
+        }
+    }
+
+    private struct SearchExplanationRecord: Encodable {
+        let provider: SearchProvider
+        let providerWasExplicit: Bool
+        let `operator`: SearchExplanationOperator
+        let clauses: [SearchExplanationClauseRecord]
+
+        init(_ explanation: SearchExplanation) {
+            provider = explanation.provider
+            providerWasExplicit = explanation.providerWasExplicit
+            `operator` = explanation.operator
+            clauses = explanation.clauses.map(SearchExplanationClauseRecord.init)
+        }
+
+        var textDescription: String {
+            let providerSource = providerWasExplicit ? "explicit" : "default"
+            let clauseText = clauses.map(\.textDescription).joined(separator: " AND ")
+            return clauseText.isEmpty
+                ? "provider=\(provider.rawValue) (\(providerSource)); no clauses"
+                : "provider=\(provider.rawValue) (\(providerSource)); \(clauseText)"
+        }
+    }
+
+    private struct NoteSearchLocatorRecord: Encodable {
+        let sourceRange: SearchSourceRange?
+        let fallbackLine: Int
+        let fallbackColumn: Int
+
+        init(_ result: NoteSearchResult) {
+            sourceRange = result.sourceRange
+            fallbackLine = result.sourceLine
+            fallbackColumn = 1
+        }
+    }
+
+    private struct RecordSearchLocatorRecord: Encodable {
+        let recordID: UUID
+        let statementID: UUID?
+        let statementAuthor: PortableResearchStatementAuthor?
+        let sourceRange: SearchSourceRange?
+
+        init(_ result: RecordSearchResult) {
+            recordID = result.recordID
+            statementID = result.statementID
+            statementAuthor = result.statementAuthor
+            sourceRange = result.sourceRange
+        }
+    }
+
+    private struct SearchMatchReasonRecord: Encodable {
+        let kind: String
+        let property: SearchPropertyMatch?
+        let relationship: SearchRelationshipMatch?
+
+        init(_ reason: NoteSearchMatchReason) {
+            switch reason {
+            case .lexical:
+                kind = "lexical"
+                property = nil
+                relationship = nil
+            case .property(let value):
+                kind = "property"
+                property = value
+                relationship = nil
+            case .relationship(let value):
+                kind = "relationship"
+                property = nil
+                relationship = value
+            }
+        }
+
+        var textDescription: String {
+            switch kind {
+            case "property":
+                guard let property else { return kind }
+                if let value = property.normalizedValue {
+                    return "property:\(property.key)=\(value)"
+                }
+                return property.isEmpty
+                    ? "property:\(property.key) (present-empty)"
+                    : "property:\(property.key) (\(property.valueKind.rawValue))"
+            case "relationship":
+                guard let relationship else { return kind }
+                let source = relationship.occurrences.first.map {
+                    " source=\($0.sourceNote.vaultID.uuidString.lowercased())/"
+                        + "\($0.sourceNote.relativePath):\($0.locator.line):\($0.locator.column)"
+                } ?? ""
+                return "\(relationship.direction.rawValue):\(relationship.anchorIdentity) "
+                    + "relation:\(relationship.relation.rawValue)"
+                    + source
+            default:
+                return kind
+            }
+        }
+    }
+
+    private struct NoteSearchResultJSONRecord: Encodable {
         let type = "search_result"
+        let contractVersion: Int
+        let provider = SearchProvider.note
+        let scope: SearchPresentationScope
         let resultID: String
         let vaultID: UUID
         let vaultName: String
@@ -172,16 +481,22 @@ extension ScholiumCLI {
         let relativePath: String
         let stableNoteID: String?
         let title: String
+        let evidentialLayer: EvidentialLayer
+        let matchedField: SearchMatchedField
         let matchedFields: [SearchMatchedField]
         let rankReason: SearchRankReason
+        let matchReasons: [SearchMatchReasonRecord]
+        let context: String?
         let snippet: String
         let highlights: [SearchHighlight]
-        let sourceRange: SearchSourceRange?
+        let locator: NoteSearchLocatorRecord
         let fingerprint: DocumentFingerprint
         let freshnessToken: SearchFreshnessToken
         let classification: SearchResultClassification
 
-        init(hit: SearchHit) {
+        init(hit: NoteSearchResult, contractVersion: Int, scope: SearchPresentationScope) {
+            self.contractVersion = contractVersion
+            self.scope = scope
             resultID = hit.resultID
             vaultID = hit.vaultID
             vaultName = hit.vaultName
@@ -189,32 +504,103 @@ extension ScholiumCLI {
             relativePath = hit.relativePath
             stableNoteID = hit.stableNoteID
             title = hit.title
+            evidentialLayer = hit.evidentialLayer
+            matchedField = hit.matchedField
             matchedFields = hit.matchedFields
             rankReason = hit.rankReason
+            matchReasons = hit.matchReasons.map(SearchMatchReasonRecord.init)
+            context = hit.context
             snippet = hit.snippet
             highlights = hit.highlights
-            sourceRange = hit.sourceRange
+            locator = NoteSearchLocatorRecord(hit)
             fingerprint = hit.fingerprint
             freshnessToken = hit.freshnessToken
             classification = hit.classification
         }
+    }
 
-        enum CodingKeys: String, CodingKey {
-            case type
-            case resultID = "result_id"
-            case vaultID = "vault_id"
-            case vaultName = "vault_name"
-            case vaultRole = "vault_role"
-            case relativePath = "relative_path"
-            case stableNoteID = "stable_note_id"
-            case title
-            case matchedFields = "matched_fields"
-            case rankReason = "rank_reason"
-            case snippet, highlights
-            case sourceRange = "source_range"
-            case fingerprint
-            case freshnessToken = "freshness_token"
-            case classification
+    private struct RecordSearchResultJSONRecord: Encodable {
+        let type = "search_result"
+        let contractVersion: Int
+        let provider = SearchProvider.record
+        let scope: SearchPresentationScope
+        let resultID: String
+        let recordID: UUID
+        let statementID: UUID?
+        let statementAuthor: PortableResearchStatementAuthor?
+        let matchedField: RecordSearchMatchedField
+        let matchedFields: [RecordSearchMatchedField]
+        let matchedReason: String
+        let context: String
+        let actionID: String?
+        let methodName: String?
+        let sourceDisplayName: String?
+        let finishedAt: Date
+        let pinned: Bool
+        let participatingNotes: [VaultQualifiedNoteID]
+        let snippet: String
+        let highlights: [SearchHighlight]
+        let locator: RecordSearchLocatorRecord
+        let fingerprint: DocumentFingerprint
+        let freshnessToken: SearchFreshnessToken
+        let classification: SearchResultClassification
+
+        init(hit: RecordSearchResult, contractVersion: Int, scope: SearchPresentationScope) {
+            self.contractVersion = contractVersion
+            self.scope = scope
+            resultID = hit.resultID
+            recordID = hit.recordID
+            statementID = hit.statementID
+            statementAuthor = hit.statementAuthor
+            matchedField = hit.matchedField
+            matchedFields = hit.matchedFields
+            matchedReason = hit.matchedReason
+            context = hit.context
+            actionID = hit.actionID
+            methodName = hit.methodName
+            sourceDisplayName = hit.sourceDisplayName
+            finishedAt = hit.finishedAt
+            pinned = hit.pinned
+            participatingNotes = hit.participatingNotes
+            snippet = hit.snippet
+            highlights = hit.highlights
+            locator = RecordSearchLocatorRecord(hit)
+            fingerprint = hit.fingerprint
+            freshnessToken = hit.freshnessToken
+            classification = hit.classification
+        }
+    }
+
+    private enum SearchResultJSONRecord: Encodable {
+        case note(NoteSearchResultJSONRecord)
+        case record(RecordSearchResultJSONRecord)
+
+        init(
+            result: SearchResult,
+            contractVersion: Int,
+            scope: SearchPresentationScope
+        ) {
+            switch result {
+            case .note(let hit):
+                self = .note(NoteSearchResultJSONRecord(
+                    hit: hit,
+                    contractVersion: contractVersion,
+                    scope: scope
+                ))
+            case .record(let hit):
+                self = .record(RecordSearchResultJSONRecord(
+                    hit: hit,
+                    contractVersion: contractVersion,
+                    scope: scope
+                ))
+            }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            switch self {
+            case .note(let record): try record.encode(to: encoder)
+            case .record(let record): try record.encode(to: encoder)
+            }
         }
     }
 
@@ -414,386 +800,6 @@ extension ScholiumCLI {
         }
     }
 
-    static func runSkills(
-        _ arguments: [String],
-        context: CLIContext
-    ) async throws {
-        guard let subcommand = arguments.first else {
-            throw CLIError.usage(
-                "Usage: scholium skills <catalog|show|resources> [options]"
-            )
-        }
-        let workspaceResearch: (any ResearchSkillUseCases)?
-        if let selector = option("--triptych", in: arguments) {
-            let assignment = try await context.triptych(selector: selector)
-            workspaceResearch = try await context.handle(for: assignment).research
-        } else {
-            workspaceResearch = nil
-        }
-        let catalog = if let workspaceResearch {
-            try await workspaceResearch.skillCatalog()
-        } else {
-            try await context.runtime.researchGuidance.catalog()
-        }
-        let format = option("--format", in: arguments) ?? "text"
-
-        func skills() async throws -> [ResearchSkillPackage] {
-            if let workspaceResearch {
-                return try await workspaceResearch.skills()
-            }
-            return try await context.runtime.researchGuidance.skills()
-        }
-
-        func resolvedPackage(id: String) async throws -> ResearchSkillPackage {
-            if let workspaceResearch {
-                return try await workspaceResearch.skillPackage(id: id)
-            }
-            return try await context.runtime.researchGuidance.package(id: id)
-        }
-
-        func resourcePaths(id: String) async throws -> [String] {
-            if let workspaceResearch {
-                return try await workspaceResearch.skillResourcePaths(id: id)
-            }
-            return try await context.runtime.researchGuidance.resourcePaths(id: id)
-        }
-
-        func resource(id: String, relativePath: String) async throws -> String {
-            if let workspaceResearch {
-                return try await workspaceResearch.skillResource(
-                    id: id,
-                    relativePath: relativePath
-                )
-            }
-            return try await context.runtime.researchGuidance.resource(
-                id: id,
-                relativePath: relativePath
-            )
-        }
-
-        func packagePayload(_ package: ResearchSkillPackage) -> [String: Any] {
-            var payload: [String: Any] = [
-                "id": package.id,
-                "name": package.name,
-                "description": package.description,
-                "class": package.skillClass.rawValue,
-                "role": package.role,
-                "version": package.version,
-                "origin": package.origin.rawValue,
-                "update_policy": package.updatePolicy,
-                "supported_modes": package.supportedModes.map(\.rawValue),
-                "automatic_modes": package.automaticModes.map(\.rawValue),
-                "compatible_practices": package.compatiblePracticeIDs,
-                "required_skills": package.requiredSkillIDs,
-                "practice_resources": package.practiceResources,
-                "validation_issues": package.validationIssues,
-            ]
-            if let revision = package.revision {
-                payload["revision"] = [
-                    "sha256": revision.sha256,
-                    "byte_count": revision.byteCount,
-                ]
-            }
-            return payload
-        }
-
-        switch subcommand {
-        case "catalog":
-            guard format == "text" || format == "json" else {
-                throw CLIError.usage("--format must be text or json.")
-            }
-            if format == "json" {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                if workspaceResearch != nil {
-                    let protectedData = try encoder.encode(catalog)
-                    let protectedObject = try JSONSerialization.jsonObject(with: protectedData)
-                    let local = try await skills().filter { $0.origin == .triptych }
-                    let data = try JSONSerialization.data(
-                        withJSONObject: [
-                            "protected_catalog": protectedObject,
-                            "triptych_packages": local.map(packagePayload),
-                        ],
-                        options: [.prettyPrinted, .sortedKeys]
-                    )
-                    write(String(decoding: data, as: UTF8.self) + "\n")
-                } else {
-                    write(String(decoding: try encoder.encode(catalog), as: UTF8.self) + "\n")
-                }
-            } else {
-                write("Scholium protected Skill catalog (schema \(catalog.schemaVersion))\n")
-                for entry in catalog.entries {
-                    let modes = entry.supportedModes.map(\.rawValue).joined(separator: ", ")
-                    write("\(entry.id)  \(entry.skillClass.rawValue)  \(entry.version)\n")
-                    write("  \(entry.name): \(entry.description)\n")
-                    write("  Modes: \(modes)\n")
-                    if !entry.automaticModes.isEmpty {
-                        write("  Automatic: \(entry.automaticModes.map(\.rawValue).joined(separator: ", "))\n")
-                    }
-                    if !entry.requiredSkillIDs.isEmpty {
-                        write("  Requires: \(entry.requiredSkillIDs.joined(separator: ", "))\n")
-                    }
-                    if !entry.compatiblePracticeIDs.isEmpty {
-                        write("  Compatible Practices: \(entry.compatiblePracticeIDs.joined(separator: ", "))\n")
-                    }
-                }
-                if workspaceResearch != nil {
-                    let local = try await skills().filter { $0.origin == .triptych }
-                    if !local.isEmpty {
-                        write("\nTriptych-local Researcher Skills\n")
-                        for package in local {
-                            write("\(package.id)  researcher  \(package.revision?.sha256 ?? "invalid")\n")
-                            write("  \(package.name): \(package.description)\n")
-                        }
-                    }
-                }
-            }
-
-        case "show":
-            guard arguments.count >= 2 else {
-                throw CLIError.usage(
-                    "Usage: scholium skills show <skill-id> [--triptych <selector>] [--resource <path>] [--format text|json]"
-                )
-            }
-            let skillID = arguments[1]
-            let resourcePath = option("--resource", in: arguments) ?? "SKILL.md"
-            let package: ResearchSkillPackage
-            let source: String
-            let entry = try? catalog.entry(id: skillID)
-            if let entry {
-                package = try await resolvedPackage(id: entry.id)
-                source = try await resource(id: entry.id, relativePath: resourcePath)
-            } else {
-                guard workspaceResearch != nil else {
-                    throw CLIError.usage(
-                        "Triptych-local Skill \(skillID) requires --triptych <selector>."
-                    )
-                }
-                package = try await resolvedPackage(id: skillID)
-                source = try await resource(id: skillID, relativePath: resourcePath)
-            }
-            if format == "json" {
-                var metadata = packagePayload(package)
-                if let entry {
-                    metadata["supported_modes"] = entry.supportedModes.map(\.rawValue)
-                    metadata["automatic_modes"] = entry.automaticModes.map(\.rawValue)
-                    metadata["compatible_practices"] = entry.compatiblePracticeIDs
-                    metadata["required_skills"] = entry.requiredSkillIDs
-                    metadata["path"] = entry.resourcePath
-                }
-                let payload: [String: Any] = ["entry": metadata, "source": source]
-                let data = try JSONSerialization.data(
-                    withJSONObject: payload,
-                    options: [.prettyPrinted, .sortedKeys]
-                )
-                write(String(decoding: data, as: UTF8.self) + "\n")
-            } else {
-                write("\(package.name) (\(package.id))\n")
-                write("Class: \(package.skillClass.rawValue)\n")
-                write("Origin: \(package.origin.rawValue)\n")
-                write("Version: \(package.version)\n")
-                if let revision = package.revision {
-                    write("Revision: \(revision.sha256)\n")
-                }
-                if let entry {
-                    write("Modes: \(entry.supportedModes.map(\.rawValue).joined(separator: ", "))\n")
-                    if !entry.automaticModes.isEmpty {
-                        write("Automatic: \(entry.automaticModes.map(\.rawValue).joined(separator: ", "))\n")
-                    }
-                    if !entry.compatiblePracticeIDs.isEmpty {
-                        write("Compatible Practices: \(entry.compatiblePracticeIDs.joined(separator: ", "))\n")
-                    }
-                }
-                write("\n")
-                write(source)
-                if !source.hasSuffix("\n") { write("\n") }
-            }
-
-        case "resources":
-            guard arguments.count >= 2 else {
-                throw CLIError.usage(
-                    "Usage: scholium skills resources <skill-id> [--triptych <selector>] [--format text|json]"
-                )
-            }
-            let skillID = arguments[1]
-            let resources: [String]
-            let revision: DocumentFingerprint?
-            if (try? catalog.entry(id: skillID)) != nil {
-                resources = try await resourcePaths(id: skillID)
-                revision = try await resolvedPackage(id: skillID).revision
-            } else {
-                guard workspaceResearch != nil else {
-                    throw CLIError.usage(
-                        "Triptych-local Skill \(skillID) requires --triptych <selector>."
-                    )
-                }
-                resources = try await resourcePaths(id: skillID)
-                revision = try await resolvedPackage(id: skillID).revision
-            }
-            guard format == "text" || format == "json" else {
-                throw CLIError.usage("--format must be text or json.")
-            }
-            if format == "json" {
-                let revisionPayload: Any = if let revision {
-                    ["sha256": revision.sha256, "byte_count": revision.byteCount]
-                } else {
-                    NSNull()
-                }
-                let data = try JSONSerialization.data(
-                    withJSONObject: [
-                        "skill_id": skillID,
-                        "revision": revisionPayload,
-                        "resources": resources,
-                    ],
-                    options: [.prettyPrinted, .sortedKeys]
-                )
-                write(String(decoding: data, as: UTF8.self) + "\n")
-            } else {
-                for resource in resources { write(resource + "\n") }
-            }
-
-        default:
-            throw CLIError.usage("Unknown Skill command '\(subcommand)'.")
-        }
-    }
-
-    static func runWorkflow(
-        _ arguments: [String],
-        context: CLIContext
-    ) async throws {
-        guard let subcommand = arguments.first else {
-            throw CLIError.usage(
-                "Usage: scholium workflow <validate|assemble|audit-plan> --from <file|-> [options]"
-            )
-        }
-        guard let input = option("--from", in: arguments) else {
-            throw CLIError.usage("Workflow commands require --from <file|->.")
-        }
-        let data = try inputData(from: input)
-        let decoder = JSONDecoder()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-
-        switch subcommand {
-        case "validate", "assemble":
-            let contract: ResearchWorkflowContract
-            do {
-                contract = try decoder.decode(ResearchWorkflowContract.self, from: data)
-            } catch {
-                throw CLIError.usage(
-                    "Workflow input must be a valid ResearchWorkflowContract JSON document. \(error.localizedDescription)"
-                )
-            }
-            let assignment = try await workflowTriptych(
-                for: contract,
-                triptychSelector: option("--triptych", in: arguments),
-                context: context
-            )
-            let envelope: ResolvedResearchWorkflowEnvelope
-            if let assignment {
-                let handle = try await context.handle(for: assignment)
-                envelope = try await handle.research.resolveWorkflow(contract)
-            } else {
-                envelope = try await context.runtime.researchGuidance.resolveWorkflow(contract)
-            }
-
-            if subcommand == "validate" {
-                guard (option("--format", in: arguments) ?? "json") == "json" else {
-                    throw CLIError.usage("scholium workflow validate supports only --format json.")
-                }
-                let report = WorkflowValidationReport(envelope: envelope)
-                write(String(decoding: try encoder.encode(report), as: UTF8.self) + "\n")
-                return
-            }
-
-            let format = option("--format", in: arguments) ?? "markdown"
-            switch format {
-            case "markdown":
-                write(envelope.renderedInstructions)
-                if !envelope.renderedInstructions.hasSuffix("\n") { write("\n") }
-            case "json":
-                write(String(decoding: try encoder.encode(envelope), as: UTF8.self) + "\n")
-            default:
-                throw CLIError.usage(
-                    "scholium workflow assemble --format must be markdown or json."
-                )
-            }
-
-        case "audit-plan":
-            guard (option("--format", in: arguments) ?? "json") == "json" else {
-                throw CLIError.usage("scholium workflow audit-plan supports only --format json.")
-            }
-            let planningInput: ResearchAuditPlanningInput
-            do {
-                planningInput = try decoder.decode(ResearchAuditPlanningInput.self, from: data)
-            } catch {
-                throw CLIError.usage(
-                    "Workflow audit input must be valid ResearchAuditPlanningInput JSON. \(error.localizedDescription)"
-                )
-            }
-            let plan = try ResearchAuditPlanner.plan(planningInput)
-            write(String(decoding: try encoder.encode(plan), as: UTF8.self) + "\n")
-
-        default:
-            throw CLIError.usage("Unknown workflow command '\(subcommand)'.")
-        }
-    }
-
-    private static func workflowTriptych(
-        for contract: ResearchWorkflowContract,
-        triptychSelector: String?,
-        context: CLIContext
-    ) async throws -> TriptychAssignment? {
-        let catalog = try await context.runtime.researchGuidance.catalog()
-        let protectedIDs = Set(catalog.entries.map(\.id))
-        let requestedIDs = Set(contract.phases.flatMap { phase in
-            phase.requiredSkillIDs + phase.selectedPractices.map(\.packageID)
-        })
-        let localPackageIDs = requestedIDs.subtracting(protectedIDs)
-        let allReferences = contract.originalReadSet
-            + contract.originalWriteSet
-            + contract.phases.flatMap { phase in
-                phase.readSet + phase.writeSet + phase.handoff.basis
-                    + phase.handoff.candidateTargets
-            }
-        let referencesTriptych = contract.dialogueTarget != nil || allReferences.contains {
-            $0.kind == .note || $0.kind == .dialogue || $0.kind == .workspaceCatalog
-        }
-        if triptychSelector == nil, referencesTriptych || !localPackageIDs.isEmpty {
-            var reasons: [String] = []
-            if referencesTriptych { reasons.append("Triptych artifacts") }
-            if !localPackageIDs.isEmpty {
-                reasons.append(
-                    "local packages: " + localPackageIDs.sorted().joined(separator: ", ")
-                )
-            }
-            throw CLIError.usage(
-                "--triptych <selector> is required because this workflow references "
-                    + reasons.joined(separator: " and ") + "."
-            )
-        }
-        guard let triptychSelector else {
-            return nil
-        }
-        return try await context.triptych(selector: triptychSelector)
-    }
-
-    private static func inputData(from path: String) throws -> Data {
-        let data: Data
-        if path == "-" {
-            data = FileHandle.standardInput.readDataToEndOfFile()
-        } else {
-            let url = URL(
-                fileURLWithPath: (path as NSString).expandingTildeInPath,
-                isDirectory: false
-            )
-            data = try Data(contentsOf: url)
-        }
-        guard !data.isEmpty else {
-            throw CLIError.usage("Workflow input is empty.")
-        }
-        return data
-    }
 
     static func runDiscuss(
         _ arguments: [String],

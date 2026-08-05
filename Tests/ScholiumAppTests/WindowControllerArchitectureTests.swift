@@ -285,8 +285,8 @@ struct WindowControllerArchitectureTests {
         #expect(!store.contains("workspaceDerivedRefreshStatuses"))
     }
 
-    @Test("Agent request claims and exact-window presentation have distinct owners")
-    func agentRequestWindowOwnership() throws {
+    @Test("Agent permission claims and exact-window presentation have distinct owners")
+    func researchAgentPermissionWindowOwnership() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -299,13 +299,13 @@ struct WindowControllerArchitectureTests {
         )
         let controller = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Features/ResearchContext/AgentNoteChangeWindowController.swift"
+                "Scholium/Features/ResearchContext/ResearchAgentPermissionWindowController.swift"
             ),
             encoding: .utf8
         )
         let claims = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Features/ResearchContext/AgentNoteChangeClaimCoordinator.swift"
+                "Scholium/Features/ResearchContext/ResearchAgentPermissionClaimCoordinator.swift"
             ),
             encoding: .utf8
         )
@@ -323,55 +323,46 @@ struct WindowControllerArchitectureTests {
         )
         let sheet = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchActions/AgentNoteChangeRequestView.swift"
+                "Scholium/Views/ResearchActions/ResearchWriteSetExtensionView.swift"
             ),
             encoding: .utf8
         )
 
         #expect(app.contains(
-            "lazy var agentNoteChangeWindowController = AgentNoteChangeWindowController("
+            "lazy var researchAgentPermissionWindowController =\n        ResearchAgentPermissionWindowController("
         ))
-        #expect(!app.contains("agentNoteChangeWindowController.objectWillChange"))
+        #expect(!app.contains("researchAgentPermissionWindowController.objectWillChange"))
         #expect(content.contains(
-            "@ObservedObject private var agentNoteChangeWindowController: AgentNoteChangeWindowController"
+            "@ObservedObject private var researchAgentPermissionWindowController:"
         ))
         for retiredWindowModelOwner in [
-            "@Published private(set) var presentedAgentNoteChangeRequest",
-            "@Published private(set) var presentedAgentNoteChangeIdentity",
-            "agentNoteChangeIdentityTask",
-            "agentNoteChangeExpiryTask",
-            "func resolvePresentedAgentNoteChangeRequest",
-            "func finishAgentNoteChangeRequestDismissal",
-            "func displayTargets(\n        for record: AgentNoteChangeRequestRecord",
+            "@Published private(set) var presentedResearchWriteSetExtension",
+            "researchWriteSetExtensionExpiryTask",
+            "func resolvePresentedResearchWriteSetExtension",
         ] {
             #expect(!app.contains(retiredWindowModelOwner))
         }
         #expect(controller.contains(
-            "final class AgentNoteChangeWindowController: ObservableObject"
+            "final class ResearchAgentPermissionWindowController: ObservableObject"
         ))
-        #expect(controller.contains("@Published private(set) var record"))
-        #expect(controller.contains("struct AgentNoteChangeDisplayTarget"))
-        #expect(controller.contains("struct AgentNoteChangePresentationIdentity"))
+        #expect(controller.contains("@Published private(set) var claim"))
         #expect(controller.contains("private var decisionTask"))
         #expect(controller.contains("func registerWindowEndpoint"))
         #expect(controller.contains("func finishDismissal"))
         #expect(controller.contains("private func resetPresentationState"))
-        #expect(claims.contains("final class AgentNoteChangeClaimCoordinator"))
+        #expect(claims.contains("final class ResearchAgentPermissionClaimCoordinator"))
         #expect(claims.contains("private var claims: [UUID: UUID]"))
         #expect(windowManagement.contains(
-            "agentNoteChangeWindowController.registerWindowEndpoint("
+            "researchAgentPermissionWindowController.registerWindowEndpoint("
         ))
         #expect(windowManagement.contains("func windowWillClose("))
-        #expect(windowManagement.contains("unregisterAgentNoteChangeWindow()"))
+        #expect(windowManagement.contains("unregisterResearchAgentPermissionWindow()"))
         #expect(windowManagement.contains("agentRequestPriorResponder"))
-        #expect(windowManagement.contains("restoreAgentNoteChangeFocus"))
-        #expect(content.contains("appState.agentNoteChangeWindowController"))
-        #expect(!sheet.contains("struct AgentNoteChangeDisplayTarget"))
-        #expect(!sheet.contains("struct AgentNoteChangePresentationIdentity"))
-        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
-            .appendingPathComponent(
-                "Scholium/Features/ResearchContext/AgentNoteChangePresentationCoordinator.swift"
-            ).path))
+        #expect(windowManagement.contains("restoreResearchAgentPermissionFocus"))
+        #expect(content.contains("appState.researchAgentPermissionWindowController"))
+        #expect(sheet.contains("struct ResearchAgentPermissionView: View"))
+        #expect(sheet.contains("struct ResearchWriteSetExtensionView: View"))
+        #expect(sheet.contains("struct ResearchContinuationPermissionView: View"))
     }
 
     @Test("Workspace activation distinguishes a popover key transition from a window switch")
@@ -1488,7 +1479,6 @@ struct WindowControllerArchitectureTests {
             "workspaceStore.federatedSearch",
             "PropertyContractCatalog.validate",
             "discoveryController.search(",
-            "discoveryController.relatedResults(",
             "SearchQuery(",
             "newAnalysisContent",
             "yamlQuotedScalar",
@@ -1721,7 +1711,6 @@ struct WindowControllerArchitectureTests {
         for capability in [
             "let records: any ResearchRecordUseCases",
             "let checkpoints: any ResearchCheckpointUseCases",
-            "let skills: any ResearchSkillUseCases",
             "let actions: any ResearchActionUseCases",
             "let sourceAccess: any ResearchSourceAccessUseCases",
         ] {
@@ -2036,11 +2025,11 @@ struct WindowControllerArchitectureTests {
         let compositionAndSubscription = [
             "savedSearches": 1,
             "saveSavedSearches": 1,
-            "agentNoteChangeClaims": 1,
-            "agentNoteChangePresentationIdentity": 1,
-            "refreshAgentNoteChangeRequest": 1,
-            "resolveAgentNoteChangeRequest": 1,
-            "snapshot": 1,
+            "researchAgentPermissionClaims": 1,
+            "refreshResearchWriteSetExtension": 1,
+            "resolveResearchWriteSetExtension": 1,
+            "refreshResearchContinuation": 1,
+            "resolveResearchContinuation": 1,
             "cssSnippetStore": 1,
             "zoteroBridge": 1,
             "agentApplicationHandoff": 1,
@@ -2058,7 +2047,7 @@ struct WindowControllerArchitectureTests {
             "registeredTriptychs": 2,
             "portableContainerURL": 2,
             "workspaceCapabilities": 2,
-            "refreshPendingAgentNoteChangeRequests": 1,
+            "refreshPendingResearchAgentPermissions": 1,
             "vaultConfig": 2,
             "snapshot": 1,
         ]
@@ -2190,6 +2179,78 @@ struct WindowControllerArchitectureTests {
             "private struct ScholiumWorkspaceInspectorToolbarView: View"
         ))
         #expect(toolbarSource.contains("@ObservedObject var shellState: WindowShellState"))
+    }
+
+    @Test("Return and Record windows share one accessible Result, Evaluation, and Method-feedback surface")
+    func sharedResearchEvaluationSurface() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(
+                contentsOf: repositoryRoot.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+        let evaluation = try source(
+            "Scholium/Views/ResearchActions/ResearcherEvaluationView.swift"
+        )
+        let actionPanel = try source(
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift"
+        )
+        let recordBrowser = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+        )
+        let permissions = try source(
+            "Scholium/Views/ResearchActions/ResearchWriteSetExtensionView.swift"
+        )
+
+        for sharedView in [
+            "ResearchFinalizedResultView(",
+            "ResearcherEvaluationView(",
+            "ResearchMethodFeedbackView(",
+        ] {
+            #expect(actionPanel.contains(sharedView))
+            #expect(recordBrowser.contains(sharedView))
+        }
+        for semanticBoundary in [
+            "RESEARCH RESULT", "RESEARCHER EVALUATION", "METHOD FEEDBACK",
+            "does not change the Agent's finalized result",
+            "does not by itself establish a philosophical truth",
+            "Source or Attribution", "Concept or Interpretation",
+            "Argument or Objection/Reply",
+            "Epistemic Identity or Researcher State",
+            "Evidential Scope or Restraint", "Research Help or Next Step",
+            "No Issues Observed", "Valuable Discovery",
+        ] {
+            #expect(evaluation.contains(semanticBoundary))
+        }
+        #expect(evaluation.contains("let expectedRevision = baseline.revision"))
+        #expect(evaluation.contains("record.finalizedResultFingerprint()"))
+        #expect(evaluation.contains("sourceEvaluationRevision:"))
+        #expect(evaluation.contains("Improve Current Method…"))
+        #expect(evaluation.contains(
+            "it does not copy or reinterpret the evaluation automatically"
+        ))
+        for identifier in [
+            "scholium.researchResult.finalized",
+            "scholium.researchEvaluation.saveState",
+            "scholium.researchEvaluation.note",
+            "scholium.researchEvaluation.save",
+            "scholium.methodFeedback.improve",
+        ] {
+            #expect(evaluation.contains(identifier))
+        }
+
+        #expect(permissions.contains(".accessibilityAddTraits(.isModal)"))
+        #expect(permissions.contains(".toggleStyle(.checkbox)"))
+        #expect(permissions.contains(".keyboardShortcut(.defaultAction)"))
+        #expect(permissions.contains(".keyboardShortcut(.cancelAction)"))
+        #expect(permissions.contains("Allow Selected Notes"))
+        #expect(permissions.contains("Continue Without Changes"))
+        #expect(permissions.contains("it will not inherit the prior Run's search responses"))
+        #expect(!permissions.contains("Allow Entire Triptych"))
     }
 
     private func fixtureReference(

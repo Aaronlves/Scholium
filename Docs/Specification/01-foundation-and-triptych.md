@@ -24,12 +24,13 @@ This chapter owns Sections 1–4: terminology, product authority, Triptych struc
   attributed replies, and any authorized child Action. Closing its Action
   surface preserves it; **Finish Discussion** creates one Research Record and
   makes no claim of acceptance, truth, or settlement.
-- A **Method Skill** is an ordinary, directly editable, versioned Skill package
-  that supplies the intellectual method for one or more Actions. It remains
-  distinct from the protected Scholium mechanism and from ordinary research
-  notes. An **Action Profile** is researcher-owned declarative configuration
-  for placement, inputs, applicability, and requested capability; neither
-  Skill prose nor a Profile grants authority by itself.
+- A **Research Skill Registration** binds one Action to one current primary
+  Markdown method, an optional ordinary local Skill-folder path, and one
+  hidden stable relation key. It has no product version, package, dependency,
+  or execution semantics. A **Philosophical Practice** is a researcher-owned
+  method reference resolved only from exact Wikilinks in that primary method.
+  An **Action Profile** configures bounded academic inputs and result fields;
+  it never declares platform capability or permission.
 - **Settle** is the researcher's fingerprint-bound, replaceable current
   judgment that one saved revision is sufficiently stable for current
   research. It is neither a verdict nor a qualification. Each distinct
@@ -37,8 +38,8 @@ This chapter owns Sections 1–4: terminology, product authority, Triptych struc
   version of that Note.
 - **Critique** is an attributed agent assessment of one Work. It does not
   replace or silently edit the Work.
-- **Fidelity** audits the exact revision's philosophical content and, when an
-  applicable Researcher Skill is bound, citations. It remains distinct from
+- **Fidelity** audits the exact revision's philosophical content and, when its
+  registered method and evidence support it, citations. It remains distinct from
   Settle and Critique.
 - **Connect** is the Inspector surface for source-located neutral, support,
   opposition, or incompatibility relations. **Attention** contains derived, recoverable
@@ -47,10 +48,12 @@ This chapter owns Sections 1–4: terminology, product authority, Triptych struc
   Unit** is the minimal YAML declaration of the epistemic scope represented by
   a note; About presents its Scope and material Limitations with other chosen
   properties rather than creating another status model.
-- A **Research Action Grant** is one short-lived, task-bound write authority.
-  Its plaintext key is carried only in the prepared handoff; Scholium persists
-  only a digest and the frozen Action, Skill revision, Origin, scope,
-  identities, revisions, and expiry.
+- A **Run** is one Action's working object. A hidden **Connection Session**
+  authenticates a locally paired Agent to allowed Runs only for the current
+  Scholium process. A **Bounded Write Set** is one Run's hidden, short-lived,
+  expandable set of exact document identities, operations, expected revisions
+  or proven absence, and expiry. Every actual mutation still uses a
+  nonreusable short-lived capability and one-document transaction.
 - **Research Record** is the portable intellectual record of one finished
   Discussion or validated Action run. A separate nonmodal two-panel utility
   window browses these records; active Discussion remains in Actions, and
@@ -66,10 +69,13 @@ describe an edit or a Critique section.
 
 ### 2.1 Research document first
 
-Scholium is a local-first macOS document editor for sustained humanities
-research, especially philosophy. The research document—not a dashboard, task,
-workflow state, or agent conversation—is primary; exact Markdown underlies
-every projection.
+Scholium is a local-first macOS research environment for sustained humanities
+research, especially philosophy. Its content core is a researcher-governed,
+document-authoritative knowledge base that researchers and authorized Agents
+may maintain together. The research document—not a dashboard, task, workflow
+state, Agent conversation, or memory store—is primary; exact Markdown
+underlies every projection. Agent inheritance is an authorized way to use this
+knowledge base, not a parallel product or second content owner.
 
 Before polish or optional workflows may block release, setup, open, create,
 read, edit, autosave, Search, conflicts, recovery, Library, Document tabs, and
@@ -85,12 +91,13 @@ without Obsidian, Zotero, or agents.
 
 ### 2.2 Researcher responsibility and optional agent access
 
-The researcher governs the Triptych and may instruct an external agent to
+The researcher governs the Triptych and may instruct an external Agent to
 mutate files through filesystem or CLI tools. Scholium never revives Proposal.
-A standing permission policy decides only when a validated short-lived grant
-may be issued without another question; every prepared write phase still uses
-one Research Action Grant whose key, frozen scope, and completion command
-authorize only that phase. Discussion and Critique remain optional.
+One Triptych collaboration policy decides when an exact Bounded Write Set or a
+next Run needs another question. Every actual write remains bound to the
+current authenticated Session, Run, allowed document set, expected revisions,
+and one nonreusable short-lived capability. Discussion and Critique remain
+optional.
 
 Scholium supplies safety, not transferred responsibility:
 
@@ -102,24 +109,19 @@ Extensive external work without a suitable checkpoint is not guaranteed
 recoverable. Fingerprints detect revisions; they are not permission tokens and
 do not need to be copied into the agent prompt.
 
-The Application API validates each Research Action's Target, focal context,
-source access, revision, Method Skill, Action Profile, permission, checkpoint,
-and completion contract. Frontends select semantic Actions, never protected
-package identifiers or assembled technical instructions. The protected
-mechanism supplies protocol and safety; one installed Method Skill supplies
-the intellectual procedure.
+The Application API validates each Research Action's initial object, focal
+context, source access, revision, registered Skill, Practices, Result Contract,
+permission, write set, and completion. Frontends select semantic Actions,
+never protected mechanism identifiers or assembled technical instructions.
+Protected Scholium protocol owns capability and safety; one registered primary
+Markdown Skill supplies the intellectual procedure; referenced Practices
+supplement it without granting authority.
 
-Scholium distinguishes:
-
-- protected, release-managed **System Skills** for mechanism only;
-- directly editable, Triptych-installed **Working Method Skills**;
-- read-only bundled references used only for explicit compare or restore; and
-- researcher-installed **Researcher Skills**, disabled until deliberately
-  configured and enabled.
-
-Bundled methods are usable defaults, not best methods, philosophy lessons, or
-certification. The researcher may edit, replace, or disable a Working Method.
-Scholium never silently falls back to a bundled reference after that choice.
+Current bundled methods are usable editable defaults, not best methods,
+philosophy lessons, packages, or certification. The researcher may edit,
+replace, disable, or explicitly restore one. Scholium never silently restores
+or falls back after that choice and retains only the most recent
+Scholium-mediated pre-edit recovery point for each Skill or Practice.
 
 ### 2.3 Authorship and provenance
 
@@ -189,22 +191,25 @@ The portable directory beside Works contains only:
 - manifest and stable identity mappings;
 - Triptych Guide and Triptych-local settings or folder preferences;
 - per-vault Properties profiles;
-- Working Method Skills, Action Profiles, explicit bindings, and portable
-  intellectual Research Records under `.scholium/research-records/v1/`;
-- user packages at `.scholium/skills/<skill-id>/SKILL.md`.
+- current primary Skill Markdown, optional machine-local folder markers,
+  Philosophical Practices, Action Profiles, and explicit Action bindings; and
+- portable intellectual Research Records under
+  `.scholium/research-records/v1/`.
 
 It may be synchronized through ordinary cloud storage or Git; Scholium never
 uploads it automatically.
 
 Application Support owns:
 
-- security-scoped bookmarks and absolute paths, including a separate bookmark
+- security-scoped bookmarks and absolute paths, including registered external
+  primary Methods and optional Skill folders plus a separate bookmark
   for the folder containing Works that authorizes sibling `.scholium/` without
   creating a fourth vault, plus the agent application selected for Beta handoff;
 - window sessions and vault-qualified Document tabs;
 - derived indexes, temporary files, and caches;
-- temporary grants, pending permission requests, source bookmarks, transport
-  state, derived record indexes, and other machine-local execution data; and
+- Pairing Code digests, process-bound Connection Sessions, Bounded Write Sets,
+  pending permission decisions, source bookmarks, transport state, derived
+  record indexes, and other machine-local execution data; and
 - self-contained Triptych checkpoints.
 
 Production requires the real per-user Application Support root before it may

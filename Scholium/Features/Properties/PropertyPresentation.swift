@@ -109,10 +109,11 @@ enum PropertyPresentationCatalog {
 
     private static let analysis: [PropertyPresentation] = [
         item("title", "Title", "Title of the analyzed source.", .about, 0, .textField),
-        item("authors", "Authors", nil, .about, 1, .textListEditor),
-        item("year", "Year", nil, .about, 2, .numberField),
-        item("type", "Type", "Publication form, not philosophical role.", .about, 3, .choicePicker),
-        item("tags", "Tags", nil, .about, 4, .tagEditor),
+        item("summary", "Summary", "Short navigation description of this Note; open the current Note and sources before relying on it.", .about, 1, .textField),
+        item("authors", "Authors", nil, .about, 2, .textListEditor),
+        item("year", "Year", nil, .about, 3, .numberField),
+        item("type", "Type", "Publication form, not philosophical role.", .about, 4, .choicePicker),
+        item("tags", "Tags", nil, .about, 5, .tagEditor),
         item(
             "research_unit", "Research Unit",
             "Record represented completion and any material limitations; this does not judge analytical adequacy.",
@@ -134,15 +135,17 @@ enum PropertyPresentationCatalog {
     ]
 
     private static let topic: [PropertyPresentation] = [
-        item("aliases", "Aliases", "Alternative names used for finding and linking the Topic.", .about, 0, .textListEditor),
-        item("tags", "Tags", nil, .about, 1, .tagEditor),
+        item("summary", "Summary", "Short navigation description of this Note; open the current Note and sources before relying on it.", .about, 0, .textField),
+        item("aliases", "Aliases", "Alternative names used for finding and linking the Topic.", .about, 1, .textListEditor),
+        item("tags", "Tags", nil, .about, 2, .tagEditor),
         item("research_unit", "Research Unit", "Optional conceptual or debate scope plus material limitations.", .researchUnit, 0, .researchUnit),
     ]
 
     private static let work: [PropertyPresentation] = [
-        item("authors", "Authors", "Use for co-authored work; omit for an ordinary single-author vault.", .about, 0, .textListEditor),
-        item("kind", "Kind", "Optional form of the authored Work.", .about, 1, .choicePicker),
-        item("tags", "Tags", nil, .about, 2, .tagEditor),
+        item("summary", "Summary", "Short navigation description of this Note; open the current Note and sources before relying on it.", .about, 0, .textField),
+        item("authors", "Authors", "Use for co-authored work; omit for an ordinary single-author vault.", .about, 1, .textListEditor),
+        item("kind", "Kind", "Optional form of the authored Work.", .about, 2, .choicePicker),
+        item("tags", "Tags", nil, .about, 3, .tagEditor),
         item("research_unit", "Research Unit", "Optional Research Scope plus material limitations.", .researchUnit, 0, .researchUnit),
         item("venue", "Venue", "Journal, publisher, course, event, or other destination.", .use, 0, .textField),
     ]

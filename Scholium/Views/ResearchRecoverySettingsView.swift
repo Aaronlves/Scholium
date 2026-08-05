@@ -1,14 +1,13 @@
 import ScholiumContracts
 import SwiftUI
 
+/// Recovery that remains current after the Research Skill registration clean
+/// cutover. Primary Methods and Practices expose their one replaceable
+/// previous-edit recovery point beside the editor that owns the current bytes;
+/// this surface owns only settled Note retention.
 struct ResearchRecoverySettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var loadedTriptychID: UUID?
-    @State private var listing = ResearchSkillMaintenanceSnapshotListing(
-        snapshots: [],
-        issues: []
-    )
-    @State private var skills: [ResearchSkillPackage] = []
     @State private var recoveryPolicy = ResearchRecoveryPolicySnapshot(
         retention: .defaultValue,
         revision: nil,
@@ -16,7 +15,6 @@ struct ResearchRecoverySettingsView: View {
         maximumSnapshotsForOneNote: 0
     )
     @State private var pendingPolicyChange: ResearchRecoveryPolicyChangePreview?
-    @State private var pendingRestore: ResearchSkillMaintenanceSnapshot?
     @State private var isWorking = false
     @State private var errorMessage: String?
 
@@ -30,7 +28,7 @@ struct ResearchRecoverySettingsView: View {
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Manage settled Note versions, inspect machine-local Skill recovery snapshots, and reveal the current portable Skills folder.",
+                        "Manage settled Note versions. A Method or Practice keeps only its one replaceable previous-edit recovery point beside its current editor.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -69,46 +67,6 @@ struct ResearchRecoverySettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                researchSettingsSection(LocalizedStringResource(
-                    "SKILL RECOVERY",
-                    table: "Localizable",
-                    bundle: .module
-                )) {
-                    if listing.snapshots.isEmpty {
-                        Text("No Skill recovery snapshots are available.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(listing.snapshots) { snapshot in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(verbatim: snapshot.packageID)
-                                        Text(snapshot.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Button("Restore…") { pendingRestore = snapshot }
-                                        .disabled(isWorking)
-                                }
-                                .frame(minHeight: 40)
-                                Divider()
-                            }
-                        }
-                    }
-                    ForEach(listing.issues, id: \.id) { issue in
-                        Label(issue.summary, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(ScholiumColorRole.attention.color)
-                    }
-                }
-                researchSettingsSection(LocalizedStringResource(
-                    "FILES",
-                    table: "Localizable",
-                    bundle: .module
-                )) {
-                    Button("Reveal Skills Folder") { revealSkillsFolder() }
-                }
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
             .frame(maxWidth: 680, alignment: .topLeading)
@@ -133,32 +91,20 @@ struct ResearchRecoverySettingsView: View {
                 Text("This will remove \(pendingPolicyChange.snapshotIDsToRemove.count) older settled versions across \(pendingPolicyChange.affectedNoteCount) Notes. Current Markdown and temporary Action recovery are not removed.")
             }
         }
-        .confirmationDialog(
-            "Restore Complete Skill Package?",
-            isPresented: Binding(
-                get: { pendingRestore != nil },
-                set: { if !$0 { pendingRestore = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Restore Complete Package") { restoreSnapshot() }
-            Button("Cancel", role: .cancel) { pendingRestore = nil }
-        } message: {
-            Text("Scholium rechecks the current package revision and creates an undo snapshot before replacement when possible.")
-        }
         .alert("Recovery Operation Failed", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
-        )) { Button("Dismiss", role: .cancel) {} } message: {
+        )) {
+            Button("Dismiss", role: .cancel) { errorMessage = nil }
+        } message: {
             Text(errorMessage ?? "")
         }
     }
 
+    @MainActor
     private func reload() async {
         guard let requestedTriptychID = settingsModel.activeTriptychServicesID else {
             loadedTriptychID = nil
-            listing = ResearchSkillMaintenanceSnapshotListing(snapshots: [], issues: [])
-            skills = []
             recoveryPolicy = ResearchRecoveryPolicySnapshot(
                 retention: .defaultValue,
                 revision: nil,
@@ -166,28 +112,17 @@ struct ResearchRecoverySettingsView: View {
                 maximumSnapshotsForOneNote: 0
             )
             pendingPolicyChange = nil
-            pendingRestore = nil
             return
         }
         loadedTriptychID = nil
         pendingPolicyChange = nil
-        pendingRestore = nil
         do {
-            async let loadedListing = settingsModel.researchSkillMaintenanceSnapshots()
-            async let loadedSkills = settingsModel.researchSkills()
-            async let loadedPolicy = settingsModel.recoveryPolicy()
-            let (newListing, newSkills, newPolicy) = try await (
-                loadedListing,
-                loadedSkills,
-                loadedPolicy
-            )
+            let loadedPolicy = try await settingsModel.recoveryPolicy()
             try Task.checkCancellation()
             guard settingsModel.activeTriptychServicesID == requestedTriptychID else {
                 return
             }
-            listing = newListing
-            skills = newSkills
-            recoveryPolicy = newPolicy
+            recoveryPolicy = loadedPolicy
             loadedTriptychID = requestedTriptychID
         } catch is CancellationError {
             return
@@ -271,7 +206,11 @@ struct ResearchRecoverySettingsView: View {
         case .keep50:
             String(localized: "50 versions", table: "Localizable", bundle: .module)
         case .neverDelete:
-            String(localized: "Do Not Delete Automatically", table: "Localizable", bundle: .module)
+            String(
+                localized: "Do Not Delete Automatically",
+                table: "Localizable",
+                bundle: .module
+            )
         }
     }
 
@@ -282,39 +221,4 @@ struct ResearchRecoverySettingsView: View {
             bundle: .module
         )
     }
-
-    private func restoreSnapshot() {
-        guard let snapshot = pendingRestore else { return }
-        pendingRestore = nil
-        let current = skills.first {
-            $0.origin == .triptych && $0.id == snapshot.packageID
-        }
-        let expectedState: ResearchSkillMaintenanceExpectedCurrentState
-        if let revision = current?.revision {
-            expectedState = .present(revision)
-        } else {
-            expectedState = .missing
-        }
-        isWorking = true
-        Task { @MainActor in
-            defer { isWorking = false }
-            do {
-                _ = try await settingsModel.restoreResearchSkillMaintenance(
-                    snapshotID: snapshot.id,
-                    expectedCurrentState: expectedState
-                )
-                await reload()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func revealSkillsFolder() {
-        Task { @MainActor in
-            do { settingsModel.openExternal(try await settingsModel.researchSkillsURL()) }
-            catch { errorMessage = error.localizedDescription }
-        }
-    }
-
 }

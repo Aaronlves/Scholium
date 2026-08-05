@@ -31,6 +31,26 @@ enum StoredFunctionRecord: Sendable {
     var discussionExecution: ResearchDiscussionExecutionContract? {
         localRecord.discussion
     }
+
+    var boundedWriteSet: ResearchBoundedWriteSet {
+        localRecord.boundedWriteSet
+    }
+
+    var documentWriteRecords: [ResearchDocumentWriteRecord] {
+        localRecord.documentWriteRecords
+    }
+
+    var writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord] {
+        localRecord.writeConflictResolutionRecords
+    }
+
+    var writeReport: ResearchRunWriteReport? {
+        localRecord.writeReport
+    }
+
+    var resultPayload: ResearchRunResultPayload? {
+        localRecord.resultPayload
+    }
 }
 
 /// Stable authorities used by one Workspace's protected execution lifecycle.
@@ -42,12 +62,10 @@ struct ResearchFunctionCoordinatorDependencies: Sendable {
     let vaults: [UUID: RegisteredVault]
     let roots: TriptychRoots
     let controlStore: TriptychControlStore
-    let researchSkillStore: ResearchSkillTransactionCoordinator
+    let researchConfigurationStore: ResearchConfigurationStore
     let sourceAccessStore: ResearchSourceAccessStore
-    let agentNoteChangeRequestStore: AgentNoteChangeRequestStore
     let portableResearchRecordStore: PortableResearchRecordStore
     let localExecutionStore: LocalResearchExecutionStore
-    let critiqueRegistry: CritiqueRegistry
     let checkpointStore: TriptychCheckpointStore
     let zotero: ZoteroOperations
 }
@@ -55,7 +73,7 @@ struct ResearchFunctionCoordinatorDependencies: Sendable {
 /// The narrow Workspace boundary required by protected-run execution.
 ///
 /// The coordinator borrows this actor's existing isolation. The host retains
-/// the sole ownership of process-local activity keys, Discussion storage, and
+/// the sole ownership of Discussion storage and
 /// disposable snapshot publication; none of those authorities are copied into
 /// the coordinator.
 protocol ResearchFunctionCoordinatorHost: Actor {
@@ -63,25 +81,11 @@ protocol ResearchFunctionCoordinatorHost: Actor {
 
     func requireActive() throws
     func researchFunctionCurrentSnapshot() -> WorkspaceSnapshot
-    func researchActivityKey(runID: UUID) -> String?
-    func setResearchActivityKey(_ key: String?, runID: UUID)
-    func agentCoordinationKey(runID: UUID) -> String?
-    func setAgentCoordinationKey(_ key: String?, runID: UUID)
     func resolveDefaultResearchActionContext(
         for request: ResearchFunctionRequest
     ) async throws -> ResolvedResearchActionContext
-    func clearResearchActivityKey(runID: UUID)
-    func clearAgentCoordinationKey(runID: UUID)
-    func prepareResearchFunctionCritique(
-        for workID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        scope: CritiqueRequestScope,
-        selectedRanges: String,
-        additionalInstructions: String,
-        roundID: UUID,
-        functionSnapshotBuilder: @escaping (ResearchFunctionOutputSnapshot) -> ResearchFunctionSnapshot,
-        skillInstructionsOverride: @escaping (ResearchFunctionOutputSnapshot) throws -> String
-    ) async throws -> CritiquePreparation
+    func revokeResearchAgentRunAccess(runID: UUID) async
+    func finalizeResearchAgentRunAccess(runID: UUID) async
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
     func publishCommittedResearchFunctionChange(
         _ operation: String
@@ -93,7 +97,7 @@ protocol ResearchFunctionCoordinatorHost: Actor {
 /// delivery, run records, and terminal lifecycle transitions.
 ///
 /// This component owns availability, immutable preparation and delivery,
-/// Local-v3 lookup/reconciliation, completion persistence, cancellation, and
+/// current Local Execution lookup/reconciliation, completion persistence, cancellation, and
 /// protected Discussion Finish. It does not own Markdown, Workspace snapshots,
 /// source-operation exclusion, Discussion storage, or refresh publication. Its
 /// methods execute on the existing Workspace actor through an `isolated` host,
@@ -105,10 +109,6 @@ final class ResearchFunctionCoordinator: Sendable {
 
     private var localExecutionStore: LocalResearchExecutionStore {
         dependencies.localExecutionStore
-    }
-
-    private var critiqueRegistry: CritiqueRegistry {
-        dependencies.critiqueRegistry
     }
 
     init(
@@ -123,29 +123,34 @@ final class ResearchFunctionCoordinator: Sendable {
         guard let local = try await localExecutionStore.recordIfPresent(id: runID) else {
             throw ResearchFunctionContractError.preparationNotFound(runID)
         }
-        if let critique = try await critiqueRegistry.functionRecord(runID: runID),
-           local.snapshot == critique.snapshot,
-           local.completion == critique.completion,
-           local.preparedInstructions == critique.preparedInstructions {
-            _ = try await critiqueRegistry.detachFunctionEvidence(
-                runID: runID,
-                matching: local.snapshot
-            )
-        }
         return .local(local)
     }
 
     func persistCompletion(
         _ completion: ResearchFunctionCompletion,
         in stored: StoredFunctionRecord,
+        resultPayload: ResearchRunResultPayload? = nil,
+        writeReport: ResearchRunWriteReport? = nil,
         submissionDigest: String? = nil
     ) async throws {
         _ = stored
         _ = try await localExecutionStore.setCompletion(
             completion,
+            resultPayload: resultPayload,
+            writeReport: writeReport,
             submissionDigest: submissionDigest,
             runID: completion.runID
         )
+    }
+
+    func stageResultPayload(
+        _ payload: ResearchRunResultPayload,
+        in stored: StoredFunctionRecord
+    ) async throws {
+        guard payload.runID == stored.snapshot.runID else {
+            throw ResearchAgentResultContractError.invalidSubmission
+        }
+        _ = try await localExecutionStore.stageResultPayload(payload)
     }
 
     func researchContinuationCheckpointKey(
@@ -196,7 +201,9 @@ final class ResearchFunctionCoordinator: Sendable {
                 "Only a current portable Discussion can be finished."
             )
         }
-        return try await host.finishDiscussion(discussionID: runID)
+        let record = try await host.finishDiscussion(discussionID: runID)
+        await host.finalizeResearchAgentRunAccess(runID: runID)
+        return record
     }
 
     private func cancel<Host: ResearchFunctionCoordinatorHost>(
@@ -206,7 +213,7 @@ final class ResearchFunctionCoordinator: Sendable {
     ) async throws {
         if let existing = stored.completion {
             if existing.state == .cancelled {
-                host.clearAgentCoordinationKey(runID: runID)
+                await host.revokeResearchAgentRunAccess(runID: runID)
                 return
             }
             // Awaiting-Fidelity and Unverified are already durable completion
@@ -215,13 +222,6 @@ final class ResearchFunctionCoordinator: Sendable {
             throw ResearchFunctionContractError.cancellationAfterCompletion(runID)
         }
         let snapshot = stored.snapshot
-        if let activityID = snapshot.activityID {
-            _ = try? await localExecutionStore.transitionGrant(
-                activityID: activityID,
-                to: .cancelled
-            )
-            host.clearResearchActivityKey(runID: runID)
-        }
         let completion = ResearchFunctionCompletion(
             runID: runID,
             function: snapshot.request.function,
@@ -237,7 +237,7 @@ final class ResearchFunctionCoordinator: Sendable {
             fidelityOutcomes: []
         )
         try await persistCompletion(completion, in: stored)
-        host.clearAgentCoordinationKey(runID: runID)
+        await host.revokeResearchAgentRunAccess(runID: runID)
         _ = try await host.publishCommittedResearchFunctionChange(
             "The Research Action cancellation"
         )
@@ -256,57 +256,18 @@ extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
         currentSnapshot
     }
 
-    func researchActivityKey(runID: UUID) -> String? {
-        activeResearchActivityKeys[runID]
-    }
-
-    func setResearchActivityKey(_ key: String?, runID: UUID) {
-        activeResearchActivityKeys[runID] = key
-    }
-
-    func agentCoordinationKey(runID: UUID) -> String? {
-        activeAgentCoordinationKeys[runID]
-    }
-
-    func setAgentCoordinationKey(_ key: String?, runID: UUID) {
-        activeAgentCoordinationKeys[runID] = key
-    }
-
     func resolveDefaultResearchActionContext(
         for request: ResearchFunctionRequest
     ) async throws -> ResolvedResearchActionContext {
         try await resolvedDefaultActionContext(for: request)
     }
 
-    func clearResearchActivityKey(runID: UUID) {
-        activeResearchActivityKeys[runID] = nil
+    func revokeResearchAgentRunAccess(runID: UUID) async {
+        await services.researchAgentSessions?.revokeRun(runID)
     }
 
-    func clearAgentCoordinationKey(runID: UUID) {
-        activeAgentCoordinationKeys[runID] = nil
-    }
-
-    func prepareResearchFunctionCritique(
-        for workID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        scope: CritiqueRequestScope,
-        selectedRanges: String,
-        additionalInstructions: String,
-        roundID: UUID,
-        functionSnapshotBuilder: @escaping (ResearchFunctionOutputSnapshot) -> ResearchFunctionSnapshot,
-        skillInstructionsOverride: @escaping (ResearchFunctionOutputSnapshot) throws -> String
-    ) async throws -> CritiquePreparation {
-        try await requestCritique(
-            for: workID,
-            expectedRevision: expectedRevision,
-            scope: scope,
-            lens: "",
-            selectedRanges: selectedRanges,
-            additionalInstructions: additionalInstructions,
-            roundID: roundID,
-            functionSnapshotBuilder: functionSnapshotBuilder,
-            skillInstructionsOverride: skillInstructionsOverride
-        )
+    func finalizeResearchAgentRunAccess(runID: UUID) async {
+        await services.researchAgentSessions?.finalizeRun(runID)
     }
 
     func publishCommittedResearchFunctionChange(

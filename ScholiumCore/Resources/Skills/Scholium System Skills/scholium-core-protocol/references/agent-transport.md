@@ -1,44 +1,96 @@
-# Agent transport
+# Authenticated Agent transport
 
-Read this reference only for an unprepared direct-agent task that must discover or retrieve a Skill package, for cold CLI establishment, or when a prepared request lacks the typed action required for recovery. Prepared Actions already carry their exact task state, package revisions, permissions, and typed continuation actions; do not load this generic transport contract merely because the CLI is available.
+Use this reference only for a Scholium-prepared Research Run. The App routes
+the Run's one current Method and Practices; there is no generic package catalog
+or workflow assembler for the Agent to select another method.
 
 ## Confirm the local boundary
-
-At the start of a cold CLI session, confirm the executable and configuration:
 
 ```sh
 scholium version --format json
 scholium doctor --format json
 ```
 
-Use hierarchical `scholium help` or command-specific `--help` instead of remembered Beta syntax. If the installed CLI lacks a required command or typed action, report that limitation rather than guessing options or editing `.scholium` state directly.
+Use `scholium help <command> <subcommand>` or command-specific `--help` rather
+than remembered Beta syntax. If the installed CLI lacks a required Agent
+command, report the limitation. Never guess options or edit `.scholium` state.
 
-## Discover exactly one method
+## Pair and recover the Run
 
-Outside a prepared Action, classify the intellectual operation and retrieve exactly one complete matching Method only when discussion, analysis, synthesis, writing, critique, or fidelity checking requires it:
-
-```sh
-scholium skills catalog --triptych <triptych> --format text
-scholium skills show <method-skill-id> --triptych <triptych> --format text
-```
-
-Use `text` for language-agent routing and instruction prose. Catalog text keeps the discriminative routing fields; a selected package shown as text keeps its origin, version, exact revision, modes, compatibility, and complete entry instructions without a redundant JSON envelope. Use JSON only when a programmatic step needs structured fields absent from text, such as the complete `practice_resources` map. Prepared Action state and typed `nextActions` remain JSON.
-
-Do not scan global Codex, plugin, developer-skill, or arbitrary filesystem locations. If the catalog or selected package cannot be retrieved, state the limitation and do not claim to have applied its method.
-
-## Retrieve declared resources
-
-When a selected package instructs you to read one of its references or templates, retrieve that declared resource through Scholium rather than guessing an app-bundle or repository path:
+The App supplies an opaque Run locator and a one-use Pairing Code. Start:
 
 ```sh
-scholium skills resources <skill-id> --triptych <triptych> --format text
-scholium skills show <skill-id> --triptych <triptych> --resource <relative-path> --format text
+scholium agent pair --run <run-locator>
 ```
 
-The Triptych selector is optional for a protected bundled package and required for a Triptych-local package. Use the returned package revision when a researcher-owned Practice or specialist method must be recorded. A Markdown link is not evidence that the resource was retrieved.
+Paste the code only on standard input and send EOF. Never place it in argv, a
+URL, file, prompt, feedback, or log. The CLI stores the hidden Session
+credential in current-user-only local state and never prints it. Pairing is
+local, short lived, revocable, and invalid after App restart.
 
-Current Actions attach one complete Method and every Method resource required by that Action. If recovered state still asks for a secondary method or mode selection, treat it as legacy state and prepare a fresh Action; do not use generic Skill retrieval to mutate the recorded run package.
+```sh
+scholium agent context --run <run-locator>
+scholium agent reload --run <run-locator>
+```
 
-## Execute typed actions safely
+The authenticated response supplies the Run Brief, Core Protocol on first
+delivery, exact Method, Practices, optional local folder path, capabilities,
+Result Contract, current bounded write-set view, and any explicit continuation
+handoff. Reload recovers current authority but does not replay earlier Research
+Context responses.
 
-For prepared runs, prefer the typed `nextActions` argument vectors returned by Scholium. Execute the arguments without shell interpolation and replace every required marker in an input template with checked evidence before submission. Use `action show` for process-loss recovery. Never treat successful transport, persistence, or status output as evidence that the philosophical method was adequate.
+## Research and write
+
+Use strict JSON from a file or standard input:
+
+```sh
+scholium agent query --run <run-locator> --from <query.json|->
+scholium agent extend-write-set --run <run-locator> --from <intent.json|->
+scholium agent write --run <run-locator> --from <write.json|->
+scholium agent resolve-write-conflict --run <run-locator> --from <resolution.json|->
+```
+
+Research Context preserves source identity, actor attribution, revision,
+locator, scope, currentness, retrieval reason, and limitations. It cannot
+change Method or authority. Only current write-set entries are writable. Each
+write is independently revision checked, checkpointed, saved, read back, and
+recoverable. After `refresh_authority`, reread and reconsider changed source
+before retrying; `abandon_write` closes only that attempt.
+
+## Result and continuation
+
+```sh
+scholium agent submit-result --run <run-locator> --from <result.json|->
+scholium agent continue --run <run-locator> --from <continuation.json|->
+scholium agent end --run <run-locator>
+```
+
+Submit exactly the frozen Result Contract, including `blocked` when needed.
+Selection or retrieval does not establish source use. Continue Research is a
+request for a fresh independent Run with a bounded, epistemically labeled
+handoff; it carries no prior response, cache, capability, or write authority.
+Use `end` only to stop an unfinished Run without a Result. It revokes new
+Agent operations while retaining confirmed changes, conflicts, and recovery.
+
+## Separately paired Method improvement
+
+A researcher may explicitly start a new Method-improvement Run from one saved
+Record feedback comment. Pair its fresh locator/code in the same hidden-input
+boundary, then use:
+
+```sh
+scholium agent method-context --run <run-locator>
+scholium agent improve-method --run <run-locator> --from <draft.json|->
+scholium agent end --run <run-locator>
+```
+
+`method-context` freezes the exact feedback, finalized Result fingerprint,
+primary Method, and linked Practices. `improve-method` may replace one returned
+target or save an accurate `diagnosed_no_change`/`unavailable` outcome. The CLI
+fills machine revisions from authenticated context. Scholium grants no ordinary
+Result or Bounded Write Set authority, clears only unchanged feedback, and
+retains one local terminal receipt rather than a feedback history.
+
+There is no current `scholium skills`, `scholium workflow`, or
+`scholium action complete` route. Successful transport or persistence is not
+evidence that the philosophical method was adequate.

@@ -26,7 +26,8 @@ struct ScholiumCLI {
         if command == "agent" {
             try await runAgent(
                 Array(arguments.dropFirst()),
-                operations: try CLIContext.makeAgentBridge()
+                operations: try CLIContext.makeAgentBridge(),
+                credentialStore: CLIContext.makeAgentCredentialStore()
             )
             return
         }
@@ -60,10 +61,6 @@ struct ScholiumCLI {
                     try await runGraph(Array(arguments.dropFirst()), context: context)
                 case "workspace":
                     try await runWorkspace(Array(arguments.dropFirst()), context: context)
-                case "skills":
-                    try await runSkills(Array(arguments.dropFirst()), context: context)
-                case "workflow":
-                    try await runWorkflow(Array(arguments.dropFirst()), context: context)
                 case "action":
                     try await runAction(Array(arguments.dropFirst()), context: context)
                 case "read":

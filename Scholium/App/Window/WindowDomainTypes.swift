@@ -212,56 +212,19 @@ enum WindowIntent: Equatable, Sendable {
 }
 
 enum SearchResultIdentity {
-    static func lexical(_ hit: SearchHit) -> String {
-        hit.resultID
-    }
-
-    static func related(_ item: RelatedSearchItem) -> String {
-        "related:\(item.id)"
+    static func result(_ result: SearchResult) -> String {
+        result.id
     }
 }
 
 /// A typed selection used by Search presentation instead of routing through
 /// `WindowModel` static helpers.
 enum SearchResultSelection: Hashable, Sendable {
-    case lexical(SearchHit)
-    case related(RelatedSearchItem)
+    case result(SearchResult)
 
     var id: String {
         switch self {
-        case .lexical(let hit): SearchResultIdentity.lexical(hit)
-        case .related(let item): SearchResultIdentity.related(item)
-        }
-    }
-
-    var documentRoute: WindowDocumentRoute {
-        switch self {
-        case .lexical(let hit):
-            WindowDocumentRoute(
-                reference: VaultNoteReference(
-                    vaultID: hit.vaultID,
-                    vaultName: hit.vaultName,
-                    vaultRole: hit.vaultRole,
-                    relativePath: hit.relativePath,
-                    stableNoteID: hit.stableNoteID
-                ),
-                sourceLocator: SourceLocator(
-                    file: hit.relativePath,
-                    line: hit.sourceLine,
-                    column: 1
-                )
-            )
-        case .related(let item):
-            WindowDocumentRoute(
-                reference: item.note.reference,
-                sourceLocator: item.sourceLine.map {
-                    SourceLocator(
-                        file: item.note.reference.relativePath,
-                        line: $0,
-                        column: 1
-                    )
-                }
-            )
+        case .result(let result): SearchResultIdentity.result(result)
         }
     }
 }

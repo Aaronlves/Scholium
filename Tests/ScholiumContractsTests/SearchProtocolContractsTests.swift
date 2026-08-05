@@ -2,14 +2,16 @@ import Foundation
 import ScholiumContracts
 import Testing
 
-@Suite("Search v4 contracts")
+@Suite("Current Search contracts")
 struct SearchProtocolContractsTests {
-    @Test("Finite syntax parses AND, escaped phrases, prefix, and exclusion")
-    func finiteSyntax() throws {
-        let result = SearchQueryParser.parse(#"title:"reflective \"equilibrium\"" autonom* -tag:survey"#)
+    @Test("Note provider remains the default and preserves finite lexical syntax")
+    func noteProviderFiniteSyntax() throws {
+        let result = SearchQueryParser.parse(#"title:"reflective \"equilibrium\"" summary:autonomy autonom* -tag:survey"#)
         let ast = try #require(result.ast)
         #expect(result.diagnostics.isEmpty)
-        #expect(ast.clauses.count == 3)
+        #expect(ast.provider == .note)
+        #expect(!ast.providerWasExplicit)
+        #expect(ast.clauses.count == 4)
         guard case .lexical(let title) = ast.clauses[0],
               case .phrase(let phrase) = title.value else {
             Issue.record("Expected a title phrase")
@@ -17,18 +19,49 @@ struct SearchProtocolContractsTests {
         }
         #expect(title.field == .title)
         #expect(phrase == #"reflective "equilibrium""#)
-        guard case .lexical(let prefix) = ast.clauses[1],
+        guard case .lexical(let summary) = ast.clauses[1] else {
+            Issue.record("Expected a summary field")
+            return
+        }
+        #expect(summary.field == .summary)
+        #expect(summary.value == .term("autonomy"))
+        guard case .lexical(let prefix) = ast.clauses[2],
               case .prefix(let value) = prefix.value else {
             Issue.record("Expected a prefix")
             return
         }
         #expect(value == "autonom")
-        guard case .lexical(let excluded) = ast.clauses[2] else {
+        guard case .lexical(let excluded) = ast.clauses[3] else {
             Issue.record("Expected an excluded lexical field")
             return
         }
         #expect(excluded.excluded)
         #expect(excluded.field == .tag)
+    }
+
+    @Test("Provider selection is closed, order independent, and appears at most once")
+    func closedProviderSelection() throws {
+        let record = SearchQueryParser.parse(#"action:"Analyze Note" kind:record agency"#)
+        let ast = try #require(record.ast)
+        #expect(ast.provider == .record)
+        #expect(ast.providerWasExplicit)
+        #expect(ast.clauses.count == 2)
+
+        let noteOnly = try #require(SearchQueryParser.parse("kind:note").ast)
+        #expect(noteOnly.provider == .note)
+        #expect(noteOnly.clauses.isEmpty)
+        #expect(noteOnly.isFilterOnly)
+
+        let recordOnly = try #require(SearchQueryParser.parse("kind:record").ast)
+        #expect(recordOnly.provider == .record)
+        #expect(recordOnly.clauses.isEmpty)
+        #expect(recordOnly.isFilterOnly)
+
+        #expect(SearchQueryParser.parse("kind:any").diagnostics.first?.code == .unknownStructuredValue)
+        #expect(
+            SearchQueryParser.parse("kind:note kind:record").diagnostics.first?.code
+                == .duplicateClause
+        )
     }
 
     @Test("Structured-only positive and negative queries remain valid")
@@ -40,18 +73,208 @@ struct SearchProtocolContractsTests {
         #expect(SearchQueryParser.parse("-autonomy").diagnostics.first?.code == .onlyExcludedFreeText)
     }
 
-    @Test("Removed fields and unknown canonical values fail closed")
-    func removedFields() {
-        let removed = SearchQueryParser.parse("vault:Analyses autonomy")
-        #expect(removed.ast == nil)
-        #expect(removed.diagnostics.first?.code == .removedField)
-        #expect(removed.diagnostics.first?.needsEditing == true)
-        let status = SearchQueryParser.parse("status:draft")
-        #expect(status.ast == nil)
-        #expect(status.diagnostics.first?.code == .removedField)
-        #expect(status.diagnostics.first?.message.contains("not a Scholium property") == true)
-        #expect(SearchQueryParser.parse("review:reviewed").diagnostics.first?.code == .unknownField)
+    @Test("Unknown fields and query-level scope selectors fail closed without legacy semantics")
+    func currentFieldDiagnostics() {
+        #expect(SearchQueryParser.parse("vault:Analyses autonomy").diagnostics.first?.code == .unsupportedScopeSelector)
+        #expect(SearchQueryParser.parse("scope:triptych").diagnostics.first?.code == .unsupportedScopeSelector)
+        #expect(SearchQueryParser.parse("role:Analyses").diagnostics.first?.code == .unsupportedScopeSelector)
+        #expect(SearchQueryParser.parse("status:draft").diagnostics.first?.code == .unsupportedField)
+        #expect(SearchQueryParser.parse("review:reviewed").diagnostics.first?.code == .unsupportedField)
         #expect(SearchQueryParser.parse("unknown:value").diagnostics.first?.code == .unknownField)
+    }
+
+    @Test("Note properties preserve exact keys and typed equality values")
+    func noteProperties() throws {
+        let result = SearchQueryParser.parse(#"property:Language property:author="Hannah Arendt""#)
+        let ast = try #require(result.ast)
+        #expect(ast.provider == .note)
+        #expect(ast.clauses.count == 2)
+        guard case .property(let presence) = ast.clauses[0],
+              case .property(let equality) = ast.clauses[1] else {
+            Issue.record("Expected property clauses")
+            return
+        }
+        #expect(presence.key == "Language")
+        #expect(presence.value == nil)
+        #expect(equality.key == "author")
+        #expect(equality.value == "hannah arendt")
+        #expect(equality.valueWasQuoted)
+
+        let formulaAST = try #require(
+            SearchQueryParser.parse(#"property:formula="p=q""#).ast
+        )
+        guard case .property(let formula) = formulaAST.clauses.first else {
+            Issue.record("Expected formula Property equality")
+            return
+        }
+        #expect(formula.key == "formula")
+        #expect(formula.value == "p=q")
+
+        #expect(SearchQueryParser.parse("-property:author").diagnostics.first?.code == .unsupportedSyntax)
+        #expect(SearchQueryParser.parse("property:a:b").diagnostics.first?.code == .unsupportedSyntax)
+        #expect(SearchQueryParser.parse("property:key=").diagnostics.first?.code == .missingFieldValue)
+    }
+
+    @Test("Relation queries require one direction anchor and one canonical relation")
+    func noteRelations() throws {
+        let result = SearchQueryParser.parse(#"from-note:"Groundwork" relation:supports duty"#)
+        let ast = try #require(result.ast)
+        #expect(ast.provider == .note)
+        #expect(ast.relationQuery?.direction == .fromNote)
+        #expect(ast.relationQuery?.noteIdentity == "groundwork")
+        #expect(ast.relationQuery?.relation == .supports)
+
+        #expect(SearchQueryParser.parse("from-note:A").diagnostics.first?.code == .missingCompanion)
+        #expect(SearchQueryParser.parse("relation:opposes").diagnostics.first?.code == .missingCompanion)
+        #expect(
+            SearchQueryParser.parse("from-note:A to-note:B relation:neutral")
+                .diagnostics.first?.code == .duplicateClause
+        )
+        #expect(
+            SearchQueryParser.parse("from-note:A relation:supports relation:opposes")
+                .diagnostics.first?.code == .duplicateClause
+        )
+        #expect(SearchQueryParser.parse("-from-note:A relation:supports").diagnostics.first?.code == .unsupportedSyntax)
+    }
+
+    @Test("Record provider has its own closed fields and rejects Note-only clauses")
+    func recordProvider() throws {
+        let result = SearchQueryParser.parse(
+            #"kind:record note:"Groundwork" action:"Analyze Note" skill:close-reading participant:researcher date:7d agency -obsolete"#
+        )
+        let ast = try #require(result.ast)
+        #expect(ast.provider == .record)
+        #expect(ast.clauses.count == 7)
+        #expect(ast.recordClauses.count == 7)
+
+        #expect(SearchQueryParser.parse("kind:record title:duty").diagnostics.first?.code == .providerMismatch)
+        #expect(SearchQueryParser.parse("kind:record property:author").diagnostics.first?.code == .providerMismatch)
+        #expect(SearchQueryParser.parse("kind:record from-note:A relation:supports").diagnostics.first?.code == .providerMismatch)
+        #expect(SearchQueryParser.parse("kind:note action:analyze").diagnostics.first?.code == .providerMismatch)
+        #expect(SearchQueryParser.parse("kind:record action:analy*").diagnostics.first?.code == .unsupportedSyntax)
+        #expect(SearchQueryParser.parse("kind:record -skill:test").diagnostics.first?.code == .unsupportedSyntax)
+        #expect(SearchQueryParser.parse("kind:record participant:model").diagnostics.first?.code == .unknownStructuredValue)
+        #expect(SearchQueryParser.parse(#"kind:record date:"7d""#).diagnostics.first?.code == .unsupportedSyntax)
+    }
+
+    @Test("Explanation and capabilities are deterministic products of the current contract")
+    func explanationAndCapabilities() throws {
+        let ast = try #require(SearchQueryParser.parse(
+            #"kind:note property:author="Arendt" to-note:"Agency" relation:incompatible title:freedom"#
+        ).ast)
+        let explanation = ast.explanation
+        #expect(explanation.provider == .note)
+        #expect(explanation.operator == .and)
+        #expect(explanation.clauses.count == ast.clauses.count)
+        #expect(explanation.clauses.contains {
+            if case .property(let key, let value) = $0.kind {
+                return key == "author" && value == "arendt"
+            }
+            return false
+        })
+        #expect(explanation.clauses.contains {
+            if case .relation(let direction, let identity, let relation, let symmetric) = $0.kind {
+                return direction == .toNote && identity == "agency"
+                    && relation == .incompatible && symmetric
+            }
+            return false
+        })
+
+        #expect(SearchCapabilities.current.contractVersion == SearchContract.currentVersion)
+        #expect(SearchCapabilities.current.providers.map(\.provider) == [.note, .record])
+        #expect(SearchCapabilities.current.capability(for: .note)?.fields.contains {
+            $0.name == "property"
+        } == true)
+        #expect(SearchCapabilities.current.capability(for: .record)?.fields.contains {
+            $0.name == "participant" && $0.allowedValues == ["researcher", "agent"]
+        } == true)
+
+        let scoped = SearchCompletionContext(
+            propertyKeys: ["language", "limitations"],
+            noteIdentities: ["Groundwork", "Critique of Practical Reason"]
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "property:lan",
+                context: scoped
+            ).first?.replacementText == "property:language"
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "from-note:Crit",
+                context: scoped
+            ).first?.replacementText
+                == #"from-note:"Critique of Practical Reason""#
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "kind:record prop",
+                context: scoped
+            ).isEmpty
+        )
+    }
+
+    @Test("Parser bounds query and clause work before execution")
+    func boundedQueryWork() {
+        let oversized = String(
+            repeating: "x",
+            count: SearchContract.maximumQueryUTF16Count + 1
+        )
+        #expect(SearchQueryParser.parse(oversized).diagnostics.first?.code == .unsupportedSyntax)
+
+        let tooManyClauses = Array(
+            repeating: "term",
+            count: SearchContract.maximumQueryTokenCount + 1
+        ).joined(separator: " ")
+        #expect(
+            SearchQueryParser.parse(tooManyClauses).diagnostics.first?.code
+                == .unsupportedSyntax
+        )
+    }
+
+    @Test("Saved Searches persist only current definitions and surface contract drift")
+    func savedSearchCurrentDefinitionOnly() throws {
+        let saved = SavedSearch(
+            name: "Records by researcher",
+            definition: SearchDefinition(
+                query: "kind:record participant:researcher",
+                presentationScope: .triptych
+            ),
+            createdAt: Date(timeIntervalSince1970: 10)
+        )
+        let encoded = try JSONEncoder().encode(saved)
+        let json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect(json["definition"] != nil)
+        #expect(json["state"] == nil)
+        #expect(try JSONDecoder().decode(SavedSearch.self, from: encoded) == saved)
+
+        let summarySearch = SavedSearch(
+            name: "Current canonical summaries",
+            definition: SearchDefinition(
+                query: "summary:inheritance",
+                presentationScope: .triptych
+            )
+        )
+        #expect(summarySearch.needsEditingDiagnostic == nil)
+        #expect(SearchQueryParser.parse(summarySearch.definition.query).ast != nil)
+
+        let old = SavedSearch(
+            name: "Old",
+            definition: SearchDefinition(
+                contractVersion: SearchContract.currentVersion - 1,
+                query: "autonomy",
+                presentationScope: .triptych
+            )
+        )
+        #expect(old.needsEditingDiagnostic?.code == .needsEditing)
+        #expect(old.needsEditingDiagnostic?.needsEditing == true)
+
+        let legacy = """
+        {"id":"00000000-0000-0000-0000-000000000001","name":"Legacy","state":{"query":"autonomy","scope":"triptych"},"createdAt":0}
+        """.data(using: .utf8)!
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(SavedSearch.self, from: legacy)
+        }
     }
 
     @Test("Unsupported and malformed syntax returns stable diagnostics")
@@ -98,6 +321,7 @@ struct SearchProtocolContractsTests {
         let source = """
         ---
         title: Test Note
+        summary: "A concise autonomy map"
         aliases: [Alias]
         authors: [Author]
         year: 2026
@@ -129,6 +353,7 @@ struct SearchProtocolContractsTests {
         )
 
         #expect(projection.title == "Test Note")
+        #expect(projection.summary == "A concise autonomy map")
         #expect(projection.headings == ["Heading Text"])
         #expect(projection.body.contains("visible link"))
         #expect(projection.body.contains("visible diagram"))
@@ -147,6 +372,7 @@ struct SearchProtocolContractsTests {
 
         for (field, needle) in [
             (SearchMatchedField.heading, "Heading Text"),
+            (.summary, "autonomy"),
             (.callout, "body"),
             (.footnote, "content"),
             (.body, "visible diagram"),
@@ -165,6 +391,29 @@ struct SearchProtocolContractsTests {
                 length: sourceRange.count
             )) == needle)
         }
+    }
+
+    @Test("Summary projection fails closed when exact scalar provenance is unavailable")
+    func summaryProjectionRequiresExactScalarProvenance() {
+        let block = NoteDocument(
+            relativePath: "Block.md",
+            rawContent: "---\nsummary: |\n  folded discovery text\n---\nBody\n"
+        )
+        let blockProperties = SearchPropertyProjection(document: block)
+        #expect(blockProperties.entry(forExactKey: "summary")?.valueKind == .string)
+        #expect(blockProperties.entry(forExactKey: "summary")?.stringMembers.isEmpty == true)
+        #expect(SearchDocumentProjection(document: block).summary == nil)
+        #expect(!SearchDocumentProjection(document: block).segments.contains { $0.field == .summary })
+
+        let duplicate = NoteDocument(
+            relativePath: "Duplicate.md",
+            rawContent: "---\nsummary: first\nsummary: second\n---\nBody\n"
+        )
+        #expect(SearchDocumentProjection(document: duplicate).summary == nil)
+        #expect(!SearchDocumentProjection(document: duplicate).segments.contains { $0.field == .summary })
+
+        let missing = NoteDocument(relativePath: "Missing.md", rawContent: "# No summary\n")
+        #expect(SearchDocumentProjection(document: missing).summary == nil)
     }
 
     @Test("Lexical projection maps a folded NFC hit back to the decomposed UTF-16 source")

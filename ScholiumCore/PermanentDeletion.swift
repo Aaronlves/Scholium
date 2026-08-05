@@ -50,7 +50,6 @@ public actor NotePermanentDeletionCoordinator {
     private let sourceAccessStore: ResearchSourceAccessStore?
     private let portableRecordStore: PortableResearchRecordStore?
     private let localExecutionStore: LocalResearchExecutionStore?
-    private let agentNoteChangeRequestStore: AgentNoteChangeRequestStore?
     private let faultPlan: PermanentDeletionFaultPlan
 
     public init(
@@ -62,8 +61,7 @@ public actor NotePermanentDeletionCoordinator {
         recoveryStore: TriptychMutationRecoveryStore,
         sourceAccessStore: ResearchSourceAccessStore? = nil,
         portableRecordStore: PortableResearchRecordStore? = nil,
-        localExecutionStore: LocalResearchExecutionStore? = nil,
-        agentNoteChangeRequestStore: AgentNoteChangeRequestStore? = nil
+        localExecutionStore: LocalResearchExecutionStore? = nil
     ) {
         self.triptychID = triptychID
         self.repository = repository
@@ -74,7 +72,6 @@ public actor NotePermanentDeletionCoordinator {
         self.sourceAccessStore = sourceAccessStore
         self.portableRecordStore = portableRecordStore
         self.localExecutionStore = localExecutionStore
-        self.agentNoteChangeRequestStore = agentNoteChangeRequestStore
         self.faultPlan = .none
     }
 
@@ -88,7 +85,6 @@ public actor NotePermanentDeletionCoordinator {
         sourceAccessStore: ResearchSourceAccessStore? = nil,
         portableRecordStore: PortableResearchRecordStore? = nil,
         localExecutionStore: LocalResearchExecutionStore? = nil,
-        agentNoteChangeRequestStore: AgentNoteChangeRequestStore? = nil,
         faultPlan: PermanentDeletionFaultPlan
     ) {
         self.triptychID = triptychID
@@ -100,7 +96,6 @@ public actor NotePermanentDeletionCoordinator {
         self.sourceAccessStore = sourceAccessStore
         self.portableRecordStore = portableRecordStore
         self.localExecutionStore = localExecutionStore
-        self.agentNoteChangeRequestStore = agentNoteChangeRequestStore
         self.faultPlan = faultPlan
     }
 
@@ -117,7 +112,6 @@ public actor NotePermanentDeletionCoordinator {
         // could reach its commit decision and then strand privacy cleanup.
         try await sourceAccessStore?.validateStoreHealth()
         try await localExecutionStore?.validateStoreHealth()
-        try await agentNoteChangeRequestStore?.validateStoreHealth()
         guard repository.identity.id == vaultID else {
             throw TriptychTransactionError.invalidPlan(
                 "The permanent-deletion repository does not match the selected vault identity."
@@ -378,12 +372,6 @@ public actor NotePermanentDeletionCoordinator {
                 noteID: noteID
             )
         }
-        let affectedParentRunIDs = try await localExecutionStore?
-            .executionIDs(containing: deletedNoteIDs) ?? []
-        try await agentNoteChangeRequestStore?.purgeRequests(
-            containing: deletedNoteIDs,
-            parentRunIDs: Set(affectedParentRunIDs)
-        )
         try await localExecutionStore?.purgeExecutions(
             containing: deletedNoteIDs
         )

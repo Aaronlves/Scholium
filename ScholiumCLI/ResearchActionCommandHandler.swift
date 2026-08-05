@@ -8,7 +8,7 @@ extension ScholiumCLI {
     ) async throws {
         guard let subcommand = arguments.first else {
             throw CLIError.usage(
-                "Usage: scholium action <available|prepare|show|prepare-fidelity|complete|cancel> ..."
+                "Usage: scholium action <available|prepare|show|prepare-fidelity|cancel> ..."
             )
         }
         let encoder = researchActionEncoder()
@@ -43,11 +43,10 @@ extension ScholiumCLI {
                 ResearchActionExecutionRequest.self,
                 from: researchActionInput(input)
             )
-            let parameterVaultIDs = request.parameterValues.values.flatMap { value -> [UUID] in
-                guard case .notes(let notes) = value else { return [] }
-                return notes.map(\.note.vaultID)
-            }
-            let vaultIDs = Set([request.target.note.vaultID] + parameterVaultIDs)
+            let contextualVaultIDs = request.platformInputs.focalNotes.map(
+                \.note.vaultID
+            )
+            let vaultIDs = Set([request.target.note.vaultID] + contextualVaultIDs)
             let assignment = try await context.triptych(containing: vaultIDs)
             let handle = try await context.handle(for: assignment)
             let preparation = try await handle.research.prepareAction(request)
@@ -109,26 +108,6 @@ extension ScholiumCLI {
                     "Action prepare-fidelity supports --format json or markdown."
                 )
             }
-
-        case "complete":
-            guard let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium action complete --from <json|-> [--triptych <selector>] --format json"
-                )
-            }
-            guard (option("--format", in: arguments) ?? "json") == "json" else {
-                throw CLIError.usage("Action complete supports --format json.")
-            }
-            let submission = try decoder.decode(
-                ResearchActionCompletionSubmission.self,
-                from: researchActionInput(input)
-            )
-            let assignment = try await context.selectedTriptych(
-                selector: option("--triptych", in: arguments)
-            )
-            let handle = try await context.handle(for: assignment)
-            let completion = try await handle.research.completeAction(submission)
-            write(String(decoding: try encoder.encode(completion), as: UTF8.self) + "\n")
 
         case "cancel":
             guard arguments.count >= 2,

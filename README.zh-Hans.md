@@ -32,7 +32,7 @@ Git 历史中，不再作为平行权威。
 
 - [CSS 片段合同](Docs/CSS_SNIPPETS.md)
 - [第一方 Zotero MCP 传输](Docs/ZOTERO_MCP.md)
-- [产品 Skill 包](ScholiumCore/Resources/Skills/README.md)
+- [研究方法资源](ScholiumCore/Resources/Skills/README.md)
 
 ## 当前实现
 
@@ -42,10 +42,12 @@ Scholium 是一个由编译器强制边界的模块化单体。不可变值与�
 交付目标都不导入 Core。
 
 当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、笔记和文件夹
-生命周期、外部编辑冲突、恢复点和逐笔记恢复、Settle、统一 Discussion、Critique、
-Research Actions、可编辑 Working Methods、Researcher Skills、常驻权限、带独立
-有界子阶段的 Agent 笔记变更请求、便携式 Research Records、推荐文献、Zotero
-本地只读上下文，以及可选的第一方 Zotero MCP 传输。
+生命周期、外部编辑冲突、恢复点和逐笔记恢复、Settle、统一 Discussion、Critique，
+以及带可编辑当前 Method、学术 Profile 与 Philosophical Practice 的 Research
+Actions。每个脉络只有一项协作策略；本机进程期配对、Run 自有的有界写入集合、
+严格 schema-5 便携式 Research Record 与研究者评价，已经取代旧的 Skill 包、常驻
+权限和子变更请求 owner。Analyze Record 可携带推荐文献；Zotero 本地只读上下文与
+可选的第一方 Zotero MCP 传输继续可用。
 
 研究文档、搁置与纸篓共享同一棵原生 AppKit 文件夹／笔记大纲及浏览逻辑。研究文档
 可以创建笔记和文件夹，并保留菜单、键盘、辅助功能与拖动等组织路径；搁置与纸篓内

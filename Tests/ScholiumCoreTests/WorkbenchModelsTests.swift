@@ -5,7 +5,7 @@ import ScholiumContracts
 
 @Suite("Workbench completion models")
 struct WorkbenchModelsTests {
-    @Test("Saved Search persists only its v4 definition")
+    @Test("Saved Search persists only its Search v6 definition")
     func stateRoundTrip() throws {
         let saved = SavedSearch(
             name: "Open objections",
@@ -18,11 +18,13 @@ struct WorkbenchModelsTests {
         let decoded = try JSONDecoder().decode(SavedSearch.self, from: encoded)
 
         #expect(decoded == saved)
+        #expect(decoded.definition.contractVersion == SearchContract.currentVersion)
     }
 
     @Test("Saved searches persist in workspace storage")
     func savedSearchPersistence() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let base = testDirectory("saved-search-persistence")
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let store = SavedSearchStore(workspaceStorageURL: base)
         let expected = SavedSearch(
@@ -46,7 +48,8 @@ struct WorkbenchModelsTests {
 
     @Test("A corrupt Saved Searches file remains untouched and blocks replacement")
     func corruptSavedSearchesFailClosed() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let base = testDirectory("saved-search-corruption")
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let file = base.appendingPathComponent("saved-searches.json")
@@ -68,31 +71,9 @@ struct WorkbenchModelsTests {
         #expect(try Data(contentsOf: file) == corrupt)
     }
 
-    @Test("Legacy Saved Search drops transient state and preserves removed fields for editing")
-    func legacySavedSearchMigration() throws {
-        let id = UUID()
-        let legacy = """
-        {
-          "id": "\(id.uuidString)",
-          "name": "Legacy role query",
-          "createdAt": 0,
-          "state": {
-            "query": "role:analyses autonomy",
-            "scope": "triptych",
-            "selectedRoles": ["source_corpus"],
-            "selectedResultID": "transient-result"
-          }
-        }
-        """
-        let decoded = try JSONDecoder().decode(SavedSearch.self, from: Data(legacy.utf8))
-        #expect(decoded.definition.query == "role:analyses autonomy")
-        #expect(decoded.definition.presentationScope == .triptych)
-        #expect(decoded.needsEditingDiagnostic?.code == .removedField)
-
-        let encoded = try JSONEncoder().encode(decoded)
-        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["definition"] != nil)
-        #expect(object["state"] == nil)
-        #expect(!String(decoding: encoded, as: UTF8.self).contains("transient-result"))
+    private func testDirectory(_ name: String) -> URL {
+        URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+            .appendingPathComponent(".build", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
     }
 }

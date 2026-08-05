@@ -39,9 +39,7 @@ struct ResearchControllerCapabilities: Sendable {
     let documents: any DocumentUseCases
     let records: any ResearchRecordUseCases
     let checkpoints: any ResearchCheckpointUseCases
-    let skills: any ResearchSkillUseCases
     let actions: any ResearchActionUseCases
-    let skillsURL: URL
     let recoveryRecordsURL: URL
 }
 
@@ -117,6 +115,12 @@ final class ResearchController: ObservableObject {
             settlements: current.settlements,
             activeDiscussions: active,
             finishedResearchRecords: finished,
+            finishedResearchRecordFingerprints:
+                current.finishedResearchRecordFingerprints,
+            finishedResearchRecordSourceManifestHash:
+                current.finishedResearchRecordSourceManifestHash,
+            finishedResearchRecordProjectionIsComplete:
+                current.finishedResearchRecordProjectionIsComplete,
             critiques: current.critiques,
             checkpointListing: current.checkpointListing,
             recoveryRecords: current.recoveryRecords,
@@ -391,90 +395,6 @@ final class ResearchController: ObservableObject {
         try await requireCheckpoints().prepareCheckpointsLocation()
     }
 
-    var skillsURL: URL? {
-        capabilities?.skillsURL
-    }
-
-    func skills() async throws -> [ResearchSkillPackage] {
-        try await requireSkills().skills()
-    }
-
-    func skillCatalog() async throws -> ResearchSkillCatalog {
-        try await requireSkills().skillCatalog()
-    }
-
-    func skillPackage(id: String) async throws -> ResearchSkillPackage {
-        try await requireSkills().skillPackage(id: id)
-    }
-
-    func createSkill(id: String, source: String) async throws -> ResearchSkillPackage {
-        try await requireSkills().createSkill(id: id, source: source)
-    }
-
-    func duplicateBundledSkill(
-        id: String,
-        as newID: String
-    ) async throws -> ResearchSkillPackage {
-        try await requireSkills().duplicateBundledSkill(id: id, as: newID)
-    }
-
-    func saveSkill(
-        id: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillPackage {
-        try await requireSkills().saveSkill(
-            id: id,
-            source: source,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func renameSkill(
-        id: String,
-        to newID: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillPackage {
-        try await requireSkills().renameSkill(
-            id: id,
-            to: newID,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func deleteSkill(
-        id: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws {
-        try await requireSkills().deleteSkill(id: id, expectedRevision: expectedRevision)
-    }
-
-    func skillResourcePaths(id: String) async throws -> [String] {
-        try await requireSkills().skillResourcePaths(id: id)
-    }
-
-    func skillResource(id: String, relativePath: String) async throws -> String {
-        try await requireSkills().skillResource(id: id, relativePath: relativePath)
-    }
-
-    func skillInstructionAssembly(
-        mode: ResearchSkillMode = .discuss,
-        requestedSkillIDs: [String] = [],
-        mixedPhases: [ResearchSkillAssemblyPhase] = []
-    ) async throws -> String {
-        try await requireSkills().skillInstructionAssembly(
-            mode: mode,
-            requestedSkillIDs: requestedSkillIDs,
-            mixedPhases: mixedPhases
-        )
-    }
-
-    func resolveWorkflow(
-        _ contract: ResearchWorkflowContract
-    ) async throws -> ResolvedResearchWorkflowEnvelope {
-        try await requireSkills().resolveWorkflow(contract)
-    }
-
     func setActiveDocument(_ reference: VaultNoteReference?) {
         guard activeDocument != reference else { return }
         activeDocument = reference
@@ -534,6 +454,7 @@ final class ResearchController: ObservableObject {
 
     func receive(_ snapshot: WorkspaceSnapshot) {
         records = snapshot.research
+        actions.receive(records: snapshot.research.finishedResearchRecords)
         errorMessage = nil
     }
 
@@ -562,15 +483,6 @@ final class ResearchController: ObservableObject {
             )
         }
         return checkpoints
-    }
-
-    private func requireSkills() throws -> any ResearchSkillUseCases {
-        guard let skills = capabilities?.skills else {
-            throw ScholiumApplicationError.researchStoreUnavailable(
-                "No workspace is active."
-            )
-        }
-        return skills
     }
 
     private func requireActions() throws -> any ResearchActionUseCases {

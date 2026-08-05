@@ -50,10 +50,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
         )
     }
 
-    @Test("Search v4 records its 2,056-note cold, warm, and incremental acceptance evidence")
-    func searchV4AcceptanceEvidence() async throws {
+    @Test("Search v6 records its 2,056-note cold, warm, and incremental acceptance evidence")
+    func searchV5AcceptanceEvidence() async throws {
         let root = repositoryRoot
-            .appendingPathComponent(".build/search-v4-performance-artifacts", isDirectory: true)
+            .appendingPathComponent(".build/search-v6-performance-artifacts", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let triptychID = UUID()
@@ -62,7 +62,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
             RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/fixture/topics"),
             RegisteredVault(name: "Works", role: .draftProject, canonicalPath: "/fixture/works"),
         ]
-        let databaseURL = root.appendingPathComponent("search-v4.sqlite")
+        let databaseURL = root.appendingPathComponent("search-v6.sqlite")
         let index = try TriptychSearchIndex(
             databaseURL: databaseURL,
             triptychID: triptychID
@@ -81,13 +81,13 @@ struct PerformanceRegressionMicrobenchmarkTests {
             )
         }
         for _ in 0..<5 {
-            _ = try await index.search(request("deliberative tag:normativity"))
+            _ = try await index.testSearch(request("deliberative tag:normativity"))
         }
 
         var samples: [Double] = []
         for iteration in 0..<40 {
             let started = ContinuousClock.now
-            _ = try await index.search(
+            _ = try await index.testSearch(
                 request(iteration.isMultiple(of: 2)
                     ? "deliberative tag:cluster-3"
                     : "哲学 author:Researcher")
@@ -114,7 +114,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
         let incrementalP95 = p95(incrementalSamples)
         let generation = try #require(await index.generation())
         let report: [String: Any] = [
-            "artifact_schema": "scholium-search-v4-performance-v1",
+            "artifact_schema": "scholium-search-v6-performance-v1",
             "fixture": "synthetic-mixed-script-2056",
             "fixture_note_count": documents.count,
             "fixture_manifest": generation.sourceManifestHash,
@@ -123,10 +123,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
                 "topics": documents.indices.count { $0 % 3 == 1 },
                 "works": documents.indices.count { $0 % 3 == 2 },
             ],
-            "contract_version": SearchContractV4.contractVersion,
-            "schema_version": SearchContractV4.schemaVersion,
-            "tokenizer_policy_version": SearchContractV4.tokenizerPolicyVersion,
-            "ranking_policy_version": SearchContractV4.rankingPolicyVersion,
+            "contract_version": SearchContract.currentVersion,
+            "schema_version": SearchContract.schemaVersion,
+            "tokenizer_policy_version": SearchContract.tokenizerPolicyVersion,
+            "ranking_policy_version": SearchContract.rankingPolicyVersion,
             "cold_rebuild_ms": coldRebuild * 1_000,
             "warm_query_p95_ms": warmQueryP95 * 1_000,
             "incremental_publication_p95_ms": incrementalP95 * 1_000,
@@ -143,13 +143,13 @@ struct PerformanceRegressionMicrobenchmarkTests {
         )
         let reportURL = root.appendingPathComponent("report.json")
         try reportData.write(to: reportURL, options: .atomic)
-        print("SEARCH_V4_PERFORMANCE_REPORT \(reportURL.path)")
+        print("SEARCH_V6_PERFORMANCE_REPORT \(reportURL.path)")
         print(String(decoding: reportData, as: UTF8.self))
 
-        #expect(warmQueryP95 <= 0.100, "Warm Search v4 p95 was \(warmQueryP95) seconds")
+        #expect(warmQueryP95 <= 0.100, "Warm Search v6 p95 was \(warmQueryP95) seconds")
         #expect(
             incrementalP95 <= 0.250,
-            "Single-note Search v4 publication p95 was \(incrementalP95) seconds"
+            "Single-note Search v6 publication p95 was \(incrementalP95) seconds"
         )
     }
 

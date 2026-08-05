@@ -116,11 +116,11 @@ bounded authorization beside Works—through standard Open panels. It constructs
 no workspace split, toolbar, inert regions, tabs, feature tour, project model,
 or explanatory manual.
 
-Bootstrap silently adopts **Ask Me Every Time** for agent-requested additional
-note changes and write-capable child phases and states: “Agent changes will ask
-for permission every time. You can change this later for each Triptych or Skill
-in Research Guidance Settings.” It does not ask the researcher to understand a
-permission matrix before opening the workspace.
+Bootstrap silently adopts **Ask Me Every Time** for additional Run write-set
+members and next Actions and states: “Agent changes will ask for permission
+every time. You can change this later for this Triptych in Research Guidance
+Settings.” It does not ask the researcher to understand a permission matrix
+before opening the workspace.
 
 Failure retains setup input. Success opens one configured workspace and closes
 Bootstrap only after that exact workspace route has attached its native window,
@@ -146,30 +146,30 @@ Never add:
   arbitrary Obsidian-theme compatibility; or
 - bundled general instructions purporting to teach researchers philosophy.
 
-The researcher-governed Skills contract requires protected System Skills;
-directly editable Working Method Skills
-for Discuss, Analyze, Synthesize, Write, Critique, and Content Fidelity;
-optional hidden Manuscript; declarative Action Profiles; bounded installation;
-standing permissions; agent change requests; portable Research Records; and
-protected Zotero and agent-tool transports.
+The researcher-governed Skills contract requires protected platform protocol;
+one current editable primary Markdown Skill registration per available Action;
+exact-Wikilink Practices; optional local folder-path registration; optional
+hidden Manuscript; academic-only Action Profiles; one Triptych collaboration
+policy; Run-owned Bounded Write Sets; portable Research Records; and protected
+Zotero and local Agent transports.
 
 Deferred beyond experimental release: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,
 inheritance and sharing; and Work finding overlays.
 
-**Run with Codex** is outside the 1.0 boundary. Background/noninteractive
-execution, auto-submission, streamed thread/tool state, general agent-host
-approval or interruption control, and App Server or SDK orchestration require
-a future product decision. The current typed note-change request does not
-broaden into those capabilities, and **Open in Codex** implies none of them.
+Direct local Agent pairing is a bounded Run connection, not an embedded
+runtime, background Agent manager, auto-submission system, streamed tool-state
+viewer, general host-approval surface, relay, or cloud orchestration service.
+Scholium does not launch or supervise an Agent merely because a Run exists.
 
-File-backed Method Skills and Action Profiles are Settings-owned Research
-Guidance, not a marketplace, runtime, specialized request taxonomy, or
-philosophical authority. Finder remains authoritative for Markdown,
+File-backed primary Skills, Practices, registrations, and Action Profiles are
+Settings-owned Research Guidance, not packages, a marketplace, executable
+runtime, specialized request taxonomy, or philosophical authority. Finder
+remains authoritative for Markdown, ordinary Skill-folder contents,
 attachments, and checkpoint folders; Zotero for bibliography/PDFs; external
-agents for optional open-ended work.
+Agents for optional open-ended work.
 
-Scholium defines no separate durable research-handoff packet or ontology.
+Scholium defines no separate durable research-handoff packet, memory object, or ontology.
 Analyses, Topics, Works, and researcher-authored Markdown remain the durable
 research context; a researcher may create an ordinary Markdown handoff note if
 useful. An Action may assemble a bounded transient external-agent handoff from

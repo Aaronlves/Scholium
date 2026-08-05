@@ -22,14 +22,7 @@ struct CommandLineToolInstallerTests {
             at: source.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let catalog = bundle.appendingPathComponent(
-            "Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml"
-        )
-        try FileManager.default.createDirectory(
-            at: catalog.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try Data("schema_version: 1\n".utf8).write(to: catalog)
+        try writeCurrentResourceSentinels(in: bundle)
         try Data("first executable".utf8).write(to: source)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755],
@@ -78,14 +71,9 @@ struct CommandLineToolInstallerTests {
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let catalog = root.appendingPathComponent(
-            "Scholium.app/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml"
+        try writeCurrentResourceSentinels(
+            in: root.appendingPathComponent("Scholium.app", isDirectory: true)
         )
-        try FileManager.default.createDirectory(
-            at: catalog.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try Data("schema_version: 1\n".utf8).write(to: catalog)
         try Data("bundled".utf8).write(to: source)
         try Data("do not replace".utf8).write(to: redirected)
         try FileManager.default.createSymbolicLink(
@@ -104,5 +92,24 @@ struct CommandLineToolInstallerTests {
             try await installer.installCommandLineTool()
         }
         #expect(try Data(contentsOf: redirected) == Data("do not replace".utf8))
+    }
+
+    private func writeCurrentResourceSentinels(in bundle: URL) throws {
+        let skills = bundle.appendingPathComponent(
+            "Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills",
+            isDirectory: true
+        )
+        for path in [
+            "README.md",
+            "Scholium System Skills/scholium-core-protocol/SKILL.md",
+            "Scholium Method Skills/scholium-analyze/SKILL.md",
+        ] {
+            let target = skills.appendingPathComponent(path)
+            try FileManager.default.createDirectory(
+                at: target.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try Data("current research-method resource\n".utf8).write(to: target)
+        }
     }
 }

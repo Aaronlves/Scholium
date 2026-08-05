@@ -109,3 +109,29 @@ and ambiguous indentation return a typed refusal that directs the researcher
 to Source. Refusal leaves every Markdown byte unchanged; successful patches
 preserve BOM, newline/final-newline style, comments, unknown YAML, formatting,
 and all bytes outside the proven range.
+
+`summary` is one optional string contract in the Analysis, Topic, and Work
+profiles. The same `FrontmatterPatchPlanner` and repository transaction own
+researcher and authorized Agent changes; there is no summary writer, sidecar,
+approval copy, backfill task, or freshness database. Attribution remains an
+operation/Record fact rather than a second YAML value. Missing or source-shape-
+unsupported summary stays absent/readable and never triggers normalization.
+
+Search constructs a separate read-only top-level YAML projection from each
+exact `NoteDocument`. It records literal key presence and the exact source
+range of the key, plus exact scalar or sequence-member ranges only when the
+value is an eligible YAML string. It never recursively flattens mappings,
+coerces scalar types, patches source, or reconstructs Markdown. Malformed,
+duplicate, complex, or range-ambiguous keys are ineligible rather than guessed.
+The projection may address an unknown literal key for retrieval, but
+`PropertyContract` remains the sole owner of canonical meaning, role validity,
+editing, and scholarly presentation. Its derived entries publish and rebuild
+with the same authorized Note manifest as lexical Search.
+
+`SearchDocumentProjection` additionally emits a `.summary` lexical segment
+only from the canonical top-level string and the exact scalar range already
+proved by the source projection. The segment is independently searchable and
+explainable but belongs to the same Note/index generation and cannot write the
+Property. Quoted source ranges may include their delimiters; a block or
+otherwise unbounded scalar retains Property presence but is excluded from
+summary lexical projection until an exact range is provable.

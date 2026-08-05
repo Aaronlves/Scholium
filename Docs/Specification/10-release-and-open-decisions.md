@@ -17,7 +17,8 @@ package, signing, or performance result.
 **Usable Core** covers:
 
 - Bootstrap success/failure, registration/restoration, and independent windows;
-- create/open/read/edit/save/Search and explicit cross-vault navigation;
+- create/open/read/edit/save, versioned Note Search, and explicit cross-vault
+  navigation;
 - Edit/Source fidelity, formatting, Review passage Comment, and Markdown
   Callout authoring,
   and mode changes;
@@ -27,17 +28,29 @@ package, signing, or performance result.
 - external edits, conflicts, stable rename, Set Aside, Trash, checkpoints,
   restore/interruption, and cross-window dirty-peer behavior.
 
-Later Beta/1.0 additionally cover applicable Research Actions, Working and
-Researcher Skills, staged installation, permissions and change requests,
-portable Research Records, hierarchical Materials, Research Guidance/Recovery,
-Connections, Attention, Zotero unavailable/read-only behavior, CLI parity,
-deletion/restore, adaptations, and 1380/1080/900/minimum-width workspaces.
+Later Beta/1.0 additionally cover applicable Research Actions, Skill
+registrations, exact-Wikilink Practices, Action Profiles and Result Contracts,
+Triptych collaboration, process-bound pairing/Sessions, Bounded Write Sets,
+Research Context, portable Research Records and Researcher Evaluation,
+hierarchical Materials, Research Guidance/Recovery, Connections, Attention,
+Zotero unavailable/read-only behavior, CLI parity, shared Record Search,
+deletion/restore, adaptations, and
+1380/1080/900/minimum-width workspaces.
+Search acceptance separately covers provider/scope authorization, literal
+top-level Property presence and exact string matching, direct relation
+direction, Record attribution and statement locators, Explain/completion,
+Saved Search re-evaluation, App/CLI parity, stale refusal, corruption rebuild,
+and incremental/clean-build equivalence. Passing retrieval fixtures does not
+establish philosophical relevance, evidential support, or researcher
+acceptance.
 
-Beta handoff evidence includes copy-before-chooser ordering, explicit app
-selection and machine-local persistence, choose/forget/cancel/failure paths,
-keyboard/VoiceOver, and no auto-paste/submission. 1.0 Codex evidence includes a
-new task, exact root, locator-only composer, explicit submission, unavailable
-fallback, Unicode/space paths, keyboard/VoiceOver, and unchanged-run recovery.
+Direct-Agent evidence includes locator/route-only Agent instructions plus a
+separately displayed stdin-only Pairing Code; single-use secure pairing;
+authenticated local Session; app-process restart invalidation and
+same-Run re-pairing; no secret in prompt, argument, URL, vault, or log; App
+Group socket packaging; current-Run scope; reload; Research Context; bounded
+multi-document write and recovery; keyboard/VoiceOver; and an unavailable
+fallback. It does not require an embedded or provider-specific Agent runtime.
 
 For material evidence, use disposable fixtures and retain command, source
 revision, Xcode/SDK, build, fixture identity, result, and artifact location.
@@ -55,13 +68,14 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | External binaries use a clean exact tag, corresponding GPL source/licenses, no private state, accurate signing/architecture, checksum, and clean-account smoke test. |
-| **G10 Agent skill architecture** | Protected mechanism, editable Working Methods, Researcher Skills, declarative Action Profiles, staged installation, permissions, change requests, records, bootstrap, and Zotero/agent bridges pass declared journeys. |
+| **G10 Agent research collaboration** | Skill/Practice routing, Profiles/Result Contracts, Triptych collaboration, process-bound Sessions, bounded writes, Research Context, Records/Evaluation, and local bridges pass their journeys. |
 
 Usable Core/0.1 require G1–G4, G6, and G8; G9 applies to any distributed
 artifact. G6/G7 baselines and gaps must not be misrepresented as Beta passes.
-Beta requires every applicable gate including G10. 1.0 additionally requires
-the full **Open in Codex** journey; **Run with Codex** is not a gate. Current
-evidence belongs only in [Implementation Status](../IMPLEMENTATION_STATUS.md).
+Beta requires every applicable gate including G10. No release gate requires
+provider-specific task creation, auto-submission, background Agent execution,
+or **Run with Codex**. Current evidence belongs only in
+[Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 ### 21.4 Packaged performance gate
 
@@ -83,7 +97,7 @@ after five excluded warm-ups:
 | Interaction | Candidate p95 limit |
 | --- | ---: |
 | Warm library launch to a usable note list | `< 1,000 ms` |
-| Indexed Search query to complete visible results | `< 100 ms` |
+| Indexed Note Search query to complete visible results | `< 100 ms` |
 | Warm Review-note activation to interactive rendering | `< 300 ms` |
 | Application-cold 5,000-word Review-note activation to interactive rendering | `< 1,000 ms` |
 
@@ -101,6 +115,11 @@ path/size/SHA-256 inventory and tree hash, role and malformed-frontmatter
 counts, link/folder coverage, one 5,000-word Work, one 100,000-CJK-character
 Work, fixed navigation targets, and fixed English/CJK Search queries with
 expected identities. RDF-1 is disposable test data, never a research source.
+Strict schema-5 Research Record provider fixtures remain separate generated,
+disposable test inputs with attributed researcher/agent statements, Note
+participants, actually-used Materials, local-calendar boundaries, and exact
+source fingerprints; they do not alter RDF-1's frozen Note corpus or become a
+second Record authority.
 
 The gate must use the exact app produced by the release packager from one clean,
 reviewed, exactly tagged commit. App provenance, tag, commit, source-clean

@@ -12,16 +12,25 @@ struct PropertyContractTests {
         let work = PropertyContractCatalog.contracts(for: .draftProject)
 
         #expect(analysis.map(\.canonicalKey) == [
-            "title", "authors", "year", "type", "tags", "research_unit",
+            "title", "summary", "authors", "year", "type", "tags", "research_unit",
             "zotero_item_key", "access", "text_reliability", "locators",
             "debate_importance", "debate_importance_scope",
         ])
         #expect(topic.map(\.canonicalKey) == [
-            "aliases", "tags", "research_unit",
+            "summary", "aliases", "tags", "research_unit",
         ])
         #expect(work.map(\.canonicalKey) == [
-            "authors", "kind", "tags", "research_unit", "venue",
+            "summary", "authors", "kind", "tags", "research_unit", "venue",
         ])
+
+        for profile in [SchemaProfileID.analysis, .topicMarkdown, .draftProject] {
+            let summary = try #require(
+                PropertyContractCatalog.contract(for: "summary", profile: profile)
+            )
+            #expect(summary.valueKind == .text)
+            #expect(summary.ownership == .researcher)
+            #expect(summary.creationRequirement == .optional)
+        }
 
         let researchUnit = try #require(
             PropertyContractCatalog.contract(for: "research_unit", profile: .analysis)

@@ -44,9 +44,9 @@ struct ResearchFunctionCoordinatorTests {
             host: handle
         )
         #expect(recovered.snapshot == preparation.snapshot)
-        #expect(try coordinator.attachingAgentActions(
+        #expect(Set(try coordinator.attachingAgentActions(
             to: recovered
-        ).nextActions?.contains(where: { $0.kind == .complete }) == true)
+        ).nextActions?.map(\.kind) ?? []) == [.inspect, .cancel])
         let submission = ResearchFunctionCompletionSubmission(
             runID: preparation.runID,
             confirmationToken: preparation.snapshot.confirmationToken,
@@ -58,6 +58,21 @@ struct ResearchFunctionCoordinatorTests {
                 state: .passed,
                 summary: "The fixture found no unresolved content-fidelity issue."
             )]
+        )
+        let action = try #require(preparation.snapshot.actionSnapshot)
+        _ = try await handle.services.localResearchExecutionStore.stageResultPayload(
+            ResearchRunResultPayload(
+                runID: preparation.runID,
+                submissionFingerprint: DocumentFingerprint(
+                    content: "coordinator-result"
+                ),
+                disposition: .completed,
+                academicResults: testAcademicResults(for: action),
+                contextUseReport: nil,
+                fidelityOutcomes: submission.fidelityOutcomes,
+                literatureRecommendations: nil,
+                submittedAt: submission.submittedAt
+            )
         )
 
         let completed = try await coordinator.completeProtectedFunction(

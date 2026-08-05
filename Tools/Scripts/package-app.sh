@@ -80,11 +80,15 @@ fi
 cp "${SCRATCH}/release/scholium" "${OUTPUT}/scholium"
 chmod +x "${OUTPUT}/scholium"
 cp -R "${CORE_RESOURCE_BUNDLE}" "${OUTPUT}/Scholium_ScholiumCore.bundle"
-for core_catalog in \
-  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml" \
-  "${OUTPUT}/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/catalog.yaml"; do
-  [[ -s "${core_catalog}" ]] || {
-    print -u2 "Missing packaged protected Skill catalog: ${core_catalog}"
+for core_resource in \
+  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/README.md" \
+  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/Scholium System Skills/scholium-core-protocol/SKILL.md" \
+  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/Scholium Method Skills/scholium-analyze/SKILL.md" \
+  "${OUTPUT}/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/README.md" \
+  "${OUTPUT}/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/Scholium System Skills/scholium-core-protocol/SKILL.md" \
+  "${OUTPUT}/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/Scholium Method Skills/scholium-analyze/SKILL.md"; do
+  [[ -s "${core_resource}" ]] || {
+    print -u2 "Missing packaged current research-method resource: ${core_resource}"
     exit 66
   }
 done
@@ -108,6 +112,10 @@ plutil -insert sdk_version -string "${SDK_VERSION}" "${PROVENANCE}"
 [[ "$(plutil -extract LSMinimumSystemVersion raw "${STAGING_APP}/Contents/Info.plist")" == "26.0" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' \
   "${ROOT}/Tools/Packaging/Scholium.entitlements")" == "true" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' \
+  "${ROOT}/Tools/Packaging/Scholium.entitlements")" == "group.com.scholium.app" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' \
+  "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements")" == "group.com.scholium.app" ]]
 
 # The beta SwiftPM linker may record the deployment target as both minOS and SDK
 # in LC_BUILD_VERSION. Preserve the product's macOS 26 minimum while recording
@@ -137,12 +145,12 @@ xattr -cr "${STAGING_APP}"
 xattr -cr "${OUTPUT}/Scholium_ScholiumCore.bundle"
 
 # Sign nested code from the inside out. The bundled CLI is intentionally a
-# standalone command-line executable and must not inherit the app sandbox
-# entitlements: it has no application bundle identifier and is launched from
-# the shell. The outer Scholium app alone receives the application
-# entitlements. Keep --deep for verification, not for applying entitlements to
-# nested code.
+# standalone command-line executable and must not inherit the app sandbox.
+# It receives only the shared App Group needed for the protected Unix-socket
+# rendezvous. Keep --deep for verification, not for applying outer entitlements
+# to nested code.
 codesign --force --options runtime \
+  --entitlements "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements" \
   --sign "${IDENTITY}" "${STAGING_APP}/Contents/Helpers/scholium"
 codesign --verify --strict --verbose=2 \
   "${STAGING_APP}/Contents/Helpers/scholium"
@@ -171,17 +179,22 @@ while IFS= read -r -d '' directory; do
   xattr -d com.apple.FinderInfo "${directory}" 2>/dev/null || true
 done < <(find "${APP}" -type d -print0)
 codesign --verify --deep --strict --verbose=2 "${APP}"
-codesign --force --options runtime --sign "${IDENTITY}" "${OUTPUT}/scholium"
+codesign --force --options runtime \
+  --entitlements "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements" \
+  --sign "${IDENTITY}" "${OUTPUT}/scholium"
 codesign --verify --strict --verbose=2 "${OUTPUT}/scholium"
-PACKAGED_CATALOG_SMOKE="${SCRATCH}/packaged-skill-catalog.json"
+PACKAGED_CLI_SMOKE="${SCRATCH}/packaged-cli-version.json"
 SCHOLIUM_HOME="${SCRATCH}/cli-smoke-home" \
-  "${OUTPUT}/scholium" skills catalog --format json > "${PACKAGED_CATALOG_SMOKE}"
-[[ -s "${PACKAGED_CATALOG_SMOKE}" ]] || {
-  print -u2 "Packaged CLI could not load the protected Skill catalog."
+  "${OUTPUT}/scholium" version --format json > "${PACKAGED_CLI_SMOKE}"
+if ! jq -e \
+  '.schema_version == 1 and .product == "Scholium" and (.cli_version | length > 0)' \
+  "${PACKAGED_CLI_SMOKE}" >/dev/null; then
+  print -u2 "Packaged standalone CLI did not return the current version contract."
   exit 66
-}
+fi
 SCHOLIUM_HOME="${SCRATCH}/bundled-cli-smoke-home" \
-  "${APP}/Contents/Helpers/scholium" skills catalog --format json >/dev/null
+  "${APP}/Contents/Helpers/scholium" doctor --format json \
+  | jq -e '.schema_version == 1 and .platform_action_count == 7' >/dev/null
 
 ARCHITECTURES="$(lipo -archs "${APP}/Contents/MacOS/Scholium")"
 if [[ "${ARCHITECTURES}" == "arm64 x86_64" || "${ARCHITECTURES}" == "x86_64 arm64" ]]; then

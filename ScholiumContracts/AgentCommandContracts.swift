@@ -5,7 +5,6 @@ public enum AgentCommandActionKind: String, Codable, Hashable, Sendable {
     case reply
     case promote
     case selectResources = "select_resources"
-    case complete
     case prepareFidelity = "prepare_fidelity"
     case cancel
 }

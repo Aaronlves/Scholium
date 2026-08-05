@@ -95,7 +95,7 @@ public actor TriptychSearchIndex {
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString.lowercased(), isDirectory: true)
             .appendingPathComponent("indexes", isDirectory: true)
-            .appendingPathComponent("search-v4.sqlite", isDirectory: false)
+            .appendingPathComponent("search-v6.sqlite", isDirectory: false)
     }
 
     /// Replaces only a disposable generated database. The v1 files and all
@@ -121,7 +121,7 @@ public actor TriptychSearchIndex {
                 withIntermediateDirectories: true
             )
             let stagingURL = databaseURL.deletingLastPathComponent()
-                .appendingPathComponent(".search-v4-staging-\(UUID().uuidString).sqlite")
+                .appendingPathComponent(".search-v6-staging-\(UUID().uuidString).sqlite")
             do {
                 do {
                     let staged = try SearchSQLiteDatabase(path: stagingURL.path)
@@ -132,7 +132,7 @@ public actor TriptychSearchIndex {
                 }
                 guard Darwin.rename(stagingURL.path, databaseURL.path) == 0 else {
                     throw SearchIndexError.sqlite(
-                        "could not atomically publish a rebuilt Search v4 database"
+                        "could not atomically publish a rebuilt Search v6 database"
                     )
                 }
                 for suffix in ["-wal", "-shm"] {
@@ -465,7 +465,7 @@ public actor TriptychSearchIndex {
             try Task.checkCancellation()
         }
         guard let published = try readGeneration(in: database, triptychID: triptychID) else {
-            throw SearchIndexError.invalidDocuments("Search v4 did not publish a generation")
+            throw SearchIndexError.invalidDocuments("Search v6 did not publish a generation")
         }
         let disposition: SearchIndexSyncDisposition
         if recoveredGeneratedDatabase {
@@ -481,7 +481,11 @@ public actor TriptychSearchIndex {
         )
     }
 
-    public func search(_ request: SearchRequest) throws -> SearchResponse {
+    public func search(
+        _ request: SearchRequest,
+        ast: SearchQueryAST,
+        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch] = [:]
+    ) throws -> SearchResponse {
         try database.readTransaction {
             try Task.checkCancellation()
             let readGeneration = try generation()
@@ -498,41 +502,48 @@ public actor TriptychSearchIndex {
                 return SearchResponse(
                     requestID: request.id,
                     scope: request.presentationScope,
+                    explanation: ast.explanation,
                     freshnessToken: freshness,
-                    availability: availability,
+                    availability: .note(availability),
                     results: [],
                     hasMore: false,
                     diagnostics: [SearchQueryDiagnostic(
-                        code: .invalidScope,
+                        code: .notApplicable,
                         message: "Search presentation and execution scopes do not match.",
                         utf16LowerBound: 0,
                         utf16UpperBound: 0
                     )]
                 )
             }
-            let parsed = SearchQueryParser.parse(request.query)
-            guard let ast = parsed.ast, parsed.diagnostics.isEmpty else {
+            guard ast.provider == .note else {
                 return SearchResponse(
                     requestID: request.id,
                     scope: request.presentationScope,
+                    explanation: ast.explanation,
                     freshnessToken: freshness,
-                    availability: availability,
+                    availability: .note(availability),
                     results: [],
                     hasMore: false,
-                    diagnostics: parsed.diagnostics
+                    diagnostics: [SearchQueryDiagnostic(
+                        code: .providerMismatch,
+                        message: "The Note index cannot execute a non-Note provider plan.",
+                        utf16LowerBound: 0,
+                        utf16UpperBound: request.query.utf16.count
+                    )]
                 )
             }
-            guard !ast.clauses.isEmpty, request.limit > 0 else {
+            guard request.limit > 0 else {
                 return SearchResponse(
                     requestID: request.id,
                     scope: request.presentationScope,
+                    explanation: ast.explanation,
                     freshnessToken: freshness,
-                    availability: availability,
+                    availability: .note(availability),
                     results: [],
                     hasMore: false
                 )
             }
-            let boundedLimit = min(max(1, request.limit), SearchContractV4.maximumCLIResults)
+            let boundedLimit = min(max(1, request.limit), SearchContract.maximumCLIResults)
             switch request.executionScope {
             case .currentNote(let source):
                 return try searchCurrentNote(
@@ -541,7 +552,8 @@ public actor TriptychSearchIndex {
                     ast: ast,
                     limit: boundedLimit,
                     freshness: freshness,
-                    availability: availability
+                    availability: availability,
+                    relationshipMatches: relationshipMatches
                 )
             case .currentVault(let vaultID):
                 return try searchIndex(
@@ -551,7 +563,8 @@ public actor TriptychSearchIndex {
                     limit: boundedLimit,
                     freshness: freshness,
                     generation: readGeneration,
-                    availability: availability
+                    availability: availability,
+                    relationshipMatches: relationshipMatches
                 )
             case .triptych:
                 return try searchIndex(
@@ -561,7 +574,8 @@ public actor TriptychSearchIndex {
                     limit: boundedLimit,
                     freshness: freshness,
                     generation: readGeneration,
-                    availability: availability
+                    availability: availability,
+                    relationshipMatches: relationshipMatches
                 )
             }
         }
@@ -574,14 +588,16 @@ public actor TriptychSearchIndex {
         limit: Int,
         freshness: SearchFreshnessToken,
         generation: SearchGenerationID?,
-        availability: SearchAvailability
+        availability: SearchAvailability,
+        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch]
     ) throws -> SearchResponse {
         guard let generation, generation.sequence > 0 else {
             return SearchResponse(
                 requestID: request.id,
                 scope: request.presentationScope,
+                explanation: ast.explanation,
                 freshnessToken: freshness,
-                availability: availability,
+                availability: .note(availability),
                 results: [],
                 hasMore: false
             )
@@ -591,7 +607,7 @@ public actor TriptychSearchIndex {
 
         if let identity = ast.identityNeedle {
             var exactOffset = 0
-            let exactPageSize = 256
+            let exactPageSize = min(256, max(32, limit + 1))
             while accepted.count < limit + 1 {
                 let exact = try exactCandidates(
                     ast: ast,
@@ -605,7 +621,11 @@ public actor TriptychSearchIndex {
                 for candidate in exact {
                     try Task.checkCancellation()
                     guard seen.insert(candidate.document.rowID).inserted,
-                          SearchMatcher.satisfies(ast, document: candidate.document) else { continue }
+                          SearchMatcher.satisfies(
+                            ast,
+                            document: candidate.document,
+                            relationshipMatches: relationshipMatches
+                          ) else { continue }
                     accepted.append(candidate)
                     if accepted.count >= limit + 1 { break }
                 }
@@ -615,7 +635,11 @@ public actor TriptychSearchIndex {
 
         if accepted.count < limit + 1 {
             var offset = 0
-            let pageSize = 256
+            // Candidate materialization loads exact aliases and source
+            // segments. Bound the first page to the number a response can
+            // actually consume; structured filters can request further pages
+            // without paying for 256 full documents on every ordinary query.
+            let pageSize = min(256, max(32, limit + 1))
             while accepted.count < limit + 1 {
                 try Task.checkCancellation()
                 let page: [SearchCandidate]
@@ -623,7 +647,8 @@ public actor TriptychSearchIndex {
                     page = try documentCandidates(
                         vaultID: vaultID,
                         limit: pageSize,
-                        offset: offset
+                        offset: offset,
+                        includingProperties: ast.hasPropertyClause
                     )
                 } else {
                     page = try lexicalCandidates(
@@ -638,7 +663,11 @@ public actor TriptychSearchIndex {
                 for candidate in page {
                     try Task.checkCancellation()
                     guard seen.insert(candidate.document.rowID).inserted,
-                          SearchMatcher.satisfies(ast, document: candidate.document) else { continue }
+                          SearchMatcher.satisfies(
+                            ast,
+                            document: candidate.document,
+                            relationshipMatches: relationshipMatches
+                          ) else { continue }
                     accepted.append(candidate)
                     if accepted.count >= limit + 1 { break }
                 }
@@ -649,18 +678,20 @@ public actor TriptychSearchIndex {
         accepted.sort(by: SearchCandidate.precedes)
         let hasMore = accepted.count > limit
         let hits = accepted.prefix(limit).map {
-            SearchHitBuilder.hit(
+            NoteSearchResultBuilder.hit(
                 candidate: $0,
                 ast: ast,
-                freshness: freshness
+                freshness: freshness,
+                relationshipMatch: relationshipMatches[$0.document.noteID]
             )
         }
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
+            explanation: ast.explanation,
             freshnessToken: freshness,
-            availability: availability,
-            results: hits,
+            availability: .note(availability),
+            results: hits.map(SearchResult.note),
             hasMore: hasMore
         )
     }
@@ -671,7 +702,8 @@ public actor TriptychSearchIndex {
         ast: SearchQueryAST,
         limit: Int,
         freshness: SearchFreshnessToken,
-        availability: SearchAvailability
+        availability: SearchAvailability,
+        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch]
     ) throws -> SearchResponse {
         let descriptor = try vaultDescriptor(source.noteID.vaultID)
         let indexed = try indexedDocumentMetadata(source.noteID)
@@ -714,14 +746,20 @@ public actor TriptychSearchIndex {
             evidentialLayer: Self.evidentialLayer(for: role),
             roleOrder: Self.roleOrder(role),
             sourceLineStarts: projection.sourceLineStartsUTF16,
-            segments: projection.segments
+            segments: projection.segments,
+            properties: SearchPropertyProjection(document: note).entries
         )
-        guard SearchMatcher.satisfies(ast, document: document) else {
+        guard SearchMatcher.satisfies(
+            ast,
+            document: document,
+            relationshipMatches: relationshipMatches
+        ) else {
             return SearchResponse(
                 requestID: request.id,
                 scope: request.presentationScope,
+                explanation: ast.explanation,
                 freshnessToken: freshness,
-                availability: availability,
+                availability: .note(availability),
                 results: [],
                 hasMore: false
             )
@@ -735,28 +773,31 @@ public actor TriptychSearchIndex {
             ),
             lexicalRank: 0
         )
-        let hits: [SearchHit]
+        let hits: [NoteSearchResult]
         if let lead = ast.firstPositiveLexicalClause {
-            hits = SearchHitBuilder.occurrenceHits(
+            hits = NoteSearchResultBuilder.occurrenceHits(
                 candidate: candidate,
                 ast: ast,
                 lead: lead,
                 freshness: freshness,
-                limit: limit
+                limit: limit,
+                relationshipMatch: relationshipMatches[document.noteID]
             )
         } else {
-            hits = [SearchHitBuilder.hit(
+            hits = [NoteSearchResultBuilder.hit(
                 candidate: candidate,
                 ast: ast,
-                freshness: freshness
+                freshness: freshness,
+                relationshipMatch: relationshipMatches[document.noteID]
             )]
         }
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
+            explanation: ast.explanation,
             freshnessToken: freshness,
-            availability: availability,
-            results: hits,
+            availability: .note(availability),
+            results: hits.map(SearchResult.note),
             hasMore: hits.count >= limit
                 && SearchMatcher.occurrenceCount(of: ast.firstPositiveLexicalClause, in: document) > limit
         )
@@ -799,7 +840,7 @@ public actor TriptychSearchIndex {
         if lexicalExpression != nil {
             sql += "\n"
             sql += """
-               bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 6.0, 4.0, 5.0, 2.0, 2.0, 1.0) AS lexical_rank
+               bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 1.0) AS lexical_rank
             FROM search_fts
             JOIN search_documents d ON d.id = search_fts.document_id
             """
@@ -830,7 +871,10 @@ public actor TriptychSearchIndex {
         bindings.append(.int(offset))
         var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
-            guard let document = try self.loadDocument(rowID: row.int(at: 0)) else { return }
+            guard let document = try self.loadDocument(
+                rowID: row.int(at: 0),
+                includingProperties: ast.hasPropertyClause
+            ) else { return }
             result.append(SearchCandidate(
                 document: document,
                 identityPriority: row.int(at: 1),
@@ -849,7 +893,7 @@ public actor TriptychSearchIndex {
         let expression = SearchMatcher.ftsExpression(for: ast.positiveLexicalClauses)
         var sql = """
         SELECT d.id,
-               bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 6.0, 4.0, 5.0, 2.0, 2.0, 1.0) AS lexical_rank
+               bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 1.0) AS lexical_rank
         FROM search_fts
         JOIN search_documents d ON d.id = search_fts.document_id
         WHERE search_fts MATCH ?
@@ -864,7 +908,10 @@ public actor TriptychSearchIndex {
         bindings.append(.int(offset))
         var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
-            guard let document = try self.loadDocument(rowID: row.int(at: 0)) else { return }
+            guard let document = try self.loadDocument(
+                rowID: row.int(at: 0),
+                includingProperties: ast.hasPropertyClause
+            ) else { return }
             result.append(SearchCandidate(
                 document: document,
                 identityPriority: 10,
@@ -877,7 +924,8 @@ public actor TriptychSearchIndex {
     private func documentCandidates(
         vaultID: UUID?,
         limit: Int,
-        offset: Int
+        offset: Int,
+        includingProperties: Bool
     ) throws -> [SearchCandidate] {
         var sql = "SELECT id FROM search_documents"
         var bindings: [SearchSQLiteBinding] = []
@@ -890,7 +938,10 @@ public actor TriptychSearchIndex {
         bindings.append(.int(offset))
         var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
-            guard let document = try self.loadDocument(rowID: row.int(at: 0)) else { return }
+            guard let document = try self.loadDocument(
+                rowID: row.int(at: 0),
+                includingProperties: includingProperties
+            ) else { return }
             result.append(SearchCandidate(
                 document: document,
                 identityPriority: 10,
@@ -900,7 +951,10 @@ public actor TriptychSearchIndex {
         return result
     }
 
-    private func loadDocument(rowID: Int) throws -> StoredSearchDocument? {
+    private func loadDocument(
+        rowID: Int,
+        includingProperties: Bool = false
+    ) throws -> StoredSearchDocument? {
         var document: StoredSearchDocument?
         try database.query(
             """
@@ -922,6 +976,9 @@ public actor TriptychSearchIndex {
                   let layer = EvidentialLayer(rawValue: layerText) else { return }
             let aliases = try self.aliases(documentID: rowID)
             let segments = try self.segments(documentID: rowID)
+            let properties = includingProperties
+                ? try self.properties(documentID: rowID)
+                : []
             let lineStarts = (row.text(at: 16).flatMap { $0.data(using: .utf8) })
                 .flatMap { try? JSONDecoder().decode([Int].self, from: $0) } ?? [0]
             document = StoredSearchDocument(
@@ -946,7 +1003,8 @@ public actor TriptychSearchIndex {
                 evidentialLayer: layer,
                 roleOrder: row.int(at: 15),
                 sourceLineStarts: lineStarts,
-                segments: segments
+                segments: segments,
+                properties: properties
             )
         }
         return document
@@ -999,6 +1057,77 @@ public actor TriptychSearchIndex {
             ))
         }
         return result
+    }
+
+    private func properties(
+        documentID: Int
+    ) throws -> [SearchPropertyProjection.Entry] {
+        struct Accumulator {
+            let key: String
+            let keyRange: SearchSourceRange
+            let valueKind: SearchPropertyProjection.ValueKind
+            let isEmpty: Bool
+            var members: [SearchPropertyProjection.StringMember]
+        }
+        var values: [String: Accumulator] = [:]
+        try database.query(
+            """
+            SELECT property_key, value_kind, is_empty, ordinal, raw_value, normalized_value,
+                   key_lower, key_upper, key_line, key_column, key_end_line,
+                   key_end_column, value_lower, value_upper, value_line,
+                   value_column, value_end_line, value_end_column
+            FROM search_properties
+            WHERE document_id = ?
+            ORDER BY property_key, ordinal;
+            """,
+            bindings: [.int(documentID)]
+        ) { row in
+            guard let key = row.text(at: 0),
+                  let kindText = row.text(at: 1),
+                  let kind = SearchPropertyProjection.ValueKind(rawValue: kindText)
+            else { return }
+            let keyRange = SearchSourceRange(
+                utf16LowerBound: row.int(at: 6),
+                utf16UpperBound: row.int(at: 7),
+                line: row.int(at: 8),
+                column: row.int(at: 9),
+                endLine: row.int(at: 10),
+                endColumn: row.int(at: 11)
+            )
+            var accumulator = values[key] ?? Accumulator(
+                key: key,
+                keyRange: keyRange,
+                valueKind: kind,
+                isEmpty: row.int(at: 2) == 1,
+                members: []
+            )
+            if let rawValue = row.text(at: 4),
+               let normalizedValue = row.text(at: 5),
+               !row.isNull(at: 12) {
+                accumulator.members.append(SearchPropertyProjection.StringMember(
+                    value: rawValue,
+                    normalizedValue: normalizedValue,
+                    sourceRange: SearchSourceRange(
+                        utf16LowerBound: row.int(at: 12),
+                        utf16UpperBound: row.int(at: 13),
+                        line: row.int(at: 14),
+                        column: row.int(at: 15),
+                        endLine: row.int(at: 16),
+                        endColumn: row.int(at: 17)
+                    )
+                ))
+            }
+            values[key] = accumulator
+        }
+        return values.values.map {
+            SearchPropertyProjection.Entry(
+                key: $0.key,
+                keySourceRange: $0.keyRange,
+                valueKind: $0.valueKind,
+                isEmpty: $0.isEmpty,
+                stringMembers: $0.members
+            )
+        }.sorted { $0.key < $1.key }
     }
 
     private struct IndexedMetadata {
@@ -1180,18 +1309,57 @@ public actor TriptychSearchIndex {
                 ]
             )
         }
+        for property in item.propertyProjection.entries {
+            let members: [SearchPropertyProjection.StringMember?] =
+                property.stringMembers.isEmpty
+                    ? [nil]
+                    : property.stringMembers.map(Optional.some)
+            for (ordinal, member) in members.enumerated() {
+                try database.execute(
+                    """
+                    INSERT INTO search_properties(
+                        document_id, property_key, value_kind, is_empty, ordinal,
+                        raw_value, normalized_value, key_lower, key_upper,
+                        key_line, key_column, key_end_line, key_end_column,
+                        value_lower, value_upper, value_line, value_column,
+                        value_end_line, value_end_column
+                    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    bindings: [
+                        .int(documentID), .text(property.key),
+                        .text(property.valueKind.rawValue), .int(property.isEmpty ? 1 : 0),
+                        .int(ordinal),
+                        .optionalText(member?.value),
+                        .optionalText(member?.normalizedValue),
+                        .int(property.keySourceRange.utf16LowerBound),
+                        .int(property.keySourceRange.utf16UpperBound),
+                        .int(property.keySourceRange.line),
+                        .int(property.keySourceRange.column),
+                        .int(property.keySourceRange.endLine),
+                        .int(property.keySourceRange.endColumn),
+                        .optionalInt(member?.sourceRange.utf16LowerBound),
+                        .optionalInt(member?.sourceRange.utf16UpperBound),
+                        .optionalInt(member?.sourceRange.line),
+                        .optionalInt(member?.sourceRange.column),
+                        .optionalInt(member?.sourceRange.endLine),
+                        .optionalInt(member?.sourceRange.endColumn),
+                    ]
+                )
+            }
+        }
         try database.execute(
             """
             INSERT INTO search_fts(
-                document_id, path, title, aliases, headings, authors, year, tags,
+                document_id, path, title, aliases, headings, summary, authors, year, tags,
                 callouts, footnotes, body
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .int(documentID), .text(SearchTokenization.indexText(projection.path)),
                 .text(SearchTokenization.indexText(projection.title)),
                 .text(SearchTokenization.indexText(projection.aliases.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.headings.joined(separator: " "))),
+                .text(SearchTokenization.indexText(projection.summary ?? "")),
                 .text(SearchTokenization.indexText(projection.authors.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.year ?? "")),
                 .text(SearchTokenization.indexText(projection.tags.joined(separator: " "))),
@@ -1215,6 +1383,7 @@ public actor TriptychSearchIndex {
         try database.execute("DELETE FROM search_fts WHERE document_id = ?;", bindings: [.int(rowID)])
         try database.execute("DELETE FROM search_segments WHERE document_id = ?;", bindings: [.int(rowID)])
         try database.execute("DELETE FROM search_aliases WHERE document_id = ?;", bindings: [.int(rowID)])
+        try database.execute("DELETE FROM search_properties WHERE document_id = ?;", bindings: [.int(rowID)])
         try database.execute("DELETE FROM search_documents WHERE id = ?;", bindings: [.int(rowID)])
     }
 
@@ -1236,8 +1405,8 @@ public actor TriptychSearchIndex {
         );
         INSERT INTO search_index_state VALUES(
             1, '\(triptychID.uuidString.lowercased())', 0, 0,
-            \(SearchContractV4.schemaVersion), \(SearchContractV4.contractVersion),
-            \(SearchContractV4.tokenizerPolicyVersion), \(SearchContractV4.rankingPolicyVersion), ''
+            \(SearchContract.schemaVersion), \(SearchContract.currentVersion),
+            \(SearchContract.tokenizerPolicyVersion), \(SearchContract.rankingPolicyVersion), ''
         );
         CREATE TABLE search_vaults(
             vault_id TEXT PRIMARY KEY,
@@ -1279,6 +1448,31 @@ public actor TriptychSearchIndex {
             FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
         );
         CREATE INDEX search_aliases_exact_key ON search_aliases(exact_key);
+        CREATE TABLE search_properties(
+            document_id INTEGER NOT NULL,
+            property_key TEXT NOT NULL,
+            value_kind TEXT NOT NULL,
+            is_empty INTEGER NOT NULL,
+            ordinal INTEGER NOT NULL,
+            raw_value TEXT,
+            normalized_value TEXT,
+            key_lower INTEGER NOT NULL,
+            key_upper INTEGER NOT NULL,
+            key_line INTEGER NOT NULL,
+            key_column INTEGER NOT NULL,
+            key_end_line INTEGER NOT NULL,
+            key_end_column INTEGER NOT NULL,
+            value_lower INTEGER,
+            value_upper INTEGER,
+            value_line INTEGER,
+            value_column INTEGER,
+            value_end_line INTEGER,
+            value_end_column INTEGER,
+            PRIMARY KEY(document_id, property_key, ordinal),
+            FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
+        );
+        CREATE INDEX search_properties_key_value
+            ON search_properties(property_key, normalized_value);
         CREATE TABLE search_segments(
             document_id INTEGER NOT NULL,
             field TEXT NOT NULL,
@@ -1296,7 +1490,7 @@ public actor TriptychSearchIndex {
             FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
         );
         CREATE VIRTUAL TABLE search_fts USING fts5(
-            document_id UNINDEXED, path, title, aliases, headings, authors, year,
+            document_id UNINDEXED, path, title, aliases, headings, summary, authors, year,
             tags, callouts, footnotes, body,
             tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3'
         );
@@ -1328,10 +1522,10 @@ public actor TriptychSearchIndex {
         }
         guard let values,
               values.0 == triptychID.uuidString.lowercased(),
-              values.1 == SearchContractV4.schemaVersion,
-              values.2 == SearchContractV4.contractVersion,
-              values.3 == SearchContractV4.tokenizerPolicyVersion,
-              values.4 == SearchContractV4.rankingPolicyVersion else {
+              values.1 == SearchContract.schemaVersion,
+              values.2 == SearchContract.currentVersion,
+              values.3 == SearchContract.tokenizerPolicyVersion,
+              values.4 == SearchContract.rankingPolicyVersion else {
             throw SearchIndexError.incompatibleSchema
         }
         let definition = try database.scalarText(
@@ -1444,17 +1638,6 @@ private extension SearchIndexError {
     }
 }
 
-private extension SearchRequest {
-    var hasConsistentScopes: Bool {
-        switch (presentationScope, executionScope) {
-        case (.thisNote, .currentNote),
-             (.currentVault, .currentVault),
-             (.triptych, .triptych): true
-        default: false
-        }
-    }
-}
-
 private struct StoredSearchDocument {
     let rowID: Int
     let vaultID: UUID
@@ -1475,6 +1658,11 @@ private struct StoredSearchDocument {
     let roleOrder: Int
     let sourceLineStarts: [Int]
     let segments: [SearchTextSegment]
+    let properties: [SearchPropertyProjection.Entry]
+
+    var noteID: VaultQualifiedNoteID {
+        VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
+    }
 }
 
 private struct SearchCandidate {
@@ -1501,7 +1689,11 @@ private struct SearchCandidate {
 }
 
 private enum SearchMatcher {
-    static func satisfies(_ ast: SearchQueryAST, document: StoredSearchDocument) -> Bool {
+    static func satisfies(
+        _ ast: SearchQueryAST,
+        document: StoredSearchDocument,
+        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch]
+    ) -> Bool {
         ast.clauses.allSatisfy { clause in
             switch clause {
             case .lexical(let lexical):
@@ -1515,8 +1707,46 @@ private enum SearchMatcher {
                 case .has: structured.value == "broken-link" && document.hasBrokenLink
                 }
                 return structured.excluded ? !matched : matched
+            case .property(let property):
+                return propertyMatch(property, in: document) != nil
+            case .relation:
+                return relationshipMatches[document.noteID] != nil
+            case .record:
+                return false
             }
         }
+    }
+
+    static func propertyMatch(
+        _ clause: SearchPropertyClause,
+        in document: StoredSearchDocument
+    ) -> SearchPropertyMatch? {
+        guard let entry = document.properties.first(where: {
+            $0.key == clause.key
+        }) else { return nil }
+        guard let value = clause.value else {
+            return SearchPropertyMatch(
+                key: entry.key,
+                mode: .presence,
+                normalizedValue: nil,
+                valueKind: entry.valueKind,
+                isEmpty: entry.isEmpty,
+                keySourceRange: entry.keySourceRange
+            )
+        }
+        let ranges = entry.stringMembers.filter {
+            $0.normalizedValue == value
+        }.map(\.sourceRange)
+        guard !ranges.isEmpty else { return nil }
+        return SearchPropertyMatch(
+            key: entry.key,
+            mode: .exactStringValue,
+            normalizedValue: value,
+            valueKind: entry.valueKind,
+            isEmpty: entry.isEmpty,
+            keySourceRange: entry.keySourceRange,
+            valueSourceRanges: ranges
+        )
     }
 
     static func identityPriority(
@@ -1547,12 +1777,19 @@ private enum SearchMatcher {
         }
         if fields.isEmpty, ast.isFilterOnly {
             for clause in ast.clauses {
-                guard case .structured(let structured) = clause else { continue }
-                let field: SearchMatchedField = switch structured.field {
-                case .callout: .callout
-                case .has: .brokenLink
+                let field: SearchMatchedField?
+                switch clause {
+                case .structured(let structured):
+                    field = switch structured.field {
+                    case .callout: .callout
+                    case .has: .brokenLink
+                    }
+                case .property, .relation:
+                    field = .title
+                case .lexical, .record:
+                    field = nil
                 }
-                if !fields.contains(field) { fields.append(field) }
+                if let field, !fields.contains(field) { fields.append(field) }
             }
         }
         return fields
@@ -1569,6 +1806,7 @@ private enum SearchMatcher {
         case .title: .title
         case .alias: .alias
         case .heading: .heading
+        case .summary: .summary
         case .body: .body
         case .author: .author
         case .year: .year
@@ -1637,6 +1875,7 @@ private enum SearchMatcher {
             case .title: "title"
             case .alias: "aliases"
             case .heading: "headings"
+            case .summary: "summary"
             case .body: "body"
             case .author: "authors"
             case .year: "year"
@@ -1673,26 +1912,54 @@ private enum SearchMatcher {
     }
 }
 
-private enum SearchHitBuilder {
+private enum NoteSearchResultBuilder {
     static func hit(
         candidate: SearchCandidate,
         ast: SearchQueryAST,
-        freshness: SearchFreshnessToken
-    ) -> SearchHit {
+        freshness: SearchFreshnessToken,
+        relationshipMatch: SearchRelationshipMatch?
+    ) -> NoteSearchResult {
         let document = candidate.document
         let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
         let primary = matchedFields.first ?? .title
         let matched = firstMatch(ast: ast, document: document, preferredField: primary)
-        let presentation = snippet(
-            segment: matched?.segment ?? document.segments.first { $0.field == .title },
-            normalizedRange: matched?.range,
-            positiveClauses: ast.positiveLexicalClauses
+        let reasons = matchReasons(
+            ast: ast,
+            document: document,
+            relationshipMatch: relationshipMatch
         )
-        let sourceRange = matched.flatMap {
+        let property = reasons.compactMap { reason -> SearchPropertyMatch? in
+            guard case .property(let value) = reason else { return nil }
+            return value
+        }.first
+        let presentation: (text: String, highlights: [SearchHighlight])
+        if let matched {
+            presentation = snippet(
+                segment: matched.segment,
+                normalizedRange: matched.range,
+                positiveClauses: ast.positiveLexicalClauses
+            )
+        } else if let property,
+                  let entry = document.properties.first(where: { $0.key == property.key }) {
+            let value = entry.stringMembers.first(where: {
+                property.valueSourceRanges.contains($0.sourceRange)
+            })?.value
+            presentation = (value.map { "\(entry.key): \($0)" } ?? entry.key, [])
+        } else {
+            presentation = snippet(
+                segment: document.segments.first { $0.field == .title },
+                normalizedRange: nil,
+                positiveClauses: ast.positiveLexicalClauses
+            )
+        }
+        let lexicalSourceRange = matched.flatMap {
             sourceRange(for: $0.range, segment: $0.segment, lineStarts: document.sourceLineStarts)
         }
+        let sourceRange = lexicalSourceRange
+            ?? property?.valueSourceRanges.first
+            ?? property?.keySourceRange
         let reason = rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly)
-        return SearchHit(
+        return NoteSearchResult(
             resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? -1)",
             vaultID: document.vaultID,
             vaultName: document.vaultName,
@@ -1707,6 +1974,8 @@ private enum SearchHitBuilder {
             highlights: presentation.highlights,
             matchedFields: matchedFields,
             rankReason: reason,
+            primaryMatchReason: reasons.first ?? .lexical,
+            additionalMatchReasons: Array(reasons.dropFirst()),
             sourceRange: sourceRange,
             freshnessToken: freshness,
             fingerprint: document.fingerprint,
@@ -1720,11 +1989,17 @@ private enum SearchHitBuilder {
         ast: SearchQueryAST,
         lead: SearchLexicalClause,
         freshness: SearchFreshnessToken,
-        limit: Int
-    ) -> [SearchHit] {
+        limit: Int,
+        relationshipMatch: SearchRelationshipMatch?
+    ) -> [NoteSearchResult] {
         let document = candidate.document
         let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
-        var hits: [SearchHit] = []
+        let reasons = matchReasons(
+            ast: ast,
+            document: document,
+            relationshipMatch: relationshipMatch
+        )
+        var hits: [NoteSearchResult] = []
         for segment in SearchMatcher.matchingSegments(for: lead, in: document) {
             for range in SearchMatcher.occurrences(of: lead.value, in: segment.normalizedText) {
                 guard hits.count < limit else { return hits }
@@ -1738,7 +2013,7 @@ private enum SearchHitBuilder {
                     normalizedRange: range,
                     positiveClauses: ast.positiveLexicalClauses
                 )
-                hits.append(SearchHit(
+                hits.append(NoteSearchResult(
                     resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? segment.ordinal)",
                     vaultID: document.vaultID,
                     vaultName: document.vaultName,
@@ -1753,6 +2028,8 @@ private enum SearchHitBuilder {
                     highlights: presentation.highlights,
                     matchedFields: matchedFields,
                     rankReason: rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly),
+                    primaryMatchReason: reasons.first ?? .lexical,
+                    additionalMatchReasons: Array(reasons.dropFirst()),
                     sourceRange: sourceRange,
                     freshnessToken: freshness,
                     fingerprint: document.fingerprint,
@@ -1762,6 +2039,31 @@ private enum SearchHitBuilder {
             }
         }
         return hits
+    }
+
+    private static func matchReasons(
+        ast: SearchQueryAST,
+        document: StoredSearchDocument,
+        relationshipMatch: SearchRelationshipMatch?
+    ) -> [NoteSearchMatchReason] {
+        var reasons: [NoteSearchMatchReason] = []
+        if !ast.positiveLexicalClauses.isEmpty { reasons.append(.lexical) }
+        for clause in ast.clauses {
+            switch clause {
+            case .property(let value):
+                if let match = SearchMatcher.propertyMatch(value, in: document) {
+                    reasons.append(.property(match))
+                }
+            case .relation:
+                if let relationshipMatch {
+                    reasons.append(.relationship(relationshipMatch))
+                }
+            case .lexical, .structured, .record:
+                continue
+            }
+        }
+        if reasons.isEmpty { reasons.append(.lexical) }
+        return reasons
     }
 
     private static func firstMatch(
@@ -1931,6 +2233,7 @@ private enum SearchHitBuilder {
         case .title: "Title"
         case .alias: "Alias"
         case .heading: "Heading"
+        case .summary: "Summary"
         case .author: "Author"
         case .year: "Year"
         case .tag: "Tag"
@@ -1969,7 +2272,7 @@ private final class SearchSQLiteDatabase: @unchecked Sendable {
             nil
         ) != SQLITE_OK {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) }
-                ?? "could not open Search v4 database"
+                ?? "could not open Search v6 database"
             let code = handle.map { sqlite3_extended_errcode($0) }
             if let handle { sqlite3_close(handle) }
             if code.map({ ($0 & 0xFF) == SQLITE_CORRUPT || ($0 & 0xFF) == SQLITE_NOTADB }) == true {
@@ -2111,7 +2414,7 @@ private struct SearchSQLiteStatement {
                 }
             }
             guard result == SQLITE_OK else {
-                throw SearchIndexError.sqlite("could not bind a Search v4 parameter")
+                throw SearchIndexError.sqlite("could not bind a Search v6 parameter")
             }
         }
     }

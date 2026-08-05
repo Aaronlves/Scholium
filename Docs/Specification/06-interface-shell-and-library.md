@@ -154,8 +154,9 @@ Menus follow researcher tasks:
   Attention anchor, and opens that anchor's transient popover.
 - **Research:** role-valid Actions and **Triptych · Records**, never Attention
   or Checkpoints.
-- **Settings:** Triptychs, Property profiles, Research Guidance, Attention,
-  Zotero, and Appearance.
+- **Settings:** Triptychs, Property profiles, Research Guidance for Skills,
+  Practices, Action Profiles, Triptych collaboration, sources and local Agent
+  connection, Attention, Zotero, and Appearance.
 
 ### 18.3 Library and Search
 
@@ -358,6 +359,14 @@ Menus follow researcher tasks:
   no-document empty state; explicit selection in the destination Location
   remains the route for browsing its content.
 - Debate Importance ordering first requires one exact Debate Scope.
-- Shared Search follows Section 13: compact centered surface, always-visible
-  scopes, no empty sheet, bounded results that identify match context and
-  destination, and deterministic lexical Beta.
+- Shared Search follows Section 13: one compact centered surface, always-visible
+  provider-specific scope, no empty sheet, and bounded Note or Record results
+  that identify match context, source freshness, and destination. Typing a
+  valid field prefix may open one bounded capability-driven completion list;
+  accepting an item edits only the visible query text. Completion and results
+  never expose two simultaneous keyboard selections or turn Search into an
+  advanced workspace. **Explain Query** presents the same typed interpretation
+  used by App and CLI—provider, scope, clauses, direction, normalization,
+  ordering, and limitations—and never runs a second parser. Provider mismatch,
+  ambiguous identity, not-applicable clauses, invalid syntax, unavailable
+  Graph, stale source, and no matches retain distinct inline states.

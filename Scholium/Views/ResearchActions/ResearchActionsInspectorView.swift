@@ -69,7 +69,6 @@ struct ResearchActionsPresentation {
         }
         let items = availability
             .sorted {
-                if $0.group != $1.group { return $0.group == .defaultAction }
                 if $0.order != $1.order { return $0.order < $1.order }
                 return $0.id.rawValue < $1.id.rawValue
             }
@@ -113,9 +112,6 @@ struct ResearchActionsPresentation {
         )
     }
 
-    func defaultItems() -> [ResearchActionItemPresentation] {
-        items.filter { $0.group == .defaultAction }
-    }
 }
 
 struct ResearchActionItemPresentation: Identifiable {
@@ -130,7 +126,6 @@ struct ResearchActionItemPresentation: Identifiable {
         reopensActiveDiscussion
             || availability.canPresentInInterface && !isBlockedByCancellationRecovery
     }
-    var group: ResearchActionAvailabilityGroup { availability.group }
     var detail: String? {
         if reopensActiveDiscussion {
             return String(
@@ -147,9 +142,7 @@ struct ResearchActionItemPresentation: Identifiable {
     }
 }
 
-/// Presentation-only grouping for Scholium's closed default Action matrix.
-/// Researcher-defined Profiles never enter this switch: they remain an open,
-/// ordered collection under Researcher Skills and use the same row component.
+/// Presentation-only grouping for Scholium's closed Platform Action matrix.
 private enum BuiltInActionVisualGroup: Equatable {
     case research
     case review
@@ -170,7 +163,6 @@ private struct ResearchActionVisualSection: Identifiable {
     enum ID: Hashable {
         case research
         case review
-        case researcherSkills
     }
 
     let id: ID
@@ -269,7 +261,7 @@ struct ResearchActionsInspectorView: View {
             title: item.title,
             systemImage: item.availability.definition.interfaceSymbol,
             detail: item.detail,
-            localizesTitle: item.availability.profile.origin == .applicationDefault,
+            localizesTitle: false,
             focusRequestToken: focusRequest?.actionID == item.id
                 ? focusRequest?.token
                 : nil
@@ -406,16 +398,12 @@ struct ResearchActionsInspectorView: View {
         .frame(width: 300)
     }
 
-    private var researcherItems: [ResearchActionItemPresentation] {
-        presentation.items.filter { $0.group == .researcherSkill }
-    }
-
     private var researchItems: [ResearchActionItemPresentation] {
-        presentation.defaultItems().filter { $0.builtInVisualGroup == .research }
+        presentation.items.filter { $0.builtInVisualGroup == .research }
     }
 
     private var reviewItems: [ResearchActionItemPresentation] {
-        presentation.defaultItems().filter { $0.builtInVisualGroup == .review }
+        presentation.items.filter { $0.builtInVisualGroup == .review }
     }
 
     private var actionSections: [ResearchActionVisualSection] {
@@ -429,11 +417,6 @@ struct ResearchActionsInspectorView: View {
                 id: .review,
                 title: "REVIEW",
                 items: reviewItems
-            ),
-            ResearchActionVisualSection(
-                id: .researcherSkills,
-                title: "RESEARCHER SKILLS",
-                items: researcherItems
             ),
         ].filter { !$0.items.isEmpty }
     }

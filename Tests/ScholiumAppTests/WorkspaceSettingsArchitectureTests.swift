@@ -140,7 +140,7 @@ struct WorkspaceSettingsArchitectureTests {
         let guidanceFiles = [
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
-            "ResearcherSkillsSettingsView.swift",
+            "ProfilesPracticesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
             "ResearchRecoverySettingsView.swift",
@@ -164,8 +164,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("HSplitView"))
         for category in [
             "Methods",
-            "Researcher Skills",
-            "Permissions",
+            "Profiles & Practices",
+            "Collaboration",
             "Sources & Integrations",
             "Recovery & Technical",
         ] {
@@ -175,12 +175,12 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("Prompt Templates"))
         #expect(!source.contains("card grid"))
         #expect(rootSource.contains("ResearchMethodsSettingsView()"))
-        #expect(rootSource.contains("ResearcherSkillsSettingsView(draftStore: draftStore)"))
+        #expect(rootSource.contains("ProfilesPracticesSettingsView()"))
         #expect(!rootSource.contains("private struct WorkingMethodEditorContext"))
         #expect(!rootSource.contains("private struct ResearchActionProfileEditorView"))
     }
 
-    @Test("Production Skills Settings reaches bounded editing and installation")
+    @Test("Research Guidance exposes the current owner surfaces without package semantics")
     func researchGuidanceOwnsCurrentSkillConfiguration() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -189,7 +189,7 @@ struct WorkspaceSettingsArchitectureTests {
         let source = try [
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
-            "ResearcherSkillsSettingsView.swift",
+            "ProfilesPracticesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
             "ResearchRecoverySettingsView.swift",
@@ -207,63 +207,33 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(source.contains("Edit Method"))
-        #expect(source.contains("Compare with Bundled Reference"))
-        #expect(source.contains("Restore Bundled Reference"))
-        #expect(source.contains("Enable as Work Action"))
-        #expect(source.contains("Install from Local Directory…"))
-        #expect(source.contains("NSOpenPanel()"))
-        #expect(source.contains("allowedContentTypes = [.folder]"))
-        #expect(source.contains("Install Disabled"))
-        #expect(source.contains("Discard Unsaved Changes"))
-        #expect(source.contains("Add Declarative Module"))
-        #expect(source.contains("NONEXECUTING ACTION SHEET PREVIEW"))
-        #expect(source.contains("Save Copy to Triptychs"))
-        #expect(source.contains("Move Earlier"))
-        #expect(source.contains("Move Later"))
-        #expect(source.contains("canMoveProfile"))
-        #expect(source.contains("globallyConfigured"))
-        #expect(source.contains("Delete Action Profile?"))
-        #expect(source.contains("ResearchGuidanceDraftStore"))
-        #expect(source.contains("ResearcherSkillDraftKey"))
-        #expect(source.contains("ResearchActionProfileDraftKey"))
-        #expect(
-            source.components(separatedBy: "try Task.checkCancellation()").count - 1
-                == 4
-        )
-        #expect(
-            source.components(
-                separatedBy: "settingsModel.activeTriptychServicesID == requestedTriptychID"
-            ).count - 1 == 18
-        )
-        #expect(
-            source.components(
-                separatedBy: ".disabled(loadedTriptychID != settingsModel.activeTriptychServicesID)"
-            ).count - 1 == 3
-        )
-        #expect(
-            source.components(separatedBy: "newSkillDraft = nil").count - 1 == 2
-        )
-        #expect(settingsRootSource.contains(
-            "@StateObject private var researchGuidanceDraftStore"
-        ))
-        #expect(settingsRootSource.contains(
-            "ResearchGuidanceSettingsView(draftStore: researchGuidanceDraftStore)"
-        ))
-        #expect(source.contains("draftStore.hasUnsavedChanges"))
-        #expect(source.contains(
-            "actionID == .manuscript && binding.state == .researcherSkill"
-        ))
-        #expect(source.contains("Reveal Skills Folder"))
-        #expect(!source.contains("Reveal Legacy Data"))
+        #expect(source.contains("Edit Primary Markdown"))
+        #expect(source.contains("Restore Previous Edit"))
+        #expect(source.contains("Restore Scholium Default"))
+        #expect(source.contains("Profiles & Practices"))
+        #expect(source.contains("New Practice…"))
+        #expect(source.contains("Academic Inputs"))
+        #expect(source.contains("Academic Results"))
+        #expect(source.contains("Edit Academic Profile"))
+        #expect(source.contains("Field Type"))
+        #expect(source.contains("Single Choice"))
+        #expect(source.contains("Multiple Choice"))
+        #expect(source.contains("Not Included"))
+        #expect(source.contains("saveAcademicActionProfiles"))
+        #expect(source.contains("one current primary Markdown method"))
+        #expect(!source.contains("ResearchGuidanceDraftStore"))
+        #expect(!source.contains("ResearcherSkillDraftKey"))
+        #expect(!source.contains("ResearchActionProfileDraftKey"))
+        #expect(!source.contains("Install from Local Directory…"))
+        #expect(!settingsRootSource.contains("researchGuidanceDraftStore"))
+        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView()"))
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))
         #expect(source.contains("ResearchPermissionSettingsView()"))
-        #expect(source.contains("saveTriptychPermissionPolicy"))
-        #expect(source.contains("saveSkillPermissionOverride"))
-        #expect(source.contains("removeSkillPermissionOverride"))
-        #expect(source.contains("Needs Renewal"))
-        #expect(source.contains("do not monitor external agents or network activity"))
+        #expect(source.contains("saveCollaborationPolicy"))
+        #expect(!source.contains("saveSkillPermissionOverride"))
+        #expect(!source.contains("removeSkillPermissionOverride"))
+        #expect(source.contains("do not inspect or monitor Agent behavior"))
         for forbidden in [
             ".regularMaterial",
             ".ultraThinMaterial",
@@ -288,7 +258,7 @@ struct WorkspaceSettingsArchitectureTests {
             encoding: .utf8
         )
         #expect(source.contains(
-            "Agent changes will ask for permission every time. You can change this later for each Triptych or Skill in Research Guidance Settings."
+            "Agent write-set extensions ask you every time by default. You can change the Triptych collaboration policy later in Research Guidance Settings."
         ))
         #expect(source.contains("scholium.guidedSetup.permissionDefault"))
         #expect(!source.contains("Choose a permission policy"))
@@ -325,7 +295,7 @@ struct WorkspaceSettingsArchitectureTests {
             of: "struct WorkspaceSettingsCapabilities {"
         ))
         let boundaryEnd = try #require(source.range(
-            of: "extension ResearchSkillMaintenancePreparation",
+            of: "/// Application-lifetime Settings boundary",
             range: boundaryStart.upperBound..<source.endIndex
         ))
         let boundary = String(source[boundaryStart.lowerBound..<boundaryEnd.lowerBound])

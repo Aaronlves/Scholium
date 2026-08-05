@@ -1,70 +1,30 @@
+import AppKit
 import ScholiumContracts
 import SwiftUI
+import UniformTypeIdentifiers
 
-enum WorkingMethodCatalog {
-    static let actions: [ResearchActionID] = [
-        .discuss, .analyze, .synthesize, .write, .critique, .checkFidelity,
-        .manuscript,
-    ]
+private struct ResearchMethodEditorContext: Identifiable {
+    let method: ResearchMethodSnapshot
 
-    static let workingPackageIDs: [ResearchActionID: String] = [
-        .discuss: "scholium-working-discuss",
-        .analyze: "scholium-working-analyze",
-        .synthesize: "scholium-working-synthesize",
-        .write: "scholium-working-write",
-        .critique: "scholium-working-critique",
-        .checkFidelity: "scholium-working-content-fidelity",
-        .manuscript: "scholium-working-manuscript",
-    ]
-
-    static let bundledPackageIDs: [ResearchActionID: String] = [
-        .discuss: "scholium-discuss",
-        .analyze: "scholium-analyze",
-        .synthesize: "scholium-synthesize",
-        .write: "scholium-write",
-        .critique: "scholium-critique",
-        .checkFidelity: "scholium-content-fidelity",
-        .manuscript: "scholium-manuscript",
-    ]
-
-    static var workingPackageIDSet: Set<String> {
-        Set(workingPackageIDs.values)
-    }
+    var id: ResearchSkillRegistrationKey { method.registration.key }
 }
 
-private struct WorkingMethodEditorContext: Identifiable {
+private struct NewResearchMethodContext: Identifiable {
     let actionID: ResearchActionID
-    let package: ResearchSkillPackage
-    let bindingRevision: DocumentFingerprint
+    let expectedRegistrationRevision: DocumentFingerprint
+    let suggestedName: String
 
-    var id: String { actionID.rawValue }
-}
-
-private struct WorkingMethodComparison: Identifiable {
-    let actionID: ResearchActionID
-    let currentSource: String
-    let referenceSource: String
-
-    var id: String { actionID.rawValue }
-}
-
-private struct WorkingMethodReplacement: Identifiable {
-    let actionID: ResearchActionID
-    let candidates: [ResearchSkillPackage]
-    let bindingRevision: DocumentFingerprint
-
-    var id: String { actionID.rawValue }
+    var id: ResearchActionID { actionID }
 }
 
 struct ResearchMethodsSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var loadedTriptychID: UUID?
-    @State private var bindings: ResearchWorkingMethodBindingSnapshot?
-    @State private var profiles: ResearchActionProfileSnapshot?
-    @State private var skills: [ResearchSkillPackage] = []
-    @State private var editor: WorkingMethodEditorContext?
-    @State private var comparison: WorkingMethodComparison?
-    @State private var replacement: WorkingMethodReplacement?
+    @State private var registrations: ResearchSkillRegistrationSnapshot?
+    @State private var methods: [ResearchActionID: ResearchMethodSnapshot] = [:]
+    @State private var editor: ResearchMethodEditorContext?
+    @State private var newMethod: NewResearchMethodContext?
+    @State private var pendingDefaultRestore: ResearchMethodSnapshot?
     @State private var isWorking = false
     @State private var errorMessage: String?
 
@@ -72,86 +32,92 @@ struct ResearchMethodsSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 settingsTitle(
-                    LocalizedStringResource(
-                        "Methods",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
+                    LocalizedStringResource("Methods", table: "Localizable", bundle: .module),
                     detail: LocalizedStringResource(
-                        "Each Triptych owns directly editable Working Methods. Bundled references are used only when you explicitly compare or restore.",
+                        "Each Action routes to one current primary Markdown method. Practices are derived only from exact Wikilinks in that method; an optional local folder remains ordinary Agent-readable storage, not a package.",
                         table: "Localizable",
                         bundle: .module
                     )
                 )
+
                 researchSettingsSection(LocalizedStringResource(
-                    "WORKING METHOD SKILLS",
+                    "RESEARCH SKILLS",
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    if bindings == nil {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("This Triptych does not yet have editable Working Methods.")
-                                .foregroundStyle(.secondary)
-                            Button("Install Working Methods") { installWorkingMethods() }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(isWorking)
-                                .accessibilityIdentifier(
-                                    "scholium.researchGuidance.installWorkingMethods"
-                                )
-                        }
-                    } else {
+                    if let registrations {
                         VStack(spacing: 0) {
-                            ForEach(WorkingMethodCatalog.actions, id: \.rawValue) { actionID in
-                                workingMethodRow(actionID)
-                                if actionID != WorkingMethodCatalog.actions.last {
+                            ForEach(registrations.document.registrations) { registration in
+                                methodRow(registration)
+                                if registration.id != registrations.document.registrations.last?.id {
                                     Divider()
                                 }
                             }
                         }
+                    } else if isWorking {
+                        ProgressView("Loading methods…")
+                    } else {
+                        ContentUnavailableView(
+                            "Methods Unavailable",
+                            systemImage: "text.book.closed",
+                            description: Text(errorMessage ?? "Open a complete Triptych.")
+                        )
                     }
                 }
+
                 researchSettingsSection(LocalizedStringResource(
                     "BOUNDARY",
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    Text("Method prose can guide scholarly work, but it cannot change identity, revision, permission, checkpoint, conflict, completion, or recovery rules.")
+                    Text("Method and Practice prose guides scholarly work. It cannot change Platform Action support, Session scope, collaboration policy, write authorization, exact revisions, conflicts, or recovery.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: 680, alignment: .topLeading)
+            .frame(maxWidth: 720, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .disabled(loadedTriptychID != settingsModel.activeTriptychServicesID)
+        .disabled(
+            loadedTriptychID != settingsModel.activeTriptychServicesID
+                || isWorking
+        )
         .task(id: settingsModel.activeTriptychServicesID) { await reload() }
         .sheet(item: $editor) { context in
-            WorkingMethodSourceEditor(context: context) { source in
-                guard let packageRevision = context.package.revision else {
-                    throw ResearchSkillError.stalePackage(context.package.id)
-                }
-                _ = try await settingsModel.saveWorkingMethod(
-                    for: context.actionID,
+            ResearchMethodSourceEditor(context: context) { source in
+                _ = try await settingsModel.saveResearchMethod(
+                    registrationKey: context.method.registration.key,
                     source: source,
-                    expectedPackageRevision: packageRevision,
-                    expectedBindingRevision: context.bindingRevision
+                    expectedRevision: context.method.primaryMarkdownRevision
                 )
                 await reload()
             }
         }
-        .sheet(item: $comparison) { comparison in
-            WorkingMethodComparisonView(comparison: comparison)
-        }
-        .sheet(item: $replacement) { replacement in
-            WorkingMethodReplacementView(replacement: replacement) { packageID in
-                _ = try await settingsModel.activateResearcherSkill(
-                    packageID: packageID,
-                    for: replacement.actionID,
-                    expectedBindingRevision: replacement.bindingRevision
+        .sheet(item: $newMethod) { context in
+            NewResearchMethodEditor(context: context) { name, source in
+                _ = try await settingsModel.createResearchMethod(
+                    actionID: context.actionID,
+                    displayName: name,
+                    source: source,
+                    expectedRegistrationRevision:
+                        context.expectedRegistrationRevision
                 )
                 await reload()
             }
+        }
+        .confirmationDialog(
+            "Restore the Current Scholium Default?",
+            isPresented: Binding(
+                get: { pendingDefaultRestore != nil },
+                set: { if !$0 { pendingDefaultRestore = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Restore Default", role: .destructive) { restoreDefault() }
+            Button("Cancel", role: .cancel) { pendingDefaultRestore = nil }
+        } message: {
+            Text("This replaces the current primary Markdown with the default shipped by this Scholium build. The current bytes remain available as the one previous-edit recovery point; no version history is created.")
         }
         .alert("Could Not Update Methods", isPresented: Binding(
             get: { errorMessage != nil },
@@ -164,359 +130,320 @@ struct ResearchMethodsSettingsView: View {
     }
 
     @ViewBuilder
-    private func workingMethodRow(_ actionID: ResearchActionID) -> some View {
-        let binding = bindings?.document.binding(for: actionID)
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(actionTitle(actionID))
+    private func methodRow(_ registration: ResearchSkillRegistration) -> some View {
+        let method = methods[registration.actionID]
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(registration.displayName)
                     .font(.body.weight(.medium))
-                Text(methodStatus(binding, actionID: actionID))
+                Text(registration.isEnabled ? "Enabled" : "Disabled")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(methodStatus(binding, actionID: actionID))
-                    .accessibilityIdentifier(
-                        "scholium.researchGuidance.method.\(actionID.rawValue).status"
-                    )
+                if let method {
+                    if method.practices.isEmpty {
+                        Text("No linked Practices")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Practices: \(method.practices.map(\.title).joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(Array(method.practiceIssues.enumerated()), id: \.offset) { _, issue in
+                        Label(
+                            practiceIssueText(issue),
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(ScholiumColorRole.attention.color)
+                    }
+                    if let folder = method.skillFolderPath {
+                        LabeledContent(
+                            method.skillFolderIsAvailable == true
+                                ? "Local folder"
+                                : "Local folder unavailable",
+                            value: folder
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    }
+                } else {
+                    Label("Primary Markdown unavailable", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(ScholiumColorRole.attention.color)
+                }
             }
             Spacer(minLength: 12)
             Menu("Manage") {
-                if let context = editorContext(actionID, binding: binding) {
-                    Button("Edit Method") { editor = context }
-                }
-                if let comparison = comparisonContext(actionID, binding: binding) {
-                    Button("Compare with Bundled Reference") {
-                        self.comparison = comparison
+                if let method {
+                    Button("Edit Primary Markdown") {
+                        editor = ResearchMethodEditorContext(method: method)
                     }
-                }
-                if let binding, binding.state != .disabled {
-                    Button("Disable") { disable(actionID) }
-                }
-                if let bindingRevision = bindings?.revision {
-                    let candidates = replacementCandidates(for: actionID)
-                    if !candidates.isEmpty {
-                        Button("Replace…") {
-                            replacement = WorkingMethodReplacement(
-                                actionID: actionID,
-                                candidates: candidates,
-                                bindingRevision: bindingRevision
-                            )
-                        }
+                    Button("Restore Previous Edit") {
+                        restorePrevious(method)
                     }
                     Divider()
-                    if actionID == .manuscript, binding?.state == .disabled {
-                        Button("Enable as Work Action") { enableManuscript() }
-                    } else if actionID != .manuscript {
-                        Button("Restore Bundled Reference") { restore(actionID) }
+                    Button("Restore Scholium Default…") {
+                        pendingDefaultRestore = method
                     }
+                }
+                if let registrations {
+                    Divider()
+                    Button("Create New Skill…") {
+                        newMethod = NewResearchMethodContext(
+                            actionID: registration.actionID,
+                            expectedRegistrationRevision: registrations.revision,
+                            suggestedName: registration.displayName
+                        )
+                    }
+                    Button("Register Markdown…") {
+                        registerExternalMarkdown(for: registration)
+                    }
+                    Button("Register Skill Folder…") {
+                        registerExternalFolder(for: registration)
+                    }
+                }
+                Button(registration.isEnabled ? "Disable" : "Enable") {
+                    setEnabled(!registration.isEnabled, registration: registration)
                 }
             }
             .menuStyle(.borderlessButton)
-            .disabled(isWorking || bindings == nil)
-            .accessibilityIdentifier(
-                "scholium.researchGuidance.method.\(actionID.rawValue).manage"
-            )
         }
-        .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
+        .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.researchGuidance.method.\(actionID.rawValue)")
-    }
-
-    private func methodStatus(
-        _ binding: ResearchWorkingMethodBinding?,
-        actionID: ResearchActionID
-    ) -> String {
-        guard let binding else {
-            return ScholiumL10n.localized(LocalizedStringResource(
-                "Configuration unavailable",
-                table: "Localizable",
-                bundle: .module
-            ))
-        }
-        switch binding.state {
-        case .installedDefault:
-            return ScholiumL10n.localized(LocalizedStringResource(
-                "Editable Triptych Working Method",
-                table: "Localizable",
-                bundle: .module
-            ))
-        case .researcherSkill:
-            let packageID = binding.packageID ?? ScholiumL10n.localized(
-                LocalizedStringResource(
-                    "Unavailable",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            )
-            return ScholiumL10n.localized(LocalizedStringResource(
-                "Researcher Skill: \(packageID)",
-                table: "Localizable",
-                bundle: .module
-            ))
-        case .disabled:
-            if actionID == .manuscript {
-                return ScholiumL10n.localized(LocalizedStringResource(
-                    "Disabled and hidden",
-                    table: "Localizable",
-                    bundle: .module
-                ))
-            }
-            return ScholiumL10n.localized(LocalizedStringResource(
-                "Disabled",
-                table: "Localizable",
-                bundle: .module
-            ))
-        }
-    }
-
-    private func editorContext(
-        _ actionID: ResearchActionID,
-        binding: ResearchWorkingMethodBinding?
-    ) -> WorkingMethodEditorContext? {
-        guard let binding,
-              binding.state == .installedDefault
-                || (actionID == .manuscript && binding.state == .researcherSkill),
-              let packageID = binding.packageID,
-              let package = skills.first(where: {
-                  $0.origin == .triptych && $0.id == packageID
-              }),
-              let bindingRevision = bindings?.revision else { return nil }
-        return WorkingMethodEditorContext(
-            actionID: actionID,
-            package: package,
-            bindingRevision: bindingRevision
+        .accessibilityIdentifier(
+            "scholium.researchGuidance.method.\(registration.actionID.rawValue)"
         )
     }
 
-    private func comparisonContext(
-        _ actionID: ResearchActionID,
-        binding: ResearchWorkingMethodBinding?
-    ) -> WorkingMethodComparison? {
-        guard let packageID = binding?.packageID,
-              let current = skills.first(where: {
-                  $0.origin == .triptych && $0.id == packageID
-              }),
-              let referenceID = WorkingMethodCatalog.bundledPackageIDs[actionID],
-              let reference = skills.first(where: {
-                  $0.origin == .bundled && $0.id == referenceID
-              }) else { return nil }
-        return WorkingMethodComparison(
-            actionID: actionID,
-            currentSource: current.source,
-            referenceSource: reference.source
-        )
-    }
-
-    private func replacementCandidates(
-        for actionID: ResearchActionID
-    ) -> [ResearchSkillPackage] {
-        skills.filter {
-            $0.origin == .triptych
-                && $0.isValid
-                && $0.role == "method"
-                && $0.supports(actionID)
-                && $0.id != bindings?.document.binding(for: actionID)?.packageID
+    private func practiceIssueText(_ issue: ResearchPracticeResolutionIssue) -> String {
+        switch issue.kind {
+        case .missing:
+            "Missing Practice: \(issue.target)"
+        case .ambiguous:
+            "Ambiguous Practice: \(issue.target)"
+        case .unsupportedReference:
+            "Unsupported Practice reference: \(issue.target)"
         }
     }
 
+    @MainActor
     private func reload() async {
-        guard let requestedTriptychID = settingsModel.activeTriptychServicesID else {
+        guard let triptychID = settingsModel.activeTriptychServicesID else {
             loadedTriptychID = nil
-            bindings = nil
-            profiles = nil
-            skills = []
+            registrations = nil
+            methods = [:]
             return
         }
-        loadedTriptychID = nil
-        editor = nil
-        comparison = nil
-        replacement = nil
+        isWorking = true
+        defer { isWorking = false }
         do {
-            async let loadedBindings = settingsModel.workingMethodBindings()
-            async let loadedProfiles = settingsModel.actionProfiles()
-            async let loadedSkills = settingsModel.researchSkills()
-            let (newBindings, newProfiles, newSkills) = try await (
-                loadedBindings,
-                loadedProfiles,
-                loadedSkills
-            )
-            try Task.checkCancellation()
-            guard settingsModel.activeTriptychServicesID == requestedTriptychID else {
-                return
+            let snapshot = try await settingsModel.researchSkillRegistrations()
+            var loaded: [ResearchActionID: ResearchMethodSnapshot] = [:]
+            for registration in snapshot.document.registrations where registration.isEnabled {
+                if let method = try? await settingsModel.researchMethod(
+                    for: registration.actionID
+                ) {
+                    loaded[registration.actionID] = method
+                }
             }
-            bindings = newBindings
-            profiles = newProfiles
-            skills = newSkills
-            loadedTriptychID = requestedTriptychID
-        } catch is CancellationError {
-            return
+            guard triptychID == settingsModel.activeTriptychServicesID else { return }
+            registrations = snapshot
+            methods = loaded
+            loadedTriptychID = triptychID
+            errorMessage = nil
         } catch {
-            guard settingsModel.activeTriptychServicesID == requestedTriptychID else {
-                return
-            }
+            guard triptychID == settingsModel.activeTriptychServicesID else { return }
+            registrations = nil
+            methods = [:]
+            loadedTriptychID = triptychID
             errorMessage = error.localizedDescription
         }
     }
 
-    private func disable(_ actionID: ResearchActionID) {
-        guard let revision = bindings?.revision else { return }
-        perform {
-            if actionID == .manuscript,
-               let profileBinding = profiles?.document.binding(for: .manuscript) {
-                _ = try await settingsModel.saveActionProfile(
-                    try profileBinding.replacingShowInActions(false),
-                    expectedDocumentRevision: profiles?.revision
-                )
-            }
-            _ = try await settingsModel.disableWorkingMethod(
-                for: actionID,
-                expectedBindingRevision: revision
-            )
-            await reload()
-        }
-    }
-
-    private func installWorkingMethods() {
-        perform {
-            _ = try await settingsModel.installDefaultWorkingMethods()
-            await reload()
-        }
-    }
-
-    private func restore(_ actionID: ResearchActionID) {
-        guard let bindingRevision = bindings?.revision,
-              let packageID = WorkingMethodCatalog.workingPackageIDs[actionID] else { return }
-        let current = skills.first {
-            $0.origin == .triptych && $0.id == packageID
-        }
-        let state: ResearchWorkingMethodExpectedPackageState
-        if let revision = current?.revision {
-            state = .present(revision)
-        } else {
-            state = .missing
-        }
-        perform {
-            _ = try await settingsModel.restoreBundledWorkingMethod(
-                for: actionID,
-                expectedPackageState: state,
-                expectedBindingRevision: bindingRevision
-            )
-            await reload()
-        }
-    }
-
-    private func enableManuscript() {
-        guard let bindingRevision = bindings?.revision else { return }
-        perform {
-            let packageID = try await manuscriptPackageID()
-            _ = try await settingsModel.activateResearcherSkill(
-                packageID: packageID,
-                for: .manuscript,
-                expectedBindingRevision: bindingRevision
-            )
-            let profileBinding: ResearchActionProfileBinding
-            if let existing = profiles?.document.binding(for: .manuscript) {
-                profileBinding = existing
-            } else {
-                profileBinding = try Self.defaultManuscriptProfile(packageID: packageID)
-            }
-            _ = try await settingsModel.saveActionProfile(
-                try profileBinding.replacingShowInActions(true),
-                expectedDocumentRevision: profiles?.revision
-            )
-            await reload()
-        }
-    }
-
-    private func manuscriptPackageID() async throws -> String {
-        guard let id = WorkingMethodCatalog.workingPackageIDs[.manuscript] else {
-            throw ResearchActionProfileStorageError.invalidPackageID(
-                "scholium-working-manuscript"
-            )
-        }
-        if skills.contains(where: { $0.origin == .triptych && $0.id == id }) {
-            return id
-        }
-        return try await settingsModel.duplicateBundledResearchSkill(
-            id: "scholium-manuscript",
-            as: id
-        ).id
-    }
-
-    private static func defaultManuscriptProfile(
-        packageID: String
-    ) throws -> ResearchActionProfileBinding {
-        guard let instructionModuleID = ResearchActionModuleID(rawValue: "instruction") else {
-            throw ResearchActionProfileContractError.invalidModule(
-                "The bundled Manuscript instruction module has an invalid identifier."
-            )
-        }
-        return try ResearchActionProfileBinding(
-            packageID: packageID,
-            profile: ResearchActionProfile(
-                definition: .manuscript,
-                buttonName: "Manuscript",
-                order: 100,
-                applicableRoles: [.work],
-                showInActions: false,
-                modules: [
-                    .boundedText(
-                        id: instructionModuleID,
-                        label: "Instruction",
-                        isRequired: true,
-                        maximumTextUTF8ByteCount: 4_000,
-                        allowsMultipleLines: true
-                    ),
-                ],
-                sourceRequirement: .none,
-                capabilities: ResearchActionCapabilityDeclaration(readableRoles: [.work]),
-                feedbackRequirement: .required
-            )
-        )
-    }
-
-    private func perform(_ operation: @escaping @MainActor () async throws -> Void) {
+    private func setEnabled(
+        _ enabled: Bool,
+        registration: ResearchSkillRegistration
+    ) {
+        guard let snapshot = registrations else { return }
         isWorking = true
         Task { @MainActor in
             defer { isWorking = false }
-            do { try await operation() }
-            catch { errorMessage = error.localizedDescription }
+            do {
+                let replacement = try ResearchSkillRegistration(
+                    key: registration.key,
+                    actionID: registration.actionID,
+                    displayName: registration.displayName,
+                    primaryMarkdown: registration.primaryMarkdown,
+                    skillFolder: registration.skillFolder,
+                    isEnabled: enabled
+                )
+                _ = try await settingsModel.saveResearchSkillRegistrations(
+                    snapshot.document.replacing(replacement),
+                    expectedRevision: snapshot.revision
+                )
+                await reload()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
+    }
+
+    private func restorePrevious(_ method: ResearchMethodSnapshot) {
+        isWorking = true
+        Task { @MainActor in
+            defer { isWorking = false }
+            do {
+                _ = try await settingsModel.restorePreviousResearchMethod(
+                    registrationKey: method.registration.key,
+                    expectedRevision: method.primaryMarkdownRevision
+                )
+                await reload()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func restoreDefault() {
+        guard let method = pendingDefaultRestore else { return }
+        pendingDefaultRestore = nil
+        isWorking = true
+        Task { @MainActor in
+            defer { isWorking = false }
+            do {
+                _ = try await settingsModel.restoreDefaultResearchMethod(
+                    actionID: method.registration.actionID,
+                    expectedRevision: method.primaryMarkdownRevision
+                )
+                await reload()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func registerExternalMarkdown(
+        for registration: ResearchSkillRegistration
+    ) {
+        guard let registrations,
+              let fileURL = Self.chooseMarkdown(
+                message: "Choose the primary Markdown for this Research Skill."
+              ) else { return }
+        registerExternal(
+            registration: registration,
+            name: fileURL.deletingPathExtension().lastPathComponent,
+            primaryURL: fileURL,
+            folderURL: nil,
+            expectedRevision: registrations.revision
+        )
+    }
+
+    private func registerExternalFolder(
+        for registration: ResearchSkillRegistration
+    ) {
+        guard let registrations,
+              let folderURL = Self.chooseFolder(),
+              let primaryURL = Self.chooseMarkdown(
+                message: "Choose the primary Markdown inside the selected Skill folder.",
+                directoryURL: folderURL
+              ) else { return }
+        registerExternal(
+            registration: registration,
+            name: folderURL.lastPathComponent,
+            primaryURL: primaryURL,
+            folderURL: folderURL,
+            expectedRevision: registrations.revision
+        )
+    }
+
+    private func registerExternal(
+        registration: ResearchSkillRegistration,
+        name: String,
+        primaryURL: URL,
+        folderURL: URL?,
+        expectedRevision: DocumentFingerprint
+    ) {
+        isWorking = true
+        Task { @MainActor in
+            defer { isWorking = false }
+            do {
+                _ = try await settingsModel.registerExternalResearchMethod(
+                    actionID: registration.actionID,
+                    displayName: name,
+                    primaryMarkdownPath: primaryURL.standardizedFileURL.path,
+                    skillFolderPath: folderURL?.standardizedFileURL.path,
+                    expectedRegistrationRevision: expectedRevision
+                )
+                await reload()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private static func chooseMarkdown(
+        message: String,
+        directoryURL: URL? = nil
+    ) -> URL? {
+        let panel = NSOpenPanel()
+        panel.message = message
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        panel.directoryURL = directoryURL
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
+    private static func chooseFolder() -> URL? {
+        let panel = NSOpenPanel()
+        panel.message = "Choose an ordinary local Skill folder. Scholium records its path but does not inspect its other contents."
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        return panel.runModal() == .OK ? panel.url : nil
     }
 }
 
-private struct WorkingMethodSourceEditor: View {
-    @Environment(\.dismiss) private var dismiss
-    let context: WorkingMethodEditorContext
+private struct ResearchMethodSourceEditor: View {
+    let context: ResearchMethodEditorContext
     let save: (String) async throws -> Void
+
+    @Environment(\.dismiss) private var dismiss
     @State private var source: String
     @State private var isSaving = false
     @State private var errorMessage: String?
 
     init(
-        context: WorkingMethodEditorContext,
+        context: ResearchMethodEditorContext,
         save: @escaping (String) async throws -> Void
     ) {
         self.context = context
         self.save = save
-        _source = State(initialValue: context.package.source)
+        _source = State(initialValue: context.method.primaryMarkdownSource)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Edit \(actionTitle(context.actionID)) Method")
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Edit \(context.method.registration.displayName)")
                 .font(.title2.weight(.semibold))
-            Text("This edits the Triptych Working Method directly. Saving creates a new package revision; the bundled reference remains unchanged.")
+            Text("This edits the current primary Markdown only. Linked Practices and optional folder files keep their own exact bytes.")
                 .foregroundStyle(.secondary)
             TextEditor(text: $source)
                 .font(.system(.body, design: .monospaced))
-                .frame(minWidth: 620, minHeight: 380)
-                .accessibilityLabel("Working Method SKILL.md")
+                .frame(minWidth: 700, minHeight: 480)
+                .accessibilityLabel("Primary Research Skill Markdown")
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(ScholiumColorRole.attention.color)
+            }
             HStack {
-                Button("Revert Unsaved Changes") { source = context.package.source }
-                    .disabled(source == context.package.source)
-                Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
-                Button("Save Method") {
+                Spacer()
+                Button("Save") {
                     isSaving = true
                     Task { @MainActor in
                         defer { isSaving = false }
@@ -529,103 +456,75 @@ private struct WorkingMethodSourceEditor: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isSaving || source == context.package.source)
+                .disabled(isSaving || source == context.method.primaryMarkdownSource)
             }
         }
         .padding(20)
-        .alert("Could Not Save Method", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("Dismiss", role: .cancel) {}
-        } message: { Text(errorMessage ?? "") }
+        .frame(minWidth: 740, minHeight: 580)
     }
 }
 
-private struct WorkingMethodComparisonView: View {
+private struct NewResearchMethodEditor: View {
+    let context: NewResearchMethodContext
+    let create: (String, String) async throws -> Void
+
     @Environment(\.dismiss) private var dismiss
-    let comparison: WorkingMethodComparison
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Compare \(actionTitle(comparison.actionID)) Method")
-                .font(.title2.weight(.semibold))
-            Text("This comparison is disposable. It does not replace or modify either Skill.")
-                .foregroundStyle(.secondary)
-            HSplitView {
-                sourceColumn("Current Working Method", source: comparison.currentSource)
-                sourceColumn("Bundled Reference", source: comparison.referenceSource)
-            }
-            .frame(minWidth: 760, minHeight: 420)
-            HStack {
-                Spacer()
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(20)
-    }
-
-    private func sourceColumn(_ title: String, source: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline)
-            ScrollView {
-                Text(verbatim: source)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-        }
-        .padding(8)
-    }
-}
-
-private struct WorkingMethodReplacementView: View {
-    @Environment(\.dismiss) private var dismiss
-    let replacement: WorkingMethodReplacement
-    let save: (String) async throws -> Void
-    @State private var selection: String?
-    @State private var isSaving = false
+    @State private var name: String
+    @State private var source: String
+    @State private var isCreating = false
     @State private var errorMessage: String?
 
+    init(
+        context: NewResearchMethodContext,
+        create: @escaping (String, String) async throws -> Void
+    ) {
+        self.context = context
+        self.create = create
+        _name = State(initialValue: context.suggestedName)
+        _source = State(initialValue:
+            "# \(context.suggestedName)\n\nState the complete primary research method here.\n"
+        )
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Replace \(actionTitle(replacement.actionID)) Method")
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Create Research Skill")
                 .font(.title2.weight(.semibold))
-            Text("Choose one complete, compatible Triptych-local Method. This changes only the current Triptych.")
+            Text("Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest.")
                 .foregroundStyle(.secondary)
-            List(replacement.candidates, selection: $selection) { package in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: package.name)
-                    Text(verbatim: package.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .tag(Optional(package.id))
+                .fixedSize(horizontal: false, vertical: true)
+            TextField("Display name", text: $name)
+            TextEditor(text: $source)
+                .font(.system(.body, design: .monospaced))
+                .frame(minWidth: 700, minHeight: 430)
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(ScholiumColorRole.attention.color)
             }
-            .frame(minWidth: 460, minHeight: 240)
             HStack {
-                Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
-                Button("Use Selected Method") {
-                    guard let selection else { return }
-                    isSaving = true
+                Spacer()
+                Button("Create") {
+                    isCreating = true
                     Task { @MainActor in
-                        defer { isSaving = false }
-                        do { try await save(selection); dismiss() }
-                        catch { errorMessage = error.localizedDescription }
+                        defer { isCreating = false }
+                        do {
+                            try await create(name, source)
+                            dismiss()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(selection == nil || isSaving)
+                .disabled(
+                    isCreating
+                        || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
             }
         }
         .padding(20)
-        .alert("Could Not Replace Method", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) { Button("Dismiss", role: .cancel) {} } message: {
-            Text(errorMessage ?? "")
-        }
+        .frame(minWidth: 740, minHeight: 560)
     }
 }
