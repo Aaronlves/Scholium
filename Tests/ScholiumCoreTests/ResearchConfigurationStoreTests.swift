@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 import Testing
@@ -5,6 +6,36 @@ import Testing
 
 @Suite("Current Research configuration store")
 struct ResearchConfigurationStoreTests {
+    @Test("Authorized absolute roots open without following any symbolic-link ancestor")
+    func absoluteRootOpenRejectsLinkedAncestor() throws {
+        let fixtureRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/research-configuration-root-open-fixtures")
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let realParent = fixtureRoot.appendingPathComponent("real", isDirectory: true)
+        let realControl = realParent.appendingPathComponent(".scholium", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: realControl,
+            withIntermediateDirectories: true
+        )
+
+        let descriptor = try SecureResearchConfigurationIO.openAbsoluteDirectory(realControl)
+        Darwin.close(descriptor)
+
+        let linkedParent = fixtureRoot.appendingPathComponent("linked", isDirectory: true)
+        try FileManager.default.createSymbolicLink(
+            at: linkedParent,
+            withDestinationURL: realParent
+        )
+        #expect(throws: ResearchConfigurationStoreError.self) {
+            let escaped = try SecureResearchConfigurationIO.openAbsoluteDirectory(
+                linkedParent.appendingPathComponent(".scholium", isDirectory: true)
+            )
+            Darwin.close(escaped)
+        }
+    }
+
     @Test("Current owners persist with exact revisions and no legacy configuration files")
     func currentOwnersPersist() async throws {
         let fixture = try Fixture()

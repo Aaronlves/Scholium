@@ -149,34 +149,21 @@ enum SecureResearchConfigurationIO {
                 "Research configuration requires an absolute directory path."
             )
         }
-        var current = Darwin.open(
-            "/",
-            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
-        )
-        guard current >= 0 else {
-            throw failure(path, operation: "open filesystem root")
+        // A security-scoped bookmark grants the selected directory, not each
+        // ancestor needed to walk there from `/`. Opening the authorized path
+        // in one operation lets App Sandbox apply that grant while Darwin's
+        // O_NOFOLLOW_ANY preserves the stronger invariant that no component
+        // in the complete path may be a symbolic link.
+        let descriptor = path.withCString {
+            Darwin.open(
+                $0,
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW_ANY
+            )
         }
-        do {
-            for component in (path as NSString).pathComponents where component != "/" {
-                try requireLeaf(component)
-                let next = component.withCString {
-                    openat(
-                        current,
-                        $0,
-                        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
-                    )
-                }
-                guard next >= 0 else {
-                    throw failure(path, operation: "open nonlinked ancestor")
-                }
-                Darwin.close(current)
-                current = next
-            }
-            return current
-        } catch {
-            Darwin.close(current)
-            throw error
+        guard descriptor >= 0 else {
+            throw failure(path, operation: "open nonlinked directory")
         }
+        return descriptor
     }
 
     static func entryNames(descriptor: Int32, path: String) throws -> [String] {
