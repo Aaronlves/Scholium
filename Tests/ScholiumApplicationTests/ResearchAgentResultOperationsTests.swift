@@ -154,6 +154,101 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Researcher-state Context Use preserves content and verifies its current owner")
+    func verifiedResearcherStateContextUse() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        _ = try await handle.research.settle(
+            target.note,
+            expectedRevision: target.fingerprint,
+            rationale: "This revision is stable enough for the current synthesis."
+        )
+
+        let prepared = try await preparedSynthesis(handle: handle, fixture: fixture)
+        let response = try await handle.research.queryAgentResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: try ResearchContextRequest(
+                query: "current researcher state",
+                sourceKinds: [.researcherState],
+                purposes: [.inspectResearcherState]
+            )
+        )
+        let item = try #require(response.items.first {
+            $0.sourceReference.owner.stableObjectIdentity.hasPrefix("settlement:")
+        })
+        #expect(item.content.contains("stable enough for the current synthesis"))
+        #expect(!item.content.contains("not truth"))
+        #expect(item.sourceReference.materialLimitations.contains {
+            $0.contains("does not establish truth")
+        })
+
+        _ = try await handle.research.settle(
+            target.note,
+            expectedRevision: target.fingerprint,
+            rationale: "A later researcher decision replaced the earlier settlement."
+        )
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await handle.research.submitAgentResult(
+                credential: prepared.credential,
+                run: prepared.handoff.run,
+                submission: try submission(
+                    preparation: prepared.preparation,
+                    outcome: "A superseded researcher-state owner must not be recorded as current.",
+                    contextUseClaims: [try ResearchContextUseClaim(
+                        sourceReference: item.sourceReference,
+                        testimony: "This reference was replaced before submission."
+                    )]
+                )
+            )
+        }
+        let refreshedResponse = try await handle.research.queryAgentResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: try ResearchContextRequest(
+                query: "refreshed researcher state",
+                sourceKinds: [.researcherState],
+                purposes: [.inspectResearcherState]
+            )
+        )
+        let currentItem = try #require(refreshedResponse.items.first {
+            $0.sourceReference.owner.stableObjectIdentity.hasPrefix("settlement:")
+        })
+        #expect(currentItem.content.contains("later researcher decision"))
+
+        let receipt = try await handle.research.submitAgentResult(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            submission: try submission(
+                preparation: prepared.preparation,
+                outcome: "The settled revision constrained this synthesis.",
+                contextUseClaims: [try ResearchContextUseClaim(
+                    sourceReference: currentItem.sourceReference,
+                    testimony: "The researcher's current-use decision constrained the synthesis."
+                )]
+            )
+        )
+        #expect(receipt.state == .finalized)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: prepared.preparation.runID
+        )
+        let entry = try #require(record.contextUseReport?.entries.first)
+        #expect(entry.sourceReference == currentItem.sourceReference)
+        #expect(Set(entry.verificationFacts) == [
+            .authoritativeOwnerRead,
+            .revisionMatched,
+            .locatorResolved,
+        ])
+        await runtime.shutdown()
+    }
+
     @Test("Instruction-shaped prior Agent Results remain attributed Record evidence and cannot poison a new Run")
     func instructionShapedRecordIsNonAuthorizingEvidence() async throws {
         let fixture = try await ResearchFixture.make()

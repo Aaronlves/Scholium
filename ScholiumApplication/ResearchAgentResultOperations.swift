@@ -122,7 +122,8 @@ extension WorkspaceHandle {
             credential: credential,
             run: run,
             runID: authenticated.runID,
-            triptychID: authenticated.triptychID
+            triptychID: authenticated.triptychID,
+            action: action
         )
         let submittedAt = stored.resultPayload?.submittedAt ?? Date()
         let payload = try ResearchRunResultPayload(
@@ -256,7 +257,8 @@ extension WorkspaceHandle {
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
         runID: UUID,
-        triptychID: UUID
+        triptychID: UUID,
+        action: ResearchActionSnapshot
     ) async throws -> ContextUseReport? {
         guard !claims.isEmpty else { return nil }
         do {
@@ -284,11 +286,25 @@ extension WorkspaceHandle {
                 facts = try await verifyNoteReference(reference)
             case .record:
                 facts = try await verifyRecordReference(reference)
-            case .material, .researcherState:
-                // These owner kinds do not yet expose one authoritative
-                // revision-and-locator verifier. Reject rather than infer use
-                // from a selected item or provider testimony.
+            case .material:
+                // The current Research Context provider never returns Material
+                // references. Frozen Action Materials remain verified through
+                // their existing exact-note completion path instead.
                 throw ResearchAgentResultContractError.invalidContextUse
+            case .researcherState:
+                guard try FoundationResearchContextProvider()
+                    .isCurrentResearcherStateReference(
+                        reference,
+                        action: action,
+                        workspace: currentSnapshot
+                    ) else {
+                    throw ResearchAgentResultContractError.invalidContextUse
+                }
+                facts = [
+                    .authoritativeOwnerRead,
+                    .revisionMatched,
+                    .locatorResolved,
+                ]
             }
             entries.append(try ContextUseEntry(
                 sourceReference: reference,

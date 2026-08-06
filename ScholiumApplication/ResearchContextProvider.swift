@@ -330,7 +330,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             let content = [
                 "The researcher explicitly settled revision \(settlement.fingerprint.sha256.prefix(12)).",
                 settlement.rationale.map { "Rationale: \($0)" },
-                "This action records current-use stability, not truth, sufficiency, permanence, or automatic acceptance of later revisions.",
             ].compactMap { $0 }.joined(separator: "\n")
             items.append(try researcherStateItem(
                 query: query,
@@ -338,7 +337,10 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 title: "Researcher Settle: \(action.target.title)",
                 content: content,
                 fingerprint: DocumentFingerprint(content: content),
-                currentness: isCurrent ? .current : .stale
+                currentness: isCurrent ? .current : .stale,
+                limitations: [
+                    "Settle records current-use stability for this exact revision; it does not establish truth, sufficiency, permanence, or acceptance of later revisions."
+                ]
             ))
         }
         for record in workspace.research.finishedResearchRecords
@@ -372,7 +374,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     ? "The researcher marked a Valuable Discovery."
                     : nil,
                 evaluation.note.map { "Researcher note: \($0)" },
-                "This is scoped feedback on one Result. It is not Settlement, adoption, a technical root-cause diagnosis, or philosophical truth.",
             ].compactMap { $0 }.joined(separator: "\n")
             items.append(try researcherStateItem(
                 query: query,
@@ -382,7 +383,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 fingerprint: recordFingerprint,
                 currentness: .current,
                 limitations: [
-                    "Evaluation reports the researcher's explicit assessment of this exact Record only; missing evaluation would imply nothing."
+                    "Evaluation reports the researcher's explicit assessment of this exact Record only; it is not Settlement, adoption, a technical root-cause diagnosis, or a truth claim. Missing evaluation implies nothing."
                 ]
             ))
         }
@@ -403,10 +404,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 .finishedResearchRecordFingerprints[record.id] else {
                 continue
             }
-            let content = """
-            The researcher explicitly pinned this exact Research Record for retention and later attention.
-            Pinning does not assert that its Agent claims were adopted, verified, sufficient, or philosophically true.
-            """
+            let content = "The researcher explicitly pinned this exact Research Record for retention and later attention."
             items.append(try researcherStateItem(
                 query: query,
                 identity: "record:\(record.id.uuidString.lowercased()):pin",
@@ -415,7 +413,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 fingerprint: recordFingerprint,
                 currentness: .current,
                 limitations: [
-                    "Pin records only the researcher's explicit retention action over this Record."
+                    "Pin records only retention and later attention; it does not adopt, verify, or assess the sufficiency or truth of Agent claims."
                 ]
             ))
         }
@@ -460,7 +458,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                         disposition.acceptedRevision.map {
                             "Accepted against Work revision \($0.sha256.prefix(12))."
                         },
-                        "This records the researcher's disposition of that finding in its exact Critique round; it does not establish philosophical truth or general acceptance of the Work.",
                     ].compactMap { $0 }.joined(separator: "\n")
                     let isCurrent = disposition.acceptedRevision.map {
                         $0 == action.target.fingerprint
@@ -473,7 +470,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                         fingerprint: DocumentFingerprint(content: content),
                         currentness: isCurrent ? .current : .stale,
                         limitations: [
-                            "Accept, reject, and rebut name only the explicit researcher action recorded for this source-located Critique finding."
+                            "Accept, reject, and rebut name only the explicit researcher action recorded for this source-located Critique finding; they do not establish a truth claim or general acceptance of the Work."
                         ]
                     ))
                 }
@@ -489,14 +486,60 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     query: query,
                     identity: "discussion:\(discussion.id.uuidString.lowercased()):statement:\(statement.id.uuidString.lowercased())",
                     title: statement.attribution,
-                    content: statement.text
-                        + "\n\nThis is an attributed researcher statement in its Discussion context; quotation, question, hypothesis, or contrast is not automatically a settled position.",
+                    content: statement.text,
                     fingerprint: DocumentFingerprint(content: statement.text),
-                    currentness: .current
+                    currentness: .current,
+                    limitations: [
+                        "This is an attributed Discussion statement; a quotation, question, hypothesis, or contrast does not by itself establish a settled researcher position."
+                    ]
                 ))
             }
         }
         return Array(items.prefix(limit))
+    }
+
+    /// Rebuilds the current Application-owned researcher-state projection and
+    /// compares every provenance-bearing field except the response-local ID.
+    /// Issuance and Run authorization remain the caller's responsibility.
+    func isCurrentResearcherStateReference(
+        _ reference: SourceReferenceEnvelope,
+        action: ResearchActionSnapshot,
+        workspace: WorkspaceSnapshot
+    ) throws -> Bool {
+        guard reference.sourceKind == .researcherState,
+              reference.owner.kind == .researcherState,
+              reference.currentness == .current,
+              reference.authorizedScope.triptychID == workspace.triptych.id else {
+            return false
+        }
+        let query = try ResearchContextQuery(
+            runID: reference.authorizedScope.runID,
+            triptychID: reference.authorizedScope.triptychID,
+            query: reference.owner.stableObjectIdentity,
+            sourceKinds: [.researcherState],
+            purposes: [.inspectResearcherState]
+        )
+        let currentItems = try researcherStateItems(
+            query: query,
+            action: action,
+            workspace: workspace,
+            limit: .max
+        )
+        return currentItems.contains { item in
+            let current = item.sourceReference
+            return current.sourceKind == reference.sourceKind
+                && current.owner == reference.owner
+                && current.actorClass == reference.actorClass
+                && current.objectRole == reference.objectRole
+                && current.vaultRole == reference.vaultRole
+                && current.fingerprint == reference.fingerprint
+                && current.locator == reference.locator
+                && current.authorizedScope == reference.authorizedScope
+                && current.currentness == reference.currentness
+                && current.evidentialLayer == reference.evidentialLayer
+                && current.retrievalReason == reference.retrievalReason
+                && current.materialLimitations == reference.materialLimitations
+        }
     }
 
     private func researcherStateItem(

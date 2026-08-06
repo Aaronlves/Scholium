@@ -218,6 +218,24 @@ struct ResearchAgentSessionAuthorityTests {
             note: "The distinction was useful, but one interpretation remained compressed."
         )
         let finishedAt = Date(timeIntervalSince1970: 1_700_000_100)
+        let researcherDiscussionText = "Is this passage a quotation, or should it constrain the synthesis?"
+        let researcherStatement = try PortableResearchStatement(
+            author: .researcher,
+            kind: .discussionTurn,
+            attribution: "Researcher",
+            text: researcherDiscussionText,
+            createdAt: finishedAt
+        )
+        let activeDiscussion = try PortableResearchDiscussion(
+            triptychID: fixture.assignment.id,
+            primaryNoteID: target.noteID,
+            action: ResearchActionRecordIdentity(actionID: .synthesize),
+            method: PortableResearchMethodReference(snapshot: actionSnapshot),
+            participatingNotes: [participant],
+            statements: [researcherStatement],
+            createdAt: finishedAt,
+            updatedAt: finishedAt
+        )
         let evaluatedRecord = try PortableResearchRecord(
             triptychID: fixture.assignment.id,
             kind: .action,
@@ -275,7 +293,7 @@ struct ResearchAgentSessionAuthorityTests {
             discovery: baseSnapshot.discovery,
             research: WorkspaceResearchSnapshot(
                 settlements: baseSnapshot.research.settlements,
-                activeDiscussions: baseSnapshot.research.activeDiscussions,
+                activeDiscussions: [activeDiscussion],
                 finishedResearchRecords: [evaluatedRecord],
                 finishedResearchRecordFingerprints: [
                     evaluatedRecord.id: recordFingerprint,
@@ -309,23 +327,45 @@ struct ResearchAgentSessionAuthorityTests {
                 }
             )
         )
-        #expect(researcherState.items.contains {
+        let evaluationItem = try #require(researcherState.items.first {
             $0.title.contains("Researcher Evaluation")
-                && $0.content.contains("Valuable Discovery")
-                && $0.content.contains("not Settlement")
-                && $0.sourceReference.actorClass
-                    == ResearchContextActorClass.researcher
         })
-        #expect(researcherState.items.contains {
+        #expect(evaluationItem.content.contains("Valuable Discovery"))
+        #expect(!evaluationItem.content.contains("not Settlement"))
+        #expect(evaluationItem.sourceReference.actorClass == .researcher)
+        #expect(evaluationItem.sourceReference.materialLimitations.contains {
+            $0.contains("not Settlement")
+        })
+
+        let critiqueItem = try #require(researcherState.items.first {
             $0.title.contains("Critique Disposition")
-                && $0.content.contains("explicitly rejected")
-                && $0.content.contains("does not establish philosophical truth")
-                && $0.sourceReference.currentness == .current
         })
-        #expect(researcherState.items.contains {
+        #expect(critiqueItem.content.contains("explicitly rejected"))
+        #expect(!critiqueItem.content.contains("does not establish"))
+        #expect(critiqueItem.sourceReference.currentness == .current)
+        #expect(critiqueItem.sourceReference.materialLimitations.contains {
+            $0.contains("truth claim")
+        })
+
+        let retentionItem = try #require(researcherState.items.first {
             $0.title.contains("Researcher Retention")
-                && $0.content.contains("explicitly pinned")
-                && $0.content.contains("does not assert")
+        })
+        #expect(retentionItem.content
+            == "The researcher explicitly pinned this exact Research Record for retention and later attention.")
+        #expect(retentionItem.sourceReference.materialLimitations.contains {
+            $0.contains("does not adopt")
+        })
+
+        let discussionItem = try #require(researcherState.items.first {
+            $0.sourceReference.owner.stableObjectIdentity.contains(
+                researcherStatement.id.uuidString.lowercased()
+            )
+        })
+        #expect(discussionItem.content == researcherDiscussionText)
+        #expect(discussionItem.sourceReference.fingerprint
+            == DocumentFingerprint(content: researcherDiscussionText))
+        #expect(discussionItem.sourceReference.materialLimitations.contains {
+            $0.contains("settled researcher position")
         })
 
         let endReceipt = try await runtime.endResearchAgentRun(
