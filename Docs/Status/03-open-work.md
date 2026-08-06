@@ -112,11 +112,11 @@ CLI parity, completion, and a typed explanation response.
 
 **Next implementation**
 
-Retain the Application-provided explanation through the window projection and
-render it without reparsing visible query text. Complete normalization,
-ordering, and limitation detail in that one owner. Add dynamic Property-key and
-Note-identity completion only if observed use justifies the extra scoped
-context.
+The window projection now retains the Application-provided explanation and the
+Search view renders it without reparsing visible query text. Complete
+normalization, ordering, and limitation detail in that one typed owner. Add
+dynamic Property-key and Note-identity completion only if observed use
+justifies the extra scoped context.
 
 **Next evidence**
 

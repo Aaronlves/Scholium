@@ -29,6 +29,7 @@ struct DiscoverySearchState: Equatable, Sendable {
     var criteria = SearchWorkspaceState()
     var ordinaryScope: SearchPresentationScope = .triptych
     var invocation: SearchInvocation = .general
+    var explanation: SearchExplanation?
     var results: [SearchResult] = []
     var selectedResultID: String?
     var responseRequestID: UUID?
@@ -352,6 +353,7 @@ final class DiscoveryController: ObservableObject {
         activeSearchRequestID = nil
         search.invocation = invocation
         search.criteria.query = ""
+        search.explanation = nil
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
@@ -383,6 +385,7 @@ final class DiscoveryController: ObservableObject {
             scope: definition.presentationScope
         )
         search.ordinaryScope = definition.presentationScope
+        search.explanation = nil
         search.results = []
         search.selectedResultID = nil
         search.responseRequestID = nil
@@ -440,6 +443,7 @@ final class DiscoveryController: ObservableObject {
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
+        search.explanation = nil
         search.results = []
         search.diagnostics = []
         search.hasMore = false
@@ -461,6 +465,7 @@ final class DiscoveryController: ObservableObject {
         search.responseRequestID = nil
         search.freshnessToken = nil
         search.errorMessage = nil
+        search.explanation = nil
         search.diagnostics = []
         search.hasMore = false
         search.isRunning = !canonicalCriteria.query
@@ -481,6 +486,7 @@ final class DiscoveryController: ObservableObject {
         search.selectedResultID = nil
         search.responseRequestID = response.requestID
         search.freshnessToken = response.freshnessToken
+        search.explanation = response.explanation
         search.availability = response.availability
         search.diagnostics = response.diagnostics
         search.hasMore = response.hasMore
@@ -507,6 +513,7 @@ final class DiscoveryController: ObservableObject {
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
+        search.explanation = nil
         search.diagnostics = []
         search.hasMore = false
         search.errorMessage = message

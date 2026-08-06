@@ -1706,11 +1706,13 @@ struct FrontendArchitectureTests {
             hasMore: false
         ), for: first)
         #expect(controller.search.results.count == 1)
+        #expect(controller.search.explanation?.provider == .note)
         #expect(controller.search.selectedResultID == nil)
 
         controller.updateSearchQuery("second")
 
         #expect(controller.search.criteria.query == "second")
+        #expect(controller.search.explanation == nil)
         #expect(controller.search.selectedResultID == nil)
         #expect(controller.search.results.isEmpty)
         #expect(controller.search.isRunning)
@@ -1821,7 +1823,7 @@ struct FrontendArchitectureTests {
         #expect(!source.contains("SearchChip("))
     }
 
-    @Test("Explain Query presents every typed v5 clause without flattening provider identity")
+    @Test("Explain Query presents the typed response without reparsing the query")
     func typedSearchExplanationPresentation() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1833,6 +1835,8 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        #expect(source.contains("controller.search.explanation"))
+        #expect(!source.contains("SearchQueryParser.parse"))
         #expect(source.contains("switch clause.kind"))
         #expect(source.contains("case .lexical("))
         #expect(source.contains("case .structured("))
@@ -1840,22 +1844,6 @@ struct FrontendArchitectureTests {
         #expect(source.contains("case .relation("))
         #expect(source.contains("case .record("))
         #expect(source.contains("Explain Query:"))
-
-        let parsed = SearchQueryParser.parse(
-            "kind:record participant:researcher date:30d"
-        )
-        let explanation = try #require(parsed.ast?.explanation)
-        #expect(explanation.provider == .record)
-        #expect(explanation.providerWasExplicit)
-        #expect(explanation.operator == .and)
-        #expect(explanation.clauses.count == 2)
-        guard case .record(.participant, "researcher", .term, false)
-                = explanation.clauses[0].kind,
-              case .record(.date, "30d", .term, false)
-                = explanation.clauses[1].kind else {
-            Issue.record("Expected typed participant and date explanation clauses")
-            return
-        }
     }
 
     @Test("Search has no parallel Related provider or selection path")

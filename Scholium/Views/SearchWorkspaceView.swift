@@ -723,14 +723,11 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var explanationText: String? {
-        let query = controller.search.criteria.query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return nil }
-        let parsed = SearchQueryParser.parse(query)
-        guard parsed.diagnostics.isEmpty, let ast = parsed.ast else { return nil }
+        guard controller.search.diagnostics.isEmpty,
+              let explanation = controller.search.explanation else { return nil }
         let scope = localizedScopeTitle(controller.search.criteria.scope)
-        let provider = ast.provider == .note ? "Notes" : "Research Records"
-        let clauses = ast.explanation.clauses.map(explanationClause)
+        let provider = explanation.provider == .note ? "Notes" : "Research Records"
+        let clauses = explanation.clauses.map(explanationClause)
         if clauses.isEmpty { return "Search \(provider) in \(scope)." }
         return "Search \(provider) in \(scope) where "
             + clauses.joined(separator: " and ") + "."
