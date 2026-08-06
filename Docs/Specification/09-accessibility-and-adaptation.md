@@ -48,8 +48,11 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   semantics. Accepting completion edits plain query text and restores the
   insertion point. **Explain Query** is keyboard and VoiceOver reachable and
   reads the Application response's provider, clauses, relation direction,
-  normalization, ordering, and limitations; no accessibility presentation
-  reparses the query or substitutes a view-local explanation. Invalid, ambiguous,
+  normalization, ordering, and limitations. A compact summary may expose the
+  complete explanation on demand, but the complete fields remain reachable
+  through keyboard and VoiceOver without requiring hover or pointer-only
+  discovery; no accessibility presentation reparses the query or substitutes a
+  view-local explanation. Invalid, ambiguous,
   provider-mismatch, not-applicable, Graph-unavailable, stale, and empty states
   are separately named and keep a usable edit or retry target. Note results
   identify their source context; Record results identify Record and speaker,

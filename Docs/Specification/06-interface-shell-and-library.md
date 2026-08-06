@@ -368,7 +368,10 @@ Menus follow researcher tasks:
   advanced workspace. **Explain Query** presents the typed explanation carried
   by the Application Search response and shared with CLI—provider, scope,
   clauses, direction, normalization, ordering, and limitations. The Search
-  surface may format that value but never reparses query text or constructs a
-  second interpretation. Provider mismatch,
+  surface may present a compact summary with an explicit route to the complete
+  explanation or expose the complete explanation on demand; it need not reserve
+  a permanent explanation row for every query. Whatever presentation is used
+  remains discoverable and never reparses query text or constructs a second
+  interpretation. Provider mismatch,
   ambiguous identity, not-applicable clauses, invalid syntax, unavailable
   Graph, stale source, and no matches retain distinct inline states.

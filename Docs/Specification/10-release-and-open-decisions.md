@@ -12,6 +12,12 @@ disposable fixtures; dated status; this target; then history/memory as context.
 Target prose, previews, and compilation prove no workflow, accessibility,
 package, signing, or performance result.
 
+Search handoffs and acceptance reports navigate the canonical Specification,
+Implementation Architecture, Implementation Status, and verification evidence.
+They do not create a parallel Evidence Pack that copies contract versions,
+test counts, performance measurements, or current gaps; Git and the status set
+remain the respective history and evidence authorities.
+
 ### 21.2 Primary acceptance journeys
 
 **Usable Core** covers:

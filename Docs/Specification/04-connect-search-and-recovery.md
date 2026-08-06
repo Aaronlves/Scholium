@@ -190,6 +190,12 @@ completion, **Explain Query**, and CLI help. Baseline completion exposes only
 fields and canonical values supported by the current contract; after an
 explicit provider clause, it exposes only that provider's legal capabilities.
 Completion edits only visible query text and creates no hidden token or chip.
+Scope-first Property-key and Note-identity candidates are optional, not a
+Foundation requirement. The Application may provide them only from the
+currently authorized provider, scope, and authority after representative use
+shows that the static capability description is insufficient for query
+discovery. Such candidates remain bounded, edit only visible query text, and
+never create hidden state, a second AST, or a second parser.
 The Application response carries the typed explanation used by App and CLI.
 Presentation may format that response but must not parse the query again or
 construct a second interpretation. Explain reports provider, scope, clauses,
@@ -198,12 +204,16 @@ alternate query.
 
 Saved Searches persist only raw query, visible scope, and query-contract
 version; they store no AST, resolved identity, result, or generation and are
-re-evaluated against current authority. Only a definition carrying the current
-query-contract version may execute. A version mismatch loads its raw query for
-editing and reports **Needs Editing**; Scholium neither silently migrates it nor
-executes it under changed semantics. An invalid, ambiguous, or undecodable
-definition remains byte-unchanged and nonexecuting. Revoked scope or a deleted
-source never permits a retained old result.
+re-evaluated against current authority. A saved definition remains executable
+when its current query grammar, interpretation and explanation, ordering,
+response compatibility, and security boundary are unchanged. A contract
+version change requires **Needs Editing** only when one of those semantics
+would change; a purely additive capability is compatible only when the current
+contract explicitly declares that the existing definition is unaffected. No
+definition is silently rewritten or executed under changed semantics. An
+invalid, ambiguous, or undecodable definition remains byte-unchanged and
+nonexecuting. Revoked scope or a deleted source never permits a retained old
+result.
 
 App and CLI consume the same ordered Search response. CLI text and JSONL retain
 the response contract version, provider, authorized scope, availability,

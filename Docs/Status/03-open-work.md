@@ -121,15 +121,24 @@ architecture tests.
 
 **Next implementation**
 
-Add dynamic Property-key and Note-identity completion only if observed use
-justifies the extra scoped context.
+Implement compatibility-aware Saved Search version checks: require **Needs
+Editing** only for grammar, explanation, ordering, response-compatibility, or
+security changes, while explicitly declared additive capabilities retain
+unaffected definitions. Add dynamic Property-key and Note-identity completion
+only if representative use shows the static capability description is
+insufficient. Keep Explain presentation compact or on-demand only when the
+complete fields remain keyboard and VoiceOver reachable.
 
 **Next evidence**
 
-Complete the GUI first-paint performance protocol and human pointer,
-VoiceOver, Voice Control, Dictation, CJK IME, visual, ranking, and research-use
-acceptance. Keep the direct-relation XCTest host issue as infrastructure work,
-not a second product implementation.
+Build a minimal researcher-reviewable Search Case Pack without duplicating
+contract versions, test counts, measurements, or open gaps from their existing
+owners. Use it to decide whether dynamic completion is warranted and to compare
+compact or on-demand Explain presentation in complete window context. Complete
+the GUI first-paint performance protocol and human pointer, VoiceOver, Voice
+Control, Dictation, CJK IME, visual, ranking, and research-use acceptance. Keep
+the direct-relation XCTest host issue as infrastructure work, not a second
+product implementation.
 
 ## Performance
 
