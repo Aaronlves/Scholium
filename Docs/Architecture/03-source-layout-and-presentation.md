@@ -15,9 +15,7 @@ This chapter owns source layout, native presentation, interface ownership, and l
   Researcher Evaluation, and resizable Triptych-keyed Research Records window.
   It resolves or mutates no production
   state and is reachable only through one suppressed Debug window and an
-  explicitly enabled QA command. Completed Sidebar, Inspector, generic-state,
-  complete-window, and paired-window acceptance harnesses are removed after
-  their approved target deltas and current adoption evidence are recorded.
+  explicitly enabled QA command.
   Preview code is development-only and does not enter the released interface.
 - `ScholiumContracts` contains boundary values, capability protocols,
   deterministic source transformations, immutable snapshots, events, and
@@ -198,16 +196,18 @@ the view neither derives nor displays protected machine data.
 
 The public Action panel uses one typed `researchAction` sheet route carrying
 only a stable Target reference, Action ID, and presentation ID. The router owns
-sheet exclusivity; `ResearchActionController` owns transient Profile-module
+sheet exclusivity; `ResearchActionController` owns transient Profile-field
 values and rejects stale availability or preparation results. `NoteContentView`
 retains only the focused `openResearchAction(id:selection:)` action for menu and
 keyboard invocation; it contains no Action presentation or bottom inset. The
-sheet always exposes the app-owned Target, revision, authority, checkpoint,
-conflict, and recovery boundary before rendering the Profile's closed native
-modules. One **Copy Handoff** footer action first revalidates and freezes the
-Action internally, then copies the complete researcher-to-Agent handoff. No
-Agent-application picker, bookmark, persistence owner, or launch path
-participates. A prepared Run keeps the same copy action available to retry it.
+sheet presents the Action, app-owned Target, whether the Action may modify that
+document, and the Profile's closed academic fields. Revision and authority stay
+Application-owned; conflict and recovery appear only when they give the
+researcher an executable decision. One **Copy Handoff** footer action first
+revalidates and freezes the Action internally, then copies the complete
+researcher-to-Agent handoff. No Agent-application picker, bookmark, persistence
+owner, or launch path participates. A prepared Run keeps the same copy action
+available to retry it.
 Its **Copy New Handoff** recovery invalidates the prior pairing and
 copies the replacement without presenting the one-time code as a separate
 field. A separate End Action route cancels the unfinished Run, whereas Done

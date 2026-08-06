@@ -188,7 +188,7 @@ class or unknown, object/vault role, exact revision or fingerprint, locator or
 source range, authorized scope, currentness, evidential layer, retrieval
 reason, and material limitation. The envelope expresses provenance and
 discovery, not confidence, relevance truth, philosophical support, importance,
-or acceptance. Response schema 2 additionally preserves the exact typed
+or acceptance. The versioned response additionally preserves the exact typed
 Foundation Search match reasons beside every Note item. Property key/value
 source ranges and direct-relation predicate, direction, anchor, target, and
 Markdown occurrences therefore survive delivery without becoming prose or a
@@ -273,14 +273,13 @@ while a started write is unknown or required recovery remains. Run cleanup
 removes the write set only after every transaction converges; transaction recovery may outlive it only as
 the existing machine-owned recovery duty.
 
-Direct Agent editing remains the product model. Scholium creates no Proposal,
-candidate Markdown copy, approval-to-apply step, section/full-document
-permission mode, target plan, or automatic semantic approval. It guarantees
-scope, identity, revision, transaction truth, exact displaced bytes, conflict,
-readback, and recovery. It does not certify fidelity to a source, preservation
-of the researcher's thesis, philosophical quality, or researcher acceptance.
-Those remain method, attributed reasons, visible changes, recovery, optional
-Check Fidelity, and researcher judgment.
+Direct Agent editing is the product model. Each mutation proceeds through the
+current Run's exact Bounded Write Set and one-document transaction. Scholium
+guarantees scope, identity, revision, transaction truth, exact displaced bytes,
+conflict, readback, and recovery. It does not certify fidelity to a source,
+preservation of the researcher's thesis, philosophical quality, or researcher
+acceptance. Those remain method, attributed reasons, visible changes,
+recovery, optional Check Fidelity, and researcher judgment.
 
 ### 8.4 Result Contract, one Research Record, and evaluation
 
@@ -549,8 +548,8 @@ automatic diagnostic. Passage remains bounded unless the researcher broadens
 it.
 
 The Action uses the current registered Critique Skill. **Edit Critique
-Method...** opens **Settings -> Research Guidance -> Skills -> Critique**, where
-the primary Markdown method, Practices, optional folder path, last-edit
+Method...** opens **Settings → Research Guidance → Methods → Critique**, where
+the primary Markdown Method, Practices, optional folder path, last-edit
 recovery, and explicit default restoration belong.
 
 ### 11.4 Critique form

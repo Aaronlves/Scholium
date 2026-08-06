@@ -105,8 +105,9 @@ route calls the same Application cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
 current portable exchange into a finished Research Record before removing the
 active projection, so researcher-authored statements are not discarded.
-Pairing/session mechanics and lifecycle are owned by
-[Research Skills and Agent Collaboration](04-product-skills-and-maintenance.md).
+This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-research-guidance.md)
+owns the Method, Practice, Profile, collaboration-policy, and citation
+configuration consumed during preparation.
 
 The first authenticated Agent session receives the exact protected Core Skill
 runtime protocol and capability catalog. `ScholiumCore` owns those stable
@@ -227,8 +228,8 @@ closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
 
-`PortableResearchRecordStore` owns strict current Records and exact source-byte
-fingerprints. It never decodes a retired record schema. Record mutation is
+`PortableResearchRecordStore` owns strict current-schema Records and exact
+source-byte fingerprints. Record mutation is
 limited to Pin, Analyze recommendation disposition/note, and the Record-owned
 Researcher Evaluation partition. Those paths all use one revision-safe
 replacement primitive under portable coordination and lock, distinguish
@@ -324,10 +325,9 @@ change makes only the affected check stale.
 
 Permanent Note deletion preflights and cleans Run/write-set/source/active-
 Discussion state that could authorize the Note, while finished Records retain
-their tombstoned historical participant. Unsupported pre-production package,
-binding, Profile, policy, request, child-run, grant, and record files remain
-byte-unchanged, unread, and nonauthorizing after their clean cutover; no current
-decoder or compatibility path can revive them.
+their tombstoned historical participant. Unsupported pre-production files
+remain byte-unchanged, unread, and nonauthorizing; current decoders do not
+interpret them as configuration, execution, or Record authority.
 
 CLI decodes Contracts, invokes the same Application capabilities, and encodes
 canonical Run/Context/write/result families. Secrets arrive only through

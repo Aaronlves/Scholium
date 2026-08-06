@@ -68,6 +68,8 @@ Research Records WindowGroup (one UUID value per Triptych)
         presentation and rebuildable Recommendations projection)
 ```
 
+### Runtime bootstrap, refresh, and Search
+
 `ApplicationBootstrapController` is the only production composition route to
 `WorkspaceStore`. Its Starting, Ready, and Storage Unavailable states validate
 the real per-user Application Support directory before constructing any
@@ -191,6 +193,8 @@ views and their composition consumer observe `DiscoveryController` directly;
 of that window state, parsed AST, resolved anchor, result bytes, or generation
 enters the persisted definition.
 
+### Application capabilities and delivery
+
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 `DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
 `WindowResearchCapabilities` value composed from the narrow record,
@@ -224,6 +228,8 @@ each Run remains owned by its exact `WorkspaceHandle`. The bridge is a transport
 adapter and neither launches an Agent nor owns Run, context, authorization,
 research source, or recovery. Manual provider-neutral copy collaboration
 remains presentation-only and is never recorded as a Session.
+
+### Window state and feature controllers
 
 `WindowModel` is the per-window composition and focused-command root.
 `WindowShellState` is the sole owner of Library and Inspector presentation,
@@ -302,6 +308,9 @@ Note lookup treats a supplied stable Note ID as exclusive identity authority;
 only a caller that has no stable ID may resolve by path. A moved Note therefore
 cannot be replaced in the current document, tab, Search evidence, or Library
 reveal path by a different Note that later occupies its former path.
+
+### Library projection and source-ahead mutations
+
 Direct New Note requests remain focused-window commands: the Library and File
 menu send a target folder value to `WindowModel`, which flushes the current
 editor and calls the Application-owned untitled-note use case. Application
@@ -447,6 +456,8 @@ window, never a tab. Controllers do not mutate one another. Separate
 `WorkspaceSettingsModel` groups workspace, machine, Zotero, and Research
 Guidance capabilities without constructing a document window.
 
+### Document tabs and native shell
+
 Each window has one `DocumentTabController`. An `.unspecified`
 `NSTabViewController` in the middle split item hosts document pages; a
 Document-owned selector renders the tabs. `.toolbar` is forbidden because it
@@ -456,8 +467,7 @@ selection, and document references; `DocumentController` and
 `DocumentSessionStore` retain sessions and apply the flush/reconstruction guard.
 Apparatus derives from the active document but keeps window-owned visibility
 and mode. Only New Window creates a shell.
-`WindowSessionSnapshot.selectedDocument` alone restores selection; legacy
-tab/history fields decode only and vanish on encode.
+`WindowSessionSnapshot.selectedDocument` alone restores selection.
 
 Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
 `NSSplitViewController` with three direct `NSSplitViewItem` siblings for
@@ -507,6 +517,8 @@ restoration. The toolbar controller installs one stable item list; its hosted
 controls observe shell visibility without reasserting split state or storing
 width.
 
+### Inspector ownership
+
 The Inspector has exactly three current-note modes: Overview, Connect, and
 Actions. Overview presents a current-Note Attention summary whose one button
 routes to the exact Workspace's Attention popover, followed by role-aware About fields;
@@ -527,9 +539,9 @@ commands rather than row activation. Pointer activation does not write keyboard
 focus, while keyboard traversal and deliberate restoration retain it.
 Availability is bound to the exact current Note,
 clears while it is being rechecked, and rejects a late result from a previous
-Target. No Research Activity chronology, Work with Agent wrapper, or Research
-Record launcher is projected there. A quiet row for each portable active
-Discussion that includes the current Note resumes passage-anchored, whole-note,
+Target. Completed work remains in the separate Research Records window, while
+Agent handoff is presented by the selected Action. A quiet row for each
+portable active Discussion that includes the current Note resumes passage-anchored, whole-note,
 and focal-note exchange, while Settle remains a separate researcher-owned
 current-state operation. Active Discussions never appear in Research Records;
 finished Discussions and completed Actions do, while removed Records have no
@@ -538,6 +550,8 @@ Inspector may navigate or open another
 note in the Document tabs, but it never owns a document buffer, editing,
 autosave, undo, or conflict state. Those remain exclusively in the Document
 surface and its existing controllers.
+
+### Container decision rule
 
 Before changing a window/container boundary, engineering must:
 
@@ -553,6 +567,8 @@ prototype is not visual authority. `NSWindowTabGroup` selects whole windows,
 and `WindowGroup` creates scene state, so neither meets the page-only contract.
 `NSDocument` is not adopted as a second persistence owner: Application and
 Document retain Markdown, autosave, conflict, and recovery authority.
+
+### Bootstrap scene
 
 Bootstrap is a separate data-routed `WindowGroup`; `ScholiumBootstrapModel`
 owns launch resolution and `WorkspaceSetupView` for first/new/missing setup,

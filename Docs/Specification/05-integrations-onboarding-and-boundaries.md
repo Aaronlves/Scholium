@@ -11,9 +11,10 @@ The optional built-in integration reads Zotero through its localhost API; it
 uses neither an online Web API credential nor a researcher-deployed server.
 Its absence blocks no core workflow.
 
-**Settings → Integrations → Zotero** shows connection status, **Open Zotero**,
-one **Check Connection** action, **Clear Connection History**, last successful
-time, and a concise local/read-only privacy statement.
+**Settings → Research Guidance → Sources & Integrations → Zotero** shows
+connection status, **Open Zotero**, one **Check Connection** action, **Clear
+Connection History**, last successful time, and a concise local/read-only
+privacy statement.
 When disabled, direct the researcher to **Allow other applications on this
 computer to communicate with Zotero** in Zotero's Advanced settings.
 

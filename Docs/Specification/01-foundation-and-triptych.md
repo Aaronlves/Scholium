@@ -61,10 +61,6 @@ This chapter owns Sections 1–4: terminology, product authority, Triptych struc
 - A **Checkpoint** is a self-contained, fingerprint-bound snapshot of the
   complete Triptych, distinct from editor Undo.
 
-There is no formal Revision artifact, Proposal, Research Task, Research
-Session, Failure object, or Alternative relation. “Revision” may still
-describe an edit or a Critique section.
-
 ## 2. Product role and authority
 
 ### 2.1 Research document first
@@ -92,7 +88,7 @@ without Obsidian, Zotero, or agents.
 ### 2.2 Researcher responsibility and optional agent access
 
 The researcher governs the Triptych and may instruct an external Agent to
-mutate files through filesystem or CLI tools. Scholium never revives Proposal.
+mutate files through filesystem or CLI tools.
 One Triptych collaboration policy decides when an exact Bounded Write Set or a
 next Run needs another question. Every actual write remains bound to the
 current authenticated Session, Run, allowed document set, expected revisions,

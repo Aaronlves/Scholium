@@ -154,9 +154,9 @@ Menus follow researcher tasks:
   Attention anchor, and opens that anchor's transient popover.
 - **Research:** role-valid Actions and **Triptych · Records**, never Attention
   or Checkpoints.
-- **Settings:** Triptychs, Property profiles, Research Guidance for Skills,
-  Practices, Action Profiles, Triptych collaboration, sources and local Agent
-  connection, Attention, Zotero, and Appearance.
+- **Settings:** Triptychs, Property profiles, Appearance, Attention, and one
+  Research Guidance surface for Methods, Profiles & Practices, Collaboration,
+  Sources & Integrations, and Recovery & Technical.
 
 ### 18.3 Library and Search
 

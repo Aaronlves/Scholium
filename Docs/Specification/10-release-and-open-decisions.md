@@ -117,8 +117,8 @@ path/size/SHA-256 inventory and tree hash, role and malformed-frontmatter
 counts, link/folder coverage, one 5,000-word Work, one 100,000-CJK-character
 Work, fixed navigation targets, and fixed English/CJK Search queries with
 expected identities. RDF-1 is disposable test data, never a research source.
-Strict schema-5 Research Record provider fixtures remain separate generated,
-disposable test inputs with attributed researcher/agent statements, Note
+Strict current-schema Research Record provider fixtures remain separate
+generated, disposable test inputs with attributed researcher/agent statements, Note
 participants, actually-used Materials, local-calendar boundaries, and exact
 source fingerprints; they do not alter RDF-1's frozen Note corpus or become a
 second Record authority.
@@ -188,15 +188,14 @@ Every approved target change updates the affected canonical rule and removes
 the text it replaces in the same patch. Git owns prior versions; this document
 does not preserve supersession chains or compatibility narratives for an
 unreleased product. Architecture records structural consequences, and status
-records implementation, migration, verification, acceptance, and release
-evidence. Temporary code or visuals never become authority accidentally.
+records current reachability, open work, verification, acceptance, and release
+evidence. Completed migration narratives remain in Git history. Temporary code
+or visuals never become authority accidentally.
 
 ## 22. Unresolved target decisions
 
 Sections 1–21 are the complete current contract. Git history owns replaced
-rules and decision chronology; decision IDs that remain in dated status or
-test names are historical locators, not independent product authority.
-Implementation and acceptance gaps belong in
+rules and decision chronology. Implementation and acceptance gaps belong in
 [Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 Only questions that can still change the target remain here:

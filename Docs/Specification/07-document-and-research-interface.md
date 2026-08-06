@@ -78,9 +78,9 @@ Source; all three reduce to **20 CSS px** below **44rem**. The **32 CSS px** top
 inset and existing trailing scrolling space remain separate. CSS lengths never
 convert to macOS points. `ch` resolves against Review/Edit Body type or Source's
 exact-source type and therefore does not promise an exact character count.
-Shared ownership, units, and the 72ch default have passed ordinary, narrow,
-mixed-script, and 100%/200% researcher comparison. Edit and Source
-reconfigure one retained editor state; window, split, theme,
+At ordinary, narrow, mixed-script, and 100%/200% text presentations, all three
+modes retain the shared measure and minimum insets. Edit and Source reconfigure
+one retained editor state; window, split, theme,
 line-width, or text-size changes never replace it or create an Editor window.
 
 Each researcher-authored semantic text block owns its base writing direction.
@@ -110,10 +110,37 @@ presentation parameters without changing protected role structure, generated
 accessible role names, or source-controlled fold state. Mathematics remains
 centered and italic, with automatic numbering on the physical right scoped per
 document; code and tables retain their shared app-owned styles.
-Advanced sanitized CSS snippets remain an additive compatibility path inside
-Appearance, but Appearance displays no generated CSS preview. Source typography
-and the application interface are not changed by a document configuration;
-only the shared Line width changes Source layout.
+Advanced sanitized CSS snippets are an additive extension inside Appearance,
+but Appearance displays no generated CSS preview. Source typography and the
+application interface are not changed by a document configuration; only the
+shared Line width changes Source layout.
+
+### 18.4.1 Advanced CSS boundary
+
+Imported snippets are copied into managed Application Support storage;
+Scholium never loads them directly from a research vault and never modifies the
+imported original. They style document content in Review and Edit only. Exact
+visual parity is not required where Edit must preserve editable geometry.
+
+The supported selector surface is bounded to the document root and ordinary
+prose, heading, list, quotation, table, code, link, emphasis, mark, and rule
+elements. Supported declarations are ordinary visual properties such as color,
+background color, font family, font size, font style, font weight, line height,
+letter spacing, text decoration, borders, border radius, padding, and margins.
+
+Sanitization rejects imports, `!important`, scripts or executable HTML,
+external URLs, selectors escaping the document root, and declarations that
+hide, remove, reposition, or cover protected research information. Callouts,
+footnotes, Review annotations, provenance warnings, diagnostics, conflict and
+recovery controls, and application chrome remain app-owned protected
+components. Their semantic structure and source-controlled state cannot be
+restyled by a snippet.
+
+An invalid snippet is disabled with an adjacent validation error. A rendering
+failure enters persistent CSS Safe Mode and disables enabled snippets until the
+researcher uses **Disable All Snippets** and re-enables selected managed copies.
+Import, duplicate, rename, reorder, edit, reload, remove, and reveal act only on
+those managed copies.
 
 Document toolbar order is Sidebar visibility; Heading Outline and compact
 identity; mode and Search; **This Note · Records**; Inspector visibility. Scholium
@@ -242,11 +269,10 @@ Actions has no generic **Actions** section heading. The role-valid defaults in
 Section 8.1 retain their canonical order while appearing in two quiet semantic
 groups: **Research** contains Discuss and the applicable Analyze, Synthesize,
 or Write Action; **Review** contains Critique where applicable and Check
-Fidelity. There is no horizontal Research Activity HUD, completed chronology,
-generic **Open Research Record** row, **Work with Agent** wrapper, or mode picker. The
-Discuss Action itself reopens the current Note's resumable active Discussion
-and automatically includes its existing line Comments. It has no second
-active-Discussion row or parallel destination.
+Fidelity. Completed work is accessed through Research Records, and Agent
+handoff remains inside the selected Action. Discuss reopens the current Note's
+resumable active Discussion and automatically includes its existing line
+Comments from that one row.
 
 Profiles configure only the closed Platform Actions and do not create a third
 custom-Action group or another visual branch. Availability fails closed while
@@ -278,10 +304,10 @@ title axis; trailing text states **Running**; and a separately named direct
 second line. Larger interface text or localization may grow the row rather
 than clip its title, state, or ending route.
 
-An Action sheet keeps one linear journey: request and focal context; exact
-method/Practice and capability availability; pairing or current Session state;
-Run progress and any bounded write-set decision; returned canonical result;
-then optional Researcher Evaluation. Copied Agent instructions reveal only the
+An Action sheet keeps one linear journey: request and focal context; academic
+Profile inputs and any executable availability repair; handoff or current
+Session state; Run progress and any bounded write-set decision; returned
+canonical result; then optional Researcher Evaluation. Copied Agent instructions reveal only the
 Run locator, one-time Pairing Code, local connection route, and direct steps for
 the Agent to operate the CLI itself. The one-time code appears only inside that
 complete copied handoff, never as a separate visible or accessible value the
@@ -413,8 +439,8 @@ remains the direct reversible exception and is never styled as destructive.
 Translate researcher-facing language contextually, not by mechanical token
 replacement. Stable identifiers, enum values, command IDs, paths, exact source,
 researcher prose, and internal vocabulary remain unchanged. Skill names and
-package-authored descriptions stay verbatim unless a later decision creates a
-Scholium-owned translated field. Chinese prose uses full-width punctuation.
+package-authored descriptions stay verbatim. Chinese prose uses full-width
+punctuation.
 
 | English | Approved Simplified Chinese |
 | --- | --- |

@@ -303,8 +303,8 @@ px** minimum border separations. Wide rendered tables, code, and mathematics
 may scroll inside that measure; rendered prose reflows without page-level
 horizontal reading scroll. Source mode instead soft-wraps every exact logical
 line within its measure without changing source line breaks or line numbers.
-The 72ch default and typographic rhythm have passed ordinary, narrow,
-mixed-script, and 100%/200% visual acceptance. Screenshots and prototype
+The 72ch default and typographic rhythm apply at ordinary, narrow,
+mixed-script, and 100%/200% text presentations. Screenshots and prototype
 coordinates remain evidence only and never define native/CSS unit conversion.
 
 ### 19.5 Application icon

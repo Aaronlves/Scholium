@@ -27,8 +27,8 @@ Use the smallest authority set that answers the question:
 2. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) routes to
    the chapters that own modules, runtimes, state, and editor boundaries.
 3. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) routes to current
-   reachability, remaining work, completed migrations, the latest verification
-   baseline, and open acceptance.
+   reachable capabilities and interface, open work, dated verification, and
+   acceptance boundaries.
 4. This README, live construction, tests, and scripts provide setup and current
    implementation evidence.
 
@@ -38,7 +38,7 @@ than as parallel authorities.
 
 Task-specific operational references remain separate:
 
-- [CSS Snippet Contract](Docs/CSS_SNIPPETS.md)
+- [Advanced CSS target boundary](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
 - [First-party Zotero MCP transport](Docs/ZOTERO_MCP.md)
 - [Research method resources](ScholiumCore/Resources/Skills/README.md)
 
@@ -222,9 +222,11 @@ Discussion replies, resumable Actions with structured Analyze recommendations,
 and revision-checked Note operations. Existing-note mutations require the current
 SHA-256 returned by `scholium read --format json`.
 
-`scholium agent mcp serve` exposes cooperative mid-run Note-change requests to
-an external agent over stdio and the private same-user app bridge. It neither
-launches Scholium nor grants writes. The authenticated
+The installed `scholium agent` commands let an external Agent pair with one
+researcher-created Run, obtain its typed context, request bounded writes,
+submit one result, continue research, and end the Run through the private
+same-user app bridge. Pairing reads the one-time code through standard input;
+Scholium does not launch or supervise the Agent. The authenticated
 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
 owns the Agent Run workflow; installed command help owns current CLI syntax.
 See [Zotero MCP](Docs/ZOTERO_MCP.md) for the optional first-party Zotero
@@ -284,8 +286,7 @@ Docs/IMPLEMENTATION_ARCHITECTURE.md
 Docs/Architecture/        Module, runtime, state, editor, and delivery chapters
 Docs/IMPLEMENTATION_STATUS.md
                            Current-evidence manifest and reading routes
-Docs/Status/              Reachability, debt, migrations, proof, and open acceptance
-Docs/CSS_SNIPPETS.md       Advanced document-style customization contract
-Docs/ZOTERO_MCP.md         Optional first-party Zotero transport guide
+Docs/Status/              Capabilities, interface, open work, and dated proof
+Docs/ZOTERO_MCP.md         Non-normative first-party Zotero operator guide
 Tools/Scripts/             Build, verification, QA, performance, and release tools
 ```

@@ -134,5 +134,5 @@ symbol-graph guards so delivery targets cannot reacquire Core-owned authority.
 
 See [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) for dated evidence,
 reachable behavior, and remaining acceptance work. This document intentionally
-does not duplicate test counts or claim that a historical pass proves the
+does not duplicate test counts or claim that a dated pass proves the
 current checkout.

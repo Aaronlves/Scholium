@@ -329,7 +329,7 @@ metadata—never queries, Note paths/titles, or research text. The target
 thresholds and evidence-class rules live in
 [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
 dated measurements and incomplete series live only in
-[Remaining Work](../Status/03-remaining-work.md).
+[Open Work](../Status/03-open-work.md).
 
 `ScholiumContracts` owns durable Markdown meanings and the immutable editing
 dialect. TypeScript may parse an uncommitted buffer for immediate projection
@@ -433,11 +433,10 @@ issuing a CodeMirror `revealSourceRange` transaction with no history entry;
 cross-document navigation continues through the ordinary dirty-buffer,
 autosave, and conflict coordinator.
 
-### Shared document rendering migration
+### Shared document rendering
 
-`MarkdownSemanticDocument` remains the one Contracts-owned semantic projection;
-the editor migration extends it rather than creating a second render-document
-authority. `MarkdownEditingDialect` serializes the same supported syntax and
+`MarkdownSemanticDocument` is the one Contracts-owned semantic projection.
+`MarkdownEditingDialect` serializes the same supported syntax and
 delimiter rules to CodeMirror. Swift parses committed revisions for Read,
 graph, diagnostics, and persistence-adjacent consumers. TypeScript incrementally
 parses the uncommitted buffer for immediate Live Preview only, and shared
@@ -470,8 +469,8 @@ UTF-16 offset, so CRLF, leading BOM, Unicode decomposition, and final-newline
 form remain source-authoritative. These nodes locate editing syntax; Swift
 `MarkdownSemanticDocument` and `GraphSnapshot` remain the authorities for
 diagnostics, identity, relationship meaning, and committed Read output. Graph
-contract 5 invalidates the retired reverse-support and directed-Questions
-projection rather than decoding it as current state.
+contract 5 publishes only neutral, support, opposition, and undirected
+incompatibility relations with the permitted inverse views.
 
 The mode-neutral presentation catalog is explicit rather than assumed.
 Contracts publishes source-located CommonMark/GFM blocks plus strong,

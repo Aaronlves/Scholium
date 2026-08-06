@@ -2,9 +2,6 @@
 
 - **Status:** Canonical product, interface, and release specification
 - **Applies to:** Scholium for macOS and its agent-facing CLI
-- **Canonicalized:** 2026-07-17
-- **Consolidated:** 2026-07-29
-- **Modularized:** 2026-08-03
 
 This file is the sole entry point and closed manifest for Scholium's target
 authority. The chapters listed below are normative parts of this one
@@ -29,8 +26,22 @@ In this specification:
 Apple HIG and the selected SDK own platform/API behavior; this specification
 owns the Triptych, scholarly semantics, evidence, and research governance.
 
-Scholium uses direct agent edits and has no Proposal or unapplied-Revision
-workflow. Unsupported application state fails closed and remains unparsed and
+## Set contract
+
+The three document sets have distinct jobs:
+
+| Set | May contain | Must not contain |
+| --- | --- | --- |
+| Specification | Stable target behavior, terminology, interface semantics, accessibility, release requirements, and unresolved target decisions | Current reachability, module/type descriptions, migration history, test counts, or operator instructions |
+| Implementation Architecture | Current module, runtime, dependency, state-owner, persistence, and delivery structure | Alternative product rules, superseded designs, migration plans, acceptance results, or release claims |
+| Implementation Status | Dated reachability, open work, verification evidence, and acceptance boundaries | New target rules, structural design authority, completed migration narratives, or decision chronology |
+
+Operational guides may explain how to use a current tool, but they are not a
+fourth authority and must route every behavioral claim back to one of these
+sets or to installed command help.
+
+Scholium uses direct agent edits. Unsupported application state fails closed
+and remains unparsed and
 untouched; unsupported data never authorizes behavior. Scholium never deletes
 or normalizes researcher Markdown, custom YAML, or unrecognized Triptych files
 merely because it does not interpret them.

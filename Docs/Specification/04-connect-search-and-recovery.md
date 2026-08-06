@@ -139,8 +139,8 @@ The Record provider accepts unfielded lexical clauses plus `note`, `action`,
 `today` is that day, while `7d` and `30d` include that day plus the preceding
 six or twenty-nine local calendar days. `note` resolves the ordinary stable
 Note identity; `action` matches the retained public Action identity and `skill`
-matches the exact retained Method display name, never a retired package ID or
-inferred prose; `participant` requires an attributed statement from that speaker.
+matches only the exact retained Method display name; `participant` requires an
+attributed statement from that speaker.
 Unfielded terms search context, Action, Skill, participant Note titles,
 attributed statements, and Application-validated actually-used Material
 titles. Note-only fields, Property, and relation clauses fail with a provider-
@@ -240,8 +240,8 @@ execution and returns only closed Source Reference Envelopes with owner,
 identity, actor or unknown, role, exact revision, locator, authorized scope,
 currentness, evidential layer, retrieval reason, and material limitation.
 Current, Partial, Stale, Unavailable, and Invalid Query remain distinct.
-Research Context response schema 2 carries each Note result's typed Foundation
-match reasons as well: a direct relation retains predicate, direction, anchor,
+The versioned Research Context response carries each Note result's typed
+Foundation match reasons as well: a direct relation retains predicate, direction, anchor,
 target, and exact Markdown occurrences, while a Property match retains its
 key/value source ranges. These are Search-owner facts, not Agent-generated
 explanations or a second Graph/Property interpretation.

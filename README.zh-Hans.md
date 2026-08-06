@@ -21,8 +21,8 @@ Markdown 始终是研究者所选文件夹中普通、可检查的文本。阅�
    负责产品行为、界面设计、辅助功能、发布要求和现行决策。
 2. [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)将任务路由到负责模块、运行时、
    状态与编辑器边界的章节。
-3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)将任务路由到当前可达行为、剩余工作、
-   已完成迁移、最新验证基线和尚未完成的验收。
+3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)将任务路由到当前可达能力与界面、
+   开放工作、注明日期的验证证据和尚未完成的验收。
 4. 本 README、实际构建、测试和脚本提供设置方法与当前实现证据。
 
 目标文字不等于实现证明。已经完成使命的迁移 Roadmap 与被取代的决策记录保留在
@@ -30,7 +30,7 @@ Git 历史中，不再作为平行权威。
 
 仍然独立的任务型操作参考包括：
 
-- [CSS 片段合同](Docs/CSS_SNIPPETS.md)
+- [高级 CSS 目标边界](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
 - [第一方 Zotero MCP 传输](Docs/ZOTERO_MCP.md)
 - [研究方法资源](ScholiumCore/Resources/Skills/README.md)
 
@@ -188,9 +188,10 @@ CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关�
 回复、可恢复 Actions、推荐文献和带修订检查的笔记操作。修改已有笔记时必须提供
 `scholium read --format json` 返回的当前 SHA-256。
 
-`scholium agent mcp serve` 通过 stdio 与私有同用户应用桥，为外部 Agent 提供
-协作式运行中笔记变更请求；它既不启动 Scholium，也不授予写权限。Agent Run
-流程由认证后返回的 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
+安装后的 `scholium agent` 命令让外部 Agent 通过私有同用户应用桥，与一个由研究者
+创建的 Run 配对、获取结构化上下文、申请有界写入、提交一个结果、继续研究并结束
+Run。配对码只通过标准输入读取；Scholium 不会启动或监管 Agent。Agent Run 流程由
+认证后返回的 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
 唯一拥有，当前 CLI 语法由安装版本的命令帮助拥有。可选 Zotero 传输见
 [Zotero MCP](Docs/ZOTERO_MCP.md)。
 
@@ -241,8 +242,7 @@ Docs/IMPLEMENTATION_ARCHITECTURE.md
 Docs/Architecture/        模块、运行时、状态、编辑器与交付章节
 Docs/IMPLEMENTATION_STATUS.md
                            当前证据清单与阅读路由
-Docs/Status/              可达行为、债务、迁移、证据与开放验收
-Docs/CSS_SNIPPETS.md       高级文档样式自定义合同
-Docs/ZOTERO_MCP.md         可选的第一方 Zotero 传输指南
+Docs/Status/              能力、界面、开放工作与注明日期的证据
+Docs/ZOTERO_MCP.md         非规范性的第一方 Zotero 操作指南
 Tools/Scripts/             构建、验证、QA、性能与发布工具
 ```

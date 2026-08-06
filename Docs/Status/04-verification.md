@@ -1,18 +1,36 @@
-# Implementation Status: Verification Baseline
+# Implementation Status: Verification Evidence
 
-Part of the canonical document set rooted at [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md).
-This chapter owns the latest dated automated, UI, performance, visual, and distribution evidence; sibling chapters do not restate it.
+Part of the dated status set rooted at [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md).
+This chapter owns the latest dated automated, UI, performance, visual, and
+distribution evidence. A passing result proves only the stated checkout,
+fixture, environment, and boundary; it does not redefine the target or close
+human, packaged, or release acceptance unless explicitly stated.
 
-## Current verification baseline
+## Current verification evidence
 
+**Latest documentation-only check:** 2026-08-07
 **Latest complete repository gate:** 2026-08-04
+
+### Documentation authority
+
+**Current passing result**
+
+`validate-documentation-authority.py` passed the reorganized closed set with
+three manifests, 22 chapters, and 97 checked local links. `git diff --check`
+also passed.
+
+**Boundary of the claim**
+
+Documentation structure, local links, anchors, chapter ownership, and patch
+whitespace only. No source build, product test, UI journey, packaging, or
+release gate was rerun for this documentation-only cutover.
 
 ### Repository gate
 
 **Current passing result**
 
 `verify.sh` passed the closed 3-manifest, 23-chapter documentation authority and all 93 checked local
-links; 11 shipped `SKILL.md` roots; retired research-owner zero-residue guards; 185 WebEditor tests
+links; 11 shipped `SKILL.md` roots; research-owner zero-residue guards; 185 WebEditor tests
 and reproducible editor, mathematics, Mermaid, and license resources; deterministic RDF-1 v2 for
 800 notes; 424 Core tests plus 3 isolated performance tests; 118 Contracts; 180 Application; 8 Local
 Agent bridge; 1 serialized architecture measurement; 453 App tests; and 6 executable Research
@@ -27,16 +45,9 @@ seconds.
 
 Automated source and disposable-fixture evidence, not a release artifact or human acceptance.
 
-This complete gate incorporates the earlier direct-relation resolver and 87-test Search owner-range
-completion evidence rather than leaving it as a post-gate exception. The lower aggregate counts are
-the result of the authorized clean cutover deleting package, workflow, permission, Profile-module,
-and compatibility suites with their retired owners; they are not evidence that old paths remain.
-
-An independent target/canonical/current/evidence conformance pass found no P0/P1. It fixed two
-bounded P2 residues before the final gate: current Search-v5 labels were migrated to v6, and the
-sandbox probe was aligned with the bridge's generic authorization-denial wire contract while
-retaining its reachability, secret-nonlogging, and unavailable-state assertions. Production residue
-searches then found no retired research owner or separate Research Memory/Search side path.
+The same gate includes the direct-relation resolver and Search owner-range
+evidence. Production residue guards found no parallel Research Memory, Search,
+or research-authority path.
 
 ### Search performance gate
 
@@ -61,7 +72,7 @@ The last journey resolves each Show/Hide state strictly beneath the real Toolbar
 subtree and confirms one control identifier per peripheral. The 2026-08-04 Storage Unavailable
 journey passed in 27.611 seconds, covering compact collapsed and expanded states, an unsuccessful
 Retry that remains compact, and successful recovery to the Workspace frame.
-The Research Records cutover additionally passed Recommendations handling and parent-Record routing
+Research Records journeys additionally passed Recommendations handling and parent-Record routing
 (84.235 s), one keyed window reused by two same-Triptych Workspaces (55.143 s), comparison and
 permanent deletion (54.721 s), and independent cross-Triptych windows with the 760 × 680 default,
 the 700 × 520 minimum content size, native Scope-menu exposure, and View-index keyboard traversal

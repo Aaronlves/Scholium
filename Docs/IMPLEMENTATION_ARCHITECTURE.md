@@ -9,6 +9,12 @@ how current code is divided and how mutable state flows through it. They do not
 redefine product workflows, interface labels, visual decisions, vault formats,
 or research-governance rules.
 
+Architecture records the current structural model only. It may name modules,
+types, stores, actors, dependencies, and runtime transactions when those names
+clarify ownership. It does not retain superseded alternatives, completed
+migration plans, decision chronology, test counts, timings, acceptance
+results, or release evidence. Git owns structural history.
+
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) owns dated conformance and
 verification evidence; the package graph, live code, tests, and scripts remain
 the final implementation evidence.
@@ -20,7 +26,7 @@ the final implementation evidence.
 | [Runtime and Ownership](Architecture/01-runtime-and-ownership.md) | Compiler/runtime composition, module dependencies, state owners, windows, refresh, Library mutations, tabs, and shell construction. |
 | [Research Actions and Execution](Architecture/02-research-actions-and-execution.md) | Action preparation, protected execution, Research Records, permissions, agent coordination, and completion/recovery. |
 | [Source Layout and Presentation](Architecture/03-source-layout-and-presentation.md) | Repository source layout, native presentation composition, window routes, Attention, Research Inspector, and localization. |
-| [Research Skills and Agent Collaboration](Architecture/04-product-skills-and-maintenance.md) | Skill/Practice registration, Action configuration, collaboration policy, local pairing/Sessions, Bounded Write Sets, and evaluation maintenance. |
+| [Research Guidance](Architecture/04-research-guidance.md) | Method/Practice registration, academic Profiles, collaboration policy, citation configuration, Settings, and configuration recovery. |
 | [Source Storage and Read Models](Architecture/05-source-storage-and-read-models.md) | Descriptor-relative source writes, macOS coordination, prewrite recovery, immutable Note snapshots, metadata, and targeted YAML edits. |
 | [Documents and Editor](Architecture/06-documents-and-editor.md) | Document sessions, CodeMirror/WebKit, exact-source mirroring, rendering, interaction, recovery, and performance boundaries. |
 | [Design System and Boundary Enforcement](Architecture/07-design-system-and-boundaries.md) | Semantic design-system implementation, component ownership, import guards, and executable architecture checks. |

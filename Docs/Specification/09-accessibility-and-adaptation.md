@@ -118,8 +118,8 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
 - A running Action exposes its Action name and **Running** state together while
-  retaining a distinct, explicitly named Cancel control in the same linear
-  Actions order. Its progress animation is not the sole state channel.
+  retaining a distinct, explicitly named **End Action** control in the same
+  linear Actions order. Its progress animation is not the sole state channel.
 - Pairing and re-pairing expose one linear keyboard order from Run identity and
   local-connection explanation through Copy Handoff and status. One-time-code
   expiry, invalid attempt, Session expiry/revocation, app-restart invalidation,
