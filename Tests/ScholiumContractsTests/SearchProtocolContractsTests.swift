@@ -252,8 +252,12 @@ struct SearchProtocolContractsTests {
         )
     }
 
-    @Test("Saved Searches persist only current definitions and surface contract drift")
+    @Test("Saved Searches persist definitions and apply declared contract compatibility")
     func savedSearchCurrentDefinitionOnly() throws {
+        #expect(SearchContract.isSavedSearchContractCompatible(SearchContract.currentVersion))
+        #expect(!SearchContract.isSavedSearchContractCompatible(SearchContract.currentVersion - 1))
+        #expect(!SearchContract.isSavedSearchContractCompatible(SearchContract.currentVersion + 1))
+
         let saved = SavedSearch(
             name: "Records by researcher",
             definition: SearchDefinition(

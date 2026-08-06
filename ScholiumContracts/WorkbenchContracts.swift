@@ -53,10 +53,10 @@ public struct SavedSearch: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var needsEditingDiagnostic: SearchQueryDiagnostic? {
-        if definition.contractVersion != SearchContract.currentVersion {
+        if !SearchContract.isSavedSearchContractCompatible(definition.contractVersion) {
             return SearchQueryDiagnostic(
                 code: .needsEditing,
-                message: "This Saved Search uses Search contract \(definition.contractVersion); review it for contract \(SearchContract.currentVersion).",
+                message: "This Saved Search uses Search contract \(definition.contractVersion), which is not declared compatible with contract \(SearchContract.currentVersion); review it before running.",
                 utf16LowerBound: 0,
                 utf16UpperBound: definition.query.utf16.count,
                 needsEditing: true

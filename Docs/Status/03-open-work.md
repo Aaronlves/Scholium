@@ -118,16 +118,16 @@ direction, normalization, ordering, and limitations without reparsing visible
 query text. CLI text and JSONL consume the same response fields, and the typed
 contract is covered by focused Contracts, Core, CLI-schema, and frontend
 architecture tests.
+Saved Search execution now consults an explicit compatible-version declaration;
+only the current contract is declared compatible, while unrecognized versions
+remain byte-unchanged, nonexecuting, and require editing.
 
 **Next implementation**
 
-Implement compatibility-aware Saved Search version checks: require **Needs
-Editing** only for grammar, explanation, ordering, response-compatibility, or
-security changes, while explicitly declared additive capabilities retain
-unaffected definitions. Add dynamic Property-key and Note-identity completion
-only if representative use shows the static capability description is
-insufficient. Keep Explain presentation compact or on-demand only when the
-complete fields remain keyboard and VoiceOver reachable.
+Add dynamic Property-key and Note-identity completion only if representative
+use shows the static capability description is insufficient. Keep Explain
+presentation compact or on-demand only when the complete fields remain
+keyboard and VoiceOver reachable.
 
 **Next evidence**
 

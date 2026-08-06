@@ -49,6 +49,23 @@ The same gate includes the direct-relation resolver and Search owner-range
 evidence. Production residue guards found no parallel Research Memory, Search,
 or research-authority path.
 
+### Saved Search contract compatibility
+
+**Current passing result**
+
+With the Xcode 27 beta toolchain selected explicitly, the focused Search
+contract suite passed 17 tests and the focused Window Search controller suite
+passed 8 tests. The tests cover the explicit compatible-version declaration,
+fail-closed handling of older and newer unrecognized versions,
+raw-query-preserving editing diagnostics, and the no-execution stale Saved
+Search path.
+
+**Boundary of the claim**
+
+Focused contract and window-owner evidence only. No complete repository gate,
+packaged application, GUI adaptation matrix, or researcher acceptance was
+rerun.
+
 ### Search performance gate
 
 **Current passing result**

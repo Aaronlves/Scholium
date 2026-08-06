@@ -13,6 +13,15 @@ public enum SearchContract {
     public static let maximumCLIResults = 500
     public static let maximumQueryUTF16Count = 16_384
     public static let maximumQueryTokenCount = 64
+
+    /// A prior version may be listed only after the current contract declares
+    /// grammar, interpretation, explanation, ordering, response compatibility,
+    /// and security boundaries unchanged for existing Saved Search definitions.
+    public static let savedSearchCompatibleVersions: Set<Int> = [currentVersion]
+
+    public static func isSavedSearchContractCompatible(_ version: Int) -> Bool {
+        savedSearchCompatibleVersions.contains(version)
+    }
 }
 
 public struct SearchSourceManifestEntry: Codable, Hashable, Sendable {
