@@ -42,11 +42,13 @@ previous-edit recovery point; no runtime fallback consults this tree.
 
 ## Protected reference resources
 
-`Scholium System Skills` documents identity, provenance, Session,
-bounded-write, Record, Discussion, Zotero, and integration mechanisms for
-maintainers and Agent-facing method authors. Runtime authority remains in
-Platform contracts and Application code; these Markdown files cannot grant
-scope or replace the authenticated Core Protocol.
+`Scholium System Skills` owns protected identity, provenance, Session,
+bounded-write, Record, Discussion, Zotero, and integration instructions. The
+exact first-authentication Core Protocol is
+`scholium-core-protocol/references/runtime-protocol.md`; Application loads that
+resource verbatim and embeds no second prompt. Platform contracts and current
+Application state remain the runtime authority, so Skill text cannot grant
+scope, capability, or write permission.
 
 `Philosophical Practices` contains the nine exact default Practice documents
 copied into a new Triptych. The folder has no entry point or activation

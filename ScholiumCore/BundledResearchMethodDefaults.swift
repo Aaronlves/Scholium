@@ -138,7 +138,7 @@ enum BundledResearchMethodDefaults {
                     try SecureResearchConfigurationIO.createDataFile(
                         parentDescriptor: parent,
                         leaf: leaf,
-                        data: try bundledData(
+                        data: try BundledResearchSkillResources.data(
                             directory: definition.resourceDirectory,
                             relativePath: resource
                         ),
@@ -168,7 +168,7 @@ enum BundledResearchMethodDefaults {
             throw ResearchConfigurationStoreError.invalidMethod(actionID.rawValue)
         }
         return String(
-            decoding: try bundledData(
+            decoding: try BundledResearchSkillResources.data(
                 directory: definition.resourceDirectory,
                 relativePath: "SKILL.md"
             ),
@@ -202,7 +202,7 @@ enum BundledResearchMethodDefaults {
                 try SecureResearchConfigurationIO.createDataFile(
                     parentDescriptor: directory,
                     leaf: resource,
-                    data: try bundledData(
+                    data: try BundledResearchSkillResources.data(
                         directory: "Philosophical Practices",
                         relativePath: resource
                     ),
@@ -212,34 +212,4 @@ enum BundledResearchMethodDefaults {
         }
     }
 
-    private static func bundledData(
-        directory: String,
-        relativePath: String
-    ) throws -> Data {
-        guard let skillsRoot = Bundle.module.url(
-            forResource: "Skills",
-            withExtension: nil
-        ) else {
-            throw ResearchConfigurationStoreError.invalidMethod("bundled Skills")
-        }
-        let root = skillsRoot
-            .appendingPathComponent(directory, isDirectory: true)
-            .standardizedFileURL
-        let url = root.appendingPathComponent(relativePath).standardizedFileURL
-        guard url.path.hasPrefix(root.path + "/") else {
-            throw ResearchConfigurationStoreError.invalidMethod(relativePath)
-        }
-        let values = try url.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        )
-        guard values.isRegularFile == true, values.isSymbolicLink != true else {
-            throw ResearchConfigurationStoreError.invalidMethod(url.path)
-        }
-        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        guard data.count <= 1_048_576,
-              String(data: data, encoding: .utf8) != nil else {
-            throw ResearchConfigurationStoreError.invalidMethod(url.path)
-        }
-        return data
-    }
 }

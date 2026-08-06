@@ -183,7 +183,9 @@ prior pairing and copies its replacement while preserving the Run and recovery s
 enters the code only through pairing stdin.
 The code and credential are non-Codable and redacted from descriptions; only the typed copied
 handoff exposes the one-use code, while private bridge/storage adapters handle exchange and Session
-bytes. Session schema 3 returns the frozen exact
+bytes. The first authenticated context loads the exact structured runtime protocol from the protected
+Core Skill resource before claiming delivery; Application contains no second prompt copy. Session
+schema 3 returns the frozen exact
 Method/Practices, Result Contract, and a capability-free view of the current Bounded Write Set only
 after authentication. Re-pairing one Run revokes its prior write-capable binding, application restart
 invalidates every Session, and the durable Run remains. `scholium agent end`

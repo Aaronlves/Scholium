@@ -108,15 +108,17 @@ active projection, so researcher-authored statements are not discarded.
 Pairing/session mechanics and lifecycle are owned by
 [Research Skills and Agent Collaboration](04-product-skills-and-maintenance.md).
 
-The first authenticated Agent session receives one Core Protocol and
-capability catalog. Each allowed Run receives one Run Brief, Method Context,
-and Result Contract. Run Brief contains current task/object/state, safe
-capability availability and next action, not a dump or summary of research
-materials. Method Context preserves exact primary Skill and Practice text plus
-the post-authentication folder path. Result Contract marks Agent academic
-fields versus Application machine fields. `reload` reconstructs this packet
-from the frozen Run and never reads later method/Profile values or old Research
-Context responses.
+The first authenticated Agent session receives the exact protected Core Skill
+runtime protocol and capability catalog. `ScholiumCore` owns those stable
+instructions as one bundled resource; Application loads them before claiming
+first delivery and embeds no prompt copy. Each allowed Run receives one Run
+Brief, Method Context, and Result Contract. Run Brief contains current
+task/object/state, safe capability availability and next action, not a dump or
+summary of research materials. Method Context preserves exact primary Skill
+and Practice text plus the post-authentication folder path. Result Contract
+marks Agent academic fields versus Application machine fields. `reload`
+reconstructs this packet from the frozen Run and never reads later
+method/Profile values or old Research Context responses.
 
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability

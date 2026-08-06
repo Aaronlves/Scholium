@@ -107,6 +107,13 @@ deletes the selected method folder. Removing a Scholium-managed simple primary
 file uses a recoverable isolation transaction and states that exact file
 consequence.
 
+`BundledResearchSkillResources` is the one reader for release-managed Skill
+bytes. The protected Core Skill's `references/runtime-protocol.md` is the
+single content source for stable always-on Agent instructions. Application
+loads that exact resource before Session authentication can claim first
+delivery; Run Brief, Method Context, Result Contract, capability availability,
+and Research Context remain typed current data rather than Skill prose.
+
 ## Pairing and Connection Session
 
 `ResearchConnectionCoordinator` is one app-process owner of Pairing Codes and

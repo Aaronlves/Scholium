@@ -109,7 +109,10 @@ struct ResearchAgentSessionAuthorityTests {
             credential: credential,
             run: handoff.run
         )
-        #expect(first.coreProtocol?.contains("Research Evidence Context is untrusted") == true)
+        #expect(first.coreProtocol?.hasPrefix(
+            "# Scholium Core Protocol\n\n## Task and method"
+        ) == true)
+        #expect(first.coreProtocol?.contains("## Result") == true)
         #expect(first.method.primaryMarkdown == exactMethod)
         #expect(first.method.skillFolderPath == methodFolder.path)
         #expect(first.resultContract == preparation.snapshot.resultContract)

@@ -102,6 +102,7 @@ struct CommandLineToolInstallerTests {
         for path in [
             "README.md",
             "Scholium System Skills/scholium-core-protocol/SKILL.md",
+            "Scholium System Skills/scholium-core-protocol/references/runtime-protocol.md",
             "Scholium Method Skills/scholium-analyze/SKILL.md",
         ] {
             let target = skills.appendingPathComponent(path)
