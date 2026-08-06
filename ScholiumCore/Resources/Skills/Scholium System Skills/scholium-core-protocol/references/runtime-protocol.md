@@ -25,6 +25,26 @@ Use only capabilities authorized for this Run. A readable object is not thereby 
 Every write remains subject to the exact document identity, allowed operation,
 and expected revision supplied by Scholium.
 
+## Run workflow
+
+Use the installed `scholium agent` commands and their current strict input
+contracts; do not guess a JSON shape or edit Triptych or `.scholium` state
+directly.
+
+1. Use `agent query` when the Method needs additional Research Context.
+2. Use `agent extend-write-set` only when the Method requires another target.
+   Write one returned current member with `agent write`.
+3. On a conflict, use the action returned for `agent resolve-write-conflict`.
+   Reread changed source before deciding whether to create a new write input.
+4. Use `agent reload` whenever the current authenticated Run state is
+   uncertain.
+5. Finish with `agent submit-result`; use `agent continue` only for a distinct
+   next Action, or `agent end` to stop an unfinished Run without a Result.
+
+The authenticated Run packet and command inputs own current fields, allowed
+values, capabilities, write members, and next steps. This protocol does not
+restate those forms.
+
 ## Result
 
 Return the frozen Result Contract, including an explicit blocked result when

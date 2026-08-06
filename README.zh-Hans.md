@@ -189,9 +189,10 @@ CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关�
 `scholium read --format json` 返回的当前 SHA-256。
 
 `scholium agent mcp serve` 通过 stdio 与私有同用户应用桥，为外部 Agent 提供
-协作式运行中笔记变更请求；它既不启动 Scholium，也不授予写权限。准确生命周期见
-随应用提供的 [CLI 合同](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-research-integration/references/cli-contract.md)，
-可选 Zotero 传输见 [Zotero MCP](Docs/ZOTERO_MCP.md)。
+协作式运行中笔记变更请求；它既不启动 Scholium，也不授予写权限。Agent Run
+流程由认证后返回的 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
+唯一拥有，当前 CLI 语法由安装版本的命令帮助拥有。可选 Zotero 传输见
+[Zotero MCP](Docs/ZOTERO_MCP.md)。
 
 ## 存储与安全
 

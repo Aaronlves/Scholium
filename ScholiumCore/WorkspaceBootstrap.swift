@@ -67,7 +67,6 @@ public enum WorkspaceBootstrap {
 
         - Apply the protected Scholium Core Protocol to every Scholium task.
         - Use the Platform Action's registered primary Method and its exact linked Practices.
-        - Load Scholium Research Integration for live Triptych reads, writes, Properties, Research Units, or Discuss persistence.
         - Load Scholium Discussion Protocol for a Discussion ID; use the ordinary Discuss Method for the intellectual exchange.
         - Never scan arbitrary global skill directories or substitute an unregistered Method.
 

@@ -27,11 +27,10 @@ Do not proceed unless one registered Triptych and one exact target directory can
 
 ## Verify the target
 
-1. Apply `scholium-research-integration` and read its CLI contract.
-2. Resolve the configured Triptych with `scholium vault list`; retain its UUID or unique name as the stable selector.
-3. Canonicalize and inspect the target and its applicable ancestor chain.
-4. Refuse a target that is the Scholium application checkout, including a root identified by `Package.swift`, `ScholiumCore/`, `Scholium/`, and `Docs/SCHOLIUM_SPEC.md` together.
-5. If an `AGENTS.md` already exists at the target or governs it from an ancestor, stop. Report its path and offer a comparison only if the researcher separately requests one. Do not overwrite, merge, shadow, or create a second applicable file.
+1. Resolve the configured Triptych with `scholium vault list`; retain its UUID or unique name as the stable selector. Use installed command help for current syntax.
+2. Canonicalize and inspect the target and its applicable ancestor chain.
+3. Refuse a target that is the Scholium application checkout, including a root identified by `Package.swift`, `ScholiumCore/`, `Scholium/`, and `Docs/SCHOLIUM_SPEC.md` together.
+4. If an `AGENTS.md` already exists at the target or governs it from an ancestor, stop. Report its path and offer a comparison only if the researcher separately requests one. Do not overwrite, merge, shadow, or create a second applicable file.
 
 ## Construct the candidate
 
@@ -53,7 +52,6 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 
 - Apply the protected Scholium Core Protocol to every Scholium task.
 - Use the Platform Action's registered primary Method and its exact linked Practices.
-- Load Scholium Research Integration for live Triptych reads, writes, Properties, Research Units, or Discuss persistence.
 - Load Scholium Discussion Protocol for a Discussion ID; the ordinary Discuss Method supplies the intellectual procedure.
 - Never scan arbitrary global skill directories or substitute an unregistered Method.
 

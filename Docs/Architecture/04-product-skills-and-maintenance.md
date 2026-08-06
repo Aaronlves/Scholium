@@ -109,10 +109,14 @@ consequence.
 
 `BundledResearchSkillResources` is the one reader for release-managed Skill
 bytes. The protected Core Skill's `references/runtime-protocol.md` is the
-single content source for stable always-on Agent instructions. Application
-loads that exact resource before Session authentication can claim first
-delivery; Run Brief, Method Context, Result Contract, capability availability,
-and Research Context remain typed current data rather than Skill prose.
+single content source for stable always-on Agent instructions and the
+authenticated Run workflow. Application loads that exact resource before
+Session authentication can claim first delivery. Run Brief, Method Context,
+Result Contract, capability availability, command inputs, and Research Context
+remain typed current data rather than Skill prose; installed CLI help owns
+current invocation syntax. Registered Methods and Practices alone own the
+Action's intellectual procedure. There is no parallel Research Integration
+Skill, static CLI contract, or persistence/property prompt owner.
 
 ## Pairing and Connection Session
 

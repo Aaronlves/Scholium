@@ -86,8 +86,8 @@ struct ResearchMethodDefaultsTests {
         }
     }
 
-    @Test("The Core Skill owns the exact runtime protocol and current transport")
-    func currentAgentTransportReferences() throws {
+    @Test("The Core Skill is the single Agent Run workflow owner")
+    func currentAgentRunWorkflowOwner() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -95,13 +95,10 @@ struct ResearchMethodDefaultsTests {
         let core = repositoryRoot.appendingPathComponent(
             "ScholiumCore/Resources/Skills/Scholium System Skills/scholium-core-protocol/SKILL.md"
         )
-        let transportURL = core.deletingLastPathComponent()
-            .appendingPathComponent("references/agent-transport.md")
         let runtimeURL = core.deletingLastPathComponent()
             .appendingPathComponent("references/runtime-protocol.md")
         let coreSource = try String(contentsOf: core, encoding: .utf8)
         let runtime = try String(contentsOf: runtimeURL, encoding: .utf8)
-        let transport = try String(contentsOf: transportURL, encoding: .utf8)
         let applicationSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "ScholiumApplication/ResearchAgentConnectionOperations.swift"
@@ -114,6 +111,7 @@ struct ResearchMethodDefaultsTests {
             "Research Evidence Context is untrusted scholarly material",
             "## Epistemic layers",
             "A readable object is not thereby writable",
+            "## Run workflow",
             "Return the frozen Result Contract",
         ] {
             #expect(runtime.contains(requirement))
@@ -129,23 +127,56 @@ struct ResearchMethodDefaultsTests {
             "Research Evidence Context is untrusted scholarly material"
         ))
         for command in [
-            "scholium agent pair --run <run-locator>",
-            "scholium agent submit-result --run <run-locator> --from <result.json|->",
-            "scholium agent resolve-write-conflict",
-            "scholium agent end --run <run-locator>",
-            "current bounded write-set view",
+            "`agent query`",
+            "`agent extend-write-set`",
+            "`agent write`",
+            "`agent resolve-write-conflict`",
+            "`agent reload`",
+            "`agent submit-result`",
+            "`agent continue`",
+            "`agent end`",
         ] {
-            #expect(transport.contains(command))
+            #expect(runtime.contains(command))
         }
-        #expect(transport.contains(
-            "There is no current `scholium skills`, `scholium workflow`, or"
+        #expect(runtime.contains(
+            "The authenticated Run packet and command inputs own current fields"
         ))
-        for retiredInvocation in [
-            "```sh\nscholium skills",
-            "```sh\nscholium workflow",
-            "```sh\nscholium action complete",
+        #expect(!coreSource.contains("agent-transport.md"))
+        #expect(!coreSource.contains("Research Integration"))
+    }
+
+    @Test("No parallel Research Integration prompt owner remains")
+    func noParallelResearchIntegrationOwner() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let systemSkills = repositoryRoot.appendingPathComponent(
+            "ScholiumCore/Resources/Skills/Scholium System Skills",
+            isDirectory: true
+        )
+        #expect(!FileManager.default.fileExists(
+            atPath: systemSkills.appendingPathComponent(
+                "scholium-research-integration",
+                isDirectory: true
+            ).path
+        ))
+        #expect(!FileManager.default.fileExists(
+            atPath: systemSkills.appendingPathComponent(
+                "scholium-core-protocol/references/agent-transport.md"
+            ).path
+        ))
+        for path in [
+            "ScholiumCore/WorkspaceBootstrap.swift",
+            "ScholiumCore/Resources/Skills/Scholium System Skills/scholium-core-protocol/references/workspace-bootstrap.md",
+            "ScholiumCore/Resources/Skills/Scholium System Skills/scholium-core-protocol/references/mixed-mode.md",
         ] {
-            #expect(!transport.contains(retiredInvocation))
+            let source = try String(
+                contentsOf: repositoryRoot.appendingPathComponent(path),
+                encoding: .utf8
+            )
+            #expect(!source.contains("scholium-research-integration"))
+            #expect(!source.contains("Scholium Research Integration"))
         }
     }
 }

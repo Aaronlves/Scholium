@@ -74,7 +74,7 @@ Pass source claims, locators, reconstructions, and unresolved alternatives. Do n
 
 ### Analyze to Synthesize
 
-Pass the source-facing analysis, access limits, locators, layer labels, proposed evidential role, exact target candidates, and unresolved checks. Select `scholium-research-integration` independently; the analysis phase supplies neither write permission nor settled project use.
+Pass the source-facing analysis, access limits, locators, layer labels, proposed evidential role, exact target candidates, and unresolved checks. The receiving Action must obtain its own current write form and authority; the analysis phase supplies neither write permission nor settled project use.
 
 ### Analyze or Synthesize to Write
 

@@ -224,10 +224,11 @@ SHA-256 returned by `scholium read --format json`.
 
 `scholium agent mcp serve` exposes cooperative mid-run Note-change requests to
 an external agent over stdio and the private same-user app bridge. It neither
-launches Scholium nor grants writes. See the shipped
-[CLI contract](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-research-integration/references/cli-contract.md)
-for the exact lifecycle and [Zotero MCP](Docs/ZOTERO_MCP.md) for the optional
-first-party Zotero transport.
+launches Scholium nor grants writes. The authenticated
+[Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
+owns the Agent Run workflow; installed command help owns current CLI syntax.
+See [Zotero MCP](Docs/ZOTERO_MCP.md) for the optional first-party Zotero
+transport.
 
 ## Storage and safety
 

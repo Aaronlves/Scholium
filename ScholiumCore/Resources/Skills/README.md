@@ -42,9 +42,10 @@ previous-edit recovery point; no runtime fallback consults this tree.
 
 ## Protected reference resources
 
-`Scholium System Skills` owns protected identity, provenance, Session,
-bounded-write, Record, Discussion, Zotero, and integration instructions. The
-exact first-authentication Core Protocol is
+`Scholium System Skills` owns the protected Core workflow plus the distinct
+Discussion and Zotero adapters. Typed Application/CLI contracts own current
+identity, provenance, Session, bounded-write, and Result fields. The exact
+first-authentication Core Protocol is
 `scholium-core-protocol/references/runtime-protocol.md`; Application loads that
 resource verbatim and embeds no second prompt. Platform contracts and current
 Application state remain the runtime authority, so Skill text cannot grant

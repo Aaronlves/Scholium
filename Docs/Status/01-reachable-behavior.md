@@ -191,6 +191,11 @@ after authentication. Re-pairing one Run revokes its prior write-capable binding
 invalidates every Session, and the durable Run remains. `scholium agent end`
 authenticates before cancellation, revokes the Run, retains recovery truth, and
 removes the acknowledged protected CLI credential.
+That delivered Core Protocol now owns the complete Agent Run path from query
+through bounded writes, conflict recovery, Result, continuation, and end.
+Typed Run/command contracts own current fields and allowed values, installed
+help owns CLI syntax, and registered Methods/Practices own academic procedure.
+The parallel Research Integration Skill and static CLI contract are absent.
 
 Bridge request schema 9/response schema 11 also carries the separately paired
 Method-improvement boundary. An explicit Record action installs one current
