@@ -186,12 +186,31 @@ atomically or not at all, and no disposable index stores writable research
 authority.
 
 The parser exposes one typed capability description shared by field
-completion, **Explain Query**, and CLI help. Completion edits only visible
-query text and creates no hidden token or chip. Explain reports provider,
-scope, clauses, direction, normalization, ordering, and limitations without
-executing an alternate query. Saved Searches persist only raw query, visible
-scope, and query-contract version; they store no AST, resolved identity,
-result, or generation and are re-evaluated against current authority.
+completion, **Explain Query**, and CLI help. Baseline completion exposes only
+fields and canonical values supported by the current contract; after an
+explicit provider clause, it exposes only that provider's legal capabilities.
+Completion edits only visible query text and creates no hidden token or chip.
+The Application response carries the typed explanation used by App and CLI.
+Presentation may format that response but must not parse the query again or
+construct a second interpretation. Explain reports provider, scope, clauses,
+direction, normalization, ordering, and limitations without executing an
+alternate query.
+
+Saved Searches persist only raw query, visible scope, and query-contract
+version; they store no AST, resolved identity, result, or generation and are
+re-evaluated against current authority. Only a definition carrying the current
+query-contract version may execute. A version mismatch loads its raw query for
+editing and reports **Needs Editing**; Scholium neither silently migrates it nor
+executes it under changed semantics. An invalid, ambiguous, or undecodable
+definition remains byte-unchanged and nonexecuting. Revoked scope or a deleted
+source never permits a retained old result.
+
+App and CLI consume the same ordered Search response. CLI text and JSONL retain
+the response contract version, provider, authorized scope, availability,
+discriminated source identity, retrieval-lead classification, match reasons,
+locator or source range, fingerprint, and freshness. Presentation wording may
+differ, but adapters cannot change the result set or order, relation direction,
+attribution, diagnostic meaning, or availability.
 
 The optional canonical YAML `summary` is an independently explainable Note
 field in this same projection, parser, ranking, source-range, freshness,

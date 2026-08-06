@@ -365,8 +365,10 @@ Menus follow researcher tasks:
   valid field prefix may open one bounded capability-driven completion list;
   accepting an item edits only the visible query text. Completion and results
   never expose two simultaneous keyboard selections or turn Search into an
-  advanced workspace. **Explain Query** presents the same typed interpretation
-  used by App and CLI—provider, scope, clauses, direction, normalization,
-  ordering, and limitations—and never runs a second parser. Provider mismatch,
+  advanced workspace. **Explain Query** presents the typed explanation carried
+  by the Application Search response and shared with CLI—provider, scope,
+  clauses, direction, normalization, ordering, and limitations. The Search
+  surface may format that value but never reparses query text or constructs a
+  second interpretation. Provider mismatch,
   ambiguous identity, not-applicable clauses, invalid syntax, unavailable
   Graph, stale source, and no matches retain distinct inline states.

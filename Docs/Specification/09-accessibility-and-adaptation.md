@@ -47,8 +47,9 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   Escape closes the current layer, and pointer acceptance preserves the same
   semantics. Accepting completion edits plain query text and restores the
   insertion point. **Explain Query** is keyboard and VoiceOver reachable and
-  reads the same provider, clauses, relation direction, normalization,
-  ordering, and limitations as the typed contract. Invalid, ambiguous,
+  reads the Application response's provider, clauses, relation direction,
+  normalization, ordering, and limitations; no accessibility presentation
+  reparses the query or substitutes a view-local explanation. Invalid, ambiguous,
   provider-mismatch, not-applicable, Graph-unavailable, stale, and empty states
   are separately named and keep a usable edit or retry target. Note results
   identify their source context; Record results identify Record and speaker,

@@ -272,12 +272,19 @@ connection path. Finite syntax, visible-semantic projection, CJK verification, e
 reasons, This Note occurrences, provider-aware freshness, Saved Search needs-editing, CLI parity,
 and atomic generations remain implemented. Field/canonical-value completion is reachable; the typed
 scope-first context for Property-key and Note-identity candidates is not yet supplied by Application.
+Contracts and the Application response carry a typed Search explanation, but the current Search
+surface drops that response value and reparses visible query text to construct its own shorter
+explanation. Normalization, ordering, and limitation details therefore do not yet satisfy the
+canonical Explain Query presentation contract.
 
 **Required next evidence or work**
 
-Complete the 30-sample GUI first-paint protocol, remaining disposable UI matrix, dynamic scoped-
+Retain the Application response explanation through the window projection, render it without a
+view-owned parse path, and complete its normalization, ordering, and limitation details. Then
+complete the 30-sample GUI first-paint protocol, remaining disposable UI matrix, dynamic scoped-
 candidate completion only if real use warrants it, and human pointer/VoiceOver/Voice Control/
-Dictation/CJK IME/visual/ranking and research-use acceptance.
+Dictation/CJK IME/visual/ranking and research-use acceptance. A repeatable XCTest host run for the
+already observed direct-relation journey also remains verification-infrastructure closure work.
 
 ### Research Guidance recovery
 
