@@ -1,7 +1,19 @@
-# Specification: Scholarly Editorialism and Design System
+# Scholium Design
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Section 19: visual language, Variables, layout, icon, and interface writing; sibling chapters do not restate it.
+Part of the canonical document set rooted at
+[SCHOLIUM_SPEC.md](Docs/SCHOLIUM_SPEC.md). This document owns Section 19:
+Scholarly Editorialism, visual language, design Variables, reusable component
+and pattern presentation, layout, icon, motion, and interface writing. Sibling
+chapters do not restate those rules.
+
+Product and workflow chapters continue to own research meaning, domain-specific
+state transitions, action semantics, authorization, conflict, recovery, and
+interface information architecture. This document owns the cross-functional
+state language and presentation contract in §19.9. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md)
+owns modules and state ownership; [Implementation Status](Docs/IMPLEMENTATION_STATUS.md)
+owns current reachability and evidence. This document may link to those owners
+but never reconstructs their rules or treats target design as implementation
+proof.
 
 ## 19. Scholarly Editorialism and design variables
 
@@ -31,13 +43,13 @@ Canonical design system in brief:
   clusters, Action rows, and local state views; ordinary rows and sections are
   borderless by default. Library's canonical target uses one ScopeIndex,
   LocationPicker, and Source List under §18.3.
-- Interface copy follows §19.6, and every component carries the applicable
-  keyboard, accessibility, localization, appearance, and recovery states from
-  §20.
+- Interface copy follows §19.6; cross-functional state presentation follows
+  §19.9; and every component carries the applicable keyboard, accessibility,
+  localization, appearance, and recovery requirements from §20.
 
 Exploratory documents retain only unresolved proposals. Once a visual recipe
 enters this specification and becomes reachable, its implementation evidence
-belongs in [Implementation Status](../IMPLEMENTATION_STATUS.md), not in a
+belongs in [Implementation Status](Docs/IMPLEMENTATION_STATUS.md), not in a
 parallel design guide.
 
 ### 19.1 Liquid Glass and material boundary
@@ -363,3 +375,87 @@ Compact Freshness, checking, stale, and Settled state lines obey the same
 nonduplication rule and do not become independent sections or cards. Error,
 conflict, permission, cancellation recovery, and source-protection detail is
 complete even when it exceeds two lines.
+
+### 19.7 Component catalog
+
+This is the canonical catalog of Scholium-specific reusable presentation
+responsibilities. An entry names the researcher task, structure, states,
+accessibility and adaptation contract, semantic owner, and evidence route. A
+component owns no document, workflow, authorization, navigation, or operation
+lifecycle. Native controls remain the component owner when they already carry
+the required meaning.
+
+| Component | Scholium task and presentation contract | Do not turn it into | Semantic owner |
+| --- | --- | --- | --- |
+| `Sidebar / Document / Apparatus` | Keep the Document primary while navigation and document-adjacent evidence remain distinct opaque planes. | A card stack, floating inspector, or decorative dashboard. | §18.2 |
+| `ScopeIndex / ModeIndex` | Select a Library Scope or Document mode through one editorial index underline and native focus/selection. | A filled segmented band or a second navigation state. | §§18.3, 18.5 |
+| `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
+| `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
+| `Attention Alert` | Surface only current-Scope unresolved attention with exact count or complete unavailable text and Retry. | A permanent global badge, pulse, or diagnostic owner. | §14, §18.3 |
+
+The catalog is presentation authority, not a replacement for the owning
+workflow rule. New entries require a distinct task, a single state owner, a
+reusable adaptation boundary, and a proof that can reject the component.
+
+### 19.8 Pattern catalog
+
+Patterns combine components around one Scholium research task. Their entries
+describe entry context, information order, primary action, feedback,
+cancellation, failure, recovery, focus return, and concurrent participants;
+the owning workflow chapter remains authoritative for meaning and permission.
+
+| Pattern | Scholium task | Presentation boundary | Semantic owner |
+| --- | --- | --- | --- |
+| `Workspace Shell` | Move among Library, the primary Document, and the document-adjacent Apparatus without losing context. | Native window and split geometry; Document remains visually primary. | §§18.1–18.3 |
+| `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §§5–7, 18.3–18.4 |
+| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One editor session, shared measure, distinct source and rendered typography. | §§5–7, 18.4 |
+| `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §§12–14, 18.3 |
+| `Attention` | Notice unresolved work without interruption or invented zero state. | Conditional native presentation with a direct route to the owning context. | §14, §§18.2–18.3 |
+| `Research Action` | Prepare, run, inspect, settle, and optionally write a bounded Agent result. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
+| `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §§12–14, 18.4–18.6 |
+| `Research Records` | Review portable records without reconstructing writable research Markdown. | Native list/detail reading structure with source and derived evidence distinct. | §14, §18.5 |
+
+Patterns may reference multiple components, but they must not introduce a
+second state owner or copy a workflow's authorization and recovery rules.
+
+### 19.9 Cross-functional state language
+
+This section is the shared design vocabulary for states that recur across
+components and patterns. It standardizes what a researcher sees and what the
+interface must communicate; the owning workflow still defines the underlying
+meaning, transition, authorization, source revision, and recovery operation.
+Do not implement this table as a universal runtime state enum or presentation
+store. A component receives a typed state from its existing owner and maps it
+to this language plus its domain-specific label.
+
+| State | Shared presentation meaning | Required Scholium treatment | Not equivalent to |
+| --- | --- | --- | --- |
+| `Ready` | A trustworthy committed representation is available and relevant actions may be offered. | Preserve the normal context and expose the next valid action without extra status decoration. | `Saved`, `Settled`, or merely “the view loaded”. |
+| `Loading` | No trustworthy committed projection is available yet, or an explicit refresh owns the wait. | Retain identity and context; name the work; never use an empty layout as a loading disguise. | Empty, unavailable, or stale content. |
+| `Empty` | The requested valid scope contains no authored or derived items. | Explain what is empty and provide the first relevant next step; keep the scope and destination visible. | Missing source, failed read, or unresolved result. |
+| `Unavailable` | A required source, provider, permission, or capability cannot currently serve the task. | State what is unavailable and expose the first executable repair or a safe alternative. | Disabled styling with no explanation. |
+| `Stale` | A visible derived or remote projection represents an older committed revision. | Identify freshness and preserve the last trustworthy content while refresh/retry remains explicit. | Conflict or a failed operation. |
+| `Error` | A read, render, query, or operation failed. | Preserve useful context, name the impact, and expose Retry or the smallest safe alternative. | Empty, unavailable, or silent disappearance. |
+| `Conflict` | Two authoritative or active source participants no longer agree on the expected revision. | Retain the authored buffer, identify the competing revision, and route to comparison or an explicit choice. | Stale derived data, Undo, or ordinary Save Failed. |
+| `Recovery` | The interface offers a reversible or explicitly consequential path after failure or interruption. | State the candidate source, consequence, reversibility, and final verification condition before action. | A generic toast, ordinary Undo, or automatic overwrite. |
+| `Disabled` | An otherwise known action cannot be invoked under the current prerequisite or policy. | Keep the control discoverable when it is part of the core task and expose the missing condition without relying on low contrast. | Unavailable content or an omitted non-core control. |
+| `Running` | A researcher-started Research Action is executing within its declared scope. | Keep the Action identity, current state, cancellation/end route, and focus path visible; motion is supplementary. | Loading a passive projection or background refresh. |
+| `Settle` | A Research Action result is ready for the researcher to inspect and decide. | Keep result, provenance, uncertainty, and write boundary distinct; do not imply adoption. | Settled or an authorized write. |
+| `Settled` | The researcher has explicitly recorded the Action result's disposition. | Show the disposition and durable record route without implying that source Markdown was rewritten. | Successful execution or automatic acceptance. |
+
+Every state presentation follows five invariants:
+
+1. Retain the researcher's visible context and the state owner's identity.
+2. Communicate state, consequence, and first repair through at least two suitable
+   channels, consistent with §20.
+3. Keep domain-specific labels and exact source/revision details in the owning
+   workflow rather than replacing them with a generic status word.
+4. Do not use color, motion, hover, position, or a transient timeout as the sole
+   state channel.
+5. A state transition must preserve cancellation, focus return, source safety,
+   and recovery semantics owned by the underlying workflow.
+
+The component catalog and pattern catalog must reference this vocabulary when
+describing normal, degraded, loading, empty, error, conflict, and recovery
+presentations. They must not invent synonyms for the same cross-functional
+state without documenting a distinct product meaning.

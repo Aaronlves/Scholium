@@ -1,7 +1,9 @@
 # Specification: Document and Research Interface
 
 Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 18.4–18.7: Document modes, research interface, state meanings, and terminology; sibling chapters do not restate it.
+This chapter owns Sections 18.4–18.7: Document modes, research interface,
+Document-owned state and action meanings, and terminology; shared
+cross-functional state language belongs to [Scholium Design](../../Design.md#199-cross-functional-state-language).
 
 ## 18.4 Document modes, context, and Properties
 
@@ -380,7 +382,13 @@ projection refresh never replace the retained Editor host or its buffer,
 selection, Undo, IME, scroll, or focus state. Report handoff, never agent
 execution.
 
-## 18.6 Canonical state and action meanings
+## 18.6 Document-owned state and action meanings
+
+The shared cross-functional presentation vocabulary is canonical in
+[Scholium Design §19.9](../../Design.md#199-cross-functional-state-language).
+The table below retains the Document-specific meanings, source-revision
+transitions, and recovery actions that cannot be reduced to a presentation
+state. Its terms are not a second cross-functional state dictionary.
 
 | State | Meaning |
 | --- | --- |

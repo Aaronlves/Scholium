@@ -5,10 +5,12 @@ This chapter owns design-system implementation, component boundaries, and execut
 
 ## Design-system implementation
 
-[Specification §19](../Specification/08-design-system.md#19-scholarly-editorialism-and-design-variables)
+[Design §19](../../Design.md#19-scholarly-editorialism-and-design-variables)
 owns palette meanings, typography, opaque surface language, motion, the
-adaptive editorial grid, and accessibility rules. The app implements that
-contract in `Scholium/UI/Foundation` through `ScholiumColorVariables`,
+adaptive editorial grid, component and pattern presentation, and the shared
+cross-functional state language. Section 20 remains the complete accessibility
+and adaptation authority. The app implements the design contract in
+`Scholium/UI/Foundation` through `ScholiumColorVariables`,
 `ScholiumColorResolver`, derived `ScholiumColorRole`s, `ScholiumGrid`,
 `ScholiumMetrics`, `ScholiumMotion`, and `ScholiumInterfaceTypography`.
 

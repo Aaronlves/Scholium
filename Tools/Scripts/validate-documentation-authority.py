@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import os
 from pathlib import Path
 import re
 import sys
@@ -17,9 +18,13 @@ MAX_AUTHORITY_LINE_LENGTH = 300
 MAX_CHAPTER_WORDS = 6_500
 
 MANIFESTS = (
-    (DOCS_ROOT / "SCHOLIUM_SPEC.md", DOCS_ROOT / "Specification"),
-    (DOCS_ROOT / "IMPLEMENTATION_ARCHITECTURE.md", DOCS_ROOT / "Architecture"),
-    (DOCS_ROOT / "IMPLEMENTATION_STATUS.md", DOCS_ROOT / "Status"),
+    (
+        DOCS_ROOT / "SCHOLIUM_SPEC.md",
+        DOCS_ROOT / "Specification",
+        (REPOSITORY_ROOT / "Design.md",),
+    ),
+    (DOCS_ROOT / "IMPLEMENTATION_ARCHITECTURE.md", DOCS_ROOT / "Architecture", ()),
+    (DOCS_ROOT / "IMPLEMENTATION_STATUS.md", DOCS_ROOT / "Status", ()),
 )
 
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
@@ -61,7 +66,11 @@ def github_heading_anchors(path: Path) -> set[str]:
     return anchors
 
 
-def validate_manifest(manifest: Path, chapter_directory: Path) -> list[Path]:
+def validate_manifest(
+    manifest: Path,
+    chapter_directory: Path,
+    additional_chapters: tuple[Path, ...],
+) -> list[Path]:
     if not manifest.is_file():
         failure(f"missing manifest {manifest.relative_to(REPOSITORY_ROOT)}")
     if not chapter_directory.is_dir():
@@ -74,7 +83,10 @@ def validate_manifest(manifest: Path, chapter_directory: Path) -> list[Path]:
         if not target:
             continue
         candidate = (manifest.parent / target).resolve()
-        if candidate.parent == chapter_directory.resolve() and candidate.suffix == ".md":
+        if candidate.suffix == ".md" and (
+            candidate.parent == chapter_directory.resolve()
+            or candidate in {path.resolve() for path in additional_chapters}
+        ):
             declared.append(candidate)
 
     duplicate_declarations = [
@@ -86,7 +98,10 @@ def validate_manifest(manifest: Path, chapter_directory: Path) -> list[Path]:
             + ", ".join(path.name for path in duplicate_declarations)
         )
 
-    actual = sorted(path.resolve() for path in chapter_directory.glob("*.md"))
+    actual = sorted(
+        [path.resolve() for path in chapter_directory.glob("*.md")]
+        + [path.resolve() for path in additional_chapters]
+    )
     if set(declared) != set(actual):
         missing = sorted(set(actual) - set(declared))
         stale = sorted(set(declared) - set(actual))
@@ -99,7 +114,10 @@ def validate_manifest(manifest: Path, chapter_directory: Path) -> list[Path]:
 
     for chapter in declared:
         source = chapter.read_text(encoding="utf-8")
-        expected_root_link = f"[{manifest.name}](../{manifest.name})"
+        relative_manifest = os.path.relpath(manifest, start=chapter.parent).replace(
+            os.sep, "/"
+        )
+        expected_root_link = f"[{manifest.name}]({relative_manifest})"
         if expected_root_link not in source:
             failure(
                 f"{chapter.relative_to(REPOSITORY_ROOT)} does not point to {manifest.name}"
@@ -189,10 +207,12 @@ def validate_specification_sections(paths: list[Path]) -> None:
 
 def main() -> None:
     declared_sets: list[list[Path]] = []
-    for manifest, chapter_directory in MANIFESTS:
-        declared_sets.append(validate_manifest(manifest, chapter_directory))
+    for manifest, chapter_directory, additional_chapters in MANIFESTS:
+        declared_sets.append(
+            validate_manifest(manifest, chapter_directory, additional_chapters)
+        )
 
-    authority_paths = [manifest for manifest, _ in MANIFESTS]
+    authority_paths = [manifest for manifest, _, _ in MANIFESTS]
     authority_paths.extend(path for declared in declared_sets for path in declared)
     validate_line_lengths(authority_paths)
     validate_specification_sections(declared_sets[0])

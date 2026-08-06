@@ -60,8 +60,8 @@ copying the same rule into a new summary.
 | [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | Sections 12–14: Connections, Search, Attention, checkpoints, versions, and recovery. |
 | [Integrations, Onboarding, and Boundaries](Specification/05-integrations-onboarding-and-boundaries.md) | Sections 15–17: Zotero, onboarding, permanent boundaries, and deferred capabilities. |
 | [Interface Shell and Library](Specification/06-interface-shell-and-library.md) | Sections 18.1–18.3: global interface principles, workspace shell, Library, and Search presentation. |
-| [Document and Research Interface](Specification/07-document-and-research-interface.md) | Sections 18.4–18.7: Document modes, Research Inspector, state meanings, and terminology. |
-| [Scholarly Editorialism and Design System](Specification/08-design-system.md) | Section 19: visual language, Variables, layout, application icon, and interface writing. |
+| [Document and Research Interface](Specification/07-document-and-research-interface.md) | Sections 18.4–18.7: Document modes, Research Inspector, Document-owned state meanings, and terminology. |
+| [Scholium Design](../Design.md) | Section 19: Scholarly Editorialism, visual language, design Variables, component and pattern presentation, layout, icon, motion, and interface writing. |
 | [Accessibility and Adaptation](Specification/09-accessibility-and-adaptation.md) | Section 20: cross-cutting accessibility and adaptation requirements. |
 | [Release and Open Decisions](Specification/10-release-and-open-decisions.md) | Sections 21–22: release requirements, acceptance, and unresolved target decisions. |
 | [Property Profiles and Critique](Specification/11-property-profiles-and-critique.md) | Appendices A–B: default property profiles and bundled Critique requirements. |
@@ -73,11 +73,14 @@ copying the same rule into a new summary.
 - A Research Action task starts with Research Actions and Workflows and adds
   the exact role workflow, interface, or release chapter it changes.
 - A Sidebar or file-tree task reads Interface Shell and Library plus
-  Accessibility and Adaptation; add the design-system chapter only for visual
-  language, component, material, typography, color, or motion decisions.
+  Accessibility and Adaptation; add Scholium Design for visual language,
+  component, material, typography, color, motion, or shared state-presentation
+  decisions.
 - A Document/editor task reads Notes and Lifecycle, Document and Research
-  Interface, and Accessibility and Adaptation; parser or implementation detail
-  remains in Implementation Architecture.
+  Interface, and Accessibility and Adaptation; add Scholium Design for visual
+  language, component, material, typography, color, motion, or shared
+  state-presentation decisions. Parser or implementation detail remains in
+  Implementation Architecture.
 - Release work reads Release and Open Decisions plus the current verification
   chapter rooted at [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
