@@ -182,8 +182,7 @@ final class ResearchActionController: ObservableObject {
     }
     var passageIsAvailable: Bool { passage != nil }
     var hasCancellationBarrier: Bool {
-        phase == .preparing
-            || phase == .cancelling
+        phase == .cancelling
             || pendingCancellationBarrierCount > 0
             || !cancellationRecoveries.isEmpty
     }
@@ -352,7 +351,7 @@ final class ResearchActionController: ObservableObject {
         resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
         presentationID: UUID
     ) -> Bool {
-        guard !hasCancellationBarrier else { return false }
+        guard phase != .preparing, !hasCancellationBarrier else { return false }
         invalidate(clearAvailability: false)
         self.target = target
         availabilityTarget = target
@@ -548,26 +547,29 @@ final class ResearchActionController: ObservableObject {
             do {
                 let result = try await client.prepare(request, resynthesisContext)
                 guard self.accepts(token), self.presentationID == presentationID else {
-                    // Preparation can cross a durable recovery/grant
-                    // boundary even when its caller was cancelled. Reclaim a
-                    // late result through the typed cancellation path instead
-                    // of dropping an invisible prepared run.
-                    reclaimAbandonedPreparation(result, using: client)
+                    cleanupUndeliveredRun(result.runID, using: client)
                     return
                 }
                 preparation = result
                 resultRecord = nil
                 do {
-                    agentHandoff = try await client.handoff(result.runID)
+                    let handoff = try await client.handoff(result.runID)
+                    guard self.accepts(token), self.presentationID == presentationID else {
+                        cleanupUndeliveredRun(result.runID, using: client)
+                        return
+                    }
+                    agentHandoff = handoff
                     phase = .prepared
                 } catch {
+                    guard self.accepts(token), self.presentationID == presentationID else {
+                        cleanupUndeliveredRun(result.runID, using: client)
+                        return
+                    }
                     phase = .failed
                     errorMessage = error.localizedDescription
                 }
             } catch is CancellationError {
-                if !accepts(token) || self.presentationID != presentationID {
-                    finishPendingCancellationBarrier()
-                } else {
+                if accepts(token), self.presentationID == presentationID {
                     phase = .failed
                     errorMessage = String(
                         localized: "Action preparation was cancelled.",
@@ -578,7 +580,6 @@ final class ResearchActionController: ObservableObject {
                 return
             } catch let error as ResearchFunctionContractError {
                 guard accepts(token), self.presentationID == presentationID else {
-                    finishPendingCancellationBarrier()
                     return
                 }
                 if case .activeDiscussionExists(let discussionID) = error {
@@ -590,7 +591,6 @@ final class ResearchActionController: ObservableObject {
                 errorMessage = error.localizedDescription
             } catch {
                 guard accepts(token), self.presentationID == presentationID else {
-                    finishPendingCancellationBarrier()
                     return
                 }
                 phase = .failed
@@ -713,22 +713,16 @@ final class ResearchActionController: ObservableObject {
         }
     }
 
-    private func reclaimAbandonedPreparation(
-        _ preparation: ResearchActionPreparation,
+    /// A Run that never produced a delivered handoff has no Agent Session or
+    /// mutation authority. Cleanup is process-local and best effort: failure
+    /// leaves an inert durable Run, not a researcher-visible recovery
+    /// obligation or a global Action barrier.
+    private func cleanupUndeliveredRun(
+        _ runID: UUID,
         using client: ResearchActionClient
     ) {
-        Task { @MainActor [self] in
-            defer { finishPendingCancellationBarrier() }
-            do {
-                try await client.cancel(preparation.runID)
-                clearCancellationRecovery(runID: preparation.runID)
-            } catch {
-                recordCancellationRecovery(
-                    runID: preparation.runID,
-                    error: error,
-                    cancel: client.cancel
-                )
-            }
+        Task { @MainActor in
+            _ = try? await client.cancel(runID)
         }
     }
 
@@ -845,7 +839,7 @@ final class ResearchActionController: ObservableObject {
     }
 
     private func invalidate(clearAvailability: Bool) {
-        if phase == .preparing || phase == .cancelling {
+        if phase == .cancelling {
             pendingCancellationBarrierCount += 1
         }
         _ = nextGeneration()

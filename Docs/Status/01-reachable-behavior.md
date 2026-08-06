@@ -250,6 +250,14 @@ Result Contract and method context, and inserts the initial object into its Boun
 is no automatic whole-Triptych checkpoint; each confirmed mediated write preserves Before Agent Work
 exact bytes for that Note.
 
+The window controller now separates active preparation from cancellation
+recovery. If presentation invalidation rejects a noncooperative preparation or
+late initial handoff before delivery, it attempts one background cancellation;
+failure creates neither a researcher recovery row nor a global Action barrier.
+An interrupted explicit End Action cancellation still blocks replacement
+Actions and remains independently retryable, preserving Session, transaction,
+and recovery truth until Application cancellation succeeds.
+
 The authenticated Agent may query the one Application Research Context across Search v6, exact Note
 read, direct Graph relations, Properties, Records, and explicit researcher state. Source Reference
 envelopes keep owner, identity, revision, locator/range, scope, currentness, evidential layer,

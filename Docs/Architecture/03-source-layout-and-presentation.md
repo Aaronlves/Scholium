@@ -214,11 +214,13 @@ only dismisses the sheet. Launcher availability and the sheet's fresh Profile
 resolution
 are separate: cancelling or failing a sheet cannot erase the Inspector, while
 only the fresh Profile can prepare. The sheet cannot dismiss while preparation
-is crossing its durable boundary. A late noncooperative result is reclaimed
-through typed cancellation. Interrupted preparation and cancellation retain a
-per-run cleanup barrier; no later Action can begin until each late result has
-either cancelled successfully or become its own visible, retryable recovery
-entry in Actions. One recovery can therefore never overwrite another. When a
+is crossing its durable boundary. Presentation invalidation may still reject a
+late noncooperative result or initial handoff; its undelivered Run receives
+best-effort background cancellation and never becomes a visible recovery or
+global barrier. An explicit prepared-Run cancellation that is interrupted
+retains a per-run barrier until it succeeds or becomes its own visible,
+retryable recovery entry in Actions. One recovery can therefore never
+overwrite another. When a
 window temporarily has no current Note, a recovery-only Apparatus keeps those
 window-owned cleanup entries reachable without inventing a Target or Action.
 Protected Function mapping occurs only in Application composition. The public

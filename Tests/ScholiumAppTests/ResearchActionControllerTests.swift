@@ -471,12 +471,17 @@ struct ResearchActionControllerTests {
         #expect(!controller.isPresented)
     }
 
-    @Test("A failed abandoned-run cancellation remains retryable")
-    func dismissedPreparationCancellationIsRetryable() async throws {
+    @Test("A late undelivered Run cleans up without blocking another Action")
+    func dismissedPreparationCancellationDoesNotBlock() async throws {
         let action = try availability(.discuss, order: 0)
-        let target = target()
+        let firstTarget = target(title: "First", path: "Topics/First.md")
+        let secondTarget = target(title: "Second", path: "Topics/Second.md")
         let runID = UUID()
-        let result = try preparation(action: action, target: target, runID: runID)
+        let result = try preparation(
+            action: action,
+            target: firstTarget,
+            runID: runID
+        )
         var preparationContinuation: CheckedContinuation<
             ResearchActionPreparation,
             Never
@@ -503,7 +508,7 @@ struct ResearchActionControllerTests {
         ))
         let presentationID = UUID()
         controller.begin(
-            target: target,
+            target: firstTarget,
             availability: action,
             selection: nil,
             presentationID: presentationID
@@ -514,24 +519,83 @@ struct ResearchActionControllerTests {
         await waitUntil { preparationContinuation != nil }
         #expect(controller.phase == .preparing)
         controller.dismiss(presentationID: presentationID)
-        #expect(controller.hasCancellationBarrier)
+        #expect(!controller.hasCancellationBarrier)
+        #expect(controller.pendingCancellationBarrierCount == 0)
+        #expect(controller.begin(
+            target: secondTarget,
+            availability: action,
+            selection: nil,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.phase == .editing }
+
         preparationContinuation?.resume(returning: result)
-        await waitUntil {
-            controller.cancellationRecoveries.contains { $0.runID == runID }
-        }
+        await waitUntil { cancelledRunIDs == [runID] }
 
-        #expect(!controller.isPresented)
         #expect(controller.preparation == nil)
+        #expect(controller.target == secondTarget)
         #expect(cancelledRunIDs == [runID])
-        #expect(
-            controller.cancellationRecoveries.first(where: { $0.runID == runID })?.errorMessage
-                == TestFailure.stopAfterCapture.localizedDescription
-        )
+        #expect(controller.cancellationRecoveries.isEmpty)
+        #expect(!controller.hasCancellationBarrier)
+    }
 
-        controller.retryCancellationRecovery(runID: runID)
-        await waitUntil { controller.cancellationRecoveries.isEmpty }
-        #expect(cancelledRunIDs == [runID, runID])
-        #expect(!controller.retryingCancellationRecoveryIDs.contains(runID))
+    @Test("Invalidation before handoff delivery cannot leave a global barrier")
+    func dismissedHandoffDeliveryDoesNotBlock() async throws {
+        let action = try availability(.discuss, order: 0)
+        let firstTarget = target(title: "First", path: "Topics/First.md")
+        let secondTarget = target(title: "Second", path: "Topics/Second.md")
+        let runID = UUID()
+        let result = try preparation(
+            action: action,
+            target: firstTarget,
+            runID: runID
+        )
+        var handoffContinuation: CheckedContinuation<ResearchAgentHandoff, Never>?
+        var cancelledRunIDs: [UUID] = []
+        let controller = ResearchActionController()
+        controller.bind(ResearchActionClient(
+            availableActions: { _ in [action] },
+            materialCandidates: { _, _ in [] },
+            sourceAccess: { _ in .repairRequired(.missingBinding) },
+            bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in result },
+            handoff: { _ in
+                await withCheckedContinuation { continuation in
+                    handoffContinuation = continuation
+                }
+            },
+            cancel: { cancelledRunIDs.append($0) },
+            openActiveDiscussion: { _ in }
+        ))
+        let presentationID = UUID()
+        #expect(controller.begin(
+            target: firstTarget,
+            availability: action,
+            selection: nil,
+            presentationID: presentationID
+        ))
+        await waitUntil { controller.canPrepare }
+        controller.prepare()
+        await waitUntil { handoffContinuation != nil }
+        #expect(controller.phase == .preparing)
+        #expect(controller.preparation?.runID == runID)
+
+        controller.dismiss(presentationID: presentationID)
+        #expect(!controller.hasCancellationBarrier)
+        #expect(controller.pendingCancellationBarrierCount == 0)
+        #expect(controller.begin(
+            target: secondTarget,
+            availability: action,
+            selection: nil,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.phase == .editing }
+
+        handoffContinuation?.resume(returning: try testHandoff(runID: runID))
+        await waitUntil { cancelledRunIDs == [runID] }
+        #expect(controller.target == secondTarget)
+        #expect(controller.agentHandoff == nil)
+        #expect(controller.cancellationRecoveries.isEmpty)
         #expect(!controller.hasCancellationBarrier)
     }
 
@@ -637,7 +701,7 @@ struct ResearchActionControllerTests {
 
         controller.prepare()
         await waitUntil { preparationContinuation != nil }
-        #expect(controller.hasCancellationBarrier)
+        #expect(!controller.hasCancellationBarrier)
         #expect(!controller.begin(
             target: secondTarget,
             availability: action,

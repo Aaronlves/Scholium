@@ -64,6 +64,15 @@ No whole-Triptych checkpoint is automatic. Every later mediated existing-Note
 write creates per-Note Before Agent Work exact-byte recovery through the sole
 repository transaction.
 
+`ResearchActionController` distinguishes one active sheet's preparation from
+a global cancellation barrier. Presentation invalidation cancels its task; a
+noncooperative result or late initial handoff is rejected by generation and
+receives one best-effort typed cancellation without creating a visible retry
+entry or blocking another Action. Only an explicit cancellation already in
+flight, or its retained retryable recovery, contributes to the window's
+barrier. The Application remains the owner of Session revocation, write
+convergence, and durable recovery truth.
+
 The Run snapshot freezes:
 
 - public Action, initial object, research request, focal Materials/source, and
