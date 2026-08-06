@@ -66,6 +66,39 @@ Focused contract and window-owner evidence only. No complete repository gate,
 packaged application, GUI adaptation matrix, or researcher acceptance was
 rerun.
 
+### Search Case Pack
+
+This is a minimal, disposable-fixture case set for researcher review. It
+records query, scope, expected locator or field, observed result, and the
+current boundary without copying contract versions, test counts, measurements,
+or open-work ledgers.
+
+#### Case A: Property provenance and discovery
+
+- Query and scope: `property:language="  ANCIENT Greek  "`, Triptych; completion probe `property:lan`.
+- Expected: one Note with the exact Property value range; a scoped candidate may complete `property:language`.
+- Observed: `Topic.md` is returned with Property mode `exact_string_value`; the value range resolves to `Ancient   Greek`. Without `propertyKeys` context completion is empty; with authorized `language` context it returns `property:language`.
+- Boundary: Property retrieval and source attribution are bounded. Whether the additional candidate materially improves discovery remains open to researcher review.
+
+#### Case B: Direct relation direction
+
+- Query and scope: `from-note:Anchor relation:supports`, Triptych; completion probe `from-note:Anch`.
+- Expected: direct target only, with containing-Note source and relation direction.
+- Observed: `Target.md` is returned; the relationship remains `supports`, direction `fromNote`, source `Anchor.md`; no transitive or anchor result is added. Without `noteIdentities` context completion is empty; with authorized `Anchor` context it returns `from-note:Anchor`.
+- Boundary: Direct relation search is bounded and source-attributed. Whether the identity candidate improves discovery remains a researcher question, not an implementation claim.
+
+#### Case C: Summary field locator
+
+- Query and scope: `summary:inheritance`, Triptych.
+- Expected: a summary-bearing Note only, with summary field and exact source range.
+- Observed: `Summary.md` is the sole result, matched field `summary`, and the source range covers `inheritance`; a body-only Note is excluded.
+- Boundary: Summary remains a discovery lead with exact source recovery; it is not evidence or a summary-only object.
+
+The Property and relation completion probes are also captured by the Search
+contract test so the boundary is reproducible without private material. The
+case set is candidate evidence only; Imna's representative-result and
+research-use judgment remains open.
+
 ### Search performance gate
 
 **Current passing result**

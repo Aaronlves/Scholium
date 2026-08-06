@@ -301,6 +301,28 @@ struct SearchProtocolContractsTests {
         }
     }
 
+    @Test("Case pack: dynamic candidates require authorized scope context")
+    func casePackDynamicCandidateBoundary() throws {
+        #expect(
+            SearchCapabilities.current.completions(for: "property:lan").isEmpty
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "property:lan",
+                context: SearchCompletionContext(propertyKeys: ["language"])
+            ).first?.replacementText == "property:language"
+        )
+        #expect(
+            SearchCapabilities.current.completions(for: "from-note:Anch").isEmpty
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "from-note:Anch",
+                context: SearchCompletionContext(noteIdentities: ["Anchor"])
+            ).first?.replacementText == "from-note:Anchor"
+        )
+    }
+
     @Test("Unsupported and malformed syntax returns stable diagnostics")
     func diagnosticCoverage() {
         let cases: [(String, SearchQueryDiagnosticCode)] = [

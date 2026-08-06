@@ -131,14 +131,13 @@ keyboard and VoiceOver reachable.
 
 **Next evidence**
 
-Build a minimal researcher-reviewable Search Case Pack without duplicating
-contract versions, test counts, measurements, or open gaps from their existing
-owners. Use it to decide whether dynamic completion is warranted and to compare
-compact or on-demand Explain presentation in complete window context. Complete
-the GUI first-paint performance protocol and human pointer, VoiceOver, Voice
-Control, Dictation, CJK IME, visual, ranking, and research-use acceptance. Keep
-the direct-relation XCTest host issue as infrastructure work, not a second
-product implementation.
+Review the minimal [Search Case Pack](04-verification.md#search-case-pack)
+with Imna and record a conclusion for dynamic Property-key and Note-identity
+completion. Use the reviewed cases to compare compact or on-demand Explain
+presentation in complete window context. Complete the GUI first-paint
+performance protocol and human pointer, VoiceOver, Voice Control, Dictation,
+CJK IME, visual, ranking, and research-use acceptance. Keep the direct-relation
+XCTest host issue as infrastructure work, not a second product implementation.
 
 ## Performance
 
