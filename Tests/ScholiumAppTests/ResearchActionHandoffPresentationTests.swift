@@ -17,6 +17,10 @@ struct ResearchActionHandoffPresentationTests {
             "Scholium/Views/ResearchActions/ResearcherEvaluationView.swift",
             repositoryRoot: repositoryRoot
         )
+        let discussion = try source(
+            "Scholium/Views/Note/NoteContentView.swift",
+            repositoryRoot: repositoryRoot
+        )
 
         #expect(!actionPanel.contains("scholium.researchAction.pairingCode"))
         #expect(!actionPanel.contains("Text(\"PAIRING CODE\")"))
@@ -24,6 +28,23 @@ struct ResearchActionHandoffPresentationTests {
         #expect(actionPanel.contains("Copy New Handoff"))
         #expect(actionPanel.contains("pendingHandoff = .copyNew"))
         #expect(actionPanel.contains("controller.regenerateHandoff()"))
+        #expect(actionPanel.contains("title: \"Copy Handoff\""))
+        #expect(actionPanel.contains("scholium.researchAction.copyHandoff"))
+        #expect(!actionPanel.contains("AgentApplicationHandoffController"))
+        #expect(!actionPanel.contains("copyAndOpen"))
+        #expect(!actionPanel.contains("Copy Only"))
+
+        #expect(discussion.contains("Button(\"Copy Handoff\")"))
+        #expect(discussion.contains("scholium.discussion.copyHandoff"))
+        #expect(!discussion.contains("Copy and Open Agent App"))
+        #expect(!discussion.contains("Copy Only"))
+
+        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
+            .appendingPathComponent("Scholium/Services/AgentApplicationHandoff.swift")
+            .path))
+        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
+            .appendingPathComponent("Tests/ScholiumAppTests/AgentApplicationHandoffControllerTests.swift")
+            .path))
 
         #expect(!methodFeedback.contains("scholium.methodFeedback.pairingCode"))
         #expect(!methodFeedback.contains("Text(\"Pairing Code\")"))

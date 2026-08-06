@@ -285,8 +285,7 @@ private struct ResearchActionProofFooter: View {
             Button("Cancel") {}
                 .keyboardShortcut(.cancelAction)
             Spacer()
-            Button("Copy Only") {}
-            Button("Open in Codex") {}
+            Button("Copy Handoff") {}
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
         }

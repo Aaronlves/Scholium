@@ -2002,22 +2002,6 @@
         }
       }
     },
-    "Agent Application Handoff Options" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Agent Application Handoff Options"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "智能体应用交接选项"
-          }
-        }
-      }
-    },
     "Agent Feedback" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2050,22 +2034,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "智能体重构"
-          }
-        }
-      }
-    },
-    "Agent application handoff options" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Agent application handoff options"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "智能体应用程序切换选项"
           }
         }
       }
@@ -4703,38 +4671,6 @@
         }
       }
     },
-    "Choose Agent Application" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Choose Agent Application"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择智能体应用程序"
-          }
-        }
-      }
-    },
-    "Choose Agent App…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Choose Agent App…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择智能体应用程序…"
-          }
-        }
-      }
-    },
     "Choose Analyses" : {
       "localizations" : {
         "en" : {
@@ -4747,22 +4683,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择分析"
-          }
-        }
-      }
-    },
-    "Choose Another Agent App…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Choose Another Agent App…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择另一个智能体应用程序…"
           }
         }
       }
@@ -4937,22 +4857,6 @@
         }
       }
     },
-    "Choose a macOS application." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Choose a macOS application."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一个 macOS 应用程序。"
-          }
-        }
-      }
-    },
     "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source." : {
       "localizations" : {
         "en" : {
@@ -4975,22 +4879,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从一条 Analyze 研究记录中选择一条阅读线索。"
-          }
-        }
-      }
-    },
-    "Choose an agent application before opening it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Choose an agent application before opening it."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开之前选择一个智能体应用程序。"
           }
         }
       }
@@ -6340,58 +6228,6 @@
         }
       }
     },
-    "Copies the prepared Run handoff and one-time Pairing Code, then asks you to choose an application to remember and open. You paste and submit the handoff yourself." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制已准备的运行交接信息和一次性配对码，然后请你选择要记住并打开的应用。你需要自行粘贴并提交交接信息。"
-          }
-        }
-      }
-    },
-    "Copies the prepared Run handoff and one-time Pairing Code, then opens %@. You paste and submit the handoff yourself." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制已准备的运行交接信息和一次性配对码，然后打开 %@。你需要自行粘贴并提交交接信息。"
-          }
-        }
-      }
-    },
-    "Copies the prepared instructions, then asks you to choose an application to remember and open. You paste and submit them yourself." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Copies the prepared instructions, then asks you to choose an application to remember and open. You paste and submit them yourself."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制已准备的说明，然后请你选择一个要记住并打开的应用。你仍需自行粘贴并提交。"
-          }
-        }
-      }
-    },
-    "Copies the prepared instructions, then opens %@. You paste and submit them yourself." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Copies the prepared instructions, then opens %@. You paste and submit them yourself."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制已准备的说明，然后打开%@。你仍需自行粘贴并提交。"
-          }
-        }
-      }
-    },
     "Copy" : {
       "localizations" : {
         "en" : {
@@ -6454,6 +6290,16 @@
         }
       }
     },
+    "Copy Handoff" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制交接说明"
+          }
+        }
+      }
+    },
     "Copy Instructions" : {
       "localizations" : {
         "en" : {
@@ -6496,22 +6342,6 @@
         }
       }
     },
-    "Copy Only" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Copy Only"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅复制"
-          }
-        }
-      }
-    },
     "Copy PATH Setup" : {
       "localizations" : {
         "en" : {
@@ -6540,54 +6370,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "复制相对路径"
-          }
-        }
-      }
-    },
-    "Copy and Choose Agent App…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Copy and Choose Agent App…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制并选择智能体应用…"
-          }
-        }
-      }
-    },
-    "Copy and Open %@…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Copy and Open %@…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制并打开%@…"
-          }
-        }
-      }
-    },
-    "Copy and Open Agent App…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Copy and Open Agent App…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制并打开 Agent 应用…"
           }
         }
       }
@@ -10391,22 +10173,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "例如，简介和第 1-4 章"
-          }
-        }
-      }
-    },
-    "Forget Agent App" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Forget Agent App"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除智能体应用设置"
           }
         }
       }
@@ -15859,16 +15625,6 @@
         }
       }
     },
-    "Open in Codex" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Codex 中打开"
-          }
-        }
-      }
-    },
     "Open in New Tab" : {
       "localizations" : {
         "en" : {
@@ -16109,22 +15865,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在打开纸篓…"
-          }
-        }
-      }
-    },
-    "Opening agent application" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opening agent application"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开智能体应用程序"
           }
         }
       }
@@ -21401,22 +21141,6 @@
         }
       }
     },
-    "Scholium copies the prepared instructions and opens the application only. Paste and submit them yourself." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium copies the prepared instructions and opens the application only. Paste and submit them yourself."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 只会复制准备好的说明并打开应用程序；请自行粘贴并提交。"
-          }
-        }
-      }
-    },
     "Scholium could not attach this selection to one exact source range. Select the passage again in Review, Edit, or Source." : {
       "localizations" : {
         "en" : {
@@ -21465,54 +21189,6 @@
         }
       }
     },
-    "Scholium could not forget the agent application. %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium could not forget the agent application. %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法忘记智能体应用程序。%@"
-          }
-        }
-      }
-    },
-    "Scholium could not open %@. %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium could not open %@. %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法打开 %@。%@"
-          }
-        }
-      }
-    },
-    "Scholium could not open %@. Choose the application again. %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium could not open %@. Choose the application again. %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法打开 %@。请再次选择该应用程序。%@"
-          }
-        }
-      }
-    },
     "Scholium could not publish a replacement Search index. Details: %@" : {
       "localizations" : {
         "en" : {
@@ -21541,54 +21217,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 无法记录评析请求，也无法自动恢复评析文件。%@ 恢复也失败：%@ 请先恢复“智能体工作前”恢复点，再继续。"
-          }
-        }
-      }
-    },
-    "Scholium could not refresh the remembered application reference. Choose the application again if opening fails." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium could not refresh the remembered application reference. Choose the application again if opening fails."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法刷新记住的应用程序引用。如果打开失败，请重新选择该应用程序。"
-          }
-        }
-      }
-    },
-    "Scholium could not remember the selected application. %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium could not remember the selected application. %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法记住所选的应用程序。%@"
-          }
-        }
-      }
-    },
-    "Scholium could not restore the remembered agent application. Choose it again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium could not restore the remembered agent application. Choose it again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法恢复记住的智能体应用程序。再选择一次。"
           }
         }
       }
@@ -21892,38 +21520,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 保留了原始编辑缓冲区，因为此文档已无法通过当前脉络访问。"
-          }
-        }
-      }
-    },
-    "Scholium records and copies the request. Use the explicit handoff controls to open an agent app, then paste and submit it yourself." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium records and copies the request. Use the explicit handoff controls to open an agent app, then paste and submit it yourself."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会记录并复制请求。请使用明确的交接控件打开智能体应用，然后自行粘贴并提交。"
-          }
-        }
-      }
-    },
-    "Scholium records the request, copies it, and opens the chosen agent app. Paste and submit it yourself." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium records the request, copies it, and opens the chosen agent app. Paste and submit it yourself."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会记录并复制请求，然后打开所选 Agent 应用。请自行粘贴并提交。"
           }
         }
       }
@@ -24769,38 +24365,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所记录的标题或引文并不能确定一个确切的段落。"
-          }
-        }
-      }
-    },
-    "The remembered agent application preference is invalid." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The remembered agent application preference is invalid."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "记住的智能体应用程序首选项无效。"
-          }
-        }
-      }
-    },
-    "The remembered agent application uses an unsupported preference format." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The remembered agent application uses an unsupported preference format."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "记住的智能体应用程序使用不受支持的首选项格式。"
           }
         }
       }

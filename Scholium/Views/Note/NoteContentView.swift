@@ -156,8 +156,7 @@ struct DocumentFeatureActions {
     let finishDiscussion: @MainActor (UUID) async throws -> PortableResearchRecord
     let endDiscussion: @MainActor (UUID) async throws -> Void
     let clearRequestedDiscussion: @MainActor () -> Void
-    let handoffDiscussionRequest: @MainActor (String) -> Bool
-    let copyDiscussionRequest: @MainActor (String) -> Bool
+    let copyDiscussionRequest: @MainActor (String) throws -> Void
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
@@ -440,8 +439,7 @@ private struct DiscussionPanel: View {
     ) async throws -> PortableResearchDiscussion
     let finish: (UUID) async throws -> PortableResearchRecord
     let end: (UUID) async throws -> Void
-    let handoff: (String) -> Bool
-    let copyOnly: (String) -> Bool
+    let copyHandoff: (String) throws -> Void
     let onClosed: () -> Void
     let onFinished: () -> Void
 
@@ -466,8 +464,7 @@ private struct DiscussionPanel: View {
         ) async throws -> PortableResearchDiscussion,
         finish: @escaping (UUID) async throws -> PortableResearchRecord,
         end: @escaping (UUID) async throws -> Void,
-        handoff: @escaping (String) -> Bool,
-        copyOnly: @escaping (String) -> Bool,
+        copyHandoff: @escaping (String) throws -> Void,
         onClosed: @escaping () -> Void,
         onFinished: @escaping () -> Void
     ) {
@@ -477,8 +474,7 @@ private struct DiscussionPanel: View {
         self.append = append
         self.finish = finish
         self.end = end
-        self.handoff = handoff
-        self.copyOnly = copyOnly
+        self.copyHandoff = copyHandoff
         self.onClosed = onClosed
         self.onFinished = onFinished
         _discussion = State(initialValue: route.discussion)
@@ -693,18 +689,12 @@ private struct DiscussionPanel: View {
 
     private var agentHandoffControls: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Button("Copy and Open Agent App…") {
-                    prepareAgentHandoff(openAgentApplication: true)
-                }
-                .buttonStyle(.bordered)
-                .disabled(isWorking || discussion == nil)
-                Button("Copy Only") {
-                    prepareAgentHandoff(openAgentApplication: false)
-                }
-                .buttonStyle(.link)
-                .disabled(isWorking || discussion == nil)
+            Button("Copy Handoff") {
+                prepareAgentHandoff()
             }
+            .buttonStyle(.bordered)
+            .disabled(isWorking || discussion == nil)
+            .accessibilityIdentifier("scholium.discussion.copyHandoff")
             Text("The Discussion is waiting for an Agent reply. Copying a new handoff replaces its prior pairing; closing this sheet leaves it active.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -712,23 +702,23 @@ private struct DiscussionPanel: View {
         }
     }
 
-    private func prepareAgentHandoff(openAgentApplication: Bool) {
+    private func prepareAgentHandoff() {
         guard let discussion else { return }
         isWorking = true
         errorMessage = nil
         Task { @MainActor in
+            let instructions: String
             do {
-                let instructions = try await loadAgentInstructions(discussion.id)
-                let succeeded = openAgentApplication
-                    ? handoff(instructions)
-                    : copyOnly(instructions)
-                if !succeeded {
-                    errorMessage = openAgentApplication
-                        ? "Scholium could not prepare the Agent handoff."
-                        : "Scholium could not copy the Agent handoff."
-                }
+                instructions = try await loadAgentInstructions(discussion.id)
             } catch {
                 errorMessage = "Scholium could not create a new Agent handoff. \(error.localizedDescription)"
+                isWorking = false
+                return
+            }
+            do {
+                try copyHandoff(instructions)
+            } catch {
+                errorMessage = "Scholium could not copy the Agent handoff. \(error.localizedDescription)"
             }
             isWorking = false
         }
@@ -751,8 +741,10 @@ private struct DiscussionPanel: View {
                 researcherMessage = ""
                 do {
                     let instructions = try await loadAgentInstructions(updated.id)
-                    if !copyOnly(instructions) {
-                        errorMessage = "The Discussion was saved, but Scholium could not copy the Agent handoff."
+                    do {
+                        try copyHandoff(instructions)
+                    } catch {
+                        errorMessage = "The Discussion was saved, but Scholium could not copy the Agent handoff. \(error.localizedDescription)"
                     }
                 } catch {
                     errorMessage = "The Discussion was saved, but Scholium could not create a new Agent handoff. \(error.localizedDescription)"
@@ -1052,8 +1044,7 @@ struct NoteContentView: View {
                 append: actions.appendDiscussionStatement,
                 finish: actions.finishDiscussion,
                 end: actions.endDiscussion,
-                handoff: actions.handoffDiscussionRequest,
-                copyOnly: actions.copyDiscussionRequest,
+                copyHandoff: actions.copyDiscussionRequest,
                 onClosed: actions.clearRequestedDiscussion,
                 onFinished: actions.clearRequestedDiscussion
             )
@@ -2139,8 +2130,7 @@ private extension CritiqueFindingDispositionDecision {
         finishDiscussion: { _ in throw CancellationError() },
         endDiscussion: { _ in throw CancellationError() },
         clearRequestedDiscussion: {},
-        handoffDiscussionRequest: { _ in true },
-        copyDiscussionRequest: { _ in true },
+        copyDiscussionRequest: { _ in },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },
         openExternalURL: { _ in },

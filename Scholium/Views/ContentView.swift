@@ -481,17 +481,8 @@ struct ContentView: View {
             clearRequestedDiscussion: {
                 appState.clearRequestedDiscussionPresentation()
             },
-            handoffDiscussionRequest: { instructions in
-                appState.agentApplicationHandoff.copyAndOpen(
-                    instructions: instructions,
-                    copy: { try appState.copyTextToClipboard($0) }
-                )
-            },
             copyDiscussionRequest: { instructions in
-                appState.agentApplicationHandoff.copyOnly(
-                    instructions: instructions,
-                    copy: { try appState.copyTextToClipboard($0) }
-                )
+                try appState.copyTextToClipboard(instructions)
             },
             rememberScrollPosition: {
                 guard let path = documentPath else { return }
@@ -686,7 +677,6 @@ struct ContentView: View {
                             panel.resolvesAliases = false
                             return panel.runModal() == .OK ? panel.url : nil
                         },
-                        agentApplicationHandoff: appState.agentApplicationHandoff,
                         copyInstructions: { instructions in
                             try appState.copyTextToClipboard(instructions)
                             appState.showToast(

@@ -184,14 +184,8 @@ struct ScholiumLocalizationTests {
             ) == "复制新交接说明"
         )
         #expect(
-            ScholiumL10n.string("Copy Only", locale: simplifiedChinese)
-                == "仅复制"
-        )
-        #expect(
-            ScholiumL10n.string(
-                "Copy and Choose Agent App…",
-                locale: simplifiedChinese
-            ) == "复制并选择智能体应用…"
+            ScholiumL10n.string("Copy Handoff", locale: simplifiedChinese)
+                == "复制交接说明"
         )
         #expect(
             ScholiumL10n.string(

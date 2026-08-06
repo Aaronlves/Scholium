@@ -309,18 +309,6 @@ accessibility-hint call sites have not received a complete responsibility audit.
 Remove duplicated explanation, keep authority and recovery detail in its owning presentation, then
 verify localization, 200% reflow, keyboard use, and genuine VoiceOver.
 
-### 1.0 Codex handoff
-
-**Implemented boundary**
-
-Copy-first Beta handoff is separate and reachable.
-
-**Required next evidence or work**
-
-Implement supported-app/root validation, new-task adapter, locator-only composer, explicit
-submission/copy fallback, retry/cancel/Unicode/accessibility/reactivation, and unchanged-run
-recovery. Do not begin Run with Codex.
-
 ### Distribution
 
 **Implemented boundary**

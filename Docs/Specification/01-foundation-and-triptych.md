@@ -204,7 +204,7 @@ Application Support owns:
 - security-scoped bookmarks and absolute paths, including registered external
   primary Methods and optional Skill folders plus a separate bookmark
   for the folder containing Works that authorizes sibling `.scholium/` without
-  creating a fourth vault, plus the agent application selected for Beta handoff;
+  creating a fourth vault;
 - window sessions and vault-qualified Document tabs;
 - derived indexes, temporary files, and caches;
 - Pairing Code digests, process-bound Connection Sessions, Bounded Write Sets,

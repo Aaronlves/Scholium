@@ -1940,7 +1940,6 @@ final class WindowModel: ObservableObject {
     }
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
-    let agentApplicationHandoff: AgentApplicationHandoffController
     private var requestedTriptychID: UUID? {
         windowWorkspaceController.requestedTriptychID
     }
@@ -2001,7 +2000,6 @@ final class WindowModel: ObservableObject {
         self.requestedInitialDocument = requestedInitialDocument
         cssSnippetStore = workspaceStore.cssSnippetStore
         zoteroBridge = workspaceStore.zoteroBridge
-        agentApplicationHandoff = workspaceStore.agentApplicationHandoff
         workspaceStore.$latestWorkspaceActivation
             .compactMap { $0 }
             .sink { [weak self] activation in

@@ -286,7 +286,10 @@ Run locator, one-time Pairing Code, local connection route, and direct steps for
 the Agent to operate the CLI itself. The one-time code appears only inside that
 complete copied handoff, never as a separate visible or accessible value the
 researcher must read, transcribe, or enter. The Agent reads it from the handoff
-and enters it only through pairing standard input. A prepared Run offers
+and enters it only through pairing standard input. The sheet exposes one
+**Copy Handoff** action. It validates and freezes a new Action when necessary,
+then copies the complete handoff without choosing, remembering, or opening an
+Agent application. A prepared Run offers
 **Copy New Handoff** as the recovery route: it invalidates the prior pairing
 and copies the complete replacement without replacing the Run or its recovery
 state.

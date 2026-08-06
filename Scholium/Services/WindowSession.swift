@@ -67,78 +67,6 @@ struct WindowResearchCapabilities: Sendable {
     let recoveryRecordsURL: URL
 }
 
-/// Machine-local persistence for the one app-wide agent-application choice.
-/// Filesystem I/O stays at the delivery composition boundary rather than in
-/// the handoff controller or its views.
-@MainActor
-struct FileAgentApplicationPreferenceStore: AgentApplicationPreferencePersisting {
-    private struct Envelope: Codable {
-        let schema: String
-        let application: RememberedAgentApplication
-    }
-
-    private static let schema = "scholium-agent-application-preference-v1"
-    private static let maximumPreferenceBytes = 1_048_576
-    private let fileURL: URL
-    private let fileManager: FileManager
-
-    init(applicationSupportURL: URL, fileManager: FileManager = .default) {
-        fileURL = applicationSupportURL.appendingPathComponent(
-            "AgentApplicationHandoff.json",
-            isDirectory: false
-        )
-        self.fileManager = fileManager
-    }
-
-    func load() throws -> RememberedAgentApplication? {
-        guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
-        let attributes = try fileManager.attributesOfItem(atPath: fileURL.path)
-        guard let size = attributes[.size] as? NSNumber,
-              size.intValue <= Self.maximumPreferenceBytes else {
-            throw AgentApplicationHandoffError.invalidPreference
-        }
-        let envelope = try JSONDecoder().decode(
-            Envelope.self,
-            from: Data(contentsOf: fileURL)
-        )
-        guard envelope.schema == Self.schema else {
-            throw AgentApplicationHandoffError.unsupportedPreference
-        }
-        guard !envelope.application.bookmarkData.isEmpty,
-              envelope.application.bookmarkData.count <= Self.maximumPreferenceBytes else {
-            throw AgentApplicationHandoffError.invalidPreference
-        }
-        return RememberedAgentApplication(
-            displayName: AgentApplicationDisplayName.sanitized(
-                envelope.application.displayName
-            ),
-            bundleIdentifier: envelope.application.bundleIdentifier,
-            bookmarkData: envelope.application.bookmarkData
-        )
-    }
-
-    func save(_ application: RememberedAgentApplication) throws {
-        try fileManager.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let data = try JSONEncoder().encode(Envelope(
-            schema: Self.schema,
-            application: application
-        ))
-        try data.write(to: fileURL, options: .atomic)
-        try fileManager.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: fileURL.path
-        )
-    }
-
-    func forget() throws {
-        guard fileManager.fileExists(atPath: fileURL.path) else { return }
-        try fileManager.removeItem(at: fileURL)
-    }
-}
-
 /// The macOS delivery adapter over one live Application runtime.
 ///
 /// WorkspaceRuntime owns every repository, index, watcher, research store,
@@ -155,7 +83,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
     let commandLineToolInstaller: CommandLineToolInstaller
-    let agentApplicationHandoff: AgentApplicationHandoffController
     let researchAgentPermissionClaims: ResearchAgentPermissionClaimCoordinator
     private(set) var localAgentBridge: LocalAgentBridgeServer?
     private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
@@ -190,9 +117,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
         commandLineToolInstaller = CommandLineToolInstaller()
-        agentApplicationHandoff = AgentApplicationHandoffController(
-            applicationSupportURL: applicationSupportURL
-        )
         let researchAgentPermissionClaims =
             ResearchAgentPermissionClaimCoordinator()
         self.researchAgentPermissionClaims = researchAgentPermissionClaims

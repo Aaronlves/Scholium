@@ -563,20 +563,20 @@ vault/Library/Attention labels, and native accessibility localization.
 
 Researcher terminology review, long labels, and broader manual accessibility.
 
-### Beta app handoff
+### Beta Agent handoff
 
 **Implemented evidence**
 
-Copies the immutable complete Run handoff before explicit app choice, persists one app-wide
-bookmark, opens without research arguments, and offers Copy Only, Choose Another, and Forget. The
-prepared Action sheet exposes End Action, and an active Discussion exposes End Discussion in
-addition to nonterminal Close; ending preserves the current exchange as a finished Research Record.
-Focused tests cover handoff ordering, cancel/failure, replacement, forgetting, persistence, and
-durable Discussion cancellation.
+The Action sheet and active Discussion each expose one Copy Handoff route. It copies the immutable
+complete Run handoff for the researcher to paste into the selected Agent conversation; Scholium
+does not select, remember, or open an Agent application. The prepared Action sheet exposes End
+Action, and an active Discussion exposes End Discussion in addition to nonterminal Close; ending
+preserves the current exchange as a finished Research Record. Focused tests cover the copy-only
+presentation boundary, pairing replacement, and durable Discussion cancellation.
 
 **Still open**
 
-Packaged sandbox launch, Full Keyboard Access, VoiceOver, localization, and visual acceptance.
+Full Keyboard Access, VoiceOver, localization, and visual acceptance.
 
 ### Properties and Research Unit
 

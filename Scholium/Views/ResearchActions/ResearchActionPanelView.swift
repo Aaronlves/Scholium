@@ -4,7 +4,6 @@ import SwiftUI
 
 struct ResearchActionPanelContext {
     let chooseLocalSource: () -> URL?
-    let agentApplicationHandoff: AgentApplicationHandoffController
     let copyInstructions: (String) throws -> Void
     let dismiss: () -> Void
 }
@@ -15,12 +14,12 @@ struct ResearchActionPanelContext {
 /// conflict, recovery, or frozen Result Contract boundary.
 struct ResearchActionPanelView: View {
     @ObservedObject private var controller: ResearchActionController
-    @ObservedObject private var agentApplicationHandoff: AgentApplicationHandoffController
     let context: ResearchActionPanelContext
 
     @FocusState private var focusedAcademicFieldID: String?
     @State private var focalNoteQuery = ""
     @State private var pendingHandoff: PendingHandoff?
+    @State private var handoffErrorMessage: String?
     @State private var evaluationHasUnsavedChanges = false
     @State private var confirmsDiscardEvaluation = false
     @State private var confirmsEndAction = false
@@ -31,9 +30,6 @@ struct ResearchActionPanelView: View {
     ) {
         self.controller = controller
         self.context = context
-        _agentApplicationHandoff = ObservedObject(
-            wrappedValue: context.agentApplicationHandoff
-        )
     }
 
     var body: some View {
@@ -98,8 +94,8 @@ struct ResearchActionPanelView: View {
             }
             .accessibilityIdentifier("scholium.researchAction.scroll")
             ScholiumStructuralRule()
-            if let errorMessage = agentApplicationHandoff.errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
+            if let handoffErrorMessage {
+                Label(handoffErrorMessage, systemImage: "exclamationmark.triangle")
                     .font(.callout)
                     .scholiumForeground(.destructive)
                     .fixedSize(horizontal: false, vertical: true)
@@ -613,29 +609,18 @@ struct ResearchActionPanelView: View {
             Spacer()
             if controller.preparation == nil || controller.canCancelPreparedRun {
                 Button {
-                    beginHandoff(.copyOnly)
+                    beginHandoff(.copy)
                 } label: {
                     handoffButtonLabel(
-                        title: "Copy Only",
-                        isPending: pendingHandoff == .copyOnly
-                    )
-                }
-                .disabled(!canCopyInstructions)
-                .accessibilityIdentifier("scholium.researchAction.copyOnly")
-                .accessibilityHint("Validates and freezes this Action, then copies the Run locator, one-time Pairing Code, and CLI steps for the Agent.")
-                Button {
-                    beginHandoff(.copyAndOpen)
-                } label: {
-                    handoffButtonLabel(
-                        title: agentApplicationHandoff.primaryActionTitle,
-                        isPending: pendingHandoff == .copyAndOpen
+                        title: "Copy Handoff",
+                        isPending: pendingHandoff == .copy
                     )
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(!canCopyInstructions || agentApplicationHandoff.isOpening)
-                .accessibilityIdentifier("scholium.researchAction.copyAndOpen")
-                .accessibilityHint(agentApplicationHandoff.primaryActionAccessibilityHint)
+                .disabled(!canCopyInstructions)
+                .accessibilityIdentifier("scholium.researchAction.copyHandoff")
+                .accessibilityHint("Validates and freezes this Action, then copies the Run locator, one-time Pairing Code, and CLI steps for the Agent.")
             }
         }
         .padding(16)
@@ -652,10 +637,11 @@ struct ResearchActionPanelView: View {
     }
 
     private func beginHandoff(_ handoff: PendingHandoff) {
+        handoffErrorMessage = nil
         if let agentHandoff = controller.agentHandoff,
            controller.canCancelPreparedRun,
            !controller.isBusy {
-            performHandoff(handoff, instructions: agentHandoff.agentInstructions)
+            performHandoff(instructions: agentHandoff.agentInstructions)
             return
         }
         if controller.preparation != nil,
@@ -671,13 +657,13 @@ struct ResearchActionPanelView: View {
     }
 
     private func completePendingHandoff() {
-        guard let handoff = pendingHandoff,
+        guard pendingHandoff != nil,
               let agentHandoff = controller.agentHandoff else {
             pendingHandoff = nil
             return
         }
         pendingHandoff = nil
-        performHandoff(handoff, instructions: agentHandoff.agentInstructions)
+        performHandoff(instructions: agentHandoff.agentInstructions)
     }
 
     private func copyNewHandoff() {
@@ -689,17 +675,14 @@ struct ResearchActionPanelView: View {
         controller.regenerateHandoff()
     }
 
-    private func performHandoff(_ handoff: PendingHandoff, instructions: String) {
-        switch handoff {
-        case .copyOnly, .copyNew:
-            agentApplicationHandoff.copyOnly(
-                instructions: instructions,
-                copy: context.copyInstructions
-            )
-        case .copyAndOpen:
-            agentApplicationHandoff.copyAndOpen(
-                instructions: instructions,
-                copy: context.copyInstructions
+    private func performHandoff(instructions: String) {
+        do {
+            try context.copyInstructions(instructions)
+        } catch {
+            handoffErrorMessage = String(
+                localized: "Scholium could not copy the prepared instructions. \(error.localizedDescription)",
+                table: "Localizable",
+                bundle: .module
             )
         }
     }
@@ -768,8 +751,7 @@ struct ResearchActionPanelView: View {
     }
 
     private enum PendingHandoff {
-        case copyOnly
-        case copyAndOpen
+        case copy
         case copyNew
     }
 }

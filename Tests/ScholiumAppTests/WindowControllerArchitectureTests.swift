@@ -2032,7 +2032,6 @@ struct WindowControllerArchitectureTests {
             "resolveResearchContinuation": 1,
             "cssSnippetStore": 1,
             "zoteroBridge": 1,
-            "agentApplicationHandoff": 1,
             "$latestWorkspaceActivation": 1,
             "$workspaceEvents": 1,
         ]
@@ -2062,7 +2061,7 @@ struct WindowControllerArchitectureTests {
             }
         }
 
-        #expect(compositionAndSubscription.values.reduce(0, +) == 12)
+        #expect(compositionAndSubscription.values.reduce(0, +) == 11)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 8)
         #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 13)
         #expect(actual == approved)

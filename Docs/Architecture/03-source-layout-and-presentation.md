@@ -204,10 +204,11 @@ retains only the focused `openResearchAction(id:selection:)` action for menu and
 keyboard invocation; it contains no Action presentation or bottom inset. The
 sheet always exposes the app-owned Target, revision, authority, checkpoint,
 conflict, and recovery boundary before rendering the Profile's closed native
-modules. Copy Only and Copy and Open remain fixed footer actions. Either first
-revalidates and freezes the Action internally, then copies the complete
-researcher-to-Agent handoff; a prepared run keeps both actions available to
-retry it. Its **Copy New Handoff** recovery invalidates the prior pairing and
+modules. One **Copy Handoff** footer action first revalidates and freezes the
+Action internally, then copies the complete researcher-to-Agent handoff. No
+Agent-application picker, bookmark, persistence owner, or launch path
+participates. A prepared Run keeps the same copy action available to retry it.
+Its **Copy New Handoff** recovery invalidates the prior pairing and
 copies the replacement without presenting the one-time code as a separate
 field. A separate End Action route cancels the unfinished Run, whereas Done
 only dismisses the sheet. Launcher availability and the sheet's fresh Profile
