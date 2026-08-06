@@ -107,6 +107,16 @@ response remains untrusted research material. A material conflict between the
 researcher request and method is made visible; it is not silently averaged or
 resolved by the material itself.
 
+The Agent-facing contract has one owner per concern. The protected Core
+Protocol owns the stable workflow instructions and sequence—pairing,
+authenticated delivery, context query, bounded write-set extension, document-
+write request, conflict/reload, Result, Continue Research, and End. Application
+owns authorization and execution of those operations. Typed command contracts
+own current fields, allowed values, and result forms. The registered primary
+Skill and its Practices own the academic method and execution guidance.
+Installed CLI help owns current invocation syntax. These owners do not replace
+one another or repeat the same content.
+
 ### 8.2 Local pairing, layered delivery, and Research Context
 
 Direct Agent connection is local, provider-neutral, and bound to the current

@@ -162,6 +162,10 @@ Direct local Agent pairing is a bounded Run connection, not an embedded
 runtime, background Agent manager, auto-submission system, streamed tool-state
 viewer, general host-approval surface, relay, or cloud orchestration service.
 Scholium does not launch or supervise an Agent merely because a Run exists.
+Collaboration settings therefore expose only one Triptych policy. Scholium has
+no global Agent prompt or configuration, selected-Agent preference, remembered
+Agent application, or launch control; the current Run's copied handoff is the
+only researcher-to-Agent setup surface.
 
 File-backed primary Skills, Practices, registrations, and Action Profiles are
 Settings-owned Research Guidance, not packages, a marketplace, executable

@@ -96,6 +96,9 @@ override, digest approval, fallback subject, bearer key, or write capability.
 The current Action owner recomputes authorization from Platform support, the
 policy, the concrete Run request, current identities and revisions, and the
 authenticated Run boundary.
+It also owns no global Agent prompt, selected-Agent preference, remembered Agent
+application, launch path, or Agent credential. The transient handoff for the
+current Run belongs to Research Actions and Execution.
 
 The citation document stores one optional code-catalog identifier such as APA
 7. It is an integration setting, not a Method, Practice, permission, or
