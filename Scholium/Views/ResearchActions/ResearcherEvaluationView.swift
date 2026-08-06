@@ -586,18 +586,10 @@ struct ResearchMethodFeedbackView: View {
                                 )
                         }
                         Spacer()
-                        Text("Pairing Code")
-                            .font(.caption.weight(.semibold))
-                        Text(handoff.pairingCode.rawValue)
-                            .font(.body.monospaced().weight(.semibold))
-                            .textSelection(.enabled)
-                            .accessibilityIdentifier(
-                                "scholium.methodFeedback.pairingCode"
-                            )
+                        Text("Expires \(handoff.expiresAt, style: .relative).")
+                            .font(.caption)
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     }
-                    Text("The copied handoff includes this one-time Pairing Code. It expires \(handoff.expiresAt, style: .relative).")
-                        .font(.caption)
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 }
                 .padding(12)
                 .background(ScholiumColorRole.raisedSurfaceBackground.color)

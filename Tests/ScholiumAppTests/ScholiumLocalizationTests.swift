@@ -178,14 +178,10 @@ struct ScholiumLocalizationTests {
                 == "取消请求"
         )
         #expect(
-            ScholiumL10n.string("Pairing Code", locale: simplifiedChinese)
-                == "配对码"
-        )
-        #expect(
             ScholiumL10n.string(
-                "Generate New Pairing Code",
+                "Copy New Handoff",
                 locale: simplifiedChinese
-            ) == "生成新配对码"
+            ) == "复制新交接说明"
         )
         #expect(
             ScholiumL10n.string("Copy Only", locale: simplifiedChinese)

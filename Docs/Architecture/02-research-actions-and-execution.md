@@ -85,9 +85,12 @@ and existing recovery remain authoritative.
 The Action sheet requests a one-time Pairing Code from
 `ResearchConnectionCoordinator` only for an existing unfinished Run. The
 copyable Agent handoff contains the locator, one-time code, and direct steps for
-the Agent to operate the CLI itself; the same code remains a visible
-privacy-sensitive Action-sheet value and enters pairing through CLI standard
-input. Pair exchange over the protected App Group Unix socket returns a hidden
+the Agent to operate the CLI itself. The code is unwrapped only while composing
+that complete copied handoff; it is not separately rendered or exposed to the
+accessibility tree. **Copy New Handoff** invalidates the prior pairing, obtains
+a replacement, and copies it while retaining the same Run and recovery state.
+The Agent enters the code through CLI standard input. Pair exchange over the
+protected App Group Unix socket returns a hidden
 Connection Session and the first layered delivery packet. The UI's End Action
 route calls the same Application cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its

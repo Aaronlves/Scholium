@@ -283,9 +283,13 @@ method/Practice and capability availability; pairing or current Session state;
 Run progress and any bounded write-set decision; returned canonical result;
 then optional Researcher Evaluation. Copied Agent instructions reveal only the
 Run locator, one-time Pairing Code, local connection route, and direct steps for
-the Agent to operate the CLI itself. The Pairing Code remains visibly
-identifiable and privacy-sensitive in the Action sheet, is intentionally copied
-to the selected Agent, and enters the CLI only through pairing standard input.
+the Agent to operate the CLI itself. The one-time code appears only inside that
+complete copied handoff, never as a separate visible or accessible value the
+researcher must read, transcribe, or enter. The Agent reads it from the handoff
+and enters it only through pairing standard input. A prepared Run offers
+**Copy New Handoff** as the recovery route: it invalidates the prior pairing
+and copies the complete replacement without replacing the Run or its recovery
+state.
 Closing the sheet leaves an unfinished Action active; the explicit **End
 Action** route revokes Agent access and closes it while preserving confirmed
 changes, conflicts, and recovery truth. **End Discussion** also preserves the

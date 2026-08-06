@@ -123,8 +123,10 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   local-connection explanation through Copy Handoff and status. One-time-code
   expiry, invalid attempt, Session expiry/revocation, app-restart invalidation,
   missing local Skill-folder path, and bridge unavailable are named in text
-  with one executable recovery route. Secrets, hashes, and opaque registration
-  keys are never presented as fields the researcher must read or enter.
+  with one executable recovery route. The one-time code remains inside the
+  complete copied handoff and is never a separate visual or accessibility
+  field. Secrets, hashes, and opaque registration keys are never presented as
+  fields the researcher must read or enter.
 - Researcher Evaluation follows the returned result in the Action sheet and
   uses the same label, help, choice, note, error, save-status, and focus order
   in Record detail. Observed Issues, the mutually exclusive no-issue option,

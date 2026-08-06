@@ -6486,6 +6486,16 @@
         }
       }
     },
+    "Copy New Handoff" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制新交接说明"
+          }
+        }
+      }
+    },
     "Copy Only" : {
       "localizations" : {
         "en" : {
@@ -10453,16 +10463,6 @@
         }
       }
     },
-    "Generate New Pairing Code" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "生成新配对码"
-          }
-        }
-      }
-    },
     "Get Started" : {
       "localizations" : {
         "en" : {
@@ -11816,12 +11816,12 @@
         }
       }
     },
-    "Invalidates the previous pairing for this Run without replacing the Run or its recovery state." : {
+    "Invalidates the previous pairing for this Run, then copies its replacement without changing the Run or recovery state." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使本次运行先前的配对失效，但不替换运行或其恢复状态。"
+            "value" : "使本次运行先前的配对失效，然后复制替代的交接说明，但不改变运行或恢复状态。"
           }
         }
       }
@@ -16787,16 +16787,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "来源"
-          }
-        }
-      }
-    },
-    "Pairing Code" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配对码"
           }
         }
       }

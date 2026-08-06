@@ -565,36 +565,27 @@ struct ResearchActionPanelView: View {
                 if let handoff = controller.agentHandoff,
                    controller.canCancelPreparedRun {
                     Divider()
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("PAIRING CODE")
-                            .scholiumApparatusHeadingStyle()
-                            .accessibilityAddTraits(.isHeader)
-                        Text(handoff.pairingCode.rawValue)
-                            .font(.system(.title3, design: .monospaced).weight(.semibold))
-                            .privacySensitive()
-                            .accessibilityLabel("Pairing Code")
-                            .accessibilityValue(handoff.pairingCode.rawValue)
-                            .accessibilityIdentifier(
-                                "scholium.researchAction.pairingCode"
-                            )
-                        Text("This one-time code is included in the copied Agent handoff. The Agent uses it to pair through the CLI.")
-                            .font(.caption)
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                            .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text("Expires \(handoff.expiresAt, style: .relative).")
                             .font(.caption)
                             .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        Spacer()
+                        Button {
+                            copyNewHandoff()
+                        } label: {
+                            handoffButtonLabel(
+                                title: "Copy New Handoff",
+                                isPending: pendingHandoff == .copyNew
+                            )
+                        }
+                        .disabled(pendingHandoff != nil || controller.isBusy)
+                        .accessibilityIdentifier(
+                            "scholium.researchAction.copyNewHandoff"
+                        )
+                        .accessibilityHint(
+                            "Invalidates the previous pairing for this Run, then copies its replacement without changing the Run or recovery state."
+                        )
                     }
-                    Button("Generate New Pairing Code") {
-                        controller.regenerateHandoff()
-                    }
-                    .disabled(controller.isBusy)
-                    .accessibilityIdentifier(
-                        "scholium.researchAction.regeneratePairing"
-                    )
-                    .accessibilityHint(
-                        "Invalidates the previous pairing for this Run without replacing the Run or its recovery state."
-                    )
                 }
             }
         }
@@ -689,9 +680,18 @@ struct ResearchActionPanelView: View {
         performHandoff(handoff, instructions: agentHandoff.agentInstructions)
     }
 
+    private func copyNewHandoff() {
+        guard controller.agentHandoff != nil,
+              controller.canCancelPreparedRun,
+              pendingHandoff == nil,
+              !controller.isBusy else { return }
+        pendingHandoff = .copyNew
+        controller.regenerateHandoff()
+    }
+
     private func performHandoff(_ handoff: PendingHandoff, instructions: String) {
         switch handoff {
-        case .copyOnly:
+        case .copyOnly, .copyNew:
             agentApplicationHandoff.copyOnly(
                 instructions: instructions,
                 copy: context.copyInstructions
@@ -770,6 +770,7 @@ struct ResearchActionPanelView: View {
     private enum PendingHandoff {
         case copyOnly
         case copyAndOpen
+        case copyNew
     }
 }
 

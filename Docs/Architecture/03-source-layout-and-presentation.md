@@ -207,7 +207,9 @@ conflict, and recovery boundary before rendering the Profile's closed native
 modules. Copy Only and Copy and Open remain fixed footer actions. Either first
 revalidates and freezes the Action internally, then copies the complete
 researcher-to-Agent handoff; a prepared run keeps both actions available to
-retry it. A separate End Action route cancels the unfinished Run, whereas Done
+retry it. Its **Copy New Handoff** recovery invalidates the prior pairing and
+copies the replacement without presenting the one-time code as a separate
+field. A separate End Action route cancels the unfinished Run, whereas Done
 only dismisses the sheet. Launcher availability and the sheet's fresh Profile
 resolution
 are separate: cancelling or failing a sheet cannot erase the Inspector, while

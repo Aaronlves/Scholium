@@ -177,8 +177,10 @@ the protected AF_UNIX socket plus minimal rendezvous state. Pairing is the sole 
 operation; Context, read, write-set extension, write capability, result, continuation, reload, end,
 status, and cancellation require the Session secret through stdin or another hidden channel. The
 copied Agent handoff contains the Run locator/route, one-time Pairing Code, and Agent-owned CLI
-steps, but no method text or local path; the privacy-sensitive code remains visibly identified in
-Scholium and enters the CLI only through pairing stdin.
+steps, but no method text or local path. The code is available only inside that complete copied
+handoff rather than as a separate visible or accessible field. Copy New Handoff invalidates the
+prior pairing and copies its replacement while preserving the Run and recovery state; the Agent
+enters the code only through pairing stdin.
 The code and credential are non-Codable and redacted from descriptions; only the typed copied
 handoff exposes the one-use code, while private bridge/storage adapters handle exchange and Session
 bytes. Session schema 3 returns the frozen exact
