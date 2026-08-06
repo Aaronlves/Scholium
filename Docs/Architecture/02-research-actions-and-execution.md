@@ -84,11 +84,16 @@ and existing recovery remain authoritative.
 
 The Action sheet requests a one-time Pairing Code from
 `ResearchConnectionCoordinator` only for an existing unfinished Run. The
-copyable Agent instructions contain the locator/route only; the code remains a
-separate privacy-sensitive Action-sheet value entered only through CLI standard
+copyable Agent handoff contains the locator, one-time code, and direct steps for
+the Agent to operate the CLI itself; the same code remains a visible
+privacy-sensitive Action-sheet value and enters pairing through CLI standard
 input. Pair exchange over the protected App Group Unix socket returns a hidden
-Connection Session and the first layered delivery packet. Pairing/session
-mechanics and lifecycle are owned by
+Connection Session and the first layered delivery packet. The UI's End Action
+route calls the same Application cancellation owner as authenticated CLI end;
+sheet dismissal alone does not end the Run. Cancelling Discuss converts its
+current portable exchange into a finished Research Record before removing the
+active projection, so researcher-authored statements are not discarded.
+Pairing/session mechanics and lifecycle are owned by
 [Research Skills and Agent Collaboration](04-product-skills-and-maintenance.md).
 
 The first authenticated Agent session receives one Core Protocol and

@@ -23,6 +23,7 @@ struct ResearchActionPanelView: View {
     @State private var pendingHandoff: PendingHandoff?
     @State private var evaluationHasUnsavedChanges = false
     @State private var confirmsDiscardEvaluation = false
+    @State private var confirmsEndAction = false
 
     init(
         controller: ResearchActionController,
@@ -127,8 +128,11 @@ struct ResearchActionPanelView: View {
                 focusFirstAcademicTextField()
             case .prepared:
                 completePendingHandoff()
-            case .failed, .cancelled:
+            case .failed:
                 pendingHandoff = nil
+            case .cancelled:
+                pendingHandoff = nil
+                context.dismiss()
             case .idle, .loading, .preparing, .cancelling:
                 break
             }
@@ -144,6 +148,18 @@ struct ResearchActionPanelView: View {
             }
         } message: {
             Text("The saved evaluation and finalized Research Result will remain unchanged.")
+        }
+        .confirmationDialog(
+            "End this Action?",
+            isPresented: $confirmsEndAction,
+            titleVisibility: .visible
+        ) {
+            Button("Keep Action", role: .cancel) {}
+            Button("End Action", role: .destructive) {
+                controller.cancelPreparedRun()
+            }
+        } message: {
+            Text("Scholium will revoke Agent access and end this unfinished Run. Confirmed changes, conflicts, and recovery records remain available.")
         }
     }
 
@@ -561,7 +577,7 @@ struct ResearchActionPanelView: View {
                             .accessibilityIdentifier(
                                 "scholium.researchAction.pairingCode"
                             )
-                        Text("Enter this one-time code only when `scholium agent pair` asks on standard input. Do not paste it into the Agent conversation or command.")
+                        Text("This one-time code is included in the copied Agent handoff. The Agent uses it to pair through the CLI.")
                             .font(.caption)
                             .foregroundStyle(ScholiumColorRole.secondaryText.color)
                             .fixedSize(horizontal: false, vertical: true)
@@ -597,11 +613,11 @@ struct ResearchActionPanelView: View {
             .disabled(controller.phase == .preparing || controller.phase == .cancelling)
             .accessibilityIdentifier("scholium.researchAction.dismiss")
             if controller.canCancelPreparedRun {
-                Button("Cancel Run", role: .destructive) {
-                    controller.cancelPreparedRun()
+                Button("End Action…", role: .destructive) {
+                    confirmsEndAction = true
                 }
                 .disabled(controller.isBusy)
-                .accessibilityIdentifier("scholium.researchAction.cancelRun")
+                .accessibilityIdentifier("scholium.researchAction.endAction")
             }
             Spacer()
             if controller.preparation == nil || controller.canCancelPreparedRun {
@@ -615,7 +631,7 @@ struct ResearchActionPanelView: View {
                 }
                 .disabled(!canCopyInstructions)
                 .accessibilityIdentifier("scholium.researchAction.copyOnly")
-                .accessibilityHint("Validates and freezes this Action, then copies non-secret connection instructions without the Pairing Code, research content, or local paths.")
+                .accessibilityHint("Validates and freezes this Action, then copies the Run locator, one-time Pairing Code, and CLI steps for the Agent.")
                 Button {
                     beginHandoff(.copyAndOpen)
                 } label: {

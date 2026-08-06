@@ -29,9 +29,12 @@ content mtime, rechecks the exact preimage, uses displaced-byte-preserving swap,
 and verifies bytes, mode, owner/group, ACL/xattrs, flags, birth metadata, and
 the parent-directory synchronization boundary. Ordinary xattrs and Finder tags
 remain byte-exact. For the LaunchServices-managed `com.apple.quarantine`
-attribute only, verification accepts a valid system normalization when its
-security flags and event identifier are unchanged and its timestamp does not
-move backward; malformed values or authority changes still fail closed.
+attribute only, verification accepts either one valid sandbox-added envelope
+on a previously unquarantined staging inode or a valid system normalization
+when its security flags and event identifier are unchanged and its timestamp
+does not move backward. Scholium retains an added quarantine envelope; a
+missing attribute, malformed value, other added attribute, or quarantine
+authority change still fails closed.
 Unsupported swap fails closed.
 Any post-swap identity, readback, metadata, permission, or synchronization
 uncertainty attempts a guarded swap-back, keeps observed staging evidence, and

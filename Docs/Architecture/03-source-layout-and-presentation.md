@@ -205,9 +205,11 @@ keyboard invocation; it contains no Action presentation or bottom inset. The
 sheet always exposes the app-owned Target, revision, authority, checkpoint,
 conflict, and recovery boundary before rendering the Profile's closed native
 modules. Copy Only and Copy and Open remain fixed footer actions. Either first
-revalidates and freezes the Action internally, then performs the chosen
-handoff; a prepared run keeps both actions available to retry the exact frozen
-instructions. Launcher availability and the sheet's fresh Profile resolution
+revalidates and freezes the Action internally, then copies the complete
+researcher-to-Agent handoff; a prepared run keeps both actions available to
+retry it. A separate End Action route cancels the unfinished Run, whereas Done
+only dismisses the sheet. Launcher availability and the sheet's fresh Profile
+resolution
 are separate: cancelling or failing a sheet cannot erase the Inspector, while
 only the fresh Profile can prepare. The sheet cannot dismiss while preparation
 is crossing its durable boundary. A late noncooperative result is reclaimed

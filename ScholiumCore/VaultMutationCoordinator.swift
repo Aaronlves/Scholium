@@ -892,7 +892,20 @@ final class VaultMutationCoordinator {
         expected: [String: Data],
         observed: [String: Data]
     ) -> Bool {
-        guard expected.keys == observed.keys else { return false }
+        let expectedNames = Set(expected.keys)
+        let observedNames = Set(observed.keys)
+        guard expectedNames.isSubset(of: observedNames) else { return false }
+        let addedNames = observedNames.subtracting(expectedNames)
+        if !addedNames.isEmpty {
+            // A sandboxed process may attach a quarantine envelope to the
+            // newly created staging inode. Keep that system security metadata
+            // in place, but accept no other addition and no malformed value.
+            guard addedNames == [quarantineAttributeName],
+                  let addedQuarantine = observed[quarantineAttributeName],
+                  QuarantineAttribute(addedQuarantine) != nil else {
+                return false
+            }
+        }
         return expected.allSatisfy { name, expectedValue in
             guard let observedValue = observed[name] else { return false }
             return extendedAttributeIsEquivalent(
@@ -909,7 +922,7 @@ final class VaultMutationCoordinator {
         observed: Data
     ) -> Bool {
         guard expected != observed else { return true }
-        guard name == "com.apple.quarantine",
+        guard name == quarantineAttributeName,
               let expectedValue = QuarantineAttribute(expected),
               let observedValue = QuarantineAttribute(observed) else {
             return false
@@ -920,6 +933,8 @@ final class VaultMutationCoordinator {
             && observedValue.eventIdentifier == expectedValue.eventIdentifier
             && observedValue.timestamp >= expectedValue.timestamp
     }
+
+    private static let quarantineAttributeName = "com.apple.quarantine"
 
     private func accessControlList(descriptor: Int32) throws -> Data? {
         errno = 0

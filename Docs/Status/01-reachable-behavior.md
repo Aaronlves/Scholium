@@ -32,9 +32,11 @@ provides default Retry, selectable Details, and Quit. Debug/QA isolation require
 files. Loads, fingerprints, precommit checks, readback, and recovery verification use this boundary.
 Existing-file commits hold the original FD, copy and verify metadata, preserve advancing content
 mtime, synchronize staging and parent, and use inode-guarded swap-back plus retained evidence on
-uncertainty. ACL and ordinary xattr/Finder-tag values remain exact; the system-managed quarantine
-attribute may normalize only its agent and forward-moving timestamp while flags and event identity
-remain fixed. Focused Core tests reject quarantine authority changes. A real `NSFilePresenter`
+uncertainty. ACL and ordinary xattr/Finder-tag values remain exact; a valid system-managed
+quarantine envelope newly attached to an unquarantined staging inode is retained, while an existing
+quarantine attribute may normalize only its agent and forward-moving timestamp with flags and event
+identity fixed. Focused Core tests reject malformed or ordinary xattr additions, quarantine removal,
+and quarantine authority changes. A real `NSFilePresenter`
 coordination proxy proves that a provider-side replacement before writer grant
 becomes a conflict with exact expected/candidate recovery. `SIGKILL` subprocess fixtures at staged
 and post-swap boundaries prove deterministic repository reopen, one canonical revision, exact
@@ -174,10 +176,12 @@ bindings are retained. The supported bridge location is the App Group container 
 the protected AF_UNIX socket plus minimal rendezvous state. Pairing is the sole unauthenticated
 operation; Context, read, write-set extension, write capability, result, continuation, reload, end,
 status, and cancellation require the Session secret through stdin or another hidden channel. The
-copied Agent instructions contain the Run locator/route but no Pairing Code, method text, or local
-path; the privacy-sensitive code remains separately visible in Scholium and enters only CLI stdin.
-The code and credential are non-Codable/non-printable domain values, with explicit private
-bridge/storage adapters. Session schema 3 returns the frozen exact
+copied Agent handoff contains the Run locator/route, one-time Pairing Code, and Agent-owned CLI
+steps, but no method text or local path; the privacy-sensitive code remains visibly identified in
+Scholium and enters the CLI only through pairing stdin.
+The code and credential are non-Codable and redacted from descriptions; only the typed copied
+handoff exposes the one-use code, while private bridge/storage adapters handle exchange and Session
+bytes. Session schema 3 returns the frozen exact
 Method/Practices, Result Contract, and a capability-free view of the current Bounded Write Set only
 after authentication. Re-pairing one Run revokes its prior write-capable binding, application restart
 invalidates every Session, and the durable Run remains. `scholium agent end`
@@ -552,9 +556,12 @@ Researcher terminology review, long labels, and broader manual accessibility.
 
 **Implemented evidence**
 
-Copies immutable instructions before explicit app choice, persists one app-wide bookmark, opens
-without research arguments, and offers Copy Only, Choose Another, and Forget. Focused tests cover
-ordering, cancel/failure, replacement, forgetting, and persistence.
+Copies the immutable complete Run handoff before explicit app choice, persists one app-wide
+bookmark, opens without research arguments, and offers Copy Only, Choose Another, and Forget. The
+prepared Action sheet exposes End Action, and an active Discussion exposes End Discussion in
+addition to nonterminal Close; ending preserves the current exchange as a finished Research Record.
+Focused tests cover handoff ordering, cancel/failure, replacement, forgetting, persistence, and
+durable Discussion cancellation.
 
 **Still open**
 

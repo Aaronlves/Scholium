@@ -25,9 +25,10 @@ Always read `references/cli-contract.md` before accessing a live Triptych. Read
 
 ## Execution
 
-1. Supply the Pairing Code only on standard input to `scholium agent pair`.
-   Never place a Pairing Code, Session credential, nonce, or capability in
-   argv, a URL, a file, feedback, a prompt, or a log.
+1. Read the Run locator and one-use Pairing Code from the researcher's copied
+   Scholium handoff. Run `scholium agent pair` yourself and supply the code on
+   standard input. Do not move it into argv, a URL, a file, feedback, another
+   prompt, or a log. Never expose a Session credential, nonce, or capability.
 2. Load the authenticated Run with `agent context` or `agent reload`. Reload
    current authority after uncertainty or process loss; it does not replay
    earlier Research Context responses.

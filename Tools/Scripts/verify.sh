@@ -155,8 +155,8 @@ if rg -n --hidden \
 fi
 
 # Pairing and Session bearer values must be explicitly unwrapped only by the
-# narrow wire/protected-storage adapters. General Codable/printable conformance
-# or embedding the code in copied Agent instructions would leak authority.
+# complete researcher-to-Agent handoff and narrow wire/protected-storage
+# adapters. General Codable/printable conformance would leak authority.
 if rg -n -U \
   'public struct (ResearchPairingCode|ResearchConnectionCredential|ResearchAgentHandoff):[^{]*\bCodable\b' \
   "${ROOT}/ScholiumContracts/ResearchAgentConnectionContracts.swift" \
@@ -167,9 +167,9 @@ if rg -n -U \
   exit 1
 fi
 
-if rg -n 'pairingCode\.rawValue' \
+if ! rg -Fq 'Pairing Code: \(pairingCode.rawValue)' \
   "${ROOT}/ScholiumContracts/ResearchAgentConnectionContracts.swift"; then
-  echo "Agent handoff guard failed: copied instructions contain the Pairing Code." >&2
+  echo "Agent handoff guard failed: copied instructions omit the Pairing Code." >&2
   exit 1
 fi
 

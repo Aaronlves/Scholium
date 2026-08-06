@@ -475,6 +475,9 @@ struct ContentView: View {
                     discussionID: discussionID
                 )
             },
+            endDiscussion: { discussionID in
+                try await appState.researchController.endDiscussion(id: discussionID)
+            },
             clearRequestedDiscussion: {
                 appState.clearRequestedDiscussionPresentation()
             },

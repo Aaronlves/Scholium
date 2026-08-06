@@ -55,8 +55,9 @@ A fingerprint detects stale state. It does not grant permission.
 
 ## 3. Enter one authenticated Research Run
 
-The Scholium App prepares the Action and gives the Agent one opaque Run locator
-and one short Pairing Code. `action available`, `action prepare`, and
+The researcher copies one Scholium handoff containing the prepared Action's
+opaque Run locator and short Pairing Code to the selected Agent. `action
+available`, `action prepare`, and
 `action show` remain researcher/Application and diagnostic surfaces; they are
 not an Agent authorization or completion protocol. There is no current
 `action complete` command.
@@ -67,11 +68,12 @@ Start pairing without placing the secret in the command line:
 scholium agent pair --run <run-locator>
 ```
 
-Paste the Pairing Code on standard input and send EOF. Do not place it in argv,
-a shell history expansion, URL, file, prompt, feedback, or log. Pairing is
-local, one use, short lived, revocable, and invalid after App restart. The CLI
-stores the exchanged Session credential in current-user-only local state and
-never prints it. A Run locator is not a credential.
+Paste the Pairing Code from that handoff on standard input and send EOF. Do not
+move it into argv, a shell history expansion, URL, file, another prompt,
+feedback, or log. Pairing is local, one use, short lived, revocable, and invalid
+after App restart. The CLI stores the exchanged Session credential in
+current-user-only local state and never prints it. A Run locator is not a
+credential.
 
 Recover the current authenticated boundary:
 

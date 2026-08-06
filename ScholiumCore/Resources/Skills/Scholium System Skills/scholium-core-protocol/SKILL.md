@@ -106,9 +106,11 @@ later edit one separate Researcher Evaluation partition against its expected
 evaluation revision and the unchanged Result fingerprint. Evaluation does not
 rewrite the Result, establish truth, or automatically create Method feedback.
 
-Never place assembled prompts, Pairing Codes, Session credentials, nonces,
-capabilities, bookmarks, absolute paths, raw private source bytes, token counts,
-transport logs, or diff hunks in the scholarly Result or Record.
+The researcher-to-Agent handoff may contain its one-use Pairing Code. Never
+repeat that code in later prompts or place it, assembled prompts, Session
+credentials, nonces, capabilities, bookmarks, absolute paths, raw private
+source bytes, token counts, transport logs, or diff hunks in the scholarly
+Result or Record.
 
 ## Completion
 

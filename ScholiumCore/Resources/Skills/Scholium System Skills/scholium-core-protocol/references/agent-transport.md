@@ -23,10 +23,11 @@ The App supplies an opaque Run locator and a one-use Pairing Code. Start:
 scholium agent pair --run <run-locator>
 ```
 
-Paste the code only on standard input and send EOF. Never place it in argv, a
-URL, file, prompt, feedback, or log. The CLI stores the hidden Session
-credential in current-user-only local state and never prints it. Pairing is
-local, short lived, revocable, and invalid after App restart.
+Read the code from the researcher's copied Scholium handoff, paste it on
+standard input, and send EOF. Do not move it into argv, a URL, file, another
+prompt, feedback, or log. The CLI stores the hidden Session credential in
+current-user-only local state and never prints it. Pairing is local, short
+lived, revocable, and invalid after App restart.
 
 ```sh
 scholium agent context --run <run-locator>

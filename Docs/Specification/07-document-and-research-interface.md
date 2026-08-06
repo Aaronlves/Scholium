@@ -274,17 +274,23 @@ A running Action retains that ordinary row structure and minimum rhythm rather
 than becoming a taller state block. Its leading Action symbol yields to one
 small indeterminate progress indicator; the Action title remains on the shared
 title axis; trailing text states **Running**; and a separately named direct
-Cancel control replaces the ready-state chevron. It adds no ordinary second
-line. Larger interface text or localization may grow the row rather than clip
-its title, state, or cancellation route.
+**End Action** control replaces the ready-state chevron. It adds no ordinary
+second line. Larger interface text or localization may grow the row rather
+than clip its title, state, or ending route.
 
 An Action sheet keeps one linear journey: request and focal context; exact
 method/Practice and capability availability; pairing or current Session state;
 Run progress and any bounded write-set decision; returned canonical result;
 then optional Researcher Evaluation. Copied Agent instructions reveal only the
-Run locator and local connection route. The one-time Pairing Code is visibly
-separate in the Action sheet, marked privacy-sensitive, and entered only at the
-CLI standard-input request; it is never copied into Agent instructions. Pairing,
+Run locator, one-time Pairing Code, local connection route, and direct steps for
+the Agent to operate the CLI itself. The Pairing Code remains visibly
+identifiable and privacy-sensitive in the Action sheet, is intentionally copied
+to the selected Agent, and enters the CLI only through pairing standard input.
+Closing the sheet leaves an unfinished Action active; the explicit **End
+Action** route revokes Agent access and closes it while preserving confirmed
+changes, conflicts, and recovery truth. **End Discussion** also preserves the
+current exchange as a finished Research Record, even when the Agent has not
+replied. Pairing,
 re-pairing, Session expiry or revocation, missing local Skill-folder path,
 conflict, write result unknown, and recovery each use complete text and an
 executable next route without displaying the real Session secret or internal

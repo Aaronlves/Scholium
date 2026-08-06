@@ -214,6 +214,9 @@ final class ResearchFunctionCoordinator: Sendable {
         if let existing = stored.completion {
             if existing.state == .cancelled {
                 await host.revokeResearchAgentRunAccess(runID: runID)
+                if stored.snapshot.request.function == .discuss {
+                    _ = try await host.finishDiscussion(discussionID: runID)
+                }
                 return
             }
             // Awaiting-Fidelity and Unverified are already durable completion
@@ -238,6 +241,9 @@ final class ResearchFunctionCoordinator: Sendable {
         )
         try await persistCompletion(completion, in: stored)
         await host.revokeResearchAgentRunAccess(runID: runID)
+        if snapshot.request.function == .discuss {
+            _ = try await host.finishDiscussion(discussionID: runID)
+        }
         _ = try await host.publishCommittedResearchFunctionChange(
             "The Research Action cancellation"
         )

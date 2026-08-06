@@ -154,6 +154,7 @@ struct DocumentFeatureActions {
         String
     ) async throws -> PortableResearchDiscussion
     let finishDiscussion: @MainActor (UUID) async throws -> PortableResearchRecord
+    let endDiscussion: @MainActor (UUID) async throws -> Void
     let clearRequestedDiscussion: @MainActor () -> Void
     let handoffDiscussionRequest: @MainActor (String) -> Bool
     let copyDiscussionRequest: @MainActor (String) -> Bool
@@ -438,6 +439,7 @@ private struct DiscussionPanel: View {
         String
     ) async throws -> PortableResearchDiscussion
     let finish: (UUID) async throws -> PortableResearchRecord
+    let end: (UUID) async throws -> Void
     let handoff: (String) -> Bool
     let copyOnly: (String) -> Bool
     let onClosed: () -> Void
@@ -449,7 +451,7 @@ private struct DiscussionPanel: View {
     @State private var agentReply = ""
     @State private var isWorking = false
     @State private var errorMessage: String?
-    @State private var agentInstructions: String?
+    @State private var confirmsEndDiscussion = false
 
     init(
         noteTitle: String,
@@ -463,6 +465,7 @@ private struct DiscussionPanel: View {
             String
         ) async throws -> PortableResearchDiscussion,
         finish: @escaping (UUID) async throws -> PortableResearchRecord,
+        end: @escaping (UUID) async throws -> Void,
         handoff: @escaping (String) -> Bool,
         copyOnly: @escaping (String) -> Bool,
         onClosed: @escaping () -> Void,
@@ -473,6 +476,7 @@ private struct DiscussionPanel: View {
         self.loadAgentInstructions = loadAgentInstructions
         self.append = append
         self.finish = finish
+        self.end = end
         self.handoff = handoff
         self.copyOnly = copyOnly
         self.onClosed = onClosed
@@ -491,6 +495,11 @@ private struct DiscussionPanel: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("End Discussion…", role: .destructive) {
+                    confirmsEndDiscussion = true
+                }
+                .disabled(isWorking)
+                .accessibilityIdentifier("scholium.discussion.end")
                 Button("Close") {
                     onClosed()
                     dismiss()
@@ -527,8 +536,15 @@ private struct DiscussionPanel: View {
         .task(id: discussion?.updatedAt) {
             await refreshExternalDiscussionState()
         }
-        .task(id: discussion?.id) {
-            await loadResolvedAgentInstructions()
+        .confirmationDialog(
+            "End this Discussion?",
+            isPresented: $confirmsEndDiscussion,
+            titleVisibility: .visible
+        ) {
+            Button("Keep Discussion", role: .cancel) {}
+            Button("End Discussion", role: .destructive, action: endExchange)
+        } message: {
+            Text("Scholium will revoke Agent access and preserve the current exchange as a finished Research Record.")
         }
     }
 
@@ -679,26 +695,42 @@ private struct DiscussionPanel: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Button("Copy and Open Agent App…") {
-                    guard let agentInstructions else { return }
-                    if !handoff(agentInstructions) {
-                        errorMessage = "Scholium could not prepare the agent handoff."
-                    }
+                    prepareAgentHandoff(openAgentApplication: true)
                 }
                 .buttonStyle(.bordered)
-                .disabled(agentInstructions == nil)
+                .disabled(isWorking || discussion == nil)
                 Button("Copy Only") {
-                    guard let agentInstructions else { return }
-                    if !copyOnly(agentInstructions) {
-                        errorMessage = "Scholium could not copy the agent request."
-                    }
+                    prepareAgentHandoff(openAgentApplication: false)
                 }
                 .buttonStyle(.link)
-                .disabled(agentInstructions == nil)
+                .disabled(isWorking || discussion == nil)
             }
-            Text("The Discussion is waiting for an agent reply. Closing this sheet leaves it active.")
+            Text("The Discussion is waiting for an Agent reply. Copying a new handoff replaces its prior pairing; closing this sheet leaves it active.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func prepareAgentHandoff(openAgentApplication: Bool) {
+        guard let discussion else { return }
+        isWorking = true
+        errorMessage = nil
+        Task { @MainActor in
+            do {
+                let instructions = try await loadAgentInstructions(discussion.id)
+                let succeeded = openAgentApplication
+                    ? handoff(instructions)
+                    : copyOnly(instructions)
+                if !succeeded {
+                    errorMessage = openAgentApplication
+                        ? "Scholium could not prepare the Agent handoff."
+                        : "Scholium could not copy the Agent handoff."
+                }
+            } catch {
+                errorMessage = "Scholium could not create a new Agent handoff. \(error.localizedDescription)"
+            }
+            isWorking = false
         }
     }
 
@@ -717,14 +749,15 @@ private struct DiscussionPanel: View {
                 )
                 self.discussion = updated
                 researcherMessage = ""
+                do {
+                    let instructions = try await loadAgentInstructions(updated.id)
+                    if !copyOnly(instructions) {
+                        errorMessage = "The Discussion was saved, but Scholium could not copy the Agent handoff."
+                    }
+                } catch {
+                    errorMessage = "The Discussion was saved, but Scholium could not create a new Agent handoff. \(error.localizedDescription)"
+                }
                 isWorking = false
-                guard let agentInstructions else {
-                    errorMessage = "The Discussion was saved, but its resolved Discuss Method is unavailable."
-                    return
-                }
-                if !copyOnly(agentInstructions) {
-                    errorMessage = "The Discussion was saved, but Scholium could not copy the agent handoff."
-                }
             } catch {
                 errorMessage = error.localizedDescription
                 isWorking = false
@@ -774,6 +807,23 @@ private struct DiscussionPanel: View {
         }
     }
 
+    private func endExchange() {
+        guard let discussion else { return }
+        isWorking = true
+        errorMessage = nil
+        Task { @MainActor in
+            do {
+                try await end(discussion.id)
+                isWorking = false
+                onFinished()
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isWorking = false
+            }
+        }
+    }
+
     @MainActor
     private func refreshExternalDiscussionState() async {
         guard var current = discussion else { return }
@@ -795,21 +845,6 @@ private struct DiscussionPanel: View {
                 // replace and coordinated readback. Keep the visible durable
                 // state and retry quietly while this sheet remains active.
             }
-        }
-    }
-
-    private func loadResolvedAgentInstructions() async {
-        guard let discussion,
-              discussion.action != nil,
-              discussion.method != nil else {
-            agentInstructions = nil
-            return
-        }
-        do {
-            agentInstructions = try await loadAgentInstructions(discussion.id)
-        } catch {
-            agentInstructions = nil
-            errorMessage = "The resolved Discuss Method is unavailable. \(error.localizedDescription)"
         }
     }
 
@@ -1016,6 +1051,7 @@ struct NoteContentView: View {
                 loadAgentInstructions: actions.loadDiscussionAgentInstructions,
                 append: actions.appendDiscussionStatement,
                 finish: actions.finishDiscussion,
+                end: actions.endDiscussion,
                 handoff: actions.handoffDiscussionRequest,
                 copyOnly: actions.copyDiscussionRequest,
                 onClosed: actions.clearRequestedDiscussion,
@@ -2101,6 +2137,7 @@ private extension CritiqueFindingDispositionDecision {
         refreshDiscussionProjection: {},
         appendDiscussionStatement: { _, _, _, _ in throw CancellationError() },
         finishDiscussion: { _ in throw CancellationError() },
+        endDiscussion: { _ in throw CancellationError() },
         clearRequestedDiscussion: {},
         handoffDiscussionRequest: { _ in true },
         copyDiscussionRequest: { _ in true },

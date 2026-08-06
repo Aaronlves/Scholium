@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Process-bound Research Agent sessions", .serialized)
 struct ResearchAgentSessionAuthorityTests {
-    @Test("Authenticated reload returns the frozen Method and Result Contract without leaking them into handoff")
+    @Test("Authenticated reload returns the frozen Method and Result Contract after one complete Agent handoff")
     func authenticatedRunContext() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -86,13 +86,18 @@ struct ResearchAgentSessionAuthorityTests {
         let handoff = try await handle.research.issueAgentHandoff(
             runID: preparation.runID
         )
-        #expect(!handoff.agentInstructions.contains(handoff.pairingCode.rawValue))
+        #expect(handoff.agentInstructions.contains(handoff.pairingCode.rawValue))
         #expect(!handoff.agentInstructions.contains(methodFolder.path))
         #expect(!handoff.agentInstructions.contains(exactMethod))
         #expect(!handoff.agentInstructions.contains(
             preparation.snapshot.method.primaryMarkdownRevision.sha256
         ))
         #expect(handoff.agentInstructions.contains(handoff.run.rawValue))
+        #expect(handoff.agentInstructions.contains("use the installed `scholium` CLI yourself"))
+        #expect(handoff.agentInstructions.contains(
+            "scholium agent context --run \(handoff.run.rawValue)"
+        ))
+        #expect(handoff.agentInstructions.contains("Do not ask the researcher to run"))
         #expect(String(describing: handoff.pairingCode) == "<redacted pairing code>")
         #expect(!String(reflecting: handoff).contains(handoff.pairingCode.rawValue))
 
@@ -353,7 +358,7 @@ struct ResearchAgentSessionAuthorityTests {
             canWrite: true,
             now: now
         )
-        #expect(!first.agentInstructions.contains(first.pairingCode.rawValue))
+        #expect(first.agentInstructions.contains(first.pairingCode.rawValue))
         #expect(!first.agentInstructions.contains("/Users/"))
         let firstCredential = try await authority.exchange(
             run: first.run,

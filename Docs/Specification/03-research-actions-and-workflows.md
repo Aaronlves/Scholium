@@ -110,23 +110,28 @@ resolved by the material itself.
 ### 8.2 Local pairing, layered delivery, and Research Context
 
 Direct Agent connection is local, provider-neutral, and bound to the current
-Scholium application process. The instructions copied to an Agent contain only
-a Run locator, connection route, and the requirement to ask the researcher to
-enter a code through standard input. The short-lived one-time **Pairing Code**
-is displayed separately inside Scholium and is never inserted into those
-instructions. Neither surface contains research text, complete method, local
-path, internal fingerprint, permission payload, result schema, Session secret,
-or reusable bearer authority.
+Scholium application process. The researcher deliberately copies one complete
+handoff into the selected Agent conversation. It contains the opaque Run
+locator, short-lived one-time **Pairing Code**, and direct instructions for the
+Agent to run the installed `scholium` CLI itself, enter that code through the
+pairing command's standard input, and load the authenticated Run context. The
+handoff contains no research text, complete method, local path, internal
+fingerprint, permission payload, result schema, Session secret, or reusable
+bearer authority.
 
 Pairing exchanges the one-time code for a hidden **Connection Session**. The
 Pairing Code and Session secret are independently generated from an Apple
 Security cryptographic random source whose success is checked. A code is
 single-use and invalid attempts are bounded. The server stores only the digest
 and binding needed to validate a Session. Raw codes and credentials are not
-general Codable or printable domain values; the protected bridge and CLI
-credential store use private, explicit wire/storage adapters. The Pairing Code
-enters pairing only through standard input, and neither secret enters the
-research vault, copied Agent instructions, prompt, URL, command argument,
+general Codable or printable domain values; the typed handoff presentation
+explicitly unwraps the one-use code for researcher-directed copy, while the
+protected bridge and CLI credential store use private wire/storage adapters.
+The Pairing Code
+may enter only the researcher-selected Agent conversation and pairing standard
+input. It never enters the research vault, command argument, URL, file,
+ordinary output, log, later prompt, Result, or Record. The reusable Session
+secret never enters any copied handoff, prompt, vault, command argument, URL,
 ordinary output, or log.
 
 A Session binds the current macOS user, current application-process

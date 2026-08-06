@@ -40,8 +40,9 @@ public struct ResearchPairingCode: RawRepresentable, Hashable, Sendable,
     public var debugDescription: String { description }
 }
 
-/// Ephemeral presentation value. The Pairing Code remains visibly separated
-/// in Scholium and never enters the instructions copied to an Agent.
+/// Ephemeral presentation value deliberately copied by the researcher to the
+/// selected Agent. The reusable Session credential remains hidden behind the
+/// protected local bridge.
 public struct ResearchAgentHandoff: Hashable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
@@ -62,8 +63,9 @@ public struct ResearchAgentHandoff: Hashable, Sendable, CustomStringConvertible,
     public var agentInstructions: String {
         """
         Scholium Run: \(run.rawValue)
-        Connect: scholium agent pair --run \(run.rawValue)
-        When the command requests it, ask the researcher to enter the one-time Pairing Code shown in Scholium through standard input. Never request or place that code in the Agent conversation, a command argument, URL, file, or log. The CLI stores the hidden Session credential in protected local state.
+        Pairing Code: \(pairingCode.rawValue)
+
+        Agent: use the installed `scholium` CLI yourself. Run `scholium agent pair --run \(run.rawValue)`, enter the Pairing Code above when the command asks through standard input, then run `scholium agent context --run \(run.rawValue)`. Do not ask the researcher to run these commands.
         """
     }
 

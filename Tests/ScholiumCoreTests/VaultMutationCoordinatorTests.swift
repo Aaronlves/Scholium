@@ -381,6 +381,93 @@ struct VaultMutationCoordinatorTests {
         #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
     }
 
+    @Test("Update accepts a valid quarantine attribute added by the sandbox")
+    func updateAcceptsSandboxAddedQuarantineAttribute() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let quarantineName = "com.apple.quarantine"
+        let quarantine = Data(
+            "0081;6A620F27;Scholium;00000000-0000-0000-0000-000000000001".utf8
+        )
+        let coordinator = VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                guard phase == .swapped else { return }
+                try setExtendedAttribute(
+                    quarantine,
+                    name: quarantineName,
+                    at: fixture.note
+                )
+            })
+        )
+
+        try coordinator.updateExisting(
+            path: fixture.path,
+            expected: fixture.original,
+            candidate: fixture.candidate
+        )
+
+        #expect(
+            try extendedAttribute(name: quarantineName, at: fixture.note)
+                == quarantine
+        )
+        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
+    }
+
+    @Test("Update rejects an ordinary extended attribute added during commit")
+    func updateRejectsAddedOrdinaryExtendedAttribute() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let attributeName = "com.scholium.unexpected-metadata"
+        let coordinator = VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                guard phase == .swapped else { return }
+                try setExtendedAttribute(
+                    Data("unexpected".utf8),
+                    name: attributeName,
+                    at: fixture.note
+                )
+            })
+        )
+
+        #expect(throws: VaultRepositoryError.self) {
+            try coordinator.updateExisting(
+                path: fixture.path,
+                expected: fixture.original,
+                candidate: fixture.candidate
+            )
+        }
+        #expect(try Data(contentsOf: fixture.note) == fixture.original)
+    }
+
+    @Test("Update rejects a malformed quarantine attribute added during commit")
+    func updateRejectsMalformedAddedQuarantineAttribute() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let quarantineName = "com.apple.quarantine"
+        let coordinator = VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                guard phase == .swapped else { return }
+                try setExtendedAttribute(
+                    Data("not-a-quarantine-envelope".utf8),
+                    name: quarantineName,
+                    at: fixture.note
+                )
+            })
+        )
+
+        #expect(throws: VaultRepositoryError.self) {
+            try coordinator.updateExisting(
+                path: fixture.path,
+                expected: fixture.original,
+                candidate: fixture.candidate
+            )
+        }
+        #expect(try Data(contentsOf: fixture.note) == fixture.original)
+    }
+
     @Test("Update rejects a quarantine security or event identity change")
     func updateRejectsChangedQuarantineAuthority() throws {
         let fixture = try Fixture()
@@ -417,6 +504,43 @@ struct VaultMutationCoordinatorTests {
             )
         }
         #expect(try Data(contentsOf: fixture.note) == fixture.original)
+    }
+
+    @Test("Update rejects removal of an existing quarantine attribute")
+    func updateRejectsRemovedQuarantineAttribute() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let quarantineName = "com.apple.quarantine"
+        let quarantine = Data(
+            "0081;66A1B2C3;Scholium;00000000-0000-0000-0000-000000000001".utf8
+        )
+        try setExtendedAttribute(
+            quarantine,
+            name: quarantineName,
+            at: fixture.note
+        )
+        let coordinator = VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                guard phase == .swapped else { return }
+                guard removexattr(fixture.note.path, quarantineName, 0) == 0 else {
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+            })
+        )
+
+        #expect(throws: VaultRepositoryError.self) {
+            try coordinator.updateExisting(
+                path: fixture.path,
+                expected: fixture.original,
+                candidate: fixture.candidate
+            )
+        }
+        #expect(try Data(contentsOf: fixture.note) == fixture.original)
+        #expect(
+            try extendedAttribute(name: quarantineName, at: fixture.note)
+                == quarantine
+        )
     }
 
     @Test("Deletion never converts a presence error into confirmed absence")

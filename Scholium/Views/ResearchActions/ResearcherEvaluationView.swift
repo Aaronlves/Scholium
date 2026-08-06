@@ -579,7 +579,7 @@ struct ResearchMethodFeedbackView: View {
                             )
                             improvementMessage = copied
                                 ? String(localized:
-                                    "Copied the instructions without the Pairing Code."
+                                    "Copied the complete Method improvement handoff."
                                 )
                                 : String(localized:
                                     "The improvement handoff could not be copied."
@@ -595,7 +595,7 @@ struct ResearchMethodFeedbackView: View {
                                 "scholium.methodFeedback.pairingCode"
                             )
                     }
-                    Text("Enter the Pairing Code only through the CLI's standard input. It expires \(handoff.expiresAt, style: .relative) and is not included in the copied instructions.")
+                    Text("The copied handoff includes this one-time Pairing Code. It expires \(handoff.expiresAt, style: .relative).")
                         .font(.caption)
                         .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 }
@@ -759,7 +759,7 @@ struct ResearchMethodFeedbackView: View {
             do {
                 improvementHandoff = try await startImprovement()
                 improvementMessage = String(localized:
-                    "The local Method improvement Run is ready. Copy the handoff, then provide the Pairing Code only through standard input."
+                    "The local Method improvement Run is ready. Copy the complete handoff to the Agent."
                 )
             } catch {
                 improvementMessage = error.localizedDescription
@@ -773,7 +773,11 @@ struct ResearchMethodFeedbackView: View {
     ) -> String {
         """
         Continue one Scholium Method improvement Run on this Mac.
-        1. Run `scholium agent pair --run \(handoff.run.rawValue)` and enter the one-time Pairing Code only through standard input; never request or place it in the conversation, command arguments, a URL, a file, or a log.
+        Scholium Run: \(handoff.run.rawValue)
+        Pairing Code: \(handoff.pairingCode.rawValue)
+
+        Agent: use the installed `scholium` CLI yourself.
+        1. Run `scholium agent pair --run \(handoff.run.rawValue)` and enter the Pairing Code above through standard input.
         2. Run `scholium agent method-context --run \(handoff.run.rawValue)` to receive the exact researcher comment, frozen primary Method, linked Practices, and revisions.
         3. Decide whether the issue concerns the Method or Practice rather than execution, material, provider, request, or preference. Submit at most one exact file replacement, or an explicit no-change/unavailable diagnosis, with `scholium agent improve-method --run \(handoff.run.rawValue) --from <json|->`.
         4. End local access with `scholium agent end --run \(handoff.run.rawValue)`. Do not edit the Method files directly or reuse authority from another Run.

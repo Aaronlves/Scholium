@@ -44,13 +44,15 @@ and incremental/clean-build equivalence. Passing retrieval fixtures does not
 establish philosophical relevance, evidential support, or researcher
 acceptance.
 
-Direct-Agent evidence includes locator/route-only Agent instructions plus a
-separately displayed stdin-only Pairing Code; single-use secure pairing;
-authenticated local Session; app-process restart invalidation and
-same-Run re-pairing; no secret in prompt, argument, URL, vault, or log; App
-Group socket packaging; current-Run scope; reload; Research Context; bounded
-multi-document write and recovery; keyboard/VoiceOver; and an unavailable
-fallback. It does not require an embedded or provider-specific Agent runtime.
+Direct-Agent evidence includes one researcher-copied handoff with the Run
+locator, one-use Pairing Code, and Agent-owned CLI steps; pairing-code input
+through stdin; single-use secure pairing; authenticated local Session;
+app-process restart invalidation and same-Run re-pairing; no Pairing Code in an
+argument, URL, vault, file, later prompt, Result, Record, or log; no Session
+secret in any prompt or copied handoff; App Group socket packaging; current-Run
+scope; reload; Research Context; explicit End Action; bounded multi-document
+write and recovery; keyboard/VoiceOver; and an unavailable fallback. It does
+not require an embedded or provider-specific Agent runtime.
 
 For material evidence, use disposable fixtures and retain command, source
 revision, Xcode/SDK, build, fixture identity, result, and artifact location.

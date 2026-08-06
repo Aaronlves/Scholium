@@ -4,6 +4,53 @@ import Foundation
 import Testing
 
 extension ResearchFunctionOperationsTests {
+    @Test("Researcher ending an unfinished Discussion preserves it and rejects later Agent access")
+    func researcherEndsActiveDiscussion() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .discuss,
+                target: actionNote(target),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Which premise needs the most support?"),
+                ]
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+
+        try await handle.research.cancelAction(runID: preparation.runID)
+
+        #expect(try await handle.research.activeDiscussions(noteID: nil).isEmpty)
+        let finished = try await handle.research.finishedResearchRecords(noteID: nil)
+        #expect(finished.contains {
+            $0.id == preparation.runID
+                && $0.statements.map(\.text) == ["Which premise needs the most support?"]
+        })
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await handle.research.authenticatedAgentContext(
+                credential: credential,
+                run: handoff.run
+            )
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Discuss stays read-only, requires durable attributed response evidence, and prepared runs cancel durably")
     func dialogueAndCancellation() async throws {
         let fixture = try await ResearchFixture.make()

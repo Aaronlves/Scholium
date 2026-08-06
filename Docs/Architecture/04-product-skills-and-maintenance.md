@@ -130,8 +130,10 @@ side. Pairing records bind Run, local effective UID, process generation,
 expiry, bounded failed-attempt count, consumed state, and revocation. Sessions
 bind secret digest, UID, generation, expiry, revoked state, allowed Runs, and
 which Run currently has write capability. Raw codes/secrets are non-Codable and
-redacted from descriptions and logs. Only private bridge and protected CLI
-storage adapters explicitly unwrap them for their one required boundary.
+redacted from descriptions and logs. The typed handoff presentation explicitly
+unwraps only the one-use Pairing Code for researcher-directed copy; private
+bridge and protected CLI storage adapters unwrap Pairing Code or Session bytes
+only at their required local boundaries.
 
 The coordinator is initialized with a fresh unpersisted process-generation
 nonce. No Session decoder, Keychain item, Application Support file, Run file,

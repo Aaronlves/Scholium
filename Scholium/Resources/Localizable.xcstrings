@@ -3937,22 +3937,6 @@
         }
       }
     },
-    "Cancel Run" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Cancel Run"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取消运行"
-          }
-        }
-      }
-    },
     "Cancelled" : {
       "localizations" : {
         "en" : {
@@ -6320,12 +6304,12 @@
         }
       }
     },
-    "Copied the instructions without the Pairing Code." : {
+    "Copied the complete Method improvement handoff." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已复制不含配对码的说明。"
+            "value" : "已复制完整的方法改进交接信息。"
           }
         }
       }
@@ -6356,22 +6340,22 @@
         }
       }
     },
-    "Copies non-secret connection instructions, then asks you to choose an application to remember and open. You paste and submit them yourself; the Pairing Code remains separate in Scholium." : {
+    "Copies the prepared Run handoff and one-time Pairing Code, then asks you to choose an application to remember and open. You paste and submit the handoff yourself." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "复制不含秘密的连接说明，然后请你选择要记住并打开的应用。你需要自行粘贴并提交；配对码仍单独显示在 Scholium 中。"
+            "value" : "复制已准备的运行交接信息和一次性配对码，然后请你选择要记住并打开的应用。你需要自行粘贴并提交交接信息。"
           }
         }
       }
     },
-    "Copies non-secret connection instructions, then opens %@. You paste and submit them yourself; the Pairing Code remains separate in Scholium." : {
+    "Copies the prepared Run handoff and one-time Pairing Code, then opens %@. You paste and submit the handoff yourself." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "复制不含秘密的连接说明，然后打开 %@。你需要自行粘贴并提交；配对码仍单独显示在 Scholium 中。"
+            "value" : "复制已准备的运行交接信息和一次性配对码，然后打开 %@。你需要自行粘贴并提交交接信息。"
           }
         }
       }
@@ -9377,6 +9361,46 @@
         }
       }
     },
+    "End Action" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束操作"
+          }
+        }
+      }
+    },
+    "End Action…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束操作…"
+          }
+        }
+      }
+    },
+    "End Discussion" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束讨论"
+          }
+        }
+      }
+    },
+    "End Discussion…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束讨论…"
+          }
+        }
+      }
+    },
     "End inset" : {
       "localizations" : {
         "en" : {
@@ -9389,6 +9413,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "末端内边距"
+          }
+        }
+      }
+    },
+    "End this Action?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要结束此操作吗？"
+          }
+        }
+      }
+    },
+    "End this Discussion?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要结束此讨论吗？"
           }
         }
       }
@@ -9463,26 +9507,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每行输入一个材料边界"
-          }
-        }
-      }
-    },
-    "Enter the Pairing Code only through the CLI's standard input. It expires %@ and is not included in the copied instructions." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅通过 CLI 的标准输入输入配对码。它将于 %@ 过期，且不会包含在复制的说明中。"
-          }
-        }
-      }
-    },
-    "Enter this one-time code only when `scholium agent pair` asks on standard input. Do not paste it into the Agent conversation or command." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅当 scholium agent pair 通过标准输入请求时，才输入这个一次性代码。不要把它粘贴到智能体对话或命令中。"
           }
         }
       }
@@ -11896,6 +11920,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "期刊、出版社、课程、活动或其他投稿或使用目标。"
+          }
+        }
+      }
+    },
+    "Keep Action" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留操作"
+          }
+        }
+      }
+    },
+    "Keep Discussion" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留讨论"
           }
         }
       }
@@ -22034,6 +22078,26 @@
         }
       }
     },
+    "Scholium will revoke Agent access and end this unfinished Run. Confirmed changes, conflicts, and recovery records remain available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 将撤销智能体访问权限，并结束这个未完成的运行。已确认的更改、冲突和恢复记录仍可用。"
+          }
+        }
+      }
+    },
+    "Scholium will revoke Agent access and preserve the current exchange as a finished Research Record." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 将撤销智能体访问权限，并将当前交流保留为已完成的研究记录。"
+          }
+        }
+      }
+    },
     "Scholium will store Zotero item %@ in the Analysis so future matches are stable. Zotero itself remains unchanged." : {
       "localizations" : {
         "en" : {
@@ -24068,18 +24132,12 @@
         }
       }
     },
-    "The Discussion is waiting for an agent reply. Closing this sheet leaves it active." : {
+    "The Discussion is waiting for an Agent reply. Copying a new handoff replaces its prior pairing; closing this sheet leaves it active." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The Discussion is waiting for an agent reply. Closing this sheet leaves it active."
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此讨论正在等待智能体回复。关闭此工作表后，它仍会保持活跃。"
+            "value" : "此讨论正在等待智能体回复。复制新的交接内容会替换此前的配对；关闭此工作表后，讨论仍会保持活跃。"
           }
         }
       }
@@ -24242,6 +24300,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "候选内容已恢复，但研究文档、搜索或其他派生视图可能仍是旧状态。请使用“刷新”，不要重复执行恢复。%@"
+          }
+        }
+      }
+    },
+    "The copied handoff includes this one-time Pairing Code. It expires %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制的交接信息中已包含此一次性配对码。它将于 %@ 过期。"
           }
         }
       }
@@ -24567,12 +24635,12 @@
         }
       }
     },
-    "The local Method improvement Run is ready. Copy the handoff, then provide the Pairing Code only through standard input." : {
+    "The local Method improvement Run is ready. Copy the complete handoff to the Agent." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本机方法改进 Run 已就绪。复制交接说明，然后仅通过标准输入提供配对码。"
+            "value" : "本机方法改进运行已就绪。请将完整交接信息复制给智能体。"
           }
         }
       }
@@ -25579,6 +25647,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此次决定可能创建一个新的独立运行。Scholium 将解析其当前方法、配置、协作策略、能力、目标身份和修订；它不会继承先前运行的搜索响应、写入集合或能力。"
+          }
+        }
+      }
+    },
+    "This one-time code is included in the copied Agent handoff. The Agent uses it to pair through the CLI." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制给智能体的交接信息中已包含此一次性配对码。智能体将通过 CLI 使用它完成配对。"
           }
         }
       }
@@ -26980,12 +27058,12 @@
         }
       }
     },
-    "Validates and freezes this Action, then copies non-secret connection instructions without the Pairing Code, research content, or local paths." : {
+    "Validates and freezes this Action, then copies the Run locator, one-time Pairing Code, and CLI steps for the Agent." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "校验并冻结此操作，然后复制不含配对码、研究内容或本地路径的非秘密连接说明。"
+            "value" : "验证并冻结此操作，然后复制运行定位符、一次性配对码以及供智能体执行的 CLI 步骤。"
           }
         }
       }

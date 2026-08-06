@@ -233,7 +233,11 @@ final class ResearchController: ObservableObject {
     }
 
     func discussionAgentInstructions(id: UUID) async throws -> String {
-        try await requireActions().actionRun(id: id).instructions
+        let handoff = try await requireActions().issueAgentHandoff(
+            runID: id,
+            validity: 10 * 60
+        )
+        return handoff.agentInstructions
     }
 
     @discardableResult
@@ -256,6 +260,11 @@ final class ResearchController: ObservableObject {
     @discardableResult
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord {
         try await requireRecords().finishDiscussion(discussionID: discussionID)
+    }
+
+    func endDiscussion(id: UUID) async throws {
+        try await requireActions().cancelAction(runID: id)
+        try await refreshRecordProjection(after: "The Discussion cancellation")
     }
 
     @discardableResult
