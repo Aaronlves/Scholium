@@ -2490,7 +2490,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
-            explanation: ast.explanation,
+            explanation: ast.explanation(scope: request.presentationScope),
             freshnessToken: .record(execution.generation),
             availability: .record(execution.availability),
             results: execution.results.map(SearchResult.record),
@@ -2581,7 +2581,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
-            explanation: parsed.explanation,
+            explanation: parsed.explanation(scope: request.presentationScope),
             freshnessToken: freshness,
             availability: availability,
             results: [],

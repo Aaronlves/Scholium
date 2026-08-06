@@ -377,22 +377,34 @@ extension ScholiumCLI {
     private struct SearchExplanationRecord: Encodable {
         let provider: SearchProvider
         let providerWasExplicit: Bool
+        let scope: SearchPresentationScope
         let `operator`: SearchExplanationOperator
         let clauses: [SearchExplanationClauseRecord]
+        let normalization: [SearchExplanationNormalization]
+        let ordering: SearchExplanationOrdering
+        let limitations: [SearchExplanationLimitation]
 
         init(_ explanation: SearchExplanation) {
             provider = explanation.provider
             providerWasExplicit = explanation.providerWasExplicit
+            scope = explanation.scope
             `operator` = explanation.operator
             clauses = explanation.clauses.map(SearchExplanationClauseRecord.init)
+            normalization = explanation.normalization
+            ordering = explanation.ordering
+            limitations = explanation.limitations
         }
 
         var textDescription: String {
             let providerSource = providerWasExplicit ? "explicit" : "default"
             let clauseText = clauses.map(\.textDescription).joined(separator: " AND ")
-            return clauseText.isEmpty
+            let query = clauseText.isEmpty
                 ? "provider=\(provider.rawValue) (\(providerSource)); no clauses"
                 : "provider=\(provider.rawValue) (\(providerSource)); \(clauseText)"
+            let normalizationText = normalization.map(\.rawValue).joined(separator: ",")
+            let limitationText = limitations.map(\.rawValue).joined(separator: ",")
+            return "\(query); scope=\(scope.rawValue); normalization=\(normalizationText); "
+                + "ordering=\(ordering.rawValue); limitations=\(limitationText)"
         }
     }
 

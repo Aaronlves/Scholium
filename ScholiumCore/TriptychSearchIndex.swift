@@ -502,7 +502,7 @@ public actor TriptychSearchIndex {
                 return SearchResponse(
                     requestID: request.id,
                     scope: request.presentationScope,
-                    explanation: ast.explanation,
+                    explanation: ast.explanation(scope: request.presentationScope),
                     freshnessToken: freshness,
                     availability: .note(availability),
                     results: [],
@@ -519,7 +519,7 @@ public actor TriptychSearchIndex {
                 return SearchResponse(
                     requestID: request.id,
                     scope: request.presentationScope,
-                    explanation: ast.explanation,
+                    explanation: ast.explanation(scope: request.presentationScope),
                     freshnessToken: freshness,
                     availability: .note(availability),
                     results: [],
@@ -536,7 +536,7 @@ public actor TriptychSearchIndex {
                 return SearchResponse(
                     requestID: request.id,
                     scope: request.presentationScope,
-                    explanation: ast.explanation,
+                    explanation: ast.explanation(scope: request.presentationScope),
                     freshnessToken: freshness,
                     availability: .note(availability),
                     results: [],
@@ -595,7 +595,7 @@ public actor TriptychSearchIndex {
             return SearchResponse(
                 requestID: request.id,
                 scope: request.presentationScope,
-                explanation: ast.explanation,
+                explanation: ast.explanation(scope: request.presentationScope),
                 freshnessToken: freshness,
                 availability: .note(availability),
                 results: [],
@@ -688,7 +688,7 @@ public actor TriptychSearchIndex {
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
-            explanation: ast.explanation,
+            explanation: ast.explanation(scope: request.presentationScope),
             freshnessToken: freshness,
             availability: .note(availability),
             results: hits.map(SearchResult.note),
@@ -757,7 +757,7 @@ public actor TriptychSearchIndex {
             return SearchResponse(
                 requestID: request.id,
                 scope: request.presentationScope,
-                explanation: ast.explanation,
+                explanation: ast.explanation(scope: request.presentationScope),
                 freshnessToken: freshness,
                 availability: .note(availability),
                 results: [],
@@ -794,7 +794,7 @@ public actor TriptychSearchIndex {
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
-            explanation: ast.explanation,
+            explanation: ast.explanation(scope: request.presentationScope),
             freshnessToken: freshness,
             availability: .note(availability),
             results: hits.map(SearchResult.note),

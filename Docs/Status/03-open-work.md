@@ -110,12 +110,18 @@ lexical, Property and direct-relation clauses, CJK handling, exact identities,
 rank reasons, This Note occurrences, provider freshness, Saved Search state,
 CLI parity, completion, and a typed explanation response.
 
+**Current implementation**
+
+The window projection retains the Application-provided explanation and the
+Search view renders its provider, authorized scope, typed clauses and relation
+direction, normalization, ordering, and limitations without reparsing visible
+query text. CLI text and JSONL consume the same response fields, and the typed
+contract is covered by focused Contracts, Core, CLI-schema, and frontend
+architecture tests.
+
 **Next implementation**
 
-The window projection now retains the Application-provided explanation and the
-Search view renders it without reparsing visible query text. Complete
-normalization, ordering, and limitation detail in that one typed owner. Add
-dynamic Property-key and Note-identity completion only if observed use
+Add dynamic Property-key and Note-identity completion only if observed use
 justifies the extra scoped context.
 
 **Next evidence**

@@ -51,7 +51,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
     }
 
     @Test("Search v6 records its 2,056-note cold, warm, and incremental acceptance evidence")
-    func searchV5AcceptanceEvidence() async throws {
+    func searchFoundationAcceptanceEvidence() async throws {
         let root = repositoryRoot
             .appendingPathComponent(".build/search-v6-performance-artifacts", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)

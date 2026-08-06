@@ -417,11 +417,13 @@ struct WindowSearchControllerTests {
 
     private func explanation(
         provider: SearchProvider,
-        explicit: Bool = false
+        explicit: Bool = false,
+        scope: SearchPresentationScope = .triptych
     ) -> SearchExplanation {
         SearchExplanation(
             provider: provider,
             providerWasExplicit: explicit,
+            scope: scope,
             clauses: []
         )
     }

@@ -187,6 +187,26 @@ public enum SearchExplanationOperator: String, Codable, Hashable, Sendable {
     case and
 }
 
+public enum SearchExplanationNormalization: String, Codable, Hashable, Sendable {
+    case canonicalUnicodeCaseWhitespace = "canonical_unicode_case_whitespace"
+    case lexicalUnicodeCaseDiacriticWhitespace = "lexical_unicode_case_diacritic_whitespace"
+    case cjkCharacterAndOverlappingBigramProjection = "cjk_character_and_overlapping_bigram_projection"
+    case caseSensitiveTopLevelPropertyKey = "case_sensitive_top_level_property_key"
+}
+
+public enum SearchExplanationOrdering: String, Codable, Hashable, Sendable {
+    case noteExactIdentityThenBM25ThenTitleRolePath = "note_exact_identity_then_bm25_then_title_role_path"
+    case recordPinnedThenFinishedAtThenUUID = "record_pinned_then_finished_at_then_uuid"
+}
+
+public enum SearchExplanationLimitation: String, Codable, Hashable, Sendable {
+    case authorizedScopeOnly = "authorized_scope_only"
+    case retrievalLeadNotEvidence = "retrieval_lead_not_evidence"
+    case noCrossProviderRanking = "no_cross_provider_ranking"
+    case noteRelationsDirectOnly = "note_relations_direct_only"
+    case recordNoCrossObjectRelevance = "record_no_cross_object_relevance"
+}
+
 public enum SearchExplanationClauseKind: Codable, Hashable, Sendable {
     case lexical(SearchLexicalField?, String, SearchLexicalMatchKind, Bool)
     case structured(SearchStructuredField, String, Bool)
@@ -208,19 +228,53 @@ public struct SearchExplanationClause: Codable, Hashable, Sendable {
 public struct SearchExplanation: Codable, Hashable, Sendable {
     public let provider: SearchProvider
     public let providerWasExplicit: Bool
+    public let scope: SearchPresentationScope
     public let `operator`: SearchExplanationOperator
     public let clauses: [SearchExplanationClause]
+    public let normalization: [SearchExplanationNormalization]
+    public let ordering: SearchExplanationOrdering
+    public let limitations: [SearchExplanationLimitation]
 
     public init(
         provider: SearchProvider,
         providerWasExplicit: Bool,
+        scope: SearchPresentationScope,
         operator: SearchExplanationOperator = .and,
         clauses: [SearchExplanationClause]
     ) {
         self.provider = provider
         self.providerWasExplicit = providerWasExplicit
+        self.scope = scope
         self.operator = `operator`
         self.clauses = clauses
+        self.normalization = Self.normalization(for: provider)
+        self.ordering = switch provider {
+        case .note: .noteExactIdentityThenBM25ThenTitleRolePath
+        case .record: .recordPinnedThenFinishedAtThenUUID
+        }
+        self.limitations = switch provider {
+        case .note:
+            [.authorizedScopeOnly, .retrievalLeadNotEvidence, .noCrossProviderRanking,
+             .noteRelationsDirectOnly]
+        case .record:
+            [.authorizedScopeOnly, .retrievalLeadNotEvidence, .noCrossProviderRanking,
+             .recordNoCrossObjectRelevance]
+        }
+    }
+
+    private static func normalization(
+        for provider: SearchProvider
+    ) -> [SearchExplanationNormalization] {
+        switch provider {
+        case .note:
+            [.canonicalUnicodeCaseWhitespace,
+             .lexicalUnicodeCaseDiacriticWhitespace,
+             .cjkCharacterAndOverlappingBigramProjection,
+             .caseSensitiveTopLevelPropertyKey]
+        case .record:
+            [.canonicalUnicodeCaseWhitespace,
+             .lexicalUnicodeCaseDiacriticWhitespace]
+        }
     }
 }
 
@@ -288,10 +342,11 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
         }
     }
 
-    public var explanation: SearchExplanation {
+    public func explanation(scope: SearchPresentationScope) -> SearchExplanation {
         SearchExplanation(
             provider: provider,
             providerWasExplicit: providerWasExplicit,
+            scope: scope,
             clauses: clauses.map { clause in
                 switch clause {
                 case .lexical(let value):
@@ -362,10 +417,11 @@ public struct SearchQueryParseResult: Codable, Hashable, Sendable {
 
     public var isValid: Bool { ast != nil && diagnostics.isEmpty }
 
-    public var explanation: SearchExplanation {
-        ast?.explanation ?? SearchExplanation(
+    public func explanation(scope: SearchPresentationScope) -> SearchExplanation {
+        ast?.explanation(scope: scope) ?? SearchExplanation(
             provider: provider,
             providerWasExplicit: providerWasExplicit,
+            scope: scope,
             clauses: []
         )
     }

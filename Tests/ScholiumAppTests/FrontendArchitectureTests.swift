@@ -1648,6 +1648,7 @@ struct FrontendArchitectureTests {
             explanation: SearchExplanation(
                 provider: .note,
                 providerWasExplicit: false,
+                scope: .triptych,
                 clauses: []
             ),
             freshnessToken: .triptych(generation),
@@ -1698,6 +1699,7 @@ struct FrontendArchitectureTests {
             explanation: SearchExplanation(
                 provider: .note,
                 providerWasExplicit: false,
+                scope: .triptych,
                 clauses: []
             ),
             freshnessToken: freshness,
@@ -1725,6 +1727,7 @@ struct FrontendArchitectureTests {
             explanation: SearchExplanation(
                 provider: .note,
                 providerWasExplicit: false,
+                scope: .thisNote,
                 clauses: []
             ),
             freshnessToken: freshness,
@@ -1745,6 +1748,7 @@ struct FrontendArchitectureTests {
             explanation: SearchExplanation(
                 provider: .note,
                 providerWasExplicit: false,
+                scope: .thisNote,
                 clauses: []
             ),
             freshnessToken: freshness,
@@ -1836,6 +1840,12 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(source.contains("controller.search.explanation"))
+        #expect(source.contains("localizedScopeTitle(explanation.scope)"))
+        #expect(source.contains("explanation.providerWasExplicit"))
+        #expect(source.contains("explanation.operator"))
+        #expect(source.contains("explanation.normalization"))
+        #expect(source.contains("explanation.ordering"))
+        #expect(source.contains("explanation.limitations"))
         #expect(!source.contains("SearchQueryParser.parse"))
         #expect(source.contains("switch clause.kind"))
         #expect(source.contains("case .lexical("))

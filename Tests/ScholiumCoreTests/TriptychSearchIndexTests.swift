@@ -38,6 +38,8 @@ struct TriptychSearchIndexTests {
         #expect(publication.generation.sequence == 1)
 
         let triptych = try await index.testSearch(fixture.request("autonomy", scope: .triptych))
+        #expect(triptych.explanation.scope == .triptych)
+        #expect(triptych.explanation.ordering == .noteExactIdentityThenBM25ThenTitleRolePath)
         #expect(triptych.noteResults.first?.relativePath == "Autonomy.md")
         #expect(triptych.noteResults.first?.rankReason == .exactTitle)
         #expect(triptych.noteResults.contains { $0.vaultRole == .sourceCorpus })
@@ -47,6 +49,7 @@ struct TriptychSearchIndexTests {
             "autonomy",
             scope: .currentVault(fixture.works.id)
         ))
+        #expect(vault.explanation.scope == .currentVault)
         #expect(vault.noteResults.map(\.relativePath) == ["Chapter.md"])
         #expect(vault.noteResults.allSatisfy { $0.vaultID == fixture.works.id })
     }

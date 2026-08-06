@@ -1175,9 +1175,10 @@ struct ResearchRecordBrowserModelTests {
         )
         let freshness = SearchFreshnessToken.record(generation)
         let parsed = SearchQueryParser.parse(request.query)
-        let explanation = parsed.ast?.explanation ?? SearchExplanation(
+        let explanation = parsed.ast?.explanation(scope: request.presentationScope) ?? SearchExplanation(
             provider: .record,
             providerWasExplicit: true,
+            scope: request.presentationScope,
             clauses: []
         )
         let results = records.compactMap { record -> SearchResult? in
@@ -1228,6 +1229,7 @@ struct ResearchRecordBrowserModelTests {
             explanation: SearchExplanation(
                 provider: .note,
                 providerWasExplicit: false,
+                scope: request.presentationScope,
                 clauses: []
             ),
             freshnessToken: .triptych(generation),

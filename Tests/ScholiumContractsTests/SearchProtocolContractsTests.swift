@@ -162,10 +162,30 @@ struct SearchProtocolContractsTests {
         let ast = try #require(SearchQueryParser.parse(
             #"kind:note property:author="Arendt" to-note:"Agency" relation:incompatible title:freedom"#
         ).ast)
-        let explanation = ast.explanation
+        let explanation = ast.explanation(scope: .currentVault)
         #expect(explanation.provider == .note)
+        #expect(explanation.scope == .currentVault)
         #expect(explanation.operator == .and)
         #expect(explanation.clauses.count == ast.clauses.count)
+        #expect(explanation.normalization == [
+            .canonicalUnicodeCaseWhitespace,
+            .lexicalUnicodeCaseDiacriticWhitespace,
+            .cjkCharacterAndOverlappingBigramProjection,
+            .caseSensitiveTopLevelPropertyKey,
+        ])
+        #expect(explanation.ordering == .noteExactIdentityThenBM25ThenTitleRolePath)
+        #expect(explanation.limitations.contains(.noteRelationsDirectOnly))
+        let recordExplanation = try #require(
+            SearchQueryParser.parse("kind:record participant:researcher")
+                .ast
+        ).explanation(scope: .triptych)
+        #expect(recordExplanation.scope == .triptych)
+        #expect(recordExplanation.normalization == [
+            .canonicalUnicodeCaseWhitespace,
+            .lexicalUnicodeCaseDiacriticWhitespace,
+        ])
+        #expect(recordExplanation.ordering == .recordPinnedThenFinishedAtThenUUID)
+        #expect(recordExplanation.limitations.contains(.recordNoCrossObjectRelevance))
         #expect(explanation.clauses.contains {
             if case .property(let key, let value) = $0.kind {
                 return key == "author" && value == "arendt"

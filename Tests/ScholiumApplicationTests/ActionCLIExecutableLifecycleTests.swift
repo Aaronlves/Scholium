@@ -420,7 +420,11 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(availability["provider"] as? String == SearchProvider.note.rawValue)
         #expect(availability["status"] as? String == "current")
         #expect(records.first?["freshness_token"] as? [String: Any] != nil)
-        #expect(records.first?["explanation"] as? [String: Any] != nil)
+        let explanation = try #require(records.first?["explanation"] as? [String: Any])
+        #expect(explanation["scope"] as? String == SearchPresentationScope.triptych.rawValue)
+        #expect(explanation["normalization"] as? [Any] != nil)
+        #expect(explanation["ordering"] as? String == SearchExplanationOrdering.noteExactIdentityThenBM25ThenTitleRolePath.rawValue)
+        #expect(explanation["limitations"] as? [Any] != nil)
         #expect(records.dropFirst().allSatisfy { $0["type"] as? String == "search_result" })
         #expect(records.dropFirst().allSatisfy {
             $0["provider"] as? String == SearchProvider.note.rawValue
@@ -440,6 +444,10 @@ struct ActionCLIExecutableLifecycleTests {
         ]).stdout, as: UTF8.self)
         #expect(text.contains("Search contract=\(SearchContract.currentVersion) provider=note"))
         #expect(text.contains("Explain: provider=note"))
+        #expect(text.contains("scope=triptych"))
+        #expect(text.contains("normalization="))
+        #expect(text.contains("ordering="))
+        #expect(text.contains("limitations="))
         #expect(text.contains("note Analyses:Analysis.md:"))
         #expect(text.contains("[retrieval_lead;"))
         #expect(text.contains("fingerprint="))

@@ -725,12 +725,26 @@ struct SpotlightSearchPanelView: View {
     private var explanationText: String? {
         guard controller.search.diagnostics.isEmpty,
               let explanation = controller.search.explanation else { return nil }
-        let scope = localizedScopeTitle(controller.search.criteria.scope)
-        let provider = explanation.provider == .note ? "Notes" : "Research Records"
+        let scope = localizedScopeTitle(explanation.scope)
+        let providerName = explanation.provider == .note ? "Notes" : "Research Records"
+        let providerSource = explanation.providerWasExplicit ? "explicit" : "default"
+        let provider = "\(providerName) (\(providerSource) provider)"
         let clauses = explanation.clauses.map(explanationClause)
-        if clauses.isEmpty { return "Search \(provider) in \(scope)." }
-        return "Search \(provider) in \(scope) where "
-            + clauses.joined(separator: " and ") + "."
+        let conjunction: String = switch explanation.operator {
+        case .and: " and "
+        }
+        let query = clauses.isEmpty
+            ? "Search \(provider) in \(scope)."
+            : "Search \(provider) in \(scope) where "
+                + clauses.joined(separator: conjunction) + "."
+        let normalization = explanation.normalization
+            .map(localizedNormalization)
+            .joined(separator: "; ")
+        let limitations = explanation.limitations
+            .map(localizedLimitation)
+            .joined(separator: "; ")
+        return query + " Normalization: \(normalization). Ordering: "
+            + localizedOrdering(explanation.ordering) + ". Limits: \(limitations)."
     }
 
     private func explanationClause(_ clause: SearchExplanationClause) -> String {
@@ -854,6 +868,43 @@ struct SpotlightSearchPanelView: View {
         case .thisNote: String(localized: "This Note")
         case .currentVault: String(localized: "This Vault")
         case .triptych: String(localized: "Triptych")
+        }
+    }
+
+    private func localizedNormalization(_ rule: SearchExplanationNormalization) -> String {
+        switch rule {
+        case .canonicalUnicodeCaseWhitespace:
+            "canonical Unicode, case, and whitespace"
+        case .lexicalUnicodeCaseDiacriticWhitespace:
+            "lexical Unicode, case, diacritic, and whitespace normalization"
+        case .cjkCharacterAndOverlappingBigramProjection:
+            "CJK character and overlapping-bigram projection with substring verification"
+        case .caseSensitiveTopLevelPropertyKey:
+            "case-sensitive top-level Property keys"
+        }
+    }
+
+    private func localizedOrdering(_ ordering: SearchExplanationOrdering) -> String {
+        switch ordering {
+        case .noteExactIdentityThenBM25ThenTitleRolePath:
+            "exact Note identity, then one-corpus lexical relevance, then normalized title, vault role, and path"
+        case .recordPinnedThenFinishedAtThenUUID:
+            "pinned Records, then finished time descending, then Record UUID"
+        }
+    }
+
+    private func localizedLimitation(_ limitation: SearchExplanationLimitation) -> String {
+        switch limitation {
+        case .authorizedScopeOnly:
+            "authorized scope only"
+        case .retrievalLeadNotEvidence:
+            "retrieval leads are not evidence or researcher judgments"
+        case .noCrossProviderRanking:
+            "providers are not cross-ranked"
+        case .noteRelationsDirectOnly:
+            "Note relations are direct and never transitive"
+        case .recordNoCrossObjectRelevance:
+            "Record lexical matching does not create cross-object relevance"
         }
     }
 
