@@ -572,7 +572,9 @@ complete Run handoff for the researcher to paste into the selected Agent convers
 does not select, remember, or open an Agent application. The prepared Action sheet exposes End
 Action, and an active Discussion exposes End Discussion in addition to nonterminal Close; ending
 preserves the current exchange as a finished Research Record. Focused tests cover the copy-only
-presentation boundary, pairing replacement, and durable Discussion cancellation.
+presentation boundary, pairing replacement, and durable Discussion cancellation. Research Guidance's
+Collaboration pane exposes only the Triptych collaboration policy and its invariants; it has no
+global Agent-configuration prompt.
 
 **Still open**
 

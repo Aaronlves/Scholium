@@ -3788,16 +3788,6 @@
         }
       }
     },
-    "CONFIGURE MY AGENT" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配置我的智能体"
-          }
-        }
-      }
-    },
     "CSS Safe Mode: %@" : {
       "localizations" : {
         "en" : {
@@ -6218,16 +6208,6 @@
         }
       }
     },
-    "Copies neutral setup guidance. It does not create or change AGENTS.md." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制中立的设置指引。它不会创建或更改 AGENTS.md。"
-          }
-        }
-      }
-    },
     "Copy" : {
       "localizations" : {
         "en" : {
@@ -6240,16 +6220,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "复制"
-          }
-        }
-      }
-    },
-    "Copy Agent Configuration Prompt" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制智能体配置提示"
           }
         }
       }
