@@ -18,7 +18,11 @@ extension ScholiumCLI {
         case .text, .markdown:
             write(text + (text.hasSuffix("\n") ? "" : "\n"))
         case .json:
-            let report = CLIHelpReport(path: path, help: text)
+            let report = CLIHelpReport(
+                path: path,
+                help: text,
+                agentCommand: agentCommandHelp[path.joined(separator: " ")]
+            )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             if let data = try? encoder.encode(report) {
@@ -31,9 +35,13 @@ extension ScholiumCLI {
 
     static func helpText(for path: [String]) -> String {
         let key = path.joined(separator: " ")
+        if let help = agentCommandHelp[key] { return help.text }
         if let help = commandHelp[key] { return help }
         if !path.isEmpty {
-            let candidates = commandHelp.keys.filter { $0.hasPrefix(key + " ") }.sorted()
+            let candidates = Set(commandHelp.keys)
+                .union(agentCommandHelp.keys)
+                .filter { $0.hasPrefix(key + " ") }
+                .sorted()
             if !candidates.isEmpty {
                 return """
                 scholium \(key)
@@ -88,15 +96,7 @@ extension ScholiumCLI {
           scholium zotero mcp config [--format text|json]
           scholium zotero mcp status [--probe] [--format text|json]
           scholium zotero mcp serve
-          scholium agent pair --run <locator> < pairing-code.txt
-          scholium agent context --run <locator>
-          scholium agent reload --run <locator>
-          scholium agent query --run <locator> --from <json|->
-          scholium agent extend-write-set --run <locator> --from <json|->
-          scholium agent write --run <locator> --from <json|->
-          scholium agent resolve-write-conflict --run <locator> --from <json|->
-          scholium agent submit-result --run <locator> --from <json|->
-          scholium agent continue --run <locator> --from <json|->
+        \(agentCommandUsage)
         Omitting --triptych requires exactly one configured Triptych.
         Triptych roles: analyses, topics, works
         Authenticated Agent commands preserve Run, Method, Practice, Research
@@ -134,17 +134,203 @@ enum CLIOutputFormat: String {
 }
 
 private struct CLIHelpReport: Encodable {
-    let schemaVersion = 1
+    let schemaVersion = 2
     let path: [String]
     let help: String
+    let agentCommand: AgentCLICommandHelp?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case path, help
+        case agentCommand = "agent_command"
+    }
+}
+
+private struct AgentCLICommandHelp: Encodable {
+    let usage: String
+    let inputContract: String
+    let input: String
+    let output: String
+    let nextSteps: [String]
+
+    var text: String {
+        """
+        Usage: \(usage)
+
+        Input contract: \(inputContract)
+        Input: \(input)
+
+        Output: \(output)
+
+        Next:
+        \(nextSteps.map { "  " + $0 }.joined(separator: "\n"))
+        """
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case usage, input, output
+        case inputContract = "input_contract"
+        case nextSteps = "next_steps"
     }
 }
 
 private extension ScholiumCLI {
+    static let agentCommandOrder = [
+        "agent pair",
+        "agent context",
+        "agent reload",
+        "agent query",
+        "agent extend-write-set",
+        "agent write",
+        "agent resolve-write-conflict",
+        "agent submit-result",
+        "agent continue",
+        "agent method-context",
+        "agent improve-method",
+        "agent end",
+    ]
+
+    static var agentCommandUsage: String {
+        agentCommandOrder.compactMap { key in
+            agentCommandHelp[key].map { "  " + $0.usage }
+        }.joined(separator: "\n")
+    }
+
+    static var agentCommandHelp: [String: AgentCLICommandHelp] {
+        let roles = ResearchActionTargetRole.allCases.map(\.rawValue)
+            .joined(separator: ", ")
+        let writeOperations = ResearchDocumentWriteOperation.allCases
+            .map(\.rawValue)
+            .joined(separator: ", ")
+        let sourceKinds = ResearchContextSourceKind.allCases.map(\.rawValue)
+            .joined(separator: ", ")
+        let queryPurposes = ResearchContextQueryPurpose.allCases.map(\.rawValue)
+            .joined(separator: ", ")
+        let epistemicStatuses = ResearchContinuationEpistemicStatus.allCases
+            .map(\.rawValue)
+            .joined(separator: ", ")
+
+        return [
+            "agent pair": AgentCLICommandHelp(
+                usage: "scholium agent pair --run <locator>",
+                inputContract: "ResearchPairingCode on standard input",
+                input: "When prompted, enter the one-time Pairing Code from the current handoff. Do not put it in an argument, URL, file, or log.",
+                output: "AgentPairingReport with paired=true and the Run locator. The exchanged Session credential is stored in protected local state and is not printed.",
+                nextSteps: [
+                    "scholium agent context --run <locator>",
+                ]
+            ),
+            "agent context": AgentCLICommandHelp(
+                usage: "scholium agent context --run <locator>",
+                inputContract: "Authenticated Run locator; no JSON body",
+                input: "Use the Run locator from the handoff. The CLI loads the hidden Session credential from protected local state.",
+                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief, frozen Method and Practices, Result Contract, current bounded write set, and any continuation handoff.",
+                nextSteps: [
+                    "scholium agent query --run <locator> --from <json|-> when more Research Context is needed",
+                    "scholium agent reload --run <locator> whenever current Run state is uncertain",
+                ]
+            ),
+            "agent reload": AgentCLICommandHelp(
+                usage: "scholium agent reload --run <locator>",
+                inputContract: "Authenticated Run locator; no JSON body",
+                input: "Use the current Run locator. No earlier Research Context response is accepted as input or replayed.",
+                output: "ResearchAuthenticatedRunContext with the current Run Brief, frozen Method and Practices, Result Contract, bounded write set, and continuation handoff. The one-time Core Protocol is not replayed.",
+                nextSteps: [
+                    "Follow the returned current state and run the applicable agent command",
+                    "scholium agent end --run <locator> to stop an unfinished Run",
+                ]
+            ),
+            "agent query": AgentCLICommandHelp(
+                usage: "scholium agent query --run <locator> --from <json|->",
+                inputContract: "ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
+                input: "Strict JSON fields: schemaVersion, id, query, sourceKinds [\(sourceKinds)], purposes [\(queryPurposes)], limit 1...\(ResearchContextQuery.maximumLimit), and optional sectionHeading only when purposes is exactly [read].",
+                output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with availability, source-reference-bearing items, and limitations for this query.",
+                nextSteps: [
+                    "Repeat scholium agent query with a narrower request when needed",
+                    "Use the returned context in the current Method, then continue to the applicable write or Result command",
+                ]
+            ),
+            "agent extend-write-set": AgentCLICommandHelp(
+                usage: "scholium agent extend-write-set --run <locator> --from <json|->",
+                inputContract: "ResearchWriteSetExtensionIntent schema \(ResearchWriteSetExtensionIntent.currentSchemaVersion)",
+                input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]; academic_reason explains why the current Method needs these targets.",
+                output: "AgentWriteSetReport with state, the current capability-free bounded-write-set entries, and a message.",
+                nextSteps: [
+                    "scholium agent reload --run <locator> after a pending researcher decision",
+                    "scholium agent write --run <locator> --from <json|-> for one returned ready member",
+                ]
+            ),
+            "agent write": AgentCLICommandHelp(
+                usage: "scholium agent write --run <locator> --from <json|->",
+                inputContract: "AgentDocumentWriteDraft",
+                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(writeOperations)] defaulting to modify_markdown, and content containing the complete intended UTF-8 Markdown.",
+                output: "AgentDocumentWriteReport with state, the current target view, and a message. Scholium supplies identity, revision, checkpoint, and retry authority.",
+                nextSteps: [
+                    "scholium agent resolve-write-conflict --run <locator> --from <json|-> when the returned state is conflict",
+                    "Continue with another ready member or scholium agent submit-result after a confirmed write",
+                ]
+            ),
+            "agent resolve-write-conflict": AgentCLICommandHelp(
+                usage: "scholium agent resolve-write-conflict --run <locator> --from <json|->",
+                inputContract: "AgentWriteConflictResolutionDraft",
+                input: "Strict JSON fields: role [\(roles)], relative_path, and action [refresh_authority, abandon_write].",
+                output: "AgentWriteConflictResolutionReport with state, the updated target view, and a message.",
+                nextSteps: [
+                    "After refresh_authority, query or reread the changed Markdown before creating a new agent write input",
+                    "After abandon_write, continue with another member or submit an accurate Result",
+                ]
+            ),
+            "agent submit-result": AgentCLICommandHelp(
+                usage: "scholium agent submit-result --run <locator> --from <json|->",
+                inputContract: "ResearchAgentResultSubmission schema \(ResearchAgentResultSubmission.currentSchemaVersion) plus the current Run result_contract",
+                input: "Strict JSON fields: schema_version, disposition [completed, blocked], academic_results filled exactly from result_contract, context_use_claims with returned source_reference envelopes and testimony, fidelity_outcomes, and optional literature_recommendations only when the contract permits them.",
+                output: "ResearchAgentResultReceipt with disposition, finalization state, whether a portable Record was formed, and a message.",
+                nextSteps: [
+                    "scholium agent continue --run <locator> --from <json|-> only for a distinct next Action",
+                    "Stop after a finalized Result when no distinct next Action is needed",
+                ]
+            ),
+            "agent continue": AgentCLICommandHelp(
+                usage: "scholium agent continue --run <locator> --from <json|->",
+                inputContract: "ResearchContinuationRequest schema \(ResearchContinuationRequest.currentSchemaVersion)",
+                input: "Strict JSON fields: schema_version, next_action_id, target_role [\(roles)], target_relative_path, academic_purpose, handoff items, and fidelity_checks [content, citations]. Each handoff item has content, epistemic_status [\(epistemicStatuses)], next_use, and source_references.",
+                output: "ResearchContinuationResult with pending_researcher_decision, created, declined, stale, or expired state; a created result also returns the fresh next Run and handoff context.",
+                nextSteps: [
+                    "Pair the returned next_run only when state is created and the researcher has received its new handoff",
+                    "Otherwise follow the returned state and message; no authority carries forward",
+                ]
+            ),
+            "agent method-context": AgentCLICommandHelp(
+                usage: "scholium agent method-context --run <locator>",
+                inputContract: "Authenticated Method-improvement Run locator; no JSON body",
+                input: "Use the locator from an explicit Improve Current Method handoff. The CLI loads the hidden Session credential.",
+                output: "ResearchMethodImprovementContext with the unchanged researcher feedback, finalized Result fingerprint, and exact primary Method and linked Practice targets.",
+                nextSteps: [
+                    "scholium agent improve-method --run <locator> --from <json|-> for at most one returned target_id",
+                    "scholium agent end --run <locator> if the improvement Run cannot continue",
+                ]
+            ),
+            "agent improve-method": AgentCLICommandHelp(
+                usage: "scholium agent improve-method --run <locator> --from <json|->",
+                inputContract: "ResearchMethodImprovementDraft",
+                input: "Strict JSON fields: target_id from method-context, disposition [replace, diagnosed_no_change, unavailable], optional replacement_source only for replace, and diagnosis.",
+                output: "ResearchMethodImprovementReceipt with the target, starting and ending revisions, disposition, diagnosis, and whether unchanged feedback was cleared.",
+                nextSteps: [
+                    "scholium agent end --run <locator>",
+                ]
+            ),
+            "agent end": AgentCLICommandHelp(
+                usage: "scholium agent end --run <locator>",
+                inputContract: "Authenticated Run locator; no JSON body",
+                input: "Use the current unfinished Run locator. No Result or cancellation payload is accepted.",
+                output: "ResearchRunEndReceipt with retained-recovery truth and a message; the acknowledged local Session credential is then removed.",
+                nextSteps: [
+                    "Stop using this Run locator; new Agent access requires a new researcher-provided handoff",
+                ]
+            ),
+        ]
+    }
+
     static var searchHelp: String {
         let capabilities = SearchCapabilities.current
         let noteFields = capabilities.capability(for: .note)?
@@ -199,15 +385,6 @@ private extension ScholiumCLI {
             "zotero mcp config": "Usage: scholium zotero mcp config [--format text|json]",
             "zotero mcp status": "Usage: scholium zotero mcp status [--probe] [--format text|json]",
             "zotero mcp serve": "Usage: scholium zotero mcp serve",
-            "agent pair": "Usage: scholium agent pair --run <locator>\n\nReads the one-time Pairing Code from standard input. The hidden Session credential is stored in protected local state and is never printed.",
-            "agent context": "Usage: scholium agent context --run <locator>\n\nReturns the authenticated Run Brief, frozen Method and Practices, and Result Contract.",
-            "agent reload": "Usage: scholium agent reload --run <locator>\n\nReloads current Run state without replaying earlier Research Context responses or the one-time Core Protocol.",
-            "agent query": "Usage: scholium agent query --run <locator> --from <json|->\n\nRuns one authenticated, provider-neutral Research Context query. Scholium supplies the Run, Triptych, scope, and current generation before retrieval.",
-            "agent extend-write-set": "Usage: scholium agent extend-write-set --run <locator> --from <json|->\n\nRequests one or more role-and-path targets for this Run's bounded write set. Scholium resolves stable identity, revision, permission, and recovery state.",
-            "agent write": "Usage: scholium agent write --run <locator> --from <json|->\n\nWrites one authorized role-and-path member. The input contains role, relative_path, optional operation, and exact Markdown content; Scholium carries hidden identity and revision state.",
-            "agent resolve-write-conflict": "Usage: scholium agent resolve-write-conflict --run <locator> --from <json|->\n\nResolves one known conflict with action refresh_authority or abandon_write. Refresh creates a new Before Agent Work checkpoint for the exact current document; query and reread that Markdown, then retry with agent write. Abandon records that this attempt will not be retried and narrows only that member.",
-            "agent submit-result": "Usage: scholium agent submit-result --run <locator> --from <json|->\n\nSubmits only the frozen academic Result fields, explicit source-use testimony, and Action-specific scholarly outputs. Scholium supplies and verifies machine facts before forming one Research Record.",
-            "agent continue": "Usage: scholium agent continue --run <locator> --from <json|->\n\nCreates a separately resolved next Action from one finalized Result. Only the explicit academic purpose and handoff are carried forward; Method, Profile, permissions, references, and Research Context are resolved again.",
         ]
     }
 }

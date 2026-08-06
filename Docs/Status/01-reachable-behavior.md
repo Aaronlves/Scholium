@@ -195,6 +195,10 @@ That delivered Core Protocol now owns the complete Agent Run path from query
 through bounded writes, conflict recovery, Result, continuation, and end.
 Typed Run/command contracts own current fields and allowed values, installed
 help owns CLI syntax, and registered Methods/Practices own academic procedure.
+Each installed Agent command help topic renders one shared descriptor as text
+or structured JSON with its input contract, required input, output, and next
+steps; root help derives the complete Agent command list from those same
+descriptors and presents pairing only as interactive standard input.
 The parallel Research Integration Skill and static CLI contract are absent.
 
 Bridge request schema 9/response schema 11 also carries the separately paired

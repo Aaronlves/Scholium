@@ -5,6 +5,65 @@ import Testing
 
 @Suite("Executable Research Action CLI lifecycle")
 struct ActionCLIExecutableLifecycleTests {
+    @Test("Agent help is complete, self-describing, and keeps pairing on stdin")
+    func agentHelpContract() throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let root = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(".build/agent-help", isDirectory: true)
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
+        let commands = [
+            "pair", "context", "reload", "query", "extend-write-set",
+            "write", "resolve-write-conflict", "submit-result", "continue",
+            "method-context", "improve-method", "end",
+        ]
+
+        let rootHelp = String(
+            decoding: try cli.run(["help"]).stdout,
+            as: UTF8.self
+        )
+        #expect(!rootHelp.contains("pairing-code.txt"))
+        #expect(!rootHelp.contains("< pairing"))
+
+        for command in commands {
+            #expect(rootHelp.contains("scholium agent \(command)"))
+            let result = try cli.run([
+                "help", "agent", command, "--format", "json",
+            ])
+            let report = try #require(
+                JSONSerialization.jsonObject(with: result.stdout)
+                    as? [String: Any]
+            )
+            #expect(report["schema_version"] as? Int == 2)
+            #expect(report["path"] as? [String] == ["agent", command])
+            let renderedHelp = try #require(report["help"] as? String)
+            #expect(renderedHelp.contains("Input contract:"))
+            #expect(renderedHelp.contains("Output:"))
+            #expect(renderedHelp.contains("Next:"))
+            let contract = try #require(
+                report["agent_command"] as? [String: Any]
+            )
+            #expect(!(contract["usage"] as? String ?? "").isEmpty)
+            #expect(!(contract["input_contract"] as? String ?? "").isEmpty)
+            #expect(!(contract["input"] as? String ?? "").isEmpty)
+            #expect(!(contract["output"] as? String ?? "").isEmpty)
+            #expect(!(contract["next_steps"] as? [String] ?? []).isEmpty)
+        }
+
+        let pairHelp = String(
+            decoding: try cli.run([
+                "help", "agent", "pair", "--format", "json",
+            ]).stdout,
+            as: UTF8.self
+        )
+        #expect(pairHelp.contains("standard input"))
+        #expect(!pairHelp.contains("pairing-code.txt"))
+    }
+
     @Test("The real CLI pairs through stdin, hides the Session secret, and reloads authenticated context")
     func agentPairingAndContext() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
