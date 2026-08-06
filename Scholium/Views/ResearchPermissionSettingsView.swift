@@ -64,16 +64,6 @@ struct ResearchPermissionSettingsView: View {
                     }
                 }
 
-                researchSettingsSection(LocalizedStringResource(
-                    "INVARIANTS",
-                    table: "Localizable",
-                    bundle: .module
-                )) {
-                    Text("The initial object is authorized by the researcher's explicit Action. Every additional document remains an exact Run-local member with role, operation, expected revision or proven absence, expiry, conflict handling, and recovery. Safety checks protect research material and authorization; they do not inspect or monitor Agent behavior. Changing this preference cannot cancel an already submitted file transaction.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
             .frame(maxWidth: 680, alignment: .topLeading)

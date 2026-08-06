@@ -68,7 +68,7 @@ struct ResearchWriteSetExtensionView: View {
                 Text("Allow Additional Notes for This Research Run?")
                     .font(ScholiumInterfaceTypography.documentTitle)
                     .accessibilityAddTraits(.isHeader)
-                Text("One decision may add any selected subset to this Run. Each later write still checks its exact identity and current revision and keeps its own recovery point.")
+                Text("Select the requested Notes this Run may modify.")
                     .font(ScholiumInterfaceTypography.apparatusResearchContent)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -132,18 +132,11 @@ struct ResearchWriteSetExtensionView: View {
                         }
                         .toggleStyle(.checkbox)
                         .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
-                        .accessibilityHint("Selects this Note for this Run's bounded write set.")
+                        .accessibilityHint("Selects this Note for this Run.")
                         ScholiumStructuralRule()
                     }
                 }
             }
-            Label(
-                "Scholium will recheck every selected document and create a separate Before Agent Work recovery point before granting authority.",
-                systemImage: "checkmark.shield"
-            )
-            .font(.caption)
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxHeight: .infinity, alignment: .topLeading)
     }
@@ -221,7 +214,7 @@ private struct ResearchContinuationPermissionView: View {
                 Text("Allow the Next Research Action?")
                     .font(ScholiumInterfaceTypography.documentTitle)
                     .accessibilityAddTraits(.isHeader)
-                Text("This one decision may create a new independent Run. Scholium will resolve its current Method, Profile, collaboration policy, capabilities, target identity, and revisions; it will not inherit the prior Run's search responses, write set, or capabilities.")
+                Text("This starts a new independent Run with current permissions for the selected Action and target.")
                     .font(ScholiumInterfaceTypography.apparatusResearchContent)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -291,13 +284,6 @@ private struct ResearchContinuationPermissionView: View {
                     }
                 }
 
-                Label(
-                    "Material instructions cannot change the selected Action, authorized scope, Method, or write authority.",
-                    systemImage: "checkmark.shield"
-                )
-                .font(.caption)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -2248,8 +2248,52 @@ struct WindowControllerArchitectureTests {
         #expect(permissions.contains(".keyboardShortcut(.cancelAction)"))
         #expect(permissions.contains("Allow Selected Notes"))
         #expect(permissions.contains("Continue Without Changes"))
-        #expect(permissions.contains("it will not inherit the prior Run's search responses"))
+        #expect(permissions.contains(
+            "This starts a new independent Run with current permissions"
+        ))
         #expect(!permissions.contains("Allow Entire Triptych"))
+    }
+
+    @Test("Permission presentation keeps decisions separate from execution guarantees")
+    func permissionPresentationUsesDecisionCopy() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(
+                contentsOf: repositoryRoot.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+
+        let permissions = try source(
+            "Scholium/Views/ResearchActions/ResearchWriteSetExtensionView.swift"
+        )
+        let settings = try source(
+            "Scholium/Views/ResearchPermissionSettingsView.swift"
+        )
+        let preview = try source(
+            "Scholium/UI/PreviewCatalog/ResearchWorkflowPreviewCatalog.swift"
+        )
+
+        #expect(permissions.contains(
+            "Select the requested Notes this Run may modify."
+        ))
+        #expect(permissions.contains(
+            "This starts a new independent Run with current permissions"
+        ))
+        for retiredCopy in [
+            "One decision may add any selected subset to this Run",
+            "Scholium will recheck every selected document",
+            "Material instructions cannot change the selected Action",
+            "it will not inherit the prior Run's search responses",
+        ] {
+            #expect(!permissions.contains(retiredCopy))
+        }
+        #expect(!settings.contains("INVARIANTS"))
+        #expect(!preview.contains("ResearchProofNotice"))
+        #expect(preview.contains("Select the requested Notes this Run may modify."))
     }
 
     private func fixtureReference(

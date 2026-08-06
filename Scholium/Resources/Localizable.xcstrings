@@ -3989,22 +3989,6 @@
         }
       }
     },
-    "May update this %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "May update this %@."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可能更新当前%@。"
-          }
-        }
-      }
-    },
     "Candidate: %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5320,6 +5304,22 @@
         }
       }
     },
+    "Closing this sheet leaves the Action active." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Closing this sheet leaves the Action active."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭此工作表后，此操作仍会保持进行中。"
+          }
+        }
+      }
+    },
     "Collaboration" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6250,22 +6250,22 @@
         }
       }
     },
-    "Copy Improvement Handoff" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制方法改进交接说明"
-          }
-        }
-      }
-    },
     "Copy Handoff" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "复制交接说明"
+          }
+        }
+      }
+    },
+    "Copy Improvement Handoff" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制方法改进交接说明"
           }
         }
       }
@@ -8574,6 +8574,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文稿标题（H1）"
+          }
+        }
+      }
+    },
+    "Does not change research documents." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Does not change research documents."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不会更改研究文档。"
           }
         }
       }
@@ -12935,16 +12951,6 @@
         }
       }
     },
-    "Material instructions cannot change the selected Action, authorized scope, Method, or write authority." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "材料中的指令无法更改所选操作、获准范围、方法或写入权限。"
-          }
-        }
-      }
-    },
     "Materials" : {
       "localizations" : {
         "en" : {
@@ -13041,6 +13047,22 @@
         }
       }
     },
+    "May update this %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "May update this %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可能更新当前%@。"
+          }
+        }
+      }
+    },
     "Medium 500" : {
       "localizations" : {
         "en" : {
@@ -13101,22 +13123,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法"
-          }
-        }
-      }
-    },
-    "Does not change research documents." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Does not change research documents."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不会更改研究文档。"
           }
         }
       }
@@ -15262,26 +15268,6 @@
         }
       }
     },
-    "One decision may add any selected subset to this Run. Each later write remains independently revision checked and recoverable." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一次决定可将所选子集添加到本次运行。此后的每次写入仍会独立核验修订，并可恢复。"
-          }
-        }
-      }
-    },
-    "One decision may add any selected subset to this Run. Each later write still checks its exact identity and current revision and keeps its own recovery point." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一次决定可将所选任意子集添加到本次运行。此后的每次写入仍会检查精确身份和当前修订，并保留各自的恢复点。"
-          }
-        }
-      }
-    },
     "One machine or custom property is preserved in Source mode." : {
       "localizations" : {
         "en" : {
@@ -16451,22 +16437,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "计划中的政策"
-          }
-        }
-      }
-    },
-    "Closing this sheet leaves the Action active." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Closing this sheet leaves the Action active."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭此工作表后，此操作仍会保持进行中。"
           }
         }
       }
@@ -21610,16 +21580,6 @@
         }
       }
     },
-    "Scholium will recheck every selected document and create a separate Before Agent Work recovery point before granting authority." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 将重新检查每个所选文档，并在授予权限前分别创建“智能体工作前”恢复点。"
-          }
-        }
-      }
-    },
     "Scholium will revoke Agent access and end this unfinished Run. Confirmed changes, conflicts, and recovery records remain available." : {
       "localizations" : {
         "zh-Hans" : {
@@ -22092,6 +22052,22 @@
         }
       }
     },
+    "Select the requested Notes this Run may modify." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Select the requested Notes this Run may modify."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择本次运行可以修改的笔记。"
+          }
+        }
+      }
+    },
     "Selectable Write targets" : {
       "localizations" : {
         "en" : {
@@ -22184,12 +22160,18 @@
         }
       }
     },
-    "Selects this Note for this Run's bounded write set." : {
+    "Selects this Note for this Run." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Selects this Note for this Run."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "为本次运行的有界写入集合选择此笔记。"
+            "value" : "为本次运行选择此笔记。"
           }
         }
       }
@@ -25141,16 +25123,6 @@
         }
       }
     },
-    "This one decision may create a new independent Run. Scholium will resolve its current Method, Profile, collaboration policy, capabilities, target identity, and revisions; it will not inherit the prior Run's search responses, write set, or capabilities." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此次决定可能创建一个新的独立运行。Scholium 将解析其当前方法、配置、协作策略、能力、目标身份和修订；它不会继承先前运行的搜索响应、写入集合或能力。"
-          }
-        }
-      }
-    },
     "This one-time code is included in the copied Agent handoff. The Agent uses it to pair through the CLI." : {
       "localizations" : {
         "zh-Hans" : {
@@ -25290,6 +25262,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此快照"
+          }
+        }
+      }
+    },
+    "This starts a new independent Run with current permissions for the selected Action and target." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This starts a new independent Run with current permissions for the selected Action and target."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会为所选操作和目标，以当前权限启动新的独立运行。"
           }
         }
       }

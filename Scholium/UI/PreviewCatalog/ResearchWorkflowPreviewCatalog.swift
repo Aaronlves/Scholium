@@ -512,7 +512,7 @@ private struct ResearchWriteSetExtensionProof: View {
                 Text("Allow Additional Notes for This Research Run?")
                     .font(ScholiumInterfaceTypography.documentTitle)
                     .accessibilityAddTraits(.isHeader)
-                Text("One decision may add any selected subset to this Run. Each later write remains independently revision checked and recoverable.")
+                Text("Select the requested Notes this Run may modify.")
                     .font(ScholiumInterfaceTypography.apparatusResearchContent)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -532,13 +532,6 @@ private struct ResearchWriteSetExtensionProof: View {
                         }
                     }
                 }
-
-                ResearchProofNotice(
-                    title: "Revalidated Before Decision",
-                    detail: "Note identity, role, operation, current revision, and Triptych collaboration policy remain current.",
-                    systemImage: "checkmark.circle",
-                    colorRole: .confirmed
-                )
 
                 ViewThatFits(in: .horizontal) {
                     HStack {
@@ -581,36 +574,6 @@ private struct ResearchProofSection<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct ResearchProofNotice: View {
-    let title: LocalizedStringKey
-    let detail: LocalizedStringKey
-    let systemImage: String
-    let colorRole: ScholiumColorRole
-
-    var body: some View {
-        HStack(
-            alignment: .firstTextBaseline,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
-        ) {
-            Image(systemName: systemImage)
-                .foregroundStyle(colorRole.color)
-                .accessibilityHidden(true)
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
-            ) {
-                Text(title)
-                    .font(.callout.weight(.semibold))
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 
