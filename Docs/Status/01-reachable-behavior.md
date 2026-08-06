@@ -254,9 +254,10 @@ envelopes keep owner, identity, revision, locator/range, scope, currentness, evi
 retrieval reason, and limitation separate. Response schema 2 also retains each Note's typed Search
 match reasons, including direct-relation direction and exact occurrences and Property source ranges;
 research text is data, not an instruction source. Result submission
-must satisfy the frozen academic fields and Context Use references. A process-bound, 512-reference
-registry admits only exact envelopes actually returned to that Run before current-owner revalidation;
-it stores no response content or durable research state. Application adds machine fields
+must satisfy the frozen academic fields and Context Use references. The current
+Application retains no delivered-reference registry: it authenticates the Run,
+checks each reference's authorized scope, and revalidates the current owner,
+revision, locator, and owner-specific provenance fields. Application adds machine fields
 from actual transactions and finalizes idempotently only after every initiated write has a known
 outcome and recovery responsibility is satisfied. Portable Record schema 5 retains the immutable
 finalized-result partition, minimal Method provenance, exact participating revisions, Context Use,

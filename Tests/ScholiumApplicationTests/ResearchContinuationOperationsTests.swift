@@ -13,35 +13,54 @@ struct ResearchContinuationOperationsTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let parent = try await finalizedParent(handle: handle, fixture: fixture)
 
-        let issuedReference = parent.contextReference
-        let fabricatedReference = try SourceReferenceEnvelope(
-            sourceKind: issuedReference.sourceKind,
-            owner: issuedReference.owner,
-            actorClass: issuedReference.actorClass,
-            objectRole: issuedReference.objectRole,
-            vaultRole: issuedReference.vaultRole,
-            fingerprint: issuedReference.fingerprint,
-            locator: issuedReference.locator,
-            authorizedScope: issuedReference.authorizedScope,
-            currentness: issuedReference.currentness,
-            evidentialLayer: issuedReference.evidentialLayer,
-            retrievalReason: issuedReference.retrievalReason,
-            materialLimitations: issuedReference.materialLimitations
+        let returnedReference = parent.contextReference
+        let wrongScopeReference = try SourceReferenceEnvelope(
+            sourceKind: returnedReference.sourceKind,
+            owner: returnedReference.owner,
+            actorClass: returnedReference.actorClass,
+            objectRole: returnedReference.objectRole,
+            vaultRole: returnedReference.vaultRole,
+            fingerprint: returnedReference.fingerprint,
+            locator: returnedReference.locator,
+            authorizedScope: .triptych(
+                runID: UUID(),
+                triptychID: returnedReference.authorizedScope.triptychID
+            ),
+            currentness: returnedReference.currentness,
+            evidentialLayer: returnedReference.evidentialLayer,
+            retrievalReason: returnedReference.retrievalReason,
+            materialLimitations: returnedReference.materialLimitations
         )
-        let fabricatedRequest = try continuationRequest(
+        let wrongScopeRequest = try continuationRequest(
             actionID: .synthesize,
             role: .topic,
             path: "Agency.md",
-            purpose: "A fabricated current envelope must not enter a handoff.",
-            sourceReferences: [fabricatedReference]
+            purpose: "A reference from another Run must not enter a handoff.",
+            sourceReferences: [wrongScopeReference]
         )
         await #expect(throws: ResearchContinuationContractError.invalidHandoff) {
             _ = try await handle.research.continueAgentResearch(
                 credential: parent.credential,
                 run: parent.handoff.run,
-                request: fabricatedRequest
+                request: wrongScopeRequest
             )
         }
+
+        let currentReferenceWithNewResponseID = try SourceReferenceEnvelope(
+            sourceKind: returnedReference.sourceKind,
+            owner: returnedReference.owner,
+            actorClass: returnedReference.actorClass,
+            objectRole: returnedReference.objectRole,
+            vaultRole: returnedReference.vaultRole,
+            fingerprint: returnedReference.fingerprint,
+            locator: returnedReference.locator,
+            authorizedScope: returnedReference.authorizedScope,
+            currentness: returnedReference.currentness,
+            evidentialLayer: returnedReference.evidentialLayer,
+            retrievalReason: returnedReference.retrievalReason,
+            materialLimitations: returnedReference.materialLimitations
+        )
+        #expect(currentReferenceWithNewResponseID.id != returnedReference.id)
 
         var policy = try await handle.research.collaborationPolicy()
         policy = try await handle.research.saveCollaborationPolicy(
@@ -56,7 +75,7 @@ struct ResearchContinuationOperationsTests {
             role: .topic,
             path: "Agency.md",
             purpose: "Reassess the Topic synthesis using one explicit handoff.",
-            sourceReferences: [issuedReference]
+            sourceReferences: [currentReferenceWithNewResponseID]
         )
         let fullAccess = try await handle.research.continueAgentResearch(
             credential: parent.credential,
@@ -85,7 +104,7 @@ struct ResearchContinuationOperationsTests {
         #expect(child.snapshot.continuationHandoff?.parentRecordID
             == parent.preparation.runID)
         #expect(child.snapshot.continuationHandoff?.referenceChecks.first?
-            .sourceReference == issuedReference)
+            .sourceReference == currentReferenceWithNewResponseID)
         #expect(child.snapshot.continuationHandoff?.referenceChecks.first?.status
             == .current)
         #expect(child.snapshot.request.materials.isEmpty)

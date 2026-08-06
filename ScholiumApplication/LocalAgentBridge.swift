@@ -1031,8 +1031,7 @@ enum LocalAgentBridgeWireCoding {
             code = .unavailable
         case LocalAgentBridgeError.permissionDenied,
              ResearchAgentSessionError.sessionRejected,
-             ResearchAgentSessionError.pairingRejected,
-             ResearchAgentSessionError.contextReferenceRejected:
+             ResearchAgentSessionError.pairingRejected:
             code = .permissionDenied
         case LocalAgentBridgeError.timeout: code = .timeout
         case LocalAgentBridgeError.outcomeUnknown: code = .outcomeUnknown

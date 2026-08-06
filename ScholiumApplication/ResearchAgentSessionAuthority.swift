@@ -69,8 +69,6 @@ struct ResearchMethodWriteCapability: Hashable, Sendable,
 }
 
 actor ResearchAgentSessionAuthority {
-    private static let maximumReturnedContextReferencesPerRun = 512
-
     private struct Pairing: Sendable {
         let runID: UUID
         let triptychID: UUID
@@ -99,7 +97,6 @@ actor ResearchAgentSessionAuthority {
         let canWrite: Bool
         var activeSessionID: UUID?
         var isFinalized: Bool
-        var returnedContextReferences: [UUID: SourceReferenceEnvelope]
     }
 
     private struct StoredWriteCapability: Sendable {
@@ -182,8 +179,7 @@ actor ResearchAgentSessionAuthority {
             locator: locator,
             canWrite: canWrite,
             activeSessionID: nil,
-            isFinalized: false,
-            returnedContextReferences: [:]
+            isFinalized: false
         )
         return ResearchAgentHandoff(
             run: locator,
@@ -312,8 +308,7 @@ actor ResearchAgentSessionAuthority {
             locator: locator,
             canWrite: canWrite,
             activeSessionID: credential.sessionID,
-            isFinalized: false,
-            returnedContextReferences: [:]
+            isFinalized: false
         )
         var updated = session
         updated.runLocators.insert(locator)
@@ -345,73 +340,6 @@ actor ResearchAgentSessionAuthority {
             }
             return locator
         }.sorted { $0.rawValue < $1.rawValue }.first
-    }
-
-    /// Retains only exact Source Reference Envelopes actually returned through
-    /// the authenticated Research Context capability. This is process memory,
-    /// not a response cache, durable Run field, Record, or source authority.
-    func recordReturnedContextReferences(
-        _ references: [SourceReferenceEnvelope],
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator,
-        now: Date = Date(),
-        userID: uid_t = geteuid()
-    ) throws {
-        let authenticated = try authenticate(
-            credential,
-            run: run,
-            requiresWrite: false,
-            claimCoreProtocol: false,
-            now: now,
-            userID: userID
-        )
-        guard var binding = runs[run],
-              references.allSatisfy({ reference in
-                  reference.authorizedScope.runID == authenticated.runID
-                      && reference.authorizedScope.triptychID
-                        == authenticated.triptychID
-                      && reference.owner.triptychID == authenticated.triptychID
-              }) else {
-            throw ResearchAgentSessionError.contextReferenceRejected
-        }
-        var updated = binding.returnedContextReferences
-        for reference in references {
-            if let existing = updated[reference.id], existing != reference {
-                throw ResearchAgentSessionError.contextReferenceRejected
-            }
-            updated[reference.id] = reference
-        }
-        guard updated.count <= Self.maximumReturnedContextReferencesPerRun else {
-            throw ResearchAgentSessionError.contextRegistryFull
-        }
-        binding.returnedContextReferences = updated
-        runs[run] = binding
-    }
-
-    /// Requires exact envelopes previously returned to this Run. A current
-    /// owner alone cannot make an Agent-fabricated reference eligible for
-    /// Context Use or a Continue Research handoff.
-    func requireReturnedContextReferences(
-        _ references: [SourceReferenceEnvelope],
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator,
-        allowFinalized: Bool,
-        now: Date = Date(),
-        userID: uid_t = geteuid()
-    ) throws {
-        _ = try authenticate(
-            credential,
-            run: run,
-            requiresWrite: false,
-            claimCoreProtocol: false,
-            allowFinalized: allowFinalized,
-            now: now,
-            userID: userID
-        )
-        guard let registry = runs[run]?.returnedContextReferences,
-              references.allSatisfy({ registry[$0.id] == $0 }) else {
-            throw ResearchAgentSessionError.contextReferenceRejected
-        }
     }
 
     func issueWriteCapability(
@@ -624,7 +552,6 @@ actor ResearchAgentSessionAuthority {
         for locator in session.runLocators where runs[locator]?.activeSessionID == sessionID {
             var binding = runs[locator]
             binding?.activeSessionID = nil
-            binding?.returnedContextReferences = [:]
             runs[locator] = binding
         }
     }
@@ -690,8 +617,6 @@ enum ResearchAgentSessionError: LocalizedError, Equatable, Sendable {
     case secureRandomCollision
     case pairingRejected
     case sessionRejected
-    case contextReferenceRejected
-    case contextRegistryFull
 
     var errorDescription: String? {
         switch self {
@@ -703,10 +628,6 @@ enum ResearchAgentSessionError: LocalizedError, Equatable, Sendable {
             "The pairing request was rejected."
         case .sessionRejected:
             "The Connection Session is invalid, expired, revoked, or outside this Run."
-        case .contextReferenceRejected:
-            "A Source Reference was not returned by this Run's authenticated Research Context."
-        case .contextRegistryFull:
-            "This Run reached its bounded in-memory Source Reference limit. Start a focused continuation before retrieving more context."
         }
     }
 }

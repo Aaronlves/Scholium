@@ -170,14 +170,12 @@ extension WorkspaceHandle {
         }
 
         let continuationReferences = request.handoff.flatMap(\.sourceReferences)
-        do {
-            try await sessions.requireReturnedContextReferences(
-                continuationReferences,
-                credential: credential,
-                run: run,
-                allowFinalized: true
-            )
-        } catch {
+        guard continuationReferences.allSatisfy({ reference in
+            reference.authorizedScope.runID == authenticated.runID
+                && reference.authorizedScope.triptychID
+                    == authenticated.triptychID
+                && reference.owner.triptychID == authenticated.triptychID
+        }) else {
             throw ResearchContinuationContractError.invalidHandoff
         }
 
@@ -581,31 +579,85 @@ extension WorkspaceHandle {
         }
         switch reference.sourceKind {
         case .note:
-            guard let vaultID = reference.owner.vaultID,
+            guard reference.owner.kind == .note,
+                  let vaultID = reference.owner.vaultID,
                   let relativePath = reference.owner.relativePath,
-                  let snapshot = currentSnapshot.document(id: VaultQualifiedNoteID(
-                    vaultID: vaultID,
-                    relativePath: relativePath
-                  )),
+                  reference.actorClass == .unknown,
+                  let snapshot = currentSnapshot.document(
+                    id: VaultQualifiedNoteID(
+                        vaultID: vaultID,
+                        relativePath: relativePath
+                    )
+                  ),
                   snapshot.lifecycle == .active,
                   snapshot.stableIdentity.resolvedID?.uuidString.lowercased()
                     == reference.owner.stableObjectIdentity else {
                 return (.missing, "The referenced Note owner is missing or has a different stable identity.")
             }
-            return snapshot.fingerprint == reference.fingerprint
-                ? (.current, "The authoritative Note owner still matches the handed-off revision.")
-                : (.changed, "The authoritative Note owner has a different current revision; query and reread it before use.")
+            guard snapshot.fingerprint == reference.fingerprint,
+                  reference.currentness == .current else {
+                return (
+                    .changed,
+                    "The authoritative Note owner has a different current revision; query and reread it before use."
+                )
+            }
+            guard reference.vaultRole == snapshot.vaultRole,
+                  reference.objectRole == Self.objectRole(snapshot.vaultRole),
+                  reference.evidentialLayer == Self.evidentialLayer(snapshot.vaultRole),
+                  Self.isNoteRetrievalReason(reference.retrievalReason),
+                  let document = try? await loadDocument(snapshot.id),
+                  document.fingerprint == snapshot.fingerprint,
+                  Self.locator(reference.locator, isValidIn: document.rawContent)
+            else {
+                throw ResearchContinuationContractError.invalidHandoff
+            }
+            return (
+                .current,
+                "The authoritative Note owner, revision, and locator are current."
+            )
         case .record:
-            guard let recordID = reference.owner.recordID else {
-                return (.missing, "The Research Record owner is missing.")
+            guard reference.owner.kind == .record,
+                  let recordID = reference.owner.recordID,
+                  reference.owner.stableObjectIdentity
+                    == recordID.uuidString.lowercased(),
+                  reference.objectRole == .researchRecord,
+                  reference.vaultRole == nil,
+                  reference.evidentialLayer == .researchRecord,
+                  reference.retrievalReason == .recordSearch else {
+                throw ResearchContinuationContractError.invalidHandoff
             }
             let listing = try await services.portableResearchRecordStore.listing()
             guard listing.issues.isEmpty,
                   let current = listing.revisions.first(where: { $0.id == recordID })
             else { return (.missing, "The Research Record owner is missing.") }
-            return current.fingerprint == reference.fingerprint
-                ? (.current, "The authoritative Research Record still matches the handed-off revision.")
-                : (.changed, "The Research Record has changed; query its current attributed content before use.")
+            guard current.fingerprint == reference.fingerprint,
+                  reference.currentness == .current else {
+                return (
+                    .changed,
+                    "The Research Record has changed; query its current attributed content before use."
+                )
+            }
+            switch reference.locator.kind {
+            case .recordStatement:
+                guard let statementID = reference.locator.statementID,
+                      let statement = current.record.statements.first(where: {
+                          $0.id == statementID
+                      }),
+                      reference.actorClass == Self.actorClass(statement.author)
+                else {
+                    throw ResearchContinuationContractError.invalidHandoff
+                }
+            case .wholeObject:
+                guard reference.actorClass == .unknown else {
+                    throw ResearchContinuationContractError.invalidHandoff
+                }
+            case .sourceRange, .materialLocator, .unknown:
+                throw ResearchContinuationContractError.invalidHandoff
+            }
+            return (
+                .current,
+                "The authoritative Research Record owner, revision, and locator are current."
+            )
         case .material, .researcherState:
             return (.unsupported, "This owner kind must be queried again through its current Application-owned channel.")
         }

@@ -339,11 +339,6 @@ extension WorkspaceHandle {
                 }
             )
         )
-        try await sessions.recordReturnedContextReferences(
-            response.items.map(\.sourceReference),
-            credential: credential,
-            run: run
-        )
         return response
     }
 

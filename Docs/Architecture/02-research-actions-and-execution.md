@@ -145,12 +145,11 @@ Session, Run, scope, current owner, and revision. Ending/re-pairing/revocation,
 Triptych change, deletion, or source change therefore invalidates old
 references without claiming that already delivered text can be retracted.
 Response bytes remain in memory only and are neither Run state nor Record
-content. The process-bound Session authority keeps at most 512 exact returned
-Source Reference Envelopes per Run, without their response content, so Context
-Use and Continue Research can require an actually issued envelope rather than
-accepting an Agent-fabricated current owner reference. Re-pair/restart/end
-clears this registry; it is neither a response cache nor durable research
-state.
+content. Session authority retains no Source Reference registry or delivery
+history. A response-local reference ID is only a correlation value. Context
+Use and Continue Research instead authenticate the submitting Run, require its
+authorized scope, and re-read the current owner to validate identity, revision,
+locator, and owner-specific provenance fields before persistence or handoff.
 
 The test target supplies a pure replacement provider over fixed nonprivate
 values. Production and test providers must produce the same envelope,
@@ -194,12 +193,14 @@ retains unresolved recovery state.
 ## Result submission and finalization
 
 Agent submission contains only the frozen contract's academic fields, explicit
-blocked state where applicable, and optional reference IDs for Context Use.
+blocked state where applicable, and optional Source Reference Envelopes plus
+testimony for Context Use.
 Application validates field presence/type/cardinality/exclusive choices and
 that each claimed reference is current, in Run-readable scope, and has one
-Source Reference Envelope. Agent use remains testimony; Application validation
-is a separate machine fact. An invalid field returns field-level repair without
-mutating the Record or write set.
+authoritative owner, revision, and locator. Agent use remains testimony;
+Application validation is a separate machine fact and does not claim delivery
+history proves use. An invalid field returns field-level repair without mutating
+the Record or write set.
 
 The Run stores one `ResearchResultPayload` partitioned into Agent and machine
 fields. For write Actions, submission may precede final transaction

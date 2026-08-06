@@ -201,12 +201,13 @@ or scope. Stale references cannot navigate or be recorded as current use.
 Provider failure cannot return an older response, broaden scope, silently omit
 a clause, or present unavailable as no matches. App and CLI consume the same
 Application response; delivery adapters do not parse, rank, or fill provenance.
-The process-bound Session authority retains only a bounded registry of exact
-Source Reference Envelopes actually returned to that Run. Context Use and
-Continue Research handoff must match an entry byte-for-byte and then recheck
-its current owner; knowing a current Note/Record identity is insufficient to
-fabricate an eligible reference. The registry stores no response content and
-is cleared by re-pair, restart, revocation, or end.
+The Source Reference Envelope's response-local ID is correlation only, not
+authority. Scholium retains no process registry of previously delivered
+references. Context Use and Continue Research submissions remain bound to an
+authenticated Run, must carry that Run's authorized scope, and recheck the
+current authoritative owner, revision, and locator before any reference is
+recorded or handed forward. These checks establish a current referent, not
+that delivery itself caused use; actual use remains explicit Agent testimony.
 
 Researcher state is only an ephemeral typed read view over existing owners.
 The maximum meanings are narrow: exact-fingerprint Settle means that revision
@@ -325,8 +326,10 @@ An applicable result may include one bounded **Context Use Report**. The Agent
 identifies only references that actually affected its result; Scholium verifies
 that each reference belongs to the Run's readable scope and retains the Source
 Reference Envelope plus separate Agent-use testimony and machine-validation
-fact. Search hits, selection, expansion, or delivery do not imply use. The
-Record never retains unused candidates, query, ranking, provider-internal ID,
+facts for the current owner, revision, and locator. Search hits, selection,
+expansion, or delivery do not imply use, and Scholium does not infer them from
+process history. The Record never retains unused candidates, query, ranking,
+provider-internal ID,
 complete response, context assembly, prompt, read count, click, dwell, or tool
 trace.
 

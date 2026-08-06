@@ -231,10 +231,11 @@ and exact occurrences and Property source ranges across App/CLI delivery.
 
 The Run owns one partitioned `ResearchResultPayload`. Validation checks Agent
 academic fields against its frozen Result Contract and Context Use Report
-references against the Run-readable Source Reference registry. Application
-adds machine fields from actual transactions. Finalization is idempotent and
-writes one strict portable Record only after every initiated transaction is
-known and recovery responsibility is satisfied.
+references against the authenticated Run scope and each current authoritative
+owner, revision, and locator. Session state retains no delivered-reference
+registry. Application adds machine fields from actual transactions.
+Finalization is idempotent and writes one strict portable Record only after
+every initiated transaction is known and recovery responsibility is satisfied.
 
 `PortableResearchRecordStore` remains the only long-term result owner. Its
 current strict schema includes one immutable finalized-result partition and an

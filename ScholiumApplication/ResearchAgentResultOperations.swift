@@ -118,9 +118,6 @@ extension WorkspaceHandle {
         )
         let contextUseReport = try await verifiedContextUseReport(
             claims: submission.contextUseClaims,
-            sessions: sessions,
-            credential: credential,
-            run: run,
             runID: authenticated.runID,
             triptychID: authenticated.triptychID,
             action: action
@@ -253,24 +250,11 @@ extension WorkspaceHandle {
 
     private func verifiedContextUseReport(
         claims: [ResearchContextUseClaim],
-        sessions: ResearchAgentSessionAuthority,
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator,
         runID: UUID,
         triptychID: UUID,
         action: ResearchActionSnapshot
     ) async throws -> ContextUseReport? {
         guard !claims.isEmpty else { return nil }
-        do {
-            try await sessions.requireReturnedContextReferences(
-                claims.map(\.sourceReference),
-                credential: credential,
-                run: run,
-                allowFinalized: true
-            )
-        } catch {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
         var entries: [ContextUseEntry] = []
         for claim in claims {
             let reference = claim.sourceReference
@@ -337,7 +321,8 @@ extension WorkspaceHandle {
               reference.vaultRole == snapshot.vaultRole,
               reference.objectRole == Self.objectRole(snapshot.vaultRole),
               reference.actorClass == .unknown,
-              reference.evidentialLayer == Self.evidentialLayer(snapshot.vaultRole)
+              reference.evidentialLayer == Self.evidentialLayer(snapshot.vaultRole),
+              Self.isNoteRetrievalReason(reference.retrievalReason)
         else {
             throw ResearchAgentResultContractError.invalidContextUse
         }
@@ -358,7 +343,8 @@ extension WorkspaceHandle {
                 == recordID.uuidString.lowercased(),
               reference.objectRole == .researchRecord,
               reference.vaultRole == nil,
-              reference.evidentialLayer == .researchRecord else {
+              reference.evidentialLayer == .researchRecord,
+              reference.retrievalReason == .recordSearch else {
             throw ResearchAgentResultContractError.invalidContextUse
         }
         let listing = try await services.portableResearchRecordStore.listing()
@@ -499,7 +485,7 @@ extension WorkspaceHandle {
         }
     }
 
-    private static func locator(
+    static func locator(
         _ locator: ResearchContextSourceLocator,
         isValidIn source: String
     ) -> Bool {
@@ -535,7 +521,7 @@ extension WorkspaceHandle {
         }
     }
 
-    private static func objectRole(_ role: VaultRole) -> ResearchContextObjectRole? {
+    static func objectRole(_ role: VaultRole) -> ResearchContextObjectRole? {
         switch role {
         case .sourceCorpus: .analysis
         case .topicKnowledge: .topic
@@ -544,7 +530,7 @@ extension WorkspaceHandle {
         }
     }
 
-    private static func evidentialLayer(_ role: VaultRole) -> EvidentialLayer {
+    static func evidentialLayer(_ role: VaultRole) -> EvidentialLayer {
         switch role {
         case .sourceCorpus: .paperAnalysis
         case .topicKnowledge, .other: .topicNote
@@ -552,12 +538,24 @@ extension WorkspaceHandle {
         }
     }
 
-    private static func actorClass(
+    static func actorClass(
         _ author: PortableResearchStatementAuthor
     ) -> ResearchContextActorClass {
         switch author {
         case .researcher: .researcher
         case .agent: .agent
+        }
+    }
+
+    static func isNoteRetrievalReason(
+        _ reason: ResearchContextRetrievalReason
+    ) -> Bool {
+        switch reason {
+        case .lexical, .canonicalSummary, .propertyPresence, .directRelation,
+             .exactRead:
+            true
+        case .recordSearch, .explicitSelection, .researcherState:
+            false
         }
     }
 }

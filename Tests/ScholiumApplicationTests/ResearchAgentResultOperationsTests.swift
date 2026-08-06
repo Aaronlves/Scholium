@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Authenticated Agent Result Application boundary", .serialized)
 struct ResearchAgentResultOperationsTests {
-    @Test("Context Use is owner-verified, exact replay is idempotent, and retrieval alone is not use")
+    @Test("Context Use revalidates Run scope and current owner without process issuance state")
     func verifiedContextUseAndIdempotentResult() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -55,7 +55,75 @@ struct ResearchAgentResultOperationsTests {
             )
         }
 
-        let fabricatedCurrentReference = try SourceReferenceEnvelope(
+        let wrongScope = try SourceReferenceEnvelope(
+            sourceKind: reference.sourceKind,
+            owner: reference.owner,
+            actorClass: reference.actorClass,
+            objectRole: reference.objectRole,
+            vaultRole: reference.vaultRole,
+            fingerprint: reference.fingerprint,
+            locator: reference.locator,
+            authorizedScope: .triptych(
+                runID: UUID(),
+                triptychID: reference.authorizedScope.triptychID
+            ),
+            currentness: reference.currentness,
+            evidentialLayer: reference.evidentialLayer,
+            retrievalReason: reference.retrievalReason,
+            materialLimitations: reference.materialLimitations
+        )
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await handle.research.submitAgentResult(
+                credential: first.credential,
+                run: first.handoff.run,
+                submission: try submission(
+                    preparation: first.preparation,
+                    outcome: "A reference from another Run must fail.",
+                    contextUseClaims: [try ResearchContextUseClaim(
+                        sourceReference: wrongScope,
+                        testimony: "This purportedly affected the synthesis."
+                    )]
+                )
+            )
+        }
+
+        let invalidLocator = try SourceReferenceEnvelope(
+            sourceKind: reference.sourceKind,
+            owner: reference.owner,
+            actorClass: reference.actorClass,
+            objectRole: reference.objectRole,
+            vaultRole: reference.vaultRole,
+            fingerprint: reference.fingerprint,
+            locator: .sourceRange(SearchSourceRange(
+                utf16LowerBound: 0,
+                utf16UpperBound: 1_000_000,
+                line: 1,
+                column: 1,
+                endLine: 1,
+                endColumn: 1
+            )),
+            authorizedScope: reference.authorizedScope,
+            currentness: reference.currentness,
+            evidentialLayer: reference.evidentialLayer,
+            retrievalReason: reference.retrievalReason,
+            materialLimitations: reference.materialLimitations
+        )
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await handle.research.submitAgentResult(
+                credential: first.credential,
+                run: first.handoff.run,
+                submission: try submission(
+                    preparation: first.preparation,
+                    outcome: "A locator outside the current source must fail.",
+                    contextUseClaims: [try ResearchContextUseClaim(
+                        sourceReference: invalidLocator,
+                        testimony: "This purportedly affected the synthesis."
+                    )]
+                )
+            )
+        }
+
+        let currentReferenceWithNewResponseID = try SourceReferenceEnvelope(
             sourceKind: reference.sourceKind,
             owner: reference.owner,
             actorClass: reference.actorClass,
@@ -69,28 +137,12 @@ struct ResearchAgentResultOperationsTests {
             retrievalReason: reference.retrievalReason,
             materialLimitations: reference.materialLimitations
         )
-        #expect(fabricatedCurrentReference.id != reference.id)
-        let fabricatedSubmission = try submission(
-            preparation: first.preparation,
-            outcome: "A current owner is insufficient without an issued reference.",
-            contextUseClaims: [try ResearchContextUseClaim(
-                sourceReference: fabricatedCurrentReference,
-                testimony: "This envelope was never returned to the Run."
-            )]
-        )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await handle.research.submitAgentResult(
-                credential: first.credential,
-                run: first.handoff.run,
-                submission: fabricatedSubmission
-            )
-        }
-
+        #expect(currentReferenceWithNewResponseID.id != reference.id)
         let validSubmission = try submission(
             preparation: first.preparation,
             outcome: "The current Topic passage supports a qualified synthesis.",
             contextUseClaims: [try ResearchContextUseClaim(
-                sourceReference: reference,
+                sourceReference: currentReferenceWithNewResponseID,
                 testimony: "The current Topic passage constrained the qualified synthesis."
             )]
         )
@@ -113,7 +165,7 @@ struct ResearchAgentResultOperationsTests {
         #expect(Set(contextEntry.verificationFacts) == [
             .authoritativeOwnerRead, .revisionMatched, .locatorResolved,
         ])
-        #expect(contextEntry.sourceReference == reference)
+        #expect(contextEntry.sourceReference == currentReferenceWithNewResponseID)
         #expect(record.actuallyUsedMaterials.isEmpty)
 
         let different = try submission(
