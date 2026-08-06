@@ -11,6 +11,29 @@ isolation. `ScholiumApp` and `ScholiumCLI` are delivery adapters over
 only through Application capabilities and immutable `ScholiumContracts`
 values. This in-process module and ownership boundary is not XPC or a service.
 
+## Global ownership invariant
+
+Every mutable fact, authorization policy, and workflow state has one
+authoritative owner. That owner defines the fact's identity, lifetime,
+mutation route, persistence, cancellation, teardown, and recovery behavior.
+Other modules may read the owner's value, request a typed change, or translate
+it for a delivery boundary; they must not copy its semantics into a competing
+state field, policy, parser, or protocol.
+
+Three roles remain distinct:
+
+- **Authority** is the source of truth whose value or decision is binding.
+- **Writer** is the sole owner-authorized mutation route for that authority.
+- **Projection** is disposable derived state owned by the subsystem that
+  builds and refreshes it; it never becomes a writable source or authorization
+  source.
+
+Coordinators may sequence owners and carry typed intents across boundaries,
+but they do not become a second owner of the domain fact being coordinated.
+When a responsibility crosses chapters, the owning chapter retains the
+meaning and the neighboring chapter documents only its typed dependency and
+translation boundary.
+
 ## Ownership
 
 `ScholiumContracts` owns immutable boundary values, capability protocols,
