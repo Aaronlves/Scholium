@@ -3989,18 +3989,18 @@
         }
       }
     },
-    "Candidate write to current %@" : {
+    "May update this %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Candidate write to current %@"
+            "value" : "May update this %@."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "候选写入当前%@"
+            "value" : "可能更新当前%@。"
           }
         }
       }
@@ -10299,6 +10299,22 @@
         }
       }
     },
+    "Handoff ready" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Handoff ready"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接说明已就绪"
+          }
+        }
+      }
+    },
     "Heading" : {
       "localizations" : {
         "en" : {
@@ -11552,12 +11568,18 @@
         }
       }
     },
-    "Invalidates the previous pairing for this Run, then copies its replacement without changing the Run or recovery state." : {
+    "Invalidates the previous pairing and copies a replacement handoff for this Action." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalidates the previous pairing and copies a replacement handoff for this Action."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使本次运行先前的配对失效，然后复制替代的交接说明，但不改变运行或恢复状态。"
+            "value" : "使先前的配对失效，并为此操作复制替代交接说明。"
           }
         }
       }
@@ -13083,12 +13105,18 @@
         }
       }
     },
-    "Method + Academic Profile" : {
+    "Does not change research documents." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Does not change research documents."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "方法 + 学术配置"
+            "value" : "不会更改研究文档。"
           }
         }
       }
@@ -16427,18 +16455,18 @@
         }
       }
     },
-    "PREPARED" : {
+    "Closing this sheet leaves the Action active." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "PREPARED"
+            "value" : "Closing this sheet leaves the Action active."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已准备"
+            "value" : "关闭此工作表后，此操作仍会保持进行中。"
           }
         }
       }
@@ -17560,22 +17588,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "审查"
-          }
-        }
-      }
-    },
-    "RUN BOUNDARY" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "RUN BOUNDARY"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "运行边界"
           }
         }
       }
@@ -20441,22 +20453,6 @@
         }
       }
     },
-    "Revision SHA-256 %@…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Revision SHA-256 %@…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "修订 SHA-256 %@…"
-          }
-        }
-      }
-    },
     "Roles: %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -21143,18 +21139,18 @@
         }
       }
     },
-    "Scholium could not copy the prepared instructions. %@" : {
+    "Scholium could not copy the handoff. %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Scholium could not copy the prepared instructions. %@"
+            "value" : "Scholium could not copy the handoff. %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 无法复制准备好的说明。%@"
+            "value" : "Scholium 无法复制交接说明。%@"
           }
         }
       }
@@ -21500,16 +21496,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 在本机保留访问权限和指纹；研究记录既不存储路径，也不存储来源字节。"
-          }
-        }
-      }
-    },
-    "Scholium revalidates the exact note and Method/Profile revisions before preparation. Write-capable Actions preserve the bytes they replace and remain subject to conflict and recovery checks." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 在准备前重新核验精确笔记以及方法／配置修订。具备写入能力的操作会保留其替换的字节，并继续受冲突和恢复检查约束。"
           }
         }
       }
@@ -24003,16 +23989,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已移除被删除的笔记，但 Scholium 无法激活相邻标签页。请选择一篇文档以继续。错误：%1$@"
-          }
-        }
-      }
-    },
-    "The exact Action, Method and Profile revisions, Platform and academic inputs, Result Contract, Target revision, and authority boundary are frozen for this Run." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此次运行已冻结精确的操作、方法和配置修订、平台与学术输入、结果契约、目标修订以及权限边界。"
           }
         }
       }
@@ -26578,16 +26554,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "验证并冻结此操作，然后复制其说明。"
-          }
-        }
-      }
-    },
-    "Validates and freezes this Action, then copies the Run locator, one-time Pairing Code, and CLI steps for the Agent." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "验证并冻结此操作，然后复制运行定位符、一次性配对码以及供智能体执行的 CLI 步骤。"
           }
         }
       }

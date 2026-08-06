@@ -8,10 +8,9 @@ struct ResearchActionPanelContext {
     let dismiss: () -> Void
 }
 
-/// One native sheet for every Action. Protected Platform selectors and
-/// researcher-owned academic fields are rendered as separate evidential
-/// layers; neither can hide the app-owned Target, revision, authority,
-/// conflict, recovery, or frozen Result Contract boundary.
+/// One native sheet for every Action. It keeps the Action, target, possible
+/// document effect, academic inputs, Agent status, result, and recovery routes
+/// visible without turning implementation identities into researcher tasks.
 struct ResearchActionPanelView: View {
     @ObservedObject private var controller: ResearchActionController
     let context: ResearchActionPanelContext
@@ -38,7 +37,6 @@ struct ResearchActionPanelView: View {
             ScholiumStructuralRule()
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    appOwnedContext
                     platformInputs
                     academicInputs
                     status
@@ -172,72 +170,22 @@ struct ResearchActionPanelView: View {
                 Text(verbatim: actionTitle)
                     .font(.title2.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
-                Text("Method + Academic Profile")
-                    .font(.callout)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("Target")
+                        .fontWeight(.semibold)
+                    Text(verbatim: targetTitle)
+                }
+                .font(.callout)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .accessibilityElement(children: .combine)
+                Text(actionEffectLabel)
+                    .font(.caption)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
         .padding(20)
-    }
-
-    private var appOwnedContext: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("RUN BOUNDARY")
-                .scholiumApparatusHeadingStyle()
-                .accessibilityAddTraits(.isHeader)
-            ViewThatFits(in: .horizontal) {
-                Grid(
-                    alignment: .leading,
-                    horizontalSpacing: 18,
-                    verticalSpacing: 8
-                ) {
-                    boundaryRows
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    boundaryBlock("Target", value: controller.target?.title ?? "Unavailable")
-                    boundaryBlock("Revision", value: revisionLabel)
-                    boundaryBlock("Authority", value: authorityLabel)
-                }
-            }
-            Text("Scholium revalidates the exact note and Method/Profile revisions before preparation. Write-capable Actions preserve the bytes they replace and remain subject to conflict and recovery checks.")
-                .font(.caption)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .accessibilityIdentifier("scholium.researchAction.boundary")
-    }
-
-    @ViewBuilder
-    private var boundaryRows: some View {
-        GridRow(alignment: .firstTextBaseline) {
-            boundaryLabel("Target")
-            Text(controller.target?.title ?? "Unavailable")
-        }
-        GridRow(alignment: .firstTextBaseline) {
-            boundaryLabel("Revision")
-            Text(revisionLabel).monospacedDigit()
-        }
-        GridRow(alignment: .firstTextBaseline) {
-            boundaryLabel("Authority")
-            Text(authorityLabel)
-        }
-    }
-
-    private func boundaryLabel(_ value: String) -> some View {
-        Text(LocalizedStringKey(value))
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            .frame(width: 76, alignment: .leading)
-    }
-
-    private func boundaryBlock(_ label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(LocalizedStringKey(label))
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            Text(value).padding(.leading, 10)
-        }
     }
 
     @ViewBuilder
@@ -544,14 +492,15 @@ struct ResearchActionPanelView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("scholium.researchAction.error")
         }
-        if let preparation = controller.preparation {
+        if let preparation = controller.preparation,
+           controller.resultRecord == nil {
             VStack(alignment: .leading, spacing: 10) {
-                Text("PREPARED")
-                    .scholiumApparatusHeadingStyle()
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("scholium.researchAction.prepared")
-                Text("The exact Action, Method and Profile revisions, Platform and academic inputs, Result Contract, Target revision, and authority boundary are frozen for this Run.")
+                Label("Handoff ready", systemImage: "doc.on.clipboard")
                     .font(.callout)
+                    .accessibilityIdentifier("scholium.researchAction.connection")
+                Text("Closing this sheet leaves the Action active.")
+                    .font(.caption)
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
                 if let warning = preparation.derivedRefreshWarning {
                     Label(warning, systemImage: "arrow.triangle.2.circlepath")
@@ -579,7 +528,7 @@ struct ResearchActionPanelView: View {
                             "scholium.researchAction.copyNewHandoff"
                         )
                         .accessibilityHint(
-                            "Invalidates the previous pairing for this Run, then copies its replacement without changing the Run or recovery state."
+                            "Invalidates the previous pairing and copies a replacement handoff for this Action."
                         )
                     }
                 }
@@ -620,7 +569,6 @@ struct ResearchActionPanelView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canCopyInstructions)
                 .accessibilityIdentifier("scholium.researchAction.copyHandoff")
-                .accessibilityHint("Validates and freezes this Action, then copies the Run locator, one-time Pairing Code, and CLI steps for the Agent.")
             }
         }
         .padding(16)
@@ -680,7 +628,7 @@ struct ResearchActionPanelView: View {
             try context.copyInstructions(instructions)
         } catch {
             handoffErrorMessage = String(
-                localized: "Scholium could not copy the prepared instructions. \(error.localizedDescription)",
+                localized: "Scholium could not copy the handoff. \(error.localizedDescription)",
                 table: "Localizable",
                 bundle: .module
             )
@@ -692,12 +640,12 @@ struct ResearchActionPanelView: View {
             ?? String(localized: "Research Action", table: "Localizable", bundle: .module)
     }
 
-    private var revisionLabel: String {
-        controller.target.map { String($0.fingerprint.sha256.prefix(8)) }
+    private var targetTitle: String {
+        controller.target?.title
             ?? String(localized: "Unavailable", table: "Localizable", bundle: .module)
     }
 
-    private var authorityLabel: String {
+    private var actionEffectLabel: String {
         guard let platform = controller.platformDefinition else {
             return String(localized: "Checking…", table: "Localizable", bundle: .module)
         }
@@ -705,11 +653,15 @@ struct ResearchActionPanelView: View {
             ?? String(localized: "note", table: "Localizable", bundle: .module)
         return platform.operations.contains(.modifyInitialNote)
             ? String(
-                localized: "Candidate write to current \(role)",
+                localized: "May update this \(role).",
                 table: "Localizable",
                 bundle: .module
             )
-            : String(localized: "Read-only", table: "Localizable", bundle: .module)
+            : String(
+                localized: "Does not change research documents.",
+                table: "Localizable",
+                bundle: .module
+            )
     }
 
     private var canCopyInstructions: Bool {

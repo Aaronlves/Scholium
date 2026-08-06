@@ -3,6 +3,41 @@ import Testing
 
 @Suite("Research Action handoff presentation")
 struct ResearchActionHandoffPresentationTests {
+    @Test("Action sheets expose researcher decisions instead of implementation boundaries")
+    func researcherFacingActionStatus() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let actionPanel = try source(
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift",
+            repositoryRoot: repositoryRoot
+        )
+
+        #expect(actionPanel.contains("Text(\"Target\")"))
+        #expect(actionPanel.contains("Text(actionEffectLabel)"))
+        #expect(actionPanel.contains("localized: \"May update this \\(role).\""))
+        #expect(actionPanel.contains("localized: \"Does not change research documents.\""))
+        #expect(actionPanel.contains("Label(\"Handoff ready\""))
+        #expect(actionPanel.contains("scholium.researchAction.connection"))
+        #expect(actionPanel.contains("Closing this sheet leaves the Action active."))
+        #expect(actionPanel.contains("preparation.derivedRefreshWarning"))
+        #expect(actionPanel.contains("Button(\"End Action…\", role: .destructive)"))
+
+        for implementationCopy in [
+            "RUN BOUNDARY",
+            "PREPARED",
+            "Method + Academic Profile",
+            "revisionLabel",
+            "fingerprint.sha256.prefix",
+            "Candidate write to current",
+            "The exact Action, Method and Profile revisions",
+            "Validates and freezes this Action",
+        ] {
+            #expect(!actionPanel.contains(implementationCopy))
+        }
+    }
+
     @Test("One-time codes stay inside complete copied handoffs")
     func pairingCodesAreNotSeparateInterfaceFields() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

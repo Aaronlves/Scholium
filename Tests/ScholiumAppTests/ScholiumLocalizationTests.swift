@@ -189,6 +189,31 @@ struct ScholiumLocalizationTests {
         )
         #expect(
             ScholiumL10n.string(
+                "Does not change research documents.",
+                locale: simplifiedChinese
+            ) == "不会更改研究文档。"
+        )
+        #expect(
+            String(
+                format: ScholiumL10n.string(
+                    "May update this %@.",
+                    locale: simplifiedChinese
+                ),
+                "议题"
+            ) == "可能更新当前议题。"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Closing this sheet leaves the Action active.",
+                locale: simplifiedChinese
+            ) == "关闭此工作表后，此操作仍会保持进行中。"
+        )
+        #expect(
+            ScholiumL10n.string("Handoff ready", locale: simplifiedChinese)
+                == "交接说明已就绪"
+        )
+        #expect(
+            ScholiumL10n.string(
                 "A prepared Action still needs cancellation.",
                 locale: simplifiedChinese
             ) == "仍有一个已准备的操作需要取消。"

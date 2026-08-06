@@ -576,7 +576,12 @@ Action, and an active Discussion exposes End Discussion in addition to nontermin
 preserves the current exchange as a finished Research Record. Focused tests cover the copy-only
 presentation boundary, pairing replacement, and durable Discussion cancellation. Research Guidance's
 Collaboration pane exposes only the Triptych collaboration policy and its invariants; it has no
-global Agent-configuration prompt.
+global Agent-configuration prompt. The Action sheet header now shows the Action, target, and whether
+the Action may change that research document. Its active state says that the handoff is ready and
+that closing leaves the Action active; it no longer presents `RUN BOUNDARY`,
+`PREPARED`, a truncated revision hash, Method/Profile revision prose, Result Contract internals, or
+an authority-freeze explanation as researcher tasks. Exact identity, revision, permission, conflict,
+and recovery enforcement remains unchanged at the Application boundary.
 
 **Still open**
 
