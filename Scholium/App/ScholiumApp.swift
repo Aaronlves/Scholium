@@ -1562,7 +1562,10 @@ final class WindowModel: ObservableObject {
                 guard let self else { return }
                 if let status {
                     self.refreshStatusText = status
-                } else if self.refreshStatusText == "Search unavailable" {
+                } else if let refreshStatusText = self.refreshStatusText,
+                          ["Search unavailable", "Search failed"].contains(
+                              refreshStatusText
+                          ) {
                     self.refreshStatusText = nil
                 }
             },

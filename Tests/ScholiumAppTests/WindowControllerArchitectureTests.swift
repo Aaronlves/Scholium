@@ -904,12 +904,12 @@ struct WindowControllerArchitectureTests {
             scope: .thisNote
         ))
 
-        controller.failSearch("stale", for: first)
-        #expect(controller.search.errorMessage == nil)
+        controller.failSearch(.failed("stale"), for: first)
+        #expect(controller.search.executionIssue == nil)
         #expect(controller.search.criteria.query == "second")
 
-        controller.failSearch("current", for: second)
-        #expect(controller.search.errorMessage == "current")
+        controller.failSearch(.failed("current"), for: second)
+        #expect(controller.search.executionIssue == .failed("current"))
         #expect(!controller.search.isRunning)
     }
 
@@ -928,8 +928,38 @@ struct WindowControllerArchitectureTests {
             )
         }
 
-        #expect(controller.search.errorMessage == "Open a complete Triptych before searching.")
+        #expect(controller.search.executionIssue == .unavailable(
+            "Open a complete Triptych before searching."
+        ))
         #expect(!controller.search.isRunning)
+
+        await #expect(throws: DiscoverySearchExecutionError.currentNoteUnavailable) {
+            try await controller.executeSearch(
+                SearchWorkspaceState(query: "agency", scope: .thisNote),
+                context: DiscoverySearchExecutionContext(
+                    workspaceIsAvailable: true,
+                    currentNoteSnapshot: nil,
+                    currentVaultID: nil
+                )
+            )
+        }
+        #expect(controller.search.executionIssue == .unavailable(
+            "Open a note before searching This Note."
+        ))
+
+        await #expect(throws: DiscoverySearchExecutionError.currentVaultUnavailable) {
+            try await controller.executeSearch(
+                SearchWorkspaceState(query: "agency", scope: .currentVault),
+                context: DiscoverySearchExecutionContext(
+                    workspaceIsAvailable: true,
+                    currentNoteSnapshot: nil,
+                    currentVaultID: nil
+                )
+            )
+        }
+        #expect(controller.search.executionIssue == .unavailable(
+            "Select an available vault before searching This Vault."
+        ))
     }
 
     @Test("Discovery rejects a stale Location completion for the same Scope and Location")

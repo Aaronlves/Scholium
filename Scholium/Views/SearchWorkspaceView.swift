@@ -16,6 +16,199 @@ struct SpotlightSearchContext {
     let delete: (UUID) -> Void
 }
 
+/// Search-local mapping from provider-owned availability into the shared
+/// presentation meanings in `Design.md`. It is deliberately not a runtime
+/// state owner: Search providers retain their typed availability and
+/// transitions, while this value owns only visible wording, tone, and action.
+enum SearchStatePresentationMeaning: Equatable, Sendable {
+    case loading
+    case unavailable
+    case stale
+    case error
+
+    var colorRole: ScholiumColorRole {
+        switch self {
+        case .loading:
+            .information
+        case .unavailable, .stale:
+            .attention
+        case .error:
+            .destructive
+        }
+    }
+}
+
+enum SearchStateBannerAction: Equatable, Sendable {
+    case refresh
+    case retry
+
+    var title: String {
+        switch self {
+        case .refresh:
+            String(localized: "Refresh")
+        case .retry:
+            String(localized: "Retry")
+        }
+    }
+}
+
+struct SearchStateBannerPresentation: Equatable, Sendable {
+    let meaning: SearchStatePresentationMeaning
+    let title: String
+    let message: String
+    let systemImage: String
+    let action: SearchStateBannerAction?
+}
+
+enum SearchStatePresentation {
+    static func executionIssue(
+        _ issue: SearchExecutionIssue
+    ) -> SearchStateBannerPresentation {
+        switch issue {
+        case .unavailable(let message):
+            SearchStateBannerPresentation(
+                meaning: .unavailable,
+                title: String(localized: "Search Unavailable"),
+                message: message,
+                systemImage: "magnifyingglass.circle",
+                action: nil
+            )
+        case .failed(let message):
+            SearchStateBannerPresentation(
+                meaning: .error,
+                title: String(localized: "Search Failed"),
+                message: message,
+                systemImage: "exclamationmark.triangle",
+                action: .retry
+            )
+        }
+    }
+
+    static func note(
+        _ availability: SearchAvailability
+    ) -> SearchStateBannerPresentation? {
+        switch availability {
+        case .unavailable:
+            SearchStateBannerPresentation(
+                meaning: .unavailable,
+                title: String(localized: "Search Index Unavailable"),
+                message: String(localized: "No complete local Search index is available for this Triptych."),
+                systemImage: "magnifyingglass.circle",
+                action: .refresh
+            )
+        case .building(let progress):
+            SearchStateBannerPresentation(
+                meaning: .loading,
+                title: String(localized: "Building Search Index"),
+                message: progress.total > 0
+                    ? String(localized: "Indexed \(progress.completed) of \(progress.total) notes.")
+                    : String(localized: "Preparing the local Triptych index."),
+                systemImage: "arrow.triangle.2.circlepath",
+                action: nil
+            )
+        case .current:
+            nil
+        case .refreshing:
+            SearchStateBannerPresentation(
+                meaning: .loading,
+                title: String(localized: "Refreshing Search Index"),
+                message: String(localized: "Showing results from the last complete index while the replacement is built."),
+                systemImage: "arrow.triangle.2.circlepath",
+                action: nil
+            )
+        case .stale(_, let reason):
+            SearchStateBannerPresentation(
+                meaning: .stale,
+                title: String(localized: "Search Index Is Stale"),
+                message: String(localized: "The last complete Search index remains available. Details: \(reason)"),
+                systemImage: "clock.badge.exclamationmark",
+                action: .refresh
+            )
+        case .failed(let lastGood, let reason):
+            SearchStateBannerPresentation(
+                meaning: .error,
+                title: String(localized: "Search Index Failed"),
+                message: lastGood == nil
+                    ? String(localized: "Scholium could not build a usable Search index. Details: \(reason)")
+                    : String(localized: "Scholium could not publish a replacement Search index. The last complete results remain available. Details: \(reason)"),
+                systemImage: "exclamationmark.triangle",
+                action: .retry
+            )
+        }
+    }
+
+    static func record(
+        _ availability: RecordSearchAvailability
+    ) -> SearchStateBannerPresentation? {
+        switch availability {
+        case .unavailable:
+            SearchStateBannerPresentation(
+                meaning: .unavailable,
+                title: String(localized: "Research Record Search Unavailable"),
+                message: String(localized: "No complete Research Record search projection is available."),
+                systemImage: "magnifyingglass.circle",
+                action: .refresh
+            )
+        case .building(let progress):
+            SearchStateBannerPresentation(
+                meaning: .loading,
+                title: String(localized: "Preparing Research Records"),
+                message: progress.total > 0
+                    ? String(localized: "Prepared \(progress.completed) of \(progress.total) records.")
+                    : String(localized: "Preparing the Research Record search projection."),
+                systemImage: "arrow.triangle.2.circlepath",
+                action: nil
+            )
+        case .current:
+            nil
+        case .refreshing:
+            SearchStateBannerPresentation(
+                meaning: .loading,
+                title: String(localized: "Refreshing Research Records"),
+                message: String(localized: "Showing results from the last complete Research Record search projection while the replacement is prepared."),
+                systemImage: "arrow.triangle.2.circlepath",
+                action: nil
+            )
+        case .stale(_, let reason):
+            SearchStateBannerPresentation(
+                meaning: .stale,
+                title: String(localized: "Research Record Search Is Stale"),
+                message: String(localized: "The last complete Research Record search projection remains available. Details: \(reason)"),
+                systemImage: "clock.badge.exclamationmark",
+                action: .refresh
+            )
+        case .failed(let lastGood, let reason):
+            SearchStateBannerPresentation(
+                meaning: .error,
+                title: String(localized: "Research Record Search Failed"),
+                message: lastGood == nil
+                    ? String(localized: "Scholium could not build a usable Research Record search projection. Details: \(reason)")
+                    : String(localized: "Scholium could not publish a replacement Research Record search projection. The last complete results remain available. Details: \(reason)"),
+                systemImage: "exclamationmark.triangle",
+                action: .retry
+            )
+        }
+    }
+
+    static func suppressesNoMatchContent(
+        for availability: SearchProviderAvailability,
+        scope: SearchPresentationScope,
+        hasExecutionIssue: Bool
+    ) -> Bool {
+        if hasExecutionIssue { return true }
+        if scope == .thisNote { return false }
+        return switch availability {
+        case .note(.unavailable), .note(.building),
+             .note(.failed(lastGood: nil, reason: _)),
+             .record(.unavailable), .record(.building),
+             .record(.failed(lastGood: nil, reason: _)):
+            true
+        case .note, .record:
+            false
+        }
+    }
+}
+
 struct SpotlightSearchPanelView: View {
     @ObservedObject private var controller: DiscoveryController
     @Environment(\.scholiumReduceMotion) private var reduceMotion
@@ -352,13 +545,8 @@ struct SpotlightSearchPanelView: View {
 
     @ViewBuilder
     private var searchAvailabilityBanner: some View {
-        if let searchError = controller.search.errorMessage {
-            operationalBanner(
-                title: String(localized: "Search Unavailable"),
-                message: searchError,
-                systemImage: "exclamationmark.triangle",
-                offersRetry: true
-            )
+        if let executionIssue = controller.search.executionIssue {
+            operationalBanner(SearchStatePresentation.executionIssue(executionIssue))
         } else if controller.search.criteria.scope == .thisNote {
             EmptyView()
         } else {
@@ -373,41 +561,8 @@ struct SpotlightSearchPanelView: View {
 
     @ViewBuilder
     private func noteAvailabilityBanner(_ availability: SearchAvailability) -> some View {
-        switch availability {
-            case .unavailable:
-                EmptyView()
-            case .building(let progress):
-                operationalBanner(
-                    title: String(localized: "Building Search Index"),
-                    message: progress.total > 0
-                        ? String(localized: "Indexed \(progress.completed) of \(progress.total) notes.")
-                        : String(localized: "Preparing the local Triptych index."),
-                    systemImage: "arrow.triangle.2.circlepath",
-                    offersRetry: false
-                )
-            case .current:
-                EmptyView()
-            case .refreshing:
-                operationalBanner(
-                    title: String(localized: "Refreshing Search Index"),
-                    message: String(localized: "Showing results from the last complete index while the replacement is built."),
-                    systemImage: "arrow.triangle.2.circlepath",
-                    offersRetry: false
-                )
-            case .stale(_, let reason):
-                operationalBanner(
-                    title: String(localized: "Search Index Is Stale"),
-                    message: String(localized: "The last complete Search index remains available. Details: \(reason)"),
-                    systemImage: "clock.badge.exclamationmark",
-                    offersRetry: false
-                )
-            case .failed(_, let reason):
-                operationalBanner(
-                    title: String(localized: "Search Index Failed"),
-                    message: String(localized: "Scholium could not publish a replacement Search index. Details: \(reason)"),
-                    systemImage: "exclamationmark.triangle",
-                    offersRetry: true
-                )
+        if let presentation = SearchStatePresentation.note(availability) {
+            operationalBanner(presentation)
         }
     }
 
@@ -415,62 +570,44 @@ struct SpotlightSearchPanelView: View {
     private func recordAvailabilityBanner(
         _ availability: RecordSearchAvailability
     ) -> some View {
-        switch availability {
-        case .unavailable:
-            EmptyView()
-        case .building(let progress):
-            operationalBanner(
-                title: String(localized: "Preparing Research Records"),
-                message: String(localized: "Prepared \(progress.completed) of \(progress.total) records."),
-                systemImage: "arrow.triangle.2.circlepath",
-                offersRetry: false
-            )
-        case .current:
-            EmptyView()
-        case .refreshing:
-            operationalBanner(
-                title: String(localized: "Refreshing Research Records"),
-                message: String(localized: "The Record query projection is refreshing."),
-                systemImage: "arrow.triangle.2.circlepath",
-                offersRetry: false
-            )
-        case .stale(_, let reason), .failed(_, let reason):
-            operationalBanner(
-                title: String(localized: "Research Record Search Unavailable"),
-                message: reason,
-                systemImage: "exclamationmark.triangle",
-                offersRetry: true
-            )
+        if let presentation = SearchStatePresentation.record(availability) {
+            operationalBanner(presentation)
         }
     }
 
     private func operationalBanner(
-        title: String,
-        message: String,
-        systemImage: String,
-        offersRetry: Bool
+        _ presentation: SearchStateBannerPresentation
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 2) {
+                Label(presentation.title, systemImage: presentation.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(
+                        presentation.meaning.colorRole.color(
+                            increasedContrast: increasedContrast
+                        )
+                    )
+                Text(presentation.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
             Spacer()
-            if offersRetry {
-                Button("Retry") { Task { await context.refresh() } }
+            if let action = presentation.action {
+                Button(action.title) { Task { await context.refresh() } }
                     .controlSize(.small)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(
-            Color.orange.opacity(0.12),
+            presentation.meaning.colorRole.color(
+                increasedContrast: increasedContrast
+            ).opacity(0.12),
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-        .accessibilityElement(children: .combine)
     }
 
     private var scopePicker: some View {
@@ -531,14 +668,11 @@ struct SpotlightSearchPanelView: View {
 
     private var suppressesNoMatchContent: Bool {
         guard controller.search.results.isEmpty else { return false }
-        if controller.search.criteria.scope == .thisNote { return false }
-        return switch controller.search.availability {
-        case .note(.unavailable), .note(.building), .note(.failed(lastGood: nil, reason: _)),
-             .record(.unavailable), .record(.building), .record(.failed(lastGood: nil, reason: _)):
-            true
-        case .note, .record:
-            false
-        }
+        return SearchStatePresentation.suppressesNoMatchContent(
+            for: controller.search.availability,
+            scope: controller.search.criteria.scope,
+            hasExecutionIssue: controller.search.executionIssue != nil
+        )
     }
 
     private var savedSearchesMenu: some View {

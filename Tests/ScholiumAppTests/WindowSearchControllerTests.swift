@@ -193,7 +193,7 @@ struct WindowSearchControllerTests {
         #expect(probe.informationMessages.count == 1)
         #expect(probe.informationMessages[0].contains("note changed"))
         #expect(probe.isPresented)
-        #expect(discovery.search.errorMessage != nil)
+        #expect(discovery.search.executionIssue != nil)
     }
 
     @Test("A stale Research Record result is never routed")
@@ -259,7 +259,7 @@ struct WindowSearchControllerTests {
             probe.informationMessages[0].contains("Research Record changed")
         )
         #expect(probe.isPresented)
-        #expect(discovery.search.errorMessage != nil)
+        #expect(discovery.search.executionIssue != nil)
     }
 
     @Test("Saved Searches from another Search contract require editing")

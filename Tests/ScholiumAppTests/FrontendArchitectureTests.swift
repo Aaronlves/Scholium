@@ -1602,12 +1602,12 @@ struct FrontendArchitectureTests {
         let firstRequest = controller.beginSearch(first)
         let secondRequest = controller.beginSearch(second)
 
-        controller.failSearch("stale", for: firstRequest)
-        #expect(controller.search.errorMessage == nil)
+        controller.failSearch(.failed("stale"), for: firstRequest)
+        #expect(controller.search.executionIssue == nil)
         #expect(controller.search.criteria.query == "second")
 
-        controller.failSearch("current", for: secondRequest)
-        #expect(controller.search.errorMessage == "current")
+        controller.failSearch(.failed("current"), for: secondRequest)
+        #expect(controller.search.executionIssue == .failed("current"))
     }
 
     @Test("Search preparation failures close only the matching pending projection")
@@ -1619,15 +1619,15 @@ struct FrontendArchitectureTests {
         controller.replaceSearchCriteria(first)
         #expect(controller.search.isRunning)
         controller.replaceSearchCriteria(second)
-        controller.failPendingSearch("late bridge failure", for: first)
+        controller.failPendingSearch(.failed("late bridge failure"), for: first)
 
         #expect(controller.search.criteria == second)
         #expect(controller.search.isRunning)
-        #expect(controller.search.errorMessage == nil)
+        #expect(controller.search.executionIssue == nil)
 
-        controller.failPendingSearch("current bridge failure", for: second)
+        controller.failPendingSearch(.failed("current bridge failure"), for: second)
         #expect(!controller.search.isRunning)
-        #expect(controller.search.errorMessage == "current bridge failure")
+        #expect(controller.search.executionIssue == .failed("current bridge failure"))
     }
 
     @Test("Search rejects a response whose contract request ID does not match the active request")
@@ -1987,12 +1987,12 @@ struct FrontendArchitectureTests {
         let request = controller.beginSearch(controller.search.criteria)
 
         controller.dismissSearch()
-        controller.failSearch("late", for: request)
+        controller.failSearch(.failed("late"), for: request)
 
         #expect(controller.search.criteria.query.isEmpty)
         #expect(controller.search.criteria.scope == .currentVault)
         #expect(controller.search.ordinaryScope == .currentVault)
-        #expect(controller.search.errorMessage == nil)
+        #expect(controller.search.executionIssue == nil)
     }
 
     @Test("Changing scope during Command-F makes that scope ordinary")

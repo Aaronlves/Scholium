@@ -14666,6 +14666,38 @@
         }
       }
     },
+    "No complete Research Record search projection is available." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No complete Research Record search projection is available."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前没有可用的完整研究记录搜索投影。"
+          }
+        }
+      }
+    },
+    "No complete local Search index is available for this Triptych." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No complete local Search index is available for this Triptych."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此脉络当前没有可用的完整本地搜索索引。"
+          }
+        }
+      }
+    },
     "No configured Actions" : {
       "localizations" : {
         "en" : {
@@ -15605,6 +15637,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索前打开完整的脉络。"
+          }
+        }
+      }
+    },
+    "Open a note before searching This Note." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open a note before searching This Note."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开一篇笔记后再搜索“此笔记”。"
           }
         }
       }
@@ -16954,6 +17002,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在准备请求…"
+          }
+        }
+      }
+    },
+    "Preparing the Research Record search projection." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preparing the Research Record search projection."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备研究记录搜索投影。"
           }
         }
       }
@@ -19257,6 +19321,38 @@
         }
       }
     },
+    "Research Record Search Failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Research Record Search Failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究记录搜索失败"
+          }
+        }
+      }
+    },
+    "Research Record Search Is Stale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Research Record Search Is Stale"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究记录搜索已过期"
+          }
+        }
+      }
+    },
     "Research Record Search Unavailable" : {
       "localizations" : {
         "en" : {
@@ -21141,6 +21237,38 @@
         }
       }
     },
+    "Scholium could not build a usable Research Record search projection. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium could not build a usable Research Record search projection. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法构建可用的研究记录搜索投影。详情：%@"
+          }
+        }
+      }
+    },
+    "Scholium could not build a usable Search index. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium could not build a usable Search index. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法构建可用的搜索索引。详情：%@"
+          }
+        }
+      }
+    },
     "Scholium could not confirm that this Action is available for the current note." : {
       "localizations" : {
         "en" : {
@@ -21173,6 +21301,22 @@
         }
       }
     },
+    "Scholium could not publish a replacement Research Record search projection. The last complete results remain available. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium could not publish a replacement Research Record search projection. The last complete results remain available. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法发布替代研究记录搜索投影。上一次完整结果仍可用。详情：%@"
+          }
+        }
+      }
+    },
     "Scholium could not publish a replacement Search index. Details: %@" : {
       "localizations" : {
         "en" : {
@@ -21185,6 +21329,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 无法发布替代搜索索引。详情：%@"
+          }
+        }
+      }
+    },
+    "Scholium could not publish a replacement Search index. The last complete results remain available. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium could not publish a replacement Search index. The last complete results remain available. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法发布替代搜索索引。上一次完整结果仍可用。详情：%@"
           }
         }
       }
@@ -21755,6 +21915,22 @@
         }
       }
     },
+    "Search Failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Search Failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索失败"
+          }
+        }
+      }
+    },
     "Search Index Failed" : {
       "localizations" : {
         "en" : {
@@ -21783,6 +21959,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索索引已过期"
+          }
+        }
+      }
+    },
+    "Search Index Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Search Index Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索索引不可用"
           }
         }
       }
@@ -22080,6 +22272,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在文档中选择一个段落，然后重新打开此操作。"
+          }
+        }
+      }
+    },
+    "Select an available vault before searching This Vault." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Select an available vault before searching This Vault."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个可用的资料库后再搜索“此资料库”。"
           }
         }
       }
@@ -22518,6 +22726,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在“推荐”中显示此条目"
+          }
+        }
+      }
+    },
+    "Showing results from the last complete Research Record search projection while the replacement is prepared." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing results from the last complete Research Record search projection while the replacement is prepared."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示上一次完整研究记录搜索投影的结果，同时准备替代投影。"
           }
         }
       }
@@ -24225,6 +24449,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "中断时的候选内容现已成为当前源文本。"
+          }
+        }
+      }
+    },
+    "The last complete Research Record search projection remains available. Details: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The last complete Research Record search projection remains available. Details: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一次完整研究记录搜索投影仍可用。详情：%@"
           }
         }
       }

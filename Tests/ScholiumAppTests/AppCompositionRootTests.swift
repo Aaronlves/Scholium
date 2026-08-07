@@ -119,13 +119,15 @@ struct AppCompositionRootTests {
         ))
         #expect(firstSearch.id != secondSearch.id)
         first.discoveryController.cancelSearch()
-        first.discoveryController.failSearch("stale completion", for: firstSearch)
+        first.discoveryController.failSearch(.failed("stale completion"), for: firstSearch)
         #expect(!first.discoveryController.search.isRunning)
-        #expect(first.discoveryController.search.errorMessage == nil)
+        #expect(first.discoveryController.search.executionIssue == nil)
         #expect(second.discoveryController.search.isRunning)
         #expect(second.discoveryController.search.criteria.query == "reasons")
-        second.discoveryController.failSearch("current completion", for: secondSearch)
-        #expect(second.discoveryController.search.errorMessage == "current completion")
+        second.discoveryController.failSearch(.failed("current completion"), for: secondSearch)
+        #expect(second.discoveryController.search.executionIssue == .failed(
+            "current completion"
+        ))
 
         first.discoveryController.synchronizeLibrarySelection(
             workspaceSlot: .paperAnalysis,
@@ -774,10 +776,10 @@ struct AppCompositionRootTests {
             scope: .triptych
         ))
         firstWindow!.discoveryController.cancelSearch()
-        firstWindow!.discoveryController.failSearch("late result", for: firstSearch)
+        firstWindow!.discoveryController.failSearch(.failed("late result"), for: firstSearch)
         #expect(firstSearch.id != secondSearch.id)
         #expect(!firstWindow!.discoveryController.search.isRunning)
-        #expect(firstWindow!.discoveryController.search.errorMessage == nil)
+        #expect(firstWindow!.discoveryController.search.executionIssue == nil)
         #expect(secondWindow.discoveryController.search.isRunning)
 
         let originalID = VaultQualifiedNoteID(

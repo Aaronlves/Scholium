@@ -243,13 +243,18 @@ final class WindowSearchController: ObservableObject {
             return
         } catch {
             guard self.executionID == executionID else { return }
-            discoveryController.failPendingSearch(error.localizedDescription, for: state)
-            dependencies.setAvailabilityStatus("Search unavailable")
-            if !(error is DiscoverySearchExecutionError) {
+            let issue: SearchExecutionIssue
+            if let executionError = error as? DiscoverySearchExecutionError {
+                issue = executionError.searchIssue
+                dependencies.setAvailabilityStatus("Search unavailable")
+            } else {
+                issue = .failed(error.localizedDescription)
+                dependencies.setAvailabilityStatus("Search failed")
                 dependencies.reportCatalogFailure(
                     "Search refresh failed. \(error.localizedDescription)"
                 )
             }
+            discoveryController.failPendingSearch(issue, for: state)
         }
     }
 

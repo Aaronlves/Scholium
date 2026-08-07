@@ -37,8 +37,16 @@ struct DiscoverySearchState: Equatable, Sendable {
     var availability: SearchProviderAvailability = .note(.unavailable)
     var diagnostics: [SearchQueryDiagnostic] = []
     var hasMore = false
-    var errorMessage: String?
+    var executionIssue: SearchExecutionIssue?
     var isRunning = false
+}
+
+/// Search-owned classification for failures that occur before a provider can
+/// return its typed availability. It preserves the distinction between a
+/// missing execution prerequisite and an operation that actually failed.
+enum SearchExecutionIssue: Equatable, Sendable {
+    case unavailable(String)
+    case failed(String)
 }
 
 /// The one Search surface can be entered as ordinary workspace search or as
@@ -61,11 +69,24 @@ struct DiscoverySearchExecutionContext: Equatable, Sendable {
 
 enum DiscoverySearchExecutionError: LocalizedError, Equatable, Sendable {
     case workspaceUnavailable
+    case currentNoteUnavailable
+    case currentVaultUnavailable
 
     var errorDescription: String? {
         switch self {
         case .workspaceUnavailable:
             String(localized: "Open a complete Triptych before searching.", table: "Localizable", bundle: .module)
+        case .currentNoteUnavailable:
+            String(localized: "Open a note before searching This Note.", table: "Localizable", bundle: .module)
+        case .currentVaultUnavailable:
+            String(localized: "Select an available vault before searching This Vault.", table: "Localizable", bundle: .module)
+        }
+    }
+
+    var searchIssue: SearchExecutionIssue {
+        switch self {
+        case .workspaceUnavailable, .currentNoteUnavailable, .currentVaultUnavailable:
+            .unavailable(localizedDescription)
         }
     }
 }
@@ -170,7 +191,7 @@ final class DiscoveryController: ObservableObject {
         }
         guard context.workspaceIsAvailable else {
             let error = DiscoverySearchExecutionError.workspaceUnavailable
-            failSearch(error.localizedDescription, for: request)
+            failSearch(error.searchIssue, for: request)
             throw error
         }
 
@@ -192,8 +213,15 @@ final class DiscoveryController: ObservableObject {
             .triptych
         }
         guard let applicationScope = resolvedScope else {
-            let error = DiscoverySearchExecutionError.workspaceUnavailable
-            failSearch(error.localizedDescription, for: request)
+            let error: DiscoverySearchExecutionError = switch scope {
+            case .thisNote:
+                .currentNoteUnavailable
+            case .currentVault:
+                .currentVaultUnavailable
+            case .triptych:
+                .workspaceUnavailable
+            }
+            failSearch(error.searchIssue, for: request)
             throw error
         }
         let limit = SearchContract.maximumInterfaceResults
@@ -212,7 +240,7 @@ final class DiscoveryController: ObservableObject {
             return
         } catch {
             guard isCurrentSearch(request) else { return }
-            failSearch(error.localizedDescription, for: request)
+            failSearch(.failed(error.localizedDescription), for: request)
             throw error
         }
     }
@@ -360,7 +388,7 @@ final class DiscoveryController: ObservableObject {
         search.results = []
         search.diagnostics = []
         search.hasMore = false
-        search.errorMessage = nil
+        search.executionIssue = nil
         search.isRunning = false
         switch invocation {
         case .general:
@@ -392,7 +420,7 @@ final class DiscoveryController: ObservableObject {
         search.freshnessToken = nil
         search.diagnostics = [diagnostic]
         search.hasMore = false
-        search.errorMessage = nil
+        search.executionIssue = nil
         search.isRunning = false
     }
 
@@ -447,7 +475,7 @@ final class DiscoveryController: ObservableObject {
         search.results = []
         search.diagnostics = []
         search.hasMore = false
-        search.errorMessage = nil
+        search.executionIssue = nil
         search.isRunning = !search.criteria.query
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
@@ -464,7 +492,7 @@ final class DiscoveryController: ObservableObject {
         search.criteria = canonicalCriteria
         search.responseRequestID = nil
         search.freshnessToken = nil
-        search.errorMessage = nil
+        search.executionIssue = nil
         search.explanation = nil
         search.diagnostics = []
         search.hasMore = false
@@ -490,25 +518,31 @@ final class DiscoveryController: ObservableObject {
         search.availability = response.availability
         search.diagnostics = response.diagnostics
         search.hasMore = response.hasMore
-        search.errorMessage = nil
+        search.executionIssue = nil
         search.isRunning = false
     }
 
-    func failSearch(_ message: String, for request: DiscoverySearchRequest) {
+    func failSearch(
+        _ issue: SearchExecutionIssue,
+        for request: DiscoverySearchRequest
+    ) {
         guard isCurrent(request) else { return }
-        completeSearchFailure(message)
+        completeSearchFailure(issue)
     }
 
     /// Ends a Search that failed while preparing its execution context, before
     /// `executeSearch` could install a request ID. The criteria guard prevents
     /// a late editor-bridge failure from clearing a newer query or scope.
-    func failPendingSearch(_ message: String, for criteria: SearchWorkspaceState) {
+    func failPendingSearch(
+        _ issue: SearchExecutionIssue,
+        for criteria: SearchWorkspaceState
+    ) {
         guard search.criteria == criteria else { return }
         activeSearchRequestID = nil
-        completeSearchFailure(message)
+        completeSearchFailure(issue)
     }
 
-    private func completeSearchFailure(_ message: String) {
+    private func completeSearchFailure(_ issue: SearchExecutionIssue) {
         search.results = []
         search.selectedResultID = nil
         search.responseRequestID = nil
@@ -516,7 +550,7 @@ final class DiscoveryController: ObservableObject {
         search.explanation = nil
         search.diagnostics = []
         search.hasMore = false
-        search.errorMessage = message
+        search.executionIssue = issue
         search.isRunning = false
     }
 
