@@ -91,7 +91,11 @@ struct ContractBoundaryTests {
         let outcome = WorkspaceMutationOutcome(
             committedValue: revision,
             derivedRefreshWarning: "index unavailable",
-            identityRecoveryWarning: "identity unavailable"
+            identityRecoveryWarning: "identity unavailable",
+            cleanupWarnings: [SaveCleanupWarning(
+                kind: .displacedSourceCopy,
+                message: "old source copy pending"
+            )]
         )
         let researchError = ScholiumApplicationError.operationCommittedButRefreshFailed(
             operation: "research completion",
@@ -101,6 +105,7 @@ struct ContractBoundaryTests {
         #expect(outcome.committedValue == revision)
         #expect(outcome.derivedRefreshWarning == "index unavailable")
         #expect(outcome.identityRecoveryWarning == "identity unavailable")
+        #expect(outcome.cleanupWarnings.map(\.message) == ["old source copy pending"])
         #expect(researchError.durableMutationWasCommitted)
         #expect(researchError.mustNotRetryMutation)
         #expect(researchError.refreshFailureReason == "index unavailable")

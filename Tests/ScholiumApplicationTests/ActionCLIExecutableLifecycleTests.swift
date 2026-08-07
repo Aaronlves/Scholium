@@ -444,7 +444,9 @@ struct ActionCLIExecutableLifecycleTests {
         ]).stdout, as: UTF8.self)
         #expect(text.contains("Search contract=\(SearchContract.currentVersion) provider=note"))
         #expect(text.contains("Explain: provider=note"))
-        #expect(text.contains("scope=triptych"))
+        #expect(text.contains(
+            "scope=\(SearchPresentationScope.currentVault.rawValue)"
+        ))
         #expect(text.contains("normalization="))
         #expect(text.contains("ordering="))
         #expect(text.contains("limitations="))

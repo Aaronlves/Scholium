@@ -19,12 +19,12 @@ struct WorkspaceRuntimeReplacementTests {
         let updatedVault = try await runtime.registerVault(
             path: fixture.analysesURL,
             name: "Renamed Analyses",
-            role: .other
+            role: .sourceCorpus
         )
         let registeredReplacement = try await runtime.openWorkspace(id: fixture.assignment.id)
         #expect(registeredReplacement !== initial)
         #expect(updatedVault.name == "Renamed Analyses")
-        #expect(updatedVault.role == .other)
+        #expect(updatedVault.role == .sourceCorpus)
         for event in [
             try #require(await registrationFirst.next()),
             try #require(await registrationSecond.next()),
@@ -34,7 +34,7 @@ struct WorkspaceRuntimeReplacementTests {
                 previous: initial,
                 replacement: registeredReplacement
             )
-            #expect(event.snapshot.vault(id: updatedVault.id)?.vault.role == .other)
+            #expect(event.snapshot.vault(id: updatedVault.id)?.vault.role == .sourceCorpus)
         }
         #expect(await initial.events.subscriberCount == 0)
         #expect(await initial.ownedBackgroundTaskCount == 0)

@@ -23,7 +23,14 @@ and dated proof belongs in [Verification Evidence](04-verification.md).
   checks, writes, readback, and recovery use descriptor-relative containment,
   no-follow file access, regular-file verification, coordinated access,
   revision checks, atomic replacement, metadata preservation, and retained
-  recovery evidence when an outcome is uncertain.
+  recovery evidence when an outcome is uncertain. After a proven swap, failure
+  to remove the displaced same-directory staging copy remains a committed
+  source result with a visible cleanup warning; reopening the vault retries
+  only the exact recorded staging inode and fingerprint through a restricted
+  same-parent cleanup directory, and retains any substituted path for
+  inspection. Pre-swap abort cleanup uses the same durable authorization, and
+  Note or Folder moves propagate cleanup warnings from every committed link
+  rewrite.
 - Targeted frontmatter edits preserve unrelated bytes and fail closed when a
   unique, semantically valid edit boundary cannot be proven.
 - One serialized source-mutation and refresh boundary coordinates Scholium,

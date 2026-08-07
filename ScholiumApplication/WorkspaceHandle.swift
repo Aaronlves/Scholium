@@ -1357,7 +1357,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             return .committed(WorkspaceMutationOutcome(
                 committedValue: result,
-                derivedRefreshWarning: derivedRefreshWarning
+                derivedRefreshWarning: derivedRefreshWarning,
+                cleanupWarnings: result.cleanupWarning.map { [$0] } ?? []
             ))
         }
     }
@@ -1763,7 +1764,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            derivedRefreshWarning: derivedRefreshWarning
+            derivedRefreshWarning: derivedRefreshWarning,
+            cleanupWarnings: commit.saveCleanupWarning.map { [$0] } ?? []
         )
     }
 
@@ -2825,7 +2827,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            identityRecoveryWarning: identityFailure?.localizedDescription
+            identityRecoveryWarning: identityFailure?.localizedDescription,
+            cleanupWarnings: commit.cleanupWarnings
         )
     }
 
@@ -2975,7 +2978,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            identityRecoveryWarning: identityFailure?.localizedDescription
+            identityRecoveryWarning: identityFailure?.localizedDescription,
+            cleanupWarnings: commit.cleanupWarnings
         )
     }
 

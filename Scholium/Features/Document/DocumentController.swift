@@ -131,7 +131,7 @@ struct DocumentWorkspaceReconciliation: Equatable, Sendable {
 @MainActor
 final class DocumentController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
-    typealias DocumentCommitHandler = @MainActor (NoteDocument) async -> Void
+    typealias DocumentCommitHandler = @MainActor (SaveResult) async -> Void
 
     @Published private(set) var selectedDocument: WindowSelectedDocument?
     @Published private(set) var chromeProjection = DocumentChromeProjection.empty
@@ -1247,7 +1247,7 @@ final class DocumentController: ObservableObject {
                     current: document.fingerprint
                 )
             }
-            await documentDidCommit(document)
+            await documentDidCommit(SaveResult(document: document))
             session.suppressAutosave = true
             session.editingSource = document.rawContent
             session.originalEditingSource = document.rawContent
@@ -1341,14 +1341,15 @@ final class DocumentController: ObservableObject {
             return .clean
         }
 
-        let saved = try await saveDocument(
+        let result = try await saveDocument(
             sourceBeingSaved,
             target: target,
             expectedRevision: revision
         )
+        let saved = result.document
         session.editingRevision = saved.fingerprint
         session.originalEditingSource = saved.rawContent
-        await documentDidCommit(saved)
+        await documentDidCommit(result)
 
         let acknowledgement = try await session.editorSession.acknowledgeCommittedSnapshot(
             expectedText: sourceBeingSaved,
@@ -1372,7 +1373,7 @@ final class DocumentController: ObservableObject {
         _ source: String,
         target: DocumentEditingTarget,
         expectedRevision: DocumentFingerprint
-    ) async throws -> NoteDocument {
+    ) async throws -> SaveResult {
         switch target {
         case .workspace(let key):
             let path = relativePath(for: target)
@@ -1381,7 +1382,7 @@ final class DocumentController: ObservableObject {
                 VaultQualifiedNoteID(vaultID: key.vaultID, relativePath: path),
                 changeSet: .source(source),
                 expectedRevision: expectedRevision
-            ).document
+            )
         case .unavailable:
             throw DocumentControllerError.documentUnavailable
         }

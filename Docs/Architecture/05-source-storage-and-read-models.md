@@ -41,6 +41,34 @@ uncertainty attempts a guarded swap-back, keeps observed staging evidence, and
 returns `commitUncertain`; Application persists a `.noteSave` Transaction
 Recovery record and never reports Saved.
 
+Before canonical replacement can occur, the coordinator records the relative
+path, staging name, candidate and preimage device/inode, and both exact
+fingerprints; `VaultRepository` durably persists that task before the final
+authorization check and swap. If authorization or swap aborts before canonical
+replacement, that task is also the sole authority for removing only the
+unchanged staged candidate; failed cleanup retains the task for reopening
+instead of abandoning an unauthorized hidden file. Once swap, readback,
+metadata, and parent synchronization prove the candidate canonical, the
+displaced preimage becomes cleanup-only state. The already-persisted task therefore survives process
+termination or later repository readback and history failure without creating
+a second cleanup authority. The recovery ledger then atomically isolates the exact
+staging inode inside a mode-0700 same-parent cleanup directory, revalidates its
+bytes, and rechecks the isolated path identity immediately before removal. A
+cleanup failure therefore keeps the source commit successful and returns a
+`SaveResult.cleanupWarning`; it does not become `Save Failed` or
+authorize a repeated source mutation.
+Composite Note and Folder moves retain every cleanup warning produced by their
+incoming-link rewrites in the move commit and application outcome.
+Startup retries only after the candidate remains canonical and the recorded
+task still matches the transaction. A missing staging and isolated path
+completes the task; an inode, byte, type, containment, access, or task-binding
+mismatch retains it and publishes a health diagnostic without deleting a
+replacement observed at either checked path, including a staging name that
+reappears during cleanup. The public macOS APIs still do
+not provide descriptor-bound unlink; the final checked-name removal is bounded
+by the random restricted directory rather than claimed as protection against
+an adversarial same-UID process racing the last system call.
+
 The public `VaultRepository` constructor always installs no mutation hooks. An
 internal-only constructor supplies deterministic phase hooks to the Core test
 target without changing the production transaction. A registered

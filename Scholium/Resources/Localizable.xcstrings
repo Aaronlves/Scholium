@@ -3070,6 +3070,22 @@
         }
       }
     },
+    "Attempts to read the Triptych registry again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attempts to read the Triptych registry again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次尝试读取脉络注册表。"
+          }
+        }
+      }
+    },
     "Attention" : {
       "localizations" : {
         "en" : {
@@ -16990,6 +17006,22 @@
         }
       }
     },
+    "Preserves the damaged registry, then opens Triptych setup so you can choose the three folders again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preserves the damaged registry, then opens Triptych setup so you can choose the three folders again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留损坏的注册表，然后打开脉络设置，以便重新选择三个文件夹。"
+          }
+        }
+      }
+    },
     "Preview" : {
       "localizations" : {
         "en" : {
@@ -18375,6 +18407,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已复制相对路径。"
+          }
+        }
+      }
+    },
+    "Relink Triptych" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Relink Triptych"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新关联脉络"
           }
         }
       }
@@ -22538,6 +22586,22 @@
         }
       }
     },
+    "Shows the registry diagnostic and recovery location." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shows the registry diagnostic and recovery location."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示注册表诊断和恢复位置。"
+          }
+        }
+      }
+    },
     "Shows the source-anchored Critique findings." : {
       "localizations" : {
         "en" : {
@@ -24039,6 +24103,22 @@
         }
       }
     },
+    "The file operation completed, but machine-local cleanup is still pending. Do not repeat the action; Scholium will retry cleanup when the vault reopens." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The file operation completed, but machine-local cleanup is still pending. Do not repeat the action; Scholium will retry cleanup when the vault reopens."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件操作已完成，但机器本地清理仍待完成。请勿重复该操作；Scholium 将在研究库重新打开时重试清理。"
+          }
+        }
+      }
+    },
     "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds." : {
       "localizations" : {
         "en" : {
@@ -24103,6 +24183,22 @@
         }
       }
     },
+    "The imported source is committed, but machine-local cleanup is still pending. Do not import the files again; Scholium will retry cleanup when the vault reopens." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The imported source is committed, but machine-local cleanup is still pending. Do not import the files again; Scholium will retry cleanup when the vault reopens."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入的原文已提交，但机器本地清理仍待完成。请勿再次导入这些文件；Scholium 将在研究库重新打开时重试清理。"
+          }
+        }
+      }
+    },
     "The improvement handoff could not be copied." : {
       "localizations" : {
         "zh-Hans" : {
@@ -24155,6 +24251,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本机方法改进运行已就绪。请将完整交接信息复制给智能体。"
+          }
+        }
+      }
+    },
+    "The machine-local transaction record could not be removed. Scholium will retry cleanup when this vault reopens." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The machine-local transaction record could not be removed. Scholium will retry cleanup when this vault reopens."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法移除机器本地事务记录。Scholium 将在研究库重新打开时重试清理。"
           }
         }
       }
@@ -24235,6 +24347,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "该笔记已在 Scholium 外部被删除。其逐字节编辑缓冲仍保持打开，以便恢复。"
+          }
+        }
+      }
+    },
+    "The old exact source copy could not be removed. Scholium will retry cleanup when this vault reopens." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The old exact source copy could not be removed. Scholium will retry cleanup when this vault reopens."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法移除旧的精确原文副本。Scholium 将在研究库重新打开时重试清理。"
           }
         }
       }
@@ -25679,6 +25807,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "脉络名称"
+          }
+        }
+      }
+    },
+    "Triptych Registry Needs Repair" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Triptych Registry Needs Repair"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "脉络注册表需要修复"
           }
         }
       }

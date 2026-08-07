@@ -479,16 +479,18 @@ private struct AgentDocumentWriteReport: Encodable {
     let state: ResearchDocumentWriteState
     let target: ResearchBoundedWriteSetViewEntry
     let message: String
+    let warning: String?
 
     init(_ result: ResearchDocumentWriteResult) {
         state = result.state
         target = result.target
         message = result.message
+        warning = result.warning
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
-        case state, target, message
+        case state, target, message, warning
     }
 }
 

@@ -939,6 +939,7 @@ public actor TriptychCheckpointStore {
 
         var restored: [TriptychCheckpointFileKey] = []
         var trashed: [TriptychCheckpointFileKey] = []
+        var cleanupWarnings: [SaveCleanupWarning] = []
         let selectedByKey = Dictionary(uniqueKeysWithValues: selectedCheckpoint.files.map { ($0.key, $0) })
         for file in selectedFiles.sorted(by: { Self.keyOrder($0.destination, $1.destination) }) {
             guard selectedByKey[file.source] != nil else { continue }
@@ -951,7 +952,14 @@ public actor TriptychCheckpointStore {
                     "stored bytes changed while restoring \(file.source.area.rawValue)/\(file.source.relativePath)"
                 )
             }
-            try await restoreFile(data, key: file.destination, roots: roots, repositories: repositories)
+            if let warning = try await restoreFile(
+                data,
+                key: file.destination,
+                roots: roots,
+                repositories: repositories
+            ) {
+                cleanupWarnings.append(warning)
+            }
             restored.append(file.destination)
         }
 
@@ -971,7 +979,8 @@ public actor TriptychCheckpointStore {
         return TriptychCheckpointRestoreResult(
             recoveryCheckpoint: recovery,
             restoredFiles: restored,
-            movedToTrash: trashed
+            movedToTrash: trashed,
+            cleanupWarnings: cleanupWarnings
         )
     }
 
@@ -1076,7 +1085,7 @@ public actor TriptychCheckpointStore {
             roots: roots,
             pruneAutomaticAfterCreation: false
         )
-        try await restoreFile(
+        let cleanupWarning = try await restoreFile(
             data,
             key: destinationKey,
             expectedRevision: expectedDestinationRevision,
@@ -1087,7 +1096,8 @@ public actor TriptychCheckpointStore {
         return TriptychCheckpointRestoreResult(
             recoveryCheckpoint: recovery,
             restoredFiles: [destinationKey],
-            movedToTrash: []
+            movedToTrash: [],
+            cleanupWarnings: cleanupWarning.map { [$0] } ?? []
         )
     }
 
@@ -1097,12 +1107,12 @@ public actor TriptychCheckpointStore {
         expectedRevision: DocumentFingerprint? = nil,
         roots: TriptychRoots,
         repositories: [WorkspaceVaultSlot: VaultRepository]
-    ) async throws {
+    ) async throws -> SaveCleanupWarning? {
         guard let content = NoteDocument.decodeUTF8PreservingBOM(data),
               URL(fileURLWithPath: key.relativePath).pathExtension.caseInsensitiveCompare("md") == .orderedSame,
               let slot = key.area.vaultSlot else {
             try writePortableFile(data, key: key, roots: roots)
-            return
+            return nil
         }
         guard let repository = repositories[slot] else {
             throw TriptychCheckpointError.repositoryUnavailable(key.area)
@@ -1115,16 +1125,17 @@ public actor TriptychCheckpointStore {
                     current: current.fingerprint
                 )
             }
-            _ = try await repository.save(
+            return try await repository.save(
                 relativePath: key.relativePath,
                 changeSet: .exactContent(content),
                 expectedRevision: expectedRevision ?? current.fingerprint
-            )
+            ).cleanupWarning
         } catch VaultRepositoryError.fileDoesNotExist {
             guard expectedRevision == nil else {
                 throw VaultRepositoryError.fileDoesNotExist(key.relativePath)
             }
             _ = try await repository.create(relativePath: key.relativePath, content: content)
+            return nil
         }
     }
 

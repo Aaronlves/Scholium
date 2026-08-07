@@ -890,6 +890,7 @@ public struct ResearchDocumentWriteResult: Codable, Hashable, Sendable {
     public let state: ResearchDocumentWriteState
     public let target: ResearchBoundedWriteSetViewEntry
     public let message: String
+    public let warning: String?
     public let recoveryRecordID: UUID?
 
     public init(
@@ -897,18 +898,20 @@ public struct ResearchDocumentWriteResult: Codable, Hashable, Sendable {
         state: ResearchDocumentWriteState,
         target: ResearchBoundedWriteSetViewEntry,
         message: String,
+        warning: String? = nil,
         recoveryRecordID: UUID? = nil
     ) {
         self.operationID = operationID
         self.state = state
         self.target = target
         self.message = message
+        self.warning = warning
         self.recoveryRecordID = recoveryRecordID
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case operationID = "operation_id"
-        case state, target, message
+        case state, target, message, warning
         case recoveryRecordID = "recovery_record_id"
     }
 
@@ -923,6 +926,11 @@ public struct ResearchDocumentWriteResult: Codable, Hashable, Sendable {
         guard !message.isEmpty, message.utf8.count <= 4_096 else {
             throw ResearchBoundedWriteSetError.invalidWriteRecord
         }
+        let warning = try container.decodeIfPresent(String.self, forKey: .warning)
+        if let warning,
+           warning.isEmpty || warning.utf8.count > 4_096 {
+            throw ResearchBoundedWriteSetError.invalidWriteRecord
+        }
         self.init(
             operationID: try container.decode(UUID.self, forKey: .operationID),
             state: try container.decode(
@@ -934,6 +942,7 @@ public struct ResearchDocumentWriteResult: Codable, Hashable, Sendable {
                 forKey: .target
             ),
             message: message,
+            warning: warning,
             recoveryRecordID: try container.decodeIfPresent(
                 UUID.self,
                 forKey: .recoveryRecordID

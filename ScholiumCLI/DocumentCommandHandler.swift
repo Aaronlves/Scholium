@@ -197,5 +197,10 @@ extension ScholiumCLI {
                 "scholium: warning: The source operation committed, but stable note identity recovery is incomplete. Do not repeat the mutation. \(warning)\n"
             )
         }
+        for warning in outcome.cleanupWarnings {
+            writeError(
+                "scholium: warning: The source operation committed, but machine-local cleanup is still pending. Do not repeat the mutation. \(warning.message)\n"
+            )
+        }
     }
 }

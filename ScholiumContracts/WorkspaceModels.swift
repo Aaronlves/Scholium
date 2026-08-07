@@ -682,15 +682,18 @@ public struct WorkspaceMutationOutcome<CommittedValue: Sendable>: Sendable {
     public let committedValue: CommittedValue
     public let derivedRefreshWarning: String?
     public let identityRecoveryWarning: String?
+    public let cleanupWarnings: [SaveCleanupWarning]
 
     public init(
         committedValue: CommittedValue,
         derivedRefreshWarning: String? = nil,
-        identityRecoveryWarning: String? = nil
+        identityRecoveryWarning: String? = nil,
+        cleanupWarnings: [SaveCleanupWarning] = []
     ) {
         self.committedValue = committedValue
         self.derivedRefreshWarning = derivedRefreshWarning
         self.identityRecoveryWarning = identityRecoveryWarning
+        self.cleanupWarnings = cleanupWarnings
     }
 }
 

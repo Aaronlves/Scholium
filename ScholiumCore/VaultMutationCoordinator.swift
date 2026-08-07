@@ -9,13 +9,47 @@ enum VaultMutationPhase: Equatable, Sendable {
     case swapped
     case readback
     case completedReplacement
+    case cleanup
 }
 
 struct VaultMutationHooks: @unchecked Sendable {
     var didReach: ((VaultMutationPhase) throws -> Void)? = nil
     var presenceOverride: ((String) -> FilePresence?)? = nil
+    var cleanupPersistenceOverride: (() throws -> Void)? = nil
+    var cleanupOverride: (() throws -> Void)? = nil
+    var cleanupIsolationOverride: (() throws -> Void)? = nil
+    var cleanupRecordRemovalOverride: (() throws -> Void)? = nil
 
     static let none = VaultMutationHooks()
+}
+
+struct VaultMutationCleanupIdentity: Codable, Hashable, Sendable {
+    let device: UInt64
+    let inode: UInt64
+    let fingerprint: DocumentFingerprint
+}
+
+/// Exact pre- and post-swap identities for one same-directory staging name.
+/// The task is only a cleanup authorization; it never authorizes a source
+/// replacement or a deletion of a different file at the same spelling.
+struct VaultMutationCleanupTask: Codable, Hashable, Sendable {
+    let relativePath: String
+    let stagingName: String
+    let stagedCandidate: VaultMutationCleanupIdentity
+    let displacedSource: VaultMutationCleanupIdentity
+}
+
+struct VaultMutationUpdateResult: Sendable {
+    let cleanupTask: VaultMutationCleanupTask
+}
+
+private struct VaultMutationPreSwapCleanupFailure: LocalizedError {
+    let cause: Error
+    let cleanup: Error
+
+    var errorDescription: String? {
+        "The source was not replaced, but its staged candidate could not be removed. \(cause.localizedDescription) Cleanup: \(cleanup.localizedDescription)"
+    }
 }
 
 /// Coordinates short-lived filesystem commits while descriptor-relative,
@@ -37,12 +71,16 @@ final class VaultMutationCoordinator {
         self.hooks = hooks
     }
 
+    @discardableResult
     func updateExisting(
         path: MarkdownRelativePath,
         expected: Data,
-        candidate: Data
-    ) throws {
+        candidate: Data,
+        persistCleanupTask: (VaultMutationCleanupTask) throws -> Void,
+        cleanupStagedCandidate: (VaultMutationCleanupTask) throws -> Void
+    ) throws -> VaultMutationUpdateResult {
         let targetURL = try resolver.unresolvedURL(for: path)
+        var updateResult: VaultMutationUpdateResult?
         try coordinateWriting(targetURL, options: .forReplacing) {
             try self.descriptorAccess.withOpenRegularFile(path) {
                 originalFD, parentFD, name, originalStatus in
@@ -68,47 +106,66 @@ final class VaultMutationCoordinator {
                 defer {
                     if shouldRemoveStaging { _ = unlinkat(parentFD, stagingName, 0) }
                 }
-                let metadata = try self.copyAndVerifyMetadata(
-                    from: originalFD,
-                    originalStatus: originalStatus,
-                    to: stagingFD
-                )
-                try self.hooks.didReach?(.staged)
-
-                let rechecked = try self.readFile(at: name, parentFD: parentFD)
-                let recheckedIdentity = try VaultDescriptorAccess.identity(
-                    name: name,
-                    parentDescriptor: parentFD
-                )
-                try self.hooks.didReach?(.finalCheck)
-                guard rechecked == expected,
-                      recheckedIdentity == originalIdentity else {
-                    throw VaultRepositoryError.conflict(
-                        expected: DocumentFingerprint(data: expected),
-                        current: DocumentFingerprint(data: rechecked)
+                let cleanupTask = VaultMutationCleanupTask(
+                    relativePath: path.rawValue,
+                    stagingName: stagingName,
+                    stagedCandidate: VaultMutationCleanupIdentity(
+                        device: UInt64(candidateIdentity.device),
+                        inode: UInt64(candidateIdentity.inode),
+                        fingerprint: DocumentFingerprint(data: candidate)
+                    ),
+                    displacedSource: VaultMutationCleanupIdentity(
+                        device: UInt64(originalIdentity.device),
+                        inode: UInt64(originalIdentity.inode),
+                        fingerprint: DocumentFingerprint(data: expected)
                     )
-                }
-                try self.descriptorAccess.verifyCurrentParent(
-                    path,
-                    retainedDescriptor: parentFD
                 )
-
-                guard renameatx_np(parentFD, stagingName, parentFD, name, UInt32(RENAME_SWAP)) == 0 else {
-                    let code = errno
-                    if code == ENOTSUP || code == EINVAL || code == ENOSYS {
-                        throw VaultRepositoryError.atomicCommitUnsupported(String(cString: strerror(code)))
-                    }
-                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-                }
-
-                let canonical: Data
-                let displaced: Data
+                shouldRemoveStaging = false
+                var replacementOccurred = false
                 do {
-                    try self.hooks.didReach?(.swapped)
-                    try self.hooks.didReach?(.readback)
-                    canonical = try self.readFile(at: name, parentFD: parentFD)
-                    displaced = try self.readFile(at: stagingName, parentFD: parentFD)
-                } catch {
+                    try persistCleanupTask(cleanupTask)
+                    let metadata = try self.copyAndVerifyMetadata(
+                        from: originalFD,
+                        originalStatus: originalStatus,
+                        to: stagingFD
+                    )
+                    try self.hooks.didReach?(.staged)
+
+                    let rechecked = try self.readFile(at: name, parentFD: parentFD)
+                    let recheckedIdentity = try VaultDescriptorAccess.identity(
+                        name: name,
+                        parentDescriptor: parentFD
+                    )
+                    try self.hooks.didReach?(.finalCheck)
+                    guard rechecked == expected,
+                          recheckedIdentity == originalIdentity else {
+                        throw VaultRepositoryError.conflict(
+                            expected: DocumentFingerprint(data: expected),
+                            current: DocumentFingerprint(data: rechecked)
+                        )
+                    }
+                    try self.descriptorAccess.verifyCurrentParent(
+                        path,
+                        retainedDescriptor: parentFD
+                    )
+
+                    guard renameatx_np(parentFD, stagingName, parentFD, name, UInt32(RENAME_SWAP)) == 0 else {
+                        let code = errno
+                        if code == ENOTSUP || code == EINVAL || code == ENOSYS {
+                            throw VaultRepositoryError.atomicCommitUnsupported(String(cString: strerror(code)))
+                        }
+                        throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+                    }
+                    replacementOccurred = true
+
+                    let canonical: Data
+                    let displaced: Data
+                    do {
+                        try self.hooks.didReach?(.swapped)
+                        try self.hooks.didReach?(.readback)
+                        canonical = try self.readFile(at: name, parentFD: parentFD)
+                        displaced = try self.readFile(at: stagingName, parentFD: parentFD)
+                    } catch {
                     // The swap happened, so an unreadable or replaced side is
                     // never a normal I/O failure. Attempt one guarded swap-back
                     // and retain staging regardless of the rollback result.
@@ -123,8 +180,8 @@ final class VaultMutationCoordinator {
                     throw VaultRepositoryError.commitUncertain(
                         "Post-swap bytes became unreadable or changed identity; guarded swap-back \(restored ? "succeeded" : "was refused or failed"): \(error.localizedDescription)"
                     )
-                }
-                guard canonical == candidate, displaced == expected else {
+                    }
+                    guard canonical == candidate, displaced == expected else {
                     if canonical == candidate,
                        let observedStagingIdentity = try? VaultDescriptorAccess.identity(
                            name: stagingName,
@@ -147,8 +204,8 @@ final class VaultMutationCoordinator {
                     throw VaultRepositoryError.commitUncertain(
                         "Expected candidate \(DocumentFingerprint(data: candidate).sha256) and displaced preimage \(DocumentFingerprint(data: expected).sha256); observed canonical \(DocumentFingerprint(data: canonical).sha256) and staging \(DocumentFingerprint(data: displaced).sha256)."
                     )
-                }
-                do {
+                    }
+                    do {
                     guard fchflags(stagingFD, metadata.status.st_flags) == 0 else {
                         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                     }
@@ -160,7 +217,7 @@ final class VaultMutationCoordinator {
                     guard fsync(stagingFD) == 0 else {
                         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                     }
-                } catch {
+                    } catch {
                     let restored = self.guardedSwapBack(
                         parentFD: parentFD,
                         canonicalName: name,
@@ -172,8 +229,8 @@ final class VaultMutationCoordinator {
                     throw VaultRepositoryError.commitUncertain(
                         "Committed metadata could not be verified; guarded swap-back \(restored ? "succeeded" : "failed"): \(error.localizedDescription)"
                     )
-                }
-                guard fsync(parentFD) == 0 else {
+                    }
+                    guard fsync(parentFD) == 0 else {
                     let code = errno
                     let restored = self.guardedSwapBack(
                         parentFD: parentFD,
@@ -186,13 +243,13 @@ final class VaultMutationCoordinator {
                     throw VaultRepositoryError.commitUncertain(
                         "The parent directory could not be synchronized after the swap (errno \(code)); guarded swap-back \(restored ? "succeeded" : "was refused or failed")."
                     )
-                }
-                do {
+                    }
+                    do {
                     try self.descriptorAccess.verifyCurrentParent(
                         path,
                         retainedDescriptor: parentFD
                     )
-                } catch {
+                    } catch {
                     let restored = self.guardedSwapBack(
                         parentFD: parentFD,
                         canonicalName: name,
@@ -204,10 +261,30 @@ final class VaultMutationCoordinator {
                     throw VaultRepositoryError.commitUncertain(
                         "The committed parent changed identity; guarded swap-back \(restored ? "succeeded" : "was refused or failed"): \(error.localizedDescription)"
                     )
+                    }
+                    try self.hooks.didReach?(.completedReplacement)
+                    updateResult = VaultMutationUpdateResult(cleanupTask: cleanupTask)
+                } catch {
+                    if !replacementOccurred {
+                        do {
+                            try cleanupStagedCandidate(cleanupTask)
+                        } catch let cleanupError {
+                            throw VaultMutationPreSwapCleanupFailure(
+                                cause: error,
+                                cleanup: cleanupError
+                            )
+                        }
+                    }
+                    throw error
                 }
-                try self.hooks.didReach?(.completedReplacement)
             }
         }
+        guard let updateResult else {
+            throw VaultRepositoryError.commitUncertain(
+                "The coordinated replacement did not produce a cleanup result."
+            )
+        }
+        return updateResult
     }
 
     func create(path: MarkdownRelativePath, data: Data) throws {

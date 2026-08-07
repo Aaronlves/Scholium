@@ -56,7 +56,8 @@ public actor VaultRepository {
             .appendingPathComponent(identity.id.uuidString, isDirectory: true)
         self.recoveryLedger = try PrewriteRecoveryLedger(
             storageURL: storageURL,
-            vaultURL: self.vaultURL
+            vaultURL: self.vaultURL,
+            cleanupHooks: mutationHooks
         )
     }
 
@@ -412,7 +413,7 @@ public actor VaultRepository {
 
         let candidateData = Data(updatedContent.utf8)
         let snapshot = try prepareSnapshot(relativePath: relativePath, data: currentData)
-        let mutation: PrewriteRecoveryLedger.MutationTransaction
+        var mutation: PrewriteRecoveryLedger.MutationTransaction
         do {
             mutation = try recoveryLedger.beginMutation(
                 relativePath: relativePath,
@@ -432,12 +433,33 @@ public actor VaultRepository {
                 try recoveryLedger.completeMutation(mutation)
                 return .notWritten(.conflict(recheckedFingerprint))
             }
-            try mutationCoordinator.updateExisting(
+            let replacement = try mutationCoordinator.updateExisting(
                 path: markdownRelativePath(relativePath),
                 expected: currentData,
-                candidate: candidateData
+                candidate: candidateData,
+                persistCleanupTask: { cleanupTask in
+                    mutation.cleanupPending = cleanupTask
+                    try recoveryLedger.persistCleanupPending(mutation)
+                },
+                cleanupStagedCandidate: { cleanupTask in
+                    try recoveryLedger.cleanupStagedCandidate(
+                        mutation,
+                        task: cleanupTask,
+                        vaultURL: vaultURL
+                    )
+                }
             )
             canonicalReplacementMayHaveOccurred = true
+            guard mutation.cleanupPending == replacement.cleanupTask else {
+                throw VaultRepositoryError.recoveryLedgerUnavailable(
+                    "The durable cleanup task changed before source readback."
+                )
+            }
+            var cleanupWarning = recoveryLedger.attemptCommittedCleanup(
+                mutation,
+                vaultURL: vaultURL
+            )
+            let cleanupCompleted = cleanupWarning == nil
             let readback = try readSource(relativePath: relativePath)
             let expectedFingerprint = DocumentFingerprint(content: updatedContent)
             let readbackFingerprint = DocumentFingerprint(data: readback)
@@ -448,12 +470,35 @@ public actor VaultRepository {
                 )
             }
             try commitPreparedSnapshot(snapshot)
-            try? recoveryLedger.completeMutation(mutation)
+            cleanupWarning = recoveryLedger.finishCommittedMutation(
+                mutation,
+                cleanupCompleted: cleanupCompleted,
+                cleanupWarning: cleanupWarning
+            )
+            return .committed(SaveResult(
+                document: updated,
+                cleanupWarning: cleanupWarning
+            ))
         } catch {
             if !canonicalReplacementMayHaveOccurred,
                let knownOutcome = knownNotWrittenOutcome(for: error) {
-                try? discardPreparedSnapshot(snapshot)
-                try? recoveryLedger.completeMutation(mutation)
+                if let repositoryError = error as? VaultRepositoryError,
+                   case .conflict = repositoryError {
+                    do {
+                        try commitPreparedSnapshot(snapshot)
+                        try recoveryLedger.retainMutation(
+                            mutation,
+                            reason: error.localizedDescription
+                        )
+                    } catch {
+                        throw VaultRepositoryError.recoveryLedgerUnavailable(
+                            "The exact conflict recovery material could not be retained: \(error.localizedDescription)"
+                        )
+                    }
+                } else {
+                    try? discardPreparedSnapshot(snapshot)
+                    try? recoveryLedger.completeMutation(mutation)
+                }
                 return knownOutcome
             }
 
@@ -476,7 +521,6 @@ public actor VaultRepository {
                 )
             }
         }
-        return .committed(SaveResult(document: updated))
     }
 
     /// Creates a new Markdown note without replacing an existing path.
@@ -904,6 +948,7 @@ public actor VaultRepository {
             return InterruptedSaveRecoveryRestoreCommit(
                 document: document,
                 didReplaceSource: false,
+                saveCleanupWarning: nil,
                 recoveryCleanupWarning: completeInterruptedSaveRecovery(transaction)
             )
         }
@@ -922,6 +967,7 @@ public actor VaultRepository {
         return InterruptedSaveRecoveryRestoreCommit(
             document: result.document,
             didReplaceSource: true,
+            saveCleanupWarning: result.cleanupWarning,
             recoveryCleanupWarning: completeInterruptedSaveRecovery(transaction)
         )
     }

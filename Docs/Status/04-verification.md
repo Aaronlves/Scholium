@@ -9,7 +9,7 @@ human, packaged, or release acceptance unless explicitly stated.
 ## Current verification evidence
 
 **Latest documentation-only check:** 2026-08-07
-**Latest complete repository gate:** 2026-08-04
+**Latest complete repository gate:** 2026-08-07
 
 ### Documentation authority
 
@@ -24,6 +24,26 @@ also passed.
 Documentation structure, local links, anchors, chapter ownership, and patch
 whitespace only. No source build, product test, UI journey, packaging, or
 release gate was rerun for this documentation-only cutover.
+
+### Committed source cleanup recovery
+
+**Current passing result**
+
+On 2026-08-07, focused Xcode 27 beta Core and Contracts tests exercised the
+post-swap cleanup boundary with disposable vault fixtures. A proven candidate
+remains a committed save when the old `.scholium-swap-*.md` removal fails; the
+warning is carried separately from the committed source value; vault reopen
+retries cleanup; and a same-name staging replacement with a different inode or
+fingerprint is retained with a health diagnostic. The coordinator regression,
+repository reopen/retry, and contract-boundary tests passed.
+
+**Boundary of the claim**
+
+The complete repository gate also passed for this hardening change, including
+the source-storage, coordinator, move, checkpoint, application, CLI, and App
+contract consumers. This remains automated disposable-fixture evidence; it is
+not packaged runtime, UI automation, assistive-technology exercise, or
+researcher acceptance.
 
 ### Workspace registry recovery
 
@@ -67,17 +87,19 @@ researcher acceptance was rerun.
 
 **Current passing result**
 
-`verify.sh` passed the closed 3-manifest, 23-chapter documentation authority and all 93 checked local
-links; 11 shipped `SKILL.md` roots; research-owner zero-residue guards; 185 WebEditor tests
-and reproducible editor, mathematics, Mermaid, and license resources; deterministic RDF-1 v2 for
-800 notes; 424 Core tests plus 3 isolated performance tests; 118 Contracts; 180 Application; 8 Local
-Agent bridge; 1 serialized architecture measurement; 453 App tests; and 6 executable Research
-Action/CLI boundary journeys. The executable journeys cover strict parsing, provider-discriminated
-Search-v6 text and JSONL, Pairing through standard input, protected Session reload, bounded writes
-and retries without exposed write identities, one canonical Result plus Continue Research, and one
-separately authenticated Method-improvement Run. The gate also passed the public symbol graph,
-sandboxed AF_UNIX bridge, isolation/dead-path checks, and an optimized Release build in 162.92
-seconds.
+`verify.sh` passed the closed 3-manifest, 22-chapter documentation authority
+and all 102 checked local links; 10 shipped `SKILL.md` roots; research-owner
+zero-residue guards; 185 WebEditor tests and reproducible editor, mathematics,
+Mermaid, and license resources; deterministic RDF-1 v2 for 800 notes; 451 Core
+tests plus 3 isolated performance tests; 119 Contracts; 186 Application; 9
+Local Agent bridge; 1 serialized architecture measurement; 453 App tests; and
+7 executable Research Action/CLI boundary journeys. The executable journeys
+cover strict parsing, provider-discriminated Search-v6 text and JSONL, Pairing
+through standard input, protected Session reload, bounded writes and retries
+without exposed write identities, one canonical Result plus Continue Research,
+and one separately authenticated Method-improvement Run. The gate also passed
+the public symbol graph, sandboxed AF_UNIX bridge, isolation/dead-path checks,
+and a Release build.
 
 **Boundary of the claim**
 

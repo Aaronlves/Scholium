@@ -249,7 +249,8 @@ struct LocalAgentBridgeTests {
             operationID: UUID(),
             state: .committed,
             target: ResearchBoundedWriteSetViewEntry(entry),
-            message: "Committed and read back."
+            message: "Committed and read back.",
+            warning: "Old exact source cleanup is pending."
         )
         let response = try LocalAgentBridgeResponse(
             correlationID: UUID(),
@@ -260,6 +261,8 @@ struct LocalAgentBridgeTests {
             from: LocalAgentBridgeWireCoding.encode(response)
         )
         #expect(decoded.documentWriteResult == result)
+        #expect(decoded.documentWriteResult?.warning
+            == "Old exact source cleanup is pending.")
     }
 
     @Test("Method improvement context and one-file submission round-trip without exposing a capability")

@@ -319,6 +319,23 @@ available for inspection and copying. If the candidate is already canonical,
 Recovery verifies that fact and removes only the completed machine-local
 record.
 
+The completed source may still have a cleanup-only staging task when the swap
+and readback succeeded but removal of the displaced preimage was unavailable.
+That condition remains a committed save with a visible cleanup warning, not a
+retryable source failure. On vault reopen, Scholium retries only after the
+candidate is still canonical and the recorded staging name resolves to the
+same regular-file device/inode and exact bytes. Cleanup first isolates that
+exact entry inside a restricted same-parent directory and never deletes the
+original spelling after isolation. An absent staging and isolated entry marks
+the task complete; a substituted, changed, unsafe, or inaccessible path is
+retained with a health diagnostic rather than treated as the recorded
+preimage.
+If a pre-swap authorization or atomic replacement fails, the same durable task
+authorizes cleanup of only the unchanged staged candidate and remains available
+for recovery when that cleanup cannot complete. A staging name that reappears
+after isolation is likewise retained with the cleanup task and a health
+diagnostic.
+
 Settle may pin an exact entry as a researcher-selected settled
 version without turning it into a truth claim. Temporary write recovery and
 settled-version retention remain separate references over verified immutable

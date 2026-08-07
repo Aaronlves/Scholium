@@ -1081,7 +1081,8 @@ extension WorkspaceHandle {
             let commit = try await repository.restoreInterruptedSaveRecovery(
                 sourceRecovery!
             )
-            guard commit.recoveryCleanupWarning == nil else {
+            guard commit.recoveryCleanupWarning == nil,
+                  commit.saveCleanupWarning == nil else {
                 throw ResearchBoundedWriteSetError.recoveryRequired
             }
         }

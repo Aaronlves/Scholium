@@ -421,6 +421,15 @@ Changes**. These failure toasts remain until the state changes or the
 researcher chooses the applicable recovery path; they do not time out as if
 the failure were resolved.
 
+A source replacement whose canonical bytes are proven but whose displaced
+same-directory cleanup is pending remains a saved document. Its Document-owned
+warning says that the old exact source copy is retained temporarily and that
+Scholium will retry cleanup when the vault reopens; it does not invite the
+researcher to repeat the mutation.
+Note Move and Folder Move may commit several source replacements while
+rewriting incoming links. Their Document warning aggregates every pending
+cleanup item rather than reporting only the moved Note or the last rewrite.
+
 Checkpoint availability is not a document state, toast, or Action row; its
 entry remains under File. A successful restore alone produces one transient
 Document confirmation, **Checkpoint Restored**, and states that Scholium

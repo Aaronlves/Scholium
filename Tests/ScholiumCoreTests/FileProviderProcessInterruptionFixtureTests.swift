@@ -74,6 +74,7 @@ struct FileProviderProcessInterruptionFixtureTests {
 
         repository = nil
         let reopened = try fixture.repository()
+        #expect(try fixture.stagedFiles().isEmpty)
         #expect(
             await reopened.recoveryLedgerHealthDiagnostic()?.contains(
                 "observed bytes other than its expected or candidate revision"
@@ -162,7 +163,16 @@ struct FileProviderProcessInterruptionFixtureTests {
         #expect(stagedFiles.count == 1)
         #expect(try Data(contentsOf: stagedFiles[0]) == expectedStaging)
 
-        let reopened = try fixture.repository()
+        let reopened = try fixture.repository(
+            hooks: point == .staged
+                ? VaultMutationHooks(
+                    cleanupOverride: { throw CocoaError(.fileWriteUnknown) }
+                )
+                : .none
+        )
+        if point == .swapped {
+            #expect(try fixture.stagedFiles().isEmpty)
+        }
         let reopenedDocument = try await reopened.load(relativePath: fixture.relativePath)
         let expectedCanonicalContent = point == .staged
             ? fixture.originalContent
@@ -230,6 +240,7 @@ struct FileProviderProcessInterruptionFixtureTests {
 
             let restored = try await reopened.restoreInterruptedSaveRecovery(retained)
             #expect(restored.didReplaceSource)
+            #expect(restored.saveCleanupWarning?.kind == .displacedSourceCopy)
             #expect(restored.recoveryCleanupWarning == nil)
             #expect(restored.document.rawContent == fixture.candidate)
             #expect(try Data(contentsOf: fixture.note) == fixture.candidateData)
@@ -347,11 +358,12 @@ struct FileProviderProcessInterruptionFixtureTests {
             )
         }
 
-        func repository() throws -> VaultRepository {
+        func repository(hooks: VaultMutationHooks = .none) throws -> VaultRepository {
             try VaultRepository(
                 vaultURL: root,
                 identity: identity,
-                applicationSupportURL: support
+                applicationSupportURL: support,
+                mutationHooks: hooks
             )
         }
 

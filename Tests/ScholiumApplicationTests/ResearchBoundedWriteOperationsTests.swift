@@ -5,6 +5,28 @@ import Testing
 
 @Suite("Authenticated bounded Research write sets", .serialized)
 struct ResearchBoundedWriteOperationsTests {
+    @Test("Agent write warnings preserve every committed post-save condition")
+    func combinedCommittedWarningsRemainBounded() throws {
+        let warning = try #require(boundedResearchDocumentWriteWarning([
+            "Displaced source cleanup pending.",
+            "Derived refresh failed.",
+            "Identity recovery incomplete.",
+        ]))
+        #expect(warning.contains("Displaced source cleanup pending."))
+        #expect(warning.contains("Derived refresh failed."))
+        #expect(warning.contains("Identity recovery incomplete."))
+
+        let oversized = try #require(boundedResearchDocumentWriteWarning([
+            String(repeating: "清", count: 3_000),
+            String(repeating: "d", count: 5_000),
+            String(repeating: "i", count: 5_000),
+        ]))
+        #expect(oversized.utf8.count <= 4_096)
+        #expect(oversized.contains("清"))
+        #expect(oversized.contains("d"))
+        #expect(oversized.contains("i"))
+    }
+
     @Test("Full Access extends one Run to two documents and writes them sequentially with idempotent retry")
     func fullAccessMultiDocumentWrite() async throws {
         let fixture = try await ResearchFixture.make()

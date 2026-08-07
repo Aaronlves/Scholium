@@ -236,7 +236,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("Copy Agent Configuration Prompt"))
         #expect(!source.contains("saveSkillPermissionOverride"))
         #expect(!source.contains("removeSkillPermissionOverride"))
-        #expect(source.contains("do not inspect or monitor Agent behavior"))
+        #expect(source.contains("This choice never grants blanket writes"))
+        #expect(source.contains("nonreusable capability"))
         for forbidden in [
             ".regularMaterial",
             ".ultraThinMaterial",

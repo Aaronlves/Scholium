@@ -83,6 +83,7 @@ public actor TriptychMoveCoordinator {
     private struct AppliedRewrite {
         let prepared: PreparedRewrite
         let committed: NoteDocument
+        let cleanupWarning: SaveCleanupWarning?
     }
 
     private let triptychID: UUID
@@ -200,7 +201,11 @@ public actor TriptychMoveCoordinator {
                     changeSet: .exactContent(rewrite.plan.updatedSource),
                     expectedRevision: rewrite.plan.expectedRevision
                 )
-                applied.append(AppliedRewrite(prepared: rewrite, committed: saved.document))
+                applied.append(AppliedRewrite(
+                    prepared: rewrite,
+                    committed: saved.document,
+                    cleanupWarning: saved.cleanupWarning
+                ))
                 try faultPlan.trigger(.afterRewrite(index))
             }
         } catch {
@@ -234,7 +239,8 @@ public actor TriptychMoveCoordinator {
             previousRevision: sourceBefore.fingerprint,
             committedRevision: finalMovedRevision,
             graphGeneration: plan.graphGeneration,
-            rewrites: rewriteResults
+            rewrites: rewriteResults,
+            cleanupWarnings: applied.compactMap(\.cleanupWarning)
         )
     }
 

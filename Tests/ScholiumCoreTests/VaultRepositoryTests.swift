@@ -186,6 +186,565 @@ struct VaultRepositoryTests {
         try await expectRecoveryOutcome(at: .completedReplacement)
     }
 
+    @Test("A committed save retries displaced-source cleanup after reopening the vault")
+    func committedSaveRetriesCleanupAfterReopen() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                didReach: { phase in
+                    if phase == .cleanup { throw SaveFault.afterSwap }
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let outcome = try await repository!.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+        guard case .committed(let result) = outcome else {
+            Issue.record("A cleanup-only failure was not reported as a committed save.")
+            return
+        }
+        #expect(result.cleanupWarning?.kind == .displacedSourceCopy)
+        #expect(try String(contentsOf: f.note, encoding: .utf8) == "# Candidate\n")
+        #expect(try stagedFiles(in: f.root).count == 1)
+
+        repository = nil
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try stagedFiles(in: f.root).isEmpty)
+        #expect(await reopened.recoveryLedgerHealthDiagnostic() == nil)
+    }
+
+    @Test("A committed save distinguishes transaction-record cleanup from displaced source cleanup")
+    func transactionRecordCleanupWarningIsTypedSeparately() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                cleanupRecordRemovalOverride: {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let result = try await repository!.save(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+
+        #expect(result.cleanupWarning?.kind == .transactionRecord)
+        #expect(result.cleanupWarning?.message.contains("transaction record") == true)
+        #expect(try stagedFiles(in: f.root).isEmpty)
+        #expect(try Data(contentsOf: f.note) == Data("# Candidate\n".utf8))
+
+        repository = nil
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try stagedFiles(in: f.root).isEmpty)
+        #expect(await reopened.recoveryLedgerHealthDiagnostic() == nil)
+    }
+
+    @Test("Cleanup authorization persistence failure prevents canonical replacement")
+    func cleanupAuthorizationFailurePreventsSwap() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                cleanupPersistenceOverride: {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let outcome = try await repository!.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+        guard case .recoveryRequired = outcome else {
+            Issue.record("Cleanup authorization failure did not retain recovery.")
+            return
+        }
+        #expect(try Data(contentsOf: f.note) == Data(original.rawContent.utf8))
+        #expect(try stagedFiles(in: f.root).isEmpty)
+
+        repository = nil
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try await reopened.interruptedSaveRecoveries().count == 1)
+        #expect(try stagedFiles(in: f.root).isEmpty)
+    }
+
+    @Test("Pre-swap cleanup failure preserves authorization instead of leaving an orphan staging file")
+    func atomicUnsupportedCleanupFailureRetainsTask() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                didReach: { phase in
+                    if phase == .finalCheck {
+                        throw VaultRepositoryError.atomicCommitUnsupported(
+                            "Injected unsupported swap."
+                        )
+                    }
+                },
+                cleanupOverride: {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let outcome = try await repository!.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+
+        guard case .recoveryRequired = outcome else {
+            Issue.record("Failed pre-swap cleanup deleted its only authorization.")
+            return
+        }
+        #expect(try Data(contentsOf: f.note) == Data(original.rawContent.utf8))
+        #expect(try stagedFiles(in: f.root).count == 1)
+        #expect(try mutationManifest(support: f.support, vaultID: identity.id) != nil)
+
+        repository = nil
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try stagedFiles(in: f.root).isEmpty)
+        #expect(try await reopened.interruptedSaveRecoveries().count == 1)
+    }
+
+    @Test("Cleanup retry refuses a substituted staging inode")
+    func cleanupRetryRejectsSubstitutedStaging() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                cleanupOverride: {
+                    let stagingURL = try FileManager.default.contentsOfDirectory(
+                        at: f.note.deletingLastPathComponent(),
+                        includingPropertiesForKeys: nil
+                    ).first { $0.lastPathComponent.hasPrefix(".scholium-swap-") }
+                    let staging = try #require(stagingURL)
+                    try FileManager.default.removeItem(at: staging)
+                    try Data("untrusted replacement".utf8).write(to: staging)
+                    throw SaveFault.afterSwap
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let outcome = try await repository!.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+        guard case .committed(let result) = outcome else {
+            Issue.record("A substituted cleanup file changed the source outcome.")
+            return
+        }
+        #expect(result.cleanupWarning?.kind == .displacedSourceCopy)
+        repository = nil
+
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try stagedFiles(in: f.root).count == 1)
+        #expect(try Self.cleanupDirectories(in: f.root).isEmpty)
+        #expect(await reopened.recoveryLedgerHealthDiagnostic()?.contains("cleanup") == true)
+        #expect(try String(contentsOf: stagedFiles(in: f.root)[0], encoding: .utf8)
+            == "untrusted replacement")
+    }
+
+    @Test("Cleanup refuses an isolated entry replaced before final authorization")
+    func cleanupRejectsSubstitutedIsolatedEntry() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                cleanupIsolationOverride: {
+                    let directory = try #require(
+                        try Self.cleanupDirectories(in: f.root).first
+                    )
+                    let isolated = try #require(
+                        try FileManager.default.contentsOfDirectory(
+                            at: directory,
+                            includingPropertiesForKeys: nil
+                        ).first
+                    )
+                    try Data("untrusted isolated replacement".utf8).write(
+                        to: isolated
+                    )
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let outcome = try await repository!.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+        guard case .committed(let result) = outcome else {
+            Issue.record("The isolated cleanup race changed the source outcome.")
+            return
+        }
+        #expect(result.cleanupWarning?.kind == .displacedSourceCopy)
+        repository = nil
+
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        let directory = try #require(try Self.cleanupDirectories(in: f.root).first)
+        let isolated = try #require(try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).first)
+        #expect(try String(contentsOf: isolated, encoding: .utf8)
+            == "untrusted isolated replacement")
+        #expect(await reopened.recoveryLedgerHealthDiagnostic()?.contains("cleanup") == true)
+    }
+
+    @Test("Cleanup refuses an isolated entry with an added hard link")
+    func cleanupRejectsLinkedIsolatedEntry() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                cleanupIsolationOverride: {
+                    let directory = try #require(
+                        try Self.cleanupDirectories(in: f.root).first
+                    )
+                    let isolated = try #require(
+                        try FileManager.default.contentsOfDirectory(
+                            at: directory,
+                            includingPropertiesForKeys: nil
+                        ).first
+                    )
+                    try FileManager.default.linkItem(
+                        at: isolated,
+                        to: directory.appendingPathComponent("linked-source.md")
+                    )
+                }
+            )
+        )
+        let original = try await repository.load(relativePath: "topics/note.md")
+        let result = try await repository.save(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+
+        #expect(result.cleanupWarning?.kind == .displacedSourceCopy)
+        let directory = try #require(try Self.cleanupDirectories(in: f.root).first)
+        #expect(try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).count == 2)
+        #expect(try Data(contentsOf: f.note) == Data("# Candidate\n".utf8))
+    }
+
+    @Test("Cleanup retains an isolated preimage when its original staging name reappears")
+    func cleanupRejectsSimultaneousIsolatedAndStagingPaths() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                cleanupIsolationOverride: {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let result = try await repository!.save(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+        #expect(result.cleanupWarning?.kind == .displacedSourceCopy)
+        repository = nil
+
+        let manifestURL = try #require(try mutationManifest(
+            support: f.support,
+            vaultID: identity.id
+        ))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let transaction = try decoder.decode(
+            PrewriteRecoveryLedger.MutationTransaction.self,
+            from: Data(contentsOf: manifestURL)
+        )
+        let cleanup = try #require(transaction.cleanupPending)
+        let staging = f.note.deletingLastPathComponent()
+            .appendingPathComponent(cleanup.stagingName)
+        try Data("replacement staging".utf8).write(to: staging)
+
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try Data(contentsOf: staging) == Data("replacement staging".utf8))
+        let directory = try #require(try Self.cleanupDirectories(in: f.root).first)
+        let isolated = try #require(try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).first)
+        #expect(try Data(contentsOf: isolated) == Data(original.rawContent.utf8))
+        #expect(await reopened.recoveryLedgerHealthDiagnostic()?.contains("cleanup") == true)
+    }
+
+    @Test("Cleanup retains a task when staging reappears during isolated removal")
+    func cleanupRejectsStagingReappearingDuringRemoval() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                cleanupIsolationOverride: {
+                    let directory = try #require(
+                        try Self.cleanupDirectories(in: f.root).first
+                    )
+                    let stagingName = directory.lastPathComponent
+                        .replacingOccurrences(
+                            of: ".scholium-cleanup-",
+                            with: ".scholium-swap-",
+                            options: [.anchored]
+                        ) + ".md"
+                    try Data("replacement during cleanup".utf8).write(
+                        to: directory.deletingLastPathComponent()
+                            .appendingPathComponent(stagingName)
+                    )
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let result = try await repository!.save(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+
+        #expect(result.cleanupWarning?.kind == .displacedSourceCopy)
+        #expect(try stagedFiles(in: f.root).count == 1)
+        #expect(try String(
+            contentsOf: try #require(try stagedFiles(in: f.root).first),
+            encoding: .utf8
+        ) == "replacement during cleanup")
+        #expect(try Self.cleanupDirectories(in: f.root).isEmpty)
+        #expect(try mutationManifest(support: f.support, vaultID: identity.id) != nil)
+        repository = nil
+
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(await reopened.recoveryLedgerHealthDiagnostic()?.contains("cleanup") == true)
+        #expect(try stagedFiles(in: f.root).count == 1)
+    }
+
+    @Test("Cleanup retry rejects a task detached from its source transaction")
+    func cleanupRetryRejectsTamperedTask() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                didReach: { phase in
+                    if phase == .cleanup { throw SaveFault.afterSwap }
+                }
+            )
+        )
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        _ = try await repository!.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+        repository = nil
+
+        let manifestURL = try #require(try mutationManifest(
+            support: f.support,
+            vaultID: identity.id
+        ))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let transaction = try decoder.decode(
+            PrewriteRecoveryLedger.MutationTransaction.self,
+            from: Data(contentsOf: manifestURL)
+        )
+        let cleanup = try #require(transaction.cleanupPending)
+        let tampered = PrewriteRecoveryLedger.MutationTransaction(
+            id: transaction.id,
+            relativePath: transaction.relativePath,
+            expected: transaction.expected,
+            candidate: transaction.candidate,
+            createdAt: transaction.createdAt,
+            retainedReason: transaction.retainedReason,
+            cleanupPending: VaultMutationCleanupTask(
+                relativePath: "Other.md",
+                stagingName: cleanup.stagingName,
+                stagedCandidate: cleanup.stagedCandidate,
+                displacedSource: cleanup.displacedSource
+            )
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(tampered).write(to: manifestURL, options: .atomic)
+
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try stagedFiles(in: f.root).count == 1)
+        #expect(await reopened.recoveryLedgerHealthDiagnostic()?.contains(
+            "cleanup task does not match"
+        ) == true)
+    }
+
+    @Test("A downstream history failure retains the already-persisted cleanup task")
+    func downstreamFailureRetainsCleanupTask() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let transactions = f.support
+            .appendingPathComponent("Vaults", isDirectory: true)
+            .appendingPathComponent(identity.id.uuidString, isDirectory: true)
+            .appendingPathComponent("recovery-v2/transactions", isDirectory: true)
+        var repository: VaultRepository? = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(
+                didReach: { phase in
+                    if phase == .cleanup {
+                        guard chmod(transactions.path, 0o500) == 0 else {
+                            throw POSIXError(
+                                POSIXErrorCode(rawValue: errno) ?? .EIO
+                            )
+                        }
+                        throw SaveFault.afterSwap
+                    }
+                }
+            )
+        )
+        defer { _ = chmod(transactions.path, 0o700) }
+        let original = try await repository!.load(relativePath: "topics/note.md")
+        let outcome = try await repository!.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent("# Candidate\n"),
+            expectedRevision: original.fingerprint
+        )
+        guard case .recoveryRequired = outcome else {
+            Issue.record("The downstream history failure did not retain recovery.")
+            return
+        }
+        #expect(try stagedFiles(in: f.root).count == 1)
+        #expect(chmod(transactions.path, 0o700) == 0)
+
+        repository = nil
+        let reopened = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support
+        )
+        #expect(try stagedFiles(in: f.root).isEmpty)
+        #expect(await reopened.recoveryLedgerHealthDiagnostic() == nil)
+    }
+
+    private func stagedFiles(in root: URL) throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(
+            at: root.appendingPathComponent("topics", isDirectory: true),
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix(".scholium-swap-") }
+    }
+
+    private static func cleanupDirectories(in root: URL) throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(
+            at: root.appendingPathComponent("topics", isDirectory: true),
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ).filter { url in
+            guard url.lastPathComponent.hasPrefix(".scholium-cleanup-") else {
+                return false
+            }
+            return try url.resourceValues(forKeys: [.isDirectoryKey])
+                .isDirectory == true
+        }
+    }
+
+    private func mutationManifest(support: URL, vaultID: UUID) throws -> URL? {
+        let mutations = support
+            .appendingPathComponent("Vaults", isDirectory: true)
+            .appendingPathComponent(vaultID.uuidString, isDirectory: true)
+            .appendingPathComponent(
+                "recovery-v2/transactions/mutations",
+                isDirectory: true
+            )
+        return try FileManager.default.contentsOfDirectory(
+            at: mutations,
+            includingPropertiesForKeys: nil
+        ).first?.appendingPathComponent("manifest.json")
+    }
+
     private func expectRecoveryOutcome(
         at phase: VaultMutationPhase
     ) async throws {

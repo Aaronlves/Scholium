@@ -27,10 +27,16 @@ struct VaultMutationCoordinatorTests {
 
         var wasCommitUncertain = false
         do {
-            try coordinator.updateExisting(
+            _ = try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
-                candidate: fixture.candidate
+                candidate: fixture.candidate,
+                persistCleanupTask: { _ in },
+                cleanupStagedCandidate: { cleanup in
+                    try FileManager.default.removeItem(
+                        at: fixture.root.appendingPathComponent(cleanup.stagingName)
+                    )
+                }
             )
             Issue.record("An injected commit-stage failure was reported as Saved.")
         } catch VaultRepositoryError.commitUncertain {
@@ -51,6 +57,28 @@ struct VaultMutationCoordinatorTests {
         }
     }
 
+    @Test("A proven replacement returns an exact cleanup task before removal")
+    func cleanupFailureRetainsBoundedTask() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let coordinator = VaultMutationCoordinator(resolver: fixture.resolver)
+
+        let result = try coordinator.updateExisting(
+            path: fixture.path,
+            expected: fixture.original,
+            candidate: fixture.candidate
+        )
+
+        #expect(result.cleanupTask.relativePath == fixture.path.rawValue)
+        #expect(result.cleanupTask.displacedSource.fingerprint
+            == DocumentFingerprint(data: fixture.original))
+        #expect(result.cleanupTask.stagedCandidate.fingerprint
+            == DocumentFingerprint(data: fixture.candidate))
+        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
+        let staging = try #require(fixture.stagedFiles().first)
+        #expect(try Data(contentsOf: staging) == fixture.original)
+    }
+
     @Test("An external writer before final authorization causes a conflict")
     func writerBeforeFinalCheck() throws {
         let fixture = try Fixture()
@@ -64,7 +92,7 @@ struct VaultMutationCoordinatorTests {
         )
 
         #expect(throws: VaultRepositoryError.self) {
-            try coordinator.updateExisting(
+            _ = try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
                 candidate: fixture.candidate
@@ -86,7 +114,7 @@ struct VaultMutationCoordinatorTests {
         )
 
         do {
-            try coordinator.updateExisting(
+            _ = try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
                 candidate: fixture.candidate
@@ -256,7 +284,7 @@ struct VaultMutationCoordinatorTests {
         )
 
         do {
-            try coordinator.updateExisting(
+            _ = try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
                 candidate: fixture.candidate
@@ -276,7 +304,7 @@ struct VaultMutationCoordinatorTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let coordinator = VaultMutationCoordinator(resolver: fixture.resolver)
-        try coordinator.updateExisting(
+        _ = try coordinator.updateExisting(
             path: fixture.path,
             expected: fixture.original,
             candidate: fixture.candidate
@@ -316,7 +344,7 @@ struct VaultMutationCoordinatorTests {
         var before = stat()
         #expect(stat(fixture.note.path, &before) == 0)
 
-        try VaultMutationCoordinator(resolver: fixture.resolver).updateExisting(
+        _ = try VaultMutationCoordinator(resolver: fixture.resolver).updateExisting(
             path: fixture.path,
             expected: fixture.original,
             candidate: fixture.candidate
@@ -368,7 +396,7 @@ struct VaultMutationCoordinatorTests {
             })
         )
 
-        try coordinator.updateExisting(
+        _ = try coordinator.updateExisting(
             path: fixture.path,
             expected: fixture.original,
             candidate: fixture.candidate
@@ -401,7 +429,7 @@ struct VaultMutationCoordinatorTests {
             })
         )
 
-        try coordinator.updateExisting(
+        _ = try coordinator.updateExisting(
             path: fixture.path,
             expected: fixture.original,
             candidate: fixture.candidate
@@ -661,5 +689,22 @@ struct VaultMutationCoordinatorTests {
         }
 
         func remove() { try? FileManager.default.removeItem(at: root) }
+    }
+}
+
+private extension VaultMutationCoordinator {
+    @discardableResult
+    func updateExisting(
+        path: MarkdownRelativePath,
+        expected: Data,
+        candidate: Data
+    ) throws -> VaultMutationUpdateResult {
+        try updateExisting(
+            path: path,
+            expected: expected,
+            candidate: candidate,
+            persistCleanupTask: { _ in },
+            cleanupStagedCandidate: { _ in }
+        )
     }
 }

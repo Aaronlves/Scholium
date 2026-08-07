@@ -152,15 +152,18 @@ public struct TriptychCheckpointRestoreResult: Sendable {
     public let recoveryCheckpoint: TriptychCheckpoint
     public let restoredFiles: [TriptychCheckpointFileKey]
     public let movedToTrash: [TriptychCheckpointFileKey]
+    public let cleanupWarnings: [SaveCleanupWarning]
 
     public init(
         recoveryCheckpoint: TriptychCheckpoint,
         restoredFiles: [TriptychCheckpointFileKey],
-        movedToTrash: [TriptychCheckpointFileKey]
+        movedToTrash: [TriptychCheckpointFileKey],
+        cleanupWarnings: [SaveCleanupWarning] = []
     ) {
         self.recoveryCheckpoint = recoveryCheckpoint
         self.restoredFiles = restoredFiles
         self.movedToTrash = movedToTrash
+        self.cleanupWarnings = cleanupWarnings
     }
 }
 

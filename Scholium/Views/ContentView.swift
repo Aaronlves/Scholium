@@ -736,11 +736,13 @@ struct ContentView: View {
             RestoreCheckpointView(
                 controller: appState.researchController,
                 restoreCheckpoint: { checkpointID, selection in
-                    _ = try await appState.restoreCheckpoint(
+                    let result = try await appState.restoreCheckpoint(
                         checkpointID,
                         selection: selection
                     )
-                    appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
+                    if result.cleanupWarnings.isEmpty {
+                        appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
+                    }
                 },
                 revealCheckpoints: {
                     appState.revealCheckpointsInFinder()

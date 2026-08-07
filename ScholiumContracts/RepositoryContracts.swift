@@ -156,15 +156,18 @@ public struct InterruptedSaveRecoveryContent: Hashable, Sendable {
 public struct InterruptedSaveRecoveryRestoreCommit: Sendable {
     public let document: NoteDocument
     public let didReplaceSource: Bool
+    public let saveCleanupWarning: SaveCleanupWarning?
     public let recoveryCleanupWarning: String?
 
     public init(
         document: NoteDocument,
         didReplaceSource: Bool,
+        saveCleanupWarning: SaveCleanupWarning? = nil,
         recoveryCleanupWarning: String?
     ) {
         self.document = document
         self.didReplaceSource = didReplaceSource
+        self.saveCleanupWarning = saveCleanupWarning
         self.recoveryCleanupWarning = recoveryCleanupWarning
     }
 }
@@ -197,6 +200,36 @@ public struct SettledRevisionSnapshot: Codable, Hashable, Identifiable, Sendable
     }
 }
 
+public struct SaveCleanupWarning: Hashable, Sendable {
+    public enum Kind: Hashable, Sendable {
+        case displacedSourceCopy
+        case transactionRecord
+    }
+
+    public let kind: Kind
+    public let message: String
+
+    public init(kind: Kind, message: String) {
+        self.kind = kind
+        self.message = message
+    }
+}
+
+/// Result of one proven source replacement. A non-nil cleanup warning never
+/// changes the committed source into a retryable write failure.
+public struct SaveResult: Sendable {
+    public let document: NoteDocument
+    public let cleanupWarning: SaveCleanupWarning?
+
+    public init(
+        document: NoteDocument,
+        cleanupWarning: SaveCleanupWarning? = nil
+    ) {
+        self.document = document
+        self.cleanupWarning = cleanupWarning
+    }
+}
+
 /// Result of pinning a Settle revision. `wasCreated` lets the application
 /// retract only task-owned recovery state if the portable Settle commit fails.
 package struct SettledRevisionSnapshotPinOutcome: Hashable, Sendable {
@@ -206,14 +239,6 @@ package struct SettledRevisionSnapshotPinOutcome: Hashable, Sendable {
     package init(snapshot: SettledRevisionSnapshot, wasCreated: Bool) {
         self.snapshot = snapshot
         self.wasCreated = wasCreated
-    }
-}
-
-public struct SaveResult: Sendable {
-    public let document: NoteDocument
-
-    public init(document: NoteDocument) {
-        self.document = document
     }
 }
 

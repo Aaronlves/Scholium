@@ -15,6 +15,39 @@ public struct ResearchWriteSetExtensionDelivery: Sendable {
     }
 }
 
+func boundedResearchDocumentWriteWarning(_ warnings: [String?]) -> String? {
+    let values: [String] = warnings.compactMap { warning -> String? in
+        guard let warning, !warning.isEmpty else { return nil }
+        return warning
+    }
+    guard !values.isEmpty else { return nil }
+    let separator = "\n"
+    let contentBudget = 4_096 - (values.count - 1) * separator.utf8.count
+    let perWarningBudget = max(1, contentBudget / values.count)
+    return values.map {
+        boundedUTF8Prefix($0, maximumByteCount: perWarningBudget)
+    }.joined(separator: separator)
+}
+
+private func boundedUTF8Prefix(
+    _ value: String,
+    maximumByteCount: Int
+) -> String {
+    guard value.utf8.count > maximumByteCount else { return value }
+    let ellipsis = "…"
+    let contentLimit = max(0, maximumByteCount - ellipsis.utf8.count)
+    var result = ""
+    var byteCount = 0
+    for character in value {
+        let text = String(character)
+        let nextCount = byteCount + text.utf8.count
+        guard nextCount <= contentLimit else { break }
+        result.append(character)
+        byteCount = nextCount
+    }
+    return result + (maximumByteCount >= ellipsis.utf8.count ? ellipsis : "")
+}
+
 extension WorkspaceRuntime {
     public func extendResearchWriteSet(
         credential: ResearchConnectionCredential,
@@ -524,8 +557,11 @@ extension WorkspaceHandle {
                     operationID: operationID,
                     state: .committed,
                     observedRevision: outcome.committedValue.document.fingerprint,
-                    warning: outcome.derivedRefreshWarning
-                        ?? outcome.identityRecoveryWarning,
+                    warning: boundedResearchDocumentWriteWarning(
+                        outcome.cleanupWarnings.map { Optional($0.message) } + [
+                        outcome.derivedRefreshWarning,
+                        outcome.identityRecoveryWarning,
+                    ]),
                     recoveryRecordID: nil,
                     finishedAt: Date()
                 )
@@ -1013,6 +1049,7 @@ extension WorkspaceHandle {
             state: record.state,
             target: ResearchBoundedWriteSetViewEntry(entry),
             message: message,
+            warning: record.warning,
             recoveryRecordID: record.recoveryRecordID
         )
     }
