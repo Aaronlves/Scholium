@@ -56,6 +56,86 @@ struct ApplicationBootstrapControllerTests {
         }
     }
 
+    @Test("Damaged registry stays at the app root until relinking preserves it")
+    func damagedRegistryRequiresExplicitRelinking() async throws {
+        let supportURL = testRoot()
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+        let registryURL = supportURL
+            .appendingPathComponent("Workspace", isDirectory: true)
+            .appendingPathComponent("workspace-registry-v2.json")
+        try FileManager.default.createDirectory(
+            at: registryURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let damaged = Data("damaged registry bytes".utf8)
+        try damaged.write(to: registryURL)
+        defer { try? FileManager.default.removeItem(at: supportURL.deletingLastPathComponent()) }
+
+        let controller = ApplicationBootstrapController { supportURL }
+        controller.startIfNeeded()
+        await waitUntilSettled(controller)
+        guard case .registryRecovery(let recovery) = controller.state else {
+            Issue.record("A damaged registry entered Bootstrap or constructed a runtime.")
+            return
+        }
+        #expect(recovery.health.canRelinkAfterPreserving)
+        #expect(recovery.registryURL == registryURL)
+        #expect(!controller.isReady)
+        #expect(try Data(contentsOf: registryURL) == damaged)
+
+        controller.repairRegistryAndRetry()
+        await waitUntilSettled(controller)
+        guard case .ready(let store) = controller.state else {
+            Issue.record("Relinking did not restore the normal Bootstrap route.")
+            return
+        }
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: registryURL.deletingLastPathComponent(),
+            includingPropertiesForKeys: nil
+        )
+        let backup = try #require(contents.first(where: {
+            $0.lastPathComponent.hasPrefix("workspace-registry-v2.corrupt-")
+        }))
+        #expect(try Data(contentsOf: backup) == damaged)
+        #expect(!FileManager.default.fileExists(atPath: registryURL.path))
+        await store.shutdownApplicationRuntime()
+    }
+
+    @Test("A registry that disappears during relinking changes to Retry-only I/O recovery")
+    func relinkFailureUpdatesRegistryHealth() async throws {
+        let supportURL = testRoot()
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+        let registryURL = supportURL
+            .appendingPathComponent("Workspace", isDirectory: true)
+            .appendingPathComponent("workspace-registry-v2.json")
+        try FileManager.default.createDirectory(
+            at: registryURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("damaged registry bytes".utf8).write(to: registryURL)
+        defer { try? FileManager.default.removeItem(at: supportURL.deletingLastPathComponent()) }
+
+        let controller = ApplicationBootstrapController { supportURL }
+        controller.startIfNeeded()
+        await waitUntilSettled(controller)
+        guard case .registryRecovery = controller.state else {
+            Issue.record("The fixture did not reach Registry Recovery.")
+            return
+        }
+        try FileManager.default.removeItem(at: registryURL)
+
+        controller.repairRegistryAndRetry()
+        guard case .registryRecovery(let recovery) = controller.state else {
+            Issue.record("A failed relink did not remain in the recovery state.")
+            return
+        }
+        guard case .ioFailure = recovery.health else {
+            Issue.record("A failed relink retained the stale malformed health and Relink action.")
+            return
+        }
+        #expect(!recovery.health.canRelinkAfterPreserving)
+    }
+
     private func waitUntilSettled(
         _ controller: ApplicationBootstrapController
     ) async {

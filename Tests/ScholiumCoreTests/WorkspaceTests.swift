@@ -33,7 +33,7 @@ struct WorkspaceTests {
 
         #expect(first.id == updated.id)
         #expect(try await registry.resolve("Paper Analyses").id == first.id)
-        #expect(await registry.allVaults().count == 1)
+        #expect(try await registry.allVaults().count == 1)
     }
 
     @Test("Three-vault workspace rejects equal and nested folders")
@@ -80,7 +80,7 @@ struct WorkspaceTests {
             topicKnowledge: (topics, topicID),
             output: (output, outputID)
         )
-        let restored = await WorkspaceRegistry(storageURL: storage).defaultTriptych()
+        let restored = try await WorkspaceRegistry(storageURL: storage).defaultTriptych()
 
         #expect(assignment.hasCommonParent)
         #expect(assignment.vault(for: .paperAnalysis)?.role == .sourceCorpus)
@@ -117,7 +117,7 @@ struct WorkspaceTests {
             output: (secondURLs.works, UUID())
         )
 
-        let restored = await WorkspaceRegistry(
+        let restored = try await WorkspaceRegistry(
             storageURL: base.appendingPathComponent("registry", isDirectory: true)
         ).allTriptychs()
         #expect(restored.map(\.id) == [firstID, secondID])
@@ -125,8 +125,8 @@ struct WorkspaceTests {
         #expect(restored.last?.vault(for: .paperAnalysis)?.name == "Analyses")
         #expect(first.vault(for: .output)?.canonicalPath == firstURLs.works.path)
         #expect(second.vault(for: .output)?.canonicalPath == secondURLs.works.path)
-        #expect(await registry.triptych(id: secondID)?.id == secondID)
-        #expect(await registry.triptych(id: firstID)?.id == firstID)
+        #expect(try await registry.triptych(id: secondID)?.id == secondID)
+        #expect(try await registry.triptych(id: firstID)?.id == firstID)
         #expect(try await registry.resolve(first.vault(for: .paperAnalysis)!.id.uuidString).id
             == first.vault(for: .paperAnalysis)!.id)
         await #expect(throws: WorkspaceRegistryError.self) {
@@ -235,12 +235,12 @@ struct WorkspaceTests {
         #expect(repaired.vault(for: .paperAnalysis)?.id == analysesID)
         #expect(repaired.vault(for: .topicKnowledge)?.id == topicsID)
         #expect(repaired.vault(for: .output)?.id == worksID)
-        #expect(await registry.triptych(id: oldTriptychID) == nil)
-        #expect(await registry.defaultTriptych()?.id == stableTriptychID)
+        #expect(try await registry.triptych(id: oldTriptychID) == nil)
+        #expect(try await registry.defaultTriptych()?.id == stableTriptychID)
     }
 
-    @Test("A damaged v2 registry is preserved and rejects mutation")
-    func corruptRegistryFailsClosed() async throws {
+    @Test("A damaged current registry is preserved before relinking")
+    func corruptRegistryIsPreservedBeforeRelinking() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let urls = try makeTriptychFolders(in: base.appendingPathComponent("Domain", isDirectory: true))
@@ -251,6 +251,13 @@ struct WorkspaceTests {
         try damaged.write(to: registryURL)
         let registry = WorkspaceRegistry(storageURL: storage)
 
+        guard case .malformedCurrentSchema = await registry.health() else {
+            Issue.record("A malformed registry did not report its repairable health.")
+            return
+        }
+        await #expect(throws: WorkspaceRegistryError.self) {
+            _ = try await registry.allTriptychs()
+        }
         await #expect(throws: WorkspaceRegistryError.self) {
             try await registry.configureTriptych(
                 paperAnalysis: (urls.analyses, UUID()),
@@ -259,6 +266,92 @@ struct WorkspaceTests {
             )
         }
         #expect(try Data(contentsOf: registryURL) == damaged)
+
+        let backup = try WorkspaceRegistry.preserveMalformedRegistryForRelinking(
+            storageURL: storage
+        )
+        #expect(!FileManager.default.fileExists(atPath: registryURL.path))
+        #expect(try Data(contentsOf: backup) == damaged)
+        #expect(await registry.health().isHealthy)
+        #expect(try await registry.allTriptychs().isEmpty)
+    }
+
+    @Test("A readable registry with broken references is not a healthy empty workspace")
+    func brokenRegistryReferencesFailClosed() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let urls = try makeTriptychFolders(in: base.appendingPathComponent("Domain", isDirectory: true))
+        let storage = base.appendingPathComponent("registry", isDirectory: true)
+        let registry = WorkspaceRegistry(storageURL: storage)
+        _ = try await registry.configureTriptych(
+            paperAnalysis: (urls.analyses, UUID()),
+            topicKnowledge: (urls.topics, UUID()),
+            output: (urls.works, UUID())
+        )
+        let registryURL = WorkspaceRegistry.registryURL(storageURL: storage)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: registryURL)) as? [String: Any]
+        )
+        var vaults = try #require(object["vaults"] as? [[String: Any]])
+        vaults.removeFirst()
+        object["vaults"] = vaults
+        let damaged = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        try damaged.write(to: registryURL)
+
+        let reopened = WorkspaceRegistry(storageURL: storage)
+        guard case .malformedCurrentSchema = await reopened.health() else {
+            Issue.record("Broken Triptych references were accepted as a healthy registry.")
+            return
+        }
+        await #expect(throws: WorkspaceRegistryError.self) {
+            _ = try await reopened.allTriptychs()
+        }
+        #expect(try Data(contentsOf: registryURL) == damaged)
+    }
+
+    @Test("A newer registry is visible but never preserved or replaced by relinking")
+    func newerRegistryIsNeverOverwritten() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let storage = base.appendingPathComponent("registry", isDirectory: true)
+        try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
+        let registryURL = WorkspaceRegistry.registryURL(storageURL: storage)
+        let newer = Data(#"{"schemaVersion":3}"#.utf8)
+        try newer.write(to: registryURL)
+        let registry = WorkspaceRegistry(storageURL: storage)
+
+        #expect(await registry.health() == .unsupportedNewerSchema(3))
+        await #expect(throws: WorkspaceRegistryError.self) {
+            _ = try await registry.allTriptychs()
+        }
+        #expect(throws: WorkspaceRegistryError.self) {
+            try WorkspaceRegistry.preserveMalformedRegistryForRelinking(storageURL: storage)
+        }
+        #expect(try Data(contentsOf: registryURL) == newer)
+    }
+
+    @Test("An unreadable registry is reported as I/O failure and never relinked")
+    func unreadableRegistryRemainsInPlace() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let storage = base.appendingPathComponent("registry", isDirectory: true)
+        let registryURL = WorkspaceRegistry.registryURL(storageURL: storage)
+        try FileManager.default.createDirectory(at: registryURL, withIntermediateDirectories: true)
+        let registry = WorkspaceRegistry(storageURL: storage)
+
+        guard case .ioFailure = await registry.health() else {
+            Issue.record("A registry that cannot be read did not report I/O failure.")
+            return
+        }
+        await #expect(throws: WorkspaceRegistryError.self) {
+            _ = try await registry.allTriptychs()
+        }
+        #expect(throws: WorkspaceRegistryError.self) {
+            try WorkspaceRegistry.preserveMalformedRegistryForRelinking(storageURL: storage)
+        }
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: registryURL.path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
     }
 
     @Test("A workspace folder can be changed without duplicate-name failure")
@@ -289,7 +382,7 @@ struct WorkspaceTests {
         )
 
         #expect(changed.vault(for: .topicKnowledge)?.canonicalPath == newTopics.path)
-        #expect(await registry.allVaults().filter { $0.role == .topicKnowledge }.count == 1)
+        #expect(try await registry.allVaults().filter { $0.role == .topicKnowledge }.count == 1)
     }
 
     private func makeTriptychFolders(
@@ -336,7 +429,7 @@ struct WorkspaceTests {
         #expect(repaired.vault(for: .paperAnalysis)?.id == repairedPaperID)
         #expect(repaired.vault(for: .topicKnowledge)?.id == repairedTopicID)
         #expect(repaired.vault(for: .output)?.id == repairedOutputID)
-        #expect(await registry.allVaults().filter { [repairedPaperID, repairedTopicID, repairedOutputID].contains($0.id) }.count == 3)
+        #expect(try await registry.allVaults().filter { [repairedPaperID, repairedTopicID, repairedOutputID].contains($0.id) }.count == 3)
     }
 
     @Test("Vault identity can be restored by its stable ID")

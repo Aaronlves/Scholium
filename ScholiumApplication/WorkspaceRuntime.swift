@@ -2,6 +2,23 @@ import ScholiumContracts
 import Foundation
 import ScholiumCore
 
+/// Application-facing bridge for the machine-local registry recovery actions.
+/// It does not inspect or mutate any vault source files.
+public enum WorkspaceRegistryRecoveryOperations {
+    public static func health(storageURL: URL) -> WorkspaceRegistryHealth {
+        WorkspaceRegistry.health(storageURL: storageURL)
+    }
+
+    @discardableResult
+    public static func preserveMalformedRegistryForRelinking(
+        storageURL: URL
+    ) throws -> URL {
+        try WorkspaceRegistry.preserveMalformedRegistryForRelinking(
+            storageURL: storageURL
+        )
+    }
+}
+
 /// Process-level composition root for headless Scholium workspaces.
 public actor WorkspaceRuntime {
     public struct LiveConfiguration: Sendable {
@@ -151,8 +168,8 @@ public actor WorkspaceRuntime {
         workspaceRegistryStorageURL: URL
     ) async throws -> WorkspaceRuntime {
         let registry = WorkspaceRegistry(storageURL: workspaceRegistryStorageURL)
-        let assignments = await registry.allTriptychs()
-        let defaultWorkspaceID = await registry.defaultTriptych()?.id
+        let assignments = try await registry.allTriptychs()
+        let defaultWorkspaceID = try await registry.defaultTriptych()?.id
         return WorkspaceRuntime(configuration: .snapshot(.init(
             applicationSupportURL: applicationSupportURL,
             workspaceRegistryStorageURL: workspaceRegistryStorageURL,
@@ -166,7 +183,7 @@ public actor WorkspaceRuntime {
         let assignments: [TriptychAssignment]
         switch membership {
         case .live(let registry, _, _, _):
-            assignments = await registry.allTriptychs()
+            assignments = try await registry.allTriptychs()
         case .snapshot(let fixed, _, _):
             assignments = Array(fixed.values)
         }
@@ -189,7 +206,7 @@ public actor WorkspaceRuntime {
         try requireActive()
         switch membership {
         case .live(let registry, _, _, _):
-            return await registry.allVaults()
+            return try await registry.allVaults()
         case .snapshot(let assignments, _, _):
             return Array(
                 Dictionary(
@@ -243,7 +260,7 @@ public actor WorkspaceRuntime {
         guard case .live(let registry, let identities, _, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
-        guard let assignment = await registry.triptych(id: id) else {
+        guard let assignment = try await registry.triptych(id: id) else {
             throw ScholiumApplicationError.workspaceNotFound(id)
         }
         var resolved: [WorkspaceVaultSlot: VaultIdentity] = [:]
@@ -440,7 +457,7 @@ public actor WorkspaceRuntime {
         if let triptychID,
            let portableID,
            triptychID != portableID,
-           await registry.triptych(id: triptychID) != nil {
+           try await registry.triptych(id: triptychID) != nil {
             _ = try await registry.reidentifyTriptych(id: triptychID, as: portableID)
             remappedWorkspaceIDs[triptychID] = portableID
         }
@@ -498,7 +515,7 @@ public actor WorkspaceRuntime {
         try requireActive()
         switch membership {
         case .live(let registry, _, _, _):
-            guard let assignment = await registry.defaultTriptych() else {
+            guard let assignment = try await registry.defaultTriptych() else {
                 throw ScholiumApplicationError.noWorkspaceConfigured
             }
             return assignment
@@ -750,7 +767,7 @@ public actor WorkspaceRuntime {
         var invalidatedVaultIDs: Set<UUID> = []
         for (cacheID, handle) in handles {
             let workspaceID = remappedIDs[cacheID] ?? cacheID
-            guard let current = await registry.triptych(id: workspaceID) else {
+            guard let current = try? await registry.triptych(id: workspaceID) else {
                 continue
             }
             guard forcedIDs.contains(cacheID) || handle.assignment != current else {
@@ -768,7 +785,7 @@ public actor WorkspaceRuntime {
     private func assignment(id: UUID) async throws -> TriptychAssignment {
         switch membership {
         case .live(let registry, _, _, _):
-            guard let assignment = await registry.triptych(id: id) else {
+            guard let assignment = try await registry.triptych(id: id) else {
                 throw ScholiumApplicationError.workspaceNotFound(id)
             }
             return assignment

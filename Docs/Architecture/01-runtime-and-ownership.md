@@ -53,6 +53,7 @@ ScholiumCore ← ScholiumApplication
               ScholiumApp / ScholiumCLI
 
 ApplicationBootstrapController (one app-owned storage gate)
+├── Registry Recovery (preserve malformed registry, then relink)
 └── Ready (explicit validated Application Support URL)
     └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
@@ -94,11 +95,18 @@ Research Records WindowGroup (one UUID value per Triptych)
 ### Runtime bootstrap, refresh, and Search
 
 `ApplicationBootstrapController` is the only production composition route to
-`WorkspaceStore`. Its Starting, Ready, and Storage Unavailable states validate
-the real per-user Application Support directory before constructing any
-runtime. `WorkspaceStore.init(applicationSupportURL:)` is explicit and
-failable; there is no temporary-directory fallback. An explicitly supplied QA
-root uses the same validation. `WorkspaceRuntime` then has two configurations:
+`WorkspaceStore`. Its Starting, Registry Recovery, Ready, and Storage
+Unavailable states validate the real per-user Application Support directory
+and the machine-local workspace registry before constructing any runtime.
+`WorkspaceStore.init(applicationSupportURL:)` is explicit and failable; there
+is no temporary-directory fallback or empty-registry fallback. A malformed
+current registry enters the app-root Registry Recovery state. An explicit
+researcher action preserves the original file under a timestamped recovery
+name, then returns to ordinary Bootstrap so the three vault locations can be
+relinked. A newer schema or registry I/O failure remains in place and exposes
+details plus Retry only. No recovery path scans or mutates vault Markdown. An
+explicitly supplied QA root uses the same validation. `WorkspaceRuntime` then
+has two configurations:
 live reuses stable Triptych/vault runtimes, watchers, and derived refresh while
 any app window needs them; snapshot performs one-shot loading without watchers
 and shuts down after each CLI invocation.

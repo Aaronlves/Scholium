@@ -102,12 +102,19 @@ report the boundary without global configuration scans or database bypass.
 ## 16. Onboarding
 
 Before onboarding or workspace restoration, one app-owned bootstrap state is
-either **Starting**, **Ready**, or **Storage Unavailable**. Only Ready contains
-the validated Application Support location and may construct workspace state
-or services. Storage Unavailable replaces the app root with a
-nonmodal recoverable failure page; **Retry** is the default action, **Details**
-reveals selectable diagnostic text, and **Quit** remains available. New Window,
-New Triptych, and all workspace commands stay disabled. Retry performs a fresh
+either **Starting**, **Registry Recovery**, **Ready**, or **Storage
+Unavailable**. Only Ready contains the validated Application Support location
+and a healthy machine-local Triptych registry, and may construct workspace
+state or services. Storage Unavailable replaces the app root with a nonmodal
+recoverable failure page; **Retry** is the default action, **Details** reveals
+selectable diagnostic text, and **Quit** remains available. Registry Recovery
+also replaces the app root. For a malformed current registry, **Relink
+Triptych** is the default action: it preserves the existing registry as a
+timestamped machine-local recovery file, then opens ordinary Bootstrap so the
+researcher explicitly selects Analyses, Topics, and Works again. A newer
+registry schema or registry I/O failure remains in place with Details, Retry,
+and Quit; Scholium never replaces it. New Window, New Triptych, and all
+workspace commands stay disabled outside Ready. Retry performs a fresh
 validation and enters the ordinary workspace or onboarding route only after it
 succeeds; no temporary or implicit read-only workspace exists in the meantime.
 

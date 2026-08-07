@@ -25,6 +25,26 @@ Documentation structure, local links, anchors, chapter ownership, and patch
 whitespace only. No source build, product test, UI journey, packaging, or
 release gate was rerun for this documentation-only cutover.
 
+### Workspace registry recovery
+
+**Current passing result**
+
+On 2026-08-07, the Xcode 27 beta toolchain ran the focused Core workspace,
+Application runtime, and App bootstrap suites against repository-local
+disposable fixtures. The exercised path distinguishes malformed current-schema,
+newer-schema, and I/O registry health; rejects broken current-schema references
+without projecting an empty workspace; preserves malformed bytes before
+relinking; retains newer or unreadable state in place; and changes a failed
+relink to Retry-only I/O recovery. Existing runtime membership tests also cover
+the unchanged live/snapshot ownership boundary.
+
+**Boundary of the claim**
+
+Focused Core/Application/App-controller evidence only. No full UI automation,
+genuine VoiceOver or Full Keyboard Access exercise, installed App/CLI journey,
+package artifact, complete repository gate, or researcher acceptance was
+rerun.
+
 ### Research Context contract cutover
 
 **Current passing result**

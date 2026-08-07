@@ -13,8 +13,12 @@ and dated proof belongs in [Verification Evidence](04-verification.md).
   control state stays in `.scholium`; machine-local and derived state stays in
   Application Support.
 - Production validates its real Application Support root before constructing a
-  workspace. Failure presents Storage Unavailable with Retry, Details, and
-  Quit; there is no temporary workspace fallback.
+  workspace. The machine-local workspace registry is also preflighted before
+  runtime construction: malformed current-schema bytes present Registry
+  Recovery, which preserves the original file before returning to Triptych
+  relinking; newer-schema and I/O failures remain nonauthorizing with
+  selectable Details and Retry. There is no temporary or empty-registry
+  workspace fallback.
 - Exact Markdown bytes remain authoritative. Reads, fingerprints, precommit
   checks, writes, readback, and recovery use descriptor-relative containment,
   no-follow file access, regular-file verification, coordinated access,

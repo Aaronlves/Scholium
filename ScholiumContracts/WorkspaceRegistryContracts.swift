@@ -167,6 +167,52 @@ public struct TriptychAssignment: Hashable, Identifiable, Sendable {
     }
 }
 
+/// The health of the machine-local Triptych registry. A non-healthy registry
+/// never authorizes an empty workspace or a replacement registry by itself.
+public enum WorkspaceRegistryHealth: Equatable, Sendable {
+    case healthy
+    case malformedCurrentSchema(String)
+    case unsupportedNewerSchema(Int)
+    case ioFailure(String)
+
+    public var isHealthy: Bool {
+        self == .healthy
+    }
+
+    /// Only a registry that cannot be decoded as the current or an older
+    /// schema may be preserved and replaced through explicit relinking.
+    public var canRelinkAfterPreserving: Bool {
+        if case .malformedCurrentSchema = self { return true }
+        return false
+    }
+
+    public var summary: String {
+        switch self {
+        case .healthy:
+            "The Triptych registry is available."
+        case .malformedCurrentSchema:
+            "The Triptych registry is damaged and needs to be preserved before relinking."
+        case .unsupportedNewerSchema:
+            "The Triptych registry was created by a newer version of Scholium."
+        case .ioFailure:
+            "Scholium could not read the Triptych registry."
+        }
+    }
+
+    public var details: String {
+        switch self {
+        case .healthy:
+            "The registry file is readable and uses the supported schema."
+        case .malformedCurrentSchema(let reason):
+            "The registry could not be decoded as the supported schema. \(reason)"
+        case .unsupportedNewerSchema(let version):
+            "The registry uses schema \(version), but this Scholium version supports an earlier schema."
+        case .ioFailure(let reason):
+            "The registry could not be read. \(reason)"
+        }
+    }
+}
+
 public enum WorkspaceRegistryError: LocalizedError, Sendable {
     case notDirectory(String)
     case duplicateName(String)
@@ -176,7 +222,7 @@ public enum WorkspaceRegistryError: LocalizedError, Sendable {
     case triptychSelectorNotFound(String)
     case ambiguousTriptychSelector(String)
     case triptychIdentityConflict(UUID)
-    case corruptRegistry
+    case registryRecoveryRequired(WorkspaceRegistryHealth)
     case triptychControlDirectoryInUse(String)
     case overlappingVaults(String, String)
     case vaultIdentityMismatch(UUID, String, String)
@@ -197,8 +243,8 @@ public enum WorkspaceRegistryError: LocalizedError, Sendable {
             return "More than one registered Triptych is named '\(selector)'. Use its UUID."
         case .triptychIdentityConflict(let id):
             return "Another registered Triptych already uses identity '\(id.uuidString)'."
-        case .corruptRegistry:
-            return "The Scholium Triptych registry is damaged. Its existing file was preserved for recovery."
+        case .registryRecoveryRequired(let health):
+            return health.summary
         case .triptychControlDirectoryInUse(let path):
             return "Another registered Triptych already uses the portable control folder at '\(path)'. Choose a Works folder under a different parent."
         case .overlappingVaults(let first, let second):

@@ -632,7 +632,13 @@ private final class ScholiumBootstrapModel: ObservableObject {
             registeredTriptychs = try await workspaceStore.registeredTriptychs()
             switch route.purpose {
             case .firstConfiguration:
-                workspaceAssignment = try? await workspaceStore.defaultTriptych()
+                do {
+                    workspaceAssignment = try await workspaceStore.defaultTriptych()
+                } catch let error as WorkspaceRegistryError {
+                    throw error
+                } catch {
+                    workspaceAssignment = nil
+                }
                 isReadyToOpenWorkspace = workspaceAssignment != nil
             case .newTriptych:
                 workspaceAssignment = nil
@@ -3656,6 +3662,10 @@ final class WindowModel: ObservableObject {
             registeredTriptychs = assignments
             workspaceAssignment = nil
             workspaceRecoveryMessage = message
+        case .unavailablePreserving(let assignments, let assignment, let message):
+            registeredTriptychs = assignments
+            workspaceAssignment = assignment
+            workspaceRecoveryMessage = message
         case .selected(let assignments, let assignment, let repairFailure):
             registeredTriptychs = assignments
             workspaceAssignment = assignment
@@ -3712,8 +3722,8 @@ final class WindowModel: ObservableObject {
         let assignment = capabilities.assignment
         workspaceAssignment = assignment
         workspaceAccessRecovery = nil
-        registeredVaults = await workspaceStore.registeredVaults()
-        registeredTriptychs = (try? await workspaceStore.registeredTriptychs()) ?? []
+        registeredVaults = try await workspaceStore.registeredVaults()
+        registeredTriptychs = try await workspaceStore.registeredTriptychs()
         try await activateTriptychServices(assignment: assignment)
         if let current = currentRegisteredVault,
            let assignedCurrent = assignment.vaults.values.first(where: {
@@ -4259,8 +4269,14 @@ final class WindowModel: ObservableObject {
     }
 
     func refreshRegisteredVaults() async {
-        registeredVaults = await workspaceStore.registeredVaults()
-        registeredTriptychs = (try? await workspaceStore.registeredTriptychs()) ?? []
+        do {
+            let vaults = try await workspaceStore.registeredVaults()
+            let triptychs = try await workspaceStore.registeredTriptychs()
+            registeredVaults = vaults
+            registeredTriptychs = triptychs
+        } catch {
+            vaultError = error.localizedDescription
+        }
     }
 
     func openWorkspaceVault(_ slot: WorkspaceVaultSlot) async throws {

@@ -2,13 +2,17 @@ import ScholiumContracts
 import Foundation
 
 public actor WorkspaceRegistry {
-    private static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 2
 
     private struct RegistryFile: Codable {
         var schemaVersion: Int
         var vaults: [RegisteredVault]
         var triptychs: [ScholiumTriptych]
         var defaultTriptychID: UUID?
+    }
+
+    private struct SchemaProbe: Decodable {
+        let schemaVersion: Int
     }
 
     private struct CanonicalSelection {
@@ -23,8 +27,117 @@ public actor WorkspaceRegistry {
 
     public init(storageURL: URL, fileManager: FileManager = .default) {
         self.storageURL = storageURL
-        registryURL = storageURL.appendingPathComponent("workspace-registry-v2.json")
+        registryURL = Self.registryURL(storageURL: storageURL)
         self.fileManager = fileManager
+    }
+
+    public nonisolated static func registryURL(storageURL: URL) -> URL {
+        storageURL.standardizedFileURL.appendingPathComponent("workspace-registry-v2.json")
+    }
+
+    public nonisolated static func health(storageURL: URL) -> WorkspaceRegistryHealth {
+        let registryURL = registryURL(storageURL: storageURL)
+        let data: Data
+        do {
+            data = try Data(contentsOf: registryURL)
+        } catch let error as CocoaError
+            where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return .healthy
+        } catch {
+            return .ioFailure(error.localizedDescription)
+        }
+        return health(for: data)
+    }
+
+    private nonisolated static func health(for data: Data) -> WorkspaceRegistryHealth {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        do {
+            let version = try decoder.decode(SchemaProbe.self, from: data).schemaVersion
+            if version > currentSchemaVersion {
+                return .unsupportedNewerSchema(version)
+            }
+            guard version == currentSchemaVersion else {
+                return .malformedCurrentSchema(
+                    "Schema \(version) is not supported by this Scholium version."
+                )
+            }
+            let registry = try decoder.decode(RegistryFile.self, from: data)
+            if let issue = registryIntegrityIssue(registry) {
+                return .malformedCurrentSchema(issue)
+            }
+            return .healthy
+        } catch {
+            return .malformedCurrentSchema(error.localizedDescription)
+        }
+    }
+
+    /// Preserves a malformed current registry before the researcher explicitly
+    /// relinks their existing Triptych. Newer and unreadable registries stay
+    /// in place because this build cannot safely classify their contents.
+    @discardableResult
+    public nonisolated static func preserveMalformedRegistryForRelinking(
+        storageURL: URL,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        let source = registryURL(storageURL: storageURL)
+        let sourceData: Data
+        let sourceIdentity: String
+        do {
+            sourceData = try Data(contentsOf: source)
+            let values = try source.resourceValues(forKeys: [.fileResourceIdentifierKey])
+            guard let identifier = values.fileResourceIdentifier else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            sourceIdentity = String(describing: identifier)
+        } catch {
+            throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
+                "The damaged registry could not be bound to one readable file before recovery: \(error.localizedDescription)"
+            ))
+        }
+        let health = health(for: sourceData)
+        guard health.canRelinkAfterPreserving else {
+            throw WorkspaceRegistryError.registryRecoveryRequired(health)
+        }
+        try fileManager.createDirectory(
+            at: storageURL,
+            withIntermediateDirectories: true
+        )
+        let timestamp = Int(Date().timeIntervalSince1970 * 1_000)
+        let destination = storageURL.standardizedFileURL.appendingPathComponent(
+            "workspace-registry-v2.corrupt-\(timestamp)-\(UUID().uuidString.lowercased()).json"
+        )
+        do {
+            try fileManager.moveItem(at: source, to: destination)
+        } catch {
+            throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
+                "The damaged registry could not be preserved: \(error.localizedDescription)"
+            ))
+        }
+        do {
+            let movedData = try Data(contentsOf: destination)
+            let movedValues = try destination.resourceValues(forKeys: [.fileResourceIdentifierKey])
+            let movedIdentity = movedValues.fileResourceIdentifier.map(String.init(describing:))
+            guard movedData == sourceData, movedIdentity == sourceIdentity else {
+                if !fileManager.fileExists(atPath: source.path) {
+                    try? fileManager.moveItem(at: destination, to: source)
+                }
+                throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
+                    "The registry changed while recovery was preparing its preserved copy; no replacement was authorized."
+                ))
+            }
+        } catch let error as WorkspaceRegistryError {
+            throw error
+        } catch {
+            throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
+                "The preserved registry could not be verified: \(error.localizedDescription)"
+            ))
+        }
+        return destination
+    }
+
+    public func health() -> WorkspaceRegistryHealth {
+        Self.health(storageURL: storageURL)
     }
 
     @discardableResult
@@ -163,19 +276,26 @@ public actor WorkspaceRegistry {
         return result
     }
 
-    public func allTriptychs() -> [TriptychAssignment] {
-        let registry = load()
-        return sortedTriptychs(registry.triptychs).compactMap { assignment(for: $0, in: registry) }
+    public func allTriptychs() throws -> [TriptychAssignment] {
+        let registry = try load()
+        return try sortedTriptychs(registry.triptychs).map { triptych in
+            guard let assignment = assignment(for: triptych, in: registry) else {
+                throw WorkspaceRegistryError.registryRecoveryRequired(.malformedCurrentSchema(
+                    "Triptych \(triptych.id.uuidString) does not reference three registered vaults."
+                ))
+            }
+            return assignment
+        }
     }
 
-    public func triptych(id: UUID) -> TriptychAssignment? {
-        let registry = load()
+    public func triptych(id: UUID) throws -> TriptychAssignment? {
+        let registry = try load()
         guard let triptych = registry.triptychs.first(where: { $0.id == id }) else { return nil }
         return assignment(for: triptych, in: registry)
     }
 
-    public func defaultTriptych() -> TriptychAssignment? {
-        let registry = load()
+    public func defaultTriptych() throws -> TriptychAssignment? {
+        let registry = try load()
         let selected = registry.defaultTriptychID.flatMap { id in
             registry.triptychs.first(where: { $0.id == id })
         } ?? sortedTriptychs(registry.triptychs).first
@@ -227,8 +347,8 @@ public actor WorkspaceRegistry {
         return result
     }
 
-    public func allVaults() -> [RegisteredVault] {
-        load().vaults.sorted {
+    public func allVaults() throws -> [RegisteredVault] {
+        try load().vaults.sorted {
             if $0.role != $1.role { return $0.role.rawValue < $1.role.rawValue }
             let nameOrder = $0.name.localizedStandardCompare($1.name)
             if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
@@ -238,7 +358,7 @@ public actor WorkspaceRegistry {
     }
 
     public func resolve(_ selector: String) throws -> RegisteredVault {
-        let vaults = load().vaults
+        let vaults = try load().vaults
         if let id = UUID(uuidString: selector), let match = vaults.first(where: { $0.id == id }) {
             return match
         }
@@ -354,24 +474,22 @@ public actor WorkspaceRegistry {
         return trimmed.isEmpty ? "Triptych" : trimmed
     }
 
-    private func load() -> RegistryFile {
+    private func load() throws -> RegistryFile {
+        let health = Self.health(storageURL: storageURL)
+        guard health.isHealthy else {
+            throw WorkspaceRegistryError.registryRecoveryRequired(health)
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         if fileManager.fileExists(atPath: registryURL.path) {
-            guard let data = try? Data(contentsOf: registryURL),
-                  let decoded = try? decoder.decode(RegistryFile.self, from: data),
-                  decoded.schemaVersion == Self.currentSchemaVersion else {
-                // Never overwrite a damaged or newer registry with empty
-                // state. Mutating callers fail closed through
-                // `writableRegistry()`; read-only callers see no assignments.
-                return RegistryFile(
-                    schemaVersion: -1,
-                    vaults: [],
-                    triptychs: [],
-                    defaultTriptychID: nil
+            let data = try Data(contentsOf: registryURL)
+            let registry = try decoder.decode(RegistryFile.self, from: data)
+            if let issue = registryIntegrityIssue(registry) {
+                throw WorkspaceRegistryError.registryRecoveryRequired(
+                    .malformedCurrentSchema(issue)
                 )
             }
-            return decoded
+            return registry
         }
 
         return RegistryFile(
@@ -383,11 +501,46 @@ public actor WorkspaceRegistry {
     }
 
     private func writableRegistry() throws -> RegistryFile {
-        let registry = load()
-        guard registry.schemaVersion == Self.currentSchemaVersion else {
-            throw WorkspaceRegistryError.corruptRegistry
+        try load()
+    }
+
+    private static func registryIntegrityIssue(_ registry: RegistryFile) -> String? {
+        let vaultIDs = registry.vaults.map(\.id)
+        guard Set(vaultIDs).count == vaultIDs.count else {
+            return "The registry contains duplicate vault identities."
         }
-        return registry
+        let paths = registry.vaults.map(\.canonicalPath)
+        guard paths.allSatisfy({ !$0.isEmpty }), Set(paths).count == paths.count else {
+            return "The registry contains empty or duplicate vault paths."
+        }
+        let triptychIDs = registry.triptychs.map(\.id)
+        guard Set(triptychIDs).count == triptychIDs.count else {
+            return "The registry contains duplicate Triptych identities."
+        }
+        let registeredVaults = Dictionary(uniqueKeysWithValues: registry.vaults.map { ($0.id, $0) })
+        for triptych in registry.triptychs {
+            let references = WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) }
+            guard Set(references).count == WorkspaceVaultSlot.allCases.count else {
+                return "Triptych \(triptych.id.uuidString) reuses one vault for multiple roles."
+            }
+            for slot in WorkspaceVaultSlot.allCases {
+                guard let vault = registeredVaults[triptych.vaultID(for: slot)] else {
+                    return "Triptych \(triptych.id.uuidString) references a missing \(slot.displayName) vault."
+                }
+                guard vault.role == slot.vaultRole else {
+                    return "Triptych \(triptych.id.uuidString) assigns vault \(vault.id.uuidString) to the wrong role."
+                }
+            }
+        }
+        if let defaultTriptychID = registry.defaultTriptychID,
+           !triptychIDs.contains(defaultTriptychID) {
+            return "The registry default Triptych is not registered."
+        }
+        return nil
+    }
+
+    private func registryIntegrityIssue(_ registry: RegistryFile) -> String? {
+        Self.registryIntegrityIssue(registry)
     }
 
     private func inferredTriptychName(

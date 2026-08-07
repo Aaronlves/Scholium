@@ -185,9 +185,13 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   persistence as research-content failure.
 - The Storage Unavailable root page exposes an immediate, keyboard-default
   Retry; selectable Details; and Quit with current VoiceOver names, values,
-  focus order, and failure text. It remains legible under Increase Contrast and
-  does not rely on animation, transparency, or color to communicate failure or
-  recovery.
+  focus order, and failure text. Registry Recovery uses the same linear root
+  order; a repairable malformed registry instead makes Relink Triptych the
+  keyboard default and names that it preserves the original file before setup.
+  A newer-schema or I/O registry failure keeps Retry as the default and has no
+  destructive action. Both root states remain legible under Increase Contrast
+  and do not rely on animation, transparency, or color to communicate failure
+  or recovery.
 
 Beta and 1.0 require complete keyboard and VoiceOver coverage for the declared
 core and no unresolved critical/high-severity accessibility defects. A medium-

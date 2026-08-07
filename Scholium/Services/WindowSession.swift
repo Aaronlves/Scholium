@@ -109,6 +109,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             "Workspace",
             isDirectory: true
         )
+        let registryHealth = WorkspaceRegistryRecoveryOperations.health(
+            storageURL: workspaceURL
+        )
+        guard registryHealth.isHealthy else {
+            throw WorkspaceRegistryError.registryRecoveryRequired(registryHealth)
+        }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: applicationSupportURL,
             workspaceRegistryStorageURL: workspaceURL
@@ -400,8 +406,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         try await applicationRuntime.availableWorkspaces()
     }
 
-    func registeredVaults() async -> [RegisteredVault] {
-        (try? await applicationRuntime.registeredVaults()) ?? []
+    func registeredVaults() async throws -> [RegisteredVault] {
+        try await applicationRuntime.registeredVaults()
     }
 
     func defaultTriptych() async throws -> TriptychAssignment {
@@ -570,7 +576,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     }
 
     func settingsSnapshot(preferredTriptychID: UUID?) async throws -> WorkspaceSettingsSnapshot {
-        let vaults = await registeredVaults()
+        let vaults = try await registeredVaults()
         let triptychs = try await registeredTriptychs()
         guard let assignment = preferredTriptychID.flatMap({ preferred in
             triptychs.first { $0.id == preferred }

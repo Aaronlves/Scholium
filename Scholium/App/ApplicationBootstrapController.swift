@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 import SwiftUI
 
 struct ApplicationStorageFailure: Equatable, Sendable {
@@ -8,10 +9,45 @@ struct ApplicationStorageFailure: Equatable, Sendable {
     let details: String
 }
 
+struct ApplicationRegistryRecovery: Equatable, Sendable {
+    let health: WorkspaceRegistryHealth
+    let registryURL: URL
+    let recoveryFailure: String?
+
+    var summary: String { health.summary }
+
+    var details: String {
+        var lines = [
+            health.details,
+            "Registry location: \(registryURL.path)",
+        ]
+        if let recoveryFailure {
+            lines.append("Recovery could not preserve the original file: \(recoveryFailure)")
+        }
+        return lines.joined(separator: "\n\n")
+    }
+
+    func recordingFailure(_ error: Error) -> Self {
+        let currentHealth: WorkspaceRegistryHealth
+        if let registryError = error as? WorkspaceRegistryError,
+           case .registryRecoveryRequired(let observedHealth) = registryError {
+            currentHealth = observedHealth
+        } else {
+            currentHealth = .ioFailure(error.localizedDescription)
+        }
+        return Self(
+            health: currentHealth,
+            registryURL: registryURL,
+            recoveryFailure: error.localizedDescription
+        )
+    }
+}
+
 enum ApplicationBootstrapState {
     case starting
     case ready(WorkspaceStore)
     case storageUnavailable(ApplicationStorageFailure)
+    case registryRecovery(ApplicationRegistryRecovery)
 }
 
 /// Resolves and validates the one real machine-state root before any
@@ -59,14 +95,46 @@ final class ApplicationBootstrapController: ObservableObject {
         Task { @MainActor [weak self] in
             await Task.yield()
             guard let self, self.attempt == currentAttempt else { return }
+            var resolvedStorageURL: URL?
             do {
                 let url = try resolver()
+                resolvedStorageURL = url
                 let store = try WorkspaceStore(applicationSupportURL: url)
                 guard self.attempt == currentAttempt else {
                     await store.shutdownApplicationRuntime()
                     return
                 }
                 state = .ready(store)
+            } catch let error as WorkspaceRegistryError {
+                guard self.attempt == currentAttempt else { return }
+                switch error {
+                case .registryRecoveryRequired(let health):
+                    guard let resolvedStorageURL else {
+                        state = .storageUnavailable(ApplicationStorageFailure(
+                            summary: String(localized:
+                                "Scholium cannot establish its Application Support storage."
+                            ),
+                            details: error.localizedDescription
+                        ))
+                        return
+                    }
+                    let registryURL = resolvedStorageURL
+                        .standardizedFileURL
+                        .appendingPathComponent("Workspace", isDirectory: true)
+                        .appendingPathComponent("workspace-registry-v2.json")
+                    state = .registryRecovery(ApplicationRegistryRecovery(
+                        health: health,
+                        registryURL: registryURL,
+                        recoveryFailure: nil
+                    ))
+                default:
+                    state = .storageUnavailable(ApplicationStorageFailure(
+                        summary: String(localized:
+                            "Scholium cannot establish its Application Support storage."
+                        ),
+                        details: error.localizedDescription
+                    ))
+                }
             } catch {
                 guard self.attempt == currentAttempt else { return }
                 state = .storageUnavailable(ApplicationStorageFailure(
@@ -76,6 +144,19 @@ final class ApplicationBootstrapController: ObservableObject {
                     details: error.localizedDescription
                 ))
             }
+        }
+    }
+
+    func repairRegistryAndRetry() {
+        guard case .registryRecovery(let recovery) = state,
+              recovery.health.canRelinkAfterPreserving else { return }
+        do {
+            _ = try WorkspaceRegistryRecoveryOperations.preserveMalformedRegistryForRelinking(
+                storageURL: recovery.registryURL.deletingLastPathComponent()
+            )
+            retry()
+        } catch {
+            state = .registryRecovery(recovery.recordingFailure(error))
         }
     }
 
@@ -117,9 +198,82 @@ struct ApplicationBootstrapGate<Content: View>: View {
                     failure: failure,
                     retry: controller.retry
                 )
+            case .registryRecovery(let recovery):
+                ApplicationRegistryRecoveryView(
+                    recovery: recovery,
+                    retry: controller.retry,
+                    relink: controller.repairRegistryAndRetry
+                )
             }
         }
         .task { controller.startIfNeeded() }
+    }
+}
+
+private struct ApplicationRegistryRecoveryView: View {
+    let recovery: ApplicationRegistryRecovery
+    let retry: () -> Void
+    let relink: () -> Void
+    @State private var showsDetails = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Triptych Registry Needs Repair")
+                .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            Text(recovery.summary)
+                .foregroundStyle(.secondary)
+
+            Button {
+                showsDetails.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showsDetails ? "chevron.down" : "chevron.right")
+                        .imageScale(.small)
+                    Text("Details")
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Details")
+            .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
+            .accessibilityHint("Shows the registry diagnostic and recovery location.")
+
+            if showsDetails {
+                Text(recovery.details)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("scholium.registryRecovery.details")
+            }
+
+            HStack {
+                Button("Quit") { NSApplication.shared.terminate(nil) }
+                Spacer()
+                if recovery.health.canRelinkAfterPreserving {
+                    Button("Relink Triptych", action: relink)
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityHint(
+                            "Preserves the damaged registry, then opens Triptych setup so you can choose the three folders again."
+                        )
+                } else {
+                    Button("Retry", action: retry)
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityHint("Attempts to read the Triptych registry again.")
+                }
+            }
+        }
+        .padding(28)
+        .frame(width: 520, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            GeometryReader { geometry in
+                ApplicationStorageUnavailableWindowSizer(
+                    contentSize: geometry.size
+                )
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.registryRecovery")
     }
 }
 

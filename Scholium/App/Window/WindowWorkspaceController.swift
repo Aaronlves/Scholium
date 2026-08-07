@@ -5,6 +5,11 @@ import ScholiumContracts
 
 enum WindowWorkspaceResolution {
     case unavailable(assignments: [TriptychAssignment], message: String?)
+    case unavailablePreserving(
+        assignments: [TriptychAssignment],
+        assignment: TriptychAssignment,
+        message: String?
+    )
     case selected(
         assignments: [TriptychAssignment],
         assignment: TriptychAssignment,
@@ -68,7 +73,17 @@ final class WindowWorkspaceController: ObservableObject {
         do {
             assignments = try await workspaceStore.registeredTriptychs()
         } catch {
-            return .unavailable(assignments: [], message: error.localizedDescription)
+            if let assignment = state.assignment {
+                return .unavailablePreserving(
+                    assignments: state.registeredTriptychs,
+                    assignment: assignment,
+                    message: error.localizedDescription
+                )
+            }
+            return .unavailable(
+                assignments: state.registeredTriptychs,
+                message: error.localizedDescription
+            )
         }
 
         let selectedID = preferredTriptychID ?? currentTriptychID ?? requestedTriptychID
