@@ -8,6 +8,7 @@ enum VaultMutationPhase: Equatable, Sendable {
     case finalCheck
     case swapped
     case readback
+    case completedReplacement
 }
 
 struct VaultMutationHooks: @unchecked Sendable {
@@ -204,6 +205,7 @@ final class VaultMutationCoordinator {
                         "The committed parent changed identity; guarded swap-back \(restored ? "succeeded" : "was refused or failed"): \(error.localizedDescription)"
                     )
                 }
+                try self.hooks.didReach?(.completedReplacement)
             }
         }
     }

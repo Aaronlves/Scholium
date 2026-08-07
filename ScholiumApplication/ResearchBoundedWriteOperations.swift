@@ -506,30 +506,62 @@ extension WorkspaceHandle {
         )
         _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
 
-        do {
-            let outcome = try await saveDocument(
-                entry.note,
-                changeSet: .exactContent(intent.content),
-                expectedRevision: entry.expectedRevision
+        let save = try await saveResearchDocument(
+            entry.note,
+            changeSet: .exactContent(intent.content),
+            expectedRevision: entry.expectedRevision,
+            transaction: ResearchDocumentSaveTransaction(
+                runID: authenticated.runID,
+                operationID: operationID,
+                target: entry.handle
             )
-            let observed = outcome.committedValue.document.fingerprint
+        )
+        switch save {
+        case .committed(let outcome):
             execution = try await services.localResearchExecutionStore
                 .finishDocumentWrite(
                     runID: authenticated.runID,
                     operationID: operationID,
                     state: .committed,
-                    observedRevision: observed,
+                    observedRevision: outcome.committedValue.document.fingerprint,
                     warning: outcome.derivedRefreshWarning
                         ?? outcome.identityRecoveryWarning,
+                    recoveryRecordID: nil,
                     finishedAt: Date()
                 )
-        } catch {
-            execution = try await settleFailedWrite(
-                writing,
-                entry: entry,
-                intendedRevision: intendedRevision,
-                error: error
-            )
+        case .notWritten(let reason):
+            let state: ResearchDocumentWriteState = switch reason {
+            case .conflict:
+                .conflict
+            case .invalidFrontmatter, .atomicCommitUnsupported:
+                .abandoned
+            }
+            let observedRevision: DocumentFingerprint? = switch reason {
+            case .conflict(let current): current
+            case .invalidFrontmatter, .atomicCommitUnsupported:
+                entry.expectedRevision
+            }
+            execution = try await services.localResearchExecutionStore
+                .finishDocumentWrite(
+                    runID: authenticated.runID,
+                    operationID: operationID,
+                    state: state,
+                    observedRevision: observedRevision,
+                    warning: documentSaveWarning(reason),
+                    recoveryRecordID: nil,
+                    finishedAt: Date()
+                )
+        case .recoveryRequired(let recovery):
+            execution = try await services.localResearchExecutionStore
+                .finishDocumentWrite(
+                    runID: authenticated.runID,
+                    operationID: operationID,
+                    state: .recoveryRequired,
+                    observedRevision: recovery.files.first?.observedRevision,
+                    warning: recovery.failure,
+                    recoveryRecordID: recovery.id,
+                    finishedAt: Date()
+                )
         }
         guard let completed = execution.documentWriteRecords.first(where: {
             $0.id == operationID
@@ -919,31 +951,14 @@ extension WorkspaceHandle {
         return writeResult(write, entry: entry)
     }
 
-    private func settleFailedWrite(
-        _ write: ResearchDocumentWriteRecord,
-        entry: ResearchBoundedWriteSetEntry,
-        intendedRevision: DocumentFingerprint,
-        error: Error
-    ) async throws -> LocalResearchExecutionRecord {
-        let observed = try? await loadDocument(entry.note).fingerprint
-        let state: ResearchDocumentWriteState
-        if observed == intendedRevision {
-            state = .committed
-        } else if observed == entry.expectedRevision {
-            state = .abandoned
-        } else if error is VaultRepositoryError {
-            state = .conflict
-        } else {
-            state = .recoveryRequired
+    private func documentSaveWarning(_ reason: VaultSaveNotWrittenReason) -> String? {
+        switch reason {
+        case .conflict:
+            nil
+        case .invalidFrontmatter(let message),
+             .atomicCommitUnsupported(let message):
+            message
         }
-        return try await services.localResearchExecutionStore.finishDocumentWrite(
-            runID: write.runID,
-            operationID: write.id,
-            state: state,
-            observedRevision: observed,
-            warning: error.localizedDescription,
-            finishedAt: Date()
-        )
     }
 
     private func requiredEntry(
@@ -997,7 +1012,8 @@ extension WorkspaceHandle {
             operationID: record.id,
             state: record.state,
             target: ResearchBoundedWriteSetViewEntry(entry),
-            message: message
+            message: message,
+            recoveryRecordID: record.recoveryRecordID
         )
     }
 

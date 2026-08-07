@@ -90,6 +90,10 @@ protocol ResearchFunctionCoordinatorHost: Actor {
     func publishCommittedResearchFunctionChange(
         _ operation: String
     ) async throws -> String?
+    func hasPendingResearchWriteRecovery(
+        runID: UUID,
+        writes: [ResearchDocumentWriteRecord]
+    ) async throws -> Bool
     func scheduleResearchFunctionRefreshRecovery()
 }
 
@@ -224,6 +228,15 @@ final class ResearchFunctionCoordinator: Sendable {
             // that evidence any more than it may overwrite a complete run.
             throw ResearchFunctionContractError.cancellationAfterCompletion(runID)
         }
+        let hasPendingWriteRecovery = try await host.hasPendingResearchWriteRecovery(
+            runID: runID,
+            writes: stored.documentWriteRecords
+        )
+        guard !stored.documentWriteRecords.contains(where: {
+            [.writing, .recoveryRequired].contains($0.state)
+        }), !hasPendingWriteRecovery else {
+            throw ResearchFunctionContractError.unresolvedWriteRecovery(runID)
+        }
         let snapshot = stored.snapshot
         let completion = ResearchFunctionCompletion(
             runID: runID,
@@ -289,6 +302,19 @@ extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
             where error.durableMutationWasCommitted {
             scheduleResearchFunctionRefreshRecovery()
             return error.localizedDescription
+        }
+    }
+
+    func hasPendingResearchWriteRecovery(
+        runID: UUID,
+        writes: [ResearchDocumentWriteRecord]
+    ) async throws -> Bool {
+        let writeIDs = Set(writes.map(\.id))
+        return try await services.transactionRecoveryStore.pending().contains {
+            guard let link = $0.researchWrite, link.runID == runID else {
+                return false
+            }
+            return writeIDs.contains(link.operationID)
         }
     }
 

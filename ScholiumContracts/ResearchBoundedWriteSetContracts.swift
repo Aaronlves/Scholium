@@ -762,6 +762,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
     public let startedAt: Date
     public var finishedAt: Date?
     public var warning: String?
+    public var recoveryRecordID: UUID?
 
     public init(
         id: UUID,
@@ -777,7 +778,8 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         checkpointID: UUID,
         startedAt: Date,
         finishedAt: Date? = nil,
-        warning: String? = nil
+        warning: String? = nil,
+        recoveryRecordID: UUID? = nil
     ) throws {
         guard actor != .unknown,
               ResearchBoundedWriteValidation.validFingerprint(requestFingerprint),
@@ -790,6 +792,9 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
                   $0.timeIntervalSinceReferenceDate.isFinite && $0 >= startedAt
               }) ?? true,
               (state == .writing) == (finishedAt == nil),
+              recoveryRecordID == nil
+                || state == .recoveryRequired
+                || (finishedAt != nil && [.committed, .abandoned].contains(state)),
               warning.map({ $0.utf8.count <= 4_096 }) ?? true else {
             throw ResearchBoundedWriteSetError.invalidWriteRecord
         }
@@ -807,6 +812,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.warning = warning
+        self.recoveryRecordID = recoveryRecordID
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -822,6 +828,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case warning
+        case recoveryRecordID = "recovery_record_id"
     }
 
     public init(from decoder: Decoder) throws {
@@ -869,7 +876,11 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
             checkpointID: container.decode(UUID.self, forKey: .checkpointID),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decodeIfPresent(Date.self, forKey: .finishedAt),
-            warning: container.decodeIfPresent(String.self, forKey: .warning)
+            warning: container.decodeIfPresent(String.self, forKey: .warning),
+            recoveryRecordID: container.decodeIfPresent(
+                UUID.self,
+                forKey: .recoveryRecordID
+            )
         )
     }
 }
@@ -879,22 +890,26 @@ public struct ResearchDocumentWriteResult: Codable, Hashable, Sendable {
     public let state: ResearchDocumentWriteState
     public let target: ResearchBoundedWriteSetViewEntry
     public let message: String
+    public let recoveryRecordID: UUID?
 
     public init(
         operationID: UUID,
         state: ResearchDocumentWriteState,
         target: ResearchBoundedWriteSetViewEntry,
-        message: String
+        message: String,
+        recoveryRecordID: UUID? = nil
     ) {
         self.operationID = operationID
         self.state = state
         self.target = target
         self.message = message
+        self.recoveryRecordID = recoveryRecordID
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case operationID = "operation_id"
         case state, target, message
+        case recoveryRecordID = "recovery_record_id"
     }
 
     public init(from decoder: Decoder) throws {
@@ -918,7 +933,11 @@ public struct ResearchDocumentWriteResult: Codable, Hashable, Sendable {
                 ResearchBoundedWriteSetViewEntry.self,
                 forKey: .target
             ),
-            message: message
+            message: message,
+            recoveryRecordID: try container.decodeIfPresent(
+                UUID.self,
+                forKey: .recoveryRecordID
+            )
         )
     }
 }

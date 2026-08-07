@@ -386,10 +386,22 @@ extension WorkspaceHandle {
             )
         }
         _ = try activeAction(in: record)
+        let hasPendingWriteRecovery = try await hasPendingResearchWriteRecovery(
+            runID: authenticated.runID,
+            writes: record.documentWriteRecords
+        )
         let recoveryRetained = record.documentWriteRecords.contains {
             $0.state == .writing || $0.state == .recoveryRequired
         } || record.boundedWriteSet.entries.contains {
             $0.state == .writing || $0.state == .recoveryRequired
+        } || hasPendingWriteRecovery
+        if recoveryRetained {
+            await sessions.revokeRun(authenticated.runID)
+            return try ResearchRunEndReceipt(
+                run: run,
+                recoveryRetained: true,
+                message: "The Run retains an unresolved document-write recovery. Its Session access ended without recording cancellation; resolve the exact source transaction before finalization."
+            )
         }
         try await researchFunctionCoordinator.cancelAction(
             runID: authenticated.runID,

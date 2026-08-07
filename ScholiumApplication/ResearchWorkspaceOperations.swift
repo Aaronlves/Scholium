@@ -980,8 +980,116 @@ extension WorkspaceHandle {
 
     func resolveRecoveryRecord(_ id: UUID) async throws {
         try requireActive()
-        try await services.transactionRecoveryStore.resolve(id)
+        let records = try await services.transactionRecoveryStore.pending()
+        guard let record = records.first(where: { $0.id == id }),
+              record.triptychID == self.id else {
+            throw TriptychTransactionError.invalidPlan(
+                "The selected recovery record is unavailable for this Triptych."
+            )
+        }
+        guard let link = record.researchWrite else {
+            try await services.transactionRecoveryStore.resolve(id)
+            try await refreshAfterResearchCommit("The recovery-record resolution")
+            return
+        }
+        let resolution = try await reconcileResearchWriteRecovery(record, link: link)
+        if resolution.didReplaceSource {
+            try await refreshAfterCommittedOperation(
+                "The Agent write recovery",
+                publication: .sourceCommitted(resolution.note, .save),
+                affectedVaultIDs: [resolution.note.vaultID]
+            )
+        }
         try await refreshAfterResearchCommit("The recovery-record resolution")
+    }
+
+    private func reconcileResearchWriteRecovery(
+        _ record: TriptychMutationRecoveryRecord,
+        link: ResearchWriteRecoveryReference
+    ) async throws -> (note: VaultQualifiedNoteID, didReplaceSource: Bool) {
+        guard record.operation == .noteSave,
+              record.files.count == 1,
+              let file = record.files.first,
+              file.role == .savedNote,
+              file.vaultID == link.sourceRecoveryID.vaultID,
+              let beforeRevision = file.beforeRevision,
+              let intendedRevision = file.intendedRevision else {
+            throw TriptychTransactionError.invalidPlan(
+                "The Agent write recovery record does not describe one exact source transaction."
+            )
+        }
+        let execution = try await services.localResearchExecutionStore.record(
+            id: link.runID
+        )
+        guard execution.triptychID == self.id,
+              let write = execution.documentWriteRecords.first(where: {
+                  $0.id == link.operationID
+                      && $0.runID == link.runID
+                      && $0.target == link.target
+                      && $0.recoveryRecordID == record.id
+              }),
+              let entry = execution.boundedWriteSet.entry(handle: link.target),
+              entry.note.vaultID == file.vaultID,
+              entry.note.relativePath == file.path,
+              write.expectedRevision == beforeRevision,
+              write.intendedRevision == intendedRevision,
+              link.sourceRecoveryID.vaultID == entry.note.vaultID else {
+            throw TriptychTransactionError.invalidPlan(
+                "The Agent write recovery record no longer matches its Run target."
+            )
+        }
+        let repository = try repository(vaultID: entry.note.vaultID)
+        let sourceRecovery = try await repository.interruptedSaveRecoveries()
+            .first(where: { $0.id == link.sourceRecoveryID })
+        if sourceRecovery == nil,
+           ![.committed, .abandoned].contains(write.state) {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        if let sourceRecovery,
+           sourceRecovery.relativePath != entry.note.relativePath
+                || sourceRecovery.expectedRevision != write.expectedRevision
+                || sourceRecovery.candidateRevision != write.intendedRevision {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        let current = try await repository.load(relativePath: entry.note.relativePath)
+        guard let identity = try await services.controlStore.identityRecord(
+            vaultID: entry.note.vaultID,
+            relativePath: entry.note.relativePath
+        ), identity.id == entry.noteID,
+           identity.fingerprint == write.expectedRevision else {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        guard current.fingerprint == write.expectedRevision
+                || current.fingerprint == write.intendedRevision else {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        _ = try await services.localResearchExecutionStore
+            .reconcileDocumentWriteRecovery(
+                runID: link.runID,
+                operationID: link.operationID,
+                recoveryRecordID: record.id,
+                observedRevision: current.fingerprint,
+                reconciledAt: Date()
+            )
+        let didReplaceSource = current.fingerprint == write.intendedRevision
+        if sourceRecovery == nil {
+            // The local Run was reconciled before an earlier process stopped;
+            // the source transaction has already been cleaned up.
+        } else if current.fingerprint == write.expectedRevision {
+            try await repository.abandonInterruptedSaveRecovery(sourceRecovery!)
+        } else {
+            let commit = try await repository.restoreInterruptedSaveRecovery(
+                sourceRecovery!
+            )
+            guard commit.recoveryCleanupWarning == nil else {
+                throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+        }
+        try await services.transactionRecoveryStore.resolve(record.id)
+        return (
+            note: entry.note,
+            didReplaceSource: didReplaceSource
+        )
     }
 
     // MARK: Critique

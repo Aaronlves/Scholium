@@ -15,6 +15,7 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
     case recoveryLedgerUnavailable(String)
     case pathCollision(existing: String, requested: String)
     case commitUncertain(String)
+    case recoveryRequired(InterruptedSaveRecovery)
     case atomicCommitUnsupported(String)
 
     public var errorDescription: String? {
@@ -38,6 +39,8 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
             return "The requested note path collides with an existing path on this volume: \(requested) (existing: \(existing))"
         case .commitUncertain(let reason):
             return "Scholium could not prove which bytes are canonical after the commit. It preserved recovery evidence and did not report the note as saved. \(reason)"
+        case .recoveryRequired(let recovery):
+            return "The note save remains unresolved. Recovery transaction \(recovery.id.transactionID.uuidString) requires exact source reconciliation before the write can be finalized."
         case .atomicCommitUnsupported(let reason):
             return "This volume cannot provide Scholium's displaced-byte-preserving commit guarantee. The note remains open and unchanged. \(reason)"
         }
@@ -212,6 +215,21 @@ public struct SaveResult: Sendable {
     public init(document: NoteDocument) {
         self.document = document
     }
+}
+
+/// The repository owns the distinction between a proven commit and a write
+/// whose canonical result remains unknown. Application must not infer this
+/// distinction from an arbitrary error after the transaction has started.
+public enum VaultSaveOutcome: Sendable {
+    case committed(SaveResult)
+    case notWritten(VaultSaveNotWrittenReason)
+    case recoveryRequired(InterruptedSaveRecovery)
+}
+
+public enum VaultSaveNotWrittenReason: Hashable, Sendable {
+    case conflict(DocumentFingerprint)
+    case invalidFrontmatter(String)
+    case atomicCommitUnsupported(String)
 }
 
 public struct NoteMoveResult: Sendable {

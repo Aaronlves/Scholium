@@ -1302,6 +1302,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case completionAlreadyRecorded(UUID)
     case invalidCompletion(String)
     case cancellationAfterCompletion(UUID)
+    case unresolvedWriteRecovery(UUID)
 
     public var errorDescription: String? {
         switch self {
@@ -1375,6 +1376,8 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "The Action completion is invalid. \(reason)"
         case .cancellationAfterCompletion(let id):
             "A completed Action run cannot be cancelled: \(id.uuidString)"
+        case .unresolvedWriteRecovery(let id):
+            "Action run \(id.uuidString) has an unresolved document-write recovery and cannot be cancelled or finalized."
         }
     }
 }

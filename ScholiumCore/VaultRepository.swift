@@ -368,11 +368,34 @@ public actor VaultRepository {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
     ) throws -> SaveResult {
+        switch try saveOutcome(
+            relativePath: relativePath,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision
+        ) {
+        case .committed(let result):
+            return result
+        case .notWritten(let reason):
+            throw legacySaveError(for: reason, expectedRevision: expectedRevision)
+        case .recoveryRequired(let recovery):
+            throw VaultRepositoryError.recoveryRequired(recovery)
+        }
+    }
+
+    /// Executes one exact-byte save and reports only a Core-observed outcome.
+    /// Callers must not infer an unknown post-transaction result from a thrown
+    /// repository error: once replacement may have occurred, the retained
+    /// mutation ledger is the only source of recovery authority.
+    public func saveOutcome(
+        relativePath: String,
+        changeSet: NoteChangeSet,
+        expectedRevision: DocumentFingerprint
+    ) throws -> VaultSaveOutcome {
         _ = try existingFileURL(relativePath: relativePath)
         let currentData = try readSource(relativePath: relativePath)
         let currentFingerprint = DocumentFingerprint(data: currentData)
         guard currentFingerprint == expectedRevision else {
-            throw VaultRepositoryError.conflict(expected: expectedRevision, current: currentFingerprint)
+            return .notWritten(.conflict(currentFingerprint))
         }
         guard let currentContent = NoteDocument.decodeUTF8PreservingBOM(currentData) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
@@ -382,7 +405,9 @@ public actor VaultRepository {
         let updatedContent = try current.applying(changeSet, timestampKey: nil)
         let updated = NoteDocument(relativePath: relativePath, rawContent: updatedContent)
         if !updated.validationWarnings.isEmpty, updated.rawFrontmatter != nil {
-            throw VaultRepositoryError.invalidFrontmatter(updated.validationWarnings.joined(separator: "\n"))
+            return .notWritten(.invalidFrontmatter(
+                updated.validationWarnings.joined(separator: "\n")
+            ))
         }
 
         let candidateData = Data(updatedContent.utf8)
@@ -398,23 +423,25 @@ public actor VaultRepository {
             try? discardPreparedSnapshot(snapshot)
             throw error
         }
+        var canonicalReplacementMayHaveOccurred = false
         do {
             let recheckedData = try readSource(relativePath: relativePath)
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
             guard recheckedFingerprint == expectedRevision else {
                 try discardPreparedSnapshot(snapshot)
-                throw VaultRepositoryError.conflict(expected: expectedRevision, current: recheckedFingerprint)
+                try recoveryLedger.completeMutation(mutation)
+                return .notWritten(.conflict(recheckedFingerprint))
             }
             try mutationCoordinator.updateExisting(
                 path: markdownRelativePath(relativePath),
                 expected: currentData,
                 candidate: candidateData
             )
+            canonicalReplacementMayHaveOccurred = true
             let readback = try readSource(relativePath: relativePath)
             let expectedFingerprint = DocumentFingerprint(content: updatedContent)
             let readbackFingerprint = DocumentFingerprint(data: readback)
             guard readbackFingerprint == expectedFingerprint else {
-                try commitPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.readbackMismatch(
                     expected: expectedFingerprint,
                     current: readbackFingerprint
@@ -423,22 +450,33 @@ public actor VaultRepository {
             try commitPreparedSnapshot(snapshot)
             try? recoveryLedger.completeMutation(mutation)
         } catch {
-            if case VaultRepositoryError.commitUncertain = error {
-                try? commitPreparedSnapshot(snapshot)
-                try? recoveryLedger.retainMutation(mutation, reason: error.localizedDescription)
-            } else {
-                let observed = try? readSource(relativePath: relativePath)
-                if observed.map(DocumentFingerprint.init(data:)) == currentFingerprint {
-                    try? discardPreparedSnapshot(snapshot)
-                    try? recoveryLedger.completeMutation(mutation)
-                } else {
-                    try? commitPreparedSnapshot(snapshot)
-                    try? recoveryLedger.retainMutation(mutation, reason: error.localizedDescription)
-                }
+            if !canonicalReplacementMayHaveOccurred,
+               let knownOutcome = knownNotWrittenOutcome(for: error) {
+                try? discardPreparedSnapshot(snapshot)
+                try? recoveryLedger.completeMutation(mutation)
+                return knownOutcome
             }
-            throw error
+
+            // A completed swap, failed readback, or an otherwise unprovable
+            // transaction is never downgraded to a revision conflict. Keep
+            // the exact preimage and candidate, then expose that one durable
+            // transaction for reconciliation.
+            try? commitPreparedSnapshot(snapshot)
+            do {
+                try recoveryLedger.retainMutation(
+                    mutation,
+                    reason: error.localizedDescription
+                )
+                return .recoveryRequired(try interruptedSaveRecovery(
+                    for: mutation
+                ))
+            } catch {
+                throw VaultRepositoryError.recoveryLedgerUnavailable(
+                    "The exact interrupted-save transaction could not be retained: \(error.localizedDescription)"
+                )
+            }
         }
-        return SaveResult(document: updated)
+        return .committed(SaveResult(document: updated))
     }
 
     /// Creates a new Markdown note without replacing an existing path.
@@ -888,6 +926,26 @@ public actor VaultRepository {
         )
     }
 
+    /// Completes retained transaction evidence only after Core rechecks that
+    /// the canonical source is still the exact pre-write revision. This is the
+    /// no-write branch of recovery reconciliation; it never applies candidate
+    /// bytes or accepts a third-party revision.
+    public func abandonInterruptedSaveRecovery(
+        _ recovery: InterruptedSaveRecovery
+    ) throws {
+        let transaction = try retainedMutation(matching: recovery)
+        let current = DocumentFingerprint(data: try readSource(
+            relativePath: transaction.relativePath
+        ))
+        guard current == transaction.expected else {
+            throw VaultRepositoryError.conflict(
+                expected: transaction.expected,
+                current: current
+            )
+        }
+        try recoveryLedger.completeMutation(transaction)
+    }
+
     /// Remaps machine-local pre-write evidence after a stable-identity move.
     public func migrateRecoveryLedger(
         from sourceRelativePath: String,
@@ -936,6 +994,61 @@ public actor VaultRepository {
             )
         }
         return transaction
+    }
+
+    private func interruptedSaveRecovery(
+        for transaction: PrewriteRecoveryLedger.MutationTransaction
+    ) throws -> InterruptedSaveRecovery {
+        guard let recovery = try interruptedSaveRecoveries().first(where: {
+            $0.id.transactionID == transaction.id
+        }) else {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The retained interrupted-save transaction could not be read back."
+            )
+        }
+        return recovery
+    }
+
+    private func knownNotWrittenOutcome(for error: Error) -> VaultSaveOutcome? {
+        guard let repositoryError = error as? VaultRepositoryError else {
+            return nil
+        }
+        switch repositoryError {
+        case .conflict(_, let current):
+            return .notWritten(.conflict(current))
+        case .atomicCommitUnsupported(let reason):
+            return .notWritten(.atomicCommitUnsupported(reason))
+        case .invalidFrontmatter(let reason):
+            return .notWritten(.invalidFrontmatter(reason))
+        case .invalidRelativePath,
+             .outsideVault,
+             .fileDoesNotExist,
+             .fileAlreadyExists,
+             .notRegularFile,
+             .markdownRequired,
+             .readbackMismatch,
+             .recoveryEntryNotFound,
+             .recoveryPathConflict,
+             .recoveryLedgerUnavailable,
+             .pathCollision,
+             .commitUncertain,
+             .recoveryRequired:
+            return nil
+        }
+    }
+
+    private func legacySaveError(
+        for reason: VaultSaveNotWrittenReason,
+        expectedRevision: DocumentFingerprint
+    ) -> VaultRepositoryError {
+        switch reason {
+        case .conflict(let current):
+            .conflict(expected: expectedRevision, current: current)
+        case .invalidFrontmatter(let message):
+            .invalidFrontmatter(message)
+        case .atomicCommitUnsupported(let message):
+            .atomicCommitUnsupported(message)
+        }
     }
 
     private func interruptedSaveSourceState(

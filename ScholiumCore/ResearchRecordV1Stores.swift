@@ -2673,6 +2673,7 @@ public actor LocalResearchExecutionStore {
         state: ResearchDocumentWriteState,
         observedRevision: DocumentFingerprint?,
         warning: String?,
+        recoveryRecordID: UUID? = nil,
         finishedAt: Date
     ) throws -> LocalResearchExecutionRecord {
         try update(runID) { current in
@@ -2688,7 +2689,8 @@ public actor LocalResearchExecutionStore {
             if write.state != .writing {
                 guard write.state == state,
                       write.observedRevision == observedRevision,
-                      write.warning == warning else {
+                      write.warning == warning,
+                      write.recoveryRecordID == recoveryRecordID else {
                     throw ResearchBoundedWriteSetError.invalidWriteRecord
                 }
                 return
@@ -2697,6 +2699,7 @@ public actor LocalResearchExecutionStore {
             write.observedRevision = observedRevision
             write.finishedAt = finishedAt
             write.warning = warning
+            write.recoveryRecordID = recoveryRecordID
             current.documentWriteRecords[writeIndex] = write
             switch state {
             case .committed, .unchanged:
@@ -2712,6 +2715,69 @@ public actor LocalResearchExecutionStore {
             case .abandoned:
                 current.boundedWriteSet.entries[entryIndex].state = .ready
             case .writing:
+                throw ResearchBoundedWriteSetError.invalidWriteRecord
+            }
+        }
+    }
+
+    /// Reconciles only a write that is already durably linked to the pending
+    /// recovery record selected by the researcher. The caller supplies a fresh
+    /// exact source observation after separately checking stable identity.
+    @discardableResult
+    public func reconcileDocumentWriteRecovery(
+        runID: UUID,
+        operationID: UUID,
+        recoveryRecordID: UUID,
+        observedRevision: DocumentFingerprint?,
+        reconciledAt: Date
+    ) throws -> LocalResearchExecutionRecord {
+        try update(runID) { current in
+            guard let writeIndex = current.documentWriteRecords.firstIndex(where: {
+                $0.id == operationID
+            }),
+            let entryIndex = current.boundedWriteSet.entries.firstIndex(where: {
+                $0.handle == current.documentWriteRecords[writeIndex].target
+            }) else {
+                throw ResearchBoundedWriteSetError.invalidWriteRecord
+            }
+            var write = current.documentWriteRecords[writeIndex]
+            guard write.recoveryRecordID == recoveryRecordID else {
+                throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+            if write.state != .recoveryRequired {
+                guard [.committed, .abandoned].contains(write.state) else {
+                    throw ResearchBoundedWriteSetError.recoveryRequired
+                }
+                return
+            }
+            let state: ResearchDocumentWriteState
+            if observedRevision == write.intendedRevision {
+                state = .committed
+            } else if observedRevision == write.expectedRevision {
+                state = .abandoned
+            } else {
+                state = .recoveryRequired
+            }
+            write.state = state
+            write.observedRevision = observedRevision
+            write.finishedAt = state == .recoveryRequired ? write.finishedAt : reconciledAt
+            write.warning = state == .recoveryRequired
+                ? "The current bytes still match neither the expected nor intended revision."
+                : nil
+            current.documentWriteRecords[writeIndex] = write
+            switch state {
+            case .committed:
+                guard let observedRevision else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+                current.boundedWriteSet.entries[entryIndex].expectedRevision
+                    = observedRevision
+                current.boundedWriteSet.entries[entryIndex].state = .ready
+            case .abandoned:
+                current.boundedWriteSet.entries[entryIndex].state = .ready
+            case .recoveryRequired:
+                current.boundedWriteSet.entries[entryIndex].state = .recoveryRequired
+            case .writing, .unchanged, .conflict:
                 throw ResearchBoundedWriteSetError.invalidWriteRecord
             }
         }

@@ -1371,6 +1371,10 @@ extension ResearchFunctionCoordinator {
         let resolvedConflictIDs = Set(
             stored.writeConflictResolutionRecords.map(\.conflictOperationID)
         )
+        let hasPendingWriteRecovery = try await host.hasPendingResearchWriteRecovery(
+            runID: snapshot.runID,
+            writes: writes
+        )
         guard writeSet.runID == snapshot.runID,
               writeSet.triptychID == workspaceID,
               !writeSet.entries.isEmpty,
@@ -1382,7 +1386,7 @@ extension ResearchFunctionCoordinator {
               }),
               writes.filter({ $0.state == .conflict }).allSatisfy({
                   resolvedConflictIDs.contains($0.id)
-              }) else {
+              }), !hasPendingWriteRecovery else {
             throw ResearchFunctionContractError.invalidCompletion(
                 "Every started bounded document write must have a known, recoverable outcome before Result finalization."
             )

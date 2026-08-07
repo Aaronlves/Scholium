@@ -63,6 +63,27 @@ public struct TriptychMutationRecoveryFile: Codable, Hashable, Sendable, Identif
     }
 }
 
+/// Links one machine-local source recovery transaction to the authenticated
+/// Run operation that caused it. This is evidence linkage, not authority.
+public struct ResearchWriteRecoveryReference: Codable, Hashable, Sendable {
+    public let runID: UUID
+    public let operationID: UUID
+    public let target: ResearchWriteTargetHandle
+    public let sourceRecoveryID: InterruptedSaveRecoveryID
+
+    public init(
+        runID: UUID,
+        operationID: UUID,
+        target: ResearchWriteTargetHandle,
+        sourceRecoveryID: InterruptedSaveRecoveryID
+    ) {
+        self.runID = runID
+        self.operationID = operationID
+        self.target = target
+        self.sourceRecoveryID = sourceRecoveryID
+    }
+}
+
 /// Durable machine-local evidence that a multi-file operation could not be
 /// completely rolled back. It never claims cross-filesystem atomicity.
 public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Identifiable {
@@ -73,6 +94,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
     public let failure: String
     public let files: [TriptychMutationRecoveryFile]
     public let permanentDeletionBackup: PermanentDeletionRecoveryBackup?
+    public let researchWrite: ResearchWriteRecoveryReference?
 
     public init(
         id: UUID = UUID(),
@@ -80,7 +102,8 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         operation: TriptychMutationOperation,
         createdAt: Date = Date(),
         failure: String,
-        files: [TriptychMutationRecoveryFile]
+        files: [TriptychMutationRecoveryFile],
+        researchWrite: ResearchWriteRecoveryReference? = nil
     ) {
         self.id = id
         self.triptychID = triptychID
@@ -89,6 +112,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.failure = failure
         self.files = files
         self.permanentDeletionBackup = nil
+        self.researchWrite = researchWrite
     }
 
     public init(
@@ -97,7 +121,8 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         createdAt: Date,
         failure: String,
         files: [TriptychMutationRecoveryFile],
-        permanentDeletionBackup: PermanentDeletionRecoveryBackup
+        permanentDeletionBackup: PermanentDeletionRecoveryBackup,
+        researchWrite: ResearchWriteRecoveryReference? = nil
     ) {
         self.id = id
         self.triptychID = triptychID
@@ -106,6 +131,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.failure = failure
         self.files = files
         self.permanentDeletionBackup = permanentDeletionBackup
+        self.researchWrite = researchWrite
     }
 }
 

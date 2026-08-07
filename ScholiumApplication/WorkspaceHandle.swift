@@ -79,6 +79,24 @@ private enum DocumentSaveCompletion: Equatable {
     case sourceOnly
 }
 
+struct ResearchDocumentSaveTransaction: Sendable {
+    let runID: UUID
+    let operationID: UUID
+    let target: ResearchWriteTargetHandle
+}
+
+enum ResearchDocumentSaveOutcome: Sendable {
+    case committed(WorkspaceMutationOutcome<SaveResult>)
+    case notWritten(VaultSaveNotWrittenReason)
+    case recoveryRequired(TriptychMutationRecoveryRecord)
+}
+
+private enum DocumentSaveOperationOutcome: Sendable {
+    case committed(WorkspaceMutationOutcome<SaveResult>)
+    case notWritten(VaultSaveNotWrittenReason)
+    case recoveryRequired(TriptychMutationRecoveryRecord)
+}
+
 enum RefreshPublication: Sendable {
     case sourceCommitted(VaultQualifiedNoteID, WorkspaceSourceCommitKind)
     case explicit
@@ -1225,12 +1243,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
     ) async throws -> WorkspaceMutationOutcome<SaveResult> {
-        try await performDocumentSave(
+        switch try await performDocumentSave(
             id,
             changeSet: changeSet,
             expectedRevision: expectedRevision,
-            completion: .sourceAndDerived
-        )
+            completion: .sourceAndDerived,
+            researchWrite: nil
+        ) {
+        case .committed(let outcome):
+            return outcome
+        case .notWritten(let reason):
+            throw documentSaveError(reason, expectedRevision: expectedRevision)
+        case .recoveryRequired(let record):
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
     }
 
     func commitDocument(
@@ -1238,20 +1264,48 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
     ) async throws -> SaveResult {
-        try await performDocumentSave(
+        switch try await performDocumentSave(
             id,
             changeSet: changeSet,
             expectedRevision: expectedRevision,
-            completion: .sourceOnly
-        ).committedValue
+            completion: .sourceOnly,
+            researchWrite: nil
+        ) {
+        case .committed(let outcome):
+            return outcome.committedValue
+        case .notWritten(let reason):
+            throw documentSaveError(reason, expectedRevision: expectedRevision)
+        case .recoveryRequired(let record):
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+    }
+
+    func saveResearchDocument(
+        _ id: VaultQualifiedNoteID,
+        changeSet: NoteChangeSet,
+        expectedRevision: DocumentFingerprint,
+        transaction: ResearchDocumentSaveTransaction
+    ) async throws -> ResearchDocumentSaveOutcome {
+        switch try await performDocumentSave(
+            id,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision,
+            completion: .sourceAndDerived,
+            researchWrite: transaction
+        ) {
+        case .committed(let outcome): .committed(outcome)
+        case .notWritten(let reason): .notWritten(reason)
+        case .recoveryRequired(let record): .recoveryRequired(record)
+        }
     }
 
     private func performDocumentSave(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint,
-        completion: DocumentSaveCompletion
-    ) async throws -> WorkspaceMutationOutcome<SaveResult> {
+        completion: DocumentSaveCompletion,
+        researchWrite: ResearchDocumentSaveTransaction?
+    ) async throws -> DocumentSaveOperationOutcome {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -1259,50 +1313,53 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
-        let result: SaveResult
-        do {
-            result = try await repository.save(
-                relativePath: id.relativePath,
-                changeSet: changeSet,
-                expectedRevision: expectedRevision
-            )
-        } catch let error as VaultRepositoryError {
-            guard case .commitUncertain = error else { throw error }
+        let save = try await repository.saveOutcome(
+            relativePath: id.relativePath,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision
+        )
+        switch save {
+        case .notWritten(let reason):
+            return .notWritten(reason)
+        case .recoveryRequired(let sourceRecovery):
             let record = try await recordUncertainNoteSave(
                 id: id,
                 expectedRevision: expectedRevision,
-                intendedRevision: nil,
+                intendedRevision: sourceRecovery.candidateRevision,
                 repository: repository,
-                failure: error.localizedDescription,
-                detail: "The coordinated save could not prove both canonical and displaced bytes. Recovery evidence remains machine-local."
+                sourceRecovery: sourceRecovery,
+                researchWrite: researchWrite,
+                failure: sourceRecovery.retainedReason,
+                detail: "The coordinated save could not prove the canonical result. The exact source transaction remains machine-local for reconciliation."
             )
-            throw TriptychTransactionError.recoveryRequired(record)
-        }
-        if completion == .sourceOnly {
-            // Queue before releasing the mutation lease so the matching
-            // watcher event cannot start a competing refresh first.
-            scheduleSourceCommitRefresh(id: id, kind: .save)
-        }
-        endSourceMutation(mutationLease)
-        ownsMutation = false
-        var derivedRefreshWarning: String?
-        if completion == .sourceAndDerived {
-            do {
-                _ = try await refresh(
-                    publication: .sourceCommitted(id, .save),
-                    failureDisposition: .staleAfterCommittedMutation(
-                        affectedVaultIDs: [id.vaultID]
-                    )
-                )
-                derivedRefreshWarning = nil
-            } catch {
-                derivedRefreshWarning = error.localizedDescription
+            return .recoveryRequired(record)
+        case .committed(let result):
+            if completion == .sourceOnly {
+                // Queue before releasing the mutation lease so the matching
+                // watcher event cannot start a competing refresh first.
+                scheduleSourceCommitRefresh(id: id, kind: .save)
             }
+            endSourceMutation(mutationLease)
+            ownsMutation = false
+            var derivedRefreshWarning: String?
+            if completion == .sourceAndDerived {
+                do {
+                    _ = try await refresh(
+                        publication: .sourceCommitted(id, .save),
+                        failureDisposition: .staleAfterCommittedMutation(
+                            affectedVaultIDs: [id.vaultID]
+                        )
+                    )
+                    derivedRefreshWarning = nil
+                } catch {
+                    derivedRefreshWarning = error.localizedDescription
+                }
+            }
+            return .committed(WorkspaceMutationOutcome(
+                committedValue: result,
+                derivedRefreshWarning: derivedRefreshWarning
+            ))
         }
-        return WorkspaceMutationOutcome(
-            committedValue: result,
-            derivedRefreshWarning: derivedRefreshWarning
-        )
     }
 
     private func recordUncertainNoteSave(
@@ -1310,9 +1367,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         expectedRevision: DocumentFingerprint,
         intendedRevision: DocumentFingerprint?,
         repository: VaultRepository,
+        sourceRecovery: InterruptedSaveRecovery? = nil,
+        researchWrite: ResearchDocumentSaveTransaction? = nil,
         failure: String,
         detail: String
     ) async throws -> TriptychMutationRecoveryRecord {
+        guard researchWrite == nil || sourceRecovery != nil else {
+            throw TriptychTransactionError.invalidPlan(
+                "An Agent write recovery record requires its exact source transaction."
+            )
+        }
         let observed = try? await repository.load(relativePath: id.relativePath).fingerprint
         let state: TriptychMutationRecoveryState
         if let observed {
@@ -1339,7 +1403,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 observedRevision: observed,
                 state: state,
                 detail: detail
-            )]
+            )],
+            researchWrite: researchWrite.map {
+                ResearchWriteRecoveryReference(
+                    runID: $0.runID,
+                    operationID: $0.operationID,
+                    target: $0.target,
+                    sourceRecoveryID: sourceRecovery!.id
+                )
+            }
         )
         do {
             try await services.transactionRecoveryStore.record(record)
@@ -1350,6 +1422,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
         }
         return record
+    }
+
+    private func documentSaveError(
+        _ reason: VaultSaveNotWrittenReason,
+        expectedRevision: DocumentFingerprint
+    ) -> VaultRepositoryError {
+        switch reason {
+        case .conflict(let current):
+            .conflict(expected: expectedRevision, current: current)
+        case .invalidFrontmatter(let message):
+            .invalidFrontmatter(message)
+        case .atomicCommitUnsupported(let message):
+            .atomicCommitUnsupported(message)
+        }
     }
 
     func moveDocument(
@@ -1627,16 +1713,28 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         do {
             commit = try await repository.restoreInterruptedSaveRecovery(recovery)
         } catch let error as VaultRepositoryError {
-            guard case .commitUncertain = error else { throw error }
+            let sourceRecovery: InterruptedSaveRecovery
+            let failure: String
+            switch error {
+            case .commitUncertain:
+                sourceRecovery = recovery
+                failure = error.localizedDescription
+            case .recoveryRequired(let retained):
+                sourceRecovery = retained
+                failure = retained.retainedReason
+            default:
+                throw error
+            }
             let record = try await recordUncertainNoteSave(
                 id: VaultQualifiedNoteID(
                     vaultID: recovery.id.vaultID,
                     relativePath: recovery.relativePath
                 ),
-                expectedRevision: recovery.expectedRevision,
-                intendedRevision: recovery.candidateRevision,
+                expectedRevision: sourceRecovery.expectedRevision,
+                intendedRevision: sourceRecovery.candidateRevision,
                 repository: repository,
-                failure: error.localizedDescription,
+                sourceRecovery: sourceRecovery,
+                failure: failure,
                 detail: "Interrupted-save recovery could not prove both canonical and displaced bytes. The candidate and every available source revision remain machine-local for inspection."
             )
             throw TriptychTransactionError.recoveryRequired(record)

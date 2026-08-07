@@ -6,6 +6,10 @@ import ScholiumContracts
 
 @Suite("Transactional vault repository")
 struct VaultRepositoryTests {
+    private enum SaveFault: Error {
+        case afterSwap
+    }
+
     private func fixture() throws -> (root: URL, support: URL, note: URL) {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -174,6 +178,68 @@ struct VaultRepositoryTests {
             )
         }
         #expect(try String(contentsOf: f.note, encoding: .utf8) == "External edit")
+    }
+
+    @Test("Post-swap and repository readback uncertainty retain exact save recovery")
+    func unknownSaveOutcomesRequireRecovery() async throws {
+        try await expectRecoveryOutcome(at: .swapped)
+        try await expectRecoveryOutcome(at: .completedReplacement)
+    }
+
+    private func expectRecoveryOutcome(
+        at phase: VaultMutationPhase
+    ) async throws {
+        let f = try fixture()
+        defer {
+            try? FileManager.default.removeItem(
+                at: f.root.deletingLastPathComponent()
+            )
+        }
+        let identity = VaultIdentity(
+            id: UUID(),
+            canonicalPath: f.root.path,
+            bookmarkData: nil
+        )
+        let externallyReplaced = Data("# External readback revision\n".utf8)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(didReach: { reached in
+                guard reached == phase else { return }
+                if phase == .swapped {
+                    throw SaveFault.afterSwap
+                }
+                try externallyReplaced.write(to: f.note, options: .atomic)
+            })
+        )
+        let original = try await repository.load(relativePath: "topics/note.md")
+        let candidate = "# Exact Agent candidate\r\n\r\nPreserve bytes.\r\n"
+        let outcome = try await repository.saveOutcome(
+            relativePath: "topics/note.md",
+            changeSet: .exactContent(candidate),
+            expectedRevision: original.fingerprint
+        )
+        guard case .recoveryRequired(let recovery) = outcome else {
+            Issue.record("The post-transaction result was not retained for recovery.")
+            return
+        }
+        #expect(recovery.id.vaultID == identity.id)
+        #expect(recovery.relativePath == "topics/note.md")
+        #expect(recovery.expectedRevision == original.fingerprint)
+        #expect(recovery.candidateRevision == DocumentFingerprint(content: candidate))
+        #expect(try await repository.interruptedSaveRecoveries().map(\.id)
+            == [recovery.id])
+        #expect(try await repository.interruptedSaveRecoveryContent(recovery)
+            .exactSource == candidate)
+        if phase == .swapped {
+            try await repository.abandonInterruptedSaveRecovery(recovery)
+            #expect(try await repository.interruptedSaveRecoveries().isEmpty)
+        } else {
+            #expect(recovery.sourceState == .changed(
+                DocumentFingerprint(data: externallyReplaced)
+            ))
+        }
     }
 
     @Test("Traversal, missing files, and symlink escapes are rejected")
