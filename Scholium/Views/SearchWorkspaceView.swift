@@ -413,7 +413,10 @@ struct SpotlightSearchPanelView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .frame(minWidth: 28, minHeight: 28)
+                .frame(
+                    minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+                )
                 .contentShape(Rectangle())
                 .help("Clear Search")
                 .accessibilityLabel("Clear Search")
@@ -428,7 +431,10 @@ struct SpotlightSearchPanelView: View {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.borderless)
-            .frame(minWidth: 28, minHeight: 28)
+            .frame(
+                minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+            )
             .contentShape(Rectangle())
             .keyboardShortcut(.cancelAction)
             .help("Close Search")
@@ -436,7 +442,7 @@ struct SpotlightSearchPanelView: View {
             .accessibilityIdentifier("scholium.closeSearchButton")
         }
         .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-        .frame(height: 48)
+        .frame(height: ScholiumGrid.Dimension.regionHeaderHeight)
     }
 
     private var searchScopeBar: some View {
@@ -713,7 +719,10 @@ struct SpotlightSearchPanelView: View {
             Image(systemName: "bookmark")
         }
         .buttonStyle(.borderless)
-        .frame(minWidth: 28, minHeight: 28)
+        .frame(
+            minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
+            minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+        )
         .contentShape(Rectangle())
         .help("Saved Searches")
         .accessibilityLabel("Saved Searches")

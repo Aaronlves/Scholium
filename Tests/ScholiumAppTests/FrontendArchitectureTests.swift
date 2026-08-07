@@ -2350,6 +2350,47 @@ struct FrontendArchitectureTests {
         #expect(ScholiumShape.editorialPanelCornerRadius == 10)
     }
 
+    @Test("Search and Properties consume purpose-named component dimensions")
+    func searchAndPropertiesPurposeNamedDimensionAdoption() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let search = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/SearchWorkspaceView.swift"
+            ),
+            encoding: .utf8
+        )
+        let frontmatter = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+            ),
+            encoding: .utf8
+        )
+        let preferredTargetFrame = try NSRegularExpression(
+            pattern: #"\.frame\(\s*minWidth:\s*ScholiumMetrics\.Accessibility\.preferredCustomTarget,\s*minHeight:\s*ScholiumMetrics\.Accessibility\.preferredCustomTarget\s*\)"#
+        )
+        let literalPurposeDimension = try NSRegularExpression(
+            pattern: #"\.frame\([^\)]*(?:minWidth|minHeight|width|height):\s*(?:28|48)(?:\.0)?\b"#
+        )
+
+        func matchCount(_ expression: NSRegularExpression, in source: String) -> Int {
+            expression.numberOfMatches(
+                in: source,
+                range: NSRange(source.startIndex ..< source.endIndex, in: source)
+            )
+        }
+
+        #expect(matchCount(preferredTargetFrame, in: search) == 3)
+        #expect(matchCount(preferredTargetFrame, in: frontmatter) == 3)
+        #expect(search.contains(
+            ".frame(height: ScholiumGrid.Dimension.regionHeaderHeight)"
+        ))
+        #expect(matchCount(literalPurposeDimension, in: search) == 0)
+        #expect(matchCount(literalPurposeDimension, in: frontmatter) == 0)
+    }
+
     @Test("Adaptive editorial grid exposes semantic roles and explicit document units")
     func adaptiveEditorialGridContract() throws {
         #expect(ScholiumGrid.foundationUnit == 4)

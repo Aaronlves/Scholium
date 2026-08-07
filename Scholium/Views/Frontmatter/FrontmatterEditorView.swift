@@ -503,7 +503,10 @@ struct FrontmatterEditorView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
-                            .frame(minWidth: 28, minHeight: 28)
+                            .frame(
+                                minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+                            )
                             .contentShape(Rectangle())
                             .help("Remove tag \(tag)")
                             .accessibilityLabel("Remove tag \(tag)")
@@ -537,7 +540,10 @@ struct FrontmatterEditorView: View {
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
-                .frame(minWidth: 28, minHeight: 28)
+                .frame(
+                    minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+                )
                 .contentShape(Rectangle())
                 .disabled(tagInput.trimmingCharacters(in: .whitespaces).isEmpty)
                 .help("Add tag")
@@ -575,7 +581,10 @@ struct FrontmatterEditorView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .frame(minWidth: 28, minHeight: 28)
+                    .frame(
+                        minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                        minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+                    )
                     .contentShape(Rectangle())
                     .help("Remove item \(idx + 1)")
                     .accessibilityLabel("Remove item \(idx + 1)")
