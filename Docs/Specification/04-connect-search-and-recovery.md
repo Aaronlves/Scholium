@@ -27,7 +27,13 @@ valid. Scholium has no reverse-support or directed-question relation. Preserve
 research-file bytes and never rewrite or reinterpret a marker through
 heuristics. Never infer support, opposition, or incompatibility from keywords,
 proximity, folders, or multi-hop paths. Incoming and Outgoing views show
-direction and exact source without permanent badge clutter.
+direction and exact source without permanent badge clutter. The two views are
+presentation projections over the same direct graph: Outgoing contains edges
+whose containing Note is the current Note, while Incoming contains edges whose
+target is the current Note. Neutral and Incompatible are undirected, so they
+appear in both views with the same source anchor and a clear accessible
+explanation that the relation is shown in both directions. No third Combined or
+All direction is exposed.
 
 ## 13. Search and Attention
 

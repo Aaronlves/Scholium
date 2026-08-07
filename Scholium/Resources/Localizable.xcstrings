@@ -12267,6 +12267,16 @@
         }
       }
     },
+    "Link Direction" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接方向"
+          }
+        }
+      }
+    },
     "Linked notes may be recommended, but Scholium never selects them automatically. Materials remain read-only and cannot also be Write targets." : {
       "localizations" : {
         "en" : {
@@ -18475,22 +18485,6 @@
         }
       }
     },
-    "Relink Triptych" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Relink Triptych"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新关联脉络"
-          }
-        }
-      }
-    },
     "Reliability of the text actually consulted." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -18504,6 +18498,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "实际参考文本的可靠性。"
+          }
+        }
+      }
+    },
+    "Relink Triptych" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Relink Triptych"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新关联脉络"
           }
         }
       }
@@ -25546,6 +25556,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此配置文件包含不受支持的回应模块：%arg。请先更新 Scholium，再进行保存。"
+          }
+        }
+      }
+    },
+    "This relation is undirected and appears in both link directions." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此关系为无向关系，因此会同时显示在传入和传出连接中。"
           }
         }
       }

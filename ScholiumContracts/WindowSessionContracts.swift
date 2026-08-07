@@ -12,7 +12,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
     public var triptychID: UUID?
     public var vaultID: UUID?
     public var selectedDocument: VaultQualifiedNoteID?
-    public var documentModes: [String: String]
     public var scrollPositions: [String: Double]
     public var libraryVisible: Bool?
     public var inspectorMode: String
@@ -26,7 +25,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         triptychID: UUID? = nil,
         vaultID: UUID? = nil,
         selectedDocument: VaultQualifiedNoteID? = nil,
-        documentModes: [String: String] = [:],
         scrollPositions: [String: Double] = [:],
         libraryVisible: Bool? = nil,
         inspectorMode: String = "overview",
@@ -39,7 +37,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         self.triptychID = triptychID
         self.vaultID = vaultID ?? selectedDocument?.vaultID
         self.selectedDocument = selectedDocument
-        self.documentModes = documentModes
         self.scrollPositions = scrollPositions
         self.libraryVisible = libraryVisible
         self.inspectorMode = inspectorMode
@@ -56,7 +53,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
            !availablePaths.contains(selectedDocument.relativePath) {
             result.selectedDocument = nil
         }
-        result.documentModes = documentModes.filter { availablePaths.contains($0.key) }
         result.scrollPositions = scrollPositions.filter { availablePaths.contains($0.key) }
         return result
     }
@@ -87,9 +83,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
             )
         }
         if selectedDocument?.vaultID == vaultID || self.vaultID == vaultID {
-            if let mode = result.documentModes.removeValue(forKey: sourcePath) {
-                result.documentModes[destinationPath] = mode
-            }
             if let scroll = result.scrollPositions.removeValue(forKey: sourcePath) {
                 result.scrollPositions[destinationPath] = scroll
             }

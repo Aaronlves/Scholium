@@ -2144,7 +2144,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(presentation.editBlankLineCount >= 1)
         #expect(
             presentation.editBlankLineMinimumHeight
-                == Double(ScholiumDocumentRhythm.paragraphGapCSSPixels)
+                == DocumentAppearanceSettings.defaultSettings.body.paragraphSpacingEm
+                * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
+                * (96 / 72)
         )
 
         harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
@@ -3384,6 +3386,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
             initialMode: MarkdownEditorMode = .livePreview,
             initialPresentationCSS: String = "",
+            initialWindowSize: NSSize = NSSize(width: 720, height: 520),
+            fixedLayoutSize: NSSize? = nil,
             laysOutForPointerTesting: Bool = false
         ) {
             _ = NSApplication.shared
@@ -3397,7 +3401,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             sourceBox = SourceBox(source, mode: initialMode)
             sourceBox.presentationCSS = initialPresentationCSS
             window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+                contentRect: NSRect(
+                    origin: .zero,
+                    size: initialWindowSize
+                ),
                 styleMask: [.titled, .closable, .resizable],
                 backing: .buffered,
                 defer: false
@@ -3411,7 +3418,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 documentID: documentID,
                 sourceBox: sourceBox,
                 linkPreviews: linkPreviews,
-                laysOutForPointerTesting: laysOutForPointerTesting
+                laysOutForPointerTesting: laysOutForPointerTesting,
+                fixedLayoutSize: fixedLayoutSize
             )
             let hostingController = NSHostingController(rootView: editor)
             self.hostingController = hostingController
@@ -3825,24 +3833,30 @@ struct MarkdownEditorWebViewIntegrationTests {
         let documentID: String
         let linkPreviews: [DocumentLinkPreview]
         let laysOutForPointerTesting: Bool
+        let fixedLayoutSize: NSSize?
 
         init(
             session: MarkdownEditorSession,
             documentID: String,
             sourceBox: SourceBox,
             linkPreviews: [DocumentLinkPreview],
-            laysOutForPointerTesting: Bool
+            laysOutForPointerTesting: Bool,
+            fixedLayoutSize: NSSize?
         ) {
             self.session = session
             self.documentID = documentID
             self.sourceBox = sourceBox
             self.linkPreviews = linkPreviews
             self.laysOutForPointerTesting = laysOutForPointerTesting
+            self.fixedLayoutSize = fixedLayoutSize
         }
 
         var body: some View {
             if sourceBox.showsEditor {
-                if laysOutForPointerTesting {
+                if let fixedLayoutSize {
+                    editorSurface
+                        .frame(width: fixedLayoutSize.width, height: fixedLayoutSize.height)
+                } else if laysOutForPointerTesting {
                     editorSurface
                         .frame(width: 720, height: 520)
                 } else {

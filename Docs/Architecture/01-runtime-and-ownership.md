@@ -497,8 +497,11 @@ no window, model, split, Library, or Apparatus. The controller owns only order,
 selection, and document references; `DocumentController` and
 `DocumentSessionStore` retain sessions and apply the flush/reconstruction guard.
 Apparatus derives from the active document but keeps window-owned visibility
-and mode. Only New Window creates a shell.
-`WindowSessionSnapshot.selectedDocument` alone restores selection.
+and mode. Only New Window creates a shell. The Document presentation owns one
+live Review/Edit/Source selection, defaults a new window to Review, and carries
+that selection across Note and tab changes without writing a mode history to
+window-session storage. `WindowSessionSnapshot.selectedDocument` alone restores
+Document selection.
 
 Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
 `NSSplitViewController` with three direct `NSSplitViewItem` siblings for

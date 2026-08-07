@@ -330,9 +330,9 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
     @ObservedObject var workspaceProjectionController: WindowWorkspaceProjectionController
 
     var body: some View {
-        if let note = appState.currentNote {
+        if appState.currentNote != nil {
             HStack(spacing: ScholiumMetrics.Workspace.headerControlSpacing) {
-                documentModeToolbar(for: note)
+                documentModeToolbar
 
                 ScholiumInkIconControl(
                     title: ScholiumL10n.dynamicString("Search"),
@@ -350,8 +350,8 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
         }
     }
 
-    private func documentModeToolbar(for note: WindowDocumentLocation) -> some View {
-        let mode = appState.presentationMode(for: note.relativePath)
+    private var documentModeToolbar: some View {
+        let mode = appState.currentPresentationMode
         return Menu {
             ForEach(NotePresentationMode.allCases) { candidate in
                 Button {

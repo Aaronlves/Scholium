@@ -82,7 +82,7 @@ struct DocumentControllerConvergenceTests {
         )
         let descriptor = try #require(controller.activeDocument)
         let session = controller.session(for: descriptor)
-        session.restorePresentationMode(.source)
+        session.preparePresentationMode(.source)
 
         controller.installOpenedDocument(
             note(
@@ -99,7 +99,7 @@ struct DocumentControllerConvergenceTests {
         #expect(renamed.reference.relativePath == "Chapters/Renamed Draft.md")
         #expect(controller.session(for: renamed) === session)
         #expect(session.presentationMode == .read)
-        #expect(session.selectedPresentationMode == .source)
+        #expect(session.pendingEditorMode == nil)
     }
 
     @Test("Clean deleted documents close while dirty exact buffers remain recoverable")

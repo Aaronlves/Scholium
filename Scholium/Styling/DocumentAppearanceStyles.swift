@@ -4,8 +4,12 @@ import ScholiumContracts
 enum DocumentAppearanceStyles {
     static func css(for profile: DocumentAppearanceProfile?) -> String {
         guard let profile else { return "" }
-        let body = profile.settings.body
-        let headings = profile.settings.headings
+        return css(for: profile.settings)
+    }
+
+    static func css(for settings: DocumentAppearanceSettings) -> String {
+        let body = settings.body
+        let headings = settings.headings
         let title = headings.title
         let level1 = headings.level1
         let level2 = headings.level2
@@ -18,8 +22,8 @@ enum DocumentAppearanceStyles {
 
         var rules = """
         :root {
-          --scholium-document-line-width: \(number(profile.settings.lineWidthCharacterUnits))ch;
-          --scholium-document-half-line-width: \(number(profile.settings.lineWidthCharacterUnits / 2))ch;
+          --scholium-document-line-width: \(number(settings.lineWidthCharacterUnits))ch;
+          --scholium-document-half-line-width: \(number(settings.lineWidthCharacterUnits / 2))ch;
           --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
           --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
           --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;
@@ -105,10 +109,33 @@ enum DocumentAppearanceStyles {
         }
         """
 
-        for callout in profile.settings.callouts {
+        for callout in settings.callouts {
             rules += "\n" + calloutCSS(callout)
         }
         return rules
+    }
+
+    /// The shared WebKit heading selectors are structural. Their built-in
+    /// typography remains derived from the same Appearance owner used by a
+    /// selected profile, including no-profile and failed-profile paths.
+    static func headingTransportDeclarations(
+        for settings: DocumentAppearanceSettings
+    ) -> String {
+        let bodyFont = cssFontFamily(settings.body.fontFamily)
+        let headings = settings.headings
+        let headingFont = headings.fontFamily == .body
+            ? bodyFont
+            : cssFontFamily(headings.fontFamily)
+        let fontStyle = headings.style == .italic ? "italic" : "normal"
+        let fontVariantCaps = headings.style == .smallCaps ? "small-caps" : "normal"
+
+        return """
+        --scholium-document-heading-font-family: \(headingFont);
+        --scholium-document-heading-font-style: \(fontStyle);
+        --scholium-document-heading-font-variant-caps: \(fontVariantCaps);
+        --scholium-document-heading-weight: \(headings.weight);
+        --scholium-document-heading-letter-spacing: \(number(headings.letterSpacingEm))em;
+        """
     }
 
     private static func calloutCSS(_ callout: DocumentCalloutAppearance) -> String {

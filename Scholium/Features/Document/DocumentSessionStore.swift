@@ -96,14 +96,13 @@ final class DocumentSessionModel: ObservableObject {
 
     var isEditing: Bool { presentation.isEditing }
     var presentationMode: NotePresentationMode { presentation.activeMode }
-    var selectedPresentationMode: NotePresentationMode { presentation.selectedMode }
     var retainedEditorMode: MarkdownEditorMode { presentation.retainedEditorMode }
     var activeEditorMode: MarkdownEditorMode? { presentation.activeEditorMode }
-    var restorationEditorMode: MarkdownEditorMode? { presentation.restorationMode }
+    var pendingEditorMode: MarkdownEditorMode? { presentation.pendingEditorMode }
     var retainsEditorSurface: Bool { presentation.retainsEditorSurface }
 
-    func restorePresentationMode(_ mode: NotePresentationMode) {
-        updatePresentation { $0.restore(mode) }
+    func preparePresentationMode(_ mode: NotePresentationMode) {
+        updatePresentation { $0.prepare(mode) }
     }
 
     func beginEditing(in mode: MarkdownEditorMode) {
@@ -250,7 +249,6 @@ final class DocumentSessionStore {
 
     struct ReapedPresentation: Sendable {
         let target: DocumentEditingTarget
-        let mode: NotePresentationMode
         let scrollPosition: ObservedScrollPosition
     }
 
@@ -322,7 +320,6 @@ final class DocumentSessionStore {
                   !entry.session.editorSession.hasAttachedWebView else { return nil }
             return ReapedPresentation(
                 target: target,
-                mode: entry.session.selectedPresentationMode,
                 scrollPosition: entry.session.observedScrollPosition
             )
         }

@@ -16,19 +16,23 @@ Dirty, conflict, save-in-flight, retryable-recovery, and recovery-buffer states
 pin a session. Closing any tab flushes its target before membership removal;
 clean zero-lease, zero-pin sessions detach WebKit and discard full editor,
 source, undo, HTML, and preview state immediately. Only a 64-entry lightweight
-presentation LRU survives close; memory pressure reduces it to 16 or clears it
+scroll-position LRU survives close; memory pressure reduces it to 16 or clears it
 without evicting leased or pinned safety state. Both stable and identity-
 unavailable session keys remain vault-qualified, so equal relative paths in two
-Triptych vaults cannot share a buffer, Read cache identity, mode, or scroll
+Triptych vaults cannot share a buffer, Read cache identity, or scroll
 state.
+
+`DocumentController` owns one live `currentPresentationMode`, defaults Review,
+applies it to each selected Note or tab, and never stores it in a path map or
+`WindowSessionSnapshot`. Sessions retain only editor safety state.
 
 Each retained `DocumentSessionModel` owns:
 
 - its persistent `MarkdownEditorSession` and flush token;
 - the exact editor mirror and committed revision;
-- one atomic `DocumentPresentationState`: active Review/Edit/Source,
-  restoration-only editor intent, retained editor configuration, and whether
-  the editor surface has ever been allocated;
+- one atomic `DocumentPresentationState`: active runtime phase, the current
+  presentation's pending editor intent, retained configuration, and surface
+  allocation;
 - a revision-bound semantic source scroll anchor plus normalized fallback;
 - autosave and in-flight save tasks with stale tokens;
 - rendered Review projection state; and
@@ -56,9 +60,10 @@ surface has been presented for the current editing run, Edit/Source
 reconfiguration keeps the same CodeMirror surface visible while the bridge
 converges instead of routing through Review. Native focus follows the
 acknowledged mode, never an unconfirmed request.
-Restoration is not an active mode. A restored Edit or Source preference remains
-inside the Review phase until `DocumentController` begins the editing
-lifecycle; only that atomic transition allocates the retained surface and makes
+Pending editor intent is not an active mode. An Edit or Source intent supplied
+to a newly selected session remains inside the Review phase until
+`DocumentController` begins the editing lifecycle; only that atomic transition
+allocates the retained surface and makes
 the session writable. Conversely, finishing editing commits one transition to
 Review while retaining the hidden editor's last Edit/Source configuration.
 The session therefore publishes no separately mutable `isEditing`, mode,
@@ -541,10 +546,10 @@ from line one. Selection changes replace only merged old/new neighborhoods
 within that margin, not the visible buffer or structural index. Widget equality
 preserves DOM; height work stays inside CodeMirror's measurement cycle.
 
-Read and Live Preview consume one app-owned presentation contract:
+Read and Live Preview consume one presentation contract:
 
-- `ScholiumWebDesignTokens.documentPresentationCSS` supplies appearance and
-  document-rhythm variables to both WebKit surfaces;
+- `ScholiumWebDesignTokens.documentPresentationCSS` derives default Appearance
+  CSS from `DocumentAppearanceSettings.defaultSettings`;
 - `StyleOperations` persists typed, named Appearance configurations under
   Application Support and the frontend projects the selected configuration to
   deterministic CSS without placing configuration in a research vault;

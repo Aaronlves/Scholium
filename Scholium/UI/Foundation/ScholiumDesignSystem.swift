@@ -499,6 +499,10 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Hashable, Identifiable, 
         case .neutral: .link
         }
     }
+
+    var isUndirected: Bool {
+        self == .neutral || self == .incompatible
+    }
 }
 
 /// Contract names used by the CodeMirror and sanitized Read stylesheets.
@@ -519,42 +523,55 @@ enum ScholiumWebDesignTokens {
         ScholiumElevationRole.allCases.map(\.cssVariableName)
     )
 
-    static let rhythmCSSDeclarations = """
-    --scholium-document-line-width: \(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch;
-    --scholium-document-half-line-width: \(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits / 2))ch;
-    --scholium-document-prose-font-size: \(ScholiumDocumentRhythm.proseFontSizePoints)pt;
-    --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
-    --scholium-document-h1-size: \(ScholiumDocumentRhythm.heading1ScalePercent)%;
-    --scholium-document-h2-size: \(ScholiumDocumentRhythm.heading2ScalePercent)%;
-    --scholium-document-h3-size: \(ScholiumDocumentRhythm.heading3ScalePercent)%;
-    --scholium-document-h4-size: \(ScholiumDocumentRhythm.heading4ScalePercent)%;
-    --scholium-rhythm-prose-line-height: \(ScholiumDocumentRhythm.proseLineHeight);
-    --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
-    --scholium-document-text-scale-factor: 1;
-    --scholium-rhythm-paragraph-gap: \(ScholiumDocumentRhythm.paragraphGapCSSPixels)px;
-    --scholium-rhythm-heading-line-height: \(ScholiumDocumentRhythm.headingLineHeight);
-    --scholium-rhythm-heading-before: \(ScholiumDocumentRhythm.headingGapBeforeCSSPixels)px;
-    --scholium-rhythm-heading-after: \(ScholiumDocumentRhythm.headingGapAfterCSSPixels)px;
-    --scholium-rhythm-title-before: \(ScholiumDocumentRhythm.headingGapBeforeCSSPixels)px;
-    --scholium-rhythm-title-after: \(ScholiumDocumentRhythm.headingGapAfterCSSPixels)px;
-    --scholium-rhythm-title-rule-gap: 0.5em;
-    --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
-    --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
-    --scholium-rhythm-semantic-block-gap: 1em;
-    --scholium-rhythm-rule-block-gap: 0.5em;
-    --scholium-list-marker-track: 1.25em;
-    --scholium-list-marker-gap: 0.35em;
-    --scholium-list-indent: calc(
-      var(--scholium-list-marker-track) + var(--scholium-list-marker-gap)
-    );
-    --scholium-task-checkbox-size: max(1em, 20px);
-    --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
-    --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
-    --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
-    --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
-    --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInsetCSSPixels)px;
-    --scholium-document-text-scale: 1em;
-    """
+    static let rhythmCSSDeclarations: String = {
+        let defaults = DocumentAppearanceSettings.defaultSettings
+        let body = defaults.body
+        let headings = defaults.headings
+        let number: (Double) -> String = {
+            String(format: "%.4g", locale: Locale(identifier: "en_US_POSIX"), $0)
+        }
+        return """
+        --scholium-document-line-width: \(number(defaults.lineWidthCharacterUnits))ch;
+        --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
+        --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
+        --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
+        --scholium-document-h1-size: \(number(headings.title.scale * 100))%;
+        --scholium-document-h2-size: \(number(headings.level1.scale * 100))%;
+        --scholium-document-h3-size: \(number(headings.level2.scale * 100))%;
+        --scholium-document-h4-size: \(number(headings.level2.scale * 100))%;
+        --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
+        --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
+        --scholium-document-text-scale-factor: 1;
+        --scholium-rhythm-paragraph-gap: \(number(
+          body.paragraphSpacingEm * body.fontSizePoints * (96 / 72)
+        ))px;
+        --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
+        \(DocumentAppearanceStyles.headingTransportDeclarations(for: defaults))
+        --scholium-rhythm-title-before: \(number(headings.title.spaceBeforeEm))em;
+        --scholium-rhythm-title-after: \(number(headings.title.spaceAfterEm))em;
+        --scholium-appearance-h2-before: \(number(headings.level1.spaceBeforeEm))em;
+        --scholium-appearance-h2-after: \(number(headings.level1.spaceAfterEm))em;
+        --scholium-appearance-h3-before: \(number(headings.level2.spaceBeforeEm))em;
+        --scholium-appearance-h3-after: \(number(headings.level2.spaceAfterEm))em;
+        --scholium-rhythm-title-rule-gap: 0.5em;
+        --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
+        --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
+        --scholium-rhythm-semantic-block-gap: 1em;
+        --scholium-rhythm-rule-block-gap: 0.5em;
+        --scholium-list-marker-track: 1.25em;
+        --scholium-list-marker-gap: 0.35em;
+        --scholium-list-indent: calc(
+          var(--scholium-list-marker-track) + var(--scholium-list-marker-gap)
+        );
+        --scholium-task-checkbox-size: max(1em, 20px);
+        --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
+        --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
+        --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
+        --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
+        --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInsetCSSPixels)px;
+        --scholium-document-text-scale: 1em;
+        """
+    }()
 
     private static let colorResolver = ScholiumColorResolver(variables: .editorialCopper)
 
@@ -638,7 +655,10 @@ enum ScholiumWebDesignTokens {
         calc(50% - var(--scholium-document-half-line-width))
       );
       font-family: Alegreya, Georgia, serif;
-      font-size: var(--scholium-document-text-scale);
+      font-size: calc(
+        var(--scholium-document-prose-font-size)
+        * var(--scholium-document-text-scale-factor)
+      );
       line-height: var(--scholium-rhythm-prose-line-height);
       overflow-wrap: anywhere;
     }
@@ -826,29 +846,34 @@ enum ScholiumWebDesignTokens {
     .scholium-document h5,
     .scholium-document h6,
     .scholium-live-mode .cm-live-heading {
-      font-family: Alegreya, Georgia, serif;
-      font-weight: 700;
+      font-family: var(--scholium-document-heading-font-family);
+      font-style: var(--scholium-document-heading-font-style);
+      font-variant-caps: var(--scholium-document-heading-font-variant-caps);
+      font-weight: var(--scholium-document-heading-weight);
       line-height: var(--scholium-rhythm-heading-line-height);
+      letter-spacing: var(--scholium-document-heading-letter-spacing);
       text-align: start;
       text-decoration-line: none;
       text-decoration: none;
       text-wrap: balance;
       box-sizing: border-box;
       margin: 0;
-      padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after);
+      padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
     }
     .scholium-document h1,
     .scholium-live-mode .cm-live-h1 {
       font-size: var(--scholium-document-h1-size);
-      font-weight: 400;
+      font-weight: var(--scholium-document-heading-weight);
     }
     .scholium-document h2,
     .scholium-live-mode .cm-live-h2 {
       font-size: var(--scholium-document-h2-size);
+      padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
     }
     .scholium-document h3,
     .scholium-live-mode .cm-live-h3 {
       font-size: var(--scholium-document-h3-size);
+      padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
     }
     .scholium-document h4,
     .scholium-document h5,
@@ -857,6 +882,7 @@ enum ScholiumWebDesignTokens {
     .scholium-live-mode .cm-live-h5,
     .scholium-live-mode .cm-live-h6 {
       font-size: var(--scholium-document-h4-size);
+      padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
     }
     .scholium-document h1 a,
     .scholium-document h2 a,
@@ -1210,9 +1236,6 @@ enum ScholiumGrid {
         static let narrowWidthThresholdRootEms: CGFloat = 44
         static let compactShellInsetCSSPixels = Spacing.regionContentInset
         static let contentTopInsetCSSPixels = Spacing.documentShellInsetCSSPixels
-        static let paragraphGapCSSPixels = foundationUnit * 3
-        static let headingGapBeforeCSSPixels = foundationUnit * 6
-        static let headingGapAfterCSSPixels = foundationUnit * 2
         static let trailingScrollViewportFraction: CGFloat = 0.45
     }
 
@@ -1232,6 +1255,8 @@ enum ScholiumGrid {
         static let selectedModeIndicatorHeight = foundationUnit / 4
         static let firstSectionGap = foundationUnit * 4
         static let sectionGap = foundationUnit * 4
+        static let connectionDirectionControlMaximumWidth = foundationUnit * 60
+        static let connectionGroupContentGap = foundationUnit * 2
         static let headingToContentGap = foundationUnit * 2.5
         static let contentRowGap = foundationUnit * 2
         static let contentLineSpacing = foundationUnit
@@ -1241,9 +1266,8 @@ enum ScholiumGrid {
         static let relationGlyphSize = foundationUnit * 3.5
         static let relationGlyphToTextGap = foundationUnit
         static let relationClusterGap = foundationUnit * 3
-        static let relationPinnedGlyphTop = foundationUnit * 9
         static let relationRowVerticalInset = foundationUnit
-        static let relationRowMinimumHeight = foundationUnit * 9
+        static let relationRowMinimumHeight = Dimension.preferredCustomTarget
         static let actionRowVerticalInset = foundationUnit * 2
         static let actionRowMinimumHeight = foundationUnit * 11
         static let actionCopyGap = foundationUnit
@@ -1349,6 +1373,10 @@ enum ScholiumMetrics {
         static let contentInset = ScholiumGrid.Apparatus.contentInset
         static let firstSectionSpacing = ScholiumGrid.Apparatus.firstSectionGap
         static let sectionSpacing = ScholiumGrid.Apparatus.sectionGap
+        static let connectionDirectionControlMaximumWidth =
+            ScholiumGrid.Apparatus.connectionDirectionControlMaximumWidth
+        static let connectionGroupContentSpacing =
+            ScholiumGrid.Apparatus.connectionGroupContentGap
         /// Internal section rhythm is deliberately separate from the spacing
         /// between complete sections.
         static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
@@ -1379,7 +1407,6 @@ enum ScholiumMetrics {
         static let relationGlyphToTextSpacing =
             ScholiumGrid.Apparatus.relationGlyphToTextGap
         static let relationClusterSpacing = ScholiumGrid.Apparatus.relationClusterGap
-        static let relationPinnedGlyphTop = ScholiumGrid.Apparatus.relationPinnedGlyphTop
         static let relationRowVerticalInset =
             ScholiumGrid.Apparatus.relationRowVerticalInset
         static let relationRowMinimumHeight =
@@ -1445,8 +1472,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
               --scholium-rhythm-inline-source: %.6fpx;
               --scholium-rhythm-inline-narrow: %.6fpx;
               --scholium-rhythm-paragraph-gap: %.6fpx;
-              --scholium-rhythm-heading-before: %.6fpx;
-              --scholium-rhythm-heading-after: %.6fpx;
             }
             @media (max-width: %.6frem) {
               .scholium-document,
@@ -1466,9 +1491,10 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
             Double(regularInlineInsetCSSPixels),
             Double(sourceInlineInsetCSSPixels),
             Double(compactInlineInsetCSSPixels),
-            Double(ScholiumDocumentRhythm.paragraphGapCSSPixels) * textScale,
-            Double(ScholiumDocumentRhythm.headingGapBeforeCSSPixels) * textScale,
-            Double(ScholiumDocumentRhythm.headingGapAfterCSSPixels) * textScale,
+            DocumentAppearanceSettings.defaultSettings.body.paragraphSpacingEm
+                * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
+                * (96 / 72)
+                * textScale,
             Double(compactThresholdRootEms)
         )
     }
@@ -1690,19 +1716,9 @@ struct ScholiumDocumentContentInsets: Equatable, Sendable {
 /// Provisional values shared by Read and editor renderers. They remain
 /// renderer-aware until the visual comparison freezes the rhythm contract.
 enum ScholiumDocumentRhythm {
-    static let proseFontSizePoints = 12
     static let sourceFontSizePixels = 15
-    static let heading1ScalePercent = 187.5
-    static let heading2ScalePercent = 130
-    static let heading3ScalePercent = 115
-    static let heading4ScalePercent = 100
     static let narrowWidthThresholdRootEms = ScholiumGrid.Document.narrowWidthThresholdRootEms
-    static let proseLineHeight = 1.5
     static let sourceLineHeight = 1.5
-    static let paragraphGapCSSPixels = ScholiumGrid.Document.paragraphGapCSSPixels
-    static let headingLineHeight = 1.18
-    static let headingGapBeforeCSSPixels = ScholiumGrid.Document.headingGapBeforeCSSPixels
-    static let headingGapAfterCSSPixels = ScholiumGrid.Document.headingGapAfterCSSPixels
     static let codeBlockInset: CGFloat = 16
     static let quoteInlineInset = ScholiumGrid.Spacing.sectionSeparation
 

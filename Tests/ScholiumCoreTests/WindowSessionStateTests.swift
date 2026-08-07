@@ -10,6 +10,14 @@ struct WindowSessionStateTests {
         #expect(WindowSessionSnapshot().inspectorMode == "overview")
     }
 
+    @Test("Window sessions do not serialize Document mode history")
+    func documentModeIsNotPersisted() throws {
+        let data = try JSONEncoder().encode(WindowSessionSnapshot())
+        let source = try #require(String(data: data, encoding: .utf8))
+        #expect(!source.contains("documentModes"))
+        #expect(!source.contains("presentationMode"))
+    }
+
     @Test("One vault-qualified selected document round-trips outside research vaults")
     func roundTrip() async throws {
         let root = temporaryDirectory()
@@ -24,7 +32,6 @@ struct WindowSessionStateTests {
             triptychID: triptychID,
             vaultID: vaultID,
             selectedDocument: selected,
-            documentModes: ["B.md": "livePreview"],
             scrollPositions: ["B.md": 0.25],
             libraryVisible: false,
             inspectorMode: "outgoing",
@@ -44,13 +51,11 @@ struct WindowSessionStateTests {
         let snapshot = WindowSessionSnapshot(
             vaultID: vaultID,
             selectedDocument: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Missing.md"),
-            documentModes: ["Present.md": "source", "Missing.md": "read"],
             scrollPositions: ["Present.md": 0.8, "Missing.md": 0.2]
         )
 
         let normalized = snapshot.normalized(availablePaths: ["Present.md"])
         #expect(normalized.selectedDocument == nil)
-        #expect(normalized.documentModes == ["Present.md": "source"])
         #expect(normalized.scrollPositions == ["Present.md": 0.8])
     }
 
@@ -80,14 +85,12 @@ struct WindowSessionStateTests {
         let snapshot = WindowSessionSnapshot(
             vaultID: browsedVaultID,
             selectedDocument: selected,
-            documentModes: ["Shared.md": "livePreview"],
             scrollPositions: ["Shared.md": 0.42]
         )
 
         let normalized = snapshot.normalized(availablePaths: ["Shared.md"])
         #expect(normalized.vaultID == browsedVaultID)
         #expect(normalized.selectedDocument == selected)
-        #expect(normalized.documentModes == ["Shared.md": "livePreview"])
         #expect(normalized.scrollPositions == ["Shared.md": 0.42])
     }
 
@@ -100,7 +103,6 @@ struct WindowSessionStateTests {
         let matching = WindowSessionSnapshot(
             vaultID: vaultID,
             selectedDocument: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Old.md"),
-            documentModes: ["Old.md": "livePreview"],
             scrollPositions: ["Old.md": 0.6]
         )
         let peerVaultID = UUID()
@@ -115,7 +117,6 @@ struct WindowSessionStateTests {
 
         let migrated = try #require(try await store.load(id: matching.id))
         #expect(migrated.selectedDocument?.relativePath == "New.md")
-        #expect(migrated.documentModes == ["New.md": "livePreview"])
         #expect(migrated.scrollPositions == ["New.md": 0.6])
         #expect(try await store.load(id: peer.id) == peer)
     }

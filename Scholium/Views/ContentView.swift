@@ -495,8 +495,7 @@ struct ContentView: View {
             openExternalURL: { appState.openExternalURL($0) },
             enterCSSSafeMode: { appState.cssSnippetStore.enterSafeMode(after: $0) },
             rememberPresentationMode: {
-                guard let path = documentPath else { return }
-                appState.rememberPresentationMode($0, for: path)
+                appState.rememberPresentationMode($0)
             },
             setPendingSourceLine: { appState.pendingSourceLine = $0 },
             setSidebarVisible: { windowCoordinator.actions.setLibraryVisible($0) },

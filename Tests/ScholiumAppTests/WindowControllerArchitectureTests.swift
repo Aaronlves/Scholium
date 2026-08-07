@@ -653,8 +653,8 @@ struct WindowControllerArchitectureTests {
         #expect(controllerSource.contains("@Published private(set) var selectedDocument"))
     }
 
-    @Test("Retained document sessions solely own mode and scroll state")
-    func documentSessionOwnsPresentationState() {
+    @Test("The live Document presentation owns mode while sessions retain scroll")
+    func documentPresentationOwnsCurrentMode() {
         let reference = fixtureReference(path: "Topics/Presentation.md")
         let descriptor = WindowDocumentDescriptor(
             sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
@@ -662,7 +662,6 @@ struct WindowControllerArchitectureTests {
         )
         let controller = DocumentController()
         controller.restorePresentationState(
-            modes: [reference.relativePath: NotePresentationMode.source.rawValue],
             scrollPositions: [reference.relativePath: 0.64],
             vaultID: reference.vaultID
         )
@@ -670,7 +669,8 @@ struct WindowControllerArchitectureTests {
         controller.installOpenedDocument(descriptor)
         let session = controller.session(for: descriptor)
         #expect(session.presentationMode == .read)
-        #expect(session.selectedPresentationMode == .source)
+        #expect(session.pendingEditorMode == nil)
+        #expect(controller.currentPresentationMode == .read)
         #expect(session.scrollFraction == 0.64)
         let semanticAnchor = EditorScrollAnchor(
             sourceFingerprint: "revision-bound-fingerprint",
@@ -682,11 +682,7 @@ struct WindowControllerArchitectureTests {
         )
         session.scrollAnchor = semanticAnchor
 
-        controller.rememberPresentationMode(
-            .livePreview,
-            for: reference.relativePath,
-            vaultID: reference.vaultID
-        )
+        controller.rememberPresentationMode(.livePreview)
         controller.rememberScrollPosition(
             0.31,
             for: reference.relativePath,
@@ -697,19 +693,53 @@ struct WindowControllerArchitectureTests {
 
         #expect(controller.session(for: descriptor) === session)
         #expect(session.presentationMode == .read)
-        #expect(session.selectedPresentationMode == .livePreview)
+        #expect(session.pendingEditorMode == .livePreview)
+        #expect(controller.currentPresentationMode == .livePreview)
         #expect(session.scrollFraction == 0.31)
         #expect(session.scrollAnchor == semanticAnchor)
         #expect(controller.presentationSnapshot(vaultID: reference.vaultID) ==
             DocumentPresentationSnapshot(
-                modes: [reference.relativePath: NotePresentationMode.livePreview.rawValue],
                 scrollPositions: [reference.relativePath: 0.31]
             ))
 
         controller.resetPresentationState()
+        #expect(controller.currentPresentationMode == .read)
         #expect(session.presentationMode == .read)
         #expect(session.scrollFraction == 0)
         #expect(session.scrollAnchor == nil)
+    }
+
+    @Test("The current Document mode carries across selected Notes")
+    func currentModeCarriesAcrossDocuments() {
+        let vaultID = UUID()
+        func descriptor(_ path: String) -> WindowDocumentDescriptor {
+            WindowDocumentDescriptor(
+                sessionKey: DocumentSessionKey(vaultID: vaultID, noteID: UUID()),
+                reference: fixtureReference(vaultID: vaultID, path: path)
+            )
+        }
+        let first = descriptor("Topics/First.md")
+        let second = descriptor("Topics/Second.md")
+        let controller = DocumentController()
+
+        controller.installOpenedDocument(first)
+        let firstSession = controller.session(for: first)
+        firstSession.preparePresentationMode(.source)
+        controller.rememberPresentationMode(.source)
+
+        controller.installOpenedDocument(second)
+        let secondSession = controller.session(for: second)
+        #expect(controller.currentPresentationMode == .source)
+        #expect(secondSession.presentationMode == .read)
+        #expect(secondSession.pendingEditorMode == .source)
+
+        secondSession.preparePresentationMode(.livePreview)
+        controller.rememberPresentationMode(.livePreview)
+        controller.installOpenedDocument(first)
+
+        #expect(controller.currentPresentationMode == .livePreview)
+        #expect(firstSession.presentationMode == .read)
+        #expect(firstSession.pendingEditorMode == .livePreview)
     }
 
     @Test("Observed scrolling never becomes a restore request or invalidates the session")
@@ -793,7 +823,6 @@ struct WindowControllerArchitectureTests {
         )
         let controller = DocumentController()
         controller.restorePresentationState(
-            modes: [path: NotePresentationMode.source.rawValue],
             scrollPositions: [path: 0.42],
             vaultID: nil
         )
@@ -801,7 +830,7 @@ struct WindowControllerArchitectureTests {
 
         let session = controller.session(for: target)
         #expect(session.presentationMode == .read)
-        #expect(session.selectedPresentationMode == .source)
+        #expect(session.pendingEditorMode == nil)
         #expect(session.scrollFraction == 0.42)
         controller.clearSelection(forRemovedPaths: [path])
         controller.selectUnavailableDocument(vaultID: vaultID, relativePath: path)

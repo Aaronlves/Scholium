@@ -180,7 +180,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         let editHarness = EditorHarness(
             documentID: "ThreeModeContract.md",
             source: source,
-            initialPresentationCSS: scenario.presentationCSS
+            initialPresentationCSS: scenario.presentationCSS,
+            // CodeMirror virtualizes against its initial viewport. Start the
+            // geometry baseline at its full comparison size so every fixed
+            // catalog probe is mounted before measurement.
+            initialWindowSize: NSSize(width: scenario.width, height: 4_800),
+            fixedLayoutSize: NSSize(width: scenario.width, height: 4_800)
         )
         defer { editHarness.close() }
         try await editHarness.waitUntilReady()
@@ -189,7 +194,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         editHarness.session.revealSourceRange(fromUTF16: anchor, toUTF16: anchor)
         try await editHarness.waitUntilSelection(head: anchor)
         _ = try await editHarness.presentationSnapshots(for: [scenario])
-        editHarness.resize(width: scenario.width, height: 4_800)
         let editSnapshot = try await waitForGeometrySnapshot(
             surface: "Inactive Edit",
             rootSelector: ".cm-content",

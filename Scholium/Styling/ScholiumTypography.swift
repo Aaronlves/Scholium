@@ -54,54 +54,14 @@ enum ScholiumFontRegistry {
     }
 }
 
-/// The document typography contract shared by SwiftUI and the AppKit-backed
-/// Markdown reader/editor.
+/// Shared native typography helpers for source, code, diff, and revision
+/// surfaces. Review/Edit document typography is owned by
+/// `DocumentAppearanceSettings` and transported to WebKit from that contract.
 enum ScholiumTypography {
-    enum HeadingLevel: Int, CaseIterable, Sendable {
-        case h1 = 1
-        case h2
-        case h3
-        case h4
-        case h5
-        case h6
-
-        fileprivate var scale: CGFloat {
-            switch self {
-            case .h1: 1.50
-            case .h2: 1.30
-            case .h3: 1.15
-            case .h4, .h5, .h6: 1.00
-            }
-        }
-    }
-
-    private static let bodyPointSize: CGFloat = 12
     static let exactSourcePointSize: CGFloat = 14
     static let codePointSize: CGFloat = 13
     static let diffPointSize: CGFloat = 13
     static let revisionIdentityPointSize: CGFloat = 11
-
-    static func body(
-        scale: CGFloat = 1,
-        bold: Bool = false,
-        italic: Bool = false
-    ) -> NSFont {
-        readingFont(
-            size: bodyPointSize * scale,
-            bold: bold,
-            italic: italic
-        )
-    }
-
-    static func heading(
-        level: HeadingLevel,
-        scale: CGFloat = 1
-    ) -> NSFont {
-        readingFont(
-            size: bodyPointSize * level.scale * scale,
-            bold: true
-        )
-    }
 
     static func exactSource(
         scale: CGFloat = 1,
@@ -117,24 +77,6 @@ enum ScholiumTypography {
 
     static func code(scale: CGFloat = 1) -> NSFont {
         monospaceFont(size: codePointSize * scale)
-    }
-
-    static func readingFont(
-        size: CGFloat,
-        bold: Bool = false,
-        italic: Bool = false
-    ) -> NSFont {
-        let name: String
-        switch (bold, italic) {
-        case (false, false): name = "Alegreya-Regular"
-        case (false, true): name = "Alegreya-Italic"
-        case (true, false): name = "Alegreya-Bold"
-        case (true, true): name = "Alegreya-BoldItalic"
-        }
-        return NSFont(name: name, size: size) ?? NSFont.systemFont(
-            ofSize: size,
-            weight: bold ? .bold : .regular
-        )
     }
 
     static func monospaceFont(
@@ -247,6 +189,10 @@ enum ScholiumInterfaceTypography {
     /// The LocationPicker is the primary title of its stable Library header.
     /// It uses the macOS default interface size without acquiring a bezel.
     static let libraryLocation = Font.system(size: 13, weight: .semibold)
+    /// The Library ScopeIndex is compact operational navigation. Selection
+    /// changes weight without borrowing Inspector typography or geometry.
+    static let libraryScope = Font.system(size: 12, weight: .regular)
+    static let libraryScopeSelected = Font.system(size: 12, weight: .semibold)
 
     /// Inspector chrome follows the compact type scale frozen in the HTML
     /// study. Selection changes weight, not size, so switching modes does not
@@ -263,6 +209,10 @@ enum ScholiumInterfaceTypography {
     static let apparatusBody = Font.system(size: 11, weight: .regular)
     static let apparatusMetadata = Font.system(size: 10, weight: .regular)
     static let apparatusActionTitle = Font.system(size: 12, weight: .semibold)
+    /// Connect is operational interface language, even when its rows name
+    /// research Notes. It deliberately does not use the editorial serif role.
+    static let apparatusConnectionHeading = Font.system(size: 11, weight: .semibold)
+    static let apparatusConnectionContent = Font.system(size: 12, weight: .regular)
     static let apparatusResearchContent = ScholiumTypography.swiftUIReadingFont(
         size: 12,
         relativeTo: .body

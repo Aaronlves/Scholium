@@ -39,10 +39,11 @@ Canonical design system in brief:
   color establish hierarchy before rules, containers, or elevation.
 - Native macOS controls own geometry, focus, selection, menus, sheets, and
   transient presentation. Scholium adds no parallel window or control skin.
-- Inspector uses one ModeIndex, section/fact/reading grammar, relationship
-  clusters, Action rows, and local state views; ordinary rows and sections are
-  borderless by default. Library's canonical target uses one ScopeIndex,
-  LocationPicker, and Source List under §18.3.
+- Inspector uses one ModeIndex, section/fact/reading grammar, a native local
+  Connection Direction Control, relationship clusters, Action rows, and local
+  state views; ordinary rows and sections are borderless by default. Library's
+  canonical target uses one ScopeIndex, LocationPicker, and Source List under
+  §18.3.
 - Interface copy follows §19.6; cross-functional state presentation follows
   §19.9; and every component carries the applicable keyboard, accessibility,
   localization, appearance, and recovery requirements from §20.
@@ -109,8 +110,8 @@ visual Variable.
 
 - System sans is interface structure: navigation names, chrome, menus,
   controls, Settings, alerts, section headings, field labels, action names,
-  dates, and compact scanning cues. The fixed **Scholium** Alegreya wordmark
-  remains the identity exception.
+  dates, compact scanning cues, and every Connect relationship heading and Note
+  row. The fixed **Scholium** Alegreya wordmark remains the identity exception.
 - Library Folder and unselected Note titles use the same 12pt Regular system
   role; only the selected Note uses Semibold. The compact Document-toolbar
   identity uses the 13pt system body role with secondary ink.
@@ -122,6 +123,8 @@ visual Variable.
   Appearance. Its interface labels and headings use the quieter semantic text
   roles; its 12pt content values and explanations may use Alegreya, but small
   text still meets §20 contrast and mixed-script legibility requirements.
+  Connect remains a flat operational scan surface and therefore uses Sans for
+  its complete visible language even when a row names a research Note.
 - **Victor Mono** is for Source, code, exact excerpts, anchored review content,
   revision identities, paths, stable identifiers, and diffs.
 - The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
@@ -207,12 +210,12 @@ radius, shadow, border, gradient, or paper scales.
   Note, selected-Note, and Attention-alert roles; the toolbar exposes the
   compact-identity role.
   These roles may resolve to a shared point
-  size but leaf views do not recreate their weights or sizes. Document roles:
-  Body,
-  `heading(level:)`, Exact Source, Code, Diff, Revision Identity.
-- Document Rhythm exposes one machine-local Line width input with the default,
-  range, unit, and shared-mode ownership in §18.4. It creates no second
-  built-in measure path.
+  size but leaf views do not recreate their weights or sizes. Document Body
+  and heading roles are owned by `DocumentAppearanceSettings`; native helpers
+  cover Exact Source, Code, Diff, and Revision Identity only.
+- Document Appearance exposes one machine-local Line width input with the
+  default, range, unit, and shared-mode ownership in §18.4. Document Rhythm
+  adds no second built-in typography or measure path.
 - The Color family exposes only the two approved Accent and Paper inputs.
   Semantic roles are resolver outputs, not additional Variables; components
   consume those roles without owning a palette value.
@@ -276,9 +279,18 @@ radius, shadow, border, gradient, or paper scales.
   independently own the Inspector's **18pt** selected-mode underline,
   **78pt** minimum fact
   label column, **14pt** fact-column gap, **204pt** horizontal FactGrid
-  threshold, and **44pt** Action-row rhythm. These names may reuse a general
-  value only when the purpose is genuinely the same; Inspector-specific rhythm
-  is not expressed by borrowing a peripheral or Library metric.
+  threshold, and **44pt** Action-row rhythm. Connect uses a four-level
+  Inspector cadence rather than copying the Library: **16pt** separates its
+  direction control, freshness line, and complete role groups; **8pt** leads
+  from a nonempty role heading to its first relationship cluster; **12pt**
+  separates relationship clusters; and Note rows use a **28pt** minimum rhythm
+  with **4pt** between each relationship heading and its rows. Its native
+  direction control is centered on the Inspector content axis and grows only
+  to a **240pt** maximum before narrower Inspectors compress it. Absent
+  freshness, empty groups, and the scroll anchor add no hidden spacing. These
+  names may reuse a general value only when the purpose is genuinely the same;
+  Inspector-specific rhythm is not expressed by borrowing a peripheral or
+  Library metric.
 - The one-time **320pt** first-reveal request is a native-container initial
   condition outside the grid. It is not a design Variable, persisted setting,
   minimum, maximum, or continuously enforced preference.
@@ -388,8 +400,9 @@ the required meaning.
 | Component | Scholium task and presentation contract | Do not turn it into | Semantic owner |
 | --- | --- | --- | --- |
 | `Sidebar / Document / Apparatus` | Keep the Document primary while navigation and document-adjacent evidence remain distinct opaque planes. | A card stack, floating inspector, or decorative dashboard. | §18.2 |
-| `ScopeIndex / ModeIndex` | Select a Library Scope or Document mode through one editorial index underline and native focus/selection. | A filled segmented band or a second navigation state. | §§18.3, 18.5 |
+| `ScopeIndex / ModeIndex` | Select a Library Scope or mode through one editorial underline and native focus/selection. | A filled segmented band or a second navigation state. | §§18.3, 18.5 |
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
+| `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §§12, 18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
 | `Attention Alert` | Surface only current-Scope unresolved attention with exact count or complete unavailable text and Retry. | A permanent global badge, pulse, or diagnostic owner. | §14, §18.3 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
@@ -409,8 +422,9 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | --- | --- | --- | --- |
 | `Workspace Shell` | Move among Library, the primary Document, and the document-adjacent Apparatus without losing context. | Native window and split geometry; Document remains visually primary. | §§18.1–18.3 |
 | `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §§5–7, 18.3–18.4 |
-| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One editor session, shared measure, distinct source and rendered typography. | §§5–7, 18.4 |
+| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One editor session, one live current mode rather than a history keyed by Note, tab, or window, shared measure, and distinct source and rendered typography. | §§5–7, 18.4 |
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §§12–14, 18.3 |
+| `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §§12, 18.5 |
 | `Attention` | Notice unresolved work without interruption or invented zero state. | Conditional native presentation with a direct route to the owning context. | §14, §§18.2–18.3 |
 | `Research Action` | Prepare, run, inspect, settle, and optionally write a bounded Agent result. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §§12–14, 18.4–18.6 |

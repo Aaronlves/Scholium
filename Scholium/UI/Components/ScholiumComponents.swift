@@ -165,17 +165,20 @@ private struct SidebarAttentionAlertButtonStyle: ButtonStyle {
 /// component owns only the common raised hover/press feedback.
 struct ScholiumQuietRowButtonStyle: ButtonStyle {
     let isHovering: Bool
+    let isFocused: Bool
     let minimumHeight: CGFloat
     let horizontalInset: CGFloat
     let verticalInset: CGFloat
 
     init(
         isHovering: Bool,
+        isFocused: Bool = false,
         minimumHeight: CGFloat,
         horizontalInset: CGFloat = ScholiumGrid.Spacing.inlineControlGap,
         verticalInset: CGFloat
     ) {
         self.isHovering = isHovering
+        self.isFocused = isFocused
         self.minimumHeight = minimumHeight
         self.horizontalInset = horizontalInset
         self.verticalInset = verticalInset
@@ -192,7 +195,7 @@ struct ScholiumQuietRowButtonStyle: ButtonStyle {
             )
             .contentShape(Rectangle())
             .background(
-                isHovering || configuration.isPressed
+                isHovering || isFocused || configuration.isPressed
                     ? ScholiumColorRole.raisedSurfaceBackground.color
                     : Color.clear,
                 in: RoundedRectangle(
@@ -257,6 +260,108 @@ struct ScholiumLibraryLocationPicker: View {
         case .trash:
             ScholiumL10n.dynamicString("Trash")
         }
+    }
+}
+
+/// The production Analysis / Topics / Works Library index. It owns visual
+/// selection, hover, keyboard traversal, and RTL adaptation; Discovery remains
+/// the sole owner of the selected Workspace vault.
+struct ScholiumScopeIndex: View {
+    @Environment(\.layoutDirection) private var layoutDirection
+    @FocusState private var focusedSlot: WorkspaceVaultSlot?
+
+    let selectedSlot: WorkspaceVaultSlot?
+    let select: (WorkspaceVaultSlot) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(WorkspaceVaultSlot.allCases) { slot in
+                ScholiumScopeIndexButton(
+                    slot: slot,
+                    isSelected: selectedSlot == slot,
+                    focusedSlot: $focusedSlot,
+                    select: { selectSlot(slot) },
+                    move: { moveFocus(from: slot, direction: $0) }
+                )
+                .frame(minWidth: 0, maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Triptych Scope")
+    }
+
+    private func selectSlot(_ slot: WorkspaceVaultSlot) {
+        guard selectedSlot != slot else { return }
+        select(slot)
+    }
+
+    private func moveFocus(
+        from slot: WorkspaceVaultSlot,
+        direction: MoveCommandDirection
+    ) {
+        let slots = WorkspaceVaultSlot.allCases
+        guard let index = slots.firstIndex(of: slot) else { return }
+        let visualStep: Int
+        switch direction {
+        case .left:
+            visualStep = layoutDirection == .leftToRight ? -1 : 1
+        case .right:
+            visualStep = layoutDirection == .leftToRight ? 1 : -1
+        default:
+            return
+        }
+        let nextIndex = (index + visualStep + slots.count) % slots.count
+        let nextSlot = slots[nextIndex]
+        select(nextSlot)
+        focusedSlot = nextSlot
+    }
+}
+
+private struct ScholiumScopeIndexButton: View {
+    @State private var isHovering = false
+
+    let slot: WorkspaceVaultSlot
+    let isSelected: Bool
+    let focusedSlot: FocusState<WorkspaceVaultSlot?>.Binding
+    let select: () -> Void
+    let move: (MoveCommandDirection) -> Void
+
+    var body: some View {
+        Button(action: select) {
+            Text(ScholiumL10n.dynamicString(slot.displayName))
+                .font(
+                    isSelected
+                        ? ScholiumInterfaceTypography.libraryScopeSelected
+                        : ScholiumInterfaceTypography.libraryScope
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable()
+        .focused(focusedSlot, equals: slot)
+        .foregroundStyle(
+            isSelected || isHovering
+                ? ScholiumColorRole.primaryText.color
+                : ScholiumColorRole.secondaryText.color
+        )
+        .overlay(alignment: .bottom) {
+            ScholiumEditorialIndexUnderline(
+                isSelected: isSelected,
+                isHovering: isHovering,
+                width: ScholiumMetrics.Library.scopeIndicatorWidth,
+                height: ScholiumMetrics.Library.scopeIndicatorHeight
+            )
+        }
+        .onHover { isHovering = $0 }
+        .onMoveCommand(perform: move)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("scholium.vault.\(slot.rawValue)")
     }
 }
 

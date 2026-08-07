@@ -51,7 +51,6 @@ struct SidebarContext {
 struct SidebarView: View {
     @ObservedObject private var controller: DiscoveryController
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.locale) private var locale
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     let context: SidebarContext
@@ -102,7 +101,10 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             brandHeader
-            scopeIndex
+            ScholiumScopeIndex(
+                selectedSlot: context.currentWorkspaceSlot,
+                select: context.selectWorkspaceVault
+            )
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
                 .padding(.top, ScholiumMetrics.Library.scopeTopSpacing)
             Group {
@@ -185,60 +187,6 @@ struct SidebarView: View {
         .padding(.horizontal, ScholiumMetrics.Library.contentInset)
         .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var scopeIndex: some View {
-        HStack(spacing: 0) {
-            ForEach(WorkspaceVaultSlot.allCases) { slot in
-                Button {
-                    guard !isCurrent(slot) else { return }
-                    context.selectWorkspaceVault(slot)
-                } label: {
-                    Text(ScholiumL10n.dynamicString(slot.displayName))
-                        .font(.system(size: 12, weight: isCurrent(slot) ? .semibold : .regular))
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
-                        .overlay(alignment: .bottom) {
-                            ScholiumEditorialIndexUnderline(
-                                isSelected: isCurrent(slot),
-                                width: ScholiumMetrics.Library.scopeIndicatorWidth,
-                                height: ScholiumMetrics.Library.scopeIndicatorHeight
-                            )
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isCurrent(slot) ? .isSelected : [])
-                .accessibilityIdentifier("scholium.vault.\(slot.rawValue)")
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Triptych Scope")
-        .onKeyPress(.leftArrow) {
-            moveScope(readingDirectionDelta: -1)
-            return .handled
-        }
-        .onKeyPress(.rightArrow) {
-            moveScope(readingDirectionDelta: 1)
-            return .handled
-        }
-    }
-
-    private func isCurrent(_ slot: WorkspaceVaultSlot) -> Bool {
-        context.currentWorkspaceSlot == slot
-    }
-
-    private func moveScope(readingDirectionDelta delta: Int) {
-        guard let current = context.currentWorkspaceSlot,
-              let index = WorkspaceVaultSlot.allCases.firstIndex(of: current) else { return }
-        let visualDelta = layoutDirection == .rightToLeft ? -delta : delta
-        let target = min(
-            max(index + visualDelta, WorkspaceVaultSlot.allCases.startIndex),
-            WorkspaceVaultSlot.allCases.index(before: WorkspaceVaultSlot.allCases.endIndex)
-        )
-        guard target != index else { return }
-        context.selectWorkspaceVault(WorkspaceVaultSlot.allCases[target])
     }
 
     // MARK: Location and source region

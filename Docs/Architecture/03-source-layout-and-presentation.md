@@ -194,6 +194,15 @@ never reconstruct the retained Document host. `ResearchOverviewPresentation`
 contains at most one normalized Zotero navigation key for the current Analysis;
 the view neither derives nor displays protected machine data.
 
+`ConnectionsInspectorView` owns one nonpersistent `ConnectionDirection`,
+defaulting each new presentation to Outgoing. Its native segmented `Picker`
+projects the same immutable direct graph into Incoming or Outgoing rows;
+Neutral and Incompatible edges enter both projections with their original
+source occurrence. Relationship subheadings and Note rows use system Sans,
+existing secondary and muted text roles, and one flat scan hierarchy rather
+than the retired glyph-only geometry rail. Direction changes retain major-group
+disclosure and return the sole Connect scroll owner to its beginning.
+
 The public Action panel uses one typed `researchAction` sheet route carrying
 only a stable Target reference, Action ID, and presentation ID. The router owns
 sheet exclusivity; `ResearchActionController` owns transient Profile-field

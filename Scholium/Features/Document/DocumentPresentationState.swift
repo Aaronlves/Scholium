@@ -49,17 +49,17 @@ enum MarkdownEditorMode: String, Codable, Hashable, Sendable {
 }
 
 /// One atomic value owns Document presentation intent, active editing state,
-/// retained editor configuration, and editor-surface allocation. Restored
-/// preference is deliberately distinct from an active mode: a session can be
-/// awaiting restoration to Source without claiming that Source is visible or
-/// writable.
+/// retained editor configuration, and editor-surface allocation. A pending
+/// editor intent is deliberately distinct from an active mode: the live
+/// Document presentation may prepare a selected session for Source without
+/// claiming that Source is already visible or writable.
 struct DocumentPresentationState: Equatable, Sendable {
     enum Phase: Equatable, Sendable {
-        case review(restoration: MarkdownEditorMode?)
+        case review(editorIntent: MarkdownEditorMode?)
         case editing(MarkdownEditorMode)
     }
 
-    private(set) var phase: Phase = .review(restoration: nil)
+    private(set) var phase: Phase = .review(editorIntent: nil)
     private(set) var retainedEditorMode: MarkdownEditorMode = .livePreview
     private(set) var retainsEditorSurface = false
 
@@ -70,32 +70,23 @@ struct DocumentPresentationState: Equatable, Sendable {
         }
     }
 
-    var selectedMode: NotePresentationMode {
-        switch phase {
-        case .review(let restoration):
-            restoration?.presentationMode ?? .read
-        case .editing(let mode):
-            mode.presentationMode
-        }
-    }
-
     var activeEditorMode: MarkdownEditorMode? {
         guard case .editing(let mode) = phase else { return nil }
         return mode
     }
 
-    var restorationMode: MarkdownEditorMode? {
-        guard case .review(let restoration) = phase else { return nil }
-        return restoration
+    var pendingEditorMode: MarkdownEditorMode? {
+        guard case .review(let editorIntent) = phase else { return nil }
+        return editorIntent
     }
 
     var isEditing: Bool { activeEditorMode != nil }
 
-    mutating func restore(_ mode: NotePresentationMode) {
+    mutating func prepare(_ mode: NotePresentationMode) {
         guard !isEditing else { return }
         let editorMode = mode.editorMode
         if let editorMode { retainedEditorMode = editorMode }
-        phase = .review(restoration: editorMode)
+        phase = .review(editorIntent: editorMode)
     }
 
     mutating func beginEditing(_ mode: MarkdownEditorMode) {
@@ -111,11 +102,11 @@ struct DocumentPresentationState: Equatable, Sendable {
     }
 
     mutating func finishEditing() {
-        phase = .review(restoration: nil)
+        phase = .review(editorIntent: nil)
     }
 
     mutating func reset() {
-        phase = .review(restoration: nil)
+        phase = .review(editorIntent: nil)
         retainedEditorMode = .livePreview
     }
 }

@@ -27,6 +27,14 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   empty facts, long values, unavailable Actions, and 200% readability. The
   ModeIndex remains one logical horizontal group; a FactGrid stays horizontal
   or stacks as one whole; Action error and recovery text remains complete.
+- Connect exposes one named **Link Direction** segmented control whose visible
+  **Incoming Links** and **Outgoing Links** segments expose the current selected
+  value through native keyboard and VoiceOver behavior. Changing direction
+  keeps focus on the control, returns the Connect scroll owner to its beginning,
+  and announces an empty selected direction without hiding the other segment.
+  Related and Incompatible rows remain available in both directions and state
+  accessibly that their relation is undirected rather than implying two authored
+  edges.
 - Overview exposes the complete Needs Attention summary as one button with the
   current-Note count and scope, while the About heading exposes the
   **Edit Properties** action without absorbing selectable values into the

@@ -1387,10 +1387,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         var expectedParagraphGap: String {
-            String(
+            let body = DocumentAppearanceSettings.defaultSettings.body
+            return String(
                 format: "%.6fpx",
                 locale: Locale(identifier: "en_US_POSIX"),
-                Double(ScholiumDocumentRhythm.paragraphGapCSSPixels) * configuration.textScale
+                body.paragraphSpacingEm
+                    * body.fontSizePoints
+                    * (96 / 72)
+                    * configuration.textScale
             )
         }
     }

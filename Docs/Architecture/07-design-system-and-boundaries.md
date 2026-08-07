@@ -45,9 +45,11 @@ opacity. Native menus, popovers, sheets, panels, alerts, and windows retain
 their system-owned elevation and are never double-shadowed.
 
 `ScholiumLibraryLocationPicker` owns the borderless native Location menu and
-its single indicator without owning Location state. ScopeIndex and ModeIndex
-pass their independent dimensions to `ScholiumEditorialIndexUnderline`, which
-owns only the shared semantic color and visibility recipe. The Debug Editorial
+its single indicator without owning Location state. `ScholiumScopeIndex` owns
+Library Scope typography, hover, focus, keyboard traversal, and RTL adaptation
+without owning the selected vault. ScopeIndex and ModeIndex pass their
+independent dimensions to `ScholiumEditorialIndexUnderline`, which owns only
+the shared semantic color and visibility recipe. The Debug Editorial
 Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
@@ -93,18 +95,19 @@ mirror exists.
   minimum;
 - `ScholiumMetrics.Document` names the explicit CSS-pixel top inset and
   per-window text-scale range; and
-- `ScholiumDocumentRhythm`, the unit-explicit
-  `ScholiumDocumentPresentationConfiguration`, and `ScholiumWebDesignTokens`
-  supply one responsive `rem`/CSS-pixel typography and minimum-inset contract
-  to Read, Live Preview, and Source. `DocumentAppearanceSettings` owns one
-  normalized **48–96ch** line-width value with a **72ch** default; generated
-  presentation CSS exports it as `--scholium-document-line-width` together
-  with an internal derived half-width length so the supported WebKit runtime
-  does not depend on CSS division. Read/Live resolve it against Body type and
-  Source against retained exact-source type. The shared CSS centers that
-  measure subject to the mode-specific minimum inline inset, while dynamic
-  presentation updates reuse the existing CodeMirror remeasure path rather
-  than reconstructing editor state.
+- `DocumentAppearanceSettings.defaultSettings` is the sole built-in owner of
+  Review/Edit Body, heading, Callout, and line-width values. The generated
+  `ScholiumWebDesignTokens` transport derives those values rather than keeping
+  a second typography table. `ScholiumDocumentRhythm` retains only
+  renderer-specific Source and layout values; the unit-explicit
+  `ScholiumDocumentPresentationConfiguration` supplies scale and minimum
+  insets without overriding Appearance semantics. The normalized **48–96ch**
+  line width has a **72ch** default; generated CSS exports it as
+  `--scholium-document-line-width` together with an internal derived half-width
+  length so the supported WebKit runtime does not depend on CSS division.
+  Read/Live resolve it against Body type and Source against retained
+  exact-source type. Dynamic presentation updates reuse the existing
+  CodeMirror remeasure path rather than reconstructing editor state.
 
 `ScholiumMotion` exposes purpose-named animations and returns no animation
 when Reduce Motion is active. It does not install a global animation policy.

@@ -3039,6 +3039,7 @@ final class WindowModel: ObservableObject {
 
         guard let editorMode = mode.editorMode else { return }
         session.switchEditorMode(to: editorMode)
+        documentController.rememberPresentationMode(mode)
     }
     #endif
 
@@ -3448,17 +3449,12 @@ final class WindowModel: ObservableObject {
         researchInspectorVisible = visible
     }
 
-    func presentationMode(for path: String) -> NotePresentationMode {
-        documentController.presentationMode(for: path, vaultID: currentDocumentVaultID)
+    var currentPresentationMode: NotePresentationMode {
+        documentController.currentPresentationMode
     }
 
-    func rememberPresentationMode(_ mode: NotePresentationMode, for path: String) {
-        documentController.rememberPresentationMode(
-            mode,
-            for: path,
-            vaultID: currentDocumentVaultID
-        )
-        documentPresentationDidChange.send()
+    func rememberPresentationMode(_ mode: NotePresentationMode) {
+        documentController.rememberPresentationMode(mode)
     }
 
     func scrollPosition(for path: String) -> Double {
@@ -3559,7 +3555,6 @@ final class WindowModel: ObservableObject {
                 ?? ScholiumMetrics.Document.defaultTextScale
         )
         documentController.restorePresentationState(
-            modes: restoredPresentation.documentModes,
             scrollPositions: restoredPresentation.scrollPositions,
             vaultID: restoredDocumentVaultID
         )
@@ -3629,7 +3624,6 @@ final class WindowModel: ObservableObject {
             triptychID: workspaceAssignment?.id,
             vaultID: browsedVaultID,
             selectedDocument: selectedDocument,
-            documentModes: documentPresentation.modes,
             scrollPositions: documentPresentation.scrollPositions,
             libraryVisible: sidebarVisible,
             inspectorMode: researchInspectorMode.rawValue,
@@ -5486,13 +5480,6 @@ final class WindowModel: ObservableObject {
                 vaultName: projection.vault.name,
                 vaultRole: projection.vault.role
             )
-            if projection.note.lifecycle != .active {
-                documentController.rememberPresentationMode(
-                    .read,
-                    for: projection.note.id.relativePath,
-                    vaultID: vaultID
-                )
-            }
             return nil
         }
 

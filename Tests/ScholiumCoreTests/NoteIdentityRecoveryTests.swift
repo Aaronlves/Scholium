@@ -38,7 +38,6 @@ struct NoteIdentityRecoveryTests {
                 vaultID: fixture.worksID,
                 relativePath: "Old.md"
             ),
-            documentModes: ["Old.md": "read"],
             scrollPositions: ["Old.md": 42]
         ))
         try FileManager.default.createDirectory(

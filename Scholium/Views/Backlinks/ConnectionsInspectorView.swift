@@ -38,7 +38,39 @@ struct RelationshipInspectorContext {
     let openReference: (VaultNoteReference, Int?) -> Void
 }
 
-// MARK: - Combined Connections apparatus
+// MARK: - Connections apparatus
+
+enum ConnectionDirection: String, CaseIterable, Identifiable {
+    case incoming
+    case outgoing
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .incoming: "Incoming Links"
+        case .outgoing: "Outgoing Links"
+        }
+    }
+
+    var emptyAnnouncement: String {
+        switch self {
+        case .incoming: "No Incoming Links"
+        case .outgoing: "No Outgoing Links"
+        }
+    }
+
+    func includes(
+        currentIsSource: Bool,
+        vectorKind: VectorLinkKind?
+    ) -> Bool {
+        if vectorKind.isUndirectedConnection { return true }
+        return switch self {
+        case .incoming: !currentIsSource
+        case .outgoing: currentIsSource
+        }
+    }
+}
 
 private enum ConnectionPeerGroup: Int, CaseIterable, Hashable {
     case analyses
@@ -72,14 +104,19 @@ private enum ConnectionPeerGroup: Int, CaseIterable, Hashable {
     }
 }
 
-private struct CombinedConnectionsProjection {
+private struct ConnectionsProjection {
     let currentRole: VaultRole
     let groups: [ConnectionPeerGroup: [InspectorRelationshipItem]]
+
+    var totalCount: Int {
+        groups.values.reduce(0) { $0 + $1.count }
+    }
 
     static func make(
         graph: GraphSnapshot?,
         catalog: WorkspaceCatalogSnapshot?,
-        current: VaultQualifiedNoteID?
+        current: VaultQualifiedNoteID?,
+        direction: ConnectionDirection
     ) -> Self {
         let notesByID = Dictionary(uniqueKeysWithValues: (catalog?.notes ?? []).map {
             (VaultQualifiedNoteID(
@@ -101,12 +138,10 @@ private struct CombinedConnectionsProjection {
         ) {
             let peer = peerID.flatMap { notesByID[$0] }
             let group = ConnectionPeerGroup(role: peer?.reference.vaultRole ?? currentRole)
-            let presentation = edge.destination == nil
-                ? ScholiumConnectionPresentation.neutral
-                : ScholiumConnectionPresentation(
-                    vectorKind: edge.occurrence.vectorKind,
-                    currentIsSource: currentIsSource
-                )
+            let presentation = ScholiumConnectionPresentation(
+                vectorKind: edge.occurrence.vectorKind,
+                currentIsSource: currentIsSource
+            )
             groups[group, default: []].append(InspectorRelationshipItem(
                 edge: edge,
                 peerID: peerID,
@@ -116,11 +151,20 @@ private struct CombinedConnectionsProjection {
             ))
         }
 
-        for edge in graph.outgoing[current] ?? [] {
-            append(edge: edge, peerID: edge.destination?.note, currentIsSource: true)
+        let candidates = (graph.outgoing[current] ?? []).map {
+            (edge: $0, peerID: $0.destination?.note, currentIsSource: true)
+        } + (graph.incoming[current] ?? []).map {
+            (edge: $0, peerID: Optional($0.source), currentIsSource: false)
         }
-        for edge in graph.incoming[current] ?? [] {
-            append(edge: edge, peerID: edge.source, currentIsSource: false)
+        for candidate in candidates where direction.includes(
+            currentIsSource: candidate.currentIsSource,
+            vectorKind: candidate.edge.occurrence.vectorKind
+        ) {
+            append(
+                edge: candidate.edge,
+                peerID: candidate.peerID,
+                currentIsSource: candidate.currentIsSource
+            )
         }
 
         for group in ConnectionPeerGroup.allCases {
@@ -141,6 +185,15 @@ private struct CombinedConnectionsProjection {
     }
 }
 
+private extension Optional where Wrapped == VectorLinkKind {
+    var isUndirectedConnection: Bool {
+        switch self {
+        case .none, .some(.neutral), .some(.incompatible): true
+        case .some(.supports), .some(.opposes): false
+        }
+    }
+}
+
 private struct InspectorRelationshipCluster: Identifiable {
     let presentation: ScholiumConnectionPresentation
     let items: [InspectorRelationshipItem]
@@ -148,48 +201,79 @@ private struct InspectorRelationshipCluster: Identifiable {
     var id: ScholiumConnectionPresentation { presentation }
 }
 
-private let connectionScrollCoordinateSpace = "scholium.connect.scroll"
+private let connectionScrollTopID = "scholium.connect.top"
 
 /// One scrollable Connections page. Its major groups describe the other note's
-/// Triptych role. Each relationship cluster owns one quiet symbol; individual
-/// rows remain text-first navigation targets.
+/// Triptych role. One native local control selects the visible direction;
+/// individual rows remain text-first navigation targets.
 struct ConnectionsInspectorView: View {
     let context: RelationshipInspectorContext
 
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @State private var expandedGroups = Set(ConnectionPeerGroup.allCases)
+    @State private var direction: ConnectionDirection = .outgoing
 
-    private var projection: CombinedConnectionsProjection {
-        CombinedConnectionsProjection.make(
+    private var projection: ConnectionsProjection {
+        ConnectionsProjection.make(
             graph: context.graph,
             catalog: context.catalog,
-            current: context.current
+            current: context.current,
+            direction: direction
         )
     }
 
     var body: some View {
-        ScrollView(.vertical) {
-            LazyVStack(
-                alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionSpacing,
-                pinnedViews: [.sectionHeaders]
-            ) {
-                ResearchProjectionFreshnessView(
-                    freshness: context.freshness,
-                    retry: context.retryRefresh
-                )
-                ForEach(ConnectionPeerGroup.allCases, id: \.self) { group in
-                    connectionGroup(group, items: projection.groups[group] ?? [])
+        ScrollViewReader { scrollProxy in
+            ScrollView(.vertical) {
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.Apparatus.sectionSpacing,
+                    pinnedViews: [.sectionHeaders]
+                ) {
+                    if context.freshness.isActionable {
+                        ResearchProjectionFreshnessView(
+                            freshness: context.freshness,
+                            retry: context.retryRefresh
+                        )
+                    }
+
+                    Picker("Link Direction", selection: $direction) {
+                        ForEach(ConnectionDirection.allCases) { candidate in
+                            Text(ScholiumL10n.dynamicString(candidate.title))
+                                .tag(candidate)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(
+                        maxWidth: ScholiumMetrics.Apparatus
+                            .connectionDirectionControlMaximumWidth
+                    )
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityLabel("Link Direction")
+                    .accessibilityIdentifier("scholium.connectionDirection")
+
+                    ForEach(ConnectionPeerGroup.allCases, id: \.self) { group in
+                        connectionGroup(group, items: projection.groups[group] ?? [])
+                    }
+                }
+                .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
+                .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
+                .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .id(connectionScrollTopID)
+            }
+            .scrollContentBackground(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .onChange(of: direction) { _, selectedDirection in
+                scrollProxy.scrollTo(connectionScrollTopID, anchor: .top)
+                if projection.totalCount == 0 {
+                    AccessibilityNotification.Announcement(
+                        ScholiumL10n.dynamicString(selectedDirection.emptyAnnouncement)
+                    ).post()
                 }
             }
-            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-            .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
-            .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
-        .scrollContentBackground(.hidden)
-        .coordinateSpace(name: connectionScrollCoordinateSpace)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private func connectionGroup(
@@ -198,7 +282,7 @@ struct ConnectionsInspectorView: View {
     ) -> some View {
         let isExpanded = expandedGroups.contains(group)
         return Section {
-            if isExpanded {
+            if isExpanded && !items.isEmpty {
                 LazyVStack(
                     alignment: .leading,
                     spacing: ScholiumMetrics.Apparatus.relationClusterSpacing
@@ -210,7 +294,10 @@ struct ConnectionsInspectorView: View {
                         )
                     }
                 }
-                .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
+                .padding(
+                    .top,
+                    ScholiumMetrics.Apparatus.connectionGroupContentSpacing
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } header: {
@@ -282,54 +369,61 @@ private struct ConnectionRelationshipCluster: View {
     let openReference: (VaultNoteReference, Int?) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(cluster.items) { item in
-                CombinedConnectionRow(
-                    item: item,
-                    openReference: openReference
-                )
-            }
-        }
-        .padding(
-            .leading,
-            ScholiumMetrics.Apparatus.relationGlyphColumnWidth
-                + ScholiumMetrics.Apparatus.relationGlyphToTextSpacing
-        )
-        .overlay(alignment: .topLeading) {
-            GeometryReader { geometry in
-                let frame = geometry.frame(in: .named(connectionScrollCoordinateSpace))
-                let desiredOffset = max(
-                    0,
-                    ScholiumMetrics.Apparatus.relationPinnedGlyphTop - frame.minY
-                )
-                let maximumOffset = max(
-                    0,
-                    geometry.size.height
-                        - ScholiumMetrics.Apparatus.relationRowMinimumHeight
-                )
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            relationshipHeading
 
-                Image(systemName: cluster.presentation.systemSymbol.systemName)
-                    .font(.system(
-                        size: ScholiumMetrics.Apparatus.relationGlyphSize,
-                        weight: .regular
-                    ))
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
-                    .frame(
-                        width: ScholiumMetrics.Apparatus.relationGlyphSize,
-                        height: ScholiumMetrics.Apparatus.relationGlyphSize
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(cluster.items) { item in
+                    CombinedConnectionRow(
+                        item: item,
+                        openReference: openReference
                     )
-                    .frame(
-                        width: ScholiumMetrics.Apparatus.relationGlyphColumnWidth,
-                        height: ScholiumMetrics.Apparatus.relationRowMinimumHeight
-                    )
-                    .scholiumSurface(.apparatus)
-                    .offset(y: min(desiredOffset, maximumOffset))
+                }
             }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+            .padding(
+                .leading,
+                ScholiumMetrics.Apparatus.relationGlyphColumnWidth
+                    + ScholiumMetrics.Apparatus.relationGlyphToTextSpacing
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var relationshipHeading: some View {
+        HStack(spacing: ScholiumMetrics.Apparatus.relationGlyphToTextSpacing) {
+            Image(systemName: cluster.presentation.systemSymbol.systemName)
+                .font(.system(
+                    size: ScholiumMetrics.Apparatus.relationGlyphSize,
+                    weight: .regular
+                ))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(ScholiumColorRole.mutedText.color)
+                .frame(width: ScholiumMetrics.Apparatus.relationGlyphColumnWidth)
+                .accessibilityHidden(true)
+
+            Text(cluster.presentation.title)
+                .font(ScholiumInterfaceTypography.apparatusConnectionHeading)
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+
+            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+
+            Text(cluster.items.count.formatted())
+                .font(
+                    ScholiumInterfaceTypography.apparatusMetadata
+                        .monospacedDigit()
+                )
+                .foregroundStyle(ScholiumColorRole.mutedText.color)
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget,
+            alignment: .leading
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(cluster.presentation.title), \(cluster.items.count.formatted())"
+        )
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -338,6 +432,7 @@ private struct CombinedConnectionRow: View {
     let openReference: (VaultNoteReference, Int?) -> Void
 
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     private var title: String {
         item.displayTitle
@@ -371,6 +466,11 @@ private struct CombinedConnectionRow: View {
         }
         .help(item.section.title)
         .accessibilityLabel("\(item.section.title): \(title)")
+        .accessibilityHint(
+            item.section.isUndirected
+                ? Text("This relation is undirected and appears in both link directions.")
+                : Text("")
+        )
     }
 
     private var relationButton: some View {
@@ -379,18 +479,21 @@ private struct CombinedConnectionRow: View {
         }
         .buttonStyle(ScholiumQuietRowButtonStyle(
             isHovering: isHovering,
+            isFocused: isFocused,
             minimumHeight: ScholiumMetrics.Apparatus.relationRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.relationRowVerticalInset
         ))
+        .focusable()
+        .focused($isFocused)
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
         .onHover { isHovering = $0 }
     }
 
     private var relationLabel: some View {
         Text(title)
-            .font(ScholiumInterfaceTypography.apparatusResearchContent)
+            .font(ScholiumInterfaceTypography.apparatusConnectionContent)
             .foregroundStyle(
-                isHovering
+                isHovering || isFocused
                     ? ScholiumColorRole.primaryText.color
                     : ScholiumColorRole.secondaryText.color
             )

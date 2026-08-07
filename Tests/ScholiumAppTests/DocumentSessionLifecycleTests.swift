@@ -15,18 +15,16 @@ struct DocumentSessionLifecycleTests {
             publications.append($0)
         }
 
-        session.restorePresentationMode(.source)
+        session.preparePresentationMode(.source)
         #expect(session.presentationMode == .read)
-        #expect(session.selectedPresentationMode == .source)
-        #expect(session.restorationEditorMode == .source)
+        #expect(session.pendingEditorMode == .source)
         #expect(!session.isEditing)
         #expect(!session.retainsEditorSurface)
 
         session.beginEditing(in: .source)
         #expect(session.presentationMode == .source)
-        #expect(session.selectedPresentationMode == .source)
         #expect(session.activeEditorMode == .source)
-        #expect(session.restorationEditorMode == nil)
+        #expect(session.pendingEditorMode == nil)
         #expect(session.isEditing)
         #expect(session.retainsEditorSurface)
 
@@ -37,7 +35,7 @@ struct DocumentSessionLifecycleTests {
 
         session.finishEditing()
         #expect(session.presentationMode == .read)
-        #expect(session.selectedPresentationMode == .read)
+        #expect(session.pendingEditorMode == nil)
         #expect(!session.isEditing)
         #expect(session.retainsEditorSurface)
         #expect(session.retainedEditorMode == .livePreview)
@@ -52,7 +50,7 @@ struct DocumentSessionLifecycleTests {
         let first = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
         let second = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
         let firstSession = store.session(for: first)
-        firstSession.restorePresentationMode(.source)
+        firstSession.preparePresentationMode(.source)
 
         _ = store.reconcileLeases(openTargets: [first], foregroundTarget: first)
         _ = store.reconcileLeases(openTargets: [second], foregroundTarget: second)
@@ -195,7 +193,7 @@ struct DocumentSessionLifecycleTests {
             )
             controller.selectDocument(.workspace(descriptor))
             let session = controller.session(for: key)
-            session.restorePresentationMode(.source)
+            session.preparePresentationMode(.source)
             session.scrollFraction = Double(index) / 100
             controller.reconcileSessionLeases(
                 leasedDocuments: [.workspace(descriptor)],
@@ -231,7 +229,7 @@ struct DocumentSessionLifecycleTests {
         let original = descriptor(path: "Before.md")
         controller.selectDocument(.workspace(original))
         let first = controller.session(for: key)
-        first.restorePresentationMode(.source)
+        first.preparePresentationMode(.source)
         first.scrollFraction = 0.6
         controller.reconcileSessionLeases(
             leasedDocuments: [.workspace(original)],
@@ -250,7 +248,7 @@ struct DocumentSessionLifecycleTests {
 
         #expect(reopened !== first)
         #expect(reopened.presentationMode == .read)
-        #expect(reopened.selectedPresentationMode == .source)
+        #expect(reopened.pendingEditorMode == nil)
         #expect(reopened.scrollFraction == 0.6)
         #expect(reopened.editingSource.isEmpty)
     }

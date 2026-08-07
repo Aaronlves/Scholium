@@ -27,7 +27,8 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 
 ## Library and navigation
 
-- The Library presents a fixed Brand header, quiet Scope index, current-Scope
+- The Library presents a fixed Brand header, one `ScholiumScopeIndex` with
+  shared Sans typography, hover, focus, keyboard, and RTL behavior, current-Scope
   Attention alert when needed, Location header, and one native scrolling source
   hierarchy. Library, Set Aside, and Trash share the hierarchy and state
   presentation without mixing their lifecycle meanings.
@@ -66,7 +67,8 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 
 ## Document and editor
 
-- One Document area owns tabs, Heading Outline, Review/Edit/Source mode,
+- One Document area owns tabs, Heading Outline, one live Review/Edit/Source mode
+  carried across Note and tab changes without window-session persistence,
   This Note Search, This Note Records, and Inspector visibility. No selected
   document, empty source, loading, unavailable source, rendering failure,
   conflict, and retained recovery each have a distinct presentation.
@@ -91,10 +93,12 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 - The Inspector has Overview, Connect, and Actions. Overview presents current
   Attention, role-aware About fields, Edit Properties, and Open in Zotero only
   for a keyed Analysis. Empty fields and protected machine keys remain quiet.
-- Connect groups direct and derived relationships by Note role and relation,
-  keeps one shared relation symbol per cluster, preserves major-group counts,
-  and offers a separate named source-anchor action. Sticky headings use the
-  Inspector's existing scroll owner.
+- Connect switches the same direct graph between native Incoming Links and
+  Outgoing Links segments. Neutral and Incompatible relations appear in both
+  with one source anchor. Visible Sans relationship subheadings carry symbol,
+  complete name, and count; quiet Note rows preserve major-group counts and a
+  separate named source-anchor action inside the Inspector's existing scroll
+  owner.
 - Actions presents the closed Platform catalog under Research and Review, with
   Settle under Judgment. Rows invoke the exact current-window route; Action
   availability clears while rechecking instead of retaining stale authority.
@@ -114,9 +118,10 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   role resolver. Navigation, Document, and Inspector/Apparatus surfaces remain
   distinct; Accent and Paper are the only configurable color inputs.
 - Named Appearance configurations provide shared line width, Body and heading
-  typography, and semantic Callout presentation. Advanced CSS operates on
-  managed sanitized copies with validation, Safe Mode, and Disable All
-  Snippets recovery.
+  typography, and semantic Callout presentation. The built-in WebKit values
+  derive from `DocumentAppearanceSettings.defaultSettings`; no parallel Native
+  heading table remains. Advanced CSS operates on managed sanitized copies
+  with validation, Safe Mode, and Disable All Snippets recovery.
 - Semantic typography, grid, boundary, elevation, symbol, and purpose-named
   motion components are shared across workspace, editor, Inspector, and
   Research Records. Increase Contrast strengthens boundaries and removes

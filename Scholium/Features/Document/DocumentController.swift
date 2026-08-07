@@ -73,7 +73,6 @@ extension WindowSelectedDocument {
 }
 
 struct DocumentPresentationSnapshot: Equatable, Sendable {
-    let modes: [String: String]
     let scrollPositions: [String: Double]
 }
 
@@ -135,6 +134,7 @@ final class DocumentController: ObservableObject {
 
     @Published private(set) var selectedDocument: WindowSelectedDocument?
     @Published private(set) var chromeProjection = DocumentChromeProjection.empty
+    @Published private(set) var currentPresentationMode: NotePresentationMode = .read
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
@@ -153,12 +153,10 @@ final class DocumentController: ObservableObject {
     private let readProjectionCache = DocumentReadProjectionCache()
     private let linkCompletionIndex = EditorLinkCompletionIndex()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
-    private var restoredModes: [String: String] = [:]
     private var restoredScrollPositions: [String: Double] = [:]
     private var restoredPresentationVaultID: UUID?
     private struct ClosedPresentationEntry {
         let relativePath: String
-        let mode: NotePresentationMode
         let scrollPosition: ObservedScrollPosition
         var access: UInt64
     }
@@ -540,13 +538,19 @@ final class DocumentController: ObservableObject {
         switch document {
         case .workspace(let descriptor):
             retainedReferences[descriptor.sessionKey] = descriptor.reference
+            let selectedSession = session(for: descriptor.sessionKey)
             hydratePresentation(
-                of: session(for: descriptor.sessionKey),
+                of: selectedSession,
                 target: .workspace(descriptor.sessionKey),
                 path: descriptor.reference.relativePath
             )
+            applyCurrentPresentationMode(
+                to: selectedSession,
+                target: .workspace(descriptor.sessionKey)
+            )
         case .unavailable:
-            _ = session(for: document.editingTarget)
+            let selectedSession = session(for: document.editingTarget)
+            applyCurrentPresentationMode(to: selectedSession, target: document.editingTarget)
         }
         refreshChromeProjection()
     }
@@ -756,25 +760,10 @@ final class DocumentController: ObservableObject {
         }
     }
 
-    func presentationMode(for path: String, vaultID: UUID?) -> NotePresentationMode {
-        presentationSession(for: path, vaultID: vaultID)?.selectedPresentationMode
-            ?? restoredModes[path].flatMap(NotePresentationMode.init(rawValue:))
-            ?? .read
-    }
-
-    func rememberPresentationMode(
-        _ mode: NotePresentationMode,
-        for path: String,
-        vaultID: UUID?
-    ) {
-        if let session = presentationSession(for: path, vaultID: vaultID) {
-            if session.selectedPresentationMode != mode {
-                session.restorePresentationMode(mode)
-            }
-        } else {
-            restoredPresentationVaultID = vaultID
-            restoredModes[path] = mode.rawValue
-        }
+    func rememberPresentationMode(_ mode: NotePresentationMode) {
+        guard currentPresentationMode != mode else { return }
+        currentPresentationMode = mode
+        refreshChromeProjection()
     }
 
     func scrollPosition(for path: String, vaultID: UUID?) -> Double {
@@ -798,11 +787,9 @@ final class DocumentController: ObservableObject {
     }
 
     func restorePresentationState(
-        modes: [String: String],
         scrollPositions: [String: Double],
         vaultID: UUID?
     ) {
-        restoredModes = modes
         restoredScrollPositions = scrollPositions.filter { $0.value.isFinite }
         restoredPresentationVaultID = vaultID
         if let selectedDocument {
@@ -815,29 +802,22 @@ final class DocumentController: ObservableObject {
     }
 
     func presentationSnapshot(vaultID: UUID?) -> DocumentPresentationSnapshot {
-        var modes = restoredPresentationVaultID == vaultID ? restoredModes : [:]
         var scrollPositions = restoredPresentationVaultID == vaultID
             ? restoredScrollPositions
             : [:]
 
         for (key, reference) in retainedReferences where reference.vaultID == vaultID {
             guard let session = sessions.retainedSession(for: .workspace(key)) else { continue }
-            modes[reference.relativePath] = session.selectedPresentationMode.rawValue
             scrollPositions[reference.relativePath] = min(1, max(0, session.scrollFraction))
         }
         for (target, session) in sessions.retainedSessions where target.isFallback {
             let path = relativePath(for: target)
-            modes[path] = session.selectedPresentationMode.rawValue
             scrollPositions[path] = min(1, max(0, session.scrollFraction))
         }
         for (target, entry) in closedPresentations where target.vaultID == vaultID {
-            modes[entry.relativePath] = entry.mode.rawValue
             scrollPositions[entry.relativePath] = min(1, max(0, entry.scrollPosition.fraction))
         }
-        return DocumentPresentationSnapshot(
-            modes: modes,
-            scrollPositions: scrollPositions
-        )
+        return DocumentPresentationSnapshot(scrollPositions: scrollPositions)
     }
 
     func migratePresentationPath(
@@ -846,9 +826,6 @@ final class DocumentController: ObservableObject {
         vaultID: UUID?
     ) {
         if restoredPresentationVaultID == vaultID {
-            if let mode = restoredModes.removeValue(forKey: sourcePath) {
-                restoredModes[destinationPath] = mode
-            }
             if let scroll = restoredScrollPositions.removeValue(forKey: sourcePath) {
                 restoredScrollPositions[destinationPath] = scroll
             }
@@ -870,7 +847,6 @@ final class DocumentController: ObservableObject {
         where target.vaultID == vaultID && entry.relativePath == sourcePath {
             entry = ClosedPresentationEntry(
                 relativePath: destinationPath,
-                mode: entry.mode,
                 scrollPosition: entry.scrollPosition,
                 access: entry.access
             )
@@ -879,9 +855,9 @@ final class DocumentController: ObservableObject {
     }
 
     func resetPresentationState() {
-        restoredModes = [:]
         restoredScrollPositions = [:]
         restoredPresentationVaultID = nil
+        currentPresentationMode = .read
         for session in sessions.retainedSessions.values {
             session.resetPresentation()
             session.resetScrollPosition()
@@ -901,13 +877,13 @@ final class DocumentController: ObservableObject {
         if !retainingSessions {
             sessions.removeAll()
             retainedReferences.removeAll()
-            restoredModes = [:]
             restoredScrollPositions = [:]
             restoredPresentationVaultID = nil
             closedPresentations.removeAll(keepingCapacity: false)
             sessionCancellables.removeAll()
             pendingChromeRefreshes.removeAll()
         }
+        currentPresentationMode = .read
         selectedDocument = nil
         chromeProjection = .empty
         snapshots = [:]
@@ -994,17 +970,43 @@ final class DocumentController: ObservableObject {
         path: String
     ) {
         if let retained = closedPresentations.removeValue(forKey: target) {
-            session.restorePresentationMode(retained.mode)
             session.scrollFraction = retained.scrollPosition.fraction
             session.scrollAnchor = retained.scrollPosition.anchor
-        }
-        if let rawMode = restoredModes.removeValue(forKey: path),
-           let mode = NotePresentationMode(rawValue: rawMode) {
-            session.restorePresentationMode(mode)
         }
         if let restoredScroll = restoredScrollPositions.removeValue(forKey: path),
            restoredScroll.isFinite {
             session.scrollFraction = min(1, max(0, restoredScroll))
+        }
+    }
+
+    /// Applies the one live Document-mode selection to the newly active
+    /// session. Hidden sessions may retain their editor surface and last
+    /// acknowledged configuration, but they do not own a mode history.
+    private func applyCurrentPresentationMode(
+        to session: DocumentSessionModel,
+        target: DocumentEditingTarget
+    ) {
+        switch currentPresentationMode {
+        case .read:
+            if session.isEditing {
+                // Tab changes already flush the departing editor. Never use a
+                // presentation cutover to discard a recovery-bearing session.
+                guard !session.hasUnsavedChanges,
+                      session.conflict == nil,
+                      session.editError == nil,
+                      !session.isSavingEdit,
+                      session.activeSaveTask == nil else { return }
+                finishEditing(session: session, target: target)
+            } else {
+                session.preparePresentationMode(.read)
+            }
+        case .livePreview, .source:
+            guard let editorMode = currentPresentationMode.editorMode else { return }
+            if session.isEditing {
+                session.switchEditorMode(to: editorMode)
+            } else {
+                session.preparePresentationMode(currentPresentationMode)
+            }
         }
     }
 
@@ -1021,7 +1023,6 @@ final class DocumentController: ObservableObject {
             nextClosedPresentationAccess &+= 1
             closedPresentations[presentation.target] = ClosedPresentationEntry(
                 relativePath: relativePath,
-                mode: presentation.mode,
                 scrollPosition: presentation.scrollPosition,
                 access: nextClosedPresentationAccess
             )

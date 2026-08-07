@@ -1067,7 +1067,7 @@ struct NoteContentView: View {
         }
         .onAppear {
             controller.observe(documentSession)
-            restorePresentationModeIfAvailable()
+            applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
             openRequestedDiscussion(state.requestedDiscussionID)
         }
@@ -1077,7 +1077,7 @@ struct NoteContentView: View {
             // intact, then apply the committed mode as soon as editing becomes
             // available instead of leaving the document in the default Read
             // mode for the rest of the session.
-            if available { restorePresentationModeIfAvailable() }
+            if available { applyPreparedPresentationModeIfAvailable() }
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
@@ -1555,11 +1555,11 @@ struct NoteContentView: View {
         actions.rememberPresentationMode(mode)
     }
 
-    private func restorePresentationModeIfAvailable() {
+    private func applyPreparedPresentationModeIfAvailable() {
         guard !isEditing,
-              let restorationMode = documentSession.restorationEditorMode,
+              let preparedMode = documentSession.pendingEditorMode,
               editingIsAvailable else { return }
-        beginEditing(mode: restorationMode)
+        beginEditing(mode: preparedMode)
     }
 
     private func consumePendingPresentationRequest() {

@@ -227,6 +227,12 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
         self.callouts = callouts
     }
 
+    /// The sole source for Scholium's built-in document Appearance. WebKit
+    /// transports and native document adapters derive their initial values
+    /// from this normalized settings object rather than keeping a second
+    /// typography table.
+    public static let defaultSettings = Self()
+
     public static let defaultCallouts: [DocumentCalloutAppearance] = [
         .init(
             role: .orientation,

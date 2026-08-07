@@ -67,7 +67,7 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(presentationSource.contains("enum MarkdownEditorMode"))
-        #expect(presentationSource.contains("case review(restoration: MarkdownEditorMode?)"))
+        #expect(presentationSource.contains("case review(editorIntent: MarkdownEditorMode?)"))
         #expect(presentationSource.contains("case editing(MarkdownEditorMode)"))
 
         let webViewSource = try String(
@@ -838,7 +838,7 @@ struct FrontendArchitectureTests {
         #expect(sidebarSource.contains(".menuIndicator(.hidden)"))
         #expect(treeRowsSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
         #expect(treeRowsSource.contains("ScholiumInterfaceTypography.librarySelectedNoteTitle"))
-        #expect(sidebarSource.contains("ScholiumEditorialIndexUnderline("))
+        #expect(componentsSource.contains("ScholiumEditorialIndexUnderline("))
         #expect(!treeRowsSource.contains("rotationEffect(.degrees(isExpanded"))
         #expect(!treeRowsSource.contains(
             "withAnimation(.easeInOut(duration: 0.16)"
@@ -878,7 +878,7 @@ struct FrontendArchitectureTests {
         let sidebarSections = sidebarSource[
             sidebarBody.lowerBound ..< sidebarSectionsEnd.lowerBound
         ]
-        let scope = try #require(sidebarSections.range(of: "scopeIndex"))
+        let scope = try #require(sidebarSections.range(of: "ScholiumScopeIndex"))
         let attention = try #require(sidebarSections.range(of: "SidebarAttentionAlert("))
         let library = try #require(sidebarSections.range(of: "locationHeader"))
         let sourceRegion = try #require(sidebarSections.range(of: "sourceRegion"))
@@ -1047,23 +1047,20 @@ struct FrontendArchitectureTests {
 
         let brandStart = try #require(sidebarSource.range(of: "private var brandHeader"))
         let brandEnd = try #require(sidebarSource.range(
-            of: "private var scopeIndex",
+            of: "// MARK: Location and source region",
             range: brandStart.upperBound ..< sidebarSource.endIndex
         ))
         let brandHeader = sidebarSource[brandStart.lowerBound ..< brandEnd.lowerBound]
         #expect(brandHeader.contains("Menu {"))
         #expect(!brandHeader.contains("Image(systemName: \"chevron.down\")"))
-        let scopeIndexStart = try #require(sidebarSource.range(of: "private var scopeIndex"))
-        let scopeIndexEnd = try #require(sidebarSource.range(
-            of: "private func isCurrent",
-            range: scopeIndexStart.upperBound ..< sidebarSource.endIndex
-        ))
-        let scopeIndexSource = sidebarSource[
-            scopeIndexStart.lowerBound ..< scopeIndexEnd.lowerBound
-        ]
-        #expect(!scopeIndexSource.contains("attentionCount"))
-        #expect(!scopeIndexSource.contains("contentTransition(.numericText())"))
-        #expect(!scopeIndexSource.contains("accessibilityValue"))
+        #expect(sidebarSource.contains("ScholiumScopeIndex("))
+        #expect(componentsSource.contains("struct ScholiumScopeIndex: View"))
+        #expect(componentsSource.contains("ScholiumInterfaceTypography.libraryScope"))
+        #expect(componentsSource.contains("@FocusState private var focusedSlot"))
+        #expect(componentsSource.contains("@Environment(\\.layoutDirection)"))
+        #expect(componentsSource.contains(".onMoveCommand(perform: move)"))
+        #expect(!sidebarSource.contains("private var scopeIndex"))
+        #expect(!sidebarSource.contains(".font(.system(size: 12"))
     }
 
     @Test("Lifecycle destinations reuse the Library grid with one native Put Back overlay")
@@ -1443,6 +1440,10 @@ struct FrontendArchitectureTests {
                 == ScholiumGrid.Apparatus.sectionGap
         )
         #expect(
+            ScholiumMetrics.Apparatus.connectionDirectionControlMaximumWidth == 240
+        )
+        #expect(ScholiumMetrics.Apparatus.connectionGroupContentSpacing == 8)
+        #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
                 == ScholiumGrid.Apparatus.headingToContentGap
         )
@@ -1461,8 +1462,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.relationGlyphSize == 14)
         #expect(ScholiumMetrics.Apparatus.relationGlyphToTextSpacing == 4)
         #expect(ScholiumMetrics.Apparatus.relationClusterSpacing == 12)
-        #expect(ScholiumMetrics.Apparatus.relationPinnedGlyphTop == 36)
-        #expect(ScholiumMetrics.Apparatus.relationRowMinimumHeight == 36)
+        #expect(ScholiumMetrics.Apparatus.relationRowMinimumHeight == 28)
         #expect(ScholiumMetrics.Apparatus.actionRowMinimumHeight == 44)
 
         #expect(componentsSource.contains("struct ScholiumApparatusSection"))
@@ -1516,7 +1516,7 @@ struct FrontendArchitectureTests {
             "ScholiumMotion.disclosure(reduceMotion: reduceMotion)"
         ))
         #expect(connectionsSource.contains(
-            "ScholiumInterfaceTypography.apparatusResearchContent"
+            "ScholiumInterfaceTypography.apparatusConnectionContent"
         ))
         #expect(actionsSource.contains(
             ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
@@ -1567,8 +1567,25 @@ struct FrontendArchitectureTests {
         #expect(!connectionsSource.contains("ScholiumColorRole.surfaceBackground.color"))
         #expect(connectionsSource.contains("ConnectionRelationshipCluster"))
         #expect(connectionsSource.contains("relationGlyphColumnWidth"))
-        #expect(connectionsSource.contains("relationPinnedGlyphTop"))
-        #expect(connectionsSource.contains("GeometryReader"))
+        #expect(connectionsSource.contains("Picker(\"Link Direction\""))
+        #expect(connectionsSource.contains(".pickerStyle(.segmented)"))
+        #expect(connectionsSource.contains(
+            ".connectionDirectionControlMaximumWidth"
+        ))
+        #expect(connectionsSource.contains(
+            ".frame(maxWidth: .infinity, alignment: .center)"
+        ))
+        #expect(connectionsSource.contains("if context.freshness.isActionable"))
+        #expect(connectionsSource.contains("if isExpanded && !items.isEmpty"))
+        #expect(connectionsSource.contains("connectionGroupContentSpacing"))
+        #expect(connectionsSource.contains(".id(connectionScrollTopID)"))
+        #expect(!connectionsSource.contains("Color.clear"))
+        #expect(connectionsSource.contains("@State private var direction"))
+        #expect(connectionsSource.contains("apparatusConnectionHeading"))
+        #expect(connectionsSource.contains("apparatusConnectionContent"))
+        #expect(!connectionsSource.contains("apparatusResearchContent"))
+        #expect(!connectionsSource.contains("relationPinnedGlyphTop"))
+        #expect(!connectionsSource.contains("GeometryReader"))
         #expect(!connectionsSource.contains("symbolText"))
         #expect(connectionsSource.contains("Open relation source"))
         #expect(!connectionsSource.contains("Image(systemName: \"arrow.up.forward\")"))
@@ -1712,13 +1729,13 @@ struct FrontendArchitectureTests {
         let store = DocumentSessionStore()
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
         let original = store.session(for: key)
-        original.restorePresentationMode(.source)
+        original.preparePresentationMode(.source)
         original.editingSource = "exact markdown bytes\n"
 
         let afterProjectionChange = store.session(for: key)
         #expect(afterProjectionChange === original)
         #expect(afterProjectionChange.presentationMode == .read)
-        #expect(afterProjectionChange.selectedPresentationMode == .source)
+        #expect(afterProjectionChange.pendingEditorMode == .source)
         #expect(afterProjectionChange.editingSource == "exact markdown bytes\n")
 
         let conflict = DocumentConflictSnapshot(
@@ -2284,21 +2301,15 @@ struct FrontendArchitectureTests {
 
     @Test("Document and interface typography expose semantic roles")
     func semanticTypographyContract() {
-        #expect(ScholiumTypography.body().pointSize == 12)
+        let appearance = DocumentAppearanceSettings.defaultSettings
+        #expect(appearance.body.fontSizePoints == 12)
+        #expect(appearance.body.lineHeight == 2)
+        #expect(appearance.headings.title.scale == 2)
+        #expect(appearance.headings.level1.scale == 1.5)
+        #expect(appearance.headings.level2.scale == 1.15)
+        #expect(appearance.headings.lineHeight == 1.8)
         #expect(ScholiumTypography.exactSource().pointSize == 14)
         #expect(ScholiumTypography.code().pointSize == 13)
-
-        let expectedHeadingSizes: [(ScholiumTypography.HeadingLevel, CGFloat)] = [
-            (.h1, 18),
-            (.h2, 15.6),
-            (.h3, 13.8),
-            (.h4, 12),
-            (.h5, 12),
-            (.h6, 12),
-        ]
-        for (level, expectedSize) in expectedHeadingSizes {
-            #expect(abs(ScholiumTypography.heading(level: level).pointSize - expectedSize) < 0.001)
-        }
     }
 
     @Test("Retired Markdown projections cannot regain a production path")
@@ -2538,7 +2549,7 @@ struct FrontendArchitectureTests {
             "calc(50% - var(--scholium-document-half-line-width))"
         ))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
-            "padding-block: var(--scholium-rhythm-heading-before) var(--scholium-rhythm-heading-after)"
+            "padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after)"
         ))
         #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
             "--scholium-rhythm-title-rule-gap: 0.5em"
@@ -3222,9 +3233,29 @@ struct FrontendArchitectureTests {
         #expect(ScholiumDocumentRhythm.contentInsets(for: .livePreview, widthClass: .regular).inline == 32)
         #expect(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline == 40)
         #expect(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline == 20)
-        #expect(ScholiumDocumentRhythm.paragraphGapCSSPixels == 12)
-        #expect(ScholiumDocumentRhythm.headingGapBeforeCSSPixels == 24)
-        #expect(ScholiumDocumentRhythm.headingGapAfterCSSPixels == 8)
+        let defaults = DocumentAppearanceSettings.defaultSettings
+        #expect(ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+            "--scholium-document-h1-size: 200%"
+        ))
+        #expect(ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+            "--scholium-document-h2-size: 150%"
+        ))
+        #expect(ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+            "--scholium-document-h3-size: 115%"
+        ))
+        #expect(ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+            "--scholium-document-h4-size: 115%"
+        ))
+        #expect(ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+            "--scholium-rhythm-heading-line-height: 1.8"
+        ))
+        #expect(ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+            "--scholium-document-heading-weight: 500"
+        ))
+        #expect(ScholiumWebDesignTokens.documentPresentationCSS.contains(
+            "font-weight: var(--scholium-document-heading-weight)"
+        ))
+        #expect(defaults.headings.level2.scale == 1.15)
 
         let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
         let fixedDocumentSyntax = ScholiumWebDesignTokens.fixedDocumentSyntaxCSSDeclarations
@@ -3928,6 +3959,32 @@ struct FrontendArchitectureTests {
             #expect(source.contains("ScholiumConnectionPresentation"))
             #expect(!source.contains("VectorRelationshipSection"))
             #expect(!source.contains("WorkspaceConnectionKind"))
+        }
+    }
+
+    @Test("Connection direction filters only directed relations")
+    func connectionDirectionMembership() {
+        #expect(ConnectionDirection.outgoing.includes(
+            currentIsSource: true,
+            vectorKind: .supports
+        ))
+        #expect(!ConnectionDirection.outgoing.includes(
+            currentIsSource: false,
+            vectorKind: .supports
+        ))
+        #expect(ConnectionDirection.incoming.includes(
+            currentIsSource: false,
+            vectorKind: .opposes
+        ))
+        #expect(!ConnectionDirection.incoming.includes(
+            currentIsSource: true,
+            vectorKind: .opposes
+        ))
+        for direction in ConnectionDirection.allCases {
+            for vectorKind in [nil, .neutral, .incompatible] as [VectorLinkKind?] {
+                #expect(direction.includes(currentIsSource: true, vectorKind: vectorKind))
+                #expect(direction.includes(currentIsSource: false, vectorKind: vectorKind))
+            }
         }
     }
 

@@ -825,7 +825,8 @@ struct AppCompositionRootTests {
                 && reveal.relativePath == "Shared.md"
         }
 
-        firstSession.restorePresentationMode(.livePreview)
+        firstSession.preparePresentationMode(.livePreview)
+        firstWindow!.rememberPresentationMode(.livePreview)
         firstSession.scrollFraction = 0.42
         firstWindow!.requestWorkspaceVault(.topicKnowledge)
         try await waitUntil("the first Library browsed Topics without replacing its document") {
@@ -841,7 +842,8 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.currentDocumentRevisions["Shared.md"] == original.fingerprint)
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
         #expect(firstSession.presentationMode == .read)
-        #expect(firstSession.selectedPresentationMode == .livePreview)
+        #expect(firstSession.pendingEditorMode == .livePreview)
+        #expect(firstWindow!.currentPresentationMode == .livePreview)
         #expect(firstSession.scrollFraction == 0.42)
 
         let visibleReference = try #require(firstWindow!.currentDocumentDescriptor?.reference)

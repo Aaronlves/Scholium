@@ -7,8 +7,14 @@ cross-functional state language belongs to [Scholium Design](../../Design.md#199
 
 ## 18.4 Document modes, context, and Properties
 
-Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Ordinary
-scrolling space clears initial editor content from chrome. Review owns a
+Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Their
+chooser retains exactly one current selection owned by the live Document
+presentation, not a remembered-mode map keyed by Note, Document tab, or
+window. The selection is not written to window-session persistence. A new
+Document presentation starts in Review; changing the selected Note or Document
+tab carries the current live mode instead of restoring a historical mode for
+the destination. Ordinary scrolling space clears initial editor content from
+chrome. Review owns a
 transient Comment bar and its in-place field; Edit owns a separate formatting
 bar; Source owns neither. Each disappears when the selection clears, focus
 leaves its task, or the document mode changes. The Comment field also
@@ -230,7 +236,28 @@ offers Retry where applicable; it never claims reading, truth, or evidence.
 In Overview it follows the About projection and its Edit Properties route; it
 is not promoted to a separate section or card.
 
-Connect begins with three expanded, independently collapsible groups:
+Connect begins with a native macOS two-segment single-choice control labelled
+**Incoming Links** and **Outgoing Links**, immediately after its freshness
+state and before the relationship groups. It is centered on the Inspector
+content axis rather than aligned as a leading list row. This is a local Connect view switch,
+not a ScopeIndex, ModeIndex, Document mode, or Search filter. Every new
+Connect presentation starts at **Outgoing Links**. The live Connect
+presentation owns exactly one current direction selection, not a history keyed
+by window, Note, or prior destination, and writes nothing to window-session
+persistence. Switching direction changes only the visible projection and never
+mutates the graph, source, or Note selection. The control has no Combined or All
+segment. It remains visible when the selected direction is empty so the
+researcher can move directly to the other direction.
+
+Outgoing shows relations authored by the current Note; Incoming shows
+relations authored by another Note toward the current Note. Neutral Related
+and Incompatible relations are undirected and therefore appear in both
+segments, with their same source anchors and an accessible explanation that
+they are shown in both directions. Switching direction retains the three group
+expansion states and returns the scroll position to the beginning of Connect so
+the selected direction's context is immediately visible.
+
+Connect then presents three expanded, independently collapsible groups:
 
 | Target | Groups |
 | --- | --- |
@@ -238,20 +265,30 @@ Connect begins with three expanded, independently collapsible groups:
 | Topic | Related Sources, Neighbor Topics, Related Works |
 | Work | Related Sources, Related Topics, Neighbor Works |
 
-Within a group, links form ordered relationship clusters: Supports, Supports
-This Note, Opposes, Opposes This Note, Incompatible, then neutral Related.
-Counts appear only on the three major group headings. A cluster shows one
-direct monochrome SF Symbol at 14pt in a 24pt leading track with a 4pt gap to
-the shared title axis; individual Note rows repeat neither symbol, relationship
-label, nor count. Supports and Supports This Note use `plus.circle`; Opposes
-and Opposes This Note use `minus.circle`; Incompatible uses `xmark.circle`;
-neutral Related uses `link`. Text owns relationship direction and meaning, so
-inverse forms reuse the same decorative symbol. These symbols share one
-restrained semantic text color and never encode truth, force, or value by hue.
-Titles wrap. Do not open a second panel merely to show a title. Preserve source
-anchors. An empty group retains its heading and `0` without **None**. Connect
-shows the same freshness state before its groups. Stale or failed state keeps
-the last complete graph readable and offers a full-row Retry action.
+Within a group, the selected direction orders relationship clusters as
+applicable: Supports, Supports This Note, Opposes, Opposes This Note,
+Incompatible, then neutral Related. Each major group heading shows its total
+for the selected direction. Each relationship cluster begins with a visible,
+non-card subheading containing one direct monochrome SF Symbol, its complete
+relationship name, and a quiet monospaced cluster count. A long cluster's
+subheading may pin immediately below its parent group heading while it scrolls,
+but it is not a disclosure control and does not own expansion state. Individual
+Note rows repeat neither symbol, relationship label, nor count.
+All visible Connect interface language, including Note-row titles, uses the
+system Sans interface family rather than the editorial Serif. Default headings
+and rows use existing secondary or muted text roles; hover and keyboard focus
+may raise the active row to primary text. Connect adds no local gray or color
+Variable, and every default text role continues to meet the §20 contrast floor.
+
+Supports and Supports This Note use `plus.circle`; Opposes and Opposes This
+Note use `minus.circle`; Incompatible uses `xmark.circle`; neutral Related uses
+`link`. Text owns relationship direction and meaning, so inverse forms reuse the
+same decorative symbol. These symbols share one restrained semantic text color
+and never encode truth, force, or value by hue. Titles wrap. Do not open a
+second panel merely to show a title. Preserve source anchors. An empty group
+retains its heading and `0` without **None**. Connect shows the same freshness
+state before its direction control and groups. Stale or failed state keeps the
+last complete graph readable and offers a full-row Retry action.
 
 Relation rows remain single full-row native buttons with a provisional 36pt
 minimum rhythm, no default separators, and no trailing diagonal-open glyph.
@@ -261,11 +298,14 @@ using the source line when that peer owns the relation occurrence. When the
 distinct source-return route remains applicable, it stays available as an
 explicitly named context and accessibility action without adding a second
 detail panel. Each original group heading is a sticky section header inside
-Connect's sole scroll owner. While one relationship cluster scrolls, its one
-decorative glyph pins immediately below that heading, remains bounded by its
-own cluster, and hands off to the next glyph. Neither heading nor glyph is
-fixed to a window coordinate, copied into a second state owner, or exposed
-twice accessibly.
+Connect's sole scroll owner. A relationship subheading may pin only within its
+parent group and hands off to the next subheading; it is never a glyph-only rail
+fixed to a window coordinate. The symbol is decorative and hidden from
+accessibility, but the visible relationship name and count remain in the
+heading. Each Note row is one primary full-row button whose accessible name
+still states the relationship from the current Note's perspective; a distinct
+source anchor remains a named accessibility action after the visual symbol is
+removed.
 
 Actions has no generic **Actions** section heading. The role-valid defaults in
 Section 8.1 retain their canonical order while appearing in two quiet semantic
@@ -471,6 +511,7 @@ punctuation.
 | Research / Review / Judgment (Actions groups) | 研究 / 审查 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
+| Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
 | Completion / Research Scope / Limitation | 完成度 / 研究范围 / 局限 |
 | Checkpoint / Snapshot | 恢复点 / 快照 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
