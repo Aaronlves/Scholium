@@ -213,7 +213,7 @@ struct TransactionRecoveryView: View {
             }
             if let completionMessage {
                 Label(completionMessage, systemImage: "checkmark.circle")
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.confirmed)
             }
             HStack {
                 if !records.isEmpty || error != nil {
@@ -243,7 +243,7 @@ struct TransactionRecoveryView: View {
             } icon: {
                 Image(systemName: "exclamationmark.triangle")
             }
-            .foregroundStyle(.secondary)
+            .scholiumForeground(.attention)
         }
     }
 

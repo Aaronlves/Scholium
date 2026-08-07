@@ -1891,6 +1891,10 @@ struct ScholiumInkIconControl: View {
 }
 
 enum ScholiumMotion {
+    static func bootstrapStep(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.18)
+    }
+
     static func documentReveal(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.36)
     }

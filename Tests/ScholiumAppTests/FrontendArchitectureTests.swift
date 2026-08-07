@@ -3094,15 +3094,51 @@ struct FrontendArchitectureTests {
 
     @Test("Reduce Motion removes app-defined transitions")
     func reducedMotionRemovesTransitions() {
+        #expect(ScholiumMotion.bootstrapStep(reduceMotion: true) == nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: true) == nil)
         #expect(ScholiumMotion.searchPresentation(reduceMotion: true) == nil)
         #expect(ScholiumMotion.searchExpansion(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
 
+        #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: false) != nil)
         #expect(ScholiumMotion.searchPresentation(reduceMotion: false) != nil)
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
+    }
+
+    @Test("Custom interface glyphs use resolved semantic colors")
+    func customInterfaceGlyphColors() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/WorkspaceSetupView.swift"
+            ),
+            encoding: .utf8
+        )
+        let frontmatterSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+            ),
+            encoding: .utf8
+        )
+        let connectionsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Backlinks/ConnectionsInspectorView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("withAnimation(ScholiumMotion.bootstrapStep"))
+        #expect(source.contains(".scholiumForeground(.accent)"))
+        #expect(!source.contains(".foregroundStyle(.tint)"))
+        #expect(frontmatterSource.contains(".tint(ScholiumColorRole.accent.color)"))
+        #expect(frontmatterSource.contains(".scholiumForeground(.accent)"))
+        #expect(!frontmatterSource.contains("Color.accentColor"))
+        #expect(connectionsSource.contains(".scholiumForeground(.mutedText)"))
     }
 
     @Test("Semantic surfaces, depth, and boundaries adapt without numbered visual scales")

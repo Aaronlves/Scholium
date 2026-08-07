@@ -91,7 +91,7 @@ struct RestoreCheckpointView: View {
             HStack(spacing: 12) {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     .font(.title2)
-                    .foregroundStyle(.tint)
+                    .scholiumForeground(.secondaryText)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Restore from Checkpoint")
                         .font(.title2.weight(.semibold))

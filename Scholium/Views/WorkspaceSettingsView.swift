@@ -304,6 +304,7 @@ private struct PropertiesSettingsView: View {
                                         moveVisibleField(key, to: index - 1)
                                     } label: {
                                         Image(systemName: "chevron.up")
+                                            .scholiumForeground(.secondaryText)
                                     }
                                     .buttonStyle(.borderless)
                                     .disabled(index == 0)
@@ -314,6 +315,7 @@ private struct PropertiesSettingsView: View {
                                         moveVisibleField(key, to: index + 1)
                                     } label: {
                                         Image(systemName: "chevron.down")
+                                            .scholiumForeground(.secondaryText)
                                     }
                                     .buttonStyle(.borderless)
                                     .disabled(index == selectedConfiguration.visibleFields.count - 1)
@@ -324,6 +326,7 @@ private struct PropertiesSettingsView: View {
                                         updateSelectedConfiguration { $0.setVisible(false, field: key) }
                                     } label: {
                                         Image(systemName: "minus.circle")
+                                            .scholiumForeground(.secondaryText)
                                     }
                                     .buttonStyle(.borderless)
                                     .help("Hide \(displayName(for: key))")
@@ -1757,7 +1760,7 @@ struct PortableControlFolderRow: View {
         HStack(spacing: 12) {
             Image(systemName: "folder.badge.gearshape")
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .scholiumForeground(.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
@@ -1816,7 +1819,7 @@ struct WorkspaceFolderRow: View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .scholiumForeground(.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 

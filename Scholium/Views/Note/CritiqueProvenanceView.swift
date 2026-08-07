@@ -156,7 +156,7 @@ struct CritiqueProvenanceView: View {
                     HStack(spacing: 7) {
                         Image(systemName: findingsAreExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.mutedText)
                             .frame(width: 12)
                             .accessibilityHidden(true)
                         Text("Specific Findings")

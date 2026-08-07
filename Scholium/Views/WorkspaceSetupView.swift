@@ -165,7 +165,7 @@ private struct GuidedWorkspaceSetupView: View {
         }
         guard let next = GuidedSetupStep(rawValue: step.rawValue + 1) else { return }
         isMovingForward = true
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+        withAnimation(ScholiumMotion.bootstrapStep(reduceMotion: reduceMotion)) {
             step = next
         }
     }
@@ -173,7 +173,7 @@ private struct GuidedWorkspaceSetupView: View {
     private func moveBack() {
         guard let previous = GuidedSetupStep(rawValue: step.rawValue - 1) else { return }
         isMovingForward = false
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+        withAnimation(ScholiumMotion.bootstrapStep(reduceMotion: reduceMotion)) {
             step = previous
         }
     }
@@ -320,7 +320,7 @@ private struct GuidedSetupWelcomeStep: View {
             Image(systemName: "rectangle.3.group")
                 .font(.largeTitle.weight(.light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.tint)
+                .scholiumForeground(.accent)
                 .accessibilityHidden(true)
             Text("Set Up Scholium")
                 .font(.title2.weight(.semibold))
@@ -347,7 +347,7 @@ private struct GuidedSetupFolderStep: View {
             Image(systemName: symbol)
                 .font(.largeTitle.weight(.light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.tint)
+                .scholiumForeground(.accent)
                 .accessibilityHidden(true)
             VStack(spacing: 5) {
                 Text(title)
@@ -423,7 +423,7 @@ private struct GuidedSetupFinishStep: View {
                     .fixedSize(horizontal: false, vertical: true)
             } icon: {
                 Image(systemName: "lock.shield")
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
             .accessibilityIdentifier("scholium.guidedSetup.permissionDefault")
         }
@@ -442,7 +442,7 @@ private struct GuidedSetupSummaryRow: View {
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: symbol)
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .frame(width: 18)
                 .accessibilityHidden(true)
             Text(title)

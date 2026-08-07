@@ -300,7 +300,14 @@ radius, shadow, border, gradient, or paper scales.
 - Motion is purpose-named, interruptible, and removed under Reduce Motion. No
   duration scale, parallax, animated grain, decorative motion, or repeating
   Attention pulse. Conditional Attention presence remains understandable with
-  motion entirely absent.
+  motion entirely absent. Native controls retain their system feedback; custom
+  controls use an immediate semantic state change for hover, focus, press, and
+  disabled feedback rather than adding geometry animation to frequent actions.
+  Motion is reserved for a named content or structure transition: disclosure,
+  document reveal, search presentation/expansion, transient status, and the
+  bounded Bootstrap step transition. Each such transition has one owner, keeps
+  direction and cancellation coherent, and returns no animation under Reduce
+  Motion. An interactive state must remain fully legible when motion is absent.
 - Document rhythm is renderer-aware and uses the approved default and adaptive
   behavior in §18.4 and §19.2.
 
@@ -331,7 +338,37 @@ The 72ch default and typographic rhythm apply at ordinary, narrow,
 mixed-script, and 100%/200% text presentations. Screenshots and prototype
 coordinates remain evidence only and never define native/CSS unit conversion.
 
-### 19.5 Application icon
+### 19.5 Icons and symbols
+
+#### Interface symbols
+
+Standard actions, navigation, toolbar commands, and relationship marks use the
+direct SF Symbol that names the action or concept. Interface symbols default to
+one restrained monochrome rendering mode and match the optical weight and scale
+of their adjacent interface text. A symbol is decorative only when its visible
+label already carries the meaning; otherwise its control or status has a complete
+accessible name. Scholium owns no parallel action-glyph family.
+
+Icon color is a semantic role, not a local tint:
+
+| Use | Role | Constraint |
+| --- | --- | --- |
+| Passive leading or ordinary command icon | `secondaryText` | The resting icon does not compete with its label. |
+| Hovered, focused, or selected command icon | `primaryText` | State change is also expressed by native focus, selection, label, or surface. |
+| Disclosure, chevron, or auxiliary trailing glyph | `mutedText` | It never carries the only state or navigation meaning. |
+| Active selection mark or bounded primary action | `accent` | Accent is not the default color for every actionable symbol. |
+| Attention, destructive, confirmed, agent-authored, and Connection marks | Their existing semantic role | Text, shape, or accessible state must repeat the meaning; hue never declares truth, value, authority, or correctness. |
+
+Native control tint, disabled rendering, focus indication, and selected-state
+painting remain system-owned where a native control already supplies them. A
+custom interface glyph consumes the resolved `ScholiumColorRole` in both native
+and WebKit surfaces; it does not name `.tint`, `.primary`, `.secondary`, a raw
+system hue, or a second local palette. SF Symbol palette, multicolor, gradient,
+and variable-color rendering are not used to encode Scholium workflow state.
+Hierarchical rendering is limited to bounded Bootstrap concept illustrations
+when the single semantic source color and the accompanying text remain clear.
+
+#### Application icon
 
 The canonical Scholium application icon is the exact researcher-approved
 parchment-and-ink composition: a cuffed hand points right toward one vertical

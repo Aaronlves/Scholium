@@ -99,7 +99,7 @@ struct FrontmatterEditorView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .tint(.accentColor)
+                    .tint(ScholiumColorRole.accent.color)
                     .keyboardShortcut(.return, modifiers: [.command])
                     .disabled(isSaving)
                 }
@@ -514,12 +514,15 @@ struct FrontmatterEditorView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
-                            Color.accentColor.opacity(0.12),
+                            ScholiumColorRole.accent.color.opacity(0.12),
                             in: Capsule()
                         )
                         .overlay(
                             Capsule()
-                                .stroke(Color.accentColor.opacity(0.15), lineWidth: 1)
+                                .stroke(
+                                    ScholiumColorRole.accent.color.opacity(0.15),
+                                    lineWidth: 1
+                                )
                         )
                     }
                 }
@@ -537,7 +540,7 @@ struct FrontmatterEditorView: View {
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(Color.accentColor)
+                        .scholiumForeground(.accent)
                 }
                 .buttonStyle(.plain)
                 .frame(

@@ -367,7 +367,7 @@ struct SpotlightSearchPanelView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .accessibilityHidden(true)
 
             TextField(
@@ -410,7 +410,7 @@ struct SpotlightSearchPanelView: View {
                     searchFocused = true
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 .buttonStyle(.plain)
                 .frame(
@@ -429,6 +429,7 @@ struct SpotlightSearchPanelView: View {
                 context.dismiss()
             } label: {
                 Image(systemName: "xmark")
+                    .scholiumForeground(.secondaryText)
             }
             .buttonStyle(.borderless)
             .frame(
@@ -717,6 +718,7 @@ struct SpotlightSearchPanelView: View {
             }
         } label: {
             Image(systemName: "bookmark")
+                .scholiumForeground(.secondaryText)
         }
         .buttonStyle(.borderless)
         .frame(

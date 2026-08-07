@@ -318,7 +318,7 @@ struct ConnectionsInspectorView: View {
                 leading: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.mutedText)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .animation(
                             ScholiumMotion.disclosure(reduceMotion: reduceMotion),
