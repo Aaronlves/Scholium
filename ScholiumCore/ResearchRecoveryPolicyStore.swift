@@ -103,7 +103,11 @@ package actor ResearchRecoveryPolicyStore {
             fileMode: 0o600,
             maximumByteCount: Self.maximumPolicyByteCount
         )
-        lock = try AdvisoryFileLock(directory: storage, fileName: Self.lockName)
+        do {
+            lock = try AdvisoryFileLock(directory: storage, fileName: Self.lockName)
+        } catch {
+            throw ResearchRecoveryPolicyError.unsafeStore
+        }
     }
 
     init(storageURL: URL, triptychID: UUID) throws {
@@ -115,7 +119,11 @@ package actor ResearchRecoveryPolicyStore {
             fileMode: 0o600,
             maximumByteCount: Self.maximumPolicyByteCount
         )
-        lock = try AdvisoryFileLock(directory: storage, fileName: Self.lockName)
+        do {
+            lock = try AdvisoryFileLock(directory: storage, fileName: Self.lockName)
+        } catch {
+            throw ResearchRecoveryPolicyError.unsafeStore
+        }
     }
 
     package func snapshot() throws -> ResearchRecoveryPolicySnapshot {

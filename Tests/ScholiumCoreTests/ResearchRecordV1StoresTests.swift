@@ -5,52 +5,28 @@ import Testing
 
 @Suite("Portable Research Record storage v1/schema 5 and Local Execution schema 8")
 struct ResearchRecordV1StoresTests {
-    @Test("A post-rename failure leaves exact committed bytes observable")
-    func secureReplacementReportsPostRenameUncertainty() throws {
-        enum InjectedFailure: Error { case afterRename }
+    @Test("Portable Record maps a primitive lock failure to its store error")
+    func portableStoreMapsPrimitiveLockFailure() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let directory = SecureRecordDirectory(
-            trustedRootURL: fixture.root,
-            components: ["post-rename-fault"],
-            directoryMode: 0o700,
-            fileMode: 0o600,
-            maximumByteCount: 1_024,
-            postCommitFault: { _ in throw InjectedFailure.afterRename }
+        let lockURL = fixture.triptychSupport.appendingPathComponent(
+            "portable-records-v1.lock",
+            isDirectory: false
         )
-        try directory.ensureDirectories([])
-        let expected = Data("exact committed state".utf8)
+        try FileManager.default.createSymbolicLink(
+            at: lockURL,
+            withDestinationURL: fixture.root.appendingPathComponent("substituted-lock")
+        )
 
         do {
-            _ = try directory.replace(
-                expected,
-                directory: nil,
-                fileName: "state.json"
-            )
-            Issue.record("Expected typed post-rename commit uncertainty.")
-        } catch let error as SecureRecordDirectoryError {
-            guard case .replacementCommitUncertain = error else {
-                Issue.record("Unexpected replacement error: \(error)")
+            _ = try fixture.portableStore()
+            Issue.record("Expected the portable Record owner to reject the substituted lock.")
+        } catch let error as ResearchRecordStoreV1Error {
+            guard case .unsafeStore = error else {
+                Issue.record("Unexpected portable store error: \(error)")
                 return
             }
         }
-        #expect(try directory.read(directory: nil, fileName: "state.json") == expected)
-
-        do {
-            _ = try directory.replace(
-                Data(repeating: 0, count: 2_048),
-                directory: nil,
-                fileName: "oversize.json"
-            )
-            Issue.record("Expected typed pre-rename refusal.")
-        } catch let error as SecureRecordDirectoryError {
-            guard case .replacementNotCommitted = error else {
-                Issue.record("Unexpected replacement error: \(error)")
-                return
-            }
-        }
-        #expect(!FileManager.default.fileExists(atPath: fixture.root
-            .appendingPathComponent("post-rename-fault/oversize.json").path))
     }
 
     @Test("Portable Settle exposes typed commit uncertainty after rename")

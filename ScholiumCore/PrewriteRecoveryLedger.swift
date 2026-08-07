@@ -125,10 +125,16 @@ final class PrewriteRecoveryLedger {
             maximumByteCount: .max
         )
         mutationByteAccess = VaultDescriptorAccess(rootURL: mutationTransactionsURL)
-        settledPinLock = try AdvisoryFileLock(
-            directory: settledPinStorage,
-            fileName: ".settled-pins.lock"
-        )
+        do {
+            settledPinLock = try AdvisoryFileLock(
+                directory: settledPinStorage,
+                fileName: ".settled-pins.lock"
+            )
+        } catch {
+            throw VaultRepositoryError.recoveryLedgerUnavailable(
+                "The settled snapshot coordination lock is unavailable: \(error.localizedDescription)"
+            )
+        }
         databaseURL = rootURL.appendingPathComponent("history.sqlite")
         legacyVersionsURL = storageURL.appendingPathComponent("versions", isDirectory: true)
         migrationMarkerURL = rootURL.appendingPathComponent("v1-migration-complete.json")

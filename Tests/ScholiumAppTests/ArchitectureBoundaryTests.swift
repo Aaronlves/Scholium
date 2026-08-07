@@ -22,6 +22,45 @@ struct ArchitectureBoundaryTests {
         #expect(compact.contains(#"name:"ScholiumCLI",dependencies:["ScholiumContracts","ScholiumApplication"]"#))
     }
 
+    @Test("Shared machine-local storage has one Core primitive owner")
+    func secureRecordDirectoryOwnershipBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let coreRoot = repositoryRoot.appendingPathComponent("ScholiumCore")
+        let records = try String(
+            contentsOf: coreRoot.appendingPathComponent("ResearchRecordV1Stores.swift"),
+            encoding: .utf8
+        )
+        let primitive = try String(
+            contentsOf: coreRoot.appendingPathComponent("SecureRecordDirectory.swift"),
+            encoding: .utf8
+        )
+
+        for definition in [
+            "final class AdvisoryFileLock",
+            "enum SecureRecordDirectoryError",
+            "struct SecureRecordDirectory",
+        ] {
+            #expect(!records.contains(definition))
+            #expect(primitive.contains(definition))
+        }
+        #expect(!primitive.contains("ResearchRecordStoreV1Error"))
+
+        for consumer in [
+            "ResearchRecordV1Stores.swift",
+            "ResearchRecoveryPolicyStore.swift",
+            "PrewriteRecoveryLedger.swift",
+        ] {
+            let source = try String(
+                contentsOf: coreRoot.appendingPathComponent(consumer),
+                encoding: .utf8
+            )
+            #expect(source.contains("SecureRecordDirectory"))
+        }
+    }
+
     @Test("Core and Application imports remain confined to composition roots")
     func importBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

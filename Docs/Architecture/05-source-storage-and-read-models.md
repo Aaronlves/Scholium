@@ -112,6 +112,15 @@ journal; a still-canonical expected revision retains the distinct candidate
 bytes and publishes a health diagnostic instead of deleting the only
 structured copy of interrupted editor work.
 
+`SecureRecordDirectory` is the Core-only descriptor-relative primitive for
+bounded machine-local JSON state. It owns no-follow containment, byte limits,
+atomic replacement, readback, staging/deletion recovery, and the companion
+`AdvisoryFileLock` for cooperating-process serialization. Portable Records,
+local executions, recovery policy, and the prewrite ledger each retain their
+own schema, path, transaction, recovery, and error semantics, and translate
+primitive failures at that owner boundary. The primitive neither interprets a
+Record nor becomes a writable research-source authority.
+
 ## Shared read models and metadata
 
 `WorkspaceNoteSnapshot` is the shared immutable read model for a workspace

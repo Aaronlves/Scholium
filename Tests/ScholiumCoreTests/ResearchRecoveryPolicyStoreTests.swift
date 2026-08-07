@@ -65,6 +65,25 @@ struct ResearchRecoveryPolicyStoreTests {
         }
     }
 
+    @Test("A primitive lock failure maps to the recovery-policy owner error")
+    func primitiveLockFailureIsMapped() throws {
+        let root = fixtureRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storage = root.appendingPathComponent("policy", isDirectory: true)
+        try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: storage.appendingPathComponent(".research-recovery-policy-v1.lock"),
+            withDestinationURL: root.appendingPathComponent("substituted-lock")
+        )
+
+        do {
+            _ = try ResearchRecoveryPolicyStore(storageURL: storage, triptychID: UUID())
+            Issue.record("Expected the Recovery policy owner to reject the substituted lock.")
+        } catch let error as ResearchRecoveryPolicyError {
+            #expect(error == .unsafeStore)
+        }
+    }
+
     @Test("Approved removals survive interruption and clear only after idempotent completion")
     func pendingRemovalJournal() async throws {
         let root = fixtureRoot()
