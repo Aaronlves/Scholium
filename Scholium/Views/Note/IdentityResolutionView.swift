@@ -23,7 +23,7 @@ struct IdentityResolutionView: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "questionmark.folder")
                     .font(.title2)
-                    .foregroundStyle(.orange)
+                    .scholiumForeground(.attention)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Confirm Note Identity")
@@ -68,7 +68,7 @@ struct IdentityResolutionView: View {
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .scholiumForeground(.destructive)
                     .accessibilityLabel("Identity recovery failed. \(errorMessage)")
             }
 

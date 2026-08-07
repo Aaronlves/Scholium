@@ -182,11 +182,11 @@ struct FrontmatterEditorView: View {
 
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                        .scholiumForeground(.destructive)
                         .font(.caption)
                     Text("\(fieldErrors.count) validation error\(fieldErrors.count == 1 ? "" : "s")")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .scholiumForeground(.destructive)
                     Spacer()
                 }
                 .padding(.horizontal, 20)
@@ -274,7 +274,7 @@ struct FrontmatterEditorView: View {
                         systemImage: "exclamationmark.triangle"
                     )
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .scholiumForeground(.attention)
                     .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -323,7 +323,7 @@ struct FrontmatterEditorView: View {
                 if let error = fieldErrors["research_unit"] {
                     Label(error, systemImage: "exclamationmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .scholiumForeground(.destructive)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -379,7 +379,7 @@ struct FrontmatterEditorView: View {
                     Text(error)
                         .font(.caption2)
                 }
-                .foregroundStyle(.red)
+                .scholiumForeground(.destructive)
             }
         }
     }
@@ -411,7 +411,12 @@ struct FrontmatterEditorView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(hasError ? Color.red : Color.secondary.opacity(0.2), lineWidth: 1)
+                        .stroke(
+                            hasError
+                                ? ScholiumColorRole.destructive.color
+                                : Color.secondary.opacity(0.2),
+                            lineWidth: 1
+                        )
                 )
                 .disabled(field.isReadOnly)
 

@@ -710,7 +710,7 @@ struct ZoteroSettingsView: View {
             Section("Read-Only Zotero Access") {
                 LabeledContent("Local API") {
                     Label(statusTitle, systemImage: statusSymbol)
-                        .foregroundStyle(statusColor)
+                        .scholiumForeground(statusColorRole)
                 }
                 LabeledContent("Last Connected") {
                     Text(info.lastSuccessfulConnection?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
@@ -735,11 +735,14 @@ struct ZoteroSettingsView: View {
                 if info.status == .apiDisabled {
                     Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .scholiumForeground(.attention)
                 }
             }
             if let errorMessage {
-                Section { Label(errorMessage, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                Section {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .scholiumForeground(.destructive)
+                }
             }
         }
         .formStyle(.grouped)
@@ -760,8 +763,8 @@ struct ZoteroSettingsView: View {
         info.status == .available ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
     }
 
-    private var statusColor: Color {
-        info.status == .available ? .green : .orange
+    private var statusColorRole: ScholiumColorRole {
+        info.status == .available ? .confirmed : .attention
     }
 
     private func refresh() {
@@ -978,14 +981,14 @@ private struct AppearanceSettingsView: View {
             if let reason = store.safeModeReason {
                 Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
                     .font(.callout)
-                    .foregroundStyle(.orange)
+                    .scholiumForeground(.attention)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
             }
             if let storeError = store.storeError {
                 Label(storeError, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
-                    .foregroundStyle(.red)
+                    .scholiumForeground(.destructive)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .accessibilityIdentifier("settings.css.store-error")
@@ -993,7 +996,7 @@ private struct AppearanceSettingsView: View {
             if let importError {
                 Label(importError, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
-                    .foregroundStyle(.red)
+                    .scholiumForeground(.destructive)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
             }
@@ -1477,7 +1480,7 @@ private struct CSSSnippetRow: View {
                     if let error {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .scholiumForeground(.destructive)
                             .lineLimit(2)
                     } else {
                         Text(snippet.isEnabled ? "Enabled" : "Disabled")
@@ -1605,7 +1608,7 @@ private struct WorkspacePathEditor: View {
                 Section {
                     if haveCommonParent {
                         Label("These folders share one parent.", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                            .scholiumForeground(.confirmed)
                     } else if allFoldersSelected {
                         Label("These folders are independent. Keeping them under one parent can make the workspace easier to move and back up.", systemImage: "info.circle")
                             .foregroundStyle(.secondary)
@@ -1617,14 +1620,14 @@ private struct WorkspacePathEditor: View {
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
-                    .foregroundStyle(.red)
+                    .scholiumForeground(.destructive)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 8)
                     .accessibilityLabel("Workspace error: \(errorMessage)")
             } else if let recoveryMessage = settingsModel.workspaceRecoveryMessage {
                 Label(recoveryMessage, systemImage: "folder.badge.questionmark")
                     .font(.callout)
-                    .foregroundStyle(.orange)
+                    .scholiumForeground(.attention)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 8)
                     .accessibilityLabel("Workspace access: \(recoveryMessage)")

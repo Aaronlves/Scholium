@@ -19,7 +19,7 @@ struct CreateCheckpointView: View {
                 .onSubmit { create() }
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .scholiumForeground(.destructive)
             }
             HStack {
                 Button("Cancel") { dismiss() }
@@ -125,7 +125,7 @@ struct RestoreCheckpointView: View {
                     if let listingError {
                         Label(listingError, systemImage: "exclamationmark.triangle")
                             .font(.callout)
-                            .foregroundStyle(.orange)
+                            .scholiumForeground(.attention)
                             .textSelection(.enabled)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -217,7 +217,7 @@ struct RestoreCheckpointView: View {
                                         Color.clear.frame(width: 16, height: 16)
                                     }
                                     Image(systemName: kind.symbol)
-                                        .foregroundStyle(kind.color)
+                                        .scholiumForeground(kind.colorRole)
                                         .frame(width: 18)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(change.currentPath ?? change.checkpointPath ?? "Unknown file")
@@ -384,13 +384,10 @@ private extension TriptychCheckpointChangeKind {
         }
     }
 
-    var color: Color {
+    var colorRole: ScholiumColorRole {
         switch self {
-        case .created: .blue
-        case .changed: .orange
-        case .moved: .purple
-        case .deleted: .red
-        case .unchanged: .secondary
+        case .created, .changed, .moved, .deleted: .attention
+        case .unchanged: .secondaryText
         }
     }
 }

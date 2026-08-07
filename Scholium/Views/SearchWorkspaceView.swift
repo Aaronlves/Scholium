@@ -536,7 +536,7 @@ struct SpotlightSearchPanelView: View {
         let message = localizedDiagnostic(diagnostic)
         return Label(message, systemImage: "exclamationmark.circle")
             .font(.caption)
-            .foregroundStyle(.red)
+            .scholiumForeground(.destructive)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
             .padding(.bottom, 7)

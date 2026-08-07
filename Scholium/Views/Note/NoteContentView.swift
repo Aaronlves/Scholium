@@ -1818,7 +1818,7 @@ private struct ConflictComparisonSheet: View {
                             ) {
                                 Text(marker(for: line.kind))
                                     .font(ScholiumTypography.swiftUIDiff(bold: true))
-                                    .foregroundStyle(color(for: line.kind))
+                                    .scholiumForeground(colorRole(for: line.kind))
                                     .frame(width: DiffLayout.markerWidth)
                                     .accessibilityLabel(label(for: line.kind))
                                 Text(line.text.isEmpty ? " " : line.text)
@@ -1833,7 +1833,10 @@ private struct ConflictComparisonSheet: View {
                             .padding(.horizontal, DiffLayout.horizontalPadding)
                             .padding(.vertical, 2)
                             .frame(width: max(viewport.size.width, 1), alignment: .leading)
-                            .background(color(for: line.kind).opacity(line.kind == .unchanged ? 0 : 0.08))
+                            .background(
+                                colorRole(for: line.kind).color
+                                    .opacity(line.kind == .unchanged ? 0 : 0.08)
+                            )
                             .accessibilityElement(children: .contain)
                             .accessibilityIdentifier(
                                 "scholium.conflict.row.\(identifier(for: line.kind)).\(index)"
@@ -1917,11 +1920,10 @@ private struct ConflictComparisonSheet: View {
         )
     }
 
-    private func color(for kind: DocumentConflictLineKind) -> Color {
+    private func colorRole(for kind: DocumentConflictLineKind) -> ScholiumColorRole {
         switch kind {
-        case .unchanged: .secondary
-        case .editorOnly: .red
-        case .diskOnly: .green
+        case .unchanged: .secondaryText
+        case .editorOnly, .diskOnly: .attention
         }
     }
 

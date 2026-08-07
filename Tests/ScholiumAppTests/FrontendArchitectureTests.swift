@@ -249,6 +249,63 @@ struct FrontendArchitectureTests {
         #expect(!searchSource.contains("ScholiumRecoveryNotice("))
     }
 
+    @Test("Feature views use resolved functional color roles")
+    func featureViewsUseResolvedFunctionalColorRoles() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let viewsRoot = repository.appendingPathComponent("Scholium/Views")
+        let enumerator = try #require(FileManager.default.enumerator(
+            at: viewsRoot,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ))
+        var viewSources: [String: String] = [:]
+        while let file = enumerator.nextObject() as? URL {
+            guard file.pathExtension == "swift" else { continue }
+            let relativePath = file.path.replacingOccurrences(
+                of: repository.path + "/",
+                with: ""
+            )
+            viewSources[relativePath] = try String(contentsOf: file, encoding: .utf8)
+        }
+        #expect(!viewSources.isEmpty)
+
+        let rawFunctionalColor = try NSRegularExpression(
+            pattern: #"(?:Color\.(?:red|orange|yellow|green|mint|teal|cyan|blue|indigo|purple|pink|brown)|NSColor\.system(?:Red|Orange|Yellow|Green|Mint|Teal|Cyan|Blue|Indigo|Purple|Pink|Brown)|(?<![A-Za-z0-9_])\.(?:red|orange|yellow|green|mint|teal|cyan|blue|indigo|purple|pink|brown|system(?:Red|Orange|Yellow|Green|Mint|Teal|Cyan|Blue|Indigo|Purple|Pink|Brown))\b)"#
+        )
+        for (path, source) in viewSources.sorted(by: { $0.key < $1.key }) {
+            let match = rawFunctionalColor.firstMatch(
+                in: source,
+                range: NSRange(source.startIndex ..< source.endIndex, in: source)
+            )
+            #expect(match == nil, "\(path) contains a raw functional color")
+        }
+
+        let checkpoint = try #require(viewSources["Scholium/Views/CheckpointView.swift"])
+        #expect(checkpoint.contains("case .created, .changed, .moved, .deleted: .attention"))
+
+        let critique = try #require(
+            viewSources["Scholium/Views/Note/CritiqueProvenanceView.swift"]
+        )
+        #expect(critique.contains("metadata.isAgentAttributed ? .agentAuthorship : .attention"))
+
+        let conflict = try #require(viewSources["Scholium/Views/Note/NoteContentView.swift"])
+        #expect(conflict.contains("case .editorOnly, .diskOnly: .attention"))
+
+        let settings = try #require(viewSources["Scholium/Views/WorkspaceSettingsView.swift"])
+        #expect(settings.contains("info.status == .available ? .confirmed : .attention"))
+
+        let frontmatter = try #require(
+            viewSources["Scholium/Views/Frontmatter/FrontmatterEditorView.swift"]
+        )
+        #expect(frontmatter.contains("ScholiumColorRole.destructive.color"))
+
+        let search = try #require(viewSources["Scholium/Views/SearchWorkspaceView.swift"])
+        #expect(search.contains(".scholiumForeground(.destructive)"))
+    }
+
     @Test("A window presents at most one sheet route")
     func presentationRouteExclusivity() {
         let router = WindowPresentationRouter()

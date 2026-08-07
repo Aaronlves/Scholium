@@ -471,7 +471,7 @@ private struct GuidedSetupStatus: View {
                     : "exclamationmark.triangle.fill"
             )
             .font(.caption)
-            .foregroundStyle(errorMessage == nil ? .orange : .red)
+            .scholiumForeground(errorMessage == nil ? .attention : .destructive)
             .lineLimit(2)
             .padding(.horizontal, 24)
             .padding(.bottom, 8)

@@ -169,7 +169,7 @@ struct TransactionRecoveryView: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
                 .font(.title2)
-                .foregroundStyle(.orange)
+                .scholiumForeground(.attention)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Recovery")
@@ -208,7 +208,7 @@ struct TransactionRecoveryView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let operationError {
                 Label("Recovery could not be completed. \(operationError)", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .scholiumForeground(.destructive)
                     .textSelection(.enabled)
             }
             if let completionMessage {
@@ -575,7 +575,7 @@ private struct RecoveryFileRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Label(stateName, systemImage: stateSymbol)
                     .font(.headline)
-                    .foregroundStyle(stateColor)
+                    .scholiumForeground(stateColorRole)
                 Spacer()
                 Text(roleName)
                     .font(.caption)
@@ -639,10 +639,10 @@ private struct RecoveryFileRow: View {
         }
     }
 
-    private var stateColor: Color {
+    private var stateColorRole: ScholiumColorRole {
         switch file.state {
-        case .restored: .secondary
-        case .intendedBytesRemain, .externallyChanged, .missing, .unreadable: .orange
+        case .restored: .secondaryText
+        case .intendedBytesRemain, .externallyChanged, .missing, .unreadable: .attention
         }
     }
 

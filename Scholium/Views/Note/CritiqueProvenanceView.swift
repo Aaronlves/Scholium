@@ -78,7 +78,9 @@ struct CritiqueProvenanceView: View {
                     systemImage: metadata.isAgentAttributed ? "sparkles" : "exclamationmark.triangle"
                 )
                 .font(.headline)
-                .foregroundStyle(metadata.isAgentAttributed ? Color.primary : Color.orange)
+                .scholiumForeground(
+                    metadata.isAgentAttributed ? .agentAuthorship : .attention
+                )
                 .accessibilityLabel(
                     metadata.isAgentAttributed
                         ? "Agent-authored Critique"
@@ -108,7 +110,7 @@ struct CritiqueProvenanceView: View {
                     .help(targetNote == nil ? "The target Work is unavailable." : targetPath)
                 } else {
                     Text("Not recorded")
-                        .foregroundStyle(.orange)
+                        .scholiumForeground(.attention)
                 }
 
                 if let capturedSHA256 {
@@ -123,7 +125,7 @@ struct CritiqueProvenanceView: View {
                 if isStale {
                     Label("Earlier Work version", systemImage: "clock.badge.exclamationmark")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .scholiumForeground(.attention)
                 } else if targetNote != nil, capturedSHA256 != nil {
                     Label("Current Work version", systemImage: "checkmark.circle")
                         .font(.caption)
@@ -137,7 +139,7 @@ struct CritiqueProvenanceView: View {
                     systemImage: "exclamationmark.triangle"
                 )
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .scholiumForeground(.attention)
             } else if association == nil {
                 Label(
                     "No Scholium request history is associated with this Critique.",
@@ -222,7 +224,7 @@ struct CritiqueProvenanceView: View {
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: stale ? "clock.badge.exclamationmark" : "arrow.right.circle")
-                    .foregroundStyle(stale ? .orange : .secondary)
+                    .scholiumForeground(stale ? .attention : .secondaryText)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(finding.judgment.rawValue): \(finding.title)")
@@ -234,7 +236,7 @@ struct CritiqueProvenanceView: View {
                         anchorResolved: resolvedLine != nil
                     ))
                         .font(.caption)
-                        .foregroundStyle(stale ? .orange : .secondary)
+                        .scholiumForeground(stale ? .attention : .secondaryText)
                 }
                 Spacer(minLength: 0)
             }
