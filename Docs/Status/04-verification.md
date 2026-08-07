@@ -16,7 +16,7 @@ human, packaged, or release acceptance unless explicitly stated.
 **Current passing result**
 
 `validate-documentation-authority.py` passed the reorganized closed set with
-three manifests, 22 chapters, and 97 checked local links. `git diff --check`
+three manifests, 22 chapters, and 102 checked local links. `git diff --check`
 also passed.
 
 **Boundary of the claim**
@@ -24,6 +24,24 @@ also passed.
 Documentation structure, local links, anchors, chapter ownership, and patch
 whitespace only. No source build, product test, UI journey, packaging, or
 release gate was rerun for this documentation-only cutover.
+
+### Research Context contract cutover
+
+**Current passing result**
+
+On 2026-08-07, the Xcode 27 beta toolchain ran the focused Research Context
+contract, process-bound Agent Session, and local bridge suites against
+repository-local disposable fixtures. The exercised path covers closed clauses,
+typed Property/direct-Relation provenance, CRLF mixed-script exact-source
+pages, continuation byte reconstruction, stale query/revision cursors,
+surrogate-pair range rejection, and complete bridge-envelope size for a maximum
+legal exact-source page.
+
+**Boundary of the claim**
+
+Focused Contracts/Application/bridge evidence only. No complete repository
+gate, installed App/CLI journey, package artifact, assistive-technology test, or
+researcher acceptance was rerun.
 
 ### Repository gate
 

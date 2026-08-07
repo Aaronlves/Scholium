@@ -147,24 +147,41 @@ adapter can only convert an already returned owner value into the closed Source
 Reference Envelope; it cannot fill unknown actor/locator/revision, add a
 confidence score, or broaden scope.
 
-Research Context response schema 2 also copies the Note result's closed
-`NoteSearchMatchReason` values from that same Search response. The Application
-adapter does not reconstruct them: Property provenance retains exact source
-ranges and direct-relation provenance retains relation, direction, anchor,
-target, and explicit Markdown occurrences. A coarse direct-relation or
-Property retrieval reason without the corresponding typed match is rejected.
+Research Context request schema 2 contains only closed clause values. The
+Application validates the clause's legal query shape and platform capability,
+then dispatches every clause through its current owner. Response schema 3
+retains one ordered outcome for every requested clause, with Current, Partial,
+Stale, Unavailable, or Invalid Query availability and explicit limitations.
+Owner failures become their clause's Unavailable outcome; they do not erase
+other outcomes or masquerade as an empty current channel.
 
-The response carries one query/contract identity and Current/Partial/Stale/
-Unavailable/Invalid Query availability. Opaque reference resolution rechecks
-Session, Run, scope, current owner, and revision. Ending/re-pairing/revocation,
-Triptych change, deletion, or source change therefore invalidates old
-references without claiming that already delivered text can be retracted.
-Response bytes remain in memory only and are neither Run state nor Record
-content. Session authority retains no Source Reference registry or delivery
-history. A response-local reference ID is only a correlation value. Context
-Use and Continue Research instead authenticate the submitting Run, require its
-authorized scope, and re-read the current owner to validate identity, revision,
-locator, and owner-specific provenance fields before persistence or handoff.
+Response schema 3 also copies the Note result's closed `NoteSearchMatchReason`
+values from that same Search response. The Application adapter does not
+reconstruct them: Property provenance retains exact source ranges and
+direct-relation provenance retains relation, direction, anchor, target, and
+explicit Markdown occurrences. A coarse direct-relation or Property retrieval
+reason without the corresponding typed match is rejected.
+
+Exact Note/section reads use a lossless UTF-8 page with a source-range locator.
+The provider calculates UTF-16 offsets and line/column positions from the raw
+source, including EOF after a final newline. A stateless page cursor binds the
+Application-computed query/Run/Triptych/clause digest to the selected Note,
+fingerprint, complete slice, next UTF-8 offset, and prior-page digest. On a
+continuation, the provider rechecks every binding and returns Stale rather than
+reading a replacement Note or revision. Contracts cap an encoded context
+response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
+complete outer envelope before it writes a frame.
+
+Opaque reference resolution rechecks Session, Run, scope, current owner, and
+revision. Ending/re-pairing/revocation, Triptych change, deletion, or source
+change therefore invalidates old references without claiming that already
+delivered text can be retracted. Response bytes remain in memory only and are
+neither Run state nor Record content. Session authority retains no Source
+Reference registry or delivery history. A response-local reference ID is only a
+correlation value. Context Use and Continue Research instead authenticate the
+submitting Run, require its authorized scope, and re-read the current owner to
+validate identity, revision, locator, and owner-specific provenance fields
+before persistence or handoff.
 
 The test target supplies a pure replacement provider over fixed nonprivate
 values. Production and test providers must produce the same envelope,

@@ -412,6 +412,11 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         self.methodImprovementReceipt = methodImprovementReceipt
         self.endReceipt = endReceipt
         self.error = error
+        if researchContext != nil,
+           try LocalAgentBridgeWireCoding.encode(self).count
+                > LocalAgentBridgeLocation.maximumFrameByteCount {
+            throw LocalAgentBridgeError.frameTooLarge
+        }
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {

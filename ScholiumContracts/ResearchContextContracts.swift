@@ -338,6 +338,54 @@ public struct ResearchContextSourceLocator: Codable, Hashable, Sendable {
             )
         )
     }
+
+    /// Confirms that a source-range locator is an exact, reversible position in
+    /// the current UTF-8 source, including EOF after a final newline.
+    public func isValid(in source: String) -> Bool {
+        switch kind {
+        case .wholeObject:
+            return true
+        case .sourceRange:
+            guard let range = sourceRange,
+                  range.utf16LowerBound >= 0,
+                  range.utf16UpperBound >= range.utf16LowerBound,
+                  range.utf16UpperBound <= source.utf16.count else { return false }
+            let lowerUTF16 = source.utf16.index(
+                source.utf16.startIndex,
+                offsetBy: range.utf16LowerBound
+            )
+            let upperUTF16 = source.utf16.index(
+                source.utf16.startIndex,
+                offsetBy: range.utf16UpperBound
+            )
+            guard String.Index(lowerUTF16, within: source) != nil,
+                  String.Index(upperUTF16, within: source) != nil else {
+                return false
+            }
+            let start = Self.position(in: source, atUTF16Offset: range.utf16LowerBound)
+            let end = Self.position(in: source, atUTF16Offset: range.utf16UpperBound)
+            return range.line == start.line
+                && range.column == start.column
+                && range.endLine == end.line
+                && range.endColumn == end.column
+        case .recordStatement, .materialLocator, .unknown:
+            return false
+        }
+    }
+
+    private static func position(in source: String, atUTF16Offset offset: Int) -> (line: Int, column: Int) {
+        var line = 1
+        var column = 1
+        for unit in source.utf16.prefix(offset) {
+            if unit == 10 {
+                line += 1
+                column = 1
+            } else {
+                column += 1
+            }
+        }
+        return (line, column)
+    }
 }
 
 public enum ResearchAuthorizedScopeKind: String, Codable, CaseIterable, Hashable, Sendable {
@@ -685,96 +733,190 @@ public struct SourceReferenceEnvelope: Codable, Hashable, Identifiable, Sendable
     }
 }
 
-public enum ResearchContextQueryPurpose: String, Codable, CaseIterable, Hashable, Sendable {
-    case discover
-    case read
+public enum ResearchContextClauseKind: String, Codable, CaseIterable, Hashable, Sendable {
+    case discoverNote = "discover_note"
+    case readNote = "read_note"
     case inspectRelations = "inspect_relations"
     case inspectProperties = "inspect_properties"
     case inspectRecords = "inspect_records"
     case inspectResearcherState = "inspect_researcher_state"
+
+    public var sourceKind: ResearchContextSourceKind {
+        switch self {
+        case .discoverNote, .readNote, .inspectRelations, .inspectProperties: .note
+        case .inspectRecords: .record
+        case .inspectResearcherState: .researcherState
+        }
+    }
 }
 
-/// Agent-facing request. Run and Triptych authority are deliberately absent:
-/// the authenticated Application boundary supplies them before any provider
-/// work begins, so callers never copy internal IDs or fingerprints.
-public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable {
+public enum ResearchContextClauseScope: String, Codable, CaseIterable, Hashable, Sendable {
+    case triptych
+}
+
+public enum ResearchContextUseEligibility: String, Codable, CaseIterable, Hashable, Sendable {
+    case contextUse = "context_use"
+    case referenceOnly = "reference_only"
+}
+
+/// Stateless continuation data. Its binding is recomputed by Application from
+/// the authenticated Run, Triptych, query, clause, owner revision, and range;
+/// it is neither a capability nor a delivery registry entry.
+public struct ResearchContextPageCursor: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 2
+
+    public let schemaVersion: Int
+    public let clauseID: UUID
+    public let note: VaultQualifiedNoteID
+    public let fingerprint: DocumentFingerprint
+    public let sourceRange: SearchSourceRange
+    public let pageStartUTF8Offset: Int
+    public let nextUTF8Offset: Int
+    public let binding: DocumentFingerprint
+    public let pageDigest: DocumentFingerprint
+
+    public init(
+        clauseID: UUID,
+        note: VaultQualifiedNoteID,
+        fingerprint: DocumentFingerprint,
+        sourceRange: SearchSourceRange,
+        pageStartUTF8Offset: Int,
+        nextUTF8Offset: Int,
+        binding: DocumentFingerprint,
+        pageDigest: DocumentFingerprint
+    ) throws {
+        guard pageStartUTF8Offset >= 0,
+              nextUTF8Offset > pageStartUTF8Offset,
+              sourceRange.utf16LowerBound >= 0,
+              sourceRange.utf16UpperBound >= sourceRange.utf16LowerBound,
+              ResearchContextValidation.validFingerprint(fingerprint),
+              ResearchContextValidation.validFingerprint(binding),
+              ResearchContextValidation.validFingerprint(pageDigest) else {
+            throw ResearchContextContractError.invalidQuery
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.clauseID = clauseID
+        self.note = note
+        self.fingerprint = fingerprint
+        self.sourceRange = sourceRange
+        self.pageStartUTF8Offset = pageStartUTF8Offset
+        self.nextUTF8Offset = nextUTF8Offset
+        self.binding = binding
+        self.pageDigest = pageDigest
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion, clauseID, note, fingerprint, sourceRange,
+             pageStartUTF8Offset, nextUTF8Offset, binding, pageDigest
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw ResearchContextContractError.unsupportedSchemaVersion(schemaVersion)
+        }
+        try self.init(
+            clauseID: try container.decode(UUID.self, forKey: .clauseID),
+            note: try container.decode(VaultQualifiedNoteID.self, forKey: .note),
+            fingerprint: try container.decode(DocumentFingerprint.self, forKey: .fingerprint),
+            sourceRange: try container.decode(SearchSourceRange.self, forKey: .sourceRange),
+            pageStartUTF8Offset: try container.decode(Int.self, forKey: .pageStartUTF8Offset),
+            nextUTF8Offset: try container.decode(Int.self, forKey: .nextUTF8Offset),
+            binding: try container.decode(DocumentFingerprint.self, forKey: .binding),
+            pageDigest: try container.decode(DocumentFingerprint.self, forKey: .pageDigest)
+        )
+    }
+}
+
+/// A closed query clause. An Agent chooses no provider, source-kind cross
+/// product, Run, Triptych, or authorization scope; Application binds those
+/// facts after authenticating the request.
+public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
     public static let currentSchemaVersion = 1
+    public static let maximumLimit = 20
 
     public let schemaVersion: Int
     public let id: UUID
-    public let query: String
-    public let sourceKinds: [ResearchContextSourceKind]
-    public let purposes: [ResearchContextQueryPurpose]
-    public let limit: Int
+    public let kind: ResearchContextClauseKind
+    public let scope: ResearchContextClauseScope
+    public let query: String?
     public let sectionHeading: String?
+    public let limit: Int
+    public let useEligibility: ResearchContextUseEligibility
+    public let cursor: ResearchContextPageCursor?
 
     public init(
         id: UUID = UUID(),
-        query: String,
-        sourceKinds: [ResearchContextSourceKind],
-        purposes: [ResearchContextQueryPurpose],
-        limit: Int = 20,
-        sectionHeading: String? = nil
+        kind: ResearchContextClauseKind,
+        query: String? = nil,
+        sectionHeading: String? = nil,
+        limit: Int = 8,
+        useEligibility: ResearchContextUseEligibility,
+        cursor: ResearchContextPageCursor? = nil
     ) throws {
         try self.init(
             schemaVersion: Self.currentSchemaVersion,
             id: id,
+            kind: kind,
+            scope: .triptych,
             query: query,
-            sourceKinds: sourceKinds,
-            purposes: purposes,
+            sectionHeading: sectionHeading,
             limit: limit,
-            sectionHeading: sectionHeading
+            useEligibility: useEligibility,
+            cursor: cursor
         )
     }
 
     private init(
         schemaVersion: Int,
         id: UUID,
-        query: String,
-        sourceKinds: [ResearchContextSourceKind],
-        purposes: [ResearchContextQueryPurpose],
+        kind: ResearchContextClauseKind,
+        scope: ResearchContextClauseScope,
+        query: String?,
+        sectionHeading: String?,
         limit: Int,
-        sectionHeading: String?
+        useEligibility: ResearchContextUseEligibility,
+        cursor: ResearchContextPageCursor?
     ) throws {
         guard schemaVersion == Self.currentSchemaVersion,
-              !sourceKinds.isEmpty,
-              Set(sourceKinds).count == sourceKinds.count,
-              !purposes.isEmpty,
-              Set(purposes).count == purposes.count,
-              (1...ResearchContextQuery.maximumLimit).contains(limit),
-              sectionHeading == nil || purposes == [.read] else {
+              scope == .triptych,
+              (1...Self.maximumLimit).contains(limit) else {
             if schemaVersion != Self.currentSchemaVersion {
                 throw ResearchContextContractError.unsupportedSchemaVersion(schemaVersion)
             }
             throw ResearchContextContractError.invalidQuery
         }
+        let normalizedQuery = try query.map {
+            try ResearchContextValidation.text($0, maximumUTF8Count: 4_096, field: "query")
+        }
+        let normalizedHeading = try sectionHeading.map {
+            try ResearchContextValidation.text($0, maximumUTF8Count: 1_024, field: "sectionHeading")
+        }
+        let hasQuery = normalizedQuery != nil
+        let clauseIsValid: Bool = switch kind {
+        case .discoverNote, .inspectRelations, .inspectProperties, .inspectRecords:
+            hasQuery && normalizedHeading == nil && cursor == nil
+        case .readNote:
+            hasQuery && cursor.map { $0.clauseID == id } != false
+        case .inspectResearcherState:
+            !hasQuery && normalizedHeading == nil && cursor == nil
+        }
+        guard clauseIsValid else { throw ResearchContextContractError.invalidQuery }
         self.schemaVersion = schemaVersion
         self.id = id
-        self.query = try ResearchContextValidation.text(
-            query,
-            maximumUTF8Count: 4_096,
-            field: "query"
-        )
-        self.sourceKinds = sourceKinds
-        self.purposes = purposes
+        self.kind = kind
+        self.scope = scope
+        self.query = normalizedQuery
+        self.sectionHeading = normalizedHeading
         self.limit = limit
-        self.sectionHeading = try sectionHeading.map {
-            try ResearchContextValidation.text(
-                $0,
-                maximumUTF8Count: 1_024,
-                field: "sectionHeading"
-            )
-        }
+        self.useEligibility = useEligibility
+        self.cursor = cursor
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion
-        case id
-        case query
-        case sourceKinds
-        case purposes
-        case limit
-        case sectionHeading
+        case schemaVersion, id, kind, scope, query, sectionHeading, limit, useEligibility, cursor
     }
 
     public init(from decoder: Decoder) throws {
@@ -783,156 +925,117 @@ public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable 
         try self.init(
             schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
             id: try container.decode(UUID.self, forKey: .id),
-            query: try container.decode(String.self, forKey: .query),
-            sourceKinds: try container.decode(
-                [ResearchContextSourceKind].self,
-                forKey: .sourceKinds
-            ),
-            purposes: try container.decode(
-                [ResearchContextQueryPurpose].self,
-                forKey: .purposes
-            ),
+            kind: try container.decode(ResearchContextClauseKind.self, forKey: .kind),
+            scope: try container.decode(ResearchContextClauseScope.self, forKey: .scope),
+            query: try container.decodeIfPresent(String.self, forKey: .query),
+            sectionHeading: try container.decodeIfPresent(String.self, forKey: .sectionHeading),
             limit: try container.decode(Int.self, forKey: .limit),
-            sectionHeading: try container.decodeIfPresent(
-                String.self,
-                forKey: .sectionHeading
-            )
+            useEligibility: try container.decode(ResearchContextUseEligibility.self, forKey: .useEligibility),
+            cursor: try container.decodeIfPresent(ResearchContextPageCursor.self, forKey: .cursor)
+        )
+    }
+}
+
+/// Agent-facing request. Run and Triptych authority are deliberately absent:
+/// the authenticated Application boundary supplies them before provider work.
+public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable {
+    public static let currentSchemaVersion = 2
+    public static let maximumClauses = 4
+
+    public let schemaVersion: Int
+    public let id: UUID
+    public let clauses: [ResearchContextClause]
+
+    public init(id: UUID = UUID(), clauses: [ResearchContextClause]) throws {
+        try self.init(schemaVersion: Self.currentSchemaVersion, id: id, clauses: clauses)
+    }
+
+    private init(schemaVersion: Int, id: UUID, clauses: [ResearchContextClause]) throws {
+        guard schemaVersion == Self.currentSchemaVersion,
+              !clauses.isEmpty,
+              clauses.count <= Self.maximumClauses,
+              Set(clauses.map(\.id)).count == clauses.count else {
+            if schemaVersion != Self.currentSchemaVersion {
+                throw ResearchContextContractError.unsupportedSchemaVersion(schemaVersion)
+            }
+            throw ResearchContextContractError.invalidQuery
+        }
+        self.schemaVersion = schemaVersion
+        self.id = id
+        self.clauses = clauses
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable { case schemaVersion, id, clauses }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
+            id: try container.decode(UUID.self, forKey: .id),
+            clauses: try container.decode([ResearchContextClause].self, forKey: .clauses)
         )
     }
 }
 
 public struct ResearchContextQuery: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 1
-    public static let maximumLimit = 100
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let id: UUID
     public let runID: UUID
     public let triptychID: UUID
-    public let query: String
-    public let sourceKinds: [ResearchContextSourceKind]
-    public let purposes: [ResearchContextQueryPurpose]
-    public let limit: Int
-    public let sectionHeading: String?
+    public let clauses: [ResearchContextClause]
 
-    public init(
-        id: UUID = UUID(),
-        runID: UUID,
-        triptychID: UUID,
-        query: String,
-        sourceKinds: [ResearchContextSourceKind],
-        purposes: [ResearchContextQueryPurpose],
-        limit: Int = 20,
-        sectionHeading: String? = nil
-    ) throws {
-        try self.init(
-            schemaVersion: Self.currentSchemaVersion,
-            id: id,
-            runID: runID,
-            triptychID: triptychID,
-            query: query,
-            sourceKinds: sourceKinds,
-            purposes: purposes,
-            limit: limit,
-            sectionHeading: sectionHeading
-        )
-    }
-
-    public init(
-        request: ResearchContextRequest,
-        runID: UUID,
-        triptychID: UUID
-    ) throws {
-        try self.init(
-            id: request.id,
-            runID: runID,
-            triptychID: triptychID,
-            query: request.query,
-            sourceKinds: request.sourceKinds,
-            purposes: request.purposes,
-            limit: request.limit,
-            sectionHeading: request.sectionHeading
-        )
-    }
-
-    private init(
-        schemaVersion: Int,
-        id: UUID,
-        runID: UUID,
-        triptychID: UUID,
-        query: String,
-        sourceKinds: [ResearchContextSourceKind],
-        purposes: [ResearchContextQueryPurpose],
-        limit: Int,
-        sectionHeading: String?
-    ) throws {
-        guard schemaVersion == Self.currentSchemaVersion,
-              !sourceKinds.isEmpty,
-              Set(sourceKinds).count == sourceKinds.count,
-              !purposes.isEmpty,
-              Set(purposes).count == purposes.count,
-              (1...Self.maximumLimit).contains(limit),
-              sectionHeading == nil || purposes == [.read] else {
-            if schemaVersion != Self.currentSchemaVersion {
-                throw ResearchContextContractError.unsupportedSchemaVersion(schemaVersion)
-            }
-            throw ResearchContextContractError.invalidQuery
-        }
-        self.schemaVersion = schemaVersion
-        self.id = id
+    public init(request: ResearchContextRequest, runID: UUID, triptychID: UUID) throws {
+        schemaVersion = Self.currentSchemaVersion
+        id = request.id
         self.runID = runID
         self.triptychID = triptychID
-        self.query = try ResearchContextValidation.text(
-            query,
-            maximumUTF8Count: 4_096,
-            field: "query"
-        )
-        self.sourceKinds = sourceKinds
-        self.purposes = purposes
-        self.limit = limit
-        self.sectionHeading = try sectionHeading.map {
-            try ResearchContextValidation.text(
-                $0,
-                maximumUTF8Count: 1_024,
-                field: "sectionHeading"
-            )
-        }
+        clauses = request.clauses
+    }
+
+    public func clause(id: UUID) -> ResearchContextClause? {
+        clauses.first { $0.id == id }
+    }
+
+    /// The digest binds a received cursor to this authenticated query without
+    /// copying Run or Triptych identifiers back into the public request.
+    public func paginationBinding(for clause: ResearchContextClause) -> DocumentFingerprint {
+        let material = [
+            id.uuidString.lowercased(),
+            runID.uuidString.lowercased(),
+            triptychID.uuidString.lowercased(),
+            clause.id.uuidString.lowercased(),
+            clause.kind.rawValue,
+            clause.scope.rawValue,
+            clause.query ?? "",
+            clause.sectionHeading ?? "",
+            String(clause.limit),
+            clause.useEligibility.rawValue,
+        ].joined(separator: "\u{1F}")
+        return DocumentFingerprint(content: material)
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion
-        case id
-        case runID
-        case triptychID
-        case query
-        case sourceKinds
-        case purposes
-        case limit
-        case sectionHeading
+        case schemaVersion, id, runID, triptychID, clauses
     }
 
     public init(from decoder: Decoder) throws {
         try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
+        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw ResearchContextContractError.unsupportedSchemaVersion(schemaVersion)
+        }
+        let request = try ResearchContextRequest(
             id: try container.decode(UUID.self, forKey: .id),
+            clauses: try container.decode([ResearchContextClause].self, forKey: .clauses)
+        )
+        try self.init(
+            request: request,
             runID: try container.decode(UUID.self, forKey: .runID),
-            triptychID: try container.decode(UUID.self, forKey: .triptychID),
-            query: try container.decode(String.self, forKey: .query),
-            sourceKinds: try container.decode(
-                [ResearchContextSourceKind].self,
-                forKey: .sourceKinds
-            ),
-            purposes: try container.decode(
-                [ResearchContextQueryPurpose].self,
-                forKey: .purposes
-            ),
-            limit: try container.decode(Int.self, forKey: .limit),
-            sectionHeading: try container.decodeIfPresent(
-                String.self,
-                forKey: .sectionHeading
-            )
+            triptychID: try container.decode(UUID.self, forKey: .triptychID)
         )
     }
 }
@@ -942,84 +1045,114 @@ public enum ResearchContextContentKind: String, Codable, CaseIterable, Hashable,
     case noteSection = "note_section"
     case noteDocument = "note_document"
     case recordStatement = "record_statement"
-    case materialExcerpt = "material_excerpt"
     case researcherState = "researcher_state"
 }
 
+/// Exact source bytes represented as their lossless UTF-8 String form. The
+/// separate type deliberately avoids the semantic-text trim/control policy.
+public struct ResearchContextExactSource: Codable, Hashable, Sendable {
+    public static let maximumUTF8Count = 96 * 1_024
+
+    public let content: String
+    public let pageDigest: DocumentFingerprint
+
+    public init(content: String) throws {
+        guard content.utf8.count <= Self.maximumUTF8Count,
+              !content.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            throw ResearchContextContractError.invalidText("exactSource")
+        }
+        self.content = content
+        pageDigest = DocumentFingerprint(content: content)
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable { case content, pageDigest }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let content = try container.decode(String.self, forKey: .content)
+        let pageDigest = try container.decode(DocumentFingerprint.self, forKey: .pageDigest)
+        try self.init(content: content)
+        guard self.pageDigest == pageDigest else {
+            throw ResearchContextContractError.invalidResponse
+        }
+    }
+}
+
 public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Sendable {
-    public static let maximumNoteMatchReasons = 32
+    public static let maximumNoteMatchReasons = 16
+    public static let maximumSemanticContentUTF8Count = 2_048
 
     public var id: UUID { sourceReference.id }
 
+    public let clauseID: UUID
     public let sourceReference: SourceReferenceEnvelope
     public let title: String
     public let contentKind: ResearchContextContentKind
-    public let content: String
+    public let semanticContent: String?
+    public let exactSource: ResearchContextExactSource?
+    public let contextUseEligibility: ResearchContextUseEligibility
     /// Exact structured provenance returned by the one Foundation Search
     /// owner. This remains typed data beside source content so a direct
     /// relation or Property match is not flattened into an explanation string.
     public let noteMatchReasons: [NoteSearchMatchReason]
 
     public init(
+        clauseID: UUID,
         sourceReference: SourceReferenceEnvelope,
         title: String,
         contentKind: ResearchContextContentKind,
-        content: String,
+        semanticContent: String? = nil,
+        exactSource: ResearchContextExactSource? = nil,
+        contextUseEligibility: ResearchContextUseEligibility,
         noteMatchReasons: [NoteSearchMatchReason] = []
     ) throws {
+        let expectsExact = contentKind == .noteSection || contentKind == .noteDocument
         guard noteMatchReasons.count <= Self.maximumNoteMatchReasons,
               sourceReference.sourceKind == .note || noteMatchReasons.isEmpty,
+              (expectsExact && semanticContent == nil && exactSource != nil
+                  && sourceReference.locator.kind == .sourceRange)
+                  || (!expectsExact && semanticContent != nil && exactSource == nil),
               Self.primaryReasonMatchesEnvelope(
                   noteMatchReasons.first,
                   retrievalReason: sourceReference.retrievalReason
               ),
-              Self.relationshipTargetsMatchOwner(
-                  noteMatchReasons,
-                  owner: sourceReference.owner
-              ) else {
+              Self.relationshipTargetsMatchOwner(noteMatchReasons, owner: sourceReference.owner),
+              contextUseEligibility == .referenceOnly || sourceReference.currentness == .current else {
             throw ResearchContextContractError.invalidResponse
         }
+        self.clauseID = clauseID
         self.sourceReference = sourceReference
-        self.title = try ResearchContextValidation.text(
-            title,
-            maximumUTF8Count: 1_024,
-            field: "title"
-        )
+        self.title = try ResearchContextValidation.text(title, maximumUTF8Count: 512, field: "title")
         self.contentKind = contentKind
-        self.content = try ResearchContextValidation.text(
-            content,
-            maximumUTF8Count: 262_144,
-            field: "content"
-        )
+        self.semanticContent = try semanticContent.map {
+            try ResearchContextValidation.text(
+                $0,
+                maximumUTF8Count: Self.maximumSemanticContentUTF8Count,
+                field: "semanticContent"
+            )
+        }
+        self.exactSource = exactSource
+        self.contextUseEligibility = contextUseEligibility
         self.noteMatchReasons = noteMatchReasons
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case sourceReference
-        case title
-        case contentKind
-        case content
-        case noteMatchReasons
+        case clauseID, sourceReference, title, contentKind, semanticContent, exactSource, contextUseEligibility, noteMatchReasons
     }
 
     public init(from decoder: Decoder) throws {
         try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
-            sourceReference: try container.decode(
-                SourceReferenceEnvelope.self,
-                forKey: .sourceReference
-            ),
+            clauseID: try container.decode(UUID.self, forKey: .clauseID),
+            sourceReference: try container.decode(SourceReferenceEnvelope.self, forKey: .sourceReference),
             title: try container.decode(String.self, forKey: .title),
-            contentKind: try container.decode(
-                ResearchContextContentKind.self,
-                forKey: .contentKind
-            ),
-            content: try container.decode(String.self, forKey: .content),
-            noteMatchReasons: try container.decode(
-                [NoteSearchMatchReason].self,
-                forKey: .noteMatchReasons
-            )
+            contentKind: try container.decode(ResearchContextContentKind.self, forKey: .contentKind),
+            semanticContent: try container.decodeIfPresent(String.self, forKey: .semanticContent),
+            exactSource: try container.decodeIfPresent(ResearchContextExactSource.self, forKey: .exactSource),
+            contextUseEligibility: try container.decode(ResearchContextUseEligibility.self, forKey: .contextUseEligibility),
+            noteMatchReasons: try container.decode([NoteSearchMatchReason].self, forKey: .noteMatchReasons)
         )
     }
 
@@ -1068,55 +1201,139 @@ public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Send
     }
 }
 
+public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
+    public let clauseID: UUID
+    public let kind: ResearchContextClauseKind
+    public let availability: ResearchContextAvailability
+    public let items: [ResearchContextResponseItem]
+    public let limitations: [String]
+    public let hasMore: Bool
+    public let nextCursor: ResearchContextPageCursor?
+
+    public init(
+        clause: ResearchContextClause,
+        availability: ResearchContextAvailability,
+        items: [ResearchContextResponseItem],
+        limitations: [String] = [],
+        hasMore: Bool = false,
+        nextCursor: ResearchContextPageCursor? = nil
+    ) throws {
+        guard items.count <= clause.limit,
+              items.allSatisfy({ $0.clauseID == clause.id && $0.sourceReference.sourceKind == clause.kind.sourceKind }),
+              Set(items.map(\.id)).count == items.count,
+              !([.unavailable, .invalidQuery].contains(availability) && !items.isEmpty),
+              hasMore == (nextCursor != nil),
+              (nextCursor.map { $0.clauseID == clause.id && clause.kind == .readNote } != false) else {
+            throw ResearchContextContractError.invalidResponse
+        }
+        clauseID = clause.id
+        kind = clause.kind
+        self.availability = availability
+        self.items = items
+        self.limitations = try ResearchContextValidation.texts(
+            limitations,
+            maximumCount: 16,
+            maximumUTF8Count: 512,
+            field: "clauseLimitations"
+        )
+        self.hasMore = hasMore
+        self.nextCursor = nextCursor
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case clauseID, kind, availability, items, limitations, hasMore, nextCursor
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let clauseID = try container.decode(UUID.self, forKey: .clauseID)
+        let kind = try container.decode(ResearchContextClauseKind.self, forKey: .kind)
+        let items = try container.decode([ResearchContextResponseItem].self, forKey: .items)
+        let hasMore = try container.decode(Bool.self, forKey: .hasMore)
+        let nextCursor = try container.decodeIfPresent(ResearchContextPageCursor.self, forKey: .nextCursor)
+        guard items.allSatisfy({ $0.clauseID == clauseID && $0.sourceReference.sourceKind == kind.sourceKind }),
+              items.count <= ResearchContextClause.maximumLimit,
+              Set(items.map(\.id)).count == items.count,
+              hasMore == (nextCursor != nil),
+              (nextCursor.map { $0.clauseID == clauseID && kind == .readNote } != false),
+              !([.unavailable, .invalidQuery].contains(try container.decode(ResearchContextAvailability.self, forKey: .availability)) && !items.isEmpty) else {
+            throw ResearchContextContractError.invalidResponse
+        }
+        self.clauseID = clauseID
+        self.kind = kind
+        availability = try container.decode(ResearchContextAvailability.self, forKey: .availability)
+        self.items = items
+        limitations = try ResearchContextValidation.texts(
+            try container.decode([String].self, forKey: .limitations),
+            maximumCount: 16,
+            maximumUTF8Count: 512,
+            field: "clauseLimitations"
+        )
+        self.hasMore = hasMore
+        self.nextCursor = nextCursor
+    }
+}
+
 public struct ResearchContextResponse: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
+    /// Leaves a material margin below the 1 MiB local-bridge frame for its
+    /// envelope, error fields, and future transport metadata.
+    public static let maximumEncodedByteCount = 768 * 1_024
 
     public let schemaVersion: Int
     public let queryID: UUID
     public let runID: UUID
     public let triptychID: UUID
     public let availability: ResearchContextAvailability
-    public let items: [ResearchContextResponseItem]
+    public let outcomes: [ResearchContextClauseOutcome]
     public let limitations: [String]
+
+    /// Convenience projection only. It is not duplicated in the wire schema.
+    public var items: [ResearchContextResponseItem] { outcomes.flatMap(\.items) }
 
     public init(
         query: ResearchContextQuery,
-        availability: ResearchContextAvailability,
-        items: [ResearchContextResponseItem],
+        outcomes: [ResearchContextClauseOutcome],
         limitations: [String] = []
     ) throws {
-        guard items.count <= query.limit,
-              items.allSatisfy({ item in
+        let normalizedLimitations = try ResearchContextValidation.texts(
+            limitations,
+            maximumCount: 16,
+            maximumUTF8Count: 512,
+            field: "limitations"
+        )
+        let availability = Self.combinedAvailability(outcomes.map(\.availability))
+        guard outcomes.count == query.clauses.count,
+              zip(outcomes, query.clauses).allSatisfy({ outcome, clause in
+                  outcome.clauseID == clause.id && outcome.kind == clause.kind
+              }),
+              Set(Self.items(for: outcomes).map(\.id)).count == Self.items(for: outcomes).count,
+              Self.items(for: outcomes).allSatisfy({ item in
                   item.sourceReference.authorizedScope.runID == query.runID
                       && item.sourceReference.owner.triptychID == query.triptychID
-                      && query.sourceKinds.contains(item.sourceReference.sourceKind)
-              }),
-              Set(items.map(\.id)).count == items.count,
-              !([.unavailable, .invalidQuery].contains(availability) && !items.isEmpty) else {
+              }) else {
             throw ResearchContextContractError.invalidResponse
         }
-        self.schemaVersion = Self.currentSchemaVersion
+        schemaVersion = Self.currentSchemaVersion
         queryID = query.id
         runID = query.runID
         triptychID = query.triptychID
         self.availability = availability
-        self.items = items
-        self.limitations = try ResearchContextValidation.texts(
-            limitations,
-            maximumCount: 32,
-            maximumUTF8Count: 1_024,
-            field: "limitations"
+        self.outcomes = outcomes
+        self.limitations = normalizedLimitations
+        try Self.validateEncodedByteCount(
+            queryID: query.id,
+            runID: query.runID,
+            triptychID: query.triptychID,
+            availability: availability,
+            outcomes: outcomes,
+            limitations: normalizedLimitations
         )
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion
-        case queryID
-        case runID
-        case triptychID
-        case availability
-        case items
-        case limitations
+        case schemaVersion, queryID, runID, triptychID, availability, outcomes, limitations
     }
 
     public init(from decoder: Decoder) throws {
@@ -1129,27 +1346,23 @@ public struct ResearchContextResponse: Codable, Hashable, Sendable {
         let queryID = try container.decode(UUID.self, forKey: .queryID)
         let runID = try container.decode(UUID.self, forKey: .runID)
         let triptychID = try container.decode(UUID.self, forKey: .triptychID)
-        let availability = try container.decode(
-            ResearchContextAvailability.self,
-            forKey: .availability
-        )
-        let items = try container.decode(
-            [ResearchContextResponseItem].self,
-            forKey: .items
-        )
+        let availability = try container.decode(ResearchContextAvailability.self, forKey: .availability)
+        let outcomes = try container.decode([ResearchContextClauseOutcome].self, forKey: .outcomes)
         let limitations = try ResearchContextValidation.texts(
             try container.decode([String].self, forKey: .limitations),
-            maximumCount: 32,
-            maximumUTF8Count: 1_024,
+            maximumCount: 16,
+            maximumUTF8Count: 512,
             field: "limitations"
         )
-        guard items.count <= ResearchContextQuery.maximumLimit,
-              Set(items.map(\.id)).count == items.count,
-              items.allSatisfy({
+        guard !outcomes.isEmpty,
+              outcomes.count <= ResearchContextRequest.maximumClauses,
+              Set(outcomes.map(\.clauseID)).count == outcomes.count,
+              Self.combinedAvailability(outcomes.map(\.availability)) == availability,
+              Set(Self.items(for: outcomes).map(\.id)).count == Self.items(for: outcomes).count,
+              Self.items(for: outcomes).allSatisfy({
                   $0.sourceReference.authorizedScope.runID == runID
                       && $0.sourceReference.owner.triptychID == triptychID
-              }),
-              !([.unavailable, .invalidQuery].contains(availability) && !items.isEmpty) else {
+              }) else {
             throw ResearchContextContractError.invalidResponse
         }
         self.schemaVersion = schemaVersion
@@ -1157,8 +1370,61 @@ public struct ResearchContextResponse: Codable, Hashable, Sendable {
         self.runID = runID
         self.triptychID = triptychID
         self.availability = availability
-        self.items = items
+        self.outcomes = outcomes
         self.limitations = limitations
+        try Self.validateEncodedByteCount(
+            queryID: queryID,
+            runID: runID,
+            triptychID: triptychID,
+            availability: availability,
+            outcomes: outcomes,
+            limitations: limitations
+        )
+    }
+
+    private static func items(for outcomes: [ResearchContextClauseOutcome]) -> [ResearchContextResponseItem] {
+        outcomes.flatMap(\.items)
+    }
+
+    private static func combinedAvailability(_ values: [ResearchContextAvailability]) -> ResearchContextAvailability {
+        guard !values.isEmpty else { return .unavailable }
+        if values.contains(.invalidQuery) { return .invalidQuery }
+        if values.allSatisfy({ $0 == .current }) { return .current }
+        if values.allSatisfy({ $0 == .unavailable }) { return .unavailable }
+        if values.contains(.stale) { return .stale }
+        return .partial
+    }
+
+    private static func validateEncodedByteCount(
+        queryID: UUID,
+        runID: UUID,
+        triptychID: UUID,
+        availability: ResearchContextAvailability,
+        outcomes: [ResearchContextClauseOutcome],
+        limitations: [String]
+    ) throws {
+        let encoded = try JSONEncoder().encode(ResponseBudgetProjection(
+            schemaVersion: Self.currentSchemaVersion,
+            queryID: queryID,
+            runID: runID,
+            triptychID: triptychID,
+            availability: availability,
+            outcomes: outcomes,
+            limitations: limitations
+        ))
+        guard encoded.count <= Self.maximumEncodedByteCount else {
+            throw ResearchContextContractError.invalidResponse
+        }
+    }
+
+    private struct ResponseBudgetProjection: Encodable {
+        let schemaVersion: Int
+        let queryID: UUID
+        let runID: UUID
+        let triptychID: UUID
+        let availability: ResearchContextAvailability
+        let outcomes: [ResearchContextClauseOutcome]
+        let limitations: [String]
     }
 }
 
@@ -1266,6 +1532,12 @@ public struct ContextUseReport: Codable, Hashable, Sendable {
 }
 
 private enum ResearchContextValidation {
+    static func validFingerprint(_ fingerprint: DocumentFingerprint) -> Bool {
+        fingerprint.byteCount >= 0
+            && fingerprint.sha256.count == 64
+            && fingerprint.sha256.allSatisfy({ $0.isHexDigit && !$0.isUppercase })
+    }
+
     static func text(
         _ value: String,
         maximumUTF8Count: Int,

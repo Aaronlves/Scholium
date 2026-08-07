@@ -30,90 +30,78 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         guard query.triptychID == workspace.triptych.id else {
             throw ResearchContextContractError.invalidAuthorizedScope
         }
-        var items: [ResearchContextResponseItem] = []
+        var outcomes: [ResearchContextClauseOutcome] = []
         var limitations: [String] = []
-        var states: [ResearchContextAvailability] = []
 
-        for sourceKind in query.sourceKinds where items.count < query.limit {
-            let remaining = query.limit - items.count
-            switch sourceKind {
-            case .note:
-                let outcome = try await noteItems(
-                    query: query,
-                    limit: remaining,
-                    workspace: workspace,
-                    access: access
-                )
-                if outcome.availability == .invalidQuery {
-                    return try ResearchContextResponse(
+        for clause in query.clauses {
+            do {
+                let outcome: ProviderOutcome
+                switch clause.kind {
+                case .discoverNote, .inspectRelations, .inspectProperties, .readNote:
+                    outcome = try await noteItems(
                         query: query,
-                        availability: .invalidQuery,
-                        items: [],
-                        limitations: outcome.limitations
+                        clause: clause,
+                        workspace: workspace,
+                        access: access
+                    )
+                case .inspectRecords:
+                    outcome = try await recordItems(query: query, clause: clause, access: access)
+                case .inspectResearcherState:
+                    outcome = ProviderOutcome(
+                        availability: .current,
+                        items: try researcherStateItems(
+                            query: query,
+                            clause: clause,
+                            action: action,
+                            workspace: workspace,
+                            limit: clause.limit
+                        ),
+                        limitations: []
                     )
                 }
-                items.append(contentsOf: outcome.items)
-                states.append(outcome.availability)
-                limitations.append(contentsOf: outcome.limitations)
-            case .record:
-                let outcome = try await recordItems(
-                    query: query,
-                    limit: remaining,
-                    access: access
-                )
-                if outcome.availability == .invalidQuery {
-                    return try ResearchContextResponse(
-                        query: query,
-                        availability: .invalidQuery,
-                        items: [],
-                        limitations: outcome.limitations
-                    )
-                }
-                items.append(contentsOf: outcome.items)
-                states.append(outcome.availability)
-                limitations.append(contentsOf: outcome.limitations)
-            case .researcherState:
-                let stateItems = try researcherStateItems(
-                    query: query,
-                    action: action,
-                    workspace: workspace,
-                    limit: remaining
-                )
-                items.append(contentsOf: stateItems)
-                states.append(.current)
-            case .material:
-                states.append(.partial)
-                limitations.append(
-                    "Source-material bytes remain available only through their existing explicit source capability; this Research Context baseline did not return them."
-                )
+                outcomes.append(try ResearchContextClauseOutcome(
+                    clause: clause,
+                    availability: outcome.availability,
+                    items: outcome.items,
+                    limitations: outcome.limitations,
+                    hasMore: outcome.nextCursor != nil,
+                    nextCursor: outcome.nextCursor
+                ))
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                let message = "This Research Context clause could not be completed by its current owner: \(String(describing: error))."
+                outcomes.append(try ResearchContextClauseOutcome(
+                    clause: clause,
+                    availability: .unavailable,
+                    items: [],
+                    limitations: [message]
+                ))
+                limitations.append(message)
             }
-        }
-
-        if query.sourceKinds.contains(.note), query.sourceKinds.contains(.record) {
-            limitations.append(
-                "Note and Record results were returned as separate owner channels in request order; they were not co-ranked."
-            )
         }
         return try ResearchContextResponse(
             query: query,
-            availability: combinedAvailability(states),
-            items: Array(items.prefix(query.limit)),
+            outcomes: outcomes,
             limitations: unique(limitations)
         )
     }
 
     private func noteItems(
         query: ResearchContextQuery,
-        limit: Int,
+        clause: ResearchContextClause,
         workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ProviderOutcome {
+        guard let clauseQuery = clause.query else {
+            throw ResearchContextContractError.invalidQuery
+        }
         let request = SearchRequest(
-            id: query.id,
-            query: query.query,
+            id: clause.id,
+            query: clauseQuery,
             presentationScope: .triptych,
             executionScope: .triptych,
-            limit: limit
+            limit: clause.limit
         )
         let response = try await access.search(request)
         guard response.provider == .note,
@@ -137,9 +125,28 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let currentness = contextCurrentness(availability)
         var items: [ResearchContextResponseItem] = []
         var limitations: [String] = []
-        for result in response.results.prefix(limit) {
+        let eligibleUse = clause.useEligibility == .contextUse && currentness == .current
+            ? ResearchContextUseEligibility.contextUse
+            : .referenceOnly
+        if clause.kind == .readNote {
+            return try await exactNotePage(
+                query: query,
+                clause: clause,
+                response: response,
+                availability: availability,
+                currentness: currentness,
+                workspace: workspace,
+                access: access
+            )
+        }
+        for result in response.results.prefix(clause.limit) {
             guard case .note(let note) = result else {
                 throw ResearchContextContractError.invalidResponse
+            }
+            let matchReasons = requiredMatchReasons(note.matchReasons, for: clause.kind)
+            if (clause.kind == .inspectRelations || clause.kind == .inspectProperties)
+                && matchReasons.isEmpty {
+                continue
             }
             guard let snapshot = workspace.document(id: note.noteReference),
                   snapshot.fingerprint == note.fingerprint,
@@ -154,51 +161,10 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 note: note.noteReference,
                 stableObjectIdentity: stableID.uuidString.lowercased()
             )
-            let readsDocument = query.purposes == [.read]
-            let document = readsDocument
-                ? try await access.loadDocument(note.noteReference)
-                : nil
-            guard document == nil || document?.fingerprint == note.fingerprint else {
-                limitations.append(
-                    "A matched Note changed before exact reading and was omitted: \(note.relativePath)."
-                )
-                continue
-            }
-            let content: String
-            let contentKind: ResearchContextContentKind
-            let locator: ResearchContextSourceLocator
-            if let document {
-                if let heading = query.sectionHeading {
-                    guard let section = section(named: heading, in: document) else {
-                        limitations.append(
-                            "The requested section was not found in \(note.relativePath)."
-                        )
-                        continue
-                    }
-                    content = section.content
-                    contentKind = .noteSection
-                    locator = try .sourceRange(section.range)
-                } else {
-                    content = document.rawContent
-                    contentKind = .noteDocument
-                    locator = .wholeObject
-                }
-            } else {
-                content = note.snippet
-                contentKind = .searchSnippet
-                locator = try note.sourceRange.map {
-                    try ResearchContextSourceLocator.sourceRange($0)
-                } ?? .wholeObject
-            }
-            guard content.utf8.count <= 262_144 else {
-                limitations.append(
-                    "The exact Note content exceeded the bounded Research Context response size and was omitted: \(note.relativePath)."
-                )
-                continue
-            }
-            let reason = readsDocument
-                ? ResearchContextRetrievalReason.exactRead
-                : retrievalReason(note)
+            let locator = try note.sourceRange.map {
+                try ResearchContextSourceLocator.sourceRange($0)
+            } ?? .wholeObject
+            let reason = retrievalReason(note, clause: clause)
             guard let role = objectRole(note.vaultRole) else {
                 limitations.append(
                     "A Note outside the three Triptych research roles was omitted."
@@ -225,12 +191,22 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 ]
             )
             items.append(try ResearchContextResponseItem(
+                clauseID: clause.id,
                 sourceReference: envelope,
                 title: note.title,
-                contentKind: contentKind,
-                content: content,
-                noteMatchReasons: note.matchReasons
+                contentKind: .searchSnippet,
+                semanticContent: note.snippet,
+                contextUseEligibility: eligibleUse,
+                noteMatchReasons: matchReasons
             ))
+        }
+        if (clause.kind == .inspectRelations || clause.kind == .inspectProperties)
+            && !response.results.isEmpty && items.isEmpty {
+            return ProviderOutcome(
+                availability: .invalidQuery,
+                items: [],
+                limitations: ["The clause did not produce the required typed Search match reason."]
+            )
         }
         return ProviderOutcome(
             availability: limitations.isEmpty ? availability : partial(availability),
@@ -239,23 +215,218 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         )
     }
 
-    private func recordItems(
+    private func exactNotePage(
         query: ResearchContextQuery,
-        limit: Int,
+        clause: ResearchContextClause,
+        response: SearchResponse,
+        availability: ResearchContextAvailability,
+        currentness: ResearchContextCurrentness,
+        workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ProviderOutcome {
-        let recordQuery = query.query
+        let selected: NoteSearchResult?
+        if let cursor = clause.cursor {
+            guard cursor.binding == query.paginationBinding(for: clause),
+                  cursor.clauseID == clause.id else {
+                return ProviderOutcome(
+                    availability: .stale,
+                    items: [],
+                    limitations: ["The continuation cursor does not belong to this authenticated query."]
+                )
+            }
+            selected = response.results.compactMap { result in
+                guard case .note(let note) = result,
+                      note.noteReference == cursor.note,
+                      note.fingerprint == cursor.fingerprint else { return nil }
+                return note
+            }.first
+        } else {
+            selected = response.results.compactMap { result in
+                guard case .note(let note) = result else { return nil }
+                return note
+            }.first
+        }
+        guard let note = selected else {
+            return ProviderOutcome(
+                availability: clause.cursor == nil ? availability : .stale,
+                items: [],
+                limitations: [
+                    clause.cursor == nil
+                        ? "No current Note matched this exact-read clause."
+                        : "The Note selected for the prior page no longer matches this read clause."
+                ]
+            )
+        }
+        guard let snapshot = workspace.document(id: note.noteReference),
+              snapshot.fingerprint == note.fingerprint,
+              let stableID = snapshot.stableIdentity.resolvedID,
+              let role = objectRole(note.vaultRole) else {
+            return ProviderOutcome(
+                availability: .stale,
+                items: [],
+                limitations: ["The exact-read Note changed identity or revision before delivery."]
+            )
+        }
+        let document = try await access.loadDocument(note.noteReference)
+        guard document.fingerprint == note.fingerprint else {
+            return ProviderOutcome(
+                availability: .stale,
+                items: [],
+                limitations: ["The exact-read Note changed while its page was being loaded."]
+            )
+        }
+        let sourceSlice: Section
+        if let heading = clause.sectionHeading {
+            guard let section = section(named: heading, in: document) else {
+                return ProviderOutcome(
+                    availability: .invalidQuery,
+                    items: [],
+                    limitations: ["The requested section was not found in \(note.relativePath)."]
+                )
+            }
+            sourceSlice = section
+        } else {
+            let source = document.rawContent
+            sourceSlice = Section(
+                content: source,
+                utf8Range: 0..<source.utf8.count,
+                range: sourceRange(in: source, utf8LowerBound: 0, utf8UpperBound: source.utf8.count)
+            )
+        }
+        let offset = clause.cursor?.nextUTF8Offset ?? 0
+        guard offset >= 0,
+              offset < sourceSlice.content.utf8.count || (offset == 0 && sourceSlice.content.isEmpty),
+              (clause.cursor.map {
+                  $0.note == note.noteReference
+                      && $0.fingerprint == document.fingerprint
+                      && $0.sourceRange == sourceSlice.range
+              } != false) else {
+            return ProviderOutcome(
+                availability: .stale,
+                items: [],
+                limitations: ["The continuation cursor does not match the current Note revision and source range."]
+            )
+        }
+        if let cursor = clause.cursor {
+            guard cursor.pageStartUTF8Offset < cursor.nextUTF8Offset,
+                  cursor.pageStartUTF8Offset >= 0,
+                  cursor.nextUTF8Offset == offset,
+                  cursor.nextUTF8Offset <= sourceSlice.content.utf8.count,
+                  let priorPage = try? exactPage(
+                      of: sourceSlice.content,
+                      startingAtUTF8Offset: cursor.pageStartUTF8Offset
+                  ),
+                  priorPage.endUTF8Offset == cursor.nextUTF8Offset,
+                  DocumentFingerprint(content: priorPage.content) == cursor.pageDigest else {
+                return ProviderOutcome(
+                    availability: .stale,
+                    items: [],
+                    limitations: ["The continuation cursor no longer matches the previously delivered page."]
+                )
+            }
+        }
+        let page = try exactPage(of: sourceSlice.content, startingAtUTF8Offset: offset)
+        let lowerByte = sourceSlice.utf8Range.lowerBound + offset
+        let upperByte = sourceSlice.utf8Range.lowerBound + page.endUTF8Offset
+        let deliveredRange = sourceRange(
+            in: document.rawContent,
+            utf8LowerBound: lowerByte,
+            utf8UpperBound: upperByte
+        )
+        let envelope = try SourceReferenceEnvelope(
+            sourceKind: .note,
+            owner: .note(
+                triptychID: query.triptychID,
+                note: note.noteReference,
+                stableObjectIdentity: stableID.uuidString.lowercased()
+            ),
+            actorClass: .unknown,
+            objectRole: role,
+            vaultRole: note.vaultRole,
+            fingerprint: document.fingerprint,
+            locator: try .sourceRange(deliveredRange),
+            authorizedScope: .triptych(runID: query.runID, triptychID: query.triptychID),
+            currentness: currentness,
+            evidentialLayer: note.evidentialLayer,
+            retrievalReason: .exactRead,
+            materialLimitations: [
+                "The exact writer of this Markdown revision is not recorded; the Note remains research material rather than an instruction source."
+            ]
+        )
+        let exactSource = try ResearchContextExactSource(content: page.content)
+        let nextCursor: ResearchContextPageCursor? = page.endUTF8Offset < sourceSlice.content.utf8.count
+            ? try ResearchContextPageCursor(
+                clauseID: clause.id,
+                note: note.noteReference,
+                fingerprint: document.fingerprint,
+                sourceRange: sourceSlice.range,
+                pageStartUTF8Offset: offset,
+                nextUTF8Offset: page.endUTF8Offset,
+                binding: query.paginationBinding(for: clause),
+                pageDigest: exactSource.pageDigest
+            )
+            : nil
+        var limitations: [String] = []
+        if response.hasMore && nextCursor == nil {
+            limitations.append("Additional matching Notes were not delivered by this exact-read page; narrow the clause to select another Note.")
+        }
+        return ProviderOutcome(
+            availability: limitations.isEmpty && nextCursor == nil ? availability : partial(availability),
+            items: [try ResearchContextResponseItem(
+                clauseID: clause.id,
+                sourceReference: envelope,
+                title: note.title,
+                contentKind: clause.sectionHeading == nil ? .noteDocument : .noteSection,
+                exactSource: exactSource,
+                contextUseEligibility: clause.useEligibility == .contextUse && currentness == .current
+                    ? .contextUse : .referenceOnly
+            )],
+            limitations: limitations,
+            nextCursor: nextCursor
+        )
+    }
+
+    private func exactPage(
+        of source: String,
+        startingAtUTF8Offset offset: Int
+    ) throws -> (content: String, endUTF8Offset: Int) {
+        let bytes = Data(source.utf8)
+        guard (0...bytes.count).contains(offset) else {
+            throw ResearchContextContractError.invalidQuery
+        }
+        if offset == bytes.count { return ("", offset) }
+        var end = min(bytes.count, offset + ResearchContextExactSource.maximumUTF8Count)
+        while end > offset,
+              String(data: bytes.subdata(in: offset..<end), encoding: .utf8) == nil {
+            end -= 1
+        }
+        guard end > offset,
+              let content = String(data: bytes.subdata(in: offset..<end), encoding: .utf8) else {
+            throw ResearchContextContractError.invalidResponse
+        }
+        return (content, end)
+    }
+
+    private func recordItems(
+        query: ResearchContextQuery,
+        clause: ResearchContextClause,
+        access: ResearchContextOwnerAccess
+    ) async throws -> ProviderOutcome {
+        guard let clauseQuery = clause.query else {
+            throw ResearchContextContractError.invalidQuery
+        }
+        let recordQuery = clauseQuery
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .hasPrefix("kind:record")
-            ? query.query
-            : "kind:record \(query.query)"
+            ? clauseQuery
+            : "kind:record \(clauseQuery)"
         let request = SearchRequest(
-            id: query.id,
+            id: clause.id,
             query: recordQuery,
             presentationScope: .triptych,
             executionScope: .triptych,
-            limit: limit
+            limit: clause.limit
         )
         let response = try await access.search(request)
         guard response.provider == .record,
@@ -271,7 +442,9 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         }
         let availability = contextAvailability(response.availability)
         let currentness = contextCurrentness(availability)
-        let items = try response.results.prefix(limit).map { result in
+        let useEligibility: ResearchContextUseEligibility = clause.useEligibility == .contextUse
+            && currentness == .current ? .contextUse : .referenceOnly
+        let items = try response.results.prefix(clause.limit).map { result in
             guard case .record(let record) = result else {
                 throw ResearchContextContractError.invalidResponse
             }
@@ -300,10 +473,12 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     : []
             )
             return try ResearchContextResponseItem(
+                clauseID: clause.id,
                 sourceReference: envelope,
                 title: record.context,
                 contentKind: .recordStatement,
-                content: record.snippet
+                semanticContent: record.snippet,
+                contextUseEligibility: useEligibility
             )
         }
         return ProviderOutcome(
@@ -315,11 +490,12 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
 
     private func researcherStateItems(
         query: ResearchContextQuery,
+        clause: ResearchContextClause,
         action: ResearchActionSnapshot,
         workspace: WorkspaceSnapshot,
         limit: Int
     ) throws -> [ResearchContextResponseItem] {
-        guard query.purposes.contains(.inspectResearcherState), limit > 0 else {
+        guard clause.kind == .inspectResearcherState, limit > 0 else {
             return []
         }
         var items: [ResearchContextResponseItem] = []
@@ -333,6 +509,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             ].compactMap { $0 }.joined(separator: "\n")
             items.append(try researcherStateItem(
                 query: query,
+                clause: clause,
                 identity: "settlement:\(settlement.id.uuidString.lowercased())",
                 title: "Researcher Settle: \(action.target.title)",
                 content: content,
@@ -377,6 +554,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             ].compactMap { $0 }.joined(separator: "\n")
             items.append(try researcherStateItem(
                 query: query,
+                clause: clause,
                 identity: "record:\(record.id.uuidString.lowercased()):evaluation:\(evaluation.revision.uuidString.lowercased())",
                 title: "Researcher Evaluation: \(record.action?.actionID.rawValue ?? "research_action")",
                 content: content,
@@ -407,6 +585,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             let content = "The researcher explicitly pinned this exact Research Record for retention and later attention."
             items.append(try researcherStateItem(
                 query: query,
+                clause: clause,
                 identity: "record:\(record.id.uuidString.lowercased()):pin",
                 title: "Researcher Retention: \(record.action?.actionID.rawValue ?? "research_action")",
                 content: content,
@@ -464,6 +643,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     } ?? (round.targetFingerprint == action.target.fingerprint)
                     items.append(try researcherStateItem(
                         query: query,
+                        clause: clause,
                         identity: "critique:\(association.id.uuidString.lowercased()):round:\(round.id.uuidString.lowercased()):finding:\(disposition.findingID)",
                         title: "Critique Disposition: \(findingTitle)",
                         content: content,
@@ -484,6 +664,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 where statement.author == .researcher && items.count < limit {
                 items.append(try researcherStateItem(
                     query: query,
+                    clause: clause,
                     identity: "discussion:\(discussion.id.uuidString.lowercased()):statement:\(statement.id.uuidString.lowercased())",
                     title: statement.attribution,
                     content: statement.text,
@@ -512,18 +693,22 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
               reference.authorizedScope.triptychID == workspace.triptych.id else {
             return false
         }
+        let clause = try ResearchContextClause(
+            kind: .inspectResearcherState,
+            limit: ResearchContextClause.maximumLimit,
+            useEligibility: .contextUse
+        )
         let query = try ResearchContextQuery(
+            request: ResearchContextRequest(id: UUID(), clauses: [clause]),
             runID: reference.authorizedScope.runID,
-            triptychID: reference.authorizedScope.triptychID,
-            query: reference.owner.stableObjectIdentity,
-            sourceKinds: [.researcherState],
-            purposes: [.inspectResearcherState]
+            triptychID: reference.authorizedScope.triptychID
         )
         let currentItems = try researcherStateItems(
             query: query,
+            clause: clause,
             action: action,
             workspace: workspace,
-            limit: .max
+            limit: ResearchContextClause.maximumLimit
         )
         return currentItems.contains { item in
             let current = item.sourceReference
@@ -544,6 +729,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
 
     private func researcherStateItem(
         query: ResearchContextQuery,
+        clause: ResearchContextClause,
         identity: String,
         title: String,
         content: String,
@@ -571,10 +757,13 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             materialLimitations: limitations
         )
         return try ResearchContextResponseItem(
+            clauseID: clause.id,
             sourceReference: envelope,
             title: title,
             contentKind: .researcherState,
-            content: content
+            semanticContent: content,
+            contextUseEligibility: clause.useEligibility == .contextUse && currentness == .current
+                ? .contextUse : .referenceOnly
         )
     }
 
@@ -639,6 +828,37 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         }
     }
 
+    private func retrievalReason(
+        _ result: NoteSearchResult,
+        clause: ResearchContextClause
+    ) -> ResearchContextRetrievalReason {
+        switch clause.kind {
+        case .inspectRelations: .directRelation
+        case .inspectProperties: .propertyPresence
+        case .discoverNote, .readNote, .inspectRecords, .inspectResearcherState:
+            retrievalReason(result)
+        }
+    }
+
+    private func requiredMatchReasons(
+        _ reasons: [NoteSearchMatchReason],
+        for kind: ResearchContextClauseKind
+    ) -> [NoteSearchMatchReason] {
+        let isRequired: (NoteSearchMatchReason) -> Bool = switch kind {
+        case .inspectRelations:
+            { if case .relationship = $0 { return true }; return false }
+        case .inspectProperties:
+            { if case .property = $0 { return true }; return false }
+        case .discoverNote, .readNote, .inspectRecords, .inspectResearcherState:
+            { _ in false }
+        }
+        let required = reasons.filter(isRequired)
+        guard !required.isEmpty else {
+            return kind == .discoverNote ? reasons : []
+        }
+        return required + reasons.filter { !isRequired($0) }
+    }
+
     private func objectRole(_ role: VaultRole) -> ResearchContextObjectRole? {
         switch role {
         case .sourceCorpus: .analysis
@@ -673,24 +893,58 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let nextHeading = semantic.headings.dropFirst(index + 1).first(where: {
             $0.level <= heading.level
         })
-        let end = nextHeading?.span.start ?? SourcePosition(
-            line: source.split(separator: "\n", omittingEmptySubsequences: false).count,
-            utf8Column: 1,
-            utf16Column: 1
-        )
         let lower = heading.span.utf8LowerBound
         let upper = nextHeading?.span.utf8LowerBound ?? source.utf8.count
         guard lower >= 0, upper >= lower, upper <= source.utf8.count else { return nil }
         let bytes = Data(source.utf8)[lower..<upper]
-        let range = SearchSourceRange(
-            utf16LowerBound: heading.span.utf16LowerBound,
-            utf16UpperBound: nextHeading?.span.utf16LowerBound ?? source.utf16.count,
-            line: heading.span.start.line,
-            column: heading.span.start.utf16Column,
-            endLine: end.line,
-            endColumn: end.utf16Column
+        return Section(
+            content: String(decoding: bytes, as: UTF8.self),
+            utf8Range: lower..<upper,
+            range: sourceRange(in: source, utf8LowerBound: lower, utf8UpperBound: upper)
         )
-        return Section(content: String(decoding: bytes, as: UTF8.self), range: range)
+    }
+
+    private func sourceRange(
+        in source: String,
+        utf8LowerBound: Int,
+        utf8UpperBound: Int
+    ) -> SearchSourceRange {
+        let bytes = Data(source.utf8)
+        precondition(utf8LowerBound >= 0 && utf8UpperBound >= utf8LowerBound)
+        precondition(utf8UpperBound <= bytes.count)
+        let lowerUTF16 = String(
+            decoding: bytes.subdata(in: 0..<utf8LowerBound),
+            as: UTF8.self
+        ).utf16.count
+        let upperUTF16 = String(
+            decoding: bytes.subdata(in: 0..<utf8UpperBound),
+            as: UTF8.self
+        ).utf16.count
+        let start = sourcePosition(in: source, utf16Offset: lowerUTF16)
+        let end = sourcePosition(in: source, utf16Offset: upperUTF16)
+        return SearchSourceRange(
+            utf16LowerBound: lowerUTF16,
+            utf16UpperBound: upperUTF16,
+            line: start.line,
+            column: start.column,
+            endLine: end.line,
+            endColumn: end.column
+        )
+    }
+
+    private func sourcePosition(in source: String, utf16Offset: Int) -> (line: Int, column: Int) {
+        precondition((0...source.utf16.count).contains(utf16Offset))
+        var line = 1
+        var column = 1
+        for unit in source.utf16.prefix(utf16Offset) {
+            if unit == 10 {
+                line += 1
+                column = 1
+            } else {
+                column += 1
+            }
+        }
+        return (line, column)
     }
 
     private func normalizeHeading(_ value: String) -> String {
@@ -702,10 +956,24 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let availability: ResearchContextAvailability
         let items: [ResearchContextResponseItem]
         let limitations: [String]
+        let nextCursor: ResearchContextPageCursor?
+
+        init(
+            availability: ResearchContextAvailability,
+            items: [ResearchContextResponseItem],
+            limitations: [String],
+            nextCursor: ResearchContextPageCursor? = nil
+        ) {
+            self.availability = availability
+            self.items = items
+            self.limitations = limitations
+            self.nextCursor = nextCursor
+        }
     }
 
     private struct Section {
         let content: String
+        let utf8Range: Range<Int>
         let range: SearchSourceRange
     }
 }

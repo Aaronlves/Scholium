@@ -489,28 +489,7 @@ extension WorkspaceHandle {
         _ locator: ResearchContextSourceLocator,
         isValidIn source: String
     ) -> Bool {
-        switch locator.kind {
-        case .wholeObject:
-            return true
-        case .sourceRange:
-            guard let range = locator.sourceRange,
-                  range.utf16LowerBound >= 0,
-                  range.utf16UpperBound >= range.utf16LowerBound,
-                  range.utf16UpperBound <= source.utf16.count else { return false }
-            let lines = source.split(
-                separator: "\n",
-                omittingEmptySubsequences: false
-            )
-            guard range.line > 0,
-                  range.endLine >= range.line,
-                  range.endLine <= max(lines.count, 1) else { return false }
-            let startLength = lines[range.line - 1].utf16.count
-            let endLength = lines[range.endLine - 1].utf16.count
-            return (1...(startLength + 1)).contains(range.column)
-                && (1...(endLength + 1)).contains(range.endColumn)
-        case .recordStatement, .materialLocator, .unknown:
-            return false
-        }
+        locator.isValid(in: source)
     }
 
     private static func vaultRole(_ role: ResearchActionTargetRole) -> VaultRole {

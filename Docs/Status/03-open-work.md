@@ -58,8 +58,6 @@ reachable through the app and installed CLI.
 - Complete genuine VoiceOver, Full Keyboard Access, 200% mixed-script,
   localization, and researcher experiential acceptance for handoff, extension,
   results, evaluation, and recovery.
-- Obtain a repeatable XCTest-host run for the direct-relation research-context
-  journey whose isolated product behavior has already been observed.
 
 ## Physical editor input
 

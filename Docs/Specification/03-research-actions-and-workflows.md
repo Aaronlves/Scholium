@@ -182,15 +182,20 @@ replays an old Research Context response, ranking, availability, or cache.
 Local absolute paths are delivered only after authentication.
 
 The versioned, read-only **Research Context Query/Response** contract belongs
-to Application. A query carries an explicit research question and narrowing
-conditions; Application binds current Run, Session, Triptych, authorized
-scope, and generation before provider execution. Initial Beta composes the one
-Search capability, exact Note/section read, explicit direct Relations,
-canonical Properties, Research Records, and only researcher-state facts whose
-existing owner proves actor, object, action meaning, revision/scope, and text.
-It creates no Agent-only parser, ranker, JSON scan, hidden index, persistent
-response, Research State store, researcher profile, vector store, or automatic
-synthesis.
+to Application. A query contains one or more closed clauses: Note discovery,
+exact Note or section read, explicit direct-Relation inspection, canonical
+Property inspection, Record inspection, or researcher-state inspection. Each
+clause fixes Triptych scope, its legal query or section selector, an item limit,
+and whether the returned material may be proposed for Context Use. A query
+cannot choose a provider, source-kind/purpose cross-product, Run, Triptych, or
+authorization scope. Application binds current Run, Session, Triptych,
+authorized scope, and generation before provider execution. Initial Beta
+composes the one Search capability, exact Note/section read, explicit direct
+Relations, canonical Properties, Research Records, and only researcher-state
+facts whose existing owner proves actor, object, action meaning, revision/scope,
+and text. It creates no Agent-only parser, ranker, JSON scan, hidden index,
+persistent response, Research State store, researcher profile, vector store, or
+automatic synthesis.
 
 Every returned item uses one closed **Source Reference Envelope** carrying:
 source kind, authoritative owner reference, stable object identity, actor
@@ -206,11 +211,24 @@ second relation interpretation. Unknown owner kinds, malformed identities, and
 a coarse Property/direct-relation reason without its typed match fail closed.
 
 Response availability distinguishes **Current**, **Partial**, **Stale**,
-**Unavailable**, and **Invalid Query**. Partial names the unavailable provider
-or scope. Stale references cannot navigate or be recorded as current use.
+**Unavailable**, and **Invalid Query**. Every requested clause has its own
+availability, items, and limitations, so an unexecuted channel cannot appear as
+Current with an empty list. Partial names an incomplete page or unavailable
+provider/scope. Stale references cannot navigate or be recorded as current use.
 Provider failure cannot return an older response, broaden scope, silently omit
 a clause, or present unavailable as no matches. App and CLI consume the same
 Application response; delivery adapters do not parse, rank, or fill provenance.
+
+Exact Note and section material is delivered only as lossless source-range
+pages. A page preserves its UTF-8 text, including a byte-order mark, newline
+form, leading or trailing whitespace, and final newline; semantic snippets are
+a separate response form. A stateless continuation cursor binds the
+authenticated query, clause, selected Note, revision, complete source range,
+and prior-page digest. Changed query, scope, owner, revision, range, or page
+identity becomes Stale rather than selecting new material. Page and complete
+response budgets remain below the local bridge frame; they are delivery limits,
+not permission or storage state.
+
 The Source Reference Envelope's response-local ID is correlation only, not
 authority. Scholium retains no process registry of previously delivered
 references. Context Use and Continue Research submissions remain bound to an

@@ -17,10 +17,12 @@ struct ResearchAgentResultOperationsTests {
             credential: first.credential,
             run: first.handoff.run,
             request: try ResearchContextRequest(
-                query: "path:Agency.md",
-                sourceKinds: [.note],
-                purposes: [.read],
-                sectionHeading: "Agency"
+                clauses: [try ResearchContextClause(
+                    kind: .readNote,
+                    query: "path:Agency.md",
+                    sectionHeading: "Agency",
+                    useEligibility: .contextUse
+                )]
             )
         )
         let reference = try #require(response.items.first?.sourceReference)
@@ -185,10 +187,12 @@ struct ResearchAgentResultOperationsTests {
             credential: second.credential,
             run: second.handoff.run,
             request: try ResearchContextRequest(
-                query: "path:Agency.md",
-                sourceKinds: [.note],
-                purposes: [.read],
-                sectionHeading: "Agency"
+                clauses: [try ResearchContextClause(
+                    kind: .readNote,
+                    query: "path:Agency.md",
+                    sectionHeading: "Agency",
+                    useEligibility: .contextUse
+                )]
             )
         )
         _ = try await handle.research.submitAgentResult(
@@ -228,16 +232,17 @@ struct ResearchAgentResultOperationsTests {
             credential: prepared.credential,
             run: prepared.handoff.run,
             request: try ResearchContextRequest(
-                query: "current researcher state",
-                sourceKinds: [.researcherState],
-                purposes: [.inspectResearcherState]
+                clauses: [try ResearchContextClause(
+                    kind: .inspectResearcherState,
+                    useEligibility: .contextUse
+                )]
             )
         )
         let item = try #require(response.items.first {
             $0.sourceReference.owner.stableObjectIdentity.hasPrefix("settlement:")
         })
-        #expect(item.content.contains("stable enough for the current synthesis"))
-        #expect(!item.content.contains("not truth"))
+        #expect(item.semanticContent?.contains("stable enough for the current synthesis") == true)
+        #expect(item.semanticContent?.contains("not truth") == false)
         #expect(item.sourceReference.materialLimitations.contains {
             $0.contains("does not establish truth")
         })
@@ -265,15 +270,16 @@ struct ResearchAgentResultOperationsTests {
             credential: prepared.credential,
             run: prepared.handoff.run,
             request: try ResearchContextRequest(
-                query: "refreshed researcher state",
-                sourceKinds: [.researcherState],
-                purposes: [.inspectResearcherState]
+                clauses: [try ResearchContextClause(
+                    kind: .inspectResearcherState,
+                    useEligibility: .contextUse
+                )]
             )
         )
         let currentItem = try #require(refreshedResponse.items.first {
             $0.sourceReference.owner.stableObjectIdentity.hasPrefix("settlement:")
         })
-        #expect(currentItem.content.contains("later researcher decision"))
+        #expect(currentItem.semanticContent?.contains("later researcher decision") == true)
 
         let receipt = try await handle.research.submitAgentResult(
             credential: prepared.credential,
@@ -329,15 +335,17 @@ struct ResearchAgentResultOperationsTests {
             credential: second.credential,
             run: second.handoff.run,
             request: try ResearchContextRequest(
-                query: "kind:record memory-poisoning-sentinel",
-                sourceKinds: [.record],
-                purposes: [.inspectRecords]
+                clauses: [try ResearchContextClause(
+                    kind: .inspectRecords,
+                    query: "kind:record memory-poisoning-sentinel",
+                    useEligibility: .referenceOnly
+                )]
             )
         )
         #expect(response.availability == .current)
         #expect(response.items.contains { item in
             item.contentKind == .recordStatement
-                && item.content.contains(marker)
+                && item.semanticContent?.contains(marker) == true
                 && item.sourceReference.actorClass == .agent
                 && item.sourceReference.evidentialLayer == .researchRecord
         })

@@ -255,9 +255,11 @@ struct ResearchContinuationOperationsTests {
             credential: credential,
             run: handoff.run,
             request: try ResearchContextRequest(
-                query: "path:Agency.md",
-                sourceKinds: [.note],
-                purposes: [.read]
+                clauses: [try ResearchContextClause(
+                    kind: .readNote,
+                    query: "path:Agency.md",
+                    useEligibility: .contextUse
+                )]
             )
         )
         let contextReference = try #require(context.items.first?.sourceReference)

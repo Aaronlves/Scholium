@@ -129,6 +129,22 @@ struct LocalAgentBridgeTests {
         #expect(try sendNothing(to: socketURL).error?.code == .timeout)
     }
 
+    @Test("The largest legal exact-source page fits its complete bridge response envelope")
+    func researchContextEnvelopeBudget() throws {
+        let context = try maximumExactSourceContextResponse()
+        let response = try LocalAgentBridgeResponse(
+            correlationID: UUID(),
+            researchContext: context
+        )
+        let data = try LocalAgentBridgeWireCoding.encode(response)
+
+        #expect(data.count < LocalAgentBridgeLocation.maximumFrameByteCount)
+        #expect(try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: data
+        ).researchContext == context)
+    }
+
     @Test("A timed-out handler is cancelled without a late mutation")
     func handlerTimeoutOwnsCancellation() async throws {
         let fixture = try BridgeFixture()
@@ -472,6 +488,67 @@ private func testCredential() throws -> ResearchConnectionCredential {
     try ResearchConnectionCredential(
         sessionID: UUID(),
         secret: String(repeating: "s", count: 48)
+    )
+}
+
+private func maximumExactSourceContextResponse() throws -> ResearchContextResponse {
+    let runID = UUID()
+    let triptychID = UUID()
+    let vaultID = UUID()
+    let note = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Maximum.md")
+    let source = String(
+        repeating: "x",
+        count: ResearchContextExactSource.maximumUTF8Count
+    )
+    let clause = try ResearchContextClause(
+        kind: .readNote,
+        query: "path:Maximum.md",
+        useEligibility: .contextUse
+    )
+    let query = try ResearchContextQuery(
+        request: ResearchContextRequest(clauses: [clause]),
+        runID: runID,
+        triptychID: triptychID
+    )
+    let range = SearchSourceRange(
+        utf16LowerBound: 0,
+        utf16UpperBound: source.utf16.count,
+        line: 1,
+        column: 1,
+        endLine: 1,
+        endColumn: source.utf16.count + 1
+    )
+    let item = try ResearchContextResponseItem(
+        clauseID: clause.id,
+        sourceReference: try SourceReferenceEnvelope(
+            sourceKind: .note,
+            owner: .note(
+                triptychID: triptychID,
+                note: note,
+                stableObjectIdentity: "maximum-source"
+            ),
+            actorClass: .researcher,
+            objectRole: .topic,
+            vaultRole: .topicKnowledge,
+            fingerprint: DocumentFingerprint(content: source),
+            locator: try .sourceRange(range),
+            authorizedScope: .triptych(runID: runID, triptychID: triptychID),
+            currentness: .current,
+            evidentialLayer: .topicNote,
+            retrievalReason: .exactRead
+        ),
+        title: "Maximum",
+        contentKind: .noteDocument,
+        exactSource: try ResearchContextExactSource(content: source),
+        contextUseEligibility: .contextUse
+    )
+    return try ResearchContextResponse(
+        query: query,
+        outcomes: [try ResearchContextClauseOutcome(
+            clause: clause,
+            availability: .current,
+            items: [item]
+        )]
     )
 }
 

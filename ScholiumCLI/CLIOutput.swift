@@ -202,9 +202,7 @@ private extension ScholiumCLI {
         let writeOperations = ResearchDocumentWriteOperation.allCases
             .map(\.rawValue)
             .joined(separator: ", ")
-        let sourceKinds = ResearchContextSourceKind.allCases.map(\.rawValue)
-            .joined(separator: ", ")
-        let queryPurposes = ResearchContextQueryPurpose.allCases.map(\.rawValue)
+        let contextClauses = ResearchContextClauseKind.allCases.map(\.rawValue)
             .joined(separator: ", ")
         let epistemicStatuses = ResearchContinuationEpistemicStatus.allCases
             .map(\.rawValue)
@@ -243,8 +241,8 @@ private extension ScholiumCLI {
             "agent query": AgentCLICommandHelp(
                 usage: "scholium agent query --run <locator> --from <json|->",
                 inputContract: "ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
-                input: "Strict JSON fields: schemaVersion, id, query, sourceKinds [\(sourceKinds)], purposes [\(queryPurposes)], limit 1...\(ResearchContextQuery.maximumLimit), and optional sectionHeading only when purposes is exactly [read].",
-                output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with availability, source-reference-bearing items, and limitations for this query.",
+                input: "Strict JSON fields: schemaVersion, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schemaVersion, id, kind [\(contextClauses)], scope=triptych, limit 1...\(ResearchContextClause.maximumLimit), useEligibility, and only the query, sectionHeading, or cursor fields allowed by its closed kind.",
+                output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with one visible availability, items, limitations, and optional stateless continuation cursor for every requested clause.",
                 nextSteps: [
                     "Repeat scholium agent query with a narrower request when needed",
                     "Use the returned context in the current Method, then continue to the applicable write or Result command",

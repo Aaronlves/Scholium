@@ -105,6 +105,9 @@ and dated proof belongs in [Verification Evidence](04-verification.md).
   direct graph relations, Properties, Records, source references, and explicit
   researcher state while preserving owner, revision, locator, scope,
   currentness, evidential layer, retrieval reason, and limitation.
+- Research Context accepts closed typed clauses and returns a separate visible
+  outcome for each clause. Exact Note or section bytes are source-range pages
+  with stateless continuation binding; no source-kind/purpose fallback remains.
 - Context Use is validated against the authorized Run scope and each current
   owner, revision, locator, and provenance field. There is no separate
   delivered-reference registry or Agent-owned parser, index, ranker, or context

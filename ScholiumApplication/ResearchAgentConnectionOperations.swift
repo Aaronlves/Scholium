@@ -450,10 +450,10 @@ extension WorkspaceHandle {
         platform: PlatformActionDefinition
     ) throws {
         let operations = Set(platform.operations)
-        for purpose in request.purposes {
-            let permitted = switch purpose {
-            case .discover: operations.contains(.search)
-            case .read: operations.contains(.read)
+        for clause in request.clauses {
+            let permitted = switch clause.kind {
+            case .discoverNote: operations.contains(.search)
+            case .readNote: operations.contains(.read)
             case .inspectRelations: operations.contains(.inspectRelations)
             case .inspectProperties: operations.contains(.inspectProperties)
             case .inspectRecords, .inspectResearcherState:
@@ -462,15 +462,6 @@ extension WorkspaceHandle {
             guard permitted else {
                 throw ResearchAgentConnectionError.capabilityUnavailable
             }
-        }
-        if request.sourceKinds.contains(.record)
-            || request.sourceKinds.contains(.researcherState) {
-            guard operations.contains(.queryRecords) else {
-                throw ResearchAgentConnectionError.capabilityUnavailable
-            }
-        }
-        if request.sourceKinds.contains(.material) {
-            throw ResearchAgentConnectionError.capabilityUnavailable
         }
     }
 
