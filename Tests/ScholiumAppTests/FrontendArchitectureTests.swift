@@ -148,6 +148,107 @@ struct FrontendArchitectureTests {
         #expect(componentSource.contains(".accessibilityValue(detail)"))
     }
 
+    @Test("Recovery notices share presentation without moving workflow ownership")
+    func recoveryNoticePresentationResponsibility() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let componentSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
+        let identitySource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/IdentityResolutionView.swift"
+            ),
+            encoding: .utf8
+        )
+        let transactionSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/TransactionRecoveryView.swift"
+            ),
+            encoding: .utf8
+        )
+        let searchSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/SearchWorkspaceView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        let componentStart = try #require(componentSource.range(
+            of: "struct ScholiumRecoveryNoticePresentation"
+        ))
+        let componentEnd = try #require(componentSource.range(
+            of: "enum ScholiumDocumentStatusKind",
+            range: componentStart.upperBound ..< componentSource.endIndex
+        ))
+        let recoveryComponent = componentSource[
+            componentStart.lowerBound ..< componentEnd.lowerBound
+        ]
+        let migrationStart = try #require(identitySource.range(
+            of: "struct IdentityMigrationNotice"
+        ))
+        let ambiguityStart = try #require(identitySource.range(
+            of: "struct IdentityAmbiguityNotice",
+            range: migrationStart.upperBound ..< identitySource.endIndex
+        ))
+        let migrationNotice = identitySource[
+            migrationStart.lowerBound ..< ambiguityStart.lowerBound
+        ]
+        let ambiguityNotice = identitySource[ambiguityStart.lowerBound...]
+        let transactionStart = try #require(transactionSource.range(
+            of: "struct TransactionRecoveryNotice"
+        ))
+        let transactionEnd = try #require(transactionSource.range(
+            of: "struct TransactionRecoveryView",
+            range: transactionStart.upperBound ..< transactionSource.endIndex
+        ))
+        let transactionNotice = transactionSource[
+            transactionStart.lowerBound ..< transactionEnd.lowerBound
+        ]
+
+        #expect(recoveryComponent.contains("enum ScholiumRecoveryNoticeRegion"))
+        #expect(recoveryComponent.contains("case documentInline"))
+        #expect(recoveryComponent.contains("case workspaceBanner"))
+        #expect(recoveryComponent.contains("struct ScholiumRecoveryNotice<Action: View>"))
+        #expect(recoveryComponent.contains("ScholiumColorRole.attention.color"))
+        #expect(recoveryComponent.contains("ScholiumStructuralRule()"))
+        #expect(recoveryComponent.contains("ViewThatFits(in: .horizontal)"))
+        #expect(recoveryComponent.contains(".accessibilityElement(children: .combine)"))
+        #expect(recoveryComponent.contains(".accessibilityElement(children: .contain)"))
+        #expect(!recoveryComponent.contains("Task {"))
+        #expect(!recoveryComponent.contains("NoteIdentity"))
+        #expect(!recoveryComponent.contains("TriptychMutationRecoveryRecord"))
+
+        #expect(migrationNotice.contains("ScholiumRecoveryNotice("))
+        #expect(migrationNotice.contains("region: .documentInline"))
+        #expect(migrationNotice.contains("Task { await onRetry() }"))
+        #expect(!migrationNotice.contains(".background(.orange"))
+        #expect(!migrationNotice.contains(".stroke(.orange"))
+
+        #expect(ambiguityNotice.contains("ScholiumRecoveryNotice("))
+        #expect(ambiguityNotice.contains("region: .documentInline"))
+        #expect(!ambiguityNotice.contains(".background(.orange"))
+        #expect(!ambiguityNotice.contains(".stroke(.orange"))
+
+        let documentAdapterCount = identitySource.components(
+            separatedBy: "region: .documentInline"
+        ).count - 1
+        #expect(documentAdapterCount == 2)
+        #expect(transactionNotice.contains("ScholiumRecoveryNotice("))
+        #expect(transactionNotice.contains("region: .workspaceBanner"))
+        #expect(transactionNotice.contains("Button(\"Inspect Recovery…\", action: onInspect)"))
+        #expect(transactionNotice.contains(
+            ".accessibilityIdentifier(\"scholium.transactionRecovery.notice\")"
+        ))
+        #expect(!transactionNotice.contains("Color.orange"))
+        #expect(!searchSource.contains("ScholiumRecoveryNotice("))
+    }
+
     @Test("A window presents at most one sheet route")
     func presentationRouteExclusivity() {
         let router = WindowPresentationRouter()

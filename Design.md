@@ -392,6 +392,7 @@ the required meaning.
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
 | `Attention Alert` | Surface only current-Scope unresolved attention with exact count or complete unavailable text and Retry. | A permanent global badge, pulse, or diagnostic owner. | §14, §18.3 |
+| `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 
 The catalog is presentation authority, not a replacement for the owning
 workflow rule. New entries require a distinct task, a single state owner, a

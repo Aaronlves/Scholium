@@ -123,36 +123,21 @@ struct IdentityMigrationNotice: View {
     let onRetry: () async -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Identity Recovery Required")
-                    .font(.headline)
-                Text("This note remains readable, but Comment, Research Record, restore, and file changes are unavailable until its records finish moving from \(rebinding.previousRelativePath) to \(rebinding.relativePath).")
-                    .fixedSize(horizontal: false, vertical: true)
-                if let message {
-                    Text(message)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-            Spacer(minLength: 12)
+        ScholiumRecoveryNotice(
+            ScholiumRecoveryNoticePresentation(
+                "Identity Recovery Required",
+                message: Text("This note remains readable, but Comment, Research Record, restore, and file changes are unavailable until its records finish moving from \(rebinding.previousRelativePath) to \(rebinding.relativePath)."),
+                detail: message.map { Text(verbatim: $0) },
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath"
+            ),
+            region: .documentInline
+        ) {
             Button("Retry Identity Recovery") {
                 Task { await onRetry() }
             }
             .disabled(isRetrying)
             .accessibilityHint("Retries migration of app-owned records without changing the Markdown note.")
         }
-        .padding(12)
-        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.orange.opacity(0.35))
-        }
-        .accessibilityElement(children: .contain)
     }
 }
 
@@ -163,27 +148,17 @@ struct IdentityAmbiguityNotice: View {
     let onResolve: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "questionmark.folder")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Confirm Note Identity")
-                    .font(.headline)
-                Text(ambiguityExplanation)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 12)
+        ScholiumRecoveryNotice(
+            ScholiumRecoveryNoticePresentation(
+                "Confirm Note Identity",
+                message: Text(verbatim: ambiguityExplanation),
+                systemImage: "questionmark.folder"
+            ),
+            region: .documentInline
+        ) {
             Button("Choose Identity…", action: onResolve)
                 .accessibilityHint("Shows the previous note locations without changing the Markdown file.")
         }
-        .padding(12)
-        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.orange.opacity(0.35))
-        }
-        .accessibilityElement(children: .contain)
     }
 
     private var ambiguityExplanation: String {

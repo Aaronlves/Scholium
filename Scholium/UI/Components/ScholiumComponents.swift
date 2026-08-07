@@ -274,6 +274,121 @@ struct ScholiumLibrarySourceState<Content: View>: View {
     }
 }
 
+struct ScholiumRecoveryNoticePresentation {
+    let title: LocalizedStringKey
+    let message: Text
+    let detail: Text?
+    let systemImage: String
+
+    init(
+        _ title: LocalizedStringKey,
+        message: Text,
+        detail: Text? = nil,
+        systemImage: String
+    ) {
+        self.title = title
+        self.message = message
+        self.detail = detail
+        self.systemImage = systemImage
+    }
+}
+
+enum ScholiumRecoveryNoticeRegion {
+    case documentInline
+    case workspaceBanner
+}
+
+/// Persistent recovery presentation shared across workflow-owned recovery
+/// states. Callers retain the domain state, operation, and action lifecycle;
+/// this component owns only the visible grammar and region adaptation.
+struct ScholiumRecoveryNotice<Action: View>: View {
+    let presentation: ScholiumRecoveryNoticePresentation
+    let region: ScholiumRecoveryNoticeRegion
+    @ViewBuilder let action: () -> Action
+
+    init(
+        _ presentation: ScholiumRecoveryNoticePresentation,
+        region: ScholiumRecoveryNoticeRegion,
+        @ViewBuilder action: @escaping () -> Action
+    ) {
+        self.presentation = presentation
+        self.region = region
+        self.action = action
+    }
+
+    var body: some View {
+        switch region {
+        case .documentInline:
+            noticeContent
+                .padding(ScholiumGrid.Spacing.nestedContentInset)
+                .background(
+                    ScholiumColorRole.attention.color.opacity(0.08),
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .scholiumBoundary(
+                    .subtleBoundary,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                        style: .continuous
+                    )
+                )
+        case .workspaceBanner:
+            noticeContent
+                .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(ScholiumColorRole.attention.color.opacity(0.08))
+                .overlay(alignment: .bottom) {
+                    ScholiumStructuralRule()
+                }
+        }
+    }
+
+    private var noticeContent: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                noticeDescription
+                Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
+                action()
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                noticeDescription
+                action()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var noticeDescription: some View {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: presentation.systemImage)
+                .scholiumForeground(.attention)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
+                Text(presentation.title)
+                    .font(.headline)
+                presentation.message
+                    .font(.callout)
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail = presentation.detail {
+                    detail
+                        .font(.caption)
+                        .scholiumForeground(.secondaryText)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 enum ScholiumDocumentStatusKind: Sendable {
     case attention
     case destructive

@@ -11,27 +11,29 @@ struct TransactionRecoveryNotice: View {
     let onInspect: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(error == nil ? "Transaction Recovery Required" : "Recovery Records Unavailable")
-                    .font(.headline)
-                Text(error ?? "\(count) interrupted operation\(count == 1 ? "" : "s") need file-by-file inspection.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 12)
+        ScholiumRecoveryNotice(
+            presentation,
+            region: .workspaceBanner
+        ) {
             Button("Inspect Recovery…", action: onInspect)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(Color.orange.opacity(0.08))
-        .overlay(alignment: .bottom) { Divider() }
-        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.transactionRecovery.notice")
+    }
+
+    private var presentation: ScholiumRecoveryNoticePresentation {
+        if let error {
+            ScholiumRecoveryNoticePresentation(
+                "Recovery Records Unavailable",
+                message: Text(verbatim: error),
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath"
+            )
+        } else {
+            ScholiumRecoveryNoticePresentation(
+                "Transaction Recovery Required",
+                message: Text(verbatim: "\(count) interrupted operation\(count == 1 ? "" : "s") need file-by-file inspection."),
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath"
+            )
+        }
     }
 }
 
