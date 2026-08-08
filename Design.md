@@ -210,6 +210,33 @@ bounded **4pt** foundation with a **2pt** optical exception; APIs expose
 purpose-named roles, never numbered positions. Invent no numbered opacity,
 radius, shadow, border, gradient, or paper scales.
 
+#### Corner geometry
+
+Corner geometry follows component responsibility and containment rather than
+one application-wide numeric scale.
+
+- System windows, toolbars, menus, sheets, popovers, and native controls retain
+  their platform-owned shapes. Scholium neither copies their current numeric
+  radii nor adds a parallel control skin.
+- Matching instances of the same component responsibility and size use one
+  shape recipe. A leaf View never names a raw radius; a fixed radius belongs
+  only to the owning component, surface role, or purpose-named feature metric.
+- A custom surface adjacent to or nested inside a rounded container uses
+  container-concentric geometry. When the supported platform cannot resolve
+  that geometry, one purpose-owned fixed fallback preserves the same visual
+  relationship rather than creating a second appearance.
+- A border does not imply rounding. Ordinary lists, structural separators,
+  toolbar symbols, and unbounded content do not acquire a custom rounded
+  enclosure merely to make geometry appear uniform. Capsules remain
+  native-owned or require a named full-height enclosure; they do not create
+  tag walls, card families, or decoration.
+- Native and WebKit presentations share a corner recipe only when they express
+  the same semantic construct. Distinct constructs may use distinct fixed
+  geometry.
+
+Corner shape never carries state or authority by itself; boundary and focus
+adaptation continue to follow §20.
+
 - Interface type roles: identity, section title, row title, metadata, and
   narrowly approved editorial hierarchy. Library exposes purpose-named Folder,
   Note, selected-Note, and Attention-alert roles; the toolbar exposes the
