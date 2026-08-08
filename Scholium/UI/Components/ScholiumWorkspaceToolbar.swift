@@ -151,7 +151,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 view: ScholiumWorkspaceResearchRecordsToolbarView(
                     appState: appState,
                     documentController: appState.documentController,
-                    workspaceProjectionController: appState.workspaceProjectionController,
+                    researchController: appState.researchController,
                     windowActions: windowActions
                 )
             )
@@ -401,13 +401,13 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
 private struct ScholiumWorkspaceResearchRecordsToolbarView: View {
     @ObservedObject var appState: WindowModel
     @ObservedObject var documentController: DocumentController
-    @ObservedObject var workspaceProjectionController: WindowWorkspaceProjectionController
+    @ObservedObject var researchController: ResearchController
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
         ScholiumInkIconControl(
             title: ScholiumL10n.dynamicString("This Note · Records"),
-            systemImage: "clock.arrow.circlepath",
+            systemImage: hasCurrentNoteResearchRecords ? "tray.full" : "tray",
             identifier: "scholium.showResearchRecords"
         ) {
             windowActions.showNoteResearchRecords()
@@ -419,6 +419,14 @@ private struct ScholiumWorkspaceResearchRecordsToolbarView: View {
         guard let note = appState.currentNote else { return false }
         return appState.documentController.editingDocumentPath == nil
             && appState.currentDocumentIdentityByPath[note.relativePath] != nil
+    }
+
+    private var hasCurrentNoteResearchRecords: Bool {
+        guard let noteID = appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
+        else { return false }
+        return researchController.records?.finishedResearchRecords.contains { record in
+            record.participatingNotes.contains { $0.noteID == noteID }
+        } == true
     }
 }
 

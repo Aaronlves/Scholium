@@ -271,7 +271,7 @@ extension ScholiumUITests {
             "scholium.researchAction.noteSearch.materials"
         ].exists)
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchAction.text.researcher-request"
+            "scholium.researchAction.academicText.research-request"
         ].exists)
         XCTAssertFalse(app.staticTexts["Supported modes"].exists)
         XCTAssertFalse(app.staticTexts["Required packages"].exists)
@@ -1055,12 +1055,7 @@ extension ScholiumUITests {
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
             || name.contains("testResearchActionPanelFits")
             || name.contains("testSidebarCleanCutoverScopeLocationHoverPutBackAndAttentionWindowJourney") {
-            // These journeys exercise the new-Triptych Action surface. Remove
-            // only the disposable copy's durable bootstrap marker so the real
-            // bootstrap path installs editable Working Methods before launch.
-            try? FileManager.default.removeItem(
-                at: triptychDirectory.appendingPathComponent(".scholium/manifest.json")
-            )
+            try resetNewTriptychActionFixtureState()
         }
 
         let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
@@ -1343,5 +1338,34 @@ extension ScholiumUITests {
 
         Final ordinary prose returns after every exact object. It should still look like the same document, retain the same source authority, and leave tables, code, mathematics, and the synthetic diff pair inside their own bounded responsibilities.
         """# + "\n"
+    }
+
+    /// Preserves the fixture's stable Note identities and editable Working
+    /// Methods while removing portable state that belongs to its old Triptych
+    /// identity. The QA app can then exercise the real new-Triptych bootstrap
+    /// path, which creates a new manifest, policy, Citation Method, and empty
+    /// Research Record store without mixing identities.
+    private func resetNewTriptychActionFixtureState() throws {
+        let scholiumDirectory = triptychDirectory.appendingPathComponent(
+            ".scholium",
+            isDirectory: true
+        )
+        let identityBoundComponents = [
+            "manifest.json",
+            "collaboration-policy-v1.json",
+            "citation-method-v1.json",
+            "research-records",
+        ]
+
+        for component in identityBoundComponents {
+            let stateURL = scholiumDirectory.appendingPathComponent(component)
+            if FileManager.default.fileExists(atPath: stateURL.path) {
+                try FileManager.default.removeItem(at: stateURL)
+            }
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: stateURL.path),
+                "New-Triptych fixture retained identity-bound state: \(component)"
+            )
+        }
     }
 }

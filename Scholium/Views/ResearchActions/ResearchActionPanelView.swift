@@ -214,7 +214,6 @@ struct ResearchActionPanelView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("scholium.researchAction.platformInputs")
         }
     }
 
@@ -233,7 +232,6 @@ struct ResearchActionPanelView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("scholium.researchAction.academicInputs")
         }
     }
 

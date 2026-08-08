@@ -1305,6 +1305,7 @@ private struct ResearchRecordEmptyResults: View {
 }
 
 private struct ResearchRecordListRow: View {
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let id: UUID
     let contextTitle: String
     let actionID: ResearchActionID
@@ -1349,18 +1350,33 @@ private struct ResearchRecordListRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(actionTitle(actionID)): \(contextTitle)")
-            ScholiumInkIconControl(
-                title: isPinned ? "Unpin Research Record" : "Pin Research Record",
-                systemImage: isPinned ? "pin.fill" : "pin",
-                identifier: "scholium.researchRecord.pin.\(id.uuidString)",
-                isActive: isPinned,
-                action: togglePin
-            )
-            .disabled(isPinning)
-            .accessibilityValue(isPinned ? "Pinned" : "Not Pinned")
+            Group {
+                if reduceMotion {
+                    pinControl
+                } else {
+                    pinControl
+                        .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                        .animation(
+                            ScholiumMotion.symbolReplacement(reduceMotion: reduceMotion),
+                            value: isPinned
+                        )
+                }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchRecord.row.\(id.uuidString)")
+    }
+
+    private var pinControl: some View {
+        ScholiumInkIconControl(
+            title: isPinned ? "Unpin Research Record" : "Pin Research Record",
+            systemImage: isPinned ? "pin.fill" : "pin",
+            identifier: "scholium.researchRecord.pin.\(id.uuidString)",
+            isActive: isPinned,
+            action: togglePin
+        )
+        .disabled(isPinning)
+        .accessibilityValue(isPinned ? "Pinned" : "Not Pinned")
     }
 }
 

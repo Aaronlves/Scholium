@@ -15,6 +15,7 @@ struct CritiqueProvenanceContext {
 /// The prose remains the primary surface; this strip only exposes provenance,
 /// revision binding, and explicit finding destinations before the body.
 struct CritiqueProvenanceView: View {
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let note: WindowDocumentLocation
     let context: CritiqueProvenanceContext
 
@@ -154,10 +155,15 @@ struct CritiqueProvenanceView: View {
                     findingsAreExpanded.toggle()
                 } label: {
                     HStack(spacing: 7) {
-                        Image(systemName: findingsAreExpanded ? "chevron.down" : "chevron.right")
+                        Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
                             .scholiumForeground(.mutedText)
                             .frame(width: 12)
+                            .rotationEffect(.degrees(findingsAreExpanded ? 90 : 0))
+                            .animation(
+                                ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+                                value: findingsAreExpanded
+                            )
                             .accessibilityHidden(true)
                         Text("Specific Findings")
                             .font(.callout.weight(.semibold))

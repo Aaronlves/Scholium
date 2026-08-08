@@ -1143,7 +1143,7 @@ extension ScholiumUITests {
             "scholium.researchAction.boundary"
         ].exists)
         XCTAssertTrue(sheet.descendants(matching: .any)[
-            "scholium.researchAction.text.researcher-request"
+            "scholium.researchAction.academicText.research-request"
         ].waitForExistence(timeout: 8))
         XCTAssertFalse(sheet.descendants(matching: .any)[
             "scholium.researchFunctionPanel"
@@ -1226,26 +1226,32 @@ extension ScholiumUITests {
         let contentCheck = sheet.checkBoxes["Content"]
         scrollUntilHittable(contentCheck, in: actionScroll)
         contentCheck.click()
-        let copyOnly = sheet.descendants(matching: .any)[
-            "scholium.researchAction.copyOnly"
+        let copyHandoff = sheet.descendants(matching: .any)[
+            "scholium.researchAction.copyHandoff"
         ]
-        XCTAssertTrue(copyOnly.isEnabled && copyOnly.isHittable)
-        copyOnly.click()
-        let prepared = sheet.descendants(matching: .any)["scholium.researchAction.prepared"]
-        XCTAssertTrue(prepared.waitForExistence(timeout: 30))
+        XCTAssertTrue(copyHandoff.isEnabled && copyHandoff.isHittable)
+        copyHandoff.click()
+        let connection = sheet.descendants(matching: .any)["scholium.researchAction.connection"]
+        XCTAssertTrue(connection.waitForExistence(timeout: 30))
         XCTAssertTrue(waitUntil(timeout: 5) {
-            copyOnly.exists && copyOnly.isEnabled && copyOnly.isHittable
+            copyHandoff.exists && copyHandoff.isEnabled && copyHandoff.isHittable
         })
-        XCTAssertTrue(sheet.descendants(matching: .any)[
+        XCTAssertFalse(sheet.descendants(matching: .any)[
+            "scholium.researchAction.copyOnly"
+        ].exists)
+        XCTAssertFalse(sheet.descendants(matching: .any)[
             "scholium.researchAction.copyAndOpen"
         ].exists)
         XCTAssertFalse(sheet.descendants(matching: .any)[
             "scholium.researchAction.prepare"
         ].exists)
-        let cancelRun = sheet.descendants(matching: .any)["scholium.researchAction.cancelRun"]
-        XCTAssertTrue(cancelRun.isEnabled && cancelRun.isHittable)
-        cancelRun.click()
-        XCTAssertTrue(waitUntil(timeout: 8) { !cancelRun.exists })
+        let endAction = sheet.descendants(matching: .any)["scholium.researchAction.endAction"]
+        XCTAssertTrue(endAction.isEnabled && endAction.isHittable)
+        endAction.click()
+        let confirmEndAction = app.buttons["End Action"].firstMatch
+        XCTAssertTrue(confirmEndAction.waitForExistence(timeout: 5))
+        confirmEndAction.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !endAction.exists })
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !sheet.exists })
 
@@ -1541,13 +1547,16 @@ extension ScholiumUITests {
                 "scholium.researchAction.noteSearch.materials"
             ].exists)
             XCTAssertTrue(sheet.descendants(matching: .any)[
-                "scholium.researchAction.text.researcher-request"
+                "scholium.researchAction.academicText.research-request"
             ].exists)
             XCTAssertTrue(sheet.buttons["Cancel"].exists)
             XCTAssertTrue(sheet.descendants(matching: .any)[
+                "scholium.researchAction.copyHandoff"
+            ].exists)
+            XCTAssertFalse(sheet.descendants(matching: .any)[
                 "scholium.researchAction.copyOnly"
             ].exists)
-            XCTAssertTrue(sheet.descendants(matching: .any)[
+            XCTAssertFalse(sheet.descendants(matching: .any)[
                 "scholium.researchAction.copyAndOpen"
             ].exists)
             XCTAssertFalse(sheet.descendants(matching: .any)[
@@ -1595,15 +1604,19 @@ extension ScholiumUITests {
             "scholium.researchAction.noteSearch.materials"
         ].waitForExistence(timeout: 8))
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchAction.text.researcher-request"
+            "scholium.researchAction.academicText.research-request"
         ].waitForExistence(timeout: 8))
         XCTAssertFalse(app.descendants(matching: .any)["scholium.researcherCommentsPanel"].exists)
 
-        let copyOnly = app.descendants(matching: .any)["scholium.researchAction.copyOnly"]
-        XCTAssertTrue(waitUntil(timeout: 5) { copyOnly.isEnabled && copyOnly.isHittable })
-        copyOnly.click()
+        let copyHandoff = app.descendants(matching: .any)[
+            "scholium.researchAction.copyHandoff"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            copyHandoff.isEnabled && copyHandoff.isHittable
+        })
+        copyHandoff.click()
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchAction.prepared"
+            "scholium.researchAction.connection"
         ].waitForExistence(timeout: 15))
         let copiedInstructions = try pasteboardText()
         XCTAssertTrue(copiedInstructions.contains("scholium-working-critique"))
@@ -1845,18 +1858,18 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(actionSheet.waitForExistence(timeout: 8))
         let request = app.descendants(matching: .any)[
-            "scholium.researchAction.text.researcher-request"
+            "scholium.researchAction.academicText.research-request"
         ]
         XCTAssertTrue(request.waitForExistence(timeout: 5))
         XCTAssertTrue((request.value as? String)?.contains("existing Comments") == true)
-        let copyOnly = app.descendants(matching: .any)[
-            "scholium.researchAction.copyOnly"
+        let copyHandoff = app.descendants(matching: .any)[
+            "scholium.researchAction.copyHandoff"
         ]
-        XCTAssertTrue(copyOnly.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil(timeout: 8) { copyOnly.isEnabled })
-        copyOnly.click()
+        XCTAssertTrue(copyHandoff.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 8) { copyHandoff.isEnabled })
+        copyHandoff.click()
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchAction.prepared"
+            "scholium.researchAction.connection"
         ].waitForExistence(timeout: 8))
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { !actionSheet.exists })
@@ -1865,9 +1878,10 @@ extension ScholiumUITests {
         var discussion = app.descendants(matching: .any)["scholium.discussion"]
         XCTAssertTrue(discussion.waitForExistence(timeout: 8))
         XCTAssertTrue(discussion.staticTexts["What follows from this passage?"].exists)
-        XCTAssertTrue(app.staticTexts[
-            "The Discussion is waiting for an agent reply. Closing this sheet leaves it active."
-        ].exists)
+        XCTAssertTrue(discussion.staticTexts.matching(NSPredicate(
+            format: "value BEGINSWITH %@",
+            "The Discussion is waiting for an Agent reply."
+        )).firstMatch.exists)
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { !discussion.exists })
 

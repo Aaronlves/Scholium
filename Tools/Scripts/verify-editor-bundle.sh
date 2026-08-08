@@ -84,7 +84,7 @@ if rg -q '^\.cm-live-callout-(orient|cite|connect|state|illustrate|quote|flag|ne
   exit 1
 fi
 
-if ! rg -q -- '--scholium-document-prose-font-size:.*proseFontSizePoints' "$design_system" || \
+if ! rg -q -- '--scholium-document-prose-font-size:.*body\.fontSizePoints' "$design_system" || \
    ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$editor_styles" || \
    ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$read_styles" || \
    ! rg -U -q '^[[:space:]]*\.scholium-document h1,\n[[:space:]]*\.scholium-live-mode \.cm-live-h1 \{[^}]*font-size:' "$design_system" || \

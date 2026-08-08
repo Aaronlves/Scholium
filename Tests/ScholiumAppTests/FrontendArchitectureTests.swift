@@ -1647,6 +1647,9 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("\"scholium.documentSearch\""))
         #expect(toolbar.contains("\"scholium.showResearchRecords\""))
         #expect(toolbar.contains("windowActions.showNoteResearchRecords()"))
+        #expect(toolbar.contains("hasCurrentNoteResearchRecords ? \"tray.full\" : \"tray\""))
+        #expect(toolbar.contains("record.participatingNotes.contains { $0.noteID == noteID }"))
+        #expect(!toolbar.contains("clock.arrow.circlepath"))
         #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
         #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(toolbar.contains("static let researchRecords"))
@@ -3099,12 +3102,14 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchPresentation(reduceMotion: true) == nil)
         #expect(ScholiumMotion.searchExpansion(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
+        #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
 
         #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: false) != nil)
         #expect(ScholiumMotion.searchPresentation(reduceMotion: false) != nil)
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
+        #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)
     }
 
     @Test("Custom interface glyphs use resolved semantic colors")
@@ -3139,6 +3144,41 @@ struct FrontendArchitectureTests {
         #expect(frontmatterSource.contains(".scholiumForeground(.accent)"))
         #expect(!frontmatterSource.contains("Color.accentColor"))
         #expect(connectionsSource.contains(".scholiumForeground(.mutedText)"))
+
+        let designSystemSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+            ),
+            encoding: .utf8
+        )
+        let critiqueSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/CritiqueProvenanceView.swift"
+            ),
+            encoding: .utf8
+        )
+        let bootstrapSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ApplicationBootstrapController.swift"
+            ),
+            encoding: .utf8
+        )
+        let recordSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(designSystemSource.contains("ScholiumInkIconButtonStyle"))
+        #expect(designSystemSource.contains("raisedSurfaceBackground.color"))
+        #expect(designSystemSource.contains("configuration.isPressed ? 0.78 : 1"))
+        #expect(designSystemSource.contains("isActive ? 1"))
+        #expect(critiqueSource.contains("ScholiumMotion.disclosure(reduceMotion: reduceMotion)"))
+        #expect(bootstrapSource.contains("ScholiumMotion.disclosure(reduceMotion: reduceMotion)"))
+        #expect(recordSource.contains(".contentTransition(.symbolEffect(.replace.downUp.byLayer))"))
+        #expect(recordSource.contains("ScholiumMotion.symbolReplacement(reduceMotion: reduceMotion)"))
+        #expect(recordSource.contains("if reduceMotion"))
     }
 
     @Test("Semantic surfaces, depth, and boundaries adapt without numbered visual scales")

@@ -211,6 +211,7 @@ struct ApplicationBootstrapGate<Content: View>: View {
 }
 
 private struct ApplicationRegistryRecoveryView: View {
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let recovery: ApplicationRegistryRecovery
     let retry: () -> Void
     let relink: () -> Void
@@ -228,8 +229,13 @@ private struct ApplicationRegistryRecoveryView: View {
                 showsDetails.toggle()
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: showsDetails ? "chevron.down" : "chevron.right")
+                    Image(systemName: "chevron.right")
                         .imageScale(.small)
+                        .rotationEffect(.degrees(showsDetails ? 90 : 0))
+                        .animation(
+                            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+                            value: showsDetails
+                        )
                     Text("Details")
                 }
                 .contentShape(Rectangle())
@@ -278,6 +284,7 @@ private struct ApplicationRegistryRecoveryView: View {
 }
 
 private struct ApplicationStorageUnavailableView: View {
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let failure: ApplicationStorageFailure
     let retry: () -> Void
     @State private var showsDetails = false
@@ -294,8 +301,13 @@ private struct ApplicationStorageUnavailableView: View {
                 showsDetails.toggle()
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: showsDetails ? "chevron.down" : "chevron.right")
+                    Image(systemName: "chevron.right")
                         .imageScale(.small)
+                        .rotationEffect(.degrees(showsDetails ? 90 : 0))
+                        .animation(
+                            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+                            value: showsDetails
+                        )
                     Text("Details")
                 }
                 .contentShape(Rectangle())

@@ -1848,7 +1848,8 @@ private struct ScholiumForegroundModifier: ViewModifier {
 /// A borderless Scholium icon control for permanent workspace commands,
 /// including custom content hosted by the native macOS toolbar. It retains
 /// pointer, keyboard, focus, help, and accessibility activation while
-/// expressing hover/focus with ink alone.
+/// expressing immediate hover, focus, press, and active states with ink and
+/// a shallow surface.
 struct ScholiumInkIconControl: View {
     @Environment(\.isEnabled) private var isEnabled
     @FocusState private var isFocused: Bool
@@ -1877,16 +1878,36 @@ struct ScholiumInkIconControl: View {
                     Rectangle()
                         .fill(ScholiumColorRole.accent.color)
                         .frame(height: 1)
-                        .opacity(isEnabled && (isHovering || isFocused) ? 0.72 : 0)
+                        .opacity(
+                            isEnabled
+                                ? (isActive ? 1 : (isHovering || isFocused ? 0.72 : 0))
+                                : 0
+                        )
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ScholiumInkIconButtonStyle())
         .focusEffectDisabled()
         .focused($isFocused)
         .onHover { isHovering = $0 }
         .help(title)
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
+    }
+}
+
+private struct ScholiumInkIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                configuration.isPressed
+                    ? ScholiumColorRole.raisedSurfaceBackground.color
+                    : Color.clear,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 
@@ -1908,6 +1929,10 @@ enum ScholiumMotion {
     }
 
     static func disclosure(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.12)
+    }
+
+    static func symbolReplacement(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.12)
     }
 
