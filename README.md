@@ -2,12 +2,15 @@
 
 [English](README.md) | [简体中文](README.zh-Hans.md)
 
-> A quiet, local-first writing room for philosophical work.
+> A local-first, document-authoritative research environment for philosophy
+> and the humanities.
 
-Scholium is a native macOS research workbench for attentive reading, source-
-faithful analysis, conceptual development, and philosophical writing. The
-research document—not a dashboard, task board, or chat transcript—remains the
-primary interface object. A field of inquiry takes shape as a **Triptych**:
+Scholium is a native macOS research environment for sustained work in
+philosophy and the humanities. Its content core is a researcher-governed,
+document-authoritative scholarly knowledge base that one researcher and
+authorized external Agents may maintain together. The research document—not a
+dashboard, task board, Agent conversation, or memory store—remains the primary
+interface object. A field of inquiry takes shape as a **Triptych**:
 **Analyses** of sources, **Topics** that gather concepts and debates, and
 **Works** in which the researcher develops arguments of their own.
 
@@ -16,6 +19,36 @@ researcher. Reading, writing, Search, Connections, review, and recovery do not
 depend on an agent. When an external agent is invited, Scholium freezes exact
 Targets, Materials, revisions, methods, and permissions so assistance remains
 bounded, attributable, reviewable, and recoverable.
+
+## Product position
+
+Scholium is a scholarly knowledge base and research workbench, not a chat
+wrapper or a standalone Agent-memory product. Across Agents and sessions,
+research continuity comes from the same inspectable documents, sources,
+Research Records, methods, and explicit researcher judgments—not from hidden
+model state or a parallel private database. This knowledge base can therefore
+serve as an Agent's external long-term research memory, but Agent inheritance
+is a way of using Scholium rather than a second product or content owner.
+
+The researcher is a constitutive participant in the knowledge base, not merely
+the reviewer of memories chosen by a model. Exact writing, declared scope and
+limitations, Settle, attributed Discussion, Critique dispositions, Researcher
+Evaluation, and deliberate next steps retain their own narrow meanings. A
+later Agent may rely only on what the relevant owner, actor, revision, scope,
+and action semantics actually establish. Opening, dwelling, silence, or
+permission to write does not become acceptance, importance, or belief.
+
+Source claims, interpretations, Agent reconstructions, researcher commitments,
+objections, and later revisions remain distinguishable rather than being
+flattened into unattributed facts or one confidence score. Derived Search
+indexes, graph snapshots, caches, rankings, and machine-generated summaries
+are disposable projections. They may improve discovery and context assembly,
+but they never replace exact Markdown, sources, Research Records, or explicit
+researcher judgment as authority.
+
+The manual core works without Obsidian, Zotero, or Agents. Scholium is not
+project management, reference management, permanent AI chat, or a full
+Obsidian replacement.
 
 ## Documentation
 
@@ -54,12 +87,25 @@ The current product supports independent Triptychs and windows, exact-source
 Markdown editing, Search and Connections, note/folder lifecycle, external-edit
 conflicts, checkpoints and per-Note recovery, Settle, unified Discussion,
 Critique, and Research Actions with editable current Methods, academic
-Profiles, and Philosophical Practices. One Triptych collaboration policy,
-process-bound local pairing, Run-owned bounded write sets, strict schema-5
-portable Research Records and researcher evaluation replace the retired
-package, standing-permission, and child-change-request owners. Analyze Records
-may carry Literature Recommendations. Local read-only Zotero context and the
-optional first-party Zotero MCP transport remain available.
+Profiles, and Philosophical Practices. Search v6 gives the app, CLI, Research
+Records, and authenticated Research Context one typed retrieval owner for
+lexical, Property, explicit direct-relation, canonical-summary, and Record
+queries without turning the index into research authority.
+
+An invited external Agent can pair locally with one researcher-created Run,
+receive bounded research context, request a multi-document write set, perform
+revision-checked direct edits, submit one result, leave a portable Research
+Record, and continue through a separate Run. One Triptych collaboration policy,
+process-bound Sessions, nonreusable write capabilities, exact conflicts and
+recovery, and one Record-owned Researcher Evaluation preserve researcher
+control. Analyze Records may carry Literature Recommendations. Selected local
+or Zotero source material remains a separately validated evidence channel, and
+the optional first-party Zotero MCP transport remains available.
+
+These paths establish current engineering reachability, not that long-term
+Agent inheritance or philosophical research quality has already been accepted.
+Sustained research use, assistive-technology review, installed App/CLI
+verification, and comparative evaluation remain explicit evidence gates.
 
 Library, Set Aside, and Trash share one native AppKit folder-and-note outline
 and the same browsing grammar. Library creates notes and folders and retains
