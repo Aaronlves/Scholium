@@ -35,6 +35,8 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   empty facts, long values, unavailable Actions, and 200% readability. The
   ModeIndex remains one logical horizontal group; a FactGrid stays horizontal
   or stacks as one whole; Action error and recovery text remains complete.
+  Mode selection remains identifiable from persistent surface, font weight,
+  native selected state, and accessibility value when pointer hover is absent.
 - Connect exposes one named **Link Direction** segmented control whose visible
   **Incoming Links** and **Outgoing Links** segments expose the current selected
   value through native keyboard and VoiceOver behavior. Changing direction
@@ -100,15 +102,27 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   accessibility, and the state never accepts focus or duplicates a Library,
   File-menu, keyboard, or toolbar action.
 - Library exposes the static Scholium wordmark and Triptych identity menu as
-  distinct elements. ScopeIndex is one logical horizontal group with current
-  selection and reading-direction-aware arrow navigation, and exposes no
-  Attention values. The conditional Sidebar alert exposes
-  **Open Attention** with its selected Scope and exact count; zero contributes
-  no element or gap. If its last item disappears while it owns keyboard focus,
-  focus moves to LocationPicker. Collapsing Sidebar adds no Attention element,
-  count, value, or reserved gap to the Document toolbar; the contextual route
-  returns when Sidebar is shown, while an applicable Inspector summary remains
-  independently reachable.
+  distinct elements. The Triptych identity row additionally exposes one stable
+  **Open Triptych Attention** control whose accessible value names checking,
+  unavailable, zero, or the exact aggregate count. Its warning symbol, count,
+  text role, complete-target interaction surface, and accessible value keep
+  Attention distinct from neutral Note totals without using color alone. Rest
+  has no background; hover, keyboard focus, press, and the open popover expose
+  the same complete target without making the number a badge. Zero removes only
+  visible count and emphasis, not the route. Collapsing Sidebar adds no Attention
+  element, count, value, or reserved gap to the Document toolbar; the
+  contextual route returns when Sidebar is shown, while an applicable
+  Inspector summary remains independently reachable.
+  TriptychWorkspaceNavigator is one logical vertical group with current
+  selection and Up/Down Arrow navigation. Selection remains identifiable
+  through a persistent Navigation surface, font weight, native/accessibility
+  selected state, and position when pointer hover is absent. Each row exposes
+  its localized ordinary-active-Note count as neutral, noninteractive metadata;
+  zero remains a real value and an unavailable first result is not announced as
+  zero. Workspace rows expose no Attention value. Switching by keyboard keeps
+  focus on the selected row; cross-workspace Note navigation follows its exact
+  destination focus contract. Inactive workspace Library, tab group, Document,
+  and Inspector content is inert and accessibility-hidden.
   LocationPicker exposes its localized current Location, expanded state, and
   selected native menu item; optional Location counts are values, not badges or
   selection state. Inactive Location content is accessibility-hidden. The
@@ -186,7 +200,8 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   every lifecycle/error state, and editor/native-container focus transitions.
 - At the Library boundary, verify both permitted narrow outcomes: expanded at
   **300pt or wider**, or natively collapsed. The open-but-unreadable compressed
-  state is forbidden. All three Triptych scopes, the current Location, and
+  state is forbidden. All three Triptych workspaces, their Note totals, the
+  current Location, and
   applicable Library actions remain reachable at the threshold; localized and
   right-to-left variants are covered by the adaptation matrix. Library rows
   grow vertically rather than clipping enlarged interface text.

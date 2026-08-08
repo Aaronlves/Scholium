@@ -195,7 +195,9 @@ struct AppCompositionRootTests {
         }
         window.rememberScrollPosition(0.42, for: "Fixtures/Scroll.md")
         try await waitUntil("the stopped scroll position was persisted") {
-            try await store.windowSession(id: sessionID)?.scrollPositions["Fixtures/Scroll.md"] == 0.42
+            try await store.windowSession(id: sessionID)?
+                .workspaceSession(for: .paperAnalysis)?
+                .scrollPositions["Fixtures/Scroll.md"] == 0.42
         }
         try await Task.sleep(for: .milliseconds(50))
 
@@ -718,8 +720,8 @@ struct AppCompositionRootTests {
                 && secondWindow.noteIdentityByPath["Shared.md"] != nil
         }
 
-        firstWindow!.requestWorkspaceVault(.topicKnowledge)
-        firstWindow!.requestWorkspaceVault(.paperAnalysis)
+        firstWindow!.requestTriptychWorkspace(.topicKnowledge)
+        firstWindow!.requestTriptychWorkspace(.paperAnalysis)
         try await Task.sleep(for: .milliseconds(100))
         #expect(firstWindow!.currentRegisteredVault?.id == analysesVault.id)
         #expect(firstWindow!.discoveryController.library.workspaceSlot == .paperAnalysis)
@@ -808,7 +810,7 @@ struct AppCompositionRootTests {
             vaultName: analysesVault.name,
             vaultRole: analysesVault.role
         )
-        var firstSession = try #require(
+        let firstSession = try #require(
             firstWindow!.documentController.retainedSession(for: sessionKey)
         )
         let secondSession = try #require(
@@ -828,57 +830,57 @@ struct AppCompositionRootTests {
         firstSession.preparePresentationMode(.livePreview)
         firstWindow!.rememberPresentationMode(.livePreview)
         firstSession.scrollFraction = 0.42
-        firstWindow!.requestWorkspaceVault(.topicKnowledge)
-        try await waitUntil("the first Library browsed Topics without replacing its document") {
+        firstWindow!.requestTriptychWorkspace(.topicKnowledge)
+        try await waitUntil("the first window entered the retained Topics workspace") {
             firstWindow?.currentRegisteredVault?.id == topicsVault.id
                 && firstWindow?.notes.contains(where: {
                     $0.relativePath == "Shared.md" && $0.rawContent == duplicateTopicSource
                 }) == true
         }
-        #expect(firstWindow!.currentDocumentVaultID == analysesVault.id)
-        #expect(firstWindow!.currentNote?.rawContent == originalSource)
-        #expect(firstWindow!.selectedDocument == originalID)
+        #expect(firstWindow!.shellState.selectedWorkspace == .topicKnowledge)
+        #expect(firstWindow!.currentDocumentVaultID == nil)
+        #expect(firstWindow!.selectedDocument == nil)
         #expect(firstWindow!.documentRevisions["Shared.md"] != original.fingerprint)
-        #expect(firstWindow!.currentDocumentRevisions["Shared.md"] == original.fingerprint)
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
         #expect(firstSession.presentationMode == .read)
         #expect(firstSession.pendingEditorMode == .livePreview)
-        #expect(firstWindow!.currentPresentationMode == .livePreview)
+        #expect(firstWindow!.currentPresentationMode == .read)
         #expect(firstSession.scrollFraction == 0.42)
 
+        firstWindow!.openNote("Shared.md")
+        try await waitUntil("the Topic document opened in its own tab group") {
+            firstWindow?.currentDocumentVaultID == topicsVault.id
+        }
         let visibleReference = try #require(firstWindow!.currentDocumentDescriptor?.reference)
         let windowIDBeforeOpeningTab = firstWindow!.nativeWindowID
-        let existingTabCount = firstWindow!.documentTabController.tabs.count
+        let existingTabCount = firstWindow!.documentTabController.tabs(
+            in: .topicKnowledge
+        ).count
         firstWindow!.requestOpenNote(visibleReference, disposition: .newTab)
         try await waitUntil("the existing document tab was selected") {
-            firstWindow?.documentTabController.selectedTab?.document.sessionKey == sessionKey
+            firstWindow?.documentTabController.selectedTab(in: .topicKnowledge)?
+                .document.relativePath == "Shared.md"
         }
-        #expect(firstWindow!.documentTabController.tabs.count == existingTabCount)
+        #expect(firstWindow!.documentTabController.tabs(in: .topicKnowledge).count == existingTabCount)
         #expect(firstWindow!.nativeWindowID == windowIDBeforeOpeningTab)
-        #expect(firstWindow!.documentTabController.selectedTab?.document.sessionKey == sessionKey)
-        #expect(firstWindow!.documentTabController.selectedTab?.document.relativePath == "Shared.md")
+        #expect(firstWindow!.documentTabController.selectedTab(in: .topicKnowledge)?.document.relativePath == "Shared.md")
 
         let visibleTarget = try #require(NoteLifecycleTarget(firstWindow!.currentNote!))
-        #expect(visibleTarget.documentID.vaultID == analysesVault.id)
-        let duplicatePath = "Duplicated Analysis.md"
+        #expect(visibleTarget.documentID.vaultID == topicsVault.id)
+        let duplicatePath = "Duplicated Topic.md"
         _ = try await firstWindow!.duplicateNote(visibleTarget, to: duplicatePath)
-        #expect(fileManager.fileExists(atPath: analyses.appendingPathComponent(duplicatePath).path))
-        #expect(!fileManager.fileExists(atPath: topics.appendingPathComponent(duplicatePath).path))
-        #expect(firstWindow!.currentDocumentVaultID == analysesVault.id)
+        #expect(!fileManager.fileExists(atPath: analyses.appendingPathComponent(duplicatePath).path))
+        #expect(fileManager.fileExists(atPath: topics.appendingPathComponent(duplicatePath).path))
+        #expect(firstWindow!.currentDocumentVaultID == topicsVault.id)
         #expect(firstWindow!.selectedDocumentPath == duplicatePath)
 
-        firstWindow!.openNote("Shared.md")
-        #expect(firstWindow!.selectedDocument == originalID)
-        let reopenedFirstSession = try #require(
-            firstWindow!.documentController.retainedSession(for: sessionKey)
-        )
-        #expect(reopenedFirstSession !== firstSession)
-        firstSession = reopenedFirstSession
-
-        firstWindow!.requestWorkspaceVault(.paperAnalysis)
-        try await waitUntil("the first Library returned to Analyses") {
+        firstWindow!.requestTriptychWorkspace(.paperAnalysis)
+        try await waitUntil("the first window restored the Analyses workspace") {
             firstWindow?.currentRegisteredVault?.id == analysesVault.id
+                && firstWindow?.selectedDocument == originalID
         }
+        #expect(firstWindow!.currentPresentationMode == .livePreview)
+        #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
 
         let cleanSource = originalSource + "\nCommitted from the first window.\n"
         let cleanCommit = try await firstWindow!.documentController.save(
@@ -989,7 +991,7 @@ struct AppCompositionRootTests {
             at: analyses.appendingPathComponent(renamedPath)
         )
         try await waitUntil("the clean externally deleted tab converged to no document") {
-            secondWindow.documentTabController.tabs.isEmpty
+            secondWindow.documentTabController.tabs(in: .paperAnalysis).isEmpty
                 && secondWindow.selectedDocument == nil
         }
         #expect(secondWindow.documentController.retainedSession(for: sessionKey) == nil)

@@ -53,23 +53,66 @@ compounding these adaptations. Native menus, popovers, sheets, panels, alerts,
 and windows retain their system-owned elevation and are never double-shadowed.
 
 `ScholiumLibraryLocationPicker` owns the borderless native Location menu and
-its single indicator without owning Location state. `ScholiumScopeIndex` owns
-Library Scope typography, hover, focus, keyboard traversal, and RTL adaptation
-without owning the selected vault. ScopeIndex and ModeIndex pass their
-independent dimensions to `ScholiumEditorialIndexUnderline`, which owns only
-the shared semantic color and visibility recipe. The Debug Editorial
+its single native indicator and shared interaction surface without owning
+Location state or applying a persistent Accent tint. Its plain button
+presentation prevents the native Menu host from adding a second hover shape;
+the title resolves from Regular secondary ink to primary ink through the same
+hover/focus emphasis environment as adjacent commands.
+`ScholiumContentInteractionSurface` is the pure SwiftUI/AppKit mapping for
+content-control hover and keyboard-focus surface emphasis. Hover resolves to a
+low-opacity semantic `primaryText` veil, preserving the native toolbar's
+relative light/dark response over every content plane without copying its
+dynamic AppKit pixels; keyboard focus retains the stronger raised blend and
+selection remains with its owning component. The overloaded
+`scholiumActivationFocus` modifier keeps matching custom button-like controls
+in the complete keyboard chain, clears pointer-generated keyboard-only focus,
+and locally replaces the native focus effect with that shared surface without
+inspecting AppKit events or changing window-wide focus behavior.
+`scholiumContentControlPointerFeedback` is the single transient-presentation
+owner for matching content controls. A zero-hit-test AppKit tracking adapter observes the
+complete SwiftUI Button or Menu frame because the native Menu host does not
+reliably forward pointer state into its label. The adapter translates hover and
+press; the enclosing native control retains activation, focus, menu tracking,
+and accessibility, while the shared resolver consumes its focus state and owns
+semantic ink, one continuous surface, and immediate press dimming.
+`ScholiumTriptychWorkspaceNavigator` owns
+the three vertical workspace rows, neutral Note totals, selection/hover
+surfaces, focus, and Up/Down traversal without owning the selected workspace. Its continuous
+surface consumes the purpose-named workspace-navigation corner recipe and has
+no Accent mark, underline, border, or shadow.
+`ScholiumInspectorModeIndex` instead owns one selected shallow raised surface
+and a quieter same-shape hover surface using the semantic editorial-control
+corner recipe and a 4pt gap between adjacent state surfaces.
+`ScholiumEditorialIconControl` is the single presentation owner for Filter,
+disclosure, and Add in LocationHeader. It gives all three one exact 28pt target,
+semantic ink, and one rounded-rectangle hover, focus, and press surface. Its Button or
+Menu child retains only activation, focus, accessibility, and menu tracking;
+the component applies one plain button presentation so Menu hosts cannot add a
+second circular hover enclosure. The visible symbol remains available to the
+native control so an icon-only Menu stays in the accessibility tree; each
+callsite replaces its inferred symbol name with the complete action label and
+value. The presentation adds no raw radius, animation, scale, or shadow. The Debug Editorial
 Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
+Workspace toolbar hosts bridge live window observations into native AppKit
+toolbar-bezel buttons and pull-downs. `NSButton` and `NSPopUpButton` own their
+small control-size geometry, hover, press, focus, menu tracking, and disabled
+rendering. The same semantic recipe pairs that geometry with the system body
+font and body-medium SF Symbol scale that the original SwiftUI toolbar used;
+SwiftUI does not reconstruct a
+toolbar interaction surface or persistent active state.
+
 Research Records uses the existing semantic Document and Navigation surfaces,
 native `HSplitView`, compact search/filter controls, structural rules,
-empty/error content, checkbox, and sheet presentation. View reuses
-`ScholiumEditorialIndexUnderline` with ordinary borderless buttons at the top
-of the Navigation plane; Scope is a borderless native `Menu` in the list-context
-row. Neither creates a full-width header, feature toolbar, or Liquid Glass
-container. Lists hide their default scroll background and expose the Navigation
-role; editorial actions reuse one borderless ink-and-hover component while
-sheet confirmation actions remain system-owned.
+empty/error content, checkbox, and sheet presentation. Its View index privately
+owns the remaining compact underline and purpose-named dimensions at the top
+of the Navigation plane; it does not supply selection styling to Library or
+Inspector. Scope is a borderless native `Menu` in the list-context row. Neither
+creates a full-width header, feature toolbar, or Liquid Glass container. Lists
+hide their default scroll background and expose the Navigation role; editorial
+actions reuse one borderless ink-and-hover component while sheet confirmation
+actions remain system-owned.
 Recommendation groups and occurrences reuse list hierarchy rather than cards.
 The window observes `WindowColorSchemeChoice.defaultsKey` and resolves it
 through the same `swiftUIColorScheme` mapping used by Workspace content and
@@ -136,6 +179,13 @@ Triptych, document, or researcher-visible semantic state. `WindowShellState`,
 state; `WindowModel` composes them and routes focused commands. This document records that
 dependency direction, while the specification owns the stable rule for when
 Scholium-specific components or distinct research surfaces are appropriate.
+`ScholiumContentStateView` is the single presentation leaf for page- and
+pane-level state copy. It accepts only visible content, indicator treatment,
+region placement, density, and an action view; Document, Library, Search,
+Research Records, Attention, Checkpoint, Recovery, and Settings owners continue
+to derive their own states and transitions. `ScholiumApparatusStateView`,
+inline field feedback, and `ScholiumRecoveryNotice` remain separate owners for
+their distinct compact, validation, and persistent-recovery responsibilities.
 
 ## Boundary enforcement
 

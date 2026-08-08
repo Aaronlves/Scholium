@@ -10,6 +10,7 @@ human, packaged, or release acceptance unless explicitly stated.
 
 **Latest documentation-only check:** 2026-08-08
 **Latest complete repository gate:** 2026-08-08
+**Latest focused interface check:** 2026-08-08
 
 ### Documentation authority
 
@@ -24,6 +25,29 @@ also passed.
 Documentation structure, local links, anchors, chapter ownership, and patch
 whitespace only. No source build, product test, UI journey, packaging, or
 release gate was rerun for this documentation-only cutover.
+
+### Triptych workspace-session ownership cutover
+
+**Current passing result**
+
+On 2026-08-08, focused Swift tests under Xcode 27 beta, Swift 6.4, and the
+macOS 27.0 SDK exercised the completed window-level ownership cutover. The
+`DocumentTabController` suite passed 11 tests; the Window controller
+architecture suite passed 57 tests; window-session and stable-note-identity
+recovery passed 9 tests; and live runtime presentation persistence passed its
+focused test. A separate two-live-window convergence journey also passed after
+exercising rapid last-intent workspace switching, independent role tab groups,
+no-document destinations, and restoration of the prior Analysis document and
+editor session.
+
+**Boundary of the claim**
+
+Focused controller, contract, persistence, recovery, and in-process
+composition evidence only. No UI automation, screenshot review, packaged
+runtime, complete repository gate, genuine assistive-technology exercise, or
+researcher acceptance was run for this ownership cutover. The later Sidebar,
+aggregate Attention, note-count, and workspace-transition presentation stage
+is not covered by this evidence.
 
 ### Document-navigation structural depth
 
@@ -47,6 +71,41 @@ plus the complete repository gate. The screenshots are not a pixel baseline or
 human judgment; RTL, Increase Contrast, Reduce Transparency, and inactive-window
 behavior were not rendered. No genuine assistive-technology exercise, packaged
 runtime, or researcher visual acceptance was run.
+
+### Triptych Workspace Navigator, aggregate Attention, and source transition
+
+**Current passing result**
+
+On 2026-08-08, focused Xcode 27 beta App tests exercised the completed Sidebar
+cutover: `FrontendArchitectureTests` passed 72 tests,
+`WindowControllerArchitectureTests` passed 58 tests, and
+`AttentionPresentationStateTests` passed 7 tests. The checks cover the vertical
+Analyses / Topics / Works navigator, purpose-owned 8pt row corner, neutral
+`MutedText` Note totals, stable aggregate Triptych Attention route, complete
+Triptych queue, source-region clipping and cancellation, 6pt / 0.18-second
+top-origin settle, and immediate Reduce Motion behavior.
+
+One isolated XCUITest journey used disposable QA fixtures and passed after
+switching Analyses and Topics, preserving each Workspace's independent
+No Document or restored-document context, traversing Library and Trash,
+exercising hover and Put Back, scrolling the native non-sticky Folder / Note
+hierarchy, opening the stable Triptych Attention entry, inspecting an aggregate
+queue item, and reopening that queue through Window > Attention. Its retained
+static screenshot confirmed the aggregate count and Triptych-wide popover;
+inspection exposed one inherited Accent tint on the Triptych management menu,
+which was then returned to Primary ink and protected by the focused source
+contract.
+
+**Boundary of the claim**
+
+Focused source contracts, one deterministic synthetic UI journey, and static
+screenshot inspection only. A single frame cannot validate the perceived feel
+of the transition, and the post-screenshot Primary-ink correction was not
+rerendered. The complete repository gate was not rerun for this presentation
+batch. Dark appearance, Increase Contrast, Reduce Transparency, RTL,
+accessibility text sizes, genuine assistive technologies, packaged-runtime
+behavior, and researcher motion or visual acceptance remain outside this
+evidence.
 
 ### Committed source cleanup recovery
 
@@ -196,6 +255,25 @@ One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does 
 causation or packaged GUI latency.
 
 ### Architecture-focused UI
+
+#### Content-control focus and hover normalization
+
+**Current passing result**
+
+On 2026-08-08, Xcode 27 beta / Swift 6.4 completed the Debug build, all 73
+`FrontendArchitectureTests`, and the focused
+`testPointerActivationDoesNotRetainKeyboardOnlyFocus` QA journey. The journey
+confirmed pointer-neutral ModeIndex activation, preserved backward Tab entry
+into the ModeIndex, and forward Tab continuation into an available Action row.
+Documentation-authority validation also passed for the updated interface and
+accessibility contracts.
+
+**Boundary of the claim**
+
+This is deterministic Debug/QA evidence for the shared content-control focus
+and hover owner. It does not constitute researcher visual acceptance of the
+new hover opacity, Attention geometry, or first-click appearance, and it does
+not cover the separately system-owned native Toolbar hover treatment.
 
 **Current passing result**
 

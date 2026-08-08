@@ -77,7 +77,10 @@ window. Its bounded AppKit bridge creates the three-item split described above;
 role-owned backgrounds fill each container while Library, Document, and
 Apparatus content stays foreground in the live safe area. Bootstrap never
 constructs this split. Loading and document states replace hosted content, not
-the shell. The composition root passes the complete `WindowModel` explicitly;
+the shell. Only the selected Triptych workspace's tab group enters the one
+central `NSTabViewController`; inactive groups stay in the window-local
+`DocumentTabController` and receive no native host or accessibility projection.
+The composition root passes the complete `WindowModel` explicitly;
 `ContentView` observes the presentation, Search, Research, Document, tab,
 projection, Agent-request, CSS, and workspace-session owners it actually
 reads, while reusable feature leaves remain on narrow values/controllers.
@@ -126,24 +129,27 @@ third auxiliary-window Scope or changing the shared provider semantics.
 Attention is one native transient SwiftUI popover owned by each exact
 `WindowModel`, not an app-wide Scene, sheet, inline Library destination,
 utility panel, or always-on-top surface. Per-Workspace
-`AttentionPresentationState` owns only filter, selected item, selected Scope,
-and optional current-Note subset; `AttentionPopoverSession` adapts that state
+`AttentionPresentationState` owns only filter, selected item, an optional
+Inspector workspace subset, and an optional current-Note subset;
+`AttentionPopoverSession` adapts that state
 and the current immutable queue to the Sidebar and Inspector anchors without
 duplicating either. The adapter observes only the exact assignment and
 workspace-projection owners plus the single dismissal-duration setting; it
 borrows closed refresh and resynthesis effects and never observes or retains
 the complete `WindowModel`. `AttentionScopeCounts` is a read-only projection
-of the same catalog and machine-local dismissal ledger. Sidebar consumes only the
-selected Scope's conditional alert; ScopeIndex labels never consume or expose
-the count, and zero contributes no row or gap. The Document toolbar consumes
+of the same catalog and machine-local dismissal ledger. Sidebar consumes its
+exact Triptych aggregate through one stable BrandHeader entry; workspace rows
+instead consume neutral ordinary-active-Note totals, and zero remains a real
+inventory value. The Document toolbar consumes
 no Attention count, observation, item, action, reserved width, or popover
 anchor. A missing first catalog remains checking, and a failed first load
-presents Attention Unavailable with Retry rather than zero. Inspector may add
-the active Note, and a Sidebar Scope change clears that Note subset. SwiftUI's
+presents an unavailable Retry state rather than zero. Sidebar opens the complete
+Triptych queue; Inspector may add the active Note, and a workspace change clears
+that Inspector subset without retargeting an already open Triptych queue. SwiftUI's
 transient popover behavior owns outside-click and Escape dismissal; Inspect and
 Resynthesize dismiss before routing through the same exact `WindowModel`.
 **Window → Attention** asks the exact `WorkspaceWindowCoordinator` for a visible
-contextual route: the nonzero selected-Scope Sidebar alert first, then the
+contextual route: the stable Sidebar entry whenever Sidebar is visible, then the
 nonempty current-Note Inspector summary. Without either visible anchor the
 command is disabled; it never synthesizes a toolbar or detached presentation
 route. The application-wide lifecycle registry records exact Workspace focus
@@ -158,15 +164,19 @@ menu sends a Triptych-scoped request. Both target the same UUID-keyed auxiliary
 window and neither changes Sidebar, Location, selection, filter, sort,
 disclosure, Attention, or Inspector state.
 
-Ordinary Scope and Location navigation uses a
+Ordinary workspace and Location navigation uses a workspace-keyed
 `DiscoveryLocationRequest(.stagedReplacement)`. `DiscoveryController` retains
-the last committed Scope/Location pair until completion and still rejects late
-request identities. `WindowModel.currentWorkspaceVaultSnapshot` first consumes
+one Library state and one in-flight request per Triptych workspace, so a later
+request supersedes only the same workspace. `WindowModel` first flushes the
+active editor, stages the destination vault/Location projection, validates its
+retained selected tab, and only then commits Shell selection, the destination
+tab group, Document mode, and Inspector mode. Rapid requests converge on the
+last requested workspace. `WindowModel.currentWorkspaceVaultSnapshot` first consumes
 the narrow `WindowWorkspaceProjectionController.vaultSnapshot(id:)` query; the
 Application operation is only an initial-construction fallback. A complete
-target pair and Source List commit together, while staged failure retains the
-prior projection and reports through the existing toast path. Explicit refresh
-continues to use the content-loading/error presentation.
+destination session and Source List commit together, while staged failure
+retains the prior workspace and reports through the existing toast path.
+Explicit refresh continues to use the content-loading/error presentation.
 
 Snapshot assembly derives Material Changed Since Use only from the latest
 completed Synthesize Action record for a Topic/Material pair whose
@@ -188,9 +198,9 @@ The Research Inspector receives immutable `ResearchOverviewPresentation` and
 `ResearchActionsPresentation` values composed at the window root. It owns no
 workspace refresh, Comment, Critique, availability, or run state. Its Overview,
 Connect, and Actions modes share the one native trailing split
-item and one per-window `ResearchInspectorMode`; legacy stored strings are
-normalized only while restoring that window. Mode changes and note/tab changes
-never reconstruct the retained Document host. `ResearchOverviewPresentation`
+item and one `ResearchInspectorMode` per Triptych workspace; switching workspace
+restores its value without reconstructing the native Inspector. Mode changes and
+note/tab changes never reconstruct the retained Document host. `ResearchOverviewPresentation`
 contains at most one normalized Zotero navigation key for the current Analysis;
 the view neither derives nor displays protected machine data.
 

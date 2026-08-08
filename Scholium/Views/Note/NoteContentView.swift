@@ -1325,48 +1325,28 @@ struct NoteContentView: View {
     }
 
     private var emptyReviewState: some View {
-        VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            Image(systemName: "doc")
-                .font(.title2)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .accessibilityHidden(true)
-
-            VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text("Empty Note")
-                    .font(.headline)
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
-
-                Text("This note has no content.")
-                    .font(.subheadline)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
+        ScholiumContentStateView(
+            "Empty Note",
+            detail: Text("This note has no content."),
+            indicator: .symbol("doc")
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("scholium.emptyNoteReview")
     }
 
     @ViewBuilder
     private var readProjectionPlaceholder: some View {
         if failedReadFingerprint == noteFingerprint.sha256 {
-            VStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle")
-                    .accessibilityHidden(true)
-                Text("Review mode is unavailable")
-                    .font(.headline)
-                Text("Use Source mode while the rendered document is unavailable.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .multilineTextAlignment(.center)
-            .padding()
-            .accessibilityElement(children: .combine)
+            ScholiumContentStateView(
+                "Review Mode Unavailable",
+                detail: Text("Use Source mode while the rendered document is unavailable."),
+                indicator: .symbol("exclamationmark.triangle", role: .attention)
+            )
         } else {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel("Loading document")
+            ScholiumContentStateView(
+                "Loading Document…",
+                indicator: .progress
+            )
         }
     }
 

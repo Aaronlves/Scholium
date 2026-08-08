@@ -67,8 +67,12 @@ struct ContentView: View {
         ScholiumWorkspaceSplitView(
             initialLibraryVisible: shellLibraryVisible,
             initialApparatusVisible: shellApparatusVisible,
-            documentTabs: appState.documentTabController.tabs,
-            selectedDocumentTabID: appState.documentTabController.selectedTabID,
+            documentTabs: appState.documentTabController.tabs(
+                in: shellState.selectedWorkspace
+            ),
+            selectedDocumentTabID: appState.documentTabController.selectedTabID(
+                in: shellState.selectedWorkspace
+            ),
             selectDocumentTab: { appState.selectDocumentTab(withID: $0) },
             closeDocumentTab: { appState.closeDocumentTab(withID: $0) },
             libraryVisibilityDidChange: {
@@ -531,6 +535,7 @@ struct ContentView: View {
         return SidebarContext(
             triptychName: appState.workspaceAssignment?.triptych.name ?? "Not Selected",
             attentionCounts: sidebarAttentionCounts,
+            workspaceNoteCounts: sidebarWorkspaceNoteCounts,
             attentionError: appState.workspaceCatalog == nil
                 ? appState.workspaceCatalogError
                 : nil,
@@ -574,7 +579,7 @@ struct ContentView: View {
             },
             selectLocationScope: { appState.requestNoteLocationScope($0) },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
-            selectWorkspaceVault: { appState.requestWorkspaceVault($0) },
+            selectTriptychWorkspace: { appState.requestTriptychWorkspace($0) },
             createUntitledNote: { appState.requestUntitledNoteCreation(in: $0) },
             createUntitledFolder: {
                 appState.requestUntitledFolderCreation(in: $0)
@@ -623,6 +628,24 @@ struct ContentView: View {
             assignment: appState.workspaceAssignment,
             dismissalLedgerData: attentionDismissalLedgerData
         )
+    }
+
+    private var sidebarWorkspaceNoteCounts: SidebarWorkspaceNoteCounts {
+        guard let assignment = appState.workspaceAssignment else {
+            return SidebarWorkspaceNoteCounts(values: [:])
+        }
+        let snapshots = workspaceProjectionController.vaultSnapshotsByID
+        var values: [WorkspaceVaultSlot: Int] = [:]
+        for slot in WorkspaceVaultSlot.allCases {
+            guard let vaultID = assignment.vault(for: slot)?.id,
+                  let snapshot = snapshots[vaultID] else {
+                continue
+            }
+            values[slot] = snapshot.documents.count {
+                $0.lifecycle == .active && !$0.capabilities.isManagedCritique
+            }
+        }
+        return SidebarWorkspaceNoteCounts(values: values)
     }
 
     private var currentWorkspaceSlot: WorkspaceVaultSlot? {
@@ -958,25 +981,11 @@ private struct ScholiumNoDocumentDetailView: View {
             ScholiumColorRole.documentBackground.color
                 .accessibilityHidden(true)
 
-            VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                Image(systemName: "doc.text")
-                    .font(.title2)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                    .accessibilityHidden(true)
-
-                VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text("No Document Selected")
-                        .font(.headline)
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
-
-                    Text("Select a note in the Library to read or edit.")
-                        .font(.subheadline)
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .accessibilityElement(children: .combine)
+            ScholiumContentStateView(
+                "No Document Selected",
+                detail: Text("Select a note in the Library to read or edit."),
+                indicator: .symbol("doc.text")
+            )
             .accessibilityIdentifier("scholium.noDocumentState")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -121,9 +121,10 @@ struct SearchStatePresentationTests {
             ),
             encoding: .utf8
         )
-        #expect(source.contains(
-            "ContentUnavailableView.search(text: controller.search.criteria.query)"
-        ))
+        #expect(source.contains("ScholiumContentStateView("))
+        #expect(source.contains("\"No Search Results\""))
+        #expect(source.contains("No results match the current query and scope."))
+        #expect(!source.contains("ContentUnavailableView"))
     }
 
     @Test("Execution prerequisites remain unavailable while operation failures can retry")

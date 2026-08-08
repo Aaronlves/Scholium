@@ -72,6 +72,7 @@ struct ScholiumInspectorModeIndex: View {
 }
 
 private struct ScholiumInspectorModeButton: View {
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     @State private var isHovering = false
 
     let mode: ResearchInspectorMode
@@ -92,30 +93,51 @@ private struct ScholiumInspectorModeButton: View {
                 .minimumScaleFactor(0.9)
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: ScholiumMetrics.Apparatus.headerHeight
+                    minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
                 )
-                .contentShape(Rectangle())
+                .background(
+                    modeSurface,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .contentShape(RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                ))
         }
-        .buttonStyle(.borderless)
-        .focusable()
-        .focused(focusedMode, equals: mode)
+        .buttonStyle(.plain)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ScholiumMetrics.Apparatus.headerHeight
+        )
+        .scholiumActivationFocus(focusedMode, equals: mode)
         .foregroundStyle(
-            isSelected || isHovering
+            isSelected || isHovering || isFocused
                 ? ScholiumColorRole.primaryText.color
                 : ScholiumColorRole.secondaryText.color
         )
-        .overlay(alignment: .bottom) {
-            ScholiumEditorialIndexUnderline(
-                isSelected: isSelected,
-                isHovering: isHovering,
-                width: ScholiumMetrics.Apparatus.selectedModeIndicatorWidth,
-                height: ScholiumMetrics.Apparatus.selectedModeIndicatorHeight
-            )
-        }
         .onHover { isHovering = $0 }
         .onMoveCommand(perform: move)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("scholium.inspectorMode.\(mode.rawValue)")
+    }
+
+    private var isFocused: Bool {
+        focusedMode.wrappedValue == mode
+    }
+
+    private var modeSurface: Color {
+        if isSelected {
+            return ScholiumColorRole.raisedSurfaceBackground
+                .color(increasedContrast: increasedContrast)
+        }
+        return ScholiumContentInteractionSurface.color(
+            isHovering: isHovering,
+            isFocused: isFocused,
+            increasedContrast: increasedContrast
+        )
     }
 }
 

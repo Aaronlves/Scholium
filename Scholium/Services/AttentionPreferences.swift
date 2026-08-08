@@ -2,8 +2,8 @@ import ScholiumContracts
 import Foundation
 
 /// A read-only presentation projection over the current catalog and dismissal
-/// ledger. It owns no queue state: Sidebar consumes the exact current-Scope
-/// value while the popover continues to derive its own scoped task list.
+/// ledger. It owns no queue state: Sidebar consumes one exact Triptych total
+/// while the popover continues to derive its own complete or Note-scoped list.
 struct AttentionScopeCounts: Equatable, Sendable {
     private let values: [WorkspaceVaultSlot: Int]
 
@@ -13,6 +13,12 @@ struct AttentionScopeCounts: Equatable, Sendable {
 
     func count(for slot: WorkspaceVaultSlot) -> Int {
         values[slot, default: 0]
+    }
+
+    var total: Int {
+        WorkspaceVaultSlot.allCases.reduce(into: 0) { result, slot in
+            result += count(for: slot)
+        }
     }
 }
 

@@ -1,6 +1,17 @@
 import ScholiumContracts
 import SwiftUI
 
+private struct ScholiumAttentionPopoverIsPresentedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var scholiumAttentionPopoverIsPresented: Bool {
+        get { self[ScholiumAttentionPopoverIsPresentedKey.self] }
+        set { self[ScholiumAttentionPopoverIsPresentedKey.self] = newValue }
+    }
+}
+
 private struct AttentionPopoverContent: View {
     @ObservedObject var session: AttentionPopoverSession
 
@@ -22,20 +33,25 @@ private struct AttentionPopoverPresenter: ViewModifier {
     @ObservedObject var session: AttentionPopoverSession
 
     func body(content: Content) -> some View {
-        content.popover(
-            isPresented: Binding(
-                get: { session.isPresented(from: anchor) },
-                set: { isPresented in
-                    if !isPresented, session.isPresented(from: anchor) {
-                        session.dismiss()
+        content
+            .environment(
+                \.scholiumAttentionPopoverIsPresented,
+                session.isPresented(from: anchor)
+            )
+            .popover(
+                isPresented: Binding(
+                    get: { session.isPresented(from: anchor) },
+                    set: { isPresented in
+                        if !isPresented, session.isPresented(from: anchor) {
+                            session.dismiss()
+                        }
                     }
-                }
-            ),
-            attachmentAnchor: .rect(.bounds),
-            arrowEdge: .top
-        ) {
-            AttentionPopoverContent(session: session)
-        }
+                ),
+                attachmentAnchor: .rect(.bounds),
+                arrowEdge: .top
+            ) {
+                AttentionPopoverContent(session: session)
+            }
     }
 }
 
@@ -169,7 +185,7 @@ struct AttentionQueueView: View {
 
     private var scopeSummary: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
-            Text(ScholiumL10n.dynamicString(presentation.workspaceSlot.displayName))
+            Text(scopeTitle)
                 .font(ScholiumInterfaceTypography.rowTitle)
             Text(presentation.noteScope == nil ? "All Notes" : "This Note")
                 .font(ScholiumInterfaceTypography.metadata)
@@ -177,6 +193,12 @@ struct AttentionQueueView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private var scopeTitle: String {
+        presentation.workspaceSlot.map {
+            ScholiumL10n.dynamicString($0.displayName)
+        } ?? ScholiumL10n.dynamicString("Triptych")
     }
 
     private var kindPicker: some View {
@@ -236,23 +258,22 @@ struct AttentionQueueView: View {
     }
 
     private var loadingState: some View {
-        VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            ProgressView()
-                .controlSize(.small)
-            Text("Loading Attention…")
-                .font(ScholiumInterfaceTypography.rowTitle)
-        }
+        ScholiumContentStateView(
+            "Loading Attention…",
+            indicator: .progress,
+            density: .compact
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("scholium.attentionLoading")
     }
 
     private func completeErrorState(_ message: String) -> some View {
-        ContentUnavailableView {
-            Label("Could Not Load Attention", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(message)
-        } actions: {
+        ScholiumContentStateView(
+            "Could Not Load Attention",
+            detail: Text(message),
+            indicator: .symbol("exclamationmark.triangle", role: .attention),
+            density: .compact
+        ) {
             Button("Retry") { Task { await session.refresh() } }
                 .disabled(session.isRefreshing)
         }
@@ -261,11 +282,12 @@ struct AttentionQueueView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label(emptyTitle, systemImage: "checkmark.circle")
-        } description: {
-            Text(emptyDescription)
-        } actions: {
+        ScholiumContentStateView(
+            emptyTitle,
+            detail: Text(emptyDescription),
+            indicator: .symbol("checkmark.circle"),
+            density: .compact
+        ) {
             if dismissedCount > 0 {
                 Text("\(dismissedCount) dismissed")
                     .font(ScholiumInterfaceTypography.metadata)
@@ -275,7 +297,7 @@ struct AttentionQueueView: View {
         .accessibilityIdentifier("scholium.attentionEmpty")
     }
 
-    private var emptyTitle: String {
+    private var emptyTitle: LocalizedStringResource {
         let query = presentation.filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
         return query.isEmpty && presentation.filter.kind == nil
             ? "No Attention Needed"

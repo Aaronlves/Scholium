@@ -483,8 +483,7 @@ private struct CombinedConnectionRow: View {
             minimumHeight: ScholiumMetrics.Apparatus.relationRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.relationRowVerticalInset
         ))
-        .focusable()
-        .focused($isFocused)
+        .scholiumActivationFocus($isFocused)
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
         .onHover { isHovering = $0 }
     }

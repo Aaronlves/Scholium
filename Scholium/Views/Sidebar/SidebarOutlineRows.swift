@@ -384,8 +384,12 @@ final class SidebarOutlineRowView: NSTableRowView {
                 .setFill()
             bounds.fill()
         } else if isHovering {
-            NSColor(ScholiumColorRole.raisedSurfaceBackground.color)
-                .withAlphaComponent(0.24)
+            ScholiumContentInteractionSurface.nsColor(
+                isHovering: true,
+                isFocused: false,
+                increasedContrast:
+                    NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            )
                 .setFill()
             bounds.fill()
         }

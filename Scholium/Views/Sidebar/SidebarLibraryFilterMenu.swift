@@ -49,117 +49,110 @@ struct SidebarLibraryFilterMenu: View {
     }
 
     var body: some View {
-        Menu {
-            Section("Integrity") {
-                Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
+        ScholiumEditorialIconControl(
+            systemImage: activeFilterCount == 0
+                ? "line.3.horizontal.decrease"
+                : "line.3.horizontal.decrease.circle.fill",
+            isActive: activeFilterCount > 0
+        ) { label in
+            Menu {
+                Section("Integrity") {
+                    Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
+                        .disabled(!options.catalogIsAvailable)
+                    Toggle(
+                        "Explicit Connections",
+                        isOn: filterBinding(\.hasExplicitConnections)
+                    )
+                    .disabled(!options.graphIsAvailable)
+                    Toggle(
+                        "Malformed Metadata",
+                        isOn: filterBinding(\.hasMalformedMetadata)
+                    )
                     .disabled(!options.catalogIsAvailable)
-                Toggle(
-                    "Explicit Connections",
-                    isOn: filterBinding(\.hasExplicitConnections)
-                )
-                .disabled(!options.graphIsAvailable)
-                Toggle(
-                    "Malformed Metadata",
-                    isOn: filterBinding(\.hasMalformedMetadata)
-                )
-                .disabled(!options.catalogIsAvailable)
-            }
-            Section("Metadata") {
-                Menu("Tag") {
-                    Button("All Tags") { updateFilters { $0.tag = nil } }
-                    Divider()
-                    ForEach(options.tags, id: \.self) { tag in
-                        filterChoice(tag, selected: filters.tag == tag) {
-                            updateFilters { $0.tag = tag }
+                }
+                Section("Metadata") {
+                    Menu("Tag") {
+                        Button("All Tags") { updateFilters { $0.tag = nil } }
+                        Divider()
+                        ForEach(options.tags, id: \.self) { tag in
+                            filterChoice(tag, selected: filters.tag == tag) {
+                                updateFilters { $0.tag = tag }
+                            }
                         }
                     }
-                }
-                .disabled(options.tags.isEmpty)
-                if !options.authors.isEmpty {
-                    Menu("Author") {
-                        Button("Any Author") { updateFilters { $0.author = nil } }
-                        Divider()
-                        ForEach(options.authors, id: \.self) { author in
-                            filterChoice(author, selected: filters.author == author) {
-                                updateFilters { $0.author = author }
+                    .disabled(options.tags.isEmpty)
+                    if !options.authors.isEmpty {
+                        Menu("Author") {
+                            Button("Any Author") { updateFilters { $0.author = nil } }
+                            Divider()
+                            ForEach(options.authors, id: \.self) { author in
+                                filterChoice(author, selected: filters.author == author) {
+                                    updateFilters { $0.author = author }
+                                }
+                            }
+                        }
+                    }
+                    if !options.years.isEmpty {
+                        Menu("Year") {
+                            Button("Any Year") { updateFilters { $0.year = nil } }
+                            Divider()
+                            ForEach(options.years, id: \.self) { year in
+                                let title = year.formatted(.number.grouping(.never))
+                                filterChoice(title, selected: filters.year == year) {
+                                    updateFilters { $0.year = year }
+                                }
                             }
                         }
                     }
                 }
-                if !options.years.isEmpty {
-                    Menu("Year") {
-                        Button("Any Year") { updateFilters { $0.year = nil } }
-                        Divider()
-                        ForEach(options.years, id: \.self) { year in
-                            let title = year.formatted(.number.grouping(.never))
-                            filterChoice(title, selected: filters.year == year) {
-                                updateFilters { $0.year = year }
+                if !options.propertyKeys.isEmpty {
+                    Section("Properties") {
+                        Button("Any Property") {
+                            updateFilters {
+                                $0.propertyKey = nil
+                                $0.propertyValue = nil
                             }
                         }
-                    }
-                }
-            }
-            if !options.propertyKeys.isEmpty {
-                Section("Properties") {
-                    Button("Any Property") {
-                        updateFilters {
-                            $0.propertyKey = nil
-                            $0.propertyValue = nil
-                        }
-                    }
-                    ForEach(options.propertyKeys, id: \.self) { key in
-                        Menu(propertyLabel(key)) {
-                            ForEach(options.propertyValues[key] ?? [], id: \.self) { value in
-                                filterChoice(
-                                    value,
-                                    selected: filters.propertyKey == key
-                                        && filters.propertyValue == value
-                                ) {
-                                    updateFilters {
-                                        $0.propertyKey = key
-                                        $0.propertyValue = value
+                        ForEach(options.propertyKeys, id: \.self) { key in
+                            Menu(propertyLabel(key)) {
+                                ForEach(options.propertyValues[key] ?? [], id: \.self) { value in
+                                    filterChoice(
+                                        value,
+                                        selected: filters.propertyKey == key
+                                            && filters.propertyValue == value
+                                    ) {
+                                        updateFilters {
+                                            $0.propertyKey = key
+                                            $0.propertyValue = value
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-            Section("Order") {
-                Menu("Sort") {
-                    ForEach(NoteSortOrder.allCases) { order in
-                        filterChoice(order.title, selected: sortOrder == order) {
-                            selectSortOrder(order)
+                Section("Order") {
+                    Menu("Sort") {
+                        ForEach(NoteSortOrder.allCases) { order in
+                            filterChoice(order.title, selected: sortOrder == order) {
+                                selectSortOrder(order)
+                            }
+                            .disabled(
+                                order == .debateImportanceDescending
+                                    && !sidebarHasScopedDebateImportanceFilter(filters)
+                            )
                         }
-                        .disabled(
-                            order == .debateImportanceDescending
-                                && !sidebarHasScopedDebateImportanceFilter(filters)
-                        )
                     }
                 }
-            }
-            if activeFilterCount > 0 {
-                Section("Actions") {
-                    Button("Clear All Filters", action: clearFilters)
+                if activeFilterCount > 0 {
+                    Section("Actions") {
+                        Button("Clear All Filters", action: clearFilters)
+                    }
                 }
+            } label: {
+                label
             }
-        } label: {
-            Label(
-                "Filter",
-                systemImage: activeFilterCount == 0
-                    ? "line.3.horizontal.decrease"
-                    : "line.3.horizontal.decrease.circle.fill"
-            )
-            .labelStyle(.iconOnly)
-            .frame(
-                width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                height: ScholiumMetrics.Accessibility.preferredCustomTarget
-            )
-            .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
         .help(activeFilterCount == 0
             ? "Filter and sort Library notes"
             : "\(activeFilterCount) Library filters active")

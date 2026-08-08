@@ -417,9 +417,12 @@ final class ResearchController: ObservableObject {
         shellState.showResearchInspector(isVisible)
     }
 
-    func restoreInspector(storedMode: String?, isVisible: Bool?) {
+    func restoreInspector(
+        modesByWorkspace: [WorkspaceVaultSlot: String],
+        isVisible: Bool?
+    ) {
         shellState.restoreInspector(
-            storedMode: storedMode,
+            modesByWorkspace: modesByWorkspace,
             isVisible: isVisible
         )
     }

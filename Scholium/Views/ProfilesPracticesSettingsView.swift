@@ -64,12 +64,22 @@ struct ProfilesPracticesSettingsView: View {
                             }
                         }
                     } else if isWorking {
-                        ProgressView("Loading Profiles…")
+                        ScholiumContentStateView(
+                            "Loading Profiles…",
+                            indicator: .progress,
+                            placement: .leading,
+                            density: .compact
+                        )
                     } else {
-                        ContentUnavailableView(
+                        ScholiumContentStateView(
                             "Profiles Unavailable",
-                            systemImage: "rectangle.and.pencil.and.ellipsis",
-                            description: Text(errorMessage ?? "Open a complete Triptych.")
+                            detail: Text(errorMessage ?? "Open a complete Triptych."),
+                            indicator: .symbol(
+                                "rectangle.and.pencil.and.ellipsis",
+                                role: .attention
+                            ),
+                            placement: .leading,
+                            density: .compact
                         )
                     }
                 }
@@ -89,10 +99,12 @@ struct ProfilesPracticesSettingsView: View {
                             }
                         }
                         if practices.isEmpty {
-                            ContentUnavailableView(
+                            ScholiumContentStateView(
                                 "No Practices",
-                                systemImage: "doc.text",
-                                description: Text("Create an exact Markdown Practice, then link it from a Method.")
+                                detail: Text("Create an exact Markdown Practice, then link it from a Method."),
+                                indicator: .symbol("doc.text"),
+                                placement: .leading,
+                                density: .compact
                             )
                             .frame(maxWidth: .infinity, minHeight: 150)
                         } else {

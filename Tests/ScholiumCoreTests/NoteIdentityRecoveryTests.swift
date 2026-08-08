@@ -33,12 +33,22 @@ struct NoteIdentityRecoveryTests {
         )
         try await stores.sessions.save(WindowSessionSnapshot(
             id: stores.sessionID,
-            vaultID: fixture.worksID,
-            selectedDocument: VaultQualifiedNoteID(
-                vaultID: fixture.worksID,
-                relativePath: "Old.md"
-            ),
-            scrollPositions: ["Old.md": 42]
+            selectedWorkspace: .output,
+            workspaceSessions: [
+                WindowWorkspaceSessionSnapshot(
+                    workspace: .output,
+                    vaultID: fixture.worksID,
+                    openDocuments: [VaultQualifiedNoteID(
+                        vaultID: fixture.worksID,
+                        relativePath: "Old.md"
+                    )],
+                    selectedDocument: VaultQualifiedNoteID(
+                        vaultID: fixture.worksID,
+                        relativePath: "Old.md"
+                    ),
+                    scrollPositions: ["Old.md": 42]
+                ),
+            ]
         ))
         try FileManager.default.createDirectory(
             at: fixture.works.appendingPathComponent("Folder", isDirectory: true),
@@ -66,7 +76,10 @@ struct NoteIdentityRecoveryTests {
         #expect(state.failures.isEmpty)
         #expect(await stores.critiques.association(workNoteID: identity.id)?.workRelativePath == "Folder/New.md")
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
-        #expect(session.selectedDocument?.relativePath == "Folder/New.md")
+        #expect(
+            session.workspaceSession(for: .output)?.selectedDocument?.relativePath
+                == "Folder/New.md"
+        )
         #expect((await repository.recoveryEntries(relativePath: "Old.md")).isEmpty)
         #expect((await repository.recoveryEntries(relativePath: "Folder/New.md")).count == 1)
     }

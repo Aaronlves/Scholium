@@ -12415,6 +12415,36 @@
         }
       }
     },
+    "Loading Checkpoints…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载检查点…"
+          }
+        }
+      }
+    },
+    "Loading Collaboration Policy…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载协作策略…"
+          }
+        }
+      }
+    },
+    "Loading Document…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载文档…"
+          }
+        }
+      }
+    },
     "Loading Materials…" : {
       "localizations" : {
         "en" : {
@@ -12427,6 +12457,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载材料…"
+          }
+        }
+      }
+    },
+    "Loading Methods…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载方法…"
           }
         }
       }
@@ -14160,6 +14200,16 @@
         }
       }
     },
+    "No Attention Needed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无待关注事项"
+          }
+        }
+      }
+    },
     "No BOM" : {
       "localizations" : {
         "en" : {
@@ -14416,6 +14466,16 @@
         }
       }
     },
+    "No Notes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有笔记"
+          }
+        }
+      }
+    },
     "No Notes in Trash" : {
       "localizations" : {
         "en" : {
@@ -14503,6 +14563,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此评析没有关联的 Scholium 请求记录。"
+          }
+        }
+      }
+    },
+    "No Search Results" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有搜索结果"
           }
         }
       }
@@ -14830,6 +14900,22 @@
         }
       }
     },
+    "No items need attention" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No items need attention"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前没有需要关注的事项"
+          }
+        }
+      }
+    },
     "No linked Practices" : {
       "localizations" : {
         "zh-Hans" : {
@@ -14910,6 +14996,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未为此研究脉络请求推荐文献。"
+          }
+        }
+      }
+    },
+    "No results match the current query and scope." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前查询和范围内没有匹配结果。"
           }
         }
       }
@@ -15163,6 +15259,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "笔记选择器"
+          }
+        }
+      }
+    },
+    "Note count unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Note count unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记数量暂不可用"
           }
         }
       }
@@ -15619,6 +15731,22 @@
         }
       }
     },
+    "Open Triptych Attention" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open Triptych Attention"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开脉络关注事项"
+          }
+        }
+      }
+    },
     "Open Zotero" : {
       "localizations" : {
         "en" : {
@@ -15647,6 +15775,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索前打开完整的脉络。"
+          }
+        }
+      }
+    },
+    "Open a complete Triptych to manage its appearance." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开完整的脉络以管理其外观。"
           }
         }
       }
@@ -20169,6 +20307,22 @@
         }
       }
     },
+    "Retry Triptych Attention" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Retry Triptych Attention"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试脉络关注事项"
+          }
+        }
+      }
+    },
     "Retrying Cancellation…" : {
       "localizations" : {
         "en" : {
@@ -20445,6 +20599,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "检查目录"
+          }
+        }
+      }
+    },
+    "Review Mode Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审阅模式不可用"
           }
         }
       }
@@ -26087,18 +26251,18 @@
         }
       }
     },
-    "Triptych Scope" : {
+    "Triptych Workspaces" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Triptych Scope"
+            "value" : "Triptych Workspaces"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "脉络范围"
+            "value" : "脉络工作区"
           }
         }
       }

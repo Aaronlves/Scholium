@@ -651,7 +651,10 @@ struct SpotlightSearchPanelView: View {
     @ViewBuilder
     private var searchContent: some View {
         if controller.search.isRunning {
-            ProgressView("Searching…")
+            ScholiumContentStateView(
+                "Searching…",
+                indicator: .progress
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if !controller.search.diagnostics.isEmpty {
             Color.clear
@@ -660,7 +663,11 @@ struct SpotlightSearchPanelView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if controller.search.results.isEmpty {
-            ContentUnavailableView.search(text: controller.search.criteria.query)
+            ScholiumContentStateView(
+                "No Search Results",
+                detail: Text("No results match the current query and scope."),
+                indicator: .symbol("magnifyingglass")
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             results

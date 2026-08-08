@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import ScholiumContracts
 import SwiftUI
 
 /// The Library disclosure namespace for one vault and lifecycle projection.
@@ -63,6 +64,8 @@ struct WindowToast: Equatable {
 final class WindowShellState: ObservableObject {
     @Published private var expandedFoldersByScope: [LibraryDisclosureScope: Set<String>] = [:]
     @Published private(set) var inspector = ResearchInspectorState()
+    @Published private(set) var selectedWorkspace: WorkspaceVaultSlot = .paperAnalysis
+    @Published private var inspectorModesByWorkspace: [WorkspaceVaultSlot: ResearchInspectorMode]
     @Published private(set) var libraryVisible = true
     @Published private(set) var hasCompletedInitialRestore = false
     @Published var colorScheme: WindowColorSchemeChoice {
@@ -83,6 +86,9 @@ final class WindowShellState: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+        inspectorModesByWorkspace = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .overview) }
+        )
         colorScheme = userDefaults.string(forKey: WindowColorSchemeChoice.defaultsKey)
             .flatMap(WindowColorSchemeChoice.init(rawValue:))
             ?? .system
@@ -115,17 +121,47 @@ final class WindowShellState: ObservableObject {
     }
 
     func selectInspectorMode(_ mode: ResearchInspectorMode) {
+        inspectorModesByWorkspace[selectedWorkspace] = mode
         inspector.mode = mode
+    }
+
+    func inspectorMode(for workspace: WorkspaceVaultSlot) -> ResearchInspectorMode {
+        inspectorModesByWorkspace[workspace] ?? .overview
+    }
+
+    func selectWorkspace(_ workspace: WorkspaceVaultSlot) {
+        guard selectedWorkspace != workspace else { return }
+        selectedWorkspace = workspace
+        inspector.mode = inspectorMode(for: workspace)
+    }
+
+    func resetWorkspaceSessions() {
+        selectedWorkspace = .paperAnalysis
+        inspectorModesByWorkspace = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .overview) }
+        )
+        inspector.mode = .overview
     }
 
     func showResearchInspector(_ isVisible: Bool) {
         inspector.isVisible = isVisible
     }
 
-    func restoreInspector(storedMode: String?, isVisible: Bool?) {
+    func restoreInspector(
+        modesByWorkspace: [WorkspaceVaultSlot: String],
+        isVisible: Bool?
+    ) {
         guard !didRestoreInspector else { return }
         didRestoreInspector = true
-        inspector.mode = ResearchInspectorMode(restoring: storedMode)
+        inspectorModesByWorkspace = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { workspace in
+                (
+                    workspace,
+                    ResearchInspectorMode(restoring: modesByWorkspace[workspace])
+                )
+            }
+        )
+        inspector.mode = inspectorMode(for: selectedWorkspace)
         inspector.isVisible = isVisible ?? false
     }
 

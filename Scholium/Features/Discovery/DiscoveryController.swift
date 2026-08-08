@@ -13,10 +13,9 @@ struct DiscoveryFilterState: Equatable, Sendable {
 }
 
 struct DiscoveryLibraryState: Equatable {
-    /// The vault hierarchy currently being browsed in Library. This is
-    /// deliberately independent of `DocumentController.selectedDocument` so a
-    /// researcher can inspect another Triptych facet without disturbing the
-    /// open document or its editor session.
+    /// The Library presentation retained for one Triptych workspace. The
+    /// window transition owner changes it together with that workspace's tab,
+    /// Document, and Inspector context.
     var workspaceSlot: WorkspaceVaultSlot = .paperAnalysis
     var locationScope: NoteLocationScope = .workspace
     var filters = DiscoveryFilterState()
@@ -92,8 +91,8 @@ enum DiscoverySearchExecutionError: LocalizedError, Equatable, Sendable {
 }
 
 /// Identity for one asynchronous Source List replacement. A result is valid
-/// only for the exact Scope and Location that requested it; changing either
-/// invalidates the request before any visible projection can be committed.
+/// only for the exact workspace and Location that requested it; a later
+/// request for that workspace invalidates it before visible commit.
 struct DiscoveryLocationRequest: Equatable, Sendable {
     let id: UUID
     let workspaceSlot: WorkspaceVaultSlot
@@ -105,8 +104,8 @@ enum DiscoveryLocationRequestPresentation: Equatable, Sendable {
     /// No trustworthy committed Source List is available for the requested
     /// projection, so the Location page must expose its loading/error states.
     case contentLoading
-    /// Ordinary Scope/Location navigation stages a complete target while the
-    /// last committed pair remains visible, then replaces it atomically.
+    /// Ordinary workspace/Location navigation stages a complete target while
+    /// the last committed session remains visible, then replaces it atomically.
     case stagedReplacement
 }
 
@@ -133,11 +132,11 @@ struct DiscoveryLibraryRevealRequest: Equatable, Sendable {
 final class DiscoveryController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
 
-    @Published private(set) var library: DiscoveryLibraryState
+    @Published private var librariesByWorkspace: [WorkspaceVaultSlot: DiscoveryLibraryState]
     @Published private(set) var libraryRevealRequest: DiscoveryLibraryRevealRequest?
     @Published private(set) var search = DiscoverySearchState()
 
-    private var activeLocationRequest: DiscoveryLocationRequest?
+    private var activeLocationRequests: [WorkspaceVaultSlot: DiscoveryLocationRequest] = [:]
     private var activeSearchRequestID: UUID?
     private var nextLibraryRevealGeneration: UInt64 = 0
     private let intentHandler: IntentHandler
@@ -149,9 +148,23 @@ final class DiscoveryController: ObservableObject {
         shellState: WindowShellState = WindowShellState(),
         intentHandler: @escaping IntentHandler = { _ in }
     ) {
-        library = initialLibraryState
+        librariesByWorkspace = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { workspace in
+                var state = initialLibraryState
+                state.workspaceSlot = workspace
+                return (workspace, state)
+            }
+        )
         self.shellState = shellState
         self.intentHandler = intentHandler
+    }
+
+    var library: DiscoveryLibraryState {
+        libraryState(for: shellState.selectedWorkspace)
+    }
+
+    func libraryState(for workspace: WorkspaceVaultSlot) -> DiscoveryLibraryState {
+        librariesByWorkspace[workspace] ?? DiscoveryLibraryState(workspaceSlot: workspace)
     }
 
     func bind(to operations: any DiscoveryUseCases) {
@@ -245,18 +258,20 @@ final class DiscoveryController: ObservableObject {
         }
     }
 
-    /// Installs a coherent Scope/Location pair after an initial restore or a
+    /// Installs a coherent workspace/Location pair after an initial restore or a
     /// fully staged synchronous projection. Asynchronous browsing must use the
     /// request methods below so late results can be rejected.
     func synchronizeLibrarySelection(
         workspaceSlot: WorkspaceVaultSlot,
         location: NoteLocationScope
     ) {
-        activeLocationRequest = nil
-        library.workspaceSlot = workspaceSlot
-        library.locationScope = location
-        library.locationIsLoading = false
-        library.locationError = nil
+        activeLocationRequests[workspaceSlot] = nil
+        updateLibraryState(for: workspaceSlot) { library in
+            library.workspaceSlot = workspaceSlot
+            library.locationScope = location
+            library.locationIsLoading = false
+            library.locationError = nil
+        }
     }
 
     @discardableResult
@@ -271,20 +286,24 @@ final class DiscoveryController: ObservableObject {
             location: location,
             presentation: presentation
         )
-        activeLocationRequest = request
-        library.locationIsLoading = presentation == .contentLoading
-        library.locationError = nil
+        activeLocationRequests[workspaceSlot] = request
+        updateLibraryState(for: workspaceSlot) { library in
+            library.locationIsLoading = presentation == .contentLoading
+            library.locationError = nil
+        }
         return request
     }
 
     @discardableResult
     func receiveLocationResult(for request: DiscoveryLocationRequest) -> Bool {
         guard isCurrent(request) else { return false }
-        activeLocationRequest = nil
-        library.workspaceSlot = request.workspaceSlot
-        library.locationScope = request.location
-        library.locationIsLoading = false
-        library.locationError = nil
+        activeLocationRequests[request.workspaceSlot] = nil
+        updateLibraryState(for: request.workspaceSlot) { library in
+            library.workspaceSlot = request.workspaceSlot
+            library.locationScope = request.location
+            library.locationIsLoading = false
+            library.locationError = nil
+        }
         return true
     }
 
@@ -293,17 +312,19 @@ final class DiscoveryController: ObservableObject {
         for request: DiscoveryLocationRequest
     ) {
         guard isCurrent(request) else { return }
-        activeLocationRequest = nil
-        library.locationIsLoading = false
-        library.locationError = request.presentation == .contentLoading ? message : nil
+        activeLocationRequests[request.workspaceSlot] = nil
+        updateLibraryState(for: request.workspaceSlot) { library in
+            library.locationIsLoading = false
+            library.locationError = request.presentation == .contentLoading ? message : nil
+        }
     }
 
     func replaceFilters(_ filters: DiscoveryFilterState) {
-        library.filters = filters
+        updateLibraryState(for: shellState.selectedWorkspace) { $0.filters = filters }
     }
 
     func selectSortOrder(_ order: NoteSortOrder) {
-        library.sortOrder = order
+        updateLibraryState(for: shellState.selectedWorkspace) { $0.sortOrder = order }
     }
 
     func expandedFolders(in scope: LibraryDisclosureScope?) -> Set<String> {
@@ -345,7 +366,9 @@ final class DiscoveryController: ObservableObject {
         in scope: LibraryDisclosureScope
     ) {
         if clearFilters {
-            library.filters = DiscoveryFilterState()
+            updateLibraryState(for: shellState.selectedWorkspace) {
+                $0.filters = DiscoveryFilterState()
+            }
         }
         var expanded = expandedFolders(in: scope)
         expanded.formUnion(folderAncestors)
@@ -567,13 +590,21 @@ final class DiscoveryController: ObservableObject {
     }
 
     func reset() {
-        activeLocationRequest = nil
+        activeLocationRequests = [:]
         activeSearchRequestID = nil
         libraryRevealRequest = nil
-        library = DiscoveryLibraryState(
-            workspaceSlot: library.workspaceSlot,
-            locationScope: library.locationScope,
-            sortOrder: library.sortOrder
+        librariesByWorkspace = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { workspace in
+                let current = libraryState(for: workspace)
+                return (
+                    workspace,
+                    DiscoveryLibraryState(
+                        workspaceSlot: workspace,
+                        locationScope: current.locationScope,
+                        sortOrder: current.sortOrder
+                    )
+                )
+            }
         )
         let ordinaryScope = search.ordinaryScope
         search = DiscoverySearchState(
@@ -622,15 +653,24 @@ final class DiscoveryController: ObservableObject {
         isCurrent(request)
     }
 
-    /// A second explicit Scope/Location choice must be able to supersede an
+    /// A second explicit workspace/Location choice must be able to supersede an
     /// in-flight request even when it chooses the still-visible committed
     /// value. The committed pair alone cannot reveal that pending intent.
     var locationRequestIsActive: Bool {
-        activeLocationRequest != nil
+        activeLocationRequests[shellState.selectedWorkspace] != nil
     }
 
     private func isCurrent(_ request: DiscoveryLocationRequest) -> Bool {
-        activeLocationRequest == request
+        activeLocationRequests[request.workspaceSlot] == request
+    }
+
+    private func updateLibraryState(
+        for workspace: WorkspaceVaultSlot,
+        _ update: (inout DiscoveryLibraryState) -> Void
+    ) {
+        var state = libraryState(for: workspace)
+        update(&state)
+        librariesByWorkspace[workspace] = state
     }
 
     private func requireOperations() throws -> any DiscoveryUseCases {

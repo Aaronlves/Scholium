@@ -18,12 +18,18 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   Library–Document–Inspector split with AppKit-owned geometry and one stable
   toolbar.
 - Each workspace window owns its Triptych assignment, shell presentation,
-  Library state, document tabs and sessions, Search, Attention, Research
+  selected Triptych workspace, three retained Library states and Document-tab
+  groups, per-workspace Document/Inspector modes, Search, Attention, Research
   Action presentation, and exact-window command routing. Research Records is a
   separate Triptych-keyed utility window rather than focused-window state.
-- Native Sidebar and Inspector toolbar controls remain in stable positions and
-  mirror Show/Hide state without adding pane-corner duplicates or another
-  geometry owner.
+- Native Sidebar and Inspector toolbar controls remain immediately before
+  their logical pane separators, mirror Show/Hide state, and have no persistent
+  underline or selected enclosure. Toolbar commands and pull-downs now use
+  AppKit's small toolbar-bezel control size with the original system body font
+  and body-medium SF Symbol scale, so the system owns their native geometry,
+  hover, press, focus, menu tracking, and disabled feedback. The
+  Sidebar control remains reachable after native collapse without adding
+  pane-corner duplicates or another geometry owner.
 - One full-height document-navigation depth cue is reachable at the
   Sidebar–Document edge. It falls only into Library, mirrors for right-to-left
   presentation, adapts to appearance and display-accessibility settings, and
@@ -31,11 +37,41 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 
 ## Library and navigation
 
-- The Library presents a fixed Brand header, one `ScholiumScopeIndex` with
-  shared Sans typography, hover, focus, keyboard, and RTL behavior, current-Scope
-  Attention alert when needed, Location header, and one native scrolling source
-  hierarchy. Library, Set Aside, and Trash share the hierarchy and state
-  presentation without mixing their lifecycle meanings.
+- The Library presents the three workspace destinations through the vertical
+  `ScholiumTriptychWorkspaceNavigator`. Each full-width row has one persistent
+  selected surface, restrained hover/focus feedback, and a muted exact active-
+  Note total. Selection performs the complete
+  save/conflict-safe workspace transition rather than a vault-only Scope
+  filter: each destination restores its Location, filters, sort, disclosure,
+  tabs, selected document, Document mode, and Inspector mode. Rapid input
+  converges on the latest destination; a failed preparation retains the origin.
+  One shared SwiftUI/AppKit content-interaction resolver now supplies shallow
+  hover and keyboard-focus surfaces to the file tree, workspace rows,
+  Inspector modes and rows, Location controls, and Attention. Content hover
+  uses one low-opacity semantic-ink veil that follows the native toolbar's
+  relative light/dark feedback on each content plane; keyboard focus retains a
+  stronger raised blend rather than collapsing hover, focus, and selection
+  into one state. Custom
+  button-like controls use one shared pointer-neutral, keyboard-complete focus
+  policy rather than inspecting the current AppKit event after activation or
+  changing focus behavior window-wide. The BrandHeader retains
+  one transparent-at-rest Triptych Attention entry whose visible number is the
+  aggregate queue total; zero keeps the entry without a number. The symbol and
+  number share a text baseline and the 4pt label/accessory gap. Hover, focus,
+  press, and the open popover surface the complete symbol-and-count target.
+  The selected workspace's Location header and native scrolling source
+  hierarchy remain. After a safe workspace commit, only Source List content
+  settles downward from a shallow top origin while fading in; rapid input
+  interrupts the presentation and Reduce Motion switches immediately. The
+  LocationPicker and ordinary icons no longer use persistent Accent;
+  LocationPicker now uses Regular secondary ink at rest, promotes to primary
+  ink on interaction, and suppresses the native Menu hover enclosure. Matching
+  Filter, disclosure, and Add controls reuse one exact 28pt editorial-control
+  hover, focus, and press treatment across the complete native Button or Menu frame through one
+  nonintercepting AppKit tracking adapter. Icon-only Menu hosts suppress their
+  otherwise additional circular hover enclosure, leaving that shared rounded-
+  rectangle surface as the sole feedback shape. Library, Set Aside, and Trash share the
+  hierarchy and state presentation without mixing their lifecycle meanings.
 - Add and blank-space context menus expose New Note and New Folder. Folder and
   Note context menus provide the relevant create, rename, move, lifecycle,
   relative-path, and Finder actions; equivalent accessibility actions and
@@ -71,11 +107,20 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 
 ## Document and editor
 
-- One Document area owns tabs, Heading Outline, one live Review/Edit/Source mode
-  carried across Note and tab changes without window-session persistence,
-  This Note Search, This Note Records, and Inspector visibility. No selected
+- One Document area owns one role-partitioned tab controller and presents only
+  the selected workspace's group. Each group retains its selected tab, while
+  one live Review/Edit/Source mode per workspace carries across that group's
+  Note and tab changes and participates in window-session persistence. It also
+  owns Heading Outline, This Note Search, This Note Records, and Inspector
+  visibility. No selected
   document, empty source, loading, unavailable source, rendering failure,
   conflict, and retained recovery each have a distinct presentation.
+- Page- and pane-level state copy is now rendered by one stateless Content
+  State component across Document, Library, Search, Research Records,
+  Attention, Checkpoint, Recovery, and applicable Settings regions. It keeps
+  the approved restrained no-document scale, adapts between centered and
+  compact-leading placement, and keeps repair actions in normal content flow;
+  each workflow still owns its domain state and transition.
 - Review and Edit share semantic document rhythm while Source remains exact
   text. Review owns its direct line-Comment surface; Edit owns formatting,
   Wikilink/Vector Link, task, context-menu, and input-suggestion interactions;
@@ -94,7 +139,13 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 
 ## Inspector and Research Actions
 
-- The Inspector has Overview, Connect, and Actions. Overview presents current
+- The Inspector has an equal-column Overview, Connect, and Actions ModeIndex
+  with one retained selection per Triptych workspace and one window-wide native
+  visibility state.
+  Selection uses one shallow semantic editorial-control surface rather than an
+  underline or shared segmented band; unselected hover uses a quieter surface
+  with the same corner recipe, a 4pt adjacent-state gap, and no animation.
+  Overview presents current
   Attention, role-aware About fields, Edit Properties, and Open in Zotero only
   for a keyed Analysis. Empty fields and protected machine keys remain quiet.
 - Connect switches the same direct graph between native Incoming Links and

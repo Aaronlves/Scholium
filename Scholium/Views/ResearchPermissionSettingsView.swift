@@ -54,12 +54,19 @@ struct ResearchPermissionSettingsView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else if isWorking {
-                        ProgressView("Loading collaboration policy…")
+                        ScholiumContentStateView(
+                            "Loading Collaboration Policy…",
+                            indicator: .progress,
+                            placement: .leading,
+                            density: .compact
+                        )
                     } else {
-                        ContentUnavailableView(
+                        ScholiumContentStateView(
                             "Collaboration Unavailable",
-                            systemImage: "lock.slash",
-                            description: Text(errorMessage ?? "Open a complete Triptych.")
+                            detail: Text(errorMessage ?? "Open a complete Triptych."),
+                            indicator: .symbol("lock.slash", role: .attention),
+                            placement: .leading,
+                            density: .compact
                         )
                     }
                 }

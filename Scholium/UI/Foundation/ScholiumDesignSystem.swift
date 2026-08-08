@@ -1250,9 +1250,7 @@ enum ScholiumGrid {
     enum Apparatus {
         static let contentInset = Peripheral.contentInset
         static let modeStripHeight = foundationUnit * 10
-        static let modeColumnGap: CGFloat = 0
-        static let selectedModeIndicatorWidth = foundationUnit * 4.5
-        static let selectedModeIndicatorHeight = foundationUnit / 4
+        static let modeColumnGap = Spacing.labelAccessoryGap
         static let firstSectionGap = foundationUnit * 4
         static let sectionGap = foundationUnit * 4
         static let connectionDirectionControlMaximumWidth = foundationUnit * 60
@@ -1281,6 +1279,18 @@ enum ScholiumGrid {
         static let longTextIndent = foundationUnit * 3
         static let readingBlockGap = foundationUnit * 2
         static let bottomInset = contentInset
+    }
+
+    enum ResearchRecords {
+        static let viewIndicatorWidth = foundationUnit * 4.5
+        static let viewIndicatorHeight = foundationUnit / 4
+    }
+
+    /// Page- and pane-level state copy shares one readable measure. Placement
+    /// and density adapt to the owning region without changing the state's
+    /// workflow meaning or lifecycle.
+    enum ContentState {
+        static let readableWidth = foundationUnit * 90
     }
 }
 
@@ -1333,9 +1343,7 @@ enum ScholiumMetrics {
         static let rowHorizontalInset = ScholiumGrid.Spacing.nestedContentInset
         static let hierarchyIndent = ScholiumGrid.Dimension.iconTrackWidth
         static let selectionBoundaryWidth = ScholiumGrid.Spacing.opticalAlignmentAdjustment
-        static let scopeIndicatorWidth: CGFloat = 18
-        static let scopeIndicatorHeight: CGFloat = 1
-        static let scopeTopSpacing = ScholiumGrid.Spacing.sectionSeparation
+        static let workspaceNavigatorTopSpacing = ScholiumGrid.Spacing.nestedContentInset
         static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
         /// Empty, loading, and error content begins one section step below the
         /// stable LocationHeader while retaining the shared peripheral edge.
@@ -1383,10 +1391,6 @@ enum ScholiumMetrics {
         static let rowSpacing = ScholiumGrid.Apparatus.contentRowGap
         static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
         static let modeColumnSpacing = ScholiumGrid.Apparatus.modeColumnGap
-        static let selectedModeIndicatorWidth =
-            ScholiumGrid.Apparatus.selectedModeIndicatorWidth
-        static let selectedModeIndicatorHeight =
-            ScholiumGrid.Apparatus.selectedModeIndicatorHeight
         static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
         static let actionRowMinimumHeight = ScholiumGrid.Apparatus.actionRowMinimumHeight
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
@@ -1412,6 +1416,15 @@ enum ScholiumMetrics {
         static let relationRowMinimumHeight =
             ScholiumGrid.Apparatus.relationRowMinimumHeight
         static let bottomInset = ScholiumGrid.Apparatus.bottomInset
+    }
+
+    enum ResearchRecords {
+        static let viewIndicatorWidth = ScholiumGrid.ResearchRecords.viewIndicatorWidth
+        static let viewIndicatorHeight = ScholiumGrid.ResearchRecords.viewIndicatorHeight
+    }
+
+    enum ContentState {
+        static let readableWidth = ScholiumGrid.ContentState.readableWidth
     }
 
     enum Search {
@@ -1503,8 +1516,76 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
 enum ScholiumShape {
     static let inlineStatusCornerRadius: CGFloat = 8
     static let editorialControlCornerRadius: CGFloat = 8
+    static let workspaceNavigationCornerRadius: CGFloat = 8
     static let editorialPanelCornerRadius: CGFloat = 10
     static let loadingSurfaceCornerRadius: CGFloat = 10
+}
+
+/// The shared shallow interaction surface for Scholium-owned controls inside
+/// content regions. Hover uses one translucent semantic-ink veil so its
+/// relative light/dark response follows the native toolbar on every underlying
+/// plane, while keyboard focus retains a stronger raised blend. Each SwiftUI
+/// or AppKit component keeps its own shape, geometry, focus, and lifecycle.
+enum ScholiumContentInteractionSurface {
+    private static let hoverOpacity: CGFloat = 0.05
+    private static let increasedContrastHoverOpacity: CGFloat = 0.075
+    private static let keyboardFocusOpacity: CGFloat = 0.42
+    private static let increasedContrastKeyboardFocusOpacity: CGFloat = 0.56
+
+    static func opacity(
+        isHovering: Bool,
+        isFocused: Bool,
+        isPressed: Bool = false,
+        increasedContrast: Bool
+    ) -> CGFloat {
+        if isFocused {
+            return increasedContrast
+                ? increasedContrastKeyboardFocusOpacity
+                : keyboardFocusOpacity
+        }
+        if isHovering || isPressed {
+            return increasedContrast
+                ? increasedContrastHoverOpacity
+                : hoverOpacity
+        }
+        return 0
+    }
+
+    static func color(
+        isHovering: Bool,
+        isFocused: Bool,
+        isPressed: Bool = false,
+        increasedContrast: Bool
+    ) -> Color {
+        surfaceRole(isFocused: isFocused)
+            .color(increasedContrast: increasedContrast)
+            .opacity(opacity(
+                isHovering: isHovering,
+                isFocused: isFocused,
+                isPressed: isPressed,
+                increasedContrast: increasedContrast
+            ))
+    }
+
+    static func nsColor(
+        isHovering: Bool,
+        isFocused: Bool,
+        isPressed: Bool = false,
+        increasedContrast: Bool
+    ) -> NSColor {
+        surfaceRole(isFocused: isFocused)
+            .nsColor(increasedContrast: increasedContrast)
+            .withAlphaComponent(opacity(
+                isHovering: isHovering,
+                isFocused: isFocused,
+                isPressed: isPressed,
+                increasedContrast: increasedContrast
+            ))
+    }
+
+    private static func surfaceRole(isFocused: Bool) -> ScholiumColorRole {
+        isFocused ? .raisedSurfaceBackground : .primaryText
+    }
 }
 
 enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
@@ -1868,11 +1949,252 @@ private struct ScholiumForegroundModifier: ViewModifier {
     }
 }
 
-/// A borderless Scholium icon control for permanent workspace commands,
-/// including custom content hosted by the native macOS toolbar. It retains
-/// pointer, keyboard, focus, help, and accessibility activation while
-/// expressing immediate hover, focus, press, and active states with ink and
-/// a shallow surface.
+private struct ScholiumContentInteractionSurfaceModifier<S: Shape>: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
+
+    let isHovering: Bool
+    let isFocused: Bool
+    let isPressed: Bool
+    let shape: S
+
+    func body(content: Content) -> some View {
+        content.background(
+            ScholiumContentInteractionSurface.color(
+                isHovering: isEnabled && isHovering,
+                isFocused: isEnabled && isFocused,
+                isPressed: isEnabled && isPressed,
+                increasedContrast: increasedContrast
+            ),
+            in: shape
+        )
+    }
+}
+
+private struct ScholiumContentControlIsEmphasizedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var scholiumContentControlIsEmphasized: Bool {
+        get { self[ScholiumContentControlIsEmphasizedKey.self] }
+        set { self[ScholiumContentControlIsEmphasizedKey.self] = newValue }
+    }
+}
+
+/// A zero-hit-test AppKit observer for the complete control frame. SwiftUI's
+/// native Menu host does not reliably forward pointer state to its label, so
+/// the presentation adapter observes tracking and button events without
+/// intercepting or replacing the native control's activation.
+private struct ScholiumPointerInteractionReader: NSViewRepresentable {
+    @Binding var isHovering: Bool
+    @Binding var isPressed: Bool
+
+    func makeNSView(context: Context) -> ScholiumPointerTrackingView {
+        let view = ScholiumPointerTrackingView()
+        view.stateDidChange = updateState
+        return view
+    }
+
+    func updateNSView(_ view: ScholiumPointerTrackingView, context: Context) {
+        view.stateDidChange = updateState
+    }
+
+    static func dismantleNSView(
+        _ view: ScholiumPointerTrackingView,
+        coordinator: Void
+    ) {
+        view.invalidate()
+    }
+
+    private func updateState(isHovering: Bool, isPressed: Bool) {
+        self.isHovering = isHovering
+        self.isPressed = isPressed
+    }
+}
+
+private final class ScholiumPointerTrackingView: NSView {
+    var stateDidChange: ((Bool, Bool) -> Void)?
+
+    private var pointerIsInside = false
+    private var pointerIsPressed = false
+    private var localEventMonitor: Any?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setAccessibilityElement(false)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        removeLocalEventMonitor()
+        guard window != nil else { return }
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+        ) { [weak self] event in
+            self?.handlePointerButtonEvent(event)
+            return event
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        setState(isHovering: true, isPressed: pointerIsPressed)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        setState(isHovering: false, isPressed: false)
+    }
+
+    func invalidate() {
+        removeLocalEventMonitor()
+        stateDidChange = nil
+    }
+
+    private func handlePointerButtonEvent(_ event: NSEvent) {
+        guard event.window === window else { return }
+        let isInside = bounds.contains(convert(event.locationInWindow, from: nil))
+        switch event.type {
+        case .leftMouseDown:
+            guard isInside else { return }
+            setState(isHovering: true, isPressed: true)
+        case .leftMouseDragged:
+            guard pointerIsPressed else { return }
+            setState(isHovering: isInside, isPressed: isInside)
+        case .leftMouseUp:
+            guard pointerIsPressed else { return }
+            setState(isHovering: isInside, isPressed: false)
+        default:
+            break
+        }
+    }
+
+    private func setState(isHovering: Bool, isPressed: Bool) {
+        guard pointerIsInside != isHovering || pointerIsPressed != isPressed else {
+            return
+        }
+        pointerIsInside = isHovering
+        pointerIsPressed = isPressed
+        stateDidChange?(isHovering, isPressed)
+    }
+
+    private func removeLocalEventMonitor() {
+        guard let localEventMonitor else { return }
+        NSEvent.removeMonitor(localEventMonitor)
+        self.localEventMonitor = nil
+        pointerIsInside = false
+        pointerIsPressed = false
+    }
+
+    isolated deinit {
+        removeLocalEventMonitor()
+    }
+}
+
+/// One pointer-state owner for matching Scholium content controls. It keeps
+/// hover and press capture, semantic ink promotion, shared surface paint, and
+/// immediate press dimming identical whether a native Button or Menu owns the
+/// actual activation.
+private struct ScholiumContentControlPointerFeedbackModifier<S: Shape>: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovering = false
+    @State private var isPressed = false
+
+    let isActive: Bool
+    let isFocused: Bool
+    let shape: S
+
+    func body(content: Content) -> some View {
+        let isEmphasized = isEnabled
+            && (isActive || isHovering || isFocused || isPressed)
+
+        content
+            .environment(\.scholiumContentControlIsEmphasized, isEmphasized)
+            .scholiumContentInteractionSurface(
+                isHovering: isHovering,
+                isFocused: isFocused,
+                isPressed: isPressed,
+                in: shape
+            )
+            .opacity(isPressed ? 0.78 : 1)
+            .overlay {
+                ScholiumPointerInteractionReader(
+                    isHovering: $isHovering,
+                    isPressed: $isPressed
+                )
+                .accessibilityHidden(true)
+            }
+    }
+}
+
+/// Keeps custom content controls in the complete keyboard focus chain while
+/// preventing pointer presses from manufacturing a keyboard-only focus state.
+/// The system focus effect is replaced locally because matching controls paint
+/// the shared Scholium keyboard-focus surface themselves.
+private struct ScholiumBooleanActivationFocusModifier: ViewModifier {
+    let focus: FocusState<Bool>.Binding
+
+    func body(content: Content) -> some View {
+        content
+            .focusable()
+            .focusEffectDisabled()
+            .focused(focus)
+            .simultaneousGesture(pointerFocusReset)
+    }
+
+    private var pointerFocusReset: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in focus.wrappedValue = false }
+            .onEnded { _ in focus.wrappedValue = false }
+    }
+}
+
+private struct ScholiumValueActivationFocusModifier<Value: Hashable>: ViewModifier {
+    let focus: FocusState<Value?>.Binding
+    let value: Value
+
+    func body(content: Content) -> some View {
+        content
+            .focusable()
+            .focusEffectDisabled()
+            .focused(focus, equals: value)
+            .simultaneousGesture(pointerFocusReset)
+    }
+
+    private var pointerFocusReset: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in clearPointerFocus() }
+            .onEnded { _ in clearPointerFocus() }
+    }
+
+    private func clearPointerFocus() {
+        guard focus.wrappedValue == value else { return }
+        focus.wrappedValue = nil
+    }
+}
+
+/// A borderless Scholium icon control for permanent commands, including custom
+/// content hosted by the native macOS toolbar. It retains pointer, keyboard,
+/// focus, help, and accessibility activation while leaving geometry to the
+/// owning native container and expressing immediate states through ink.
 struct ScholiumInkIconControl: View {
     @Environment(\.isEnabled) private var isEnabled
     @FocusState private var isFocused: Bool
@@ -1897,19 +2219,8 @@ struct ScholiumInkIconControl: View {
                         : ScholiumColorRole.secondaryText.color
                 )
                 .opacity(isEnabled ? 1 : 0.42)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(ScholiumColorRole.accent.color)
-                        .frame(height: 1)
-                        .opacity(
-                            isEnabled
-                                ? (isActive ? 1 : (isHovering || isFocused ? 0.72 : 0))
-                                : 0
-                        )
-                }
         }
         .buttonStyle(ScholiumInkIconButtonStyle())
-        .focusEffectDisabled()
         .focused($isFocused)
         .onHover { isHovering = $0 }
         .help(title)
@@ -1921,20 +2232,13 @@ struct ScholiumInkIconControl: View {
 private struct ScholiumInkIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(
-                configuration.isPressed
-                    ? ScholiumColorRole.raisedSurfaceBackground.color
-                    : Color.clear,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
             .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 
 enum ScholiumMotion {
+    static let triptychWorkspaceSourceOffset = ScholiumGrid.foundationUnit * 1.5
+
     static func bootstrapStep(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.18)
     }
@@ -1959,7 +2263,7 @@ enum ScholiumMotion {
         reduceMotion ? nil : .easeOut(duration: 0.12)
     }
 
-    static func sidebarAttentionPresentation(reduceMotion: Bool) -> Animation? {
+    static func triptychWorkspaceSourceReveal(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.18)
     }
 
@@ -1969,6 +2273,56 @@ enum ScholiumMotion {
 }
 
 extension View {
+    /// Applies the shared pointer-neutral, keyboard-complete focus policy to a
+    /// custom button-like control with Boolean focus state.
+    func scholiumActivationFocus(
+        _ focus: FocusState<Bool>.Binding
+    ) -> some View {
+        modifier(ScholiumBooleanActivationFocusModifier(focus: focus))
+    }
+
+    /// Applies the same policy to one value in a focusable control group.
+    func scholiumActivationFocus<Value: Hashable>(
+        _ focus: FocusState<Value?>.Binding,
+        equals value: Value
+    ) -> some View {
+        modifier(ScholiumValueActivationFocusModifier(
+            focus: focus,
+            value: value
+        ))
+    }
+
+    /// Paints the shared shallow interaction surface inside content regions.
+    /// The caller continues to own the purpose-specific shape and hit region.
+    func scholiumContentInteractionSurface<S: Shape>(
+        isHovering: Bool,
+        isFocused: Bool = false,
+        isPressed: Bool = false,
+        in shape: S
+    ) -> some View {
+        modifier(ScholiumContentInteractionSurfaceModifier(
+            isHovering: isHovering,
+            isFocused: isFocused,
+            isPressed: isPressed,
+            shape: shape
+        ))
+    }
+
+    /// Applies the complete shared pointer presentation to a matching custom
+    /// content control while the enclosing native control retains activation,
+    /// keyboard focus, menus, and accessibility.
+    func scholiumContentControlPointerFeedback<S: Shape>(
+        isActive: Bool = false,
+        isFocused: Bool = false,
+        in shape: S
+    ) -> some View {
+        modifier(ScholiumContentControlPointerFeedbackModifier(
+            isActive: isActive,
+            isFocused: isFocused,
+            shape: shape
+        ))
+    }
+
     func scholiumForeground(_ role: ScholiumColorRole) -> some View {
         modifier(ScholiumForegroundModifier(role: role))
     }

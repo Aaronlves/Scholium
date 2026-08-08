@@ -67,10 +67,10 @@ struct TransactionRecoveryView: View {
                interruptedSaves.isEmpty,
                error == nil,
                interruptedSaveError == nil {
-                ContentUnavailableView(
+                ScholiumContentStateView(
                     "No Pending Recovery",
-                    systemImage: "checkmark.circle",
-                    description: Text("No interrupted save candidate or recorded file operation needs inspection.")
+                    detail: Text("No interrupted save candidate or recorded file operation needs inspection."),
+                    indicator: .symbol("checkmark.circle")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

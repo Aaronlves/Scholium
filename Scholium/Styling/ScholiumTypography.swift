@@ -186,13 +186,14 @@ enum ScholiumInterfaceTypography {
     static let rowTitle = libraryHierarchy.weight(.medium)
     static let metadata = Font.caption.weight(.medium)
     static let editorialLabel = Font.caption2.weight(.semibold)
-    /// The LocationPicker is the primary title of its stable Library header.
-    /// It uses the macOS default interface size without acquiring a bezel.
-    static let libraryLocation = Font.system(size: 13, weight: .semibold)
-    /// The Library ScopeIndex is compact operational navigation. Selection
-    /// changes weight without borrowing Inspector typography or geometry.
-    static let libraryScope = Font.system(size: 12, weight: .regular)
-    static let libraryScopeSelected = Font.system(size: 12, weight: .semibold)
+    /// The LocationPicker is a quiet peer of the commands in its stable
+    /// Library header. Interaction promotes its ink without changing weight.
+    static let libraryLocation = Font.system(size: 13, weight: .regular)
+    /// The Triptych Workspace Navigator is compact top-level navigation.
+    /// Selection changes weight without borrowing Inspector typography or
+    /// geometry.
+    static let libraryWorkspace = Font.system(size: 12, weight: .regular)
+    static let libraryWorkspaceSelected = Font.system(size: 12, weight: .semibold)
 
     /// Inspector chrome follows the compact type scale frozen in the HTML
     /// study. Selection changes weight, not size, so switching modes does not

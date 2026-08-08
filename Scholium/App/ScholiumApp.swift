@@ -222,14 +222,17 @@ private struct ScholiumResearchRecordsRoot: View {
             if let capabilities {
                 recordsContent(capabilities)
             } else if isLoading {
-                ProgressView("Loading Research Records…")
+                ScholiumContentStateView(
+                    "Loading Research Records…",
+                    indicator: .progress
+                )
             } else {
-                ContentUnavailableView(
+                ScholiumContentStateView(
                     "Research Records Unavailable",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(
+                    detail: Text(
                         errorMessage ?? "This Triptych is not available on this Mac."
-                    )
+                    ),
+                    indicator: .symbol("exclamationmark.triangle", role: .attention)
                 )
             }
         }
@@ -1488,6 +1491,16 @@ final class WindowModel: ObservableObject {
         case place(DocumentTabPlacement)
         case preserveTabMembership
     }
+
+    private struct StagedWorkspaceLibrarySelection {
+        let registeredVault: RegisteredVault
+        let workspace: WorkspaceVaultSlot
+        let location: NoteLocationScope
+        let vaultSnapshot: WorkspaceVaultSnapshot
+        let vaultConfig: VaultConfig
+        let notes: [WindowDocumentLocation]
+        let request: DiscoveryLocationRequest?
+    }
     private(set) var windowSessionID = UUID()
     let nativeWindowID: UUID
 
@@ -1984,6 +1997,7 @@ final class WindowModel: ObservableObject {
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var researchActionOpenTask: Task<Void, Never>?
     private var libraryRevealTask: Task<Void, Never>?
+    private var requestedWorkspaceSelection: WorkspaceVaultSlot?
     private var markdownImportTask: Task<Void, Never>?
     private var researchActionOpenRequestID: UUID?
     private var discussionPresentationRequestID: UUID?
@@ -2823,7 +2837,7 @@ final class WindowModel: ObservableObject {
         }
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
-            try self.activateWorkspaceReference(
+            try await self.activateWorkspaceReference(
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
@@ -2838,7 +2852,7 @@ final class WindowModel: ObservableObject {
               let context = item.materialChangedSinceUse else { return }
         enqueueDocumentTransition(preservingCurrentEditorState: false, { [weak self] in
             guard let self else { return }
-            try self.activateWorkspaceReference(
+            try await self.activateWorkspaceReference(
                 item.note,
                 tabActivation: .place(.replaceSelected)
             )
@@ -2913,7 +2927,7 @@ final class WindowModel: ObservableObject {
         )
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
-            try self.activateWorkspaceReference(
+            try await self.activateWorkspaceReference(
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
@@ -2938,33 +2952,40 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func requestWorkspaceVault(_ slot: WorkspaceVaultSlot) {
-        let currentLocation = discoveryController.library.locationScope
-        guard discoveryController.library.workspaceSlot != slot
-                || discoveryController.library.locationError != nil
-                || discoveryController.locationRequestIsActive else { return }
-        let request = discoveryController.beginLocationRequest(
-            workspaceSlot: slot,
-            location: currentLocation,
-            presentation: .stagedReplacement
-        )
-        Task { [weak self] in
+    func requestTriptychWorkspace(_ slot: WorkspaceVaultSlot) {
+        let destination = discoveryController.libraryState(for: slot)
+        guard requestedWorkspaceSelection != slot,
+              shellState.selectedWorkspace != slot
+                || requestedWorkspaceSelection != nil
+                || destination.locationError != nil else { return }
+        requestedWorkspaceSelection = slot
+        enqueueDocumentTransition { [weak self] in
             guard let self else { return }
-            do {
-                try await self.browseWorkspaceVault(slot, request: request)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard self.discoveryController.isCurrentLocationRequest(request) else { return }
-                self.discoveryController.failLocationRequest(
-                    error.localizedDescription,
-                    for: request
+            let targetTab = self.documentTabController.selectedTab(in: slot)
+            try await self.prepareWorkspaceSelection(
+                slot,
+                location: destination.locationScope,
+                validateDestination: {
+                    guard self.requestedWorkspaceSelection == slot else {
+                        throw CancellationError()
+                    }
+                    if let targetDocument = targetTab?.document {
+                        try self.validateDocumentIsAvailable(targetDocument)
+                    }
+                }
+            )
+            if let targetDocument = targetTab?.document {
+                try self.activateDocumentInSelectedWorkspace(
+                    targetDocument,
+                    tabActivation: .preserveTabMembership
                 )
-                self.showToast(
-                    "Could not browse \(slot.displayName): \(error.localizedDescription)",
-                    kind: .error
-                )
+            } else {
+                self.documentController.clearSelectionAfterClosingLastTab()
             }
+            self.reconcileDocumentSessionLeases()
+        } didFinish: { [weak self] in
+            guard self?.requestedWorkspaceSelection == slot else { return }
+            self?.requestedWorkspaceSelection = nil
         }
     }
 
@@ -3393,7 +3414,7 @@ final class WindowModel: ObservableObject {
     private func openInNewTab(_ reference: VaultNoteReference) {
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
-            try self.activateWorkspaceReference(
+            try await self.activateWorkspaceReference(
                 reference,
                 tabActivation: .place(.newTab)
             )
@@ -3401,13 +3422,16 @@ final class WindowModel: ObservableObject {
     }
 
     func selectDocumentTab(withID id: UUID) {
-        guard documentTabController.selectedTabID != id,
-              let tab = documentTabController.tabs.first(where: { $0.id == id }) else {
+        let workspace = shellState.selectedWorkspace
+        guard documentTabController.selectedTabID(in: workspace) != id,
+              let tab = documentTabController.tabs(in: workspace).first(where: {
+                  $0.id == id
+              }) else {
             return
         }
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
-            try self.activateDocument(
+            try await self.activateDocument(
                 tab.document,
                 tabActivation: .preserveTabMembership
             )
@@ -3420,14 +3444,16 @@ final class WindowModel: ObservableObject {
         guard let plan = documentTabController.closePlan(forTabWithID: id) else {
             return
         }
-        guard let closingDocument = documentTabController.tabs.first(where: { $0.id == id })?.document else {
+        guard plan.workspace == shellState.selectedWorkspace,
+              let closingDocument = documentTabController.tabs(in: plan.workspace)
+                .first(where: { $0.id == id })?.document else {
             return
         }
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
             try await self.documentController.flushBeforeClosing(closingDocument)
             if let documentToActivate = plan.documentToActivate {
-                try self.activateDocument(
+                try await self.activateDocument(
                     documentToActivate,
                     tabActivation: .preserveTabMembership
                 )
@@ -3496,7 +3522,7 @@ final class WindowModel: ObservableObject {
             // Visibility changes only after a direct researcher action.
             shellState.restoreLibraryVisibility(true)
             researchController.restoreInspector(
-                storedMode: nil,
+                modesByWorkspace: [:],
                 isVisible: nil
             )
             await restoreWorkspaceIfNeeded()
@@ -3511,41 +3537,145 @@ final class WindowModel: ObservableObject {
             attemptedVaultRestore = true
             return
         }
-        do {
-            let browsedVaultID = stored.vaultID
-                ?? requestedInitialDocument?.vaultID
-                ?? stored.selectedDocument?.vaultID
-            if let vaultID = browsedVaultID,
-               let vault = restoredAssignment.vaults.values.first(where: { $0.id == vaultID }) {
-                attemptedVaultRestore = true
-                try await openRegisteredVault(vault)
-            } else {
-                await restoreWorkspaceIfNeeded()
+        let requestedWorkspace = requestedInitialDocument.flatMap { requested in
+            WorkspaceVaultSlot.allCases.first { workspace in
+                restoredAssignment.vault(for: workspace)?.id == requested.vaultID
             }
+        }
+        let selectedWorkspace = requestedWorkspace ?? stored.selectedWorkspace
+        do {
+            guard let vault = restoredAssignment.vault(for: selectedWorkspace) else {
+                throw WorkspaceRegistryError.incompleteWorkspace
+            }
+            attemptedVaultRestore = true
+            try await openRegisteredVault(vault)
         } catch {
             vaultError = error.localizedDescription
             return
         }
 
-        let restoredDocumentVaultID = requestedInitialDocument?.vaultID
-            ?? stored.selectedDocument?.vaultID
-        let restoredDocumentPaths = restoredDocumentVaultID
-            .flatMap { workspaceProjectionController.vaultSnapshot(id: $0) }
-            .map { Set($0.documents.map(\.id.relativePath)) }
-            ?? Set(notes.map(\.relativePath))
-        let restoredPresentation = stored.normalized(availablePaths: restoredDocumentPaths)
-        let hasRestorableDocument = requestedInitialDocument != nil
-            || restoredPresentation.selectedDocument.map {
-                restoredDocumentPaths.contains($0.relativePath)
-            } == true
+        let availablePathsByVault = Dictionary(uniqueKeysWithValues:
+            restoredAssignment.vaults.values.map { vault in
+                (
+                    vault.id,
+                    Set(
+                        workspaceProjectionController.vaultSnapshot(id: vault.id)?
+                            .documents.map(\.id.relativePath) ?? []
+                    )
+                )
+            }
+        )
+        let restoredPresentation = stored.normalized(
+            availablePathsByVault: availablePathsByVault
+        )
+
+        for workspace in WorkspaceVaultSlot.allCases {
+            guard let session = restoredPresentation.workspaceSession(for: workspace),
+                  let location = NoteLocationScope(rawValue: session.location) else {
+                continue
+            }
+            discoveryController.synchronizeLibrarySelection(
+                workspaceSlot: workspace,
+                location: location
+            )
+            if let vaultID = session.vaultID {
+                documentController.restorePresentationState(
+                    scrollPositions: session.scrollPositions,
+                    vaultID: vaultID
+                )
+            }
+        }
+        if discoveryController.libraryState(for: selectedWorkspace).locationScope
+            != .workspace {
+            do {
+                try await prepareWorkspaceSelection(
+                    selectedWorkspace,
+                    location: discoveryController.libraryState(
+                        for: selectedWorkspace
+                    ).locationScope
+                )
+            } catch {
+                vaultError = error.localizedDescription
+                return
+            }
+        }
+
+        let inspectorModes = Dictionary(uniqueKeysWithValues:
+            WorkspaceVaultSlot.allCases.map { workspace in
+                (
+                    workspace,
+                    restoredPresentation.workspaceSession(for: workspace)?
+                        .inspectorMode ?? "overview"
+                )
+            }
+        )
+        let documentModes = Dictionary(uniqueKeysWithValues:
+            WorkspaceVaultSlot.allCases.map { workspace in
+                (
+                    workspace,
+                    restoredPresentation.workspaceSession(for: workspace)
+                        .flatMap { NotePresentationMode(rawValue: $0.documentMode) }
+                        ?? .read
+                )
+            }
+        )
+        shellState.selectWorkspace(selectedWorkspace)
+        documentController.selectWorkspace(selectedWorkspace)
+        documentController.restorePresentationModes(documentModes)
+        researchController.restoreInspector(
+            modesByWorkspace: inspectorModes,
+            isVisible: restoredPresentation.inspectorVisible
+        )
+
+        for workspace in WorkspaceVaultSlot.allCases {
+            guard let session = restoredPresentation.workspaceSession(for: workspace) else {
+                continue
+            }
+            let tabs = session.openDocuments.compactMap(restoredDocumentTab)
+            let selectedID = session.selectedDocument.flatMap { selected in
+                tabs.first { tab in
+                    vaultQualifiedID(for: tab.document) == selected
+                }?.id
+            }
+            documentTabController.restoreTabs(
+                tabs,
+                selectedTabID: selectedID,
+                in: workspace
+            )
+        }
+
+        if let requestedInitialDocument {
+            do {
+                try activateWorkspaceReferenceInSelectedWorkspace(
+                    requestedInitialDocument,
+                    tabActivation: .place(.replaceSelected)
+                )
+            } catch {
+                documentController.clearSelectionAfterClosingLastTab()
+                showToast(error.localizedDescription, kind: .warning)
+            }
+        } else if let selected = documentTabController.selectedTab(
+            in: selectedWorkspace
+        )?.document {
+            do {
+                try activateDocumentInSelectedWorkspace(
+                    selected,
+                    tabActivation: .preserveTabMembership
+                )
+            } catch {
+                documentController.clearSelectionAfterClosingLastTab()
+                showToast(error.localizedDescription, kind: .warning)
+            }
+        }
+        reconcileDocumentSessionLeases()
+
+        let hasRestorableDocument = documentTabController.selectedTab(
+            in: selectedWorkspace
+        ) != nil
         shellState.restoreLibraryVisibility(
             hasRestorableDocument
                 ? (restoredPresentation.libraryVisible ?? true)
                 : true
-        )
-        researchController.restoreInspector(
-            storedMode: restoredPresentation.inspectorMode,
-            isVisible: restoredPresentation.inspectorVisible
         )
         discoveryController.replaceSearchCriteria(SearchWorkspaceState(
             scope: restoredPresentation.searchState.scope
@@ -3554,15 +3684,6 @@ final class WindowModel: ObservableObject {
             restoredPresentation.documentTextScale
                 ?? ScholiumMetrics.Document.defaultTextScale
         )
-        documentController.restorePresentationState(
-            scrollPositions: restoredPresentation.scrollPositions,
-            vaultID: restoredDocumentVaultID
-        )
-        if requestedInitialDocument == nil,
-           let restoredDocument = restoredPresentation.selectedDocument,
-           restoredDocumentPaths.contains(restoredDocument.relativePath) {
-            openRestoredDocument(restoredDocument)
-        }
         _ = restoredPresentation.contentDestination
     }
 
@@ -3615,18 +3736,30 @@ final class WindowModel: ObservableObject {
     }
 
     private func currentWindowSessionSnapshot() -> WindowSessionSnapshot {
-        let browsedVaultID = currentRegisteredVault?.id
-        let documentPresentation = documentController.presentationSnapshot(
-            vaultID: currentDocumentVaultID
-        )
+        let workspaceSessions = WorkspaceVaultSlot.allCases.map { workspace in
+            let vaultID = workspaceAssignment?.vault(for: workspace)?.id
+            let tabs = documentTabController.tabs(in: workspace)
+            return WindowWorkspaceSessionSnapshot(
+                workspace: workspace,
+                vaultID: vaultID,
+                openDocuments: tabs.compactMap { vaultQualifiedID(for: $0.document) },
+                selectedDocument: documentTabController.selectedTab(in: workspace)
+                    .flatMap { vaultQualifiedID(for: $0.document) },
+                scrollPositions: documentController.presentationSnapshot(
+                    vaultID: vaultID
+                ).scrollPositions,
+                location: discoveryController.libraryState(for: workspace)
+                    .locationScope.rawValue,
+                inspectorMode: shellState.inspectorMode(for: workspace).rawValue,
+                documentMode: documentController.presentationMode(for: workspace).rawValue
+            )
+        }
         return WindowSessionSnapshot(
             id: windowSessionID,
             triptychID: workspaceAssignment?.id,
-            vaultID: browsedVaultID,
-            selectedDocument: selectedDocument,
-            scrollPositions: documentPresentation.scrollPositions,
+            selectedWorkspace: shellState.selectedWorkspace,
+            workspaceSessions: workspaceSessions,
             libraryVisible: sidebarVisible,
-            inspectorMode: researchInspectorMode.rawValue,
             inspectorVisible: researchInspectorVisible,
             contentDestination: .document,
             searchState: SearchWorkspaceState(scope: searchController.ordinaryScope),
@@ -3643,13 +3776,19 @@ final class WindowModel: ObservableObject {
                 .eraseToAnyPublisher(),
             $currentRegisteredVault.map { _ in () }.eraseToAnyPublisher(),
             documentController.$selectedDocument.map { _ in () }.eraseToAnyPublisher(),
+            documentController.$currentPresentationMode.map { _ in () }.eraseToAnyPublisher(),
             shellState.$libraryVisible.map { _ in () }.eraseToAnyPublisher(),
             shellState.$documentTextScale.map { _ in () }.eraseToAnyPublisher(),
+            shellState.$selectedWorkspace.map { _ in () }.eraseToAnyPublisher(),
             shellState.$inspector.map { _ in () }.eraseToAnyPublisher(),
             discoveryController.$search.map { _ in () }.eraseToAnyPublisher(),
         ]
         let changes = stateChanges.map { $0.dropFirst().eraseToAnyPublisher() }
-            + [documentPresentationDidChange.eraseToAnyPublisher()]
+            + [
+                documentTabController.objectWillChange.eraseToAnyPublisher(),
+                discoveryController.objectWillChange.eraseToAnyPublisher(),
+                documentPresentationDidChange.eraseToAnyPublisher(),
+            ]
         Publishers.MergeMany(changes)
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] in self?.persistWindowSessionNow() }
@@ -3989,7 +4128,7 @@ final class WindowModel: ObservableObject {
     }
 
     var currentWorkspaceSlot: WorkspaceVaultSlot? {
-        let selected = discoveryController.library.workspaceSlot
+        let selected = shellState.selectedWorkspace
         return workspaceAssignment?.vault(for: selected) == nil ? nil : selected
     }
 
@@ -4327,18 +4466,55 @@ final class WindowModel: ObservableObject {
         try await openRegisteredVault(vault)
     }
 
-    private func browseWorkspaceVault(
+    private func prepareWorkspaceSelection(
         _ slot: WorkspaceVaultSlot,
-        request: DiscoveryLocationRequest
+        location: NoteLocationScope,
+        validateDestination: () throws -> Void = {}
     ) async throws {
         guard let vault = workspaceAssignment?.vault(for: slot) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        try await browseRegisteredVault(
-            vault,
-            slot: slot,
-            locationRequest: request
+        let request = discoveryController.beginLocationRequest(
+            workspaceSlot: slot,
+            location: location,
+            presentation: .stagedReplacement
         )
+        do {
+            let staged = try await stageRegisteredVault(
+                vault,
+                slot: slot,
+                locationRequest: request
+            )
+            try validateDestination()
+            try commitStagedWorkspaceLibrarySelection(staged)
+        } catch {
+            if discoveryController.isCurrentLocationRequest(request) {
+                discoveryController.failLocationRequest(
+                    error.localizedDescription,
+                    for: request
+                )
+            }
+            throw error
+        }
+        documentController.clearSelectionAfterClosingLastTab()
+        shellState.selectWorkspace(slot)
+        documentController.selectWorkspace(slot)
+        attentionPresentationState.selectWorkspaceSlot(slot)
+        await refreshIdentityState()
+        scheduleWorkspaceCatalogRefresh()
+    }
+
+    private func validateDocumentIsAvailable(
+        _ document: WindowSelectedDocument
+    ) throws {
+        guard let vaultID = document.vaultID,
+              workspaceProjectionController.cachedNote(
+                vaultID: vaultID,
+                stableNoteID: document.sessionKey?.noteID,
+                relativePath: document.relativePath
+              ) != nil else {
+            throw WindowNavigationError.noteUnavailable(document.relativePath)
+        }
     }
 
     /// Reprojects Library onto another Triptych vault without touching the
@@ -4350,6 +4526,21 @@ final class WindowModel: ObservableObject {
         slot: WorkspaceVaultSlot? = nil,
         locationRequest: DiscoveryLocationRequest? = nil
     ) async throws {
+        let staged = try await stageRegisteredVault(
+            registered,
+            slot: slot,
+            locationRequest: locationRequest
+        )
+        try commitStagedWorkspaceLibrarySelection(staged)
+        await refreshIdentityState()
+        scheduleWorkspaceCatalogRefresh()
+    }
+
+    private func stageRegisteredVault(
+        _ registered: RegisteredVault,
+        slot: WorkspaceVaultSlot? = nil,
+        locationRequest: DiscoveryLocationRequest? = nil
+    ) async throws -> StagedWorkspaceLibrarySelection {
         let vaultSnapshot = try await currentWorkspaceVaultSnapshot(
             vaultID: registered.id
         )
@@ -4364,9 +4555,11 @@ final class WindowModel: ObservableObject {
             throw CancellationError()
         }
 
-        let resolvedSlot = slot ?? workspaceSlot(for: registered)
+        guard let resolvedSlot = slot ?? workspaceSlot(for: registered) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
         let targetLocation = locationRequest?.location
-            ?? discoveryController.library.locationScope
+            ?? discoveryController.libraryState(for: resolvedSlot).locationScope
         let lifecycle = targetLocation.documentLifecycle
         let targetNotes = vaultSnapshot.documents
             .filter { $0.lifecycle == lifecycle }
@@ -4377,29 +4570,42 @@ final class WindowModel: ObservableObject {
            !discoveryController.isCurrentLocationRequest(locationRequest) {
             throw CancellationError()
         }
-        currentRegisteredVault = registered
-        currentVaultRole = registered.role
-        vaultConfig = targetConfig
-        if let locationRequest {
-            guard discoveryController.receiveLocationResult(for: locationRequest) else {
+        return StagedWorkspaceLibrarySelection(
+            registeredVault: registered,
+            workspace: resolvedSlot,
+            location: targetLocation,
+            vaultSnapshot: vaultSnapshot,
+            vaultConfig: targetConfig,
+            notes: targetNotes,
+            request: locationRequest
+        )
+    }
+
+    private func commitStagedWorkspaceLibrarySelection(
+        _ staged: StagedWorkspaceLibrarySelection
+    ) throws {
+        if let request = staged.request,
+           !discoveryController.isCurrentLocationRequest(request) {
+            throw CancellationError()
+        }
+        currentRegisteredVault = staged.registeredVault
+        currentVaultRole = staged.registeredVault.role
+        vaultConfig = staged.vaultConfig
+        if let request = staged.request {
+            guard discoveryController.receiveLocationResult(for: request) else {
                 throw CancellationError()
             }
-        } else if let resolvedSlot {
+        } else {
             discoveryController.synchronizeLibrarySelection(
-                workspaceSlot: resolvedSlot,
-                location: targetLocation
+                workspaceSlot: staged.workspace,
+                location: staged.location
             )
         }
-        if let resolvedSlot {
-            attentionPresentationState.selectWorkspaceSlot(resolvedSlot)
-        }
+        attentionPresentationState.selectWorkspaceSlot(staged.workspace)
         workspaceProjectionController.commitVaultSelection(
-            snapshot: vaultSnapshot,
-            notes: targetNotes
+            snapshot: staged.vaultSnapshot,
+            notes: staged.notes
         )
-        await refreshIdentityState()
-        scheduleWorkspaceCatalogRefresh()
-        persistWindowSessionNow()
     }
 
     private func workspaceSlot(for vault: RegisteredVault) -> WorkspaceVaultSlot? {
@@ -4465,6 +4671,8 @@ final class WindowModel: ObservableObject {
                     workspaceSlot: slot,
                     location: .workspace
                 )
+                shellState.selectWorkspace(slot)
+                documentController.selectWorkspace(slot)
                 attentionPresentationState.selectWorkspaceSlot(slot)
             }
             currentRegisteredVault = registered
@@ -4779,7 +4987,7 @@ final class WindowModel: ObservableObject {
                     throw WorkspaceRegistryError.incompleteWorkspace
                 }
                 if let noteID = sourceAheadSnapshot.stableIdentity.resolvedID {
-                    try activateWorkspaceReference(
+                    try await activateWorkspaceReference(
                         VaultNoteReference(
                             vaultID: vault.id,
                             vaultName: vault.name,
@@ -5192,7 +5400,7 @@ final class WindowModel: ObservableObject {
                 vaultRole: projection.vault.role
             )
             do {
-                try activateWorkspaceReference(
+                try await activateWorkspaceReference(
                     VaultNoteReference(
                         vaultID: projection.note.id.vaultID,
                         vaultName: projection.vault.name,
@@ -5501,7 +5709,7 @@ final class WindowModel: ObservableObject {
         sessionKey: DocumentSessionKey,
         wasSelected: Bool
     ) {
-        let matchingTabIDs = Set(documentTabController.tabs.compactMap { tab in
+        let matchingTabIDs = Set(documentTabController.allTabs.compactMap { tab in
             tab.document.sessionKey == sessionKey ? tab.id : nil
         })
         guard wasSelected || !matchingTabIDs.isEmpty else { return }
@@ -5551,7 +5759,7 @@ final class WindowModel: ObservableObject {
                 )
             ))
         }
-        if let tab = documentTabController.tabs.first(where: {
+        if let tab = documentTabController.allTabs.first(where: {
             $0.document.sessionKey == DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         }), let descriptor = tab.document.workspaceDescriptor {
             let updatedReference = VaultNoteReference(
@@ -5712,13 +5920,84 @@ final class WindowModel: ObservableObject {
         synchronizeDocumentTabs(after: .place(.replaceSelected))
     }
 
+    private func restoredDocumentTab(
+        _ id: VaultQualifiedNoteID
+    ) -> DocumentTabItem? {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: {
+            $0.id == id.vaultID
+        }), let snapshot = workspaceProjectionController.cachedNote(
+            vaultID: id.vaultID,
+            relativePath: id.relativePath
+        ) else { return nil }
+        let document: WindowSelectedDocument
+        if let noteID = snapshot.stableIdentity.resolvedID {
+            document = .workspace(WindowDocumentDescriptor(
+                sessionKey: DocumentSessionKey(vaultID: vault.id, noteID: noteID),
+                reference: VaultNoteReference(
+                    vaultID: vault.id,
+                    vaultName: vault.name,
+                    vaultRole: vault.role,
+                    relativePath: snapshot.id.relativePath,
+                    stableNoteID: noteID.uuidString.lowercased()
+                )
+            ))
+        } else {
+            document = .unavailable(
+                vaultID: vault.id,
+                relativePath: snapshot.id.relativePath
+            )
+        }
+        let presentation = documentTabPresentation(for: document)
+        return DocumentTabItem(
+            document: document,
+            title: presentation.title,
+            toolTip: presentation.toolTip
+        )
+    }
+
+    private func vaultQualifiedID(
+        for document: WindowSelectedDocument
+    ) -> VaultQualifiedNoteID? {
+        guard let vaultID = document.vaultID else { return nil }
+        return VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: document.relativePath
+        )
+    }
+
     private func activateDocument(
+        _ document: WindowSelectedDocument,
+        tabActivation: DocumentTabActivation
+    ) async throws {
+        guard let vaultID = document.vaultID,
+              let vault = workspaceAssignment?.vaults.values.first(where: {
+                  $0.id == vaultID
+              }),
+              let workspace = workspaceSlot(for: vault) else {
+            throw WindowNavigationError.noteUnavailable(document.relativePath)
+        }
+        if shellState.selectedWorkspace != workspace {
+            try await prepareWorkspaceSelection(
+                workspace,
+                location: .workspace,
+                validateDestination: {
+                    try self.validateDocumentIsAvailable(document)
+                }
+            )
+        }
+        try activateDocumentInSelectedWorkspace(
+            document,
+            tabActivation: tabActivation
+        )
+    }
+
+    private func activateDocumentInSelectedWorkspace(
         _ document: WindowSelectedDocument,
         tabActivation: DocumentTabActivation
     ) throws {
         switch document {
         case .workspace(let descriptor):
-            try activateWorkspaceReference(
+            try activateWorkspaceReferenceInSelectedWorkspace(
                 descriptor.reference,
                 tabActivation: tabActivation
             )
@@ -5738,10 +6017,50 @@ final class WindowModel: ObservableObject {
     private func activateWorkspaceReference(
         _ reference: VaultNoteReference,
         tabActivation: DocumentTabActivation
+    ) async throws {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: {
+            $0.id == reference.vaultID
+        }), let workspace = workspaceSlot(for: vault) else {
+            throw WindowNavigationError.vaultUnavailable(reference.vaultName)
+        }
+        let requestedStableID = reference.stableNoteID.flatMap(UUID.init(uuidString:))
+        guard workspaceProjectionController.cachedNote(
+            vaultID: reference.vaultID,
+            stableNoteID: requestedStableID,
+            relativePath: reference.relativePath
+        ) != nil else {
+            throw WindowNavigationError.noteUnavailable(reference.relativePath)
+        }
+        if shellState.selectedWorkspace != workspace {
+            try await prepareWorkspaceSelection(
+                workspace,
+                location: .workspace,
+                validateDestination: {
+                    guard self.workspaceProjectionController.cachedNote(
+                        vaultID: reference.vaultID,
+                        stableNoteID: requestedStableID,
+                        relativePath: reference.relativePath
+                    ) != nil else {
+                        throw WindowNavigationError.noteUnavailable(
+                            reference.relativePath
+                        )
+                    }
+                }
+            )
+        }
+        try activateWorkspaceReferenceInSelectedWorkspace(
+            reference,
+            tabActivation: tabActivation
+        )
+    }
+
+    private func activateWorkspaceReferenceInSelectedWorkspace(
+        _ reference: VaultNoteReference,
+        tabActivation: DocumentTabActivation
     ) throws {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == reference.vaultID
-        }) else {
+        }), workspaceSlot(for: vault) == shellState.selectedWorkspace else {
             throw WindowNavigationError.vaultUnavailable(reference.vaultName)
         }
         let requestedStableID = reference.stableNoteID.flatMap(UUID.init(uuidString:))
@@ -5777,7 +6096,8 @@ final class WindowModel: ObservableObject {
                 document: document,
                 title: presentation.title,
                 toolTip: presentation.toolTip,
-                placement: placement
+                placement: placement,
+                in: shellState.selectedWorkspace
             )
             if !isCreatingNote {
                 scheduleLibraryReveal(for: document)
@@ -5876,9 +6196,10 @@ final class WindowModel: ObservableObject {
     }
 
     private func reconcileDocumentSessionLeases() {
+        let workspace = shellState.selectedWorkspace
         documentController.reconcileSessionLeases(
-            leasedDocuments: documentTabController.tabs.map(\.document),
-            selectedDocument: documentTabController.selectedTab?.document
+            leasedDocuments: documentTabController.allTabs.map(\.document),
+            selectedDocument: documentTabController.selectedTab(in: workspace)?.document
         )
     }
 
@@ -5886,7 +6207,7 @@ final class WindowModel: ObservableObject {
         vaultID: UUID,
         removedPaths: Set<String>
     ) throws {
-        let matchingIDs = Set(documentTabController.tabs.compactMap { tab -> UUID? in
+        let matchingIDs = Set(documentTabController.allTabs.compactMap { tab -> UUID? in
             guard let descriptor = tab.document.workspaceDescriptor,
                   descriptor.reference.vaultID == vaultID,
                   removedPaths.contains(descriptor.reference.relativePath) else {
@@ -5912,26 +6233,33 @@ final class WindowModel: ObservableObject {
 
         // Remove inactive pages first so the selected page's close plan can
         // never choose another document that was deleted in the same commit.
-        for id in matchingIDs where id != documentTabController.selectedTabID {
+        let currentWorkspace = shellState.selectedWorkspace
+        let selectedIDs = Set(WorkspaceVaultSlot.allCases.compactMap {
+            documentTabController.selectedTabID(in: $0)
+        })
+        for id in matchingIDs where !selectedIDs.contains(id) {
             if let plan = documentTabController.closePlan(forTabWithID: id) {
                 documentTabController.apply(plan)
             }
         }
-        guard let selectedID = documentTabController.selectedTabID,
-              matchingIDs.contains(selectedID),
-              let plan = documentTabController.closePlan(forTabWithID: selectedID) else {
-            reconcileDocumentSessionLeases()
-            return
+        for workspace in WorkspaceVaultSlot.allCases {
+            guard let selectedID = documentTabController.selectedTabID(in: workspace),
+                  matchingIDs.contains(selectedID),
+                  let plan = documentTabController.closePlan(forTabWithID: selectedID) else {
+                continue
+            }
+            if workspace == currentWorkspace {
+                if let documentToActivate = plan.documentToActivate {
+                    try activateDocumentInSelectedWorkspace(
+                        documentToActivate,
+                        tabActivation: .preserveTabMembership
+                    )
+                } else {
+                    documentController.clearSelectionAfterClosingLastTab()
+                }
+            }
+            documentTabController.apply(plan)
         }
-        if let documentToActivate = plan.documentToActivate {
-            try activateDocument(
-                documentToActivate,
-                tabActivation: .preserveTabMembership
-            )
-        } else {
-            documentController.clearSelectionAfterClosingLastTab()
-        }
-        documentTabController.apply(plan)
         reconcileDocumentSessionLeases()
     }
 
@@ -5940,7 +6268,7 @@ final class WindowModel: ObservableObject {
     ) {
         guard !documents.isEmpty else { return }
         let targets = Set(documents.map(\.editingTarget))
-        let matchingIDs = Set(documentTabController.tabs.compactMap { tab in
+        let matchingIDs = Set(documentTabController.allTabs.compactMap { tab in
             targets.contains(tab.document.editingTarget) ? tab.id : nil
         })
         do {
@@ -5961,7 +6289,7 @@ final class WindowModel: ObservableObject {
     }
 
     private func refreshDocumentTabProjections() {
-        for tab in documentTabController.tabs {
+        for tab in documentTabController.allTabs {
             guard case .workspace(let descriptor) = tab.document,
                   let snapshot = workspaceProjectionController.cachedNote(
                       vaultID: descriptor.reference.vaultID,
@@ -6090,7 +6418,7 @@ final class WindowModel: ObservableObject {
     ) async {
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
-            try self.activateWorkspaceReference(
+            try await self.activateWorkspaceReference(
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
@@ -6109,7 +6437,7 @@ final class WindowModel: ObservableObject {
     ) {
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
-            try self.activateWorkspaceReference(
+            try await self.activateWorkspaceReference(
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
@@ -6379,12 +6707,15 @@ final class WindowModel: ObservableObject {
     private func resetWindowSession() {
         libraryRevealTask?.cancel()
         libraryRevealTask = nil
+        requestedWorkspaceSelection = nil
         presentationRouter.dismissAll()
         documentController.removeAll(retainingSessions: true)
+        documentTabController.removeAll()
         searchController.resetExecution()
         discoveryController.reset()
         researchController.reset()
         workspaceProjectionController.reset()
+        shellState.resetWorkspaceSessions()
         documentController.resetPresentationState()
         pendingSourceLine = nil
         pendingSourceRange = nil
@@ -6437,7 +6768,7 @@ final class WindowModel: ObservableObject {
 
         let documentReconciliation = documentController.receive(
             event.snapshot,
-            openDocuments: documentTabController.tabs.map(\.document)
+            openDocuments: documentTabController.allTabs.map(\.document)
         )
         researchController.receive(event.snapshot)
         researchAgentPermissionWindowController.refreshForWorkspaceSnapshot(

@@ -531,7 +531,17 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains(".flexibleSpace"))
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(sidebarSource.contains("private var brandHeader"))
-        #expect(toolbarSource.contains("ScholiumInkIconControl("))
+        #expect(toolbarSource.contains("ScholiumNativeToolbarButton("))
+        #expect(toolbarSource.contains("ScholiumNativeToolbarMenu("))
+        #expect(toolbarSource.contains("ScholiumNativeToolbarPresentation"))
+        #expect(toolbarSource.components(
+            separatedBy: "ScholiumNativeToolbarPresentation.controlSize"
+        ).count == 3)
+        #expect(toolbarSource.contains("NSFont.systemFontSize)"))
+        #expect(toolbarSource.contains("textStyle: .body"))
+        #expect(toolbarSource.contains("scale: .medium"))
+        #expect(toolbarSource.contains("button.bezelStyle = .toolbar"))
+        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = true"))
         #expect(toolbarSource.contains("item.isBordered = false"))
         #expect(toolbarSource.contains("item.style = .plain"))
         #expect(toolbarSource.contains("window.toolbarStyle = .unified"))
@@ -548,7 +558,7 @@ struct FrontendArchitectureTests {
             "windowActions.setResearchInspectorVisible(!shellState.inspector.isVisible)"
         ))
         #expect(toolbarSource.contains(
-            "documentController.selectedDocument == nil"
+            "documentController.selectedDocument != nil"
         ))
         #expect(toolbarSource.contains("Hide Sidebar"))
         #expect(toolbarSource.contains("Hide Research Inspector"))
@@ -581,7 +591,9 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
         #expect(apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
-        #expect(apparatusComponentsSource.contains(".focusable()"))
+        #expect(apparatusComponentsSource.contains(
+            ".scholiumActivationFocus(focusedMode, equals: mode)"
+        ))
         #expect(apparatusComponentsSource.contains(".onMoveCommand(perform: move)"))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
@@ -639,11 +651,14 @@ struct FrontendArchitectureTests {
         #expect(controller.minimumThicknessForInlineSidebars == NSSplitViewController.automaticDimension)
     }
 
-    @Test("Peripheral visibility controls stay in the native Document toolbar")
+    @Test("Peripheral visibility controls occupy their native toolbar planes")
     func stablePeripheralToolbarLayout() throws {
         typealias Item = ScholiumWorkspaceToolbarController.Item
 
         let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers
+        let leadingFlexibleSpaceIndex = try #require(
+            identifiers.firstIndex(of: .flexibleSpace)
+        )
         let libraryDividerIndex = try #require(
             identifiers.firstIndex(of: Item.libraryDivider)
         )
@@ -655,8 +670,9 @@ struct FrontendArchitectureTests {
         let apparatusDividerIndex = try #require(
             identifiers.firstIndex(of: Item.apparatusDivider)
         )
-        #expect(libraryDividerIndex < sidebarIndex)
-        #expect(sidebarIndex < documentIndex)
+        #expect(leadingFlexibleSpaceIndex < sidebarIndex)
+        #expect(sidebarIndex < libraryDividerIndex)
+        #expect(libraryDividerIndex < documentIndex)
         #expect(documentIndex < inspectorIndex)
         #expect(inspectorIndex < apparatusDividerIndex)
         #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
@@ -786,6 +802,62 @@ struct FrontendArchitectureTests {
         #expect(item.maximumThickness == NSSplitViewItem.unspecifiedDimension)
     }
 
+    @Test("Custom activation controls share one focus and hover policy")
+    func customControlInteractionPolicy() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let designSystemSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(designSystemSource.contains("ScholiumBooleanActivationFocusModifier"))
+        #expect(designSystemSource.contains("ScholiumValueActivationFocusModifier"))
+        #expect(designSystemSource.contains("func scholiumActivationFocus("))
+        #expect(designSystemSource.contains(
+            "ScholiumContentControlPointerFeedbackModifier"
+        ))
+        #expect(designSystemSource.contains(
+            "func scholiumContentControlPointerFeedback"
+        ))
+        #expect(designSystemSource.contains("ScholiumPointerInteractionReader"))
+        #expect(designSystemSource.contains("ScholiumPointerTrackingView"))
+        #expect(designSystemSource.contains("override func hitTest"))
+        #expect(designSystemSource.contains("NSEvent.addLocalMonitorForEvents"))
+        #expect(designSystemSource.contains("NSTrackingArea("))
+        #expect(designSystemSource.contains("@State private var isPressed"))
+        #expect(!designSystemSource.contains("@GestureState private var isPressed"))
+        #expect(designSystemSource.contains(".focusable()"))
+        #expect(designSystemSource.contains(".focusEffectDisabled()"))
+        #expect(designSystemSource.contains(".simultaneousGesture(pointerFocusReset)"))
+        #expect(!designSystemSource.contains("ScholiumControlActivation"))
+        #expect(!designSystemSource.contains("NSApp.currentEvent"))
+        #expect(ScholiumContentInteractionSurface.opacity(
+            isHovering: true,
+            isFocused: false,
+            increasedContrast: false
+        ) == 0.05)
+        #expect(ScholiumContentInteractionSurface.opacity(
+            isHovering: false,
+            isFocused: true,
+            increasedContrast: false
+        ) == 0.42)
+        #expect(ScholiumContentInteractionSurface.opacity(
+            isHovering: true,
+            isFocused: false,
+            increasedContrast: true
+        ) == 0.075)
+        #expect(ScholiumContentInteractionSurface.opacity(
+            isHovering: false,
+            isFocused: false,
+            increasedContrast: false
+        ) == 0)
+    }
+
     @Test("Library hierarchy, Attention, and filters share one contract")
     func compactLibraryComponentContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
@@ -858,20 +930,45 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let designSystemSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+            ),
+            encoding: .utf8
+        )
 
         #expect(typographySource.contains("static let libraryHierarchy = Font.callout"))
         #expect(typographySource.contains("static let libraryFolderTitle = libraryHierarchy"))
         #expect(typographySource.contains("static let libraryNoteTitle = libraryHierarchy"))
         #expect(typographySource.contains("static let librarySelectedNoteTitle"))
         #expect(typographySource.contains("static let noteTitle = Font.body"))
-        #expect(typographySource.contains("static let libraryLocation"))
-        #expect(componentsSource.contains("struct SidebarAttentionAlert"))
-        #expect(componentsSource.contains("title: \"ATTENTION\""))
-        #expect(componentsSource.contains("Image(systemName: \"exclamationmark.triangle\")"))
+        #expect(typographySource.contains(
+            "static let libraryLocation = Font.system(size: 13, weight: .regular)"
+        ))
+        #expect(componentsSource.contains("struct SidebarTriptychAttentionEntry"))
+        #expect(!componentsSource.contains("title: \"ATTENTION\""))
+        #expect(componentsSource.contains(
+            "Text(Image(systemName: \"exclamationmark.triangle\"))"
+        ))
+        #expect(componentsSource.contains("alignment: .firstTextBaseline"))
+        #expect(componentsSource.contains(
+            "spacing: ScholiumGrid.Spacing.labelAccessoryGap"
+        ))
         #expect(!sidebarSource.contains(".focusEffectDisabled()"))
         #expect(sidebarSource.contains("ScholiumColorRole.navigationSurfaceBackground.color"))
         #expect(!sidebarSource.contains(".pickerStyle(.segmented)"))
-        #expect(sidebarSource.contains("ScholiumLibraryLocationPicker(selection:"))
+        #expect(sidebarSource.contains("ScholiumLibraryLocationPicker("))
+        #expect(sidebarSource.contains("focus: $locationPickerFocused"))
+        #expect(componentsSource.contains(
+            "struct ScholiumEditorialIconControl<NativeControl: View>"
+        ))
+        #expect(componentsSource.contains(".menuStyle(.button)"))
+        #expect(componentsSource.contains(".buttonStyle(.plain)"))
+        #expect(sidebarSource.components(
+            separatedBy: "ScholiumEditorialIconControl("
+        ).count == 3)
+        #expect(filterMenuSource.contains("ScholiumEditorialIconControl("))
+        #expect(!filterMenuSource.contains(".menuStyle(.borderlessButton)"))
         #expect(componentsSource.contains("struct ScholiumLibraryLocationPicker"))
         #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
         #expect(componentsSource.contains(".menuStyle(.borderlessButton)"))
@@ -883,29 +980,66 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains(".accessibilityRepresentation"))
         #expect(!componentsSource.contains("Picker(\"Location\""))
         #expect(!componentsSource.contains("Image(systemName: \"chevron"))
-        #expect(sidebarSource.contains(".menuIndicator(.hidden)"))
+        let locationPickerStart = try #require(componentsSource.range(
+            of: "struct ScholiumLibraryLocationPicker"
+        ))
+        let locationPickerEnd = try #require(componentsSource.range(
+            of: "struct ScholiumTriptychWorkspaceNavigator",
+            range: locationPickerStart.upperBound ..< componentsSource.endIndex
+        ))
+        let locationPicker = componentsSource[
+            locationPickerStart.lowerBound ..< locationPickerEnd.lowerBound
+        ]
+        #expect(!locationPicker.contains("ScholiumColorRole.accent"))
+        #expect(locationPicker.contains(".tint(ScholiumColorRole.secondaryText.color)"))
+        #expect(locationPicker.contains(".menuIndicator(.visible)"))
+        #expect(locationPicker.contains("ScholiumLibraryLocationPickerLabel"))
+        #expect(locationPicker.contains(".scholiumActivationFocus(focus)"))
+        #expect(locationPicker.contains("isFocused: focus.wrappedValue"))
+        #expect(componentsSource.contains(".menuIndicator(.hidden)"))
         #expect(treeRowsSource.contains("ScholiumInterfaceTypography.libraryFolderTitle"))
         #expect(treeRowsSource.contains("ScholiumInterfaceTypography.librarySelectedNoteTitle"))
-        #expect(componentsSource.contains("ScholiumEditorialIndexUnderline("))
+        #expect(!componentsSource.contains("ScholiumEditorialIndexUnderline"))
+        let workspaceButtonStart = try #require(componentsSource.range(
+            of: "private struct ScholiumTriptychWorkspaceButton"
+        ))
+        let workspaceButtonEnd = try #require(componentsSource.range(
+            of: "/// Page-level content for a Library Location",
+            range: workspaceButtonStart.upperBound ..< componentsSource.endIndex
+        ))
+        let workspaceButton = componentsSource[
+            workspaceButtonStart.lowerBound ..< workspaceButtonEnd.lowerBound
+        ]
+        #expect(workspaceButton.contains(".onHover { isHovering = $0 }"))
+        #expect(workspaceButton.contains("Button(action: select)"))
+        #expect(workspaceButton.contains(
+            ".scholiumActivationFocus(focusedSlot, equals: slot)"
+        ))
+        #expect(workspaceButton.contains("ScholiumContentInteractionSurface.color("))
+        #expect(!workspaceButton.contains("ScholiumControlActivation"))
+        #expect(workspaceButton.contains("ScholiumColorRole.primaryText.color"))
+        #expect(workspaceButton.contains("ScholiumColorRole.mutedText.color"))
+        #expect(workspaceButton.contains(
+            "ScholiumShape.workspaceNavigationCornerRadius"
+        ))
+        #expect(workspaceButton.contains("RoundedRectangle"))
+        #expect(!workspaceButton.contains("ScholiumEditorialIndexUnderline"))
+        #expect(!workspaceButton.contains("ScholiumColorRole.accent"))
         #expect(!treeRowsSource.contains("rotationEffect(.degrees(isExpanded"))
         #expect(!treeRowsSource.contains(
             "withAnimation(.easeInOut(duration: 0.16)"
         ))
-        #expect(sidebarSource.contains("if let attentionAlertState"))
+        #expect(sidebarSource.contains("private var triptychAttentionState"))
+        #expect(componentsSource.contains("case zero"))
         #expect(componentsSource.contains("case active(count: Int)"))
         #expect(componentsSource.contains("case checking"))
         #expect(componentsSource.contains("case unavailable"))
-        let attentionSurfaceStart = try #require(componentsSource.range(
-            of: "private struct SidebarAttentionAlertSurface"
-        ))
-        let attentionSurfaceEnd = try #require(componentsSource.range(
-            of: "private struct SidebarAttentionAlertButtonStyle",
-            range: attentionSurfaceStart.upperBound ..< componentsSource.endIndex
-        ))
-        let attentionSurface = componentsSource[
-            attentionSurfaceStart.lowerBound ..< attentionSurfaceEnd.lowerBound
-        ]
-        #expect(!attentionSurface.contains("overlay(alignment: .leading)"))
+        #expect(!componentsSource.contains("Circle().fill(controlSurface)"))
+        #expect(componentsSource.contains("ScholiumColorRole.attention.color"))
+        #expect(componentsSource.contains("scholiumAttentionPopoverIsPresented"))
+        #expect(componentsSource.contains("SidebarTriptychAttentionButtonStyle("))
+        #expect(componentsSource.contains(".scholiumContentInteractionSurface("))
+        #expect(!componentsSource.contains("SidebarAttentionAlertSurface"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
         #expect(sidebarSource.contains(
@@ -926,13 +1060,21 @@ struct FrontendArchitectureTests {
         let sidebarSections = sidebarSource[
             sidebarBody.lowerBound ..< sidebarSectionsEnd.lowerBound
         ]
-        let scope = try #require(sidebarSections.range(of: "ScholiumScopeIndex"))
-        let attention = try #require(sidebarSections.range(of: "SidebarAttentionAlert("))
+        let workspaceNavigator = try #require(sidebarSections.range(
+            of: "ScholiumTriptychWorkspaceNavigator"
+        ))
         let library = try #require(sidebarSections.range(of: "locationHeader"))
         let sourceRegion = try #require(sidebarSections.range(of: "sourceRegion"))
-        #expect(scope.lowerBound < attention.lowerBound)
-        #expect(attention.lowerBound < library.lowerBound)
+        #expect(workspaceNavigator.lowerBound < library.lowerBound)
         #expect(library.lowerBound < sourceRegion.lowerBound)
+        #expect(sidebarSource.contains("SidebarTriptychAttentionEntry("))
+        #expect(sidebarSource.contains(".tint(ScholiumColorRole.primaryText.color)"))
+        #expect(sidebarSource.contains("let workspaceNoteCounts: SidebarWorkspaceNoteCounts"))
+        #expect(sidebarSource.contains("progress: sourceRevealProgress"))
+        #expect(sidebarSource.contains(".clipped()"))
+        #expect(sidebarSource.contains("sourceRevealTask?.cancel()"))
+        #expect(sidebarSource.contains("ScholiumMotion.triptychWorkspaceSourceReveal("))
+        #expect(!sidebarSource.contains(".transition(.move"))
         #expect(sidebarSource.contains("SidebarOutlineSourceList("))
         #expect(
             sidebarSource.components(separatedBy: "SidebarOutlineSourceList(").count
@@ -970,7 +1112,7 @@ struct FrontendArchitectureTests {
         #expect(filterMenuSource.contains("struct SidebarLibraryFilterMenu: View"))
         #expect(filterMenuSource.contains("let filters: DiscoveryFilterState"))
         #expect(filterMenuSource.contains("let replaceFilters:"))
-        #expect(!filterMenuSource.contains("@State"))
+        #expect(filterMenuSource.components(separatedBy: "@State").count == 1)
         #expect(!filterMenuSource.contains("@ObservedObject"))
         #expect(sidebarSource.contains(
             "@State private var pendingRemovalFocusPlans: [SidebarRemovalFocusPlan]"
@@ -1059,9 +1201,10 @@ struct FrontendArchitectureTests {
         #expect(nativeDropSource.contains("override func performDragOperation("))
         #expect(nativeDropSource.contains("commitSidebarNativeDrop("))
         #expect(sidebarSource.contains("scholium.libraryDisclosureToggle"))
-        #expect(sidebarSource.contains("shouldCollapse ? \"chevron.down\" : \"chevron.up\""))
-        #expect(sidebarSource.contains("shouldCollapse ? \"chevron.up\" : \"chevron.down\""))
-        #expect(sidebarSource.contains(
+        #expect(sidebarSource.contains("\"rectangle.compress.vertical\""))
+        #expect(sidebarSource.contains("\"rectangle.expand.vertical\""))
+        #expect(!sidebarSource.contains("shouldCollapse ? \"chevron"))
+        #expect(componentsSource.contains(
             "VStack(spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment)"
         ))
         #expect(sidebarSource.contains("visibleExpandedFolderIDs"))
@@ -1071,13 +1214,37 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("Move or Rename…"))
         #expect(!treeRowsSource.contains("struct SidebarTreeBranch"))
         #expect(!sidebarSource.contains("filteredNotes.count"))
-        #expect(
-            sidebarSource.components(
-                separatedBy: "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
-            ).count >= 2
-        )
-        #expect(filterMenuSource.contains(
+        #expect(sidebarSource.components(
+            separatedBy: "ScholiumEditorialIconControl("
+        ).count == 3)
+        #expect(filterMenuSource.contains("ScholiumEditorialIconControl("))
+        #expect(!sidebarSource.contains("ScholiumEditorialIconControlLabel("))
+        #expect(!filterMenuSource.contains("ScholiumEditorialIconControlLabel("))
+        #expect(componentsSource.contains("struct ScholiumEditorialIconControlLabel"))
+        #expect(componentsSource.contains(".scholiumContentControlPointerFeedback("))
+        #expect(componentsSource.contains(
+            "@Environment(\\.scholiumContentControlIsEmphasized)"
+        ))
+        #expect(!componentsSource.contains("scholiumEditorialIconControlSurface"))
+        #expect(componentsSource.contains(
+            "ScholiumShape.editorialControlCornerRadius"
+        ))
+        #expect(componentsSource.contains(
             "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
+        ))
+        #expect(designSystemSource.contains(
+            ".environment(\\.scholiumContentControlIsEmphasized, isEmphasized)"
+        ))
+        #expect(!sidebarSource.contains(".scholiumContentControlPointerFeedback("))
+        #expect(!filterMenuSource.contains(".scholiumContentControlPointerFeedback("))
+        #expect(!sidebarSource.contains("@State private var createControlIsHovering"))
+        #expect(!sidebarSource.contains("@State private var disclosureControlIsHovering"))
+        #expect(!sidebarSource.contains(".scholiumEditorialIconControlSurface("))
+        #expect(!filterMenuSource.contains("@State private var isControlHovering"))
+        #expect(!filterMenuSource.contains(".scholiumEditorialIconControlSurface("))
+        #expect(locationPicker.contains(".scholiumContentControlPointerFeedback("))
+        #expect(outlineRowsSource.contains(
+            "ScholiumContentInteractionSurface.nsColor("
         ))
         #expect(!sidebarSource.contains("Hide Sidebar"))
 
@@ -1101,12 +1268,16 @@ struct FrontendArchitectureTests {
         let brandHeader = sidebarSource[brandStart.lowerBound ..< brandEnd.lowerBound]
         #expect(brandHeader.contains("Menu {"))
         #expect(!brandHeader.contains("Image(systemName: \"chevron.down\")"))
-        #expect(sidebarSource.contains("ScholiumScopeIndex("))
-        #expect(componentsSource.contains("struct ScholiumScopeIndex: View"))
-        #expect(componentsSource.contains("ScholiumInterfaceTypography.libraryScope"))
+        #expect(sidebarSource.contains("ScholiumTriptychWorkspaceNavigator("))
+        #expect(componentsSource.contains(
+            "struct ScholiumTriptychWorkspaceNavigator: View"
+        ))
+        #expect(componentsSource.contains("ScholiumInterfaceTypography.libraryWorkspace"))
         #expect(componentsSource.contains("@FocusState private var focusedSlot"))
-        #expect(componentsSource.contains("@Environment(\\.layoutDirection)"))
         #expect(componentsSource.contains(".onMoveCommand(perform: move)"))
+        #expect(componentsSource.contains("case .up:"))
+        #expect(componentsSource.contains("case .down:"))
+        #expect(!componentsSource.contains("@Environment(\\.layoutDirection)"))
         #expect(!sidebarSource.contains("private var scopeIndex"))
         #expect(!sidebarSource.contains(".font(.system(size: 12"))
     }
@@ -1167,7 +1338,8 @@ struct FrontendArchitectureTests {
         )
 
         for required in [
-            "ScholiumLibraryLocationPicker(selection: locationSelection)",
+            "ScholiumLibraryLocationPicker(",
+            "focus: $locationPickerFocused",
             "ScholiumMetrics.Accessibility.preferredCustomTarget",
             "ScholiumGrid.Spacing.inlineControlGap",
             "ScholiumGrid.Spacing.labelAccessoryGap",
@@ -1232,6 +1404,8 @@ struct FrontendArchitectureTests {
             "locationChoice(\"Set Aside\", value: .setAside)",
             "locationChoice(\"Trash\", value: .trash)",
             ".menuStyle(.borderlessButton)",
+            ".buttonStyle(.plain)",
+            ".menuIndicator(.visible)",
             "struct ScholiumLibrarySourceState",
             ".padding(.horizontal, ScholiumMetrics.Library.contentInset)",
             ".accessibilityLabel(\"Location\")",
@@ -1284,7 +1458,10 @@ struct FrontendArchitectureTests {
         )
         #expect(attentionSource.contains("TextField(\"Search Attention\""))
         #expect(attentionSource.contains("scholium.attentionSearch"))
-        #expect(attentionSource.contains("content.popover("))
+        #expect(attentionSource.contains(".popover("))
+        #expect(attentionSource.contains(
+            "\\.scholiumAttentionPopoverIsPresented"
+        ))
         #expect(attentionSource.contains("AttentionPopoverContent(session: session)"))
         #expect(attentionSource.contains("session.dismiss()"))
         #expect(attentionSource.contains(
@@ -1512,6 +1689,10 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.relationClusterSpacing == 12)
         #expect(ScholiumMetrics.Apparatus.relationRowMinimumHeight == 28)
         #expect(ScholiumMetrics.Apparatus.actionRowMinimumHeight == 44)
+        #expect(
+            ScholiumMetrics.Apparatus.modeColumnSpacing
+                == ScholiumGrid.Spacing.labelAccessoryGap
+        )
 
         #expect(componentsSource.contains("struct ScholiumApparatusSection"))
         #expect(componentsSource.contains("struct ScholiumApparatusRow"))
@@ -1522,6 +1703,29 @@ struct FrontendArchitectureTests {
         #expect(sharedComponentsSource.contains("struct ScholiumQuietRowButtonStyle"))
         #expect(componentsSource.contains("struct ScholiumApparatusSectionHeaderButton"))
         #expect(componentsSource.contains("struct ScholiumInspectorModeIndex"))
+        let modeButtonStart = try #require(componentsSource.range(
+            of: "private struct ScholiumInspectorModeButton"
+        ))
+        let modeButtonEnd = try #require(componentsSource.range(
+            of: "/// One Inspector section",
+            range: modeButtonStart.upperBound ..< componentsSource.endIndex
+        ))
+        let modeButton = componentsSource[
+            modeButtonStart.lowerBound ..< modeButtonEnd.lowerBound
+        ]
+        #expect(modeButton.contains("ScholiumColorRole.raisedSurfaceBackground"))
+        #expect(modeButton.contains("ScholiumShape.editorialControlCornerRadius"))
+        #expect(modeButton.contains("ScholiumContentInteractionSurface.color("))
+        #expect(modeButton.contains("Button(action: select)"))
+        #expect(modeButton.contains(
+            ".scholiumActivationFocus(focusedMode, equals: mode)"
+        ))
+        #expect(!modeButton.contains("ScholiumControlActivation"))
+        #expect(modeButton.contains(".onHover { isHovering = $0 }"))
+        #expect(modeButton.contains(".buttonStyle(.plain)"))
+        #expect(!modeButton.contains("ScholiumEditorialIndexUnderline"))
+        #expect(!modeButton.contains("ScholiumColorRole.accent"))
+        #expect(!modeButton.contains("Capsule"))
         #expect(!componentsSource.contains("struct ScholiumConnectionGlyph"))
         #expect(!componentsSource.contains("select(mode)\n        focusedMode = mode"))
         #expect(componentsSource.contains("select(nextMode)\n        focusedMode = nextMode"))
@@ -1584,8 +1788,12 @@ struct FrontendArchitectureTests {
         #expect(!actionsSource.contains("@FocusedValue(\\.scholiumResearchActionActions)"))
         #expect(actionsSource.contains("if shouldRestoreKeyboardFocus"))
         #expect(actionsSource.contains("registerFocusOwner(item.id)"))
-        #expect(actionsSource.contains("action(!activationWasPointerDriven)"))
-        #expect(actionsSource.contains("case .leftMouseDown, .leftMouseUp"))
+        #expect(actionsSource.contains("action(hasKeyboardFocus)"))
+        #expect(actionsSource.contains(
+            ".scholiumActivationFocus($hasKeyboardFocus)"
+        ))
+        #expect(!actionsSource.contains("ScholiumControlActivation"))
+        #expect(!sharedComponentsSource.contains("ScholiumControlActivation"))
         #expect(!actionsSource.contains(
             "focusRestorationTask?.cancel()\n            hasKeyboardFocus = true\n            action()"
         ))
@@ -1673,9 +1881,9 @@ struct FrontendArchitectureTests {
         )
         #expect(content.contains(".scholiumSurface(.navigation)"))
         #expect(content.contains("ScholiumNoDocumentDetailView()"))
-        #expect(content.contains("Text(\"No Document Selected\")"))
-        #expect(content.contains("Text(\"Select a note in the Library to read or edit.\")"))
-        #expect(content.contains(".accessibilityElement(children: .combine)"))
+        #expect(content.contains("ScholiumContentStateView("))
+        #expect(content.contains("\"No Document Selected\""))
+        #expect(content.contains("detail: Text(\"Select a note in the Library to read or edit.\")"))
         #expect(content.contains(".accessibilityIdentifier(\"scholium.noDocumentState\")"))
         #expect(content.contains("ScholiumWorkspaceSplitView("))
         #expect(!content.contains("NavigationSplitView("))
@@ -1705,8 +1913,8 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
         #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(toolbar.contains("static let researchRecords"))
-        #expect(toolbar.contains("selectedDocument == nil"))
-        #expect(toolbar.contains(".disabled(!isAvailable)"))
+        #expect(toolbar.contains("documentController.selectedDocument != nil"))
+        #expect(toolbar.contains("isEnabled: isAvailable"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
         #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
@@ -1757,6 +1965,61 @@ struct FrontendArchitectureTests {
         #expect(sidebarOutlineRows.contains(
             "override func hitTest(_ point: NSPoint) -> NSView? { nil }"
         ))
+    }
+
+    @Test("Page and pane states share presentation without sharing workflow ownership")
+    func contentStatePresentationResponsibility() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let components = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
+        let note = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let records = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+            ),
+            encoding: .utf8
+        )
+        let search = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/SearchWorkspaceView.swift"
+            ),
+            encoding: .utf8
+        )
+        let sidebar = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(components.contains("struct ScholiumContentStateView<Actions: View>"))
+        #expect(components.contains("enum ScholiumContentStatePlacement"))
+        #expect(components.contains("enum ScholiumContentStateDensity"))
+        #expect(components.contains("maxWidth: ScholiumMetrics.ContentState.readableWidth"))
+        #expect(components.contains(".accessibilityElement(children: .contain)"))
+        #expect(note.contains("\"Empty Note\""))
+        #expect(note.contains("\"Review Mode Unavailable\""))
+        #expect(records.contains("ScholiumContentStateView("))
+        #expect(!records.contains("ContentUnavailableView"))
+        #expect(!records.contains(
+            ".padding(.bottom, ScholiumGrid.Spacing.regionContentInset)"
+        ))
+        #expect(search.contains("\"No Search Results\""))
+        #expect(!search.contains("ContentUnavailableView"))
+        #expect(sidebar.contains("placement: .leading"))
+        #expect(sidebar.contains("density: .compact"))
     }
 
     @Test("Independent windows do not share presentation or document sessions")
@@ -2414,6 +2677,12 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Search.selectionIndicatorWidth == ScholiumGrid.Spacing.opticalAlignmentAdjustment)
         #expect(ScholiumShape.editorialControlCornerRadius == 8)
         #expect(ScholiumShape.editorialPanelCornerRadius == 10)
+        #expect(
+            ScholiumMetrics.Library.workspaceNavigatorTopSpacing
+                == ScholiumGrid.Spacing.nestedContentInset
+        )
+        #expect(ScholiumMetrics.ResearchRecords.viewIndicatorWidth == 18)
+        #expect(ScholiumMetrics.ResearchRecords.viewIndicatorHeight == 1)
     }
 
     @Test("Search and Properties consume purpose-named component dimensions")
@@ -2478,6 +2747,10 @@ struct FrontendArchitectureTests {
 
         #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Peripheral.contentInset)
+        #expect(
+            ScholiumMetrics.Library.workspaceNavigatorTopSpacing
+                == ScholiumGrid.Spacing.nestedContentInset
+        )
         #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == ScholiumGrid.Dimension.libraryHierarchyRowHeight)
         #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
@@ -3155,6 +3428,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
+        #expect(ScholiumMotion.triptychWorkspaceSourceReveal(reduceMotion: true) == nil)
 
         #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: false) != nil)
@@ -3162,6 +3436,8 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)
+        #expect(ScholiumMotion.triptychWorkspaceSourceReveal(reduceMotion: false) != nil)
+        #expect(ScholiumMotion.triptychWorkspaceSourceOffset == 6)
     }
 
     @Test("Custom interface glyphs use resolved semantic colors")
@@ -3203,6 +3479,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let componentsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
         let critiqueSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/CritiqueProvenanceView.swift"
@@ -3223,9 +3505,11 @@ struct FrontendArchitectureTests {
         )
 
         #expect(designSystemSource.contains("ScholiumInkIconButtonStyle"))
-        #expect(designSystemSource.contains("raisedSurfaceBackground.color"))
+        #expect(designSystemSource.contains("ScholiumContentInteractionSurface"))
+        #expect(componentsSource.contains(".scholiumContentInteractionSurface("))
+        #expect(componentsSource.contains("ScholiumTriptychWorkspaceButtonStyle"))
         #expect(designSystemSource.contains("configuration.isPressed ? 0.78 : 1"))
-        #expect(designSystemSource.contains("isActive ? 1"))
+        #expect(designSystemSource.contains("isActive || isHovering || isFocused"))
         #expect(critiqueSource.contains("ScholiumMotion.disclosure(reduceMotion: reduceMotion)"))
         #expect(bootstrapSource.contains("ScholiumMotion.disclosure(reduceMotion: reduceMotion)"))
         #expect(recordSource.contains(".contentTransition(.symbolEffect(.replace.downUp.byLayer))"))

@@ -34,29 +34,31 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// Session-only presentation owned by one Workspace window. The transient
-/// popover owns visibility; this value owns only filtering, selection, Scope,
-/// and the optional current-Note subset.
+/// popover owns visibility; this value owns only filtering, selection, the
+/// optional workspace subset used by Inspector, and the optional current-Note
+/// subset. A nil workspace is the complete Triptych queue.
 @MainActor
 final class AttentionPresentationState: ObservableObject {
     @Published var filter = AttentionQueueFilter()
     @Published var selectedItemID: String?
-    @Published private(set) var workspaceSlot: WorkspaceVaultSlot = .paperAnalysis
+    @Published private(set) var workspaceSlot: WorkspaceVaultSlot?
     @Published private(set) var noteScope: VaultQualifiedNoteID?
     @Published private(set) var filterFocusRequestGeneration: UInt64 = 0
 
     private var previousVisibleItemIDs: [String] = []
 
     func present(
-        workspaceSlot: WorkspaceVaultSlot,
+        workspaceSlot: WorkspaceVaultSlot?,
         noteScope: VaultQualifiedNoteID?
     ) {
         self.workspaceSlot = workspaceSlot
         self.noteScope = noteScope
     }
 
-    /// Sidebar Scope changes always return Attention to that Scope's complete
-    /// queue. They never retain an Inspector-applied This Note subset.
+    /// A workspace change retargets an Inspector-scoped queue but never turns
+    /// an already open Triptych queue into one workspace's subset.
     func selectWorkspaceSlot(_ slot: WorkspaceVaultSlot) {
+        guard workspaceSlot != nil else { return }
         workspaceSlot = slot
         noteScope = nil
         selectedItemID = nil

@@ -42,11 +42,11 @@ Each configured window contains exactly one native split view with three
 sibling items:
 
 1. **Sidebar:** a Library navigation region containing Scholium and Triptych
-   identity; one quiet equal-column **Analyses / Topics / Works** ScopeIndex
-   with no Attention statistics; one conditional current-Scope Attention alert;
-   one title-style LocationPicker for **Library**, **Set
-   Aside**, and **Trash**; one active location-owned source region; and
-   Library-local Filter and Add. Settings is not a Library destination.
+   identity; one vertical **Analyses / Topics / Works**
+   TriptychWorkspaceNavigator; one stable Triptych Attention entry; one
+   title-style LocationPicker for **Library**, **Set Aside**, and **Trash**;
+   one selected-workspace-and-location source region; and Library-local Filter
+   and Add. Settings is not a Library destination.
 2. **Document:** selected note or the restrained no-document empty state.
 3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
    projections. It never owns buffers, autosave, Undo, or conflicts;
@@ -86,34 +86,40 @@ mirrors Library and Apparatus visibility for labels, commands, and the next
 session. Menu, toolbar, and content actions send explicit per-window intents to
 the native controller; model observation never continuously reasserts split
 state. Notes/tabs never reconstruct the shell or change peripheral
-visibility/mode. Library Scope and Location are per-window presentation state,
-not Note, vault, or Markdown facts. Switching Scope preserves the selected
-Location and reloads that Location under the new Scope without replacing the
-open Document. A new window's first Inspector reveal selects Overview. Each
-window restores its own last Inspector mode; changing notes, Document tabs, or
-document presentation mode never changes it.
+visibility. The selected workspace is per-window presentation state, not a
+Note, vault, or Markdown fact. Each workspace retains its own Location,
+filters, disclosure, source-list scroll, selected tab, live Document mode, and
+Inspector mode. A workspace transition saves or fails safely before it commits
+the destination session; it never replaces a dirty buffer or presents the
+destination identity over retained origin content. A new window's first
+workspace and first Inspector reveal begin in Analyses and Overview.
 
 The native titlebar owns traffic-light, drag, and height geometry. Its one
-toolbar belongs to Document and exists inert from the first configured frame;
+window toolbar exists inert from the first configured frame;
 loading may replace items but not move traffic lights or change band height.
 Opaque regions extend beneath it, and controls use the live safe area rather
 than a measured toolbar height.
 
 Sidebar and Inspector each keep one visibility control at a stable position in
-the one native Document toolbar. Native collapsed state changes that item's
-accessible Show/Hide label, value, and explicit per-window action; collapse and
-expansion never transfer the control, change toolbar item topology, or add a
-pane-local duplicate. Tracking separators remain structural bounds. Add no
+that native toolbar. The Sidebar control sits immediately before the first
+tracking separator at the logical trailing side of Sidebar; it mirrors in
+right-to-left presentation and remains visible when Sidebar collapses. The
+Inspector control remains before the Inspector tracking separator. Native
+collapsed state changes each item's accessible Show/Hide label, value, and
+explicit per-window action; collapse and expansion never transfer a control,
+change toolbar item topology, or add a pane-local duplicate. Visibility is
+expressed by the actual pane rather than a persistent selection underline or
+custom active enclosure. Tracking separators remain structural bounds. Add no
 split-item accessory row, custom title strip, Inspector replacement, ellipsis,
 fixed height, automatic glass-like item, or Liquid Glass.
 
-Attention never enters the Document toolbar. While Sidebar is visible, its
-conditional current-Scope alert is the only workspace-chrome signal;
-collapsing Sidebar removes that signal without transferring a count, symbol,
-reserved gap, or popover anchor. Inspector retains its distinct current-Note
-summary. **Window → Attention** is enabled only when the focused Workspace has
-a visible Sidebar alert or Inspector summary capable of anchoring the transient
-popover; otherwise showing Sidebar restores the contextual route.
+Attention never enters the Document toolbar. While Sidebar is visible, the
+stable Triptych-owned control beside its identity is the workspace-chrome
+entry and popover anchor; collapsing Sidebar removes that control without
+transferring a count, symbol, or anchor. Inspector retains its distinct
+current-Note summary. **Window → Attention** is enabled only when the focused
+window has a visible Triptych entry or Inspector summary capable of anchoring
+the transient popover; otherwise showing Sidebar restores the Triptych route.
 
 The Inspector toolbar control and View command send one explicit intent through
 the exact window coordinator to the native split.
@@ -123,14 +129,18 @@ Target; a visible Inspector can always be hidden. Research Records remains a
 separate Triptych-bound auxiliary window; opening it from the document toolbar
 explicitly reapplies **This Note** Scope without changing Inspector state.
 
-With two or more documents, a Document-owned strip appears only in the middle
-item. Each tab references one retained editor session. The native tab
-controller owns containment; Scholium supplies equal-width selection
-and save-before-transition. One stable document has at most one tab in a
-window; repeated open or **Open in New Tab** selects that tab in place. Close
-flushes and selects a retained neighbor; last close returns no-note. Tabs
-create no window group, parallel state, or toolbar owner. Prototype styling
-has no authority; selector styling is provisional.
+With two or more documents in the selected workspace, a Document-owned strip
+appears only in the middle item. One window-local tab owner partitions tabs by
+vault role; each tab references one retained editor session, and the single
+native tab controller presents only the active group. Inactive groups remain
+layout-neutral, inert, and accessibility-hidden while their sessions remain
+available for return. Scholium supplies equal-width selection and
+save-before-transition. One stable document has at most one tab in a window;
+repeated open or **Open in New Tab** selects its owning workspace and existing
+tab. Close flushes and selects a retained neighbor only inside the current
+group; last close returns that workspace to no-note. Tabs create no window
+group, parallel controller, split, or toolbar owner. Prototype styling has no
+authority; selector styling is provisional.
 
 Window close, route handoff, and application termination are bounded. A
 content flush, save, or conflict failure keeps the affected window and exact
@@ -140,9 +150,14 @@ does not veto close or misreport a source-save failure. Late lifecycle work may
 not act on a newer route, window, document, or close attempt.
 
 The Library BrandHeader sits below window controls. A static Scholium wordmark
-and a separate Triptych identity menu share the 28pt peripheral page edge;
-Triptych management never turns the wordmark into a second toolbar. Traffic-
-light alignment is visual reference only, never derived geometry. No-note is
+occupies its own identity line. The next line pairs the Triptych identity menu
+with one logical-trailing Triptych Attention control on the 28pt peripheral
+page edge; neither turns the wordmark into a second toolbar. The control uses a
+direct `exclamationmark.triangle` SF Symbol and places an exact nonzero Triptych
+total beside, never over, that symbol. Its resting background is transparent;
+one complete interaction surface appears only for hover, keyboard focus, press,
+or the open popover. Traffic-light alignment is visual reference only, never
+derived geometry. No-note is
 one centered `doc.text` symbol, **No Document Selected**, and the secondary
 sentence **Select a note in the Library to read or edit.** It has no card,
 button, motion, focus target, source state, or duplicate creation route. The
@@ -157,7 +172,7 @@ Menus follow researcher tasks:
 - **Edit:** editing and **Edit Properties…**.
 - **View:** Search, document mode/text size, Sidebar, Research Inspector.
 - **Window:** standard window navigation plus **Attention**. The command is
-  enabled only when the focused Workspace has a visible Sidebar or Inspector
+  enabled only when the focused window has a visible Triptych or Inspector
   Attention anchor, and opens that anchor's transient popover.
 - **Research:** role-valid Actions and **Triptych · Records**, never Attention
   or Checkpoints.
@@ -167,15 +182,25 @@ Menus follow researcher tasks:
 
 ### 18.3 Library and Search
 
-- The ScopeIndex is Library's only horizontal index. Analyses, Topics, and
-  Works occupy three equal columns, with each label centered and the selected
-  item marked by a provisional **18pt × 1pt** Accent underline. It has no
-  capsule, shared backing plate, enclosing border, or full-width rule. The
-  group exposes selection, follows reading direction for Left/Right Arrow, and
-  lets Tab continue into Library content without pointer activation creating a
-  keyboard-only focus ring. Scope labels expose no Attention count visually or
-  accessibly; Attention state belongs to the conditional current-Scope alert or
-  the current-Note Inspector summary.
+- TriptychWorkspaceNavigator is Library's top-level vertical navigation. Its
+  three full-width rows appear in stable Analyses, Topics, Works order and
+  expose no role description, icon, Attention count, progress, or pipeline
+  mark. The selected row uses Semibold primary ink plus one persistent native-
+  style Navigation selection surface. An unselected row uses Regular secondary
+  ink; hover or focus adds the same purpose-owned continuous shape with a
+  quieter surface and primary ink, without changing weight or geometry. Rows
+  have no underline, Accent mark, capsule band, enclosing border, shadow, or
+  full-width rule. The group exposes one selected workspace, uses Up/Down Arrow
+  within the group, and lets Tab continue into the selected workspace without
+  pointer activation creating a keyboard-only focus ring.
+- Each workspace row places the last trustworthy exact count of ordinary
+  active Notes in that role vault at its logical trailing edge. Set Aside and
+  Trash do not contribute. The count is noninteractive neutral inventory
+  metadata: system Sans, monospaced digits, and `mutedText` in selected,
+  unselected, hover, focus, and inactive-window states. Zero remains visible;
+  an unavailable first result uses an em dash rather than claiming zero; a
+  refresh retains the last trustworthy count. The row's accessible name or
+  value states the workspace and localized Note count.
 - One native **Filter** menu groups Integrity, Metadata, Properties, Order, and
   Actions with at most one submenu level. Its icon-only entry hides the
   redundant outer menu indicator; native submenu chevrons remain. Current
@@ -183,8 +208,9 @@ Menus follow researcher tasks:
   Unqualified state.
 - One icon-only disclosure button sits beside Filter. When any Folder in the
   current tree is visibly expanded, it presents **Collapse All Folders** with
-  the collapse symbol and collapses the complete tree; otherwise it presents
-  **Expand All Folders** with the expand symbol and expands the complete tree.
+  one direct collapse symbol and collapses the complete tree; otherwise it
+  presents **Expand All Folders** with one direct expand symbol and expands the
+  complete tree. It never constructs either mark by stacking glyphs.
   It is unavailable when the tree contains no expandable Folder. The action
   mutates only the current vault-and-Location disclosure set and never source, order,
   selection, or another window. Every successful in-app active-Note navigation
@@ -244,43 +270,40 @@ Menus follow researcher tasks:
   could exclude the created row, expands that row's folder ancestors, retains
   unrelated disclosure and ordinary sorting, and scrolls the selected row into
   view once. This reveal does not transfer keyboard focus.
-- The Library Location shows no total. Attention treats zero as the steady
-  state, **1–3** unresolved items as its primary design condition, and larger
-  queues as exceptional accumulation rather than a separate mode or hard cap.
-  When the selected Scope's last trustworthy count is zero, Sidebar contains
-  no Attention row, reserved gap, visible zero, or accessibility target. When
-  the count is nonzero, one full-width **ATTENTION** alert appears after
-  ScopeIndex and before LocationHeader on the **28pt** peripheral page edge.
-  Its warning symbol, exact count, and persistent raised Navigation surface
-  make the condition prominent without relying on color alone. It has no
-  leading selection rule or other decorative Accent boundary.
+- The Library Location shows no total. Triptych Attention treats zero as the
+  steady state, **1–3** unresolved items as its primary design condition, and
+  larger queues as exceptional accumulation rather than a separate mode or
+  hard cap. Its stable BrandHeader control always remains a direct entry. At
+  zero it uses secondary ink without a visible number. At nonzero the warning
+  symbol and exact aggregate Triptych total use Attention ink; the number
+  remains beside the symbol and never becomes a notification badge. Its resting
+  background remains transparent in both states. Hover, keyboard focus, press,
+  and the open popover apply the shared shallow interaction surface behind the
+  complete symbol-and-count target; the symbol never owns a separate circle.
   It neither auto-opens, steals focus, pulses, nor repeats attention-seeking
-  motion. The complete alert opens a native transient Attention popover from
-  itself and never becomes selected Library content. Inspector may open the
-  same Workspace-owned queue from its current-Note summary. Attention is not a Location:
-  opening it leaves the selected Location, source content, Document, and
-  Sidebar selection unchanged.
-- Refresh preserves the last trustworthy per-Scope counts and the corresponding
-  current-Scope alert while Sidebar is visible. A first load with no trustworthy result never
-  claims zero. If it fails, the alert position shows a distinct non-counting
-  **Attention Unavailable** state with Retry rather than hiding a potentially
-  urgent condition. Resolving or dismissing the final item removes the alert;
-  if that disappearing control owns keyboard focus, focus moves to
-  LocationPicker. No reassurance row replaces it.
+  motion. Opening it presents the complete Triptych queue without changing the
+  selected workspace, Location, source content, Document, or Sidebar selection.
+  Inspector may open the same queue with a current-Note subset. Attention is
+  not a Location.
+- Refresh preserves the last trustworthy Triptych total. A first load with no
+  trustworthy result never claims zero; checking uses the control's bounded
+  native progress state. Failure without a trustworthy result presents a
+  visible non-counting unavailable state from the same control and exposes
+  Retry in the popover. Resolving or dismissing the final item removes only the
+  visible number and Attention emphasis; the focused control remains stable.
 - Attention is one native transient popover owned by the exact
   Workspace window, never an application-wide Scene, sheet, inline destination,
   custom panel, or always-on-top surface. Its preferred bounded content size is
-  **420 × 480pt**. Sidebar alert and Inspector summary each anchor the same
-  Workspace-owned queue to their complete trigger.
+  **420 × 480pt**. Triptych entry and Inspector summary each anchor the same
+  Triptych-owned queue to their complete trigger.
   Native transient behavior dismisses it after outside activation or Escape;
   opening a Note or Resynthesize also dismisses it. It has no custom or manual
   close control. Dismissing and reopening within the same Workspace may retain
   its session filter and selection. Activating a different Workspace window
   resets query, kind filter, selected task, and current-Note subset; the
-  machine-local dismissal ledger is unaffected. The conditional Sidebar alert
-  uses the selected Scope; Inspector entry adds the current Note. Changing Sidebar
-  Scope clears that Note subset and switches the queue to the newly selected
-  Scope.
+  machine-local dismissal ledger is unaffected. The Triptych entry opens the
+  complete queue; Inspector entry adds the current Note. Switching workspace
+  neither filters nor retargets an already open Triptych queue.
 - The Attention popover groups **Identity & Metadata** (Change Attribution
   Needed, Malformed Metadata, Unresolved Identity), **Structure & Connections**
   (Possible Orphan, Broken Connection, Ambiguous Connection), and **Revision &
@@ -307,11 +330,23 @@ Menus follow researcher tasks:
   contains a hierarchy; the button remains unavailable when there is no
   expandable Folder. Library additionally shows Filter and Add. Set Aside and
   Trash omit only those Library-specific controls. The header keeps the same
-  position and height while the source region changes.
+  position and height while the source region changes. Its matching icon-only
+  controls use one exact **28 × 28pt** target, secondary ink at rest, primary
+  ink plus the shared shallow semantic interaction surface on hover, native
+  keyboard focus, and the same purpose-owned continuous corner recipe. Filter,
+  disclosure, and Add reuse this complete presentation regardless of whether a
+  native Menu or Button owns activation. They add no persistent Accent tint,
+  independent radius, hover animation, scale, or shadow.
 - The LocationPicker is one native menu of three mutually exclusive items.
   Its title presentation is quiet and borderless: it has no enclosing fill,
-  bezel, capsule, or custom disclosure glyph, and relies on the menu's one
-  native indicator.
+  bezel, capsule, custom disclosure glyph, or persistent Accent tint. Its title
+  uses Regular secondary ink at rest, matching the ordinary command icons in
+  the same header without becoming a section heading. Hover or keyboard focus
+  promotes the title to primary ink and places the shared shallow interaction
+  surface behind its complete native title-and-indicator target at the
+  preferred **28pt** height. Hover, focus, and press use the same continuous
+  editorial-control corner recipe and never stack a native hover enclosure
+  beneath the Scholium surface.
   Its selected item uses a checkmark; Set Aside and Trash may show a last-
   complete count as neutral location metadata. Missing, refreshing, or failed
   counts never disable selection or change the selected Location. Opening the
@@ -320,23 +355,25 @@ Menus follow researcher tasks:
   LocationPicker. Leaving Set Aside or Trash requires choosing Library or
   another Location; there is no parallel Back control, footer toggle, or
   lifecycle tab row.
-- Ordinary ScopeIndex and LocationPicker navigation stages the target Source
-  List from the latest accepted Workspace snapshot while the last committed
-  Scope/Location pair remains intact, then commits the target pair and list
-  atomically. It never replaces a trustworthy Source List with a full-page
-  Loading state merely because an in-memory projection crosses an asynchronous
-  boundary. Loading remains available only when no trustworthy committed
-  projection exists or an explicit recovery/refresh owns that state. A staged
-  target failure retains the prior pair and content and reports the failure;
-  it never presents that target's error under the prior Location title.
+- Ordinary workspace and Location navigation stages the target session and
+  Source List from the latest accepted Workspace snapshot while the last
+  committed workspace session remains intact, then commits the destination
+  atomically after document safety succeeds. It never replaces trustworthy
+  content with a full-page Loading state merely because an in-memory
+  projection crosses an asynchronous boundary. Loading remains available only
+  when no trustworthy committed projection exists or an explicit
+  recovery/refresh owns that state. A staged target failure retains the prior
+  workspace, tabs, Document, Inspector, Location, and content and reports the
+  failure; it never presents destination identity over origin content.
 - **Set Aside** and **Trash** are same-plane Library Locations, never overlays,
   cards, sheets, or separate Sidebar modes. Selecting one replaces only the
-  source-region content; BrandHeader, ScopeIndex, conditional Attention state,
+  source-region content; BrandHeader, TriptychWorkspaceNavigator,
+  Triptych Attention state,
   LocationHeader retain their ownership.
   All three Locations project the same native Folder-and-Note outline and row
   interaction grammar; lifecycle filtering and category-valid actions are the
   only intentional differences.
-  Switching Scope retains the Location and loads its content for the new Scope.
+  Switching workspace restores that workspace's retained Location and content.
   An empty Location remains selected and shows its own short empty state rather
   than silently returning to Library. At most one Location content subtree
   accepts input or appears in the accessibility tree; an implementation may

@@ -214,6 +214,7 @@ private struct ResearchRecordsViewIndex: View {
 }
 
 private struct ResearchRecordsViewIndexButton: View {
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     @State private var isHovering = false
 
     let viewKind: ResearchRecordsViewKind
@@ -237,22 +238,26 @@ private struct ResearchRecordsViewIndexButton: View {
                     maxWidth: .infinity,
                     minHeight: ScholiumMetrics.Apparatus.headerHeight
                 )
+                .background(
+                    interactionSurface,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .focusable()
-        .focused(focusedView, equals: viewKind)
+        .scholiumActivationFocus(focusedView, equals: viewKind)
         .foregroundStyle(
-            isSelected || isHovering
+            isSelected || isHovering || isFocused
                 ? ScholiumColorRole.primaryText.color
                 : ScholiumColorRole.secondaryText.color
         )
         .overlay(alignment: .bottom) {
-            ScholiumEditorialIndexUnderline(
+            ResearchRecordsViewIndexUnderline(
                 isSelected: isSelected,
-                isHovering: isHovering,
-                width: ScholiumMetrics.Apparatus.selectedModeIndicatorWidth,
-                height: ScholiumMetrics.Apparatus.selectedModeIndicatorHeight
+                isHovering: isHovering
             )
         }
         .onHover { isHovering = $0 }
@@ -272,9 +277,45 @@ private struct ResearchRecordsViewIndexButton: View {
             "Recommendations (\(unprocessedCount))"
         }
     }
+
+    private var isFocused: Bool {
+        focusedView.wrappedValue == viewKind
+    }
+
+    private var interactionSurface: Color {
+        ScholiumContentInteractionSurface.color(
+            isHovering: isHovering,
+            isFocused: isFocused,
+            increasedContrast: increasedContrast
+        )
+    }
+}
+
+/// Research Records retains its own compact view-index marker. It does not
+/// define or supply selection styling for Library Scope or Inspector Mode.
+private struct ResearchRecordsViewIndexUnderline: View {
+    let isSelected: Bool
+    let isHovering: Bool
+
+    var body: some View {
+        Rectangle()
+            .fill(
+                isSelected
+                    ? ScholiumColorRole.accent.color
+                    : ScholiumColorRole.secondaryText.color.opacity(isHovering ? 0.45 : 0)
+            )
+            .frame(
+                width: ScholiumMetrics.ResearchRecords.viewIndicatorWidth,
+                height: ScholiumMetrics.ResearchRecords.viewIndicatorHeight
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
 }
 
 private struct ResearchRecordsScopeMenu: View {
+    @FocusState private var isFocused: Bool
+
     let model: ResearchRecordBrowserModel
 
     var body: some View {
@@ -292,10 +333,18 @@ private struct ResearchRecordsScopeMenu: View {
                     minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget,
                     alignment: .leading
                 )
+                .scholiumContentInteractionSurface(
+                    isHovering: false,
+                    isFocused: isFocused,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
-        .focusable()
+        .scholiumActivationFocus($isFocused)
         .tint(ScholiumColorRole.accent.color)
         .fixedSize(horizontal: true, vertical: false)
         .accessibilityLabel("Scope")
@@ -514,10 +563,10 @@ private struct ResearchRecordSelectedDetail: View {
         if let record = model.selectedRecord {
             ResearchRecordDetailView(record: record, model: model, context: context)
         } else {
-            ContentUnavailableView(
+            ScholiumContentStateView(
                 "Select a Research Record",
-                systemImage: "doc.text.magnifyingglass",
-                description: Text("Choose a finished Discussion or Action from the record list.")
+                detail: Text("Choose a finished Discussion or Action from the record list."),
+                indicator: .symbol("doc.text.magnifyingglass")
             )
         }
     }
@@ -766,18 +815,16 @@ private struct ResearchLiteratureRecommendationEmptyResults: View {
     let model: ResearchRecordBrowserModel
 
     var body: some View {
-        ContentUnavailableView(
+        ScholiumContentStateView(
             model.recommendationFilter == .unprocessed
                 ? "No Unprocessed Recommendations"
                 : "No Matching Recommendations",
-            systemImage: "books.vertical",
-            description: Text(emptyDescription)
-        )
-        .overlay(alignment: .bottom) {
+            detail: Text(emptyDescription),
+            indicator: .symbol("books.vertical")
+        ) {
             if !model.recommendationSearchText.isEmpty
                 || model.recommendationFilter != .unprocessed {
                 Button("Clear Filters") { model.clearRecommendationFilters() }
-                    .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -868,10 +915,10 @@ private struct ResearchLiteratureRecommendationSelectedDetail: View {
             )
             .id(occurrence.id)
         } else {
-            ContentUnavailableView(
+            ScholiumContentStateView(
                 "Select a Literature Recommendation",
-                systemImage: "books.vertical",
-                description: Text("Choose a reading lead from an Analyze Research Record.")
+                detail: Text("Choose a reading lead from an Analyze Research Record."),
+                indicator: .symbol("books.vertical")
             )
         }
     }
@@ -1291,14 +1338,12 @@ private struct ResearchRecordEmptyResults: View {
     let model: ResearchRecordBrowserModel
 
     var body: some View {
-        ContentUnavailableView(
+        ScholiumContentStateView(
             "No Matching Research Records",
-            systemImage: "doc.text.magnifyingglass",
-            description: Text("Clear a filter or search the complete Triptych.")
-        )
-        .overlay(alignment: .bottom) {
+            detail: Text("Clear a filter or search the complete Triptych."),
+            indicator: .symbol("doc.text.magnifyingglass")
+        ) {
             Button("Clear Filters") { model.clearAllFilters() }
-                .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

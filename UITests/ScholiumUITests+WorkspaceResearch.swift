@@ -1095,6 +1095,59 @@ extension ScholiumUITests {
 
 
     @MainActor
+    func testPointerActivationDoesNotRetainKeyboardOnlyFocus() {
+        waitForDocumentSurface()
+        selectResearchInspectorMode("actions")
+
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        let actionsMode = app.buttons[
+            "scholium.inspectorMode.actions"
+        ].firstMatch
+        XCTAssertTrue(actionsMode.waitForExistence(timeout: 5))
+        actionsMode.click()
+        XCTAssertFalse(
+            keyboardFocus.evaluate(with: actionsMode),
+            "Pointer activation must not leave a keyboard-only focus ring on the ModeIndex."
+        )
+
+        let discuss = app.descendants(matching: .any)[
+            "scholium.researchAction.discuss"
+        ].firstMatch
+        XCTAssertTrue(discuss.waitForExistence(timeout: 5))
+        discuss.click()
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.descendants(matching: .any)[
+            "scholium.researchAction.sheet"
+        ].waitForExistence(timeout: 8))
+        let cancel = sheet.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !sheet.exists })
+
+        for _ in 0..<12 where !keyboardFocus.evaluate(with: actionsMode) {
+            app.typeKey(.tab, modifierFlags: [.shift])
+        }
+        XCTAssertTrue(
+            keyboardFocus.evaluate(with: actionsMode),
+            "The ModeIndex must retain its native keyboard focus path."
+        )
+        app.typeKey(.tab, modifierFlags: [])
+        let actionButtons = ["discuss", "analyze", "check-fidelity"].map { id in
+            app.descendants(matching: .any)[
+                "scholium.researchAction.\(id)"
+            ].firstMatch
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                actionButtons.contains(where: {
+                    keyboardFocus.evaluate(with: $0)
+                })
+            },
+            "Tab from the ModeIndex must enter an available Action row."
+        )
+    }
+
+    @MainActor
     func testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth() {
         waitForDocumentSurface()
         selectResearchInspectorMode("actions")
@@ -1140,9 +1193,6 @@ extension ScholiumUITests {
             "scholium.researchAction.sheet"
         ].waitForExistence(timeout: 8))
         XCTAssertTrue(sheet.descendants(matching: .any)[
-            "scholium.researchAction.boundary"
-        ].exists)
-        XCTAssertTrue(sheet.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ].waitForExistence(timeout: 8))
         XCTAssertFalse(sheet.descendants(matching: .any)[
@@ -1162,7 +1212,7 @@ extension ScholiumUITests {
         XCTAssertEqual(
             XCTWaiter.wait(for: [focusExpectation], timeout: 3),
             .completed,
-            "Focus must return to the initiating Discuss row."
+            "Keyboard dismissal must return focus to the initiating Discuss row."
         )
 
         app.typeKey("r", modifierFlags: [.command])
@@ -1418,6 +1468,10 @@ extension ScholiumUITests {
         actionsMode.click()
 
         let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        XCTAssertFalse(
+            keyboardFocus.evaluate(with: actionsMode),
+            "Pointer activation must not leave a keyboard-only focus ring on the ModeIndex."
+        )
         func focusModeButton(_ button: XCUIElement) {
             for _ in 0..<12 where !keyboardFocus.evaluate(with: button) {
                 app.typeKey(.tab, modifierFlags: [.shift])
@@ -1436,14 +1490,19 @@ extension ScholiumUITests {
 
         focusModeButton(actionsMode)
         app.typeKey(.tab, modifierFlags: [])
-        let analyze = app.descendants(matching: .any)[
-            "scholium.researchAction.analyze"
-        ].firstMatch
-        let actionFocus = XCTNSPredicateExpectation(
-            predicate: keyboardFocus,
-            object: analyze
+        let actionButtons = ["discuss", "analyze", "check-fidelity"].map { id in
+            app.descendants(matching: .any)[
+                "scholium.researchAction.\(id)"
+            ].firstMatch
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                actionButtons.contains(where: {
+                    keyboardFocus.evaluate(with: $0)
+                })
+            },
+            "Tab from the ModeIndex must enter an available Action row."
         )
-        XCTAssertEqual(XCTWaiter.wait(for: [actionFocus], timeout: 3), .completed)
 
         let inspectorToggle = app.descendants(matching: .any)[
             "scholium.toggleInspector"

@@ -243,6 +243,62 @@ extension ScholiumUITests {
             "Document commands must end before the Apparatus begins."
         )
 
+        search.hover()
+        let toolbarHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
+        toolbarHoverScreenshot.name = "Native toolbar — system hover reference"
+        toolbarHoverScreenshot.lifetime = .keepAlways
+        add(toolbarHoverScreenshot)
+
+        let connectMode = app.descendants(matching: .any)[
+            "scholium.inspectorMode.connect"
+        ]
+        XCTAssertTrue(connectMode.waitForExistence(timeout: 5))
+        connectMode.hover()
+        let modeHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
+        modeHoverScreenshot.name = "Inspector ModeIndex — selected and hover surfaces"
+        modeHoverScreenshot.lifetime = .keepAlways
+        add(modeHoverScreenshot)
+
+        let locationPicker = app.descendants(matching: .any)[
+            "scholium.locationPicker"
+        ]
+        XCTAssertTrue(locationPicker.waitForExistence(timeout: 5))
+        locationPicker.hover()
+        let locationHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
+        locationHoverScreenshot.name = "Library LocationHeader — LocationPicker hover"
+        locationHoverScreenshot.lifetime = .keepAlways
+        add(locationHoverScreenshot)
+
+        let libraryFilters = app.descendants(matching: .any)[
+            "scholium.libraryFilters"
+        ]
+        XCTAssertTrue(libraryFilters.waitForExistence(timeout: 5))
+        libraryFilters.hover()
+        let libraryHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
+        libraryHoverScreenshot.name = "Library LocationHeader — semantic icon hover"
+        libraryHoverScreenshot.lifetime = .keepAlways
+        add(libraryHoverScreenshot)
+
+        let libraryDisclosure = app.descendants(matching: .any)[
+            "scholium.libraryDisclosureToggle"
+        ]
+        XCTAssertTrue(libraryDisclosure.waitForExistence(timeout: 5))
+        libraryDisclosure.hover()
+        let disclosureHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
+        disclosureHoverScreenshot.name = "Library LocationHeader — disclosure hover"
+        disclosureHoverScreenshot.lifetime = .keepAlways
+        add(disclosureHoverScreenshot)
+
+        let libraryCreate = app.descendants(matching: .any)[
+            "scholium.libraryCreate"
+        ]
+        XCTAssertTrue(libraryCreate.waitForExistence(timeout: 5))
+        libraryCreate.hover()
+        let createHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
+        createHoverScreenshot.name = "Library LocationHeader — create hover"
+        createHoverScreenshot.lifetime = .keepAlways
+        add(createHoverScreenshot)
+
         // Move the pointer off the toolbar control so its transient help tag
         // cannot obscure the retained visual proof.
         let proofFocus = window.coordinate(

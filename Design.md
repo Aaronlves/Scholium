@@ -41,11 +41,12 @@ Canonical design system in brief:
   color establish hierarchy before rules, containers, or elevation.
 - Native macOS controls own geometry, focus, selection, menus, sheets, and
   transient presentation. Scholium adds no parallel window or control skin.
-- Inspector uses one ModeIndex, section/fact/reading grammar, a native local
+- Inspector uses one ModeIndex with one selected editorial-control surface,
+  section/fact/reading grammar, a native local
   Connection Direction Control, relationship clusters, Action rows, and local
   state views; ordinary rows and sections are borderless by default. Library's
-  canonical target uses one ScopeIndex, LocationPicker, and Source List under
-  §18.3.
+  canonical target uses one TriptychWorkspaceNavigator, stable Triptych
+  Attention entry, LocationPicker, and Source List under §18.3.
 - Interface copy follows §19.6; cross-functional state presentation follows
   §19.9; and every component carries the applicable keyboard, accessibility,
   localization, appearance, and recovery requirements from §20.
@@ -255,11 +256,17 @@ adaptation continue to follow §20.
   planes; bounded local glass or material follows §19.1. Their sole structural
   depth exception is the Workspace-owned document-navigation boundary below.
   Dense evidence is quietest and most legible.
-- The Sidebar Attention alert is one state-derived presentation component, not
-  an owner of diagnostics or counts. Zero produces no component. Nonzero combines
-  the existing raised Navigation surface, warning symbol, label, and exact
-  count; unavailable substitutes complete diagnostic text and Retry. No
-  Attention count, aggregate, or anchor is projected into the Document toolbar.
+- The Sidebar's Triptych Attention entry is one stable presentation component,
+  not an owner of diagnostics or counts. It shares the Triptych identity row
+  and uses one direct warning symbol. At rest it has no background: zero uses
+  secondary ink without a number, while nonzero places the exact aggregate
+  Triptych total beside, never over, the symbol and uses Attention ink for both.
+  Hover, keyboard focus, press, and an open popover place one shared shallow
+  interaction surface behind the complete symbol-and-count target; the symbol
+  never owns a separate circle and the count never becomes a badge. Checking
+  and unavailable retain the same identity and expose complete state and Retry.
+  No Attention count, aggregate, or anchor is projected into the Document
+  toolbar or individual workspace rows.
 - Purpose-named boundaries are structural divider, subtle boundary, and
   floating boundary; Increase Contrast strengthens roles rather than adding
   new ones. Apparatus sections, ordinary rows, and Action rows default to no
@@ -289,7 +296,35 @@ adaptation continue to follow §20.
   never supplies shadow color, opacity, blur, or offset. Surface, boundary,
   text, and position must communicate ownership when any shadow is absent.
 - Native controls own interaction states. Custom targets prefer **28pt** and
-  never fall below **20pt**; this does not redefine native sizes.
+  never fall below **20pt**; this does not redefine native sizes. Custom
+  button-like controls share one pointer-neutral focus policy: each stays in
+  the complete native keyboard focus chain, while a pointer press clears the
+  keyboard-only focus state before activation settles. Matching controls
+  locally replace the system focus effect with the shared content-focus
+  surface; a caller never samples the current AppKit event or suppresses focus
+  effects for the window or application.
+- Toolbar symbols use system-owned geometry, hover, focus, and press behavior;
+  they receive no Scholium underline or custom active enclosure. A custom
+  content control uses an immediate state change with no geometry animation:
+  secondary ink at rest, primary ink on hover or focus, and a purpose-owned
+  surface only when its component responsibility requires one. Every
+  Scholium-owned content control consumes one shared adaptive hover-surface
+  resolver; no SwiftUI or AppKit caller supplies a local hover color or opacity.
+  That resolver uses one translucent semantic-ink veil whose relative contrast
+  follows the native toolbar's system hover on every underlying content plane;
+  it does not sample, copy, or freeze the toolbar's current AppKit pixel value.
+  Keyboard focus remains a stronger raised treatment, while Navigation
+  selection keeps its purpose-owned persistent surface.
+  Matching LocationHeader icon controls reuse one exact **28 × 28pt** outer
+  target and the editorial-control shape recipe; LocationPicker and Triptych
+  Attention instead fit their complete text or count content at the same
+  preferred height. LocationPicker uses 13pt Regular secondary ink at rest and
+  promotes to primary ink on hover or keyboard focus without changing weight;
+  its hover, focus, and press states use the same editorial-control shape
+  rather than stacking a native enclosure. Triptych workspace rows own one continuous Navigation
+  selection shape, while ModeIndex selected and hover surfaces use the
+  editorial-control recipe. No leaf supplies a raw radius, and no capsule is
+  inferred from selection or a count.
 - Standard actions and Vector Link relationship marks use direct SF Symbols.
   Text remains primary; Scholium owns no parallel custom Vector Link glyph
   family.
@@ -309,17 +344,22 @@ adaptation continue to follow §20.
   Inspector. Library metrics independently own the
   Library's **12pt** row-surface inset, **28pt** minimum row rhythm, **16pt**
   hierarchy indentation step, **12–14pt** semantic leading slot, **8pt**
-  leading-to-title gap, and **18pt × 1pt** ScopeIndex selection underline.
+  leading-to-title gap, and the Triptych workspace-row selection recipe.
   Ordinary row content begins at the 12pt inset while a selected or pressed
   navigation feedback surface may span the Source List width; the surface does
   not change the content axis. Content headings and principal controls align to
   the shared 28pt page edge. BrandHeader and LocationHeader retain
   intrinsic content-driven height rather than copying a toolbar or
-  footer height. These values remain provisional until they pass the 300pt,
+  footer height. BrandHeader-to-workspace spacing uses the **12pt**
+  nested-content role rather than another local value. Workspace rows retain
+  the preferred **28pt** target, grow rather than clip, and align their
+  noninteractive Note total at the logical trailing edge. That total uses
+  system Sans, monospaced digits, and `mutedText` without a background or
+  hover promotion. These values remain provisional until they pass the 300pt,
   localization, scaling, contrast, and human visual-acceptance matrix.
 - Apparatus metrics map the outer inset to the shared peripheral edge and
-  independently own the Inspector's **18pt** selected-mode underline,
-  **78pt** minimum fact
+  independently own the Inspector ModeIndex's shallow editorial-control state
+  surface, **4pt** separation between adjacent local states, **78pt** minimum fact
   label column, **14pt** fact-column gap, **204pt** horizontal FactGrid
   threshold, and **44pt** Action-row rhythm. Connect uses a four-level
   Inspector cadence rather than copying the Library: **16pt** separates its
@@ -333,6 +373,8 @@ adaptation continue to follow §20.
   names may reuse a general value only when the purpose is genuinely the same;
   Inspector-specific rhythm is not expressed by borrowing a peripheral or
   Library metric.
+- Research Records independently retains its existing **18pt × 1pt** View
+  selection underline; it does not borrow the removed Inspector-mode metric.
 - The one-time **320pt** first-reveal request is a native-container initial
   condition outside the grid. It is not a design Variable, persisted setting,
   minimum, maximum, or continuously enforced preference.
@@ -341,15 +383,27 @@ adaptation continue to follow §20.
   namespace, destination header, or footer role.
 - Motion is purpose-named, interruptible, and removed under Reduce Motion. No
   duration scale, parallax, animated grain, decorative motion, or repeating
-  Attention pulse. Conditional Attention presence remains understandable with
-  motion entirely absent. Native controls retain their system feedback; custom
-  controls use an immediate semantic state change for hover, focus, press, and
+  Attention pulse. Conditional Attention count and emphasis remain
+  understandable with motion entirely absent. Native controls retain their
+  system feedback; custom controls use an immediate semantic state change for
+  hover, focus, press, and
   disabled feedback rather than adding geometry animation to frequent actions.
   Motion is reserved for a named content or structure transition: disclosure,
-  document reveal, search presentation/expansion, transient status, and the
-  bounded Bootstrap step transition. Each such transition has one owner, keeps
-  direction and cancellation coherent, and returns no animation under Reduce
-  Motion. An interactive state must remain fully legible when motion is absent.
+  document reveal, search presentation/expansion, transient status, Triptych
+  workspace change, and the bounded Bootstrap step transition. A Triptych
+  workspace change keeps the selected-workspace control, LocationHeader,
+  native titlebar, toolbar, split surfaces, dividers, Document, and Apparatus
+  stationary. Only the safely committed destination Source List content uses
+  one shallow top-origin settle: it begins **6pt** above its final position,
+  remains clipped to the source region, and moves downward while fading in over
+  **0.18s ease-out**. The complete tree or Location state moves as one object;
+  rows never cascade, a long tree receives no sweep or delayed tail, and the
+  origin tree does not remain as a second interactive or accessibility
+  subtree. Repeated input interrupts and retargets the latest safely committed
+  destination rather than queueing animations. Reduce Motion installs the
+  destination without offset, opacity transition, or delay. Workspace identity,
+  selection, and destination content remain fully legible when motion is
+  absent.
 - Document rhythm is renderer-aware and uses the approved default and adaptive
   behavior in §18.4 and §19.2.
 
@@ -479,12 +533,14 @@ the required meaning.
 | Component | Scholium task and presentation contract | Do not turn it into | Semantic owner |
 | --- | --- | --- | --- |
 | `Sidebar / Document / Apparatus` | Keep Document primary across three opaque planes; one full-height Sidebar-edge cue advances the Document/Apparatus work field without replacing the native divider. | Cards, a floating Inspector, a parallel divider, or a dashboard. | §18.2 |
-| `ScopeIndex / ModeIndex` | Select a Library Scope or mode through one editorial underline and native focus/selection. | A filled segmented band or a second navigation state. | §§18.3, 18.5 |
+| `Triptych Workspace Navigator` | Presents Analyses, Topics, and Works as full-width destinations with one persistent Navigation selection and quiet, exact Note totals. | A Scope filter, pipeline, project selector, segmented band, or Attention counter. | §§3.2, 18.2–18.3 |
+| `ModeIndex` | Selects one local Inspector mode through a shallow editorial-control surface while retaining focus, pointer, keyboard, and RTL behavior without an Accent underline. | A workspace navigator, filled segmented band, or Document tab strip. | §18.5 |
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §§12, 18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
-| `Attention Alert` | Surface only current-Scope unresolved attention with exact count or complete unavailable text and Retry. | A permanent global badge, pulse, or diagnostic owner. | §14, §18.3 |
+| `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §14, §18.3 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
+| `Content State` | Presents page or pane state with one restrained indicator, title, optional explanation, and adjacent repair action. | A runtime state owner, card, or compact inline feedback. | §§18.2–18.5, §19.9 |
 
 The catalog is presentation authority, not a replacement for the owning
 workflow rule. New entries require a distinct task, a single state owner, a
@@ -499,12 +555,12 @@ the owning workflow chapter remains authoritative for meaning and permission.
 
 | Pattern | Scholium task | Presentation boundary | Semantic owner |
 | --- | --- | --- | --- |
-| `Workspace Shell` | Move among Library, the primary Document, and the document-adjacent Apparatus without losing context. | Native window and split geometry; one background-layer document-navigation depth cue keeps Document visually primary without altering system chrome. | §§18.1–18.3 |
+| `Workspace Shell` | Move among three retained Triptych workspaces without losing their Library, tabs, Document, or Apparatus context. | One native window and fixed split geometry; only role-partitioned content changes inside the three planes. | §§3.2, 18.1–18.3 |
 | `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §§5–7, 18.3–18.4 |
-| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One editor session, one live current mode rather than a history keyed by Note, tab, or window, shared measure, and distinct source and rendered typography. | §§5–7, 18.4 |
+| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One live mode per retained Triptych workspace session rather than a history keyed by Note or tab, shared measure, and distinct source and rendered typography. | §§5–7, 18.4 |
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §§12–14, 18.3 |
 | `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §§12, 18.5 |
-| `Attention` | Notice unresolved work without interruption or invented zero state. | Conditional native presentation with a direct route to the owning context. | §14, §§18.2–18.3 |
+| `Attention` | Enter the complete Triptych queue from one stable Sidebar control or add an exact current-Note subset from Inspector without interruption. | One native transient presentation; zero removes emphasis and count but not the Triptych route. | §14, §§18.2–18.3 |
 | `Research Action` | Prepare, run, inspect, settle, and optionally write a bounded Agent result. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §§12–14, 18.4–18.6 |
 | `Research Records` | Review portable records without reconstructing writable research Markdown. | Native list/detail reading structure with source and derived evidence distinct. | §14, §18.5 |
@@ -548,6 +604,16 @@ Every state presentation follows five invariants:
    state channel.
 5. A state transition must preserve cancellation, focus return, source safety,
    and recovery semantics owned by the underlying workflow.
+
+Page- and pane-level state copy uses the `Content State` component. Its symbol
+or progress indicator remains restrained at the approved interface scale; the
+title uses primary interface ink and the explanation uses secondary ink within
+one readable measure. An Attention-colored symbol supplements, but never
+replaces, explicit Unavailable or Error language. The component keeps repair
+actions in the same content flow so they cannot overlap explanatory text at a
+narrow width. Compact Inspector rows, field-level validation, transient status,
+and persistent recovery notices keep their purpose-owned components and apply
+the same vocabulary without adopting the page layout.
 
 The component catalog and pattern catalog must reference this vocabulary when
 describing normal, degraded, loading, empty, error, conflict, and recovery

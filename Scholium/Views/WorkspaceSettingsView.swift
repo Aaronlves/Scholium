@@ -19,7 +19,11 @@ struct ScholiumSettingsView: View {
                 if let store = settingsModel.cssSnippetStore {
                     AppearanceSettingsView(store: store)
                 } else {
-                    ContentUnavailableView("Appearance Unavailable", systemImage: "paintbrush")
+                    ScholiumContentStateView(
+                        "Appearance Unavailable",
+                        detail: Text("Open a complete Triptych to manage its appearance."),
+                        indicator: .symbol("paintbrush", role: .attention)
+                    )
                 }
             }
                 .tabItem {
@@ -831,10 +835,10 @@ struct WorkspaceSettingsView: View {
                 )
                 .id(selectedTriptychID)
             } else {
-                ContentUnavailableView(
+                ScholiumContentStateView(
                     "No Triptych Registered",
-                    systemImage: "rectangle.3.group",
-                    description: Text("Create a Triptych by choosing Analyses, Topics, and Works folders.")
+                    detail: Text("Create a Triptych by choosing Analyses, Topics, and Works folders."),
+                    indicator: .symbol("rectangle.3.group")
                 )
             }
         }

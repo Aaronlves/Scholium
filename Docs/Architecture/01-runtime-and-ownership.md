@@ -263,8 +263,9 @@ remains presentation-only and is never recorded as a Session.
 ### Window state and feature controllers
 
 `WindowModel` is the per-window composition and focused-command root.
-`WindowShellState` is the sole owner of Library and Inspector presentation,
-folder disclosure, initial-restore completion, per-window document text scale,
+`WindowShellState` is the sole owner of the selected Triptych workspace,
+per-workspace Inspector mode, Library folder disclosure, initial-restore
+completion, per-window Sidebar/Inspector visibility, document text scale,
 appearance choice, transient toast, and shell status. It owns no split geometry,
 Triptych capability, document buffer, or durable research state.
 `WindowWorkspaceController` owns the requested Triptych, selected assignment,
@@ -317,6 +318,14 @@ selection and document workflow state; `ResearchController` owns the current
 research-record projection, checkpoint-list failures, and durable-recovery
 listing. Shell and Research Action state remain independently observable
 owners; `ResearchController` neither republishes nor duplicates them.
+`DocumentTransitionCoordinator` serializes workspace and document replacement,
+flushes the exact active editor before mutation, coalesces rapid workspace input
+to the last requested destination, and commits only after the destination
+Library projection and retained selected tab are valid. `WindowModel` then
+changes the Shell selection, Document mode owner, active tab group, selected
+Document, and Inspector projection in one main-actor commit. A preparation,
+save, conflict, or destination-validation failure leaves the originating
+workspace session selected and unchanged.
 Research Records windows bypass focused `WindowModel` state and read only the
 capabilities and immutable snapshot for their keyed Triptych. Their coordinator
 retains pending presentation requests and same-Triptych navigation endpoints,
@@ -481,27 +490,34 @@ source/link/identity transaction commits, the exact window installs the moved
 source at its destination as an explicit source-ahead projection, activates and
 reveals it immediately, and lets the complete derived refresh converge in the
 background.
-Document, Search, and presentation are window-local; Library hierarchy and
-selection, Sidebar/Apparatus visibility, and Apparatus mode belong to the outer
-window, never a tab. Controllers do not mutate one another. Separate
+Document, Search, and presentation are window-local. Library hierarchy,
+Location, filters, sort, Document tabs, live Document mode, and Inspector mode
+are partitioned by the three Triptych workspaces; Sidebar/Inspector visibility,
+split geometry, toolbar, and window frame remain outer-window state. Controllers
+do not mutate one another. Separate
 `WorkspaceSettingsModel` groups workspace, machine, Zotero, and Research
 Guidance capabilities without constructing a document window.
 
 ### Document tabs and native shell
 
-Each window has one `DocumentTabController`. An `.unspecified`
+Each window has one `DocumentTabController`, partitioned internally into
+Analyses, Topics, and Works groups with one selected page per group. An `.unspecified`
 `NSTabViewController` in the middle split item hosts document pages; a
 Document-owned selector renders the tabs. `.toolbar` is forbidden because it
 would replace `NSWindow.toolbar` and create a second toolbar owner. Tabs create
 no window, model, split, Library, or Apparatus. The controller owns only order,
-selection, and document references; `DocumentController` and
+per-workspace selection, and document references; inactive groups remain
+retained but are not projected into the native container. `DocumentController` and
 `DocumentSessionStore` retain sessions and apply the flush/reconstruction guard.
-Apparatus derives from the active document but keeps window-owned visibility
-and mode. Only New Window creates a shell. The Document presentation owns one
-live Review/Edit/Source selection, defaults a new window to Review, and carries
-that selection across Note and tab changes without writing a mode history to
-window-session storage. `WindowSessionSnapshot.selectedDocument` alone restores
-Document selection.
+Apparatus derives from the active document, keeps window-owned visibility, and
+restores the selected workspace's mode. Only New Window creates a shell. The
+Document presentation owns one live Review/Edit/Source selection per workspace,
+defaults each to Review, and carries that selection across Note and tab changes.
+`WindowSessionSnapshot` stores the selected workspace plus three
+`WindowWorkspaceSessionSnapshot` values containing role-partitioned tab order,
+selection, Location, scroll positions, Document mode, and Inspector mode.
+Unsupported former session bytes fail closed rather than entering a compatibility
+decoder.
 
 Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
 `NSSplitViewController` with three direct `NSSplitViewItem` siblings for
@@ -518,11 +534,13 @@ the native Sidebar removes the complete container projection with it.
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Before split attachment,
 `WorkspaceWindowCoordinator` installs an inert toolbar and later replaces its
-items in place. Sidebar and Inspector each retain one borderless hosted
-`NSToolbarItem` at a stable position inside the Document section. Their hosted
-views observe `WindowShellState` and switch accessible Show/Hide label, value,
-active presentation, and explicit exact-window action without changing toolbar
-item topology. Pane content contains no duplicate visibility control. No
+items in place. Sidebar retains one borderless hosted `NSToolbarItem` at the
+logical trailing edge of the Library section immediately before its tracking
+separator; Inspector retains its matching item immediately before the
+Apparatus separator. Their hosted views observe `WindowShellState` and switch
+accessible Show/Hide label, value, ink state, and explicit exact-window action
+without changing toolbar item topology or adding a persistent active enclosure.
+Pane content contains no duplicate visibility control. No
 split-content titlebar host remains: under full-size content that host rendered
 beneath the toolbar's pointer hit-testing layer even when accessibility could
 still discover it. Stable native toolbar controls satisfy §18.2 without adding
@@ -585,7 +603,7 @@ current-state operation. Active Discussions never appear in Research Records;
 finished Discussions and completed Actions do, while removed Records have no
 projection. The
 Inspector may navigate or open another
-note in the Document tabs, but it never owns a document buffer, editing,
+note in the owning workspace's Document tabs, but it never owns a document buffer, editing,
 autosave, undo, or conflict state. Those remain exclusively in the Document
 surface and its existing controllers.
 

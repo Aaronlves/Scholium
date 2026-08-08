@@ -715,18 +715,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         let ledgerData = UserDefaults.standard.data(
             forKey: AttentionPreferences.dismissalLedgerKey
         ) ?? Data()
-        let counts = AttentionPreferences.visibleScopeCounts(
-            catalog: appState.workspaceCatalog,
-            assignment: appState.workspaceAssignment,
-            dismissalLedgerData: ledgerData
-        )
-        let selectedSlot = appState.discoveryController.library.workspaceSlot
-
-        if appState.sidebarVisible,
-           let count = counts?.count(for: selectedSlot), count > 0 {
+        if appState.sidebarVisible {
             return PreferredAttentionRoute(
                 anchor: .sidebar,
-                workspaceSlot: selectedSlot,
+                workspaceSlot: nil,
                 noteScope: nil
             )
         }

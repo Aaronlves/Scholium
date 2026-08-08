@@ -5,36 +5,55 @@ import Testing
 
 @Suite("External window-session persistence")
 struct WindowSessionStateTests {
-    @Test("New session snapshots serialize the canonical Overview Inspector mode")
-    func canonicalInspectorDefault() {
-        #expect(WindowSessionSnapshot().inspectorMode == "overview")
+    @Test("New window sessions select Analyses without inventing open documents")
+    func canonicalDefault() {
+        let snapshot = WindowSessionSnapshot()
+        #expect(snapshot.selectedWorkspace == .paperAnalysis)
+        #expect(snapshot.workspaceSessions.isEmpty)
     }
 
-    @Test("Window sessions do not serialize Document mode history")
-    func documentModeIsNotPersisted() throws {
-        let data = try JSONEncoder().encode(WindowSessionSnapshot())
-        let source = try #require(String(data: data, encoding: .utf8))
-        #expect(!source.contains("documentModes"))
-        #expect(!source.contains("presentationMode"))
-    }
-
-    @Test("One vault-qualified selected document round-trips outside research vaults")
+    @Test("Role-partitioned tabs and modes round-trip outside research vaults")
     func roundTrip() async throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = WindowSessionSnapshotStore(applicationSupportURL: root)
         let id = UUID()
         let triptychID = UUID()
-        let vaultID = UUID()
-        let selected = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "B.md")
+        let analysesVaultID = UUID()
+        let topicsVaultID = UUID()
+        let analysis = VaultQualifiedNoteID(
+            vaultID: analysesVaultID,
+            relativePath: "A.md"
+        )
+        let topic = VaultQualifiedNoteID(
+            vaultID: topicsVaultID,
+            relativePath: "B.md"
+        )
         let snapshot = WindowSessionSnapshot(
             id: id,
             triptychID: triptychID,
-            vaultID: vaultID,
-            selectedDocument: selected,
-            scrollPositions: ["B.md": 0.25],
+            selectedWorkspace: .topicKnowledge,
+            workspaceSessions: [
+                WindowWorkspaceSessionSnapshot(
+                    workspace: .paperAnalysis,
+                    vaultID: analysesVaultID,
+                    openDocuments: [analysis],
+                    selectedDocument: analysis,
+                    scrollPositions: ["A.md": 0.25],
+                    inspectorMode: "connect",
+                    documentMode: "source"
+                ),
+                WindowWorkspaceSessionSnapshot(
+                    workspace: .topicKnowledge,
+                    vaultID: topicsVaultID,
+                    openDocuments: [topic],
+                    selectedDocument: topic,
+                    location: "setAside",
+                    inspectorMode: "actions",
+                    documentMode: "livePreview"
+                ),
+            ],
             libraryVisible: false,
-            inspectorMode: "outgoing",
             inspectorVisible: true,
             contentDestination: .document,
             searchState: SearchWorkspaceState(scope: .triptych),
@@ -45,18 +64,32 @@ struct WindowSessionStateTests {
         #expect(try await store.load(id: id) == snapshot)
     }
 
-    @Test("Normalization never invents a replacement for a missing selection")
-    func normalization() {
+    @Test("Normalization never invents replacement tabs or selections")
+    func normalization() throws {
         let vaultID = UUID()
+        let present = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Present.md")
+        let missing = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Missing.md")
         let snapshot = WindowSessionSnapshot(
-            vaultID: vaultID,
-            selectedDocument: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Missing.md"),
-            scrollPositions: ["Present.md": 0.8, "Missing.md": 0.2]
+            workspaceSessions: [
+                WindowWorkspaceSessionSnapshot(
+                    workspace: .paperAnalysis,
+                    vaultID: vaultID,
+                    openDocuments: [present, missing],
+                    selectedDocument: missing,
+                    scrollPositions: ["Present.md": 0.8, "Missing.md": 0.2]
+                ),
+            ]
         )
 
-        let normalized = snapshot.normalized(availablePaths: ["Present.md"])
-        #expect(normalized.selectedDocument == nil)
-        #expect(normalized.scrollPositions == ["Present.md": 0.8])
+        let normalized = snapshot.normalized(
+            availablePathsByVault: [vaultID: ["Present.md"]]
+        )
+        let session = try #require(
+            normalized.workspaceSession(for: .paperAnalysis)
+        )
+        #expect(session.openDocuments == [present])
+        #expect(session.selectedDocument == nil)
+        #expect(session.scrollPositions == ["Present.md": 0.8])
     }
 
     @Test("A late older lifecycle generation cannot replace newer window state")
@@ -65,8 +98,14 @@ struct WindowSessionStateTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = WindowSessionSnapshotStore(applicationSupportURL: root)
         let id = UUID()
-        let newer = WindowSessionSnapshot(id: id, inspectorMode: "actions")
-        let older = WindowSessionSnapshot(id: id, inspectorMode: "overview")
+        let newer = WindowSessionSnapshot(
+            id: id,
+            selectedWorkspace: .output
+        )
+        let older = WindowSessionSnapshot(
+            id: id,
+            selectedWorkspace: .paperAnalysis
+        )
 
         try await store.save(newer, generation: 2)
         try await store.save(older, generation: 1)
@@ -74,53 +113,57 @@ struct WindowSessionStateTests {
         #expect(try await store.load(id: id) == newer)
     }
 
-    @Test("Normalization preserves a selected document from a different browsed vault")
-    func normalizationPreservesIndependentLibraryVault() {
-        let browsedVaultID = UUID()
-        let documentVaultID = UUID()
-        let selected = VaultQualifiedNoteID(
-            vaultID: documentVaultID,
-            relativePath: "Shared.md"
-        )
-        let snapshot = WindowSessionSnapshot(
-            vaultID: browsedVaultID,
-            selectedDocument: selected,
-            scrollPositions: ["Shared.md": 0.42]
-        )
-
-        let normalized = snapshot.normalized(availablePaths: ["Shared.md"])
-        #expect(normalized.vaultID == browsedVaultID)
-        #expect(normalized.selectedDocument == selected)
-        #expect(normalized.scrollPositions == ["Shared.md": 0.42])
-    }
-
-    @Test("A confirmed move migrates only matching vault-qualified selections")
+    @Test("A confirmed move migrates only matching vault-qualified workspace state")
     func pathMigration() async throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = WindowSessionSnapshotStore(applicationSupportURL: root)
         let vaultID = UUID()
-        let matching = WindowSessionSnapshot(
-            vaultID: vaultID,
-            selectedDocument: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Old.md"),
-            scrollPositions: ["Old.md": 0.6]
-        )
         let peerVaultID = UUID()
-        let peer = WindowSessionSnapshot(
-            vaultID: peerVaultID,
-            selectedDocument: VaultQualifiedNoteID(vaultID: peerVaultID, relativePath: "Old.md")
+        let matchingDocument = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Old.md"
         )
-        try await store.save(matching)
-        try await store.save(peer)
+        let peerDocument = VaultQualifiedNoteID(
+            vaultID: peerVaultID,
+            relativePath: "Old.md"
+        )
+        let snapshot = WindowSessionSnapshot(
+            workspaceSessions: [
+                WindowWorkspaceSessionSnapshot(
+                    workspace: .paperAnalysis,
+                    vaultID: vaultID,
+                    openDocuments: [matchingDocument],
+                    selectedDocument: matchingDocument,
+                    scrollPositions: ["Old.md": 0.6]
+                ),
+                WindowWorkspaceSessionSnapshot(
+                    workspace: .topicKnowledge,
+                    vaultID: peerVaultID,
+                    openDocuments: [peerDocument],
+                    selectedDocument: peerDocument
+                ),
+            ]
+        )
+        try await store.save(snapshot)
 
-        try await store.migratePath(vaultID: vaultID, from: "Old.md", to: "New.md")
+        try await store.migratePath(
+            vaultID: vaultID,
+            from: "Old.md",
+            to: "New.md"
+        )
 
-        let migrated = try #require(try await store.load(id: matching.id))
-        #expect(migrated.selectedDocument?.relativePath == "New.md")
-        #expect(migrated.scrollPositions == ["New.md": 0.6])
-        #expect(try await store.load(id: peer.id) == peer)
+        let migrated = try #require(try await store.load(id: snapshot.id))
+        let analyses = try #require(
+            migrated.workspaceSession(for: .paperAnalysis)
+        )
+        let topics = try #require(
+            migrated.workspaceSession(for: .topicKnowledge)
+        )
+        #expect(analyses.selectedDocument?.relativePath == "New.md")
+        #expect(analyses.scrollPositions == ["New.md": 0.6])
+        #expect(topics.selectedDocument == peerDocument)
     }
-
 
     @Test("Removing a session is idempotent")
     func remove() async throws {

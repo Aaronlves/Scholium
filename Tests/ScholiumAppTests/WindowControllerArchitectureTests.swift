@@ -158,8 +158,38 @@ struct WindowControllerArchitectureTests {
         )
         #expect(!sessionSource.contains("WindowModel"))
         #expect(!sessionSource.contains("workspace.objectWillChange"))
+        #expect(!sessionSource.contains("?? discoveryController.library.workspaceSlot"))
+        #expect(sessionSource.contains(
+            "if let workspaceSlot = presentation.workspaceSlot"
+        ))
         #expect(sessionSource.contains("workspaceController.$state"))
         #expect(sessionSource.contains("projectionController.$state"))
+    }
+
+    @Test("Visible Sidebar always owns the stable Triptych Attention route")
+    func stableTriptychAttentionRoute() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try #require(source.range(of: "private func preferredAttentionRoute()"))
+        let end = try #require(source.range(
+            of: "private func registerQAFocusRequest()",
+            range: start.upperBound ..< source.endIndex
+        ))
+        let route = source[start.lowerBound ..< end.lowerBound]
+
+        #expect(route.contains("if appState.sidebarVisible"))
+        #expect(route.contains("anchor: .sidebar"))
+        #expect(route.contains("workspaceSlot: nil"))
+        #expect(!route.contains("visibleScopeCounts"))
+        #expect(!route.contains("count > 0"))
     }
 
     @Test("Search execution and Saved Search persistence have one window owner")
@@ -709,6 +739,30 @@ struct WindowControllerArchitectureTests {
         #expect(session.scrollAnchor == nil)
     }
 
+    @Test("Document and Inspector modes are retained independently by workspace")
+    func workspaceModesAreIndependent() {
+        let document = DocumentController()
+        let shell = WindowShellState()
+
+        document.rememberPresentationMode(.livePreview)
+        shell.selectInspectorMode(.actions)
+
+        shell.selectWorkspace(.topicKnowledge)
+        document.selectWorkspace(.topicKnowledge)
+        #expect(document.currentPresentationMode == .read)
+        #expect(shell.inspector.mode == .overview)
+
+        document.rememberPresentationMode(.source)
+        shell.selectInspectorMode(.connect)
+        shell.selectWorkspace(.paperAnalysis)
+        document.selectWorkspace(.paperAnalysis)
+
+        #expect(document.currentPresentationMode == .livePreview)
+        #expect(shell.inspector.mode == .actions)
+        #expect(document.presentationMode(for: .topicKnowledge) == .source)
+        #expect(shell.inspectorMode(for: .topicKnowledge) == .connect)
+    }
+
     @Test("The current Document mode carries across selected Notes")
     func currentModeCarriesAcrossDocuments() {
         let vaultID = UUID()
@@ -1014,20 +1068,46 @@ struct WindowControllerArchitectureTests {
 
     @Test("Location commits one coherent Scope and Location pair")
     func locationRequestStateMachine() {
-        let controller = DiscoveryController()
+        let shell = WindowShellState()
+        let controller = DiscoveryController(shellState: shell)
         let request = controller.beginLocationRequest(
             workspaceSlot: .topicKnowledge,
             location: .setAside
         )
-        #expect(controller.library.locationIsLoading)
+        #expect(!controller.library.locationIsLoading)
+        #expect(controller.libraryState(for: .topicKnowledge).locationIsLoading)
         #expect(controller.library.workspaceSlot == .paperAnalysis)
         #expect(controller.library.locationScope == .workspace)
 
         #expect(controller.receiveLocationResult(for: request))
+        #expect(controller.library.workspaceSlot == .paperAnalysis)
+        #expect(controller.library.locationScope == .workspace)
+        shell.selectWorkspace(.topicKnowledge)
         #expect(controller.library.workspaceSlot == .topicKnowledge)
         #expect(controller.library.locationScope == .setAside)
         #expect(!controller.library.locationIsLoading)
         #expect(controller.library.locationError == nil)
+    }
+
+    @Test("Each workspace retains its own Library presentation")
+    func workspacesRetainIndependentLibraryPresentation() {
+        let shell = WindowShellState()
+        let controller = DiscoveryController(shellState: shell)
+        controller.synchronizeLibrarySelection(
+            workspaceSlot: .paperAnalysis,
+            location: .trash
+        )
+        controller.synchronizeLibrarySelection(
+            workspaceSlot: .topicKnowledge,
+            location: .setAside
+        )
+
+        #expect(controller.library.locationScope == .trash)
+        shell.selectWorkspace(.topicKnowledge)
+        #expect(controller.library.locationScope == .setAside)
+        #expect(
+            controller.libraryState(for: .paperAnalysis).locationScope == .trash
+        )
     }
 
     @Test("Ordinary Location navigation stages without replacing trusted content with Loading")
@@ -1073,9 +1153,10 @@ struct WindowControllerArchitectureTests {
         ))
     }
 
-    @Test("Changing Scope or Location rejects the previous request")
-    func locationSwitchRejectsStaleResponse() {
-        let controller = DiscoveryController()
+    @Test("Location requests in different workspaces remain independent")
+    func workspaceLocationRequestsAreIndependent() {
+        let shell = WindowShellState()
+        let controller = DiscoveryController(shellState: shell)
         let setAside = controller.beginLocationRequest(
             workspaceSlot: .paperAnalysis,
             location: .setAside
@@ -1085,12 +1166,14 @@ struct WindowControllerArchitectureTests {
             location: .trash
         )
 
-        #expect(!controller.receiveLocationResult(for: setAside))
+        #expect(controller.receiveLocationResult(for: setAside))
         #expect(controller.library.workspaceSlot == .paperAnalysis)
-        #expect(controller.library.locationScope == .workspace)
-        #expect(controller.library.locationIsLoading)
+        #expect(controller.library.locationScope == .setAside)
 
         #expect(controller.receiveLocationResult(for: trash))
+        #expect(controller.library.workspaceSlot == .paperAnalysis)
+        #expect(controller.library.locationScope == .setAside)
+        shell.selectWorkspace(.output)
         #expect(controller.library.workspaceSlot == .output)
         #expect(controller.library.locationScope == .trash)
     }

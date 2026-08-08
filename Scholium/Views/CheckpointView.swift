@@ -105,20 +105,21 @@ struct RestoreCheckpointView: View {
             Divider()
 
             if isLoading {
-                Spacer()
-                ProgressView("Loading checkpoints…")
-                Spacer()
+                ScholiumContentStateView(
+                    "Loading Checkpoints…",
+                    indicator: .progress
+                )
             } else if checkpoints.isEmpty, let listingError {
-                ContentUnavailableView(
+                ScholiumContentStateView(
                     "Checkpoints Unavailable",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(listingError)
+                    detail: Text(listingError),
+                    indicator: .symbol("exclamationmark.triangle", role: .attention)
                 )
             } else if checkpoints.isEmpty {
-                ContentUnavailableView(
+                ScholiumContentStateView(
                     "No Checkpoints",
-                    systemImage: "clock.badge.questionmark",
-                    description: Text("Create a checkpoint before substantial external work.")
+                    detail: Text("Create a checkpoint before substantial external work."),
+                    indicator: .symbol("clock.badge.questionmark")
                 )
             } else {
                 VStack(spacing: 0) {
@@ -242,10 +243,10 @@ struct RestoreCheckpointView: View {
             }
             .overlay {
                 if changes.isEmpty, selectedCheckpoint != nil {
-                    ContentUnavailableView(
+                    ScholiumContentStateView(
                         "No Differences",
-                        systemImage: "checkmark.circle",
-                        description: Text("The current Triptych matches this checkpoint.")
+                        detail: Text("The current Triptych matches this checkpoint."),
+                        indicator: .symbol("checkmark.circle")
                     )
                 }
             }

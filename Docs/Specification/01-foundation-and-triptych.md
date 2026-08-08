@@ -5,9 +5,11 @@ This chapter owns Sections 1–4: terminology, product authority, Triptych struc
 
 ## 1. Canonical terminology
 
-- A **Scholium Triptych** (**Triptych**) is one configured workspace containing
-  exactly three vaults: **Analyses**, **Topics**, and **Works**. Their ordinary
-  documents are an **Analysis**, **Topic**, and **Work**.
+- A **Scholium Triptych** (**Triptych**) is one configured research context
+  containing exactly three role workspaces backed by vaults: **Analyses**,
+  **Topics**, and **Works**. A **Triptych workspace** is one of those three
+  working areas; its ordinary document is an **Analysis**, **Topic**, or
+  **Work**, respectively.
 - A **Research Action** is a researcher-selected scholarly transition or
   authority boundary exposed by the Research Inspector's **Actions** mode and
   executed through the shared Application API. The stable default Actions are
@@ -155,19 +157,36 @@ Triptychs may not share a Works parent.
 
 ### 3.2 Triptych navigation and windows
 
-One configured window belongs to one Triptych and presents three peer Library
-scopes: **Analyses | Topics | Works**. Switching scope changes only the browsed
-hierarchy and **This Vault** Search; it does not replace the open document.
+One configured window belongs to one Triptych and presents three peer research
+workspaces: **Analyses**, **Topics**, and **Works**. They are distinct working
+areas for their role-specific documents, Library context, Document tabs, and
+valid Actions, not modes, file states, filters, or stages in a required
+pipeline. Their stable order communicates adjacency within one Triptych;
+Analyses and Topics remain reusable across Works, and navigation never implies
+automatic incorporation, evidence, completion, or authority.
+
+Each window has one selected workspace and one window-local tab owner. That
+owner partitions Document tabs by vault role and retains one selected tab for
+each workspace. Switching workspace first completes the ordinary
+save/conflict-safe document transition, then restores the destination's
+Library presentation, tab group, selected document, live Document mode, and
+Inspector mode. It never creates another window, split, toolbar, repository,
+buffer owner, or tab controller. A failed save or conflict retains the exact
+originating workspace and buffer. Returning to a workspace restores its prior
+context rather than requiring the researcher to find the document again.
 
 **File → New Triptych…** opens setup for three new locations; **File → Open
 Triptych** opens a registered Triptych separately; **File → New Window** creates
-another workspace for the focused Triptych. **Open in New Tab** adds a page
-only to the current window's central Document region. One stable document may
-appear at most once in that window; opening it again selects its existing page
-rather than creating another editor surface. Other windows retain independent
-document sessions. Switching tabs changes the active document and its
-Apparatus projection, while Library disclosure and selection, Sidebar
-visibility, Apparatus visibility, and Apparatus mode remain stable.
+another window for the focused Triptych. **Open in New Tab** adds a page
+to the selected workspace's group in the current window's central Document
+region. One stable document may appear at most once in that window; opening it
+again selects its existing workspace and page rather than creating another
+editor surface. Cross-workspace Note navigation atomically selects the owning
+workspace and reuses or opens its destination tab. Other windows retain
+independent workspace and document sessions. Switching tabs changes the active
+document and its Apparatus projection only within the selected workspace.
+Closing the last tab leaves that workspace in its no-document state and never
+selects another workspace implicitly.
 
 **New Triptych…** and missing registration use Bootstrap. Expired access stays
 in the configured workspace under one **Restore Access** sheet. The workspace
@@ -178,7 +197,7 @@ Sidebar route; it adds no duplicate action or focus target.
 
 Works folders are researcher-controlled organization, not registered projects.
 Scholium supplies no project selector, assignment, completeness check, or
-Triptych switcher inside Document.
+duplicate Triptych workspace navigator inside Document.
 
 ### 3.3 `.scholium` and machine-local state
 
@@ -201,7 +220,8 @@ Application Support owns:
   primary Methods and optional Skill folders plus a separate bookmark
   for the folder containing Works that authorizes sibling `.scholium/` without
   creating a fourth vault;
-- window sessions and vault-qualified Document tabs;
+- window sessions, the selected workspace, and vault-role-partitioned,
+  vault-qualified Document tabs;
 - derived indexes, temporary files, and caches;
 - Pairing Code digests, process-bound Connection Sessions, Bounded Write Sets,
   pending permission decisions, source bookmarks, transport state, derived
@@ -238,8 +258,8 @@ currently selected Analyses, Topics, or Works vault. The external original
 remains unchanged; the imported Note preserves its exact bytes, including BOM,
 newline style, malformed or unknown YAML, and final newline. A collision uses
 `Name 2.md`, then the next available ordinal, without replacing either file.
-The imported file is immediately an ordinary Note of the selected Scope; root-
-level Notes require no classification workflow.
+The imported file is immediately an ordinary Note of the selected Triptych
+workspace; root-level Notes require no classification workflow.
 
 ## 4. Works folders and organization
 

@@ -27,9 +27,13 @@ final class WindowCommandObservation: ObservableObject {
                 .eraseToAnyPublisher()
         }
 
+        let discoveryChanges = discoveryController.objectWillChange
+            .map { _ in () }
+            .eraseToAnyPublisher()
         let commandChanges: [AnyPublisher<Void, Never>] = [
             changes(shellState.$libraryVisible),
             changes(shellState.$inspector),
+            changes(shellState.$selectedWorkspace),
             changes(shellState.$documentTextScale),
             changes(shellState.$colorScheme),
             workspaceController.$state
@@ -40,12 +44,7 @@ final class WindowCommandObservation: ObservableObject {
                 }
                 .map { _ in () }
                 .eraseToAnyPublisher(),
-            discoveryController.$library
-                .dropFirst()
-                .map(\.locationScope)
-                .removeDuplicates()
-                .map { _ in () }
-                .eraseToAnyPublisher(),
+            discoveryChanges,
             changes(documentController.$selectedDocument),
             changes(documentController.$snapshots),
             changes(documentController.$editingDocumentPath),

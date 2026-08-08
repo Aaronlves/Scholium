@@ -6,7 +6,7 @@ import Testing
 @Suite("Attention presentation state")
 @MainActor
 struct AttentionPresentationStateTests {
-    @Test("Sidebar Attention projects exact counts without toolbar routing state")
+    @Test("Sidebar Attention projects one exact Triptych aggregate")
     func scopeCountProjection() {
         let counts = AttentionScopeCounts(values: [
             .paperAnalysis: 2,
@@ -17,7 +17,21 @@ struct AttentionPresentationStateTests {
         #expect(counts.count(for: .paperAnalysis) == 2)
         #expect(counts.count(for: .topicKnowledge) == 0)
         #expect(counts.count(for: .output) == 1)
+        #expect(counts.total == 3)
         #expect(AttentionScopeCounts(values: [:]).count(for: .paperAnalysis) == 0)
+        #expect(AttentionScopeCounts(values: [:]).total == 0)
+    }
+
+    @Test("Workspace Note totals preserve zero and distinguish unavailable")
+    func workspaceNoteCountProjection() {
+        let counts = SidebarWorkspaceNoteCounts(values: [
+            .paperAnalysis: 12,
+            .topicKnowledge: 0,
+        ])
+
+        #expect(counts.count(for: .paperAnalysis) == 12)
+        #expect(counts.count(for: .topicKnowledge) == 0)
+        #expect(counts.count(for: .output) == nil)
     }
 
     @Test("The three visual groups cover each existing derived kind exactly once")
@@ -37,7 +51,7 @@ struct AttentionPresentationStateTests {
         ]))
     }
 
-    @Test("Sidebar Scope changes clear an Inspector-applied This Note subset")
+    @Test("Workspace changes clear an Inspector-applied This Note subset")
     func scopeChangeClearsNoteSubset() {
         let state = AttentionPresentationState()
         let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Topic.md")
@@ -49,6 +63,17 @@ struct AttentionPresentationStateTests {
         #expect(state.workspaceSlot == .output)
         #expect(state.noteScope == nil)
         #expect(state.selectedItemID == nil)
+    }
+
+    @Test("Triptych Attention remains aggregate across workspace changes")
+    func triptychScopeDoesNotRetarget() {
+        let state = AttentionPresentationState()
+
+        state.present(workspaceSlot: nil, noteScope: nil)
+        state.selectWorkspaceSlot(.output)
+
+        #expect(state.workspaceSlot == nil)
+        #expect(state.noteScope == nil)
     }
 
     @Test("A Workspace-window switch resets transient filtering and selection")

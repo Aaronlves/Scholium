@@ -272,9 +272,12 @@ and interaction telemetry never become a Research Record. A next Run resolves
 and queries current owners again rather than inheriting an old response or
 cache.
 
-Attention may report possible-orphan conditions, Changed Since Settled, Broken
-Connections, malformed metadata, unresolved identity, or **Material Changed
-Since Use**. The latter requires one completed Synthesize record whose
+Attention is one Triptych-owned queue. Presentation may open the complete
+Triptych queue or add an exact current-Note subset; those views create no
+Vault-owned queue, diagnostic owner, or philosophical status. Attention may
+report possible-orphan conditions, Changed Since Settled, Broken Connections,
+malformed metadata, unresolved identity, or **Material Changed Since Use**.
+The latter requires one completed Synthesize record whose
 agent-reported actually used Analysis set and exact recorded revision were
 validated; selecting a Material is insufficient. If that Analysis later
 changes, Attention may offer **Inspect**, **Resynthesize**, and **Leave

@@ -55,12 +55,19 @@ struct ResearchMethodsSettingsView: View {
                             }
                         }
                     } else if isWorking {
-                        ProgressView("Loading methods…")
+                        ScholiumContentStateView(
+                            "Loading Methods…",
+                            indicator: .progress,
+                            placement: .leading,
+                            density: .compact
+                        )
                     } else {
-                        ContentUnavailableView(
+                        ScholiumContentStateView(
                             "Methods Unavailable",
-                            systemImage: "text.book.closed",
-                            description: Text(errorMessage ?? "Open a complete Triptych.")
+                            detail: Text(errorMessage ?? "Open a complete Triptych."),
+                            indicator: .symbol("text.book.closed", role: .attention),
+                            placement: .leading,
+                            density: .compact
                         )
                     }
                 }

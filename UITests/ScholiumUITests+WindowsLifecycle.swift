@@ -366,7 +366,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testSidebarCleanCutoverScopeLocationHoverPutBackAndAttentionWindowJourney() throws {
+    func testSidebarWorkspaceLocationHoverPutBackAndTriptychAttentionWindowJourney() throws {
         app.terminate()
         synthesisAttentionFixture = try seedSynthesisAttentionFixture()
         sessionID = UUID()
@@ -388,19 +388,28 @@ extension ScholiumUITests {
         let analyses = app.buttons["scholium.vault.paper_analysis"].firstMatch
         XCTAssertTrue(topics.waitForExistence(timeout: 5))
         topics.click()
+        XCTAssertFalse(
+            NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: topics),
+            "Pointer workspace selection must not leave a keyboard-only focus ring."
+        )
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.noteRow.QA Topic.md"
         ].waitForExistence(timeout: 8))
-        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+        let noDocumentState = app.descendants(matching: .any)[
+            "scholium.noDocumentState"
+        ]
+        XCTAssertTrue(noDocumentState.waitForExistence(timeout: 5))
 
         selectSidebarLocation("Trash")
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.libraryEmpty"
         ].waitForExistence(timeout: 8))
-        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+        XCTAssertTrue(noDocumentState.exists)
         selectSidebarLocation("Library")
 
         analyses.click()
+        XCTAssertTrue(documentTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
         let sourceRow = app.descendants(matching: .any)[
             "scholium.noteRow.QA Autosave B.md"
         ]
@@ -439,21 +448,28 @@ extension ScholiumUITests {
         let folder = app.descendants(matching: .any)[
             "scholium.folderRow.Cluster-01"
         ]
-        let noteList = app.scrollViews["scholium.noteList"].firstMatch
+        let noteList = app.descendants(matching: .any)[
+            "scholium.noteList"
+        ].firstMatch
+        let noteListViewport = app.scrollViews.containing(
+            .outline,
+            identifier: "scholium.noteList"
+        ).firstMatch
         XCTAssertTrue(folder.waitForExistence(timeout: 8))
         XCTAssertTrue(noteList.waitForExistence(timeout: 5))
+        XCTAssertTrue(noteListViewport.waitForExistence(timeout: 5))
         XCTAssertEqual(
-            noteList.frame.width,
+            noteListViewport.frame.width,
             QAWorkspaceMetricContract.libraryMinimumReadableWidth,
             accuracy: QAWorkspaceMetricContract.frameTolerance
         )
         folder.click()
-        noteList.swipeUp(velocity: .slow)
+        noteListViewport.swipeUp(velocity: .slow)
         XCTAssertTrue(folder.waitForExistence(timeout: 5))
-        XCTAssertLessThanOrEqual(
-            abs(folder.frame.minY - noteList.frame.minY),
+        XCTAssertGreaterThan(
+            abs(folder.frame.minY - noteListViewport.frame.minY),
             30,
-            "The active top-level Folder must remain pinned at the source viewport edge."
+            "Folder rows must scroll with the native hierarchy rather than becoming sticky sections."
         )
 
         topics.click()
@@ -461,7 +477,7 @@ extension ScholiumUITests {
             "scholium.noteRow.QA Topic.md"
         ].waitForExistence(timeout: 8))
         let attentionButton = app.descendants(matching: .any)[
-            "scholium.location.attention"
+            "scholium.triptychAttention"
         ]
         XCTAssertTrue(attentionButton.waitForExistence(timeout: 5))
         attentionButton.click()

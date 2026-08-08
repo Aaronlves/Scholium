@@ -1054,7 +1054,7 @@ extension ScholiumUITests {
             || name.contains("testLineCommentDiscussReopenAndFinish")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
             || name.contains("testResearchActionPanelFits")
-            || name.contains("testSidebarCleanCutoverScopeLocationHoverPutBackAndAttentionWindowJourney") {
+            || name.contains("testSidebarWorkspaceLocationHoverPutBackAndTriptychAttentionWindowJourney") {
             try resetNewTriptychActionFixtureState()
         }
 

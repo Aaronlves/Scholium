@@ -233,13 +233,23 @@ private struct RuntimeMembershipFixture: Sendable {
         let session = WindowSessionSnapshot(
             id: UUID(),
             triptychID: assignment.id,
-            vaultID: analysesIdentity.id,
-            selectedDocument: VaultQualifiedNoteID(
-                vaultID: analysesIdentity.id,
-                relativePath: "Agency.md"
-            ),
-            scrollPositions: ["Agency.md": 0.25],
-            inspectorMode: "outgoing",
+            selectedWorkspace: .paperAnalysis,
+            workspaceSessions: [
+                WindowWorkspaceSessionSnapshot(
+                    workspace: .paperAnalysis,
+                    vaultID: analysesIdentity.id,
+                    openDocuments: [VaultQualifiedNoteID(
+                        vaultID: analysesIdentity.id,
+                        relativePath: "Agency.md"
+                    )],
+                    selectedDocument: VaultQualifiedNoteID(
+                        vaultID: analysesIdentity.id,
+                        relativePath: "Agency.md"
+                    ),
+                    scrollPositions: ["Agency.md": 0.25],
+                    inspectorMode: "connect"
+                ),
+            ],
             inspectorVisible: true,
             contentDestination: .document,
             searchState: SearchWorkspaceState(query: "reasons", scope: .currentVault),

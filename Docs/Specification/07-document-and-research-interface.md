@@ -8,13 +8,15 @@ cross-functional state language belongs to [Scholium Design](../../Design.md#199
 ## 18.4 Document modes, context, and Properties
 
 Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Their
-chooser retains exactly one current selection owned by the live Document
-presentation, not a remembered-mode map keyed by Note, Document tab, or
-window. The selection is not written to window-session persistence. A new
-Document presentation starts in Review; changing the selected Note or Document
-tab carries the current live mode instead of restoring a historical mode for
-the destination. Ordinary scrolling space clears initial editor content from
-chrome. Review owns a
+chooser retains exactly one current selection for each live Triptych workspace
+session, owned by the Document presentation rather than by a Note or Document
+tab. Each workspace starts in Review and carries its one live mode across Note
+and tab changes. Switching workspace retains the origin selection and restores
+the destination workspace's live selection with its tab group; it does not
+create a per-Note mode history or reconstruct an editor. Window-session
+persistence may restore the three workspace selections as presentation state
+but never writes them to Markdown or a vault. Ordinary scrolling space clears
+initial editor content from chrome. Review owns a
 transient Comment bar and its in-place field; Edit owns a separate formatting
 bar; Source owns neither. Each disappears when the selection clears, focus
 leaves its task, or the document mode changes. The Comment field also
@@ -150,9 +152,10 @@ researcher uses **Disable All Snippets** and re-enables selected managed copies.
 Import, duplicate, rename, reorder, edit, reload, remove, and reveal act only on
 those managed copies.
 
-Document toolbar order is Sidebar visibility; Heading Outline and compact
-identity; mode and Search; **This Note · Records**; Inspector visibility. Scholium
-controls are borderless ink. No second identity row,
+Window toolbar order is Sidebar visibility before the Library separator;
+Heading Outline and compact identity; mode and Search; **This Note · Records**;
+Inspector visibility before the Apparatus separator. Scholium controls are
+borderless ink. No second identity row,
 Document Properties button, or More control exists.
 Complete Properties is in Research; direct controls retain menu/keyboard
 routes. The compact identity uses secondary text while the in-document H1
@@ -195,24 +198,30 @@ Normal Action Material-use and Fidelity facts remain in the existing collapsed
 evidence area as a complete textual statement; it is not duplicated in Details
 and does not acquire a badge, score, color-only meaning, tooltip, filter, or
 new disclosure. Discussions show neither inapplicable row.
-There is
-exactly one native trailing Inspector per
-Workspace, with **Overview, Connect, Actions** in that order. These are
+There is exactly one native trailing Inspector per window, with **Overview,
+Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
-tabs, panels, or windows. Their text labels use a restrained ink underline,
-not a filled/capsule segment. The index uses three equal columns with each
-label centered, no Scholium-drawn full-width bottom rule, and a provisional
-**18pt** Accent underline for the selected item. Labels remain horizontally
-reachable rather than truncating. The selected mode is exposed accessibly,
-Left/Right Arrow changes mode, Tab enters its content, and every mode owns at
-most one vertical scroll.
+tabs, panels, or windows. The index uses three equal columns with each label
+centered and a 4pt semantic gap between local state surfaces; it has no shared
+control band, capsule, border, underline, Accent mark, shadow, or full-width
+bottom rule. Only the selected mode receives one shallow
+opaque raised surface using the purpose-owned editorial-control corner recipe;
+its label uses Semibold primary ink. An unselected label uses Regular secondary
+ink. Hover gives an unselected item the same-shaped but quieter local surface
+and primary ink without changing its weight; press and native focus remain
+distinct immediate states with no geometry animation. Labels remain
+horizontally reachable rather than truncating. The selected mode is exposed
+accessibly, Left/Right Arrow changes mode, Tab enters its content, and every
+mode owns at most one vertical scroll.
 
-A new window begins in Overview and stores its last mode per window. Restoring
-a window restores that mode; switching notes, Document tabs, or
-Review/Edit/Source never changes it. Hiding the Inspector transfers only its Show
-route under §18.2; no Inspector content moves into Document. Research menu and
-keyboard commands may open an Action without revealing the Inspector or
-changing its mode.
+A new window begins each Triptych workspace in Overview and stores one last
+Inspector mode for each workspace. Restoring a window restores those modes;
+switching notes, Document tabs, or Review/Edit/Source never changes the
+selected workspace's Inspector mode. Switching workspace restores its mode
+without creating another Inspector or changing native split geometry. Hiding
+the Inspector transfers only its Show route under §18.2; no Inspector content
+moves into Document. Research menu and keyboard commands may open an Action
+without revealing the Inspector or changing its mode.
 
 Overview presents only compact current-note projections, in this order:
 
@@ -240,7 +249,7 @@ Connect begins with a native macOS two-segment single-choice control labelled
 **Incoming Links** and **Outgoing Links**, immediately after its freshness
 state and before the relationship groups. It is centered on the Inspector
 content axis rather than aligned as a leading list row. This is a local Connect view switch,
-not a ScopeIndex, ModeIndex, Document mode, or Search filter. Every new
+not a TriptychWorkspaceNavigator, ModeIndex, Document mode, or Search filter. Every new
 Connect presentation starts at **Outgoing Links**. The live Connect
 presentation owns exactly one current direction selection, not a history keyed
 by window, Note, or prior destination, and writes nothing to window-session

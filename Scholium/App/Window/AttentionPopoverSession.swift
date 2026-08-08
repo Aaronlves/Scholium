@@ -86,9 +86,13 @@ final class AttentionPopoverSession: ObservableObject {
         workspaceSlot: WorkspaceVaultSlot? = nil,
         noteScope: VaultQualifiedNoteID?
     ) {
+        let resolvedWorkspaceSlot = workspaceSlot ?? noteScope.flatMap { note in
+            workspaceController.state.assignment?.vaults.first(where: {
+                $0.value.id == note.vaultID
+            })?.key
+        }
         presentation.present(
-            workspaceSlot: workspaceSlot
-                ?? discoveryController.library.workspaceSlot,
+            workspaceSlot: resolvedWorkspaceSlot,
             noteScope: noteScope
         )
         presentedAnchor = anchor
@@ -110,10 +114,12 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     func scopedItems(for presentation: AttentionPresentationState) -> [AttentionQueueItem] {
-        guard let vaultID = workspaceController.state.assignment?
-                .vault(for: presentation.workspaceSlot)?.id else { return [] }
         return (projectionController.catalog?.attention ?? []).filter { item in
-            guard item.note.vaultID == vaultID else { return false }
+            if let workspaceSlot = presentation.workspaceSlot {
+                guard let vaultID = workspaceController.state.assignment?
+                        .vault(for: workspaceSlot)?.id,
+                      item.note.vaultID == vaultID else { return false }
+            }
             guard let noteScope = presentation.noteScope else { return true }
             return item.note.vaultID == noteScope.vaultID
                 && item.note.relativePath == noteScope.relativePath

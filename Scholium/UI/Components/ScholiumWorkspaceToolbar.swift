@@ -80,8 +80,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     static var itemIdentifiers: [NSToolbarItem.Identifier] {
         [
             .flexibleSpace,
-            Item.libraryDivider,
             Item.sidebar,
+            Item.libraryDivider,
             Item.documentIdentity,
             .flexibleSpace,
             Item.documentActions,
@@ -208,8 +208,173 @@ private struct ScholiumWorkspaceToolbarEnvironment<Content: View>: View {
 
     var body: some View {
         content
-            .tint(ScholiumColorRole.accent.color)
             .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
+    }
+}
+
+/// One semantic presentation recipe for the native controls hosted inside the
+/// workspace toolbar. AppKit's control size owns bezel geometry, while the
+/// body text style and medium symbol scale preserve the original SwiftUI
+/// toolbar content size instead of implicitly shrinking or enlarging it.
+@MainActor
+private enum ScholiumNativeToolbarPresentation {
+    static var controlSize: NSControl.ControlSize { .small }
+
+    static var font: NSFont {
+        .systemFont(ofSize: NSFont.systemFontSize)
+    }
+
+    static func symbol(named name: String) -> NSImage? {
+        NSImage(
+            systemSymbolName: name,
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(NSImage.SymbolConfiguration(
+            textStyle: .body,
+            scale: .medium
+        ))
+    }
+}
+
+/// Native toolbar buttons retain AppKit's pointer, press, keyboard-focus, and
+/// disabled rendering. SwiftUI remains only the observation bridge that keeps
+/// the exact window's command state current inside the hosted toolbar item.
+private struct ScholiumNativeToolbarButton: NSViewRepresentable {
+    let title: String
+    let systemImage: String
+    let identifier: String
+    var accessibilityValue: String? = nil
+    var isEnabled = true
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(frame: .zero)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.activate(_:))
+        button.setButtonType(.momentaryPushIn)
+        button.controlSize = ScholiumNativeToolbarPresentation.controlSize
+        button.bezelStyle = .toolbar
+        button.isBordered = true
+        button.showsBorderOnlyWhileMouseInside = true
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+        update(button)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.action = action
+        update(button)
+    }
+
+    private func update(_ button: NSButton) {
+        button.image = ScholiumNativeToolbarPresentation.symbol(named: systemImage)
+        button.title = ""
+        button.toolTip = title
+        button.isEnabled = isEnabled
+        button.setAccessibilityLabel(title)
+        button.setAccessibilityValue(accessibilityValue)
+        button.setAccessibilityIdentifier(identifier)
+    }
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+
+        @objc func activate(_ sender: NSButton) {
+            action()
+        }
+    }
+}
+
+private struct ScholiumNativeToolbarMenuEntry {
+    let title: String
+    var systemImage: String? = nil
+    var isSelected = false
+    var isEnabled = true
+    let action: () -> Void
+}
+
+/// A native toolbar pull-down. Its first menu item supplies the visible label;
+/// AppKit owns the indicator, hover bezel, press feedback, focus ring, and menu
+/// tracking instead of a SwiftUI label reconstructing those states.
+private struct ScholiumNativeToolbarMenu: NSViewRepresentable {
+    let title: String
+    var systemImage: String? = nil
+    let identifier: String
+    var accessibilityValue: String? = nil
+    var isEnabled = true
+    let entries: [ScholiumNativeToolbarMenuEntry]
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: true)
+        button.controlSize = ScholiumNativeToolbarPresentation.controlSize
+        button.font = ScholiumNativeToolbarPresentation.font
+        button.bezelStyle = .toolbar
+        button.isBordered = true
+        button.showsBorderOnlyWhileMouseInside = true
+        button.imagePosition = systemImage == nil ? .noImage : .imageOnly
+        update(button, coordinator: context.coordinator)
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        update(button, coordinator: context.coordinator)
+    }
+
+    private func update(_ button: NSPopUpButton, coordinator: Coordinator) {
+        coordinator.actions = entries.map(\.action)
+
+        let menu = NSMenu()
+        let labelItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        labelItem.image = systemImage.flatMap(
+            ScholiumNativeToolbarPresentation.symbol(named:)
+        )
+        menu.addItem(labelItem)
+
+        for (index, entry) in entries.enumerated() {
+            let item = NSMenuItem(
+                title: entry.title,
+                action: #selector(Coordinator.choose(_:)),
+                keyEquivalent: ""
+            )
+            item.target = coordinator
+            item.tag = index
+            item.isEnabled = entry.isEnabled
+            item.state = entry.isSelected ? .on : .off
+            item.image = entry.systemImage.flatMap {
+                NSImage(systemSymbolName: $0, accessibilityDescription: nil)
+            }
+            menu.addItem(item)
+        }
+
+        button.menu = menu
+        button.selectItem(at: 0)
+        button.imagePosition = systemImage == nil ? .noImage : .imageOnly
+        button.toolTip = title
+        button.isEnabled = isEnabled
+        button.setAccessibilityLabel(title)
+        button.setAccessibilityValue(accessibilityValue)
+        button.setAccessibilityIdentifier(identifier)
+    }
+
+    final class Coordinator: NSObject {
+        var actions: [() -> Void] = []
+
+        @objc func choose(_ sender: NSMenuItem) {
+            guard actions.indices.contains(sender.tag) else { return }
+            actions[sender.tag]()
+        }
     }
 }
 
@@ -218,19 +383,18 @@ private struct ScholiumWorkspaceSidebarToolbarView: View {
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
-        ScholiumInkIconControl(
+        ScholiumNativeToolbarButton(
             title: ScholiumL10n.dynamicString(
                 shellState.libraryVisible ? "Hide Sidebar" : "Show Sidebar"
             ),
             systemImage: "sidebar.leading",
             identifier: "scholium.toggleSidebar",
-            isActive: shellState.libraryVisible
+            accessibilityValue: ScholiumL10n.dynamicString(
+                shellState.libraryVisible ? "Shown" : "Hidden"
+            )
         ) {
             windowActions.setLibraryVisible(!shellState.libraryVisible)
         }
-        .accessibilityValue(ScholiumL10n.dynamicString(
-            shellState.libraryVisible ? "Shown" : "Hidden"
-        ))
     }
 }
 
@@ -240,7 +404,7 @@ private struct ScholiumWorkspaceInspectorToolbarView: View {
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
-        ScholiumInkIconControl(
+        ScholiumNativeToolbarButton(
             title: ScholiumL10n.dynamicString(
                 shellState.inspector.isVisible
                     ? "Hide Research Inspector"
@@ -248,19 +412,16 @@ private struct ScholiumWorkspaceInspectorToolbarView: View {
             ),
             systemImage: "sidebar.trailing",
             identifier: "scholium.toggleInspector",
-            isActive: shellState.inspector.isVisible
+            accessibilityValue: ScholiumL10n.dynamicString(
+                shellState.inspector.isVisible ? "Shown" : "Hidden"
+            ),
+            isEnabled: shellState.inspector.isVisible
+                || documentController.selectedDocument != nil
         ) {
             // The window coordinator converts the explicit intent into the
             // exact split controller's native Inspector transition.
             windowActions.setResearchInspectorVisible(!shellState.inspector.isVisible)
         }
-        .disabled(
-            !shellState.inspector.isVisible
-                && documentController.selectedDocument == nil
-        )
-        .accessibilityValue(ScholiumL10n.dynamicString(
-            shellState.inspector.isVisible ? "Shown" : "Hidden"
-        ))
     }
 }
 
@@ -272,39 +433,7 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
     var body: some View {
         if let note = appState.currentNote {
             HStack(spacing: ScholiumMetrics.Workspace.headerControlSpacing) {
-                Menu {
-                    let headings = note.workspaceSnapshot?.headings ?? []
-                    if headings.isEmpty {
-                        Text("No Headings")
-                    } else {
-                        ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
-                            Button {
-                                appState.pendingSourceLine = heading.span.start.line
-                            } label: {
-                                Text(
-                                    String(
-                                        repeating: "  ",
-                                        count: max(0, heading.level - 1)
-                                    ) + heading.text
-                                )
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "list.bullet.indent")
-                        .frame(
-                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                        )
-                        .contentShape(Rectangle())
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("Heading Outline")
-                .accessibilityLabel("Heading Outline")
-                .accessibilityIdentifier("scholium.headingOutline")
+                headingOutline(for: note)
 
                 Text(note.title ?? note.displayName)
                     .lineLimit(1)
@@ -322,6 +451,33 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
         }
     }
 
+    private func headingOutline(for note: WindowDocumentLocation) -> some View {
+        let headings = note.workspaceSnapshot?.headings ?? []
+        let entries = headings.isEmpty
+            ? [ScholiumNativeToolbarMenuEntry(
+                title: ScholiumL10n.dynamicString("No Headings"),
+                isEnabled: false,
+                action: {}
+            )]
+            : headings.map { heading in
+                ScholiumNativeToolbarMenuEntry(
+                    title: String(
+                        repeating: "  ",
+                        count: max(0, heading.level - 1)
+                    ) + heading.text,
+                    action: {
+                        appState.pendingSourceLine = heading.span.start.line
+                    }
+                )
+            }
+        return ScholiumNativeToolbarMenu(
+            title: ScholiumL10n.dynamicString("Heading Outline"),
+            systemImage: "list.bullet.indent",
+            identifier: "scholium.headingOutline",
+            entries: entries
+        )
+    }
+
 }
 
 private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
@@ -334,7 +490,7 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
             HStack(spacing: ScholiumMetrics.Workspace.headerControlSpacing) {
                 documentModeToolbar
 
-                ScholiumInkIconControl(
+                ScholiumNativeToolbarButton(
                     title: ScholiumL10n.dynamicString("Search"),
                     systemImage: "magnifyingglass",
                     identifier: "scholium.documentSearch"
@@ -352,31 +508,23 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
 
     private var documentModeToolbar: some View {
         let mode = appState.currentPresentationMode
-        return Menu {
-            ForEach(NotePresentationMode.allCases) { candidate in
-                Button {
-                    appState.requestPresentationMode = candidate
-                } label: {
-                    if candidate == mode {
-                        Label(candidate.title, systemImage: "checkmark")
-                    } else {
-                        Label(candidate.title, systemImage: candidate.symbol)
+        return ScholiumNativeToolbarMenu(
+            title: mode.title,
+            identifier: "scholium.documentModeMenu",
+            accessibilityValue: mode.title,
+            isEnabled: appState.canEditCurrentNote && !currentEditorIsComposing,
+            entries: NotePresentationMode.allCases.map { candidate in
+                ScholiumNativeToolbarMenuEntry(
+                    title: candidate.title,
+                    systemImage: candidate.symbol,
+                    isSelected: candidate == mode,
+                    action: {
+                        appState.requestPresentationMode = candidate
                     }
-                }
+                )
             }
-        } label: {
-            Text(mode.title)
-                .font(.body)
-                .foregroundStyle(ScholiumColorRole.primaryText.color)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .disabled(!appState.canEditCurrentNote || currentEditorIsComposing)
+        )
         .help("Document mode: \(mode.title)")
-        .accessibilityLabel("Document mode")
-        .accessibilityValue(mode.title)
-        .accessibilityIdentifier("scholium.documentModeMenu")
     }
 
     private var currentEditorIsComposing: Bool {
@@ -405,14 +553,14 @@ private struct ScholiumWorkspaceResearchRecordsToolbarView: View {
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
-        ScholiumInkIconControl(
+        ScholiumNativeToolbarButton(
             title: ScholiumL10n.dynamicString("This Note · Records"),
             systemImage: hasCurrentNoteResearchRecords ? "tray.full" : "tray",
-            identifier: "scholium.showResearchRecords"
+            identifier: "scholium.showResearchRecords",
+            isEnabled: isAvailable
         ) {
             windowActions.showNoteResearchRecords()
         }
-        .disabled(!isAvailable)
     }
 
     private var isAvailable: Bool {

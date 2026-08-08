@@ -456,7 +456,7 @@ private struct ResearchActionRowButton: View {
     var body: some View {
         Button {
             focusRestorationTask?.cancel()
-            action(!activationWasPointerDriven)
+            action(hasKeyboardFocus)
         } label: {
             ScholiumApparatusActionRowContent(
                 title: titleText,
@@ -467,11 +467,11 @@ private struct ResearchActionRowButton: View {
         }
         .buttonStyle(ScholiumQuietRowButtonStyle(
             isHovering: isHovering,
+            isFocused: hasKeyboardFocus,
             minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
-        .focusable()
-        .focused($hasKeyboardFocus)
+        .scholiumActivationFocus($hasKeyboardFocus)
         .onHover { isHovering = $0 }
         .onChange(of: focusRequestToken) { _, token in
             guard token != nil else { return }
@@ -486,21 +486,6 @@ private struct ResearchActionRowButton: View {
         .onDisappear {
             focusRestorationTask?.cancel()
             focusRestorationTask = nil
-        }
-    }
-
-    /// Pointer activation should not schedule a keyboard-only focus ring when
-    /// the presented Action sheet closes. A nil current event is retained as a
-    /// focus-restoring activation because VoiceOver and other accessibility
-    /// clients can invoke a native Button without synthesizing a mouse event.
-    private var activationWasPointerDriven: Bool {
-        switch NSApp.currentEvent?.type {
-        case .leftMouseDown, .leftMouseUp,
-             .rightMouseDown, .rightMouseUp,
-             .otherMouseDown, .otherMouseUp:
-            true
-        default:
-            false
         }
     }
 
