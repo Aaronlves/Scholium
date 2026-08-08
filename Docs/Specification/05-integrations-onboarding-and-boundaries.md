@@ -119,10 +119,45 @@ validation and enters the ordinary workspace or onboarding route only after it
 succeeds; no temporary or implicit read-only workspace exists in the meantime.
 
 First launch, **New Triptych…**, and missing registration use one narrow
-Bootstrap window. It asks one decision at a time—Analyses, Topics, Works, then
-bounded authorization beside Works—through standard Open panels. It constructs
-no workspace split, toolbar, inert regions, tabs, feature tour, project model,
-or explanatory manual.
+Bootstrap window. After Welcome it asks the researcher to **Create a New
+Triptych** or **Connect Existing Folders**. Create asks for one name and parent
+location, previews the result, and only after confirmation creates Analyses,
+Topics, Works, and `.scholium` together without reusing or overwriting an
+existing destination. Connect asks one decision at a time—Analyses, Topics,
+Works, then bounded authorization of the parent detected from Works—through
+standard Open panels; that authorization panel opens at the detected folder so
+the researcher does not browse the tree again. Triptych configuration,
+optional Agent preparation, and Ready complete the narrative; Ready explicitly
+opens the configured workspace. Bootstrap constructs no workspace split,
+toolbar, inert regions, tabs, feature tour, project model, or explanatory
+manual.
+
+Only first-launch registration offers one optional machine-level **Prepare an
+Agent** step. **New Triptych…**, relinking, and later launches do not repeat it.
+After any create-new filesystem transaction succeeds, a confirmed selection
+advances directly to Agent while Application registration continues in the
+background. Routine registration success adds no status page or confirmation;
+failure returns to the retained Triptych review with the exact error. Agent
+completion cannot advance to Ready until registration succeeds. The step uses
+the Application-owned bundled CLI
+status and installer, presents the exact authorized Triptych container as the
+external Agent's project and workspace root, and offers **Set Up Later** without
+warning, nagging, or reduced workspace capability.
+
+After the CLI is installed, **Copy Prompt** copies one provider-neutral setup
+instruction. It tells the external Agent to verify the absolute CLI path and
+read `scholium help agent`; inspect applicable ancestor and root `AGENTS.md` and
+`CLAUDE.md`; create only the applicable missing instruction file without
+overwriting, merging, or shadowing an existing one; prefer Scholium tools for
+research work; preserve Scholium's exact-source and `.scholium/` boundaries;
+make no research read, pairing request, shell-profile edit, or Agent
+configuration edit before the stated authorization; and await a specific Run
+handoff. Copying is not readiness. After the Agent reports Ready, **I’ve Set Up
+My Agent** requires a second researcher confirmation. Scholium accepts only
+that confirmation and never claims to inspect or verify the external project.
+The illustration and its key metaphor are decorative and absent from the
+accessibility tree; the numbered text and native controls provide the complete
+linear task.
 
 Bootstrap silently adopts **Ask Me Every Time** for additional Run write-set
 members and next Actions and states: “Agent changes will ask for permission
@@ -130,11 +165,12 @@ every time. You can change this later for this Triptych in Research Guidance
 Settings.” It does not ask the researcher to understand a permission matrix
 before opening the workspace.
 
-Failure retains setup input. Success opens one configured workspace and closes
-Bootstrap only after that exact workspace route has attached its native window,
-split, and toolbar; they never compete. Recoverable Workspace routes restore
+Failure retains setup input. Success opens one configured workspace after the
+optional Agent step is either confirmed or deferred, and closes Bootstrap only
+after that exact workspace route has attached its native window, split, and
+toolbar; they never compete. Recoverable Workspace routes restore
 directly. The presented Bootstrap default is used only when no
-recoverable Workspace exists. Bootstrap starts at **720 × 720**; this is an
+recoverable Workspace exists. Bootstrap starts at **760 × 740**; this is an
 initial size, not a minimum. Expired folder access instead uses the workspace's
 bounded **Restore Access** sheet and preserves its active document. Settings
 **Manage Triptychs…** lists registrations, edits their three locations, creates
@@ -170,9 +206,11 @@ runtime, background Agent manager, auto-submission system, streamed tool-state
 viewer, general host-approval surface, relay, or cloud orchestration service.
 Scholium does not launch or supervise an Agent merely because a Run exists.
 Collaboration settings therefore expose only one Triptych policy. Scholium has
-no global Agent prompt or configuration, selected-Agent preference, remembered
-Agent application, or launch control; the current Run's copied handoff is the
-only researcher-to-Agent setup surface.
+no selected-Agent preference, remembered Agent application, launch control, or
+durable Agent-readiness authority. The bounded first-launch preparation prompt
+configures only an external project's ordinary environment and grants no
+research access; the current Run's copied handoff remains the only surface that
+establishes a researcher-to-Agent research Session.
 
 File-backed primary Skills, Practices, registrations, and Action Profiles are
 Settings-owned Research Guidance, not packages, a marketplace, executable

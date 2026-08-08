@@ -628,7 +628,15 @@ Document retain Markdown, autosave, conflict, and recovery authority.
 
 Bootstrap is a separate data-routed `WindowGroup`; `ScholiumBootstrapModel`
 owns launch resolution and `WorkspaceSetupView` for first/new/missing setup,
-never the workspace split, toolbar, or `WindowModel`. Bootstrap and Workspace
+never the workspace split, toolbar, or `WindowModel`. After the first successful
+registration only, the same model holds workspace routing closed while the
+setup view borrows the existing Application-owned `CommandLineToolInstaller`
+for optional machine preparation. Prompt-copy and researcher-confirmation state
+remain presentation-local and create no Agent, Session, Run, research-access,
+or durable readiness owner. When Agent preparation follows, the setup view
+starts Application registration before presenting Agent and retains only the
+local gate that prevents Ready until registration succeeds; Application still
+owns the registration transaction and failure. Bootstrap and Workspace
 use nonoptional Codable route bindings with a `defaultValue`; the route's
 `windowID` is their only session identity. Workspace restoration is automatic,
 while Bootstrap restoration is disabled. Success opens one workspace and waits

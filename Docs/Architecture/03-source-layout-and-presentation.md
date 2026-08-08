@@ -40,6 +40,11 @@ This chapter owns source layout, native presentation, interface ownership, and l
   window roots may receive the complete `WindowModel`; feature roots receive
   their one controller, and reusable leaves receive immutable values and
   closures.
+- `Scholium/Resources/Artwork` contains approved product illustrations rather
+  than identity or state authority. One Bootstrap artwork owner combines the
+  fixed Point, Offer, Unlock Straight, and Lift hand assets with SwiftUI-drawn
+  Flow or Converge geometry. All compositions are decorative, noninteractive,
+  and absent from accessibility.
 
 ## Presentation
 
@@ -88,6 +93,20 @@ reads, while reusable feature leaves remain on narrow values/controllers.
 installs toolbar/delegate state, and registers readiness/flushing. No singleton,
 window search, notification, polling, delayed correction, or width calculation
 participates.
+
+The Bootstrap root uses a transparent hidden-title titlebar over one full-size
+content view. Its Welcome, Triptych, optional Agent, and Ready stages share one
+adaptive full-bleed illustration field beside a linear native task pane and
+fixed footer; narrow windows move the field above the task. Triptych folder
+selection and bounded authorization remain the registration owner's native
+controls behind the approved prototype's path cards and review pages. An
+Application-owned structure preparer exclusively creates a confirmed new root
+and its four fixed children; it refuses an existing destination. The old
+progress header, centered-symbol pages, and illustration tuner are absent. The
+setup view presents Agent while Application registration continues, returns a
+registration failure to the retained Triptych review, and keeps workspace
+routing closed until both registration and Agent confirmation or deferral are
+complete. Ready explicitly opens the configured workspace.
 
 Research Records is a separate, nonrestored SwiftUI `WindowGroup` keyed by
 Triptych UUID. Its root resolves the exact Triptych capability from

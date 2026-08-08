@@ -106,6 +106,7 @@ struct ScholiumApp: App {
             width: ScholiumMetrics.Onboarding.preferredWidth,
             height: ScholiumMetrics.Onboarding.preferredHeight
         )
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.presented)
         .restorationBehavior(.disabled)
@@ -519,6 +520,7 @@ private struct ScholiumBootstrapRoot: View {
             }
         }
         .tint(ScholiumColorRole.accent.color)
+        .ignoresSafeArea(.container, edges: .top)
         .background(
             BootstrapWindowAttachment(
                 windowID: route.windowID,
@@ -554,15 +556,25 @@ private struct ScholiumBootstrapRoot: View {
     private var workspaceSetupContext: WorkspaceSetupContext {
         WorkspaceSetupContext(
             isCreatingNewTriptych: model.isCreatingNewTriptych,
+            offersAgentPreparation: model.offersAgentPreparation,
             targetTriptychID: model.targetTriptychID,
             workspaceAssignment: model.workspaceAssignment,
             registeredTriptychs: model.registeredTriptychs,
             recoveryMessage: routingErrorMessage ?? model.recoveryMessage,
             refreshAssignment: { await model.refresh() },
             portableContainerURL: { await model.portableContainerURL(for: $0) },
+            prepareTriptychStructure: { parentURL, name in
+                try await model.prepareTriptychStructure(
+                    parentURL: parentURL,
+                    name: name
+                )
+            },
+            commandLineToolStatus: { await model.commandLineToolStatus() },
+            installCommandLineTool: { try await model.installCommandLineTool() },
             configure: { selection in
                 try await model.configure(selection)
             },
+            completeBootstrap: model.completeBootstrap,
             dismiss: { openConfiguredWorkspaceIfAvailable() }
         )
     }
@@ -613,6 +625,8 @@ private final class ScholiumBootstrapModel: ObservableObject {
 
     private let workspaceStore: WorkspaceStore
     private let route: BootstrapWindowRoute
+    private let commandLineToolInstaller = CommandLineToolInstaller()
+    private let triptychStructurePreparer = BootstrapTriptychStructurePreparer()
 
     init(workspaceStore: WorkspaceStore, route: BootstrapWindowRoute) {
         self.workspaceStore = workspaceStore
@@ -621,6 +635,13 @@ private final class ScholiumBootstrapModel: ObservableObject {
 
     var isCreatingNewTriptych: Bool {
         route.purpose == .newTriptych
+    }
+
+    /// Machine-level preparation appears only after the first Triptych is
+    /// registered. A later launch with an existing registration goes directly
+    /// to the workspace and never turns this optional step into a gate.
+    var offersAgentPreparation: Bool {
+        route.purpose == .firstConfiguration
     }
 
     var targetTriptychID: UUID? {
@@ -666,6 +687,41 @@ private final class ScholiumBootstrapModel: ObservableObject {
         await workspaceStore.portableContainerURL(forWorksURL: worksURL)
     }
 
+    func prepareTriptychStructure(
+        parentURL: URL,
+        name: String
+    ) async throws -> WorkspaceSetupSelection {
+        let scopeStarted = parentURL.startAccessingSecurityScopedResource()
+        defer {
+            if scopeStarted {
+                parentURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let structure = try await triptychStructurePreparer.prepare(
+            parentURL: parentURL,
+            name: name
+        )
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return WorkspaceSetupSelection(
+            paperAnalysisURL: structure.analysesURL,
+            topicKnowledgeURL: structure.topicsURL,
+            outputURL: structure.worksURL,
+            portableContainerURL: structure.rootURL,
+            triptychID: targetTriptychID,
+            triptychName: trimmedName
+        )
+    }
+
+    func commandLineToolStatus() async -> CommandLineToolStatus {
+        await commandLineToolInstaller.commandLineToolStatus()
+    }
+
+    func installCommandLineTool() async throws -> CommandLineToolStatus {
+        try await commandLineToolInstaller.installCommandLineTool()
+    }
+
     func configure(_ selection: WorkspaceSetupSelection) async throws {
         let capabilities = try await workspaceStore.configureTriptychCapabilities(
             paperAnalysisURL: selection.paperAnalysisURL,
@@ -678,6 +734,11 @@ private final class ScholiumBootstrapModel: ObservableObject {
         workspaceAssignment = capabilities.assignment
         registeredTriptychs = try await workspaceStore.registeredTriptychs()
         recoveryMessage = nil
+        isReadyToOpenWorkspace = false
+    }
+
+    func completeBootstrap() {
+        guard workspaceAssignment != nil else { return }
         isReadyToOpenWorkspace = true
     }
 }

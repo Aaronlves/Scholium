@@ -264,7 +264,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains(
             "Agent write-set extensions ask you every time by default. You can change the Triptych collaboration policy later in Research Guidance Settings."
         ))
-        #expect(source.contains("scholium.guidedSetup.permissionDefault"))
+        #expect(source.contains("scholium.bootstrap.permissionDefault"))
         #expect(!source.contains("Choose a permission policy"))
     }
 

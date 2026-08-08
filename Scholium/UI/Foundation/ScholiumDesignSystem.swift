@@ -1301,8 +1301,8 @@ enum ScholiumMetrics {
     }
 
     enum Onboarding {
-        static let preferredWidth: CGFloat = 720
-        static let preferredHeight: CGFloat = 720
+        static let preferredWidth: CGFloat = 760
+        static let preferredHeight: CGFloat = 740
     }
 
     enum Workspace {

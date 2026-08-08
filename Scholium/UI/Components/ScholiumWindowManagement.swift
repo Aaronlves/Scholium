@@ -1088,6 +1088,11 @@ struct BootstrapWindowAttachment: NSViewRepresentable {
             guard self.window !== window else { return }
             self.window = window
             window.tabbingMode = .disallowed
+            window.styleMask.insert(.fullSizeContentView)
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
             lifecycleRegistry.markReady(id: windowID)
         }
 

@@ -13,8 +13,18 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   Storage Unavailable is a compact nonmodal page with Retry, selectable
   Details, and Quit; workspace commands remain disabled until validation
   succeeds.
-- Bootstrap is a separate narrow window for choosing Analyses, Topics, Works,
-  and bounded authorization. A configured workspace uses one native
+- Bootstrap is a separate narrow window whose fixed Welcome, Triptych, Agent,
+  and Ready artwork fields sit beside the real folder-selection and
+  authorization controls without the former progress header or centered-symbol
+  pages. The approved starting-point cards now drive two real paths: create one
+  nonoverwriting Triptych root with Analyses, Topics, Works, and `.scholium`, or
+  connect three existing folders and confirm the detected parent directly.
+  On first setup, confirmation advances directly to optional Agent CLI, prompt,
+  second-confirmation, and Set Up Later tasks while registration finishes in
+  the background; failure returns to Triptych review and Ready remains gated.
+  Later Triptych and recovery setup does not repeat Agent preparation. Ready
+  explicitly opens the configured workspace,
+  which uses one native
   Library–Document–Inspector split with AppKit-owned geometry and one stable
   toolbar.
 - Each workspace window owns its Triptych assignment, shell presentation,

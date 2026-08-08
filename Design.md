@@ -201,6 +201,9 @@ visual Variable.
 - Status, authorship, and Connection colors remain distinct with text/symbol
   redundancy. Color never encodes philosophical value, truth, support, or
   authority.
+- Bootstrap fields use `#99815A`, `#5C7180`, `#728B80`, and `#805B57`;
+  parchment, ink, and accent use `#E8D2AC`, `#19303D`, and `#9B4A2B`.
+  This closed palette is not an input or state.
 
 ### 19.3 Variable boundary
 
@@ -420,7 +423,7 @@ split controller and is skipped or clamped when Document space cannot
 accommodate it; later hiding, showing, restoration, and direct resizing never
 replay it.
 
-Initial sizes are Workspace **1180 × 760**, Bootstrap **720 × 720**, Research
+Initial sizes are Workspace **1180 × 760**, Bootstrap **760 × 740**, Research
 Record **760 × 680**, and fixed Settings content **700 × 560**. Regions scroll
 independently; Document takes remaining space without a fixed size. Native
 geometry stays outside the grid. WebKit uses `rem`, `ch`, CSS px, and viewport
@@ -463,6 +466,20 @@ system hue, or a second local palette. SF Symbol palette, multicolor, gradient,
 and variable-color rendering are not used to encode Scholium workflow state.
 Hierarchical rendering is limited to bounded Bootstrap concept illustrations
 when the single semantic source color and the accompanying text remain clear.
+
+#### Bootstrap narrative illustration
+
+Fixed compositions:
+
+| Stage | Hand / pattern / field | Tuning |
+| --- | --- | --- |
+| Welcome | Point / Flow / Golden Ochre | `0, 0`; `1.00`; `0°` |
+| Triptych | Offer / Flow / Mineral Blue | `-115, -180`; `1.18`; `78°` |
+| Agent | Unlock Straight / Converge / Verdigris | `+60, 0`; `1.00`; `0°` |
+| Ready | Lift / Converge / Oxblood | `+24, +57`; `0.96`; `0°` |
+
+Fields are decorative and absent from accessibility. No tuner, guide, or
+inferred readiness ships.
 
 #### Application icon
 
@@ -541,6 +558,7 @@ the required meaning.
 | `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §14, §18.3 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 | `Content State` | Presents page or pane state with one restrained indicator, title, optional explanation, and adjacent repair action. | A runtime state owner, card, or compact inline feedback. | §§18.2–18.5, §19.9 |
+| `Bootstrap Narrative Illustration` | Frames each fixed onboarding stage while adjacent text remains complete. | A state indicator, selector, interactive diagram, tuner, or icon variant. | §16, §§19.2, 19.5 |
 
 The catalog is presentation authority, not a replacement for the owning
 workflow rule. New entries require a distinct task, a single state owner, a
@@ -564,6 +582,7 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | `Research Action` | Prepare, run, inspect, settle, and optionally write a bounded Agent result. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §§12–14, 18.4–18.6 |
 | `Research Records` | Review portable records without reconstructing writable research Markdown. | Native list/detail reading structure with source and derived evidence distinct. | §14, §18.5 |
+| `Bootstrap Agent Preparation` | Installs the CLI, copies one prompt, and accepts confirmation without granting research access. | An Agent launcher, provider picker, readiness manager, Session, or Run handoff. | §16 |
 
 Patterns may reference multiple components, but they must not introduce a
 second state owner or copy a workflow's authorization and recovery rules.
