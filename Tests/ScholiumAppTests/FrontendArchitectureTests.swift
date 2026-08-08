@@ -1501,6 +1501,10 @@ struct FrontendArchitectureTests {
         ))
         #expect(researchSource.contains("attentionSection"))
         #expect(!researchSource.contains("if !context.visibleAttentionItems.isEmpty"))
+        #expect(researchSource.contains("ScholiumColorRole.attention.color"))
+        #expect(researchSource.contains(
+            "ScholiumInterfaceTypography.apparatusResearchContent\n                                        .weight(.medium)"
+        ))
         #expect(researchSource.contains("aboutSection"))
         #expect(researchSource.contains("propertyFacts"))
         #expect(researchSource.contains("ResearchProjectionFreshnessView("))

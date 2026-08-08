@@ -142,15 +142,22 @@ struct ResearchOverviewView: View {
                 spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
             ) {
                 HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .accessibilityHidden(true)
                     Text("NEEDS ATTENTION")
-                        .scholiumApparatusHeadingStyle()
+                        .font(ScholiumInterfaceTypography.apparatusLabel)
+                        .tracking(0.7)
+                        .foregroundStyle(ScholiumColorRole.attention.color)
                     Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
                     Text(context.visibleAttentionItems.count.formatted())
                         .font(
                             ScholiumInterfaceTypography.apparatusMetadata
                                 .monospacedDigit()
+                                .weight(.semibold)
                         )
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .foregroundStyle(ScholiumColorRole.attention.color)
                     Image(systemName: "chevron.forward")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(ScholiumColorRole.mutedText.color)
@@ -167,7 +174,10 @@ struct ResearchOverviewView: View {
                             id: \.rawValue
                         ) { kind in
                             Text(attentionTitle(for: kind))
-                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                                .font(
+                                    ScholiumInterfaceTypography.apparatusResearchContent
+                                        .weight(.medium)
+                                )
                                 .foregroundStyle(ScholiumColorRole.primaryText.color)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
