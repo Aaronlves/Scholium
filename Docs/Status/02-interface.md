@@ -24,6 +24,10 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 - Native Sidebar and Inspector toolbar controls remain in stable positions and
   mirror Show/Hide state without adding pane-corner duplicates or another
   geometry owner.
+- One full-height document-navigation depth cue is reachable at the
+  Sidebar–Document edge. It falls only into Library, mirrors for right-to-left
+  presentation, adapts to appearance and display-accessibility settings, and
+  leaves AppKit's thin tracking separator as the sole interactive divider.
 
 ## Library and navigation
 

@@ -31,18 +31,26 @@ masks without introducing a second path catalog.
 `ScholiumSurfaceRole` maps a Scholium-owned surface to its default semantic
 boundary and, where applicable, one purpose-named `ScholiumElevationRole`.
 `floatingControl`, `boundedPanel`, and `searchOverlay` are the complete custom
-elevation set; structural surfaces resolve to none. The native modifier uses
-AppKit's semantic shadow color, while `ScholiumWebDesignTokens` exports the same
-role names as CSS shadow declarations without converting points to CSS pixels.
+transient elevation set; ordinary structural surfaces resolve to none. The
+native-only `ScholiumStructuralDepthRole.documentNavigationBoundary` instead
+resolves the one Workspace plane relationship and is not exported to WebKit.
+Its Library-owned host clips a Document-color caster just outside the logical
+edge, leaving only the shadow inside Library while AppKit's thin divider stays
+visible and interactive. The host covers the complete split-item bounds beneath
+the native toolbar, is excluded from hit testing and accessibility, and mirrors
+in right-to-left presentation. The native modifiers use AppKit's semantic
+shadow color, while `ScholiumWebDesignTokens` exports only the transient role
+names as CSS shadow declarations without converting points to CSS pixels.
 Selection bars consume `floatingControl`; custom selection menus, the shared
 link preview, and Edit input-suggestion lists consume `boundedPanel`; Search
 consumes `searchOverlay`. The shared preview uses the complete opaque bounded-
 panel surface, separator, semantic text, and elevation roles; it owns no Canvas
 fallback, backdrop blur, or local transparency recipe. Increase
 Contrast resolves custom shadows to none while the semantic boundary
-strengthens, and Reduce Transparency or an inactive native window reduces
-opacity. Native menus, popovers, sheets, panels, alerts, and windows retain
-their system-owned elevation and are never double-shadowed.
+strengthens. Reduce Transparency or an inactive native window reduces opacity;
+Dark appearance applies the same quiet structural-depth opacity without
+compounding these adaptations. Native menus, popovers, sheets, panels, alerts,
+and windows retain their system-owned elevation and are never double-shadowed.
 
 `ScholiumLibraryLocationPicker` owns the borderless native Location menu and
 its single indicator without owning Location state. `ScholiumScopeIndex` owns

@@ -1556,6 +1556,29 @@ struct ScholiumElevationStyle: Equatable, Sendable {
     let y: CGFloat
 }
 
+/// Native-only depth recipes for structural relationships between Workspace
+/// planes. These don't enter `ScholiumElevationRole.allCases`, because WebKit
+/// document surfaces must not receive window-container presentation tokens.
+enum ScholiumStructuralDepthRole: CaseIterable, Sendable {
+    case documentNavigationBoundary
+
+    func style(
+        isDark: Bool,
+        increasedContrast: Bool,
+        reduceTransparency: Bool,
+        appearsActive: Bool,
+        layoutDirection: LayoutDirection
+    ) -> ScholiumElevationStyle {
+        let usesQuietOpacity = isDark || reduceTransparency || !appearsActive
+        return .init(
+            opacity: increasedContrast ? 0 : (usesQuietOpacity ? 0.02 : 0.04),
+            radius: 8,
+            x: layoutDirection == .leftToRight ? -2 : 2,
+            y: 0
+        )
+    }
+}
+
 enum ScholiumElevationRole: CaseIterable, Sendable {
     case floatingControl
     case boundedPanel

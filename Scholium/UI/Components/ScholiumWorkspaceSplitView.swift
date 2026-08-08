@@ -1,6 +1,60 @@
 import AppKit
 import SwiftUI
 
+/// Draws a document-owned shadow into the navigation plane without placing a
+/// second visible rule beside AppKit's tracking separator. The one-point caster
+/// sits just beyond the clipped Library bounds, so only its inward shadow is
+/// visible and the native divider remains visually and interactively intact.
+private struct ScholiumStructuralDepthView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
+    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
+    @Environment(\.scholiumAppearsActive) private var appearsActive
+
+    let role: ScholiumStructuralDepthRole
+
+    var body: some View {
+        let style = role.style(
+            isDark: colorScheme == .dark,
+            increasedContrast: increasedContrast,
+            reduceTransparency: reduceTransparency,
+            appearsActive: appearsActive,
+            layoutDirection: layoutDirection
+        )
+        ZStack(alignment: layoutDirection == .leftToRight ? .trailing : .leading) {
+            Color.clear
+            Rectangle()
+                .fill(ScholiumColorRole.documentBackground.color(
+                    increasedContrast: increasedContrast
+                ))
+                .frame(width: 1)
+                .shadow(
+                    color: Color(nsColor: .shadowColor).opacity(style.opacity),
+                    radius: style.radius,
+                    x: style.x,
+                    y: style.y
+                )
+                .offset(x: layoutDirection == .leftToRight ? 1 : -1)
+        }
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+@MainActor
+private final class ScholiumStructuralDepthHostingView:
+    NSHostingView<ScholiumStructuralDepthView>
+{
+    /// The decorative projection never becomes a second divider hit target.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// `NSHostingView` can restore itself as an accessibility element after
+    /// loading even when its SwiftUI content is hidden from accessibility.
+    override func isAccessibilityElement() -> Bool { false }
+}
+
 /// One opaque semantic plane for a native split item. The same background view
 /// fills the complete region beneath the transparent titlebar, while foreground
 /// content remains a sibling in the live safe area.
@@ -10,10 +64,12 @@ import SwiftUI
 final class ScholiumSurfaceContainerViewController: NSViewController {
     let contentViewController: NSViewController
     let backgroundView: NSView
+    let structuralDepthView: NSView?
 
     init(
         contentViewController: NSViewController,
-        backgroundRole: ScholiumSurfaceRole
+        backgroundRole: ScholiumSurfaceRole,
+        structuralDepthRole: ScholiumStructuralDepthRole? = nil
     ) {
         self.contentViewController = contentViewController
         let backgroundHost = NSHostingView(
@@ -25,6 +81,16 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
         // producing a different tone above otherwise continuous pane content.
         backgroundHost.safeAreaRegions = []
         backgroundView = backgroundHost
+        if let structuralDepthRole {
+            let depthHost = ScholiumStructuralDepthHostingView(
+                rootView: ScholiumStructuralDepthView(role: structuralDepthRole)
+            )
+            depthHost.safeAreaRegions = []
+            depthHost.setAccessibilityElement(false)
+            structuralDepthView = depthHost
+        } else {
+            structuralDepthView = nil
+        }
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -43,8 +109,12 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
         contentView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(backgroundView)
         containerView.addSubview(contentView)
+        if let structuralDepthView {
+            structuralDepthView.translatesAutoresizingMaskIntoConstraints = false
+            containerView.addSubview(structuralDepthView)
+        }
 
-        NSLayoutConstraint.activate([
+        var constraints = [
             backgroundView.leadingAnchor.constraint(
                 equalTo: containerView.leadingAnchor
             ),
@@ -69,7 +139,24 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
             contentView.bottomAnchor.constraint(
                 equalTo: containerView.safeAreaLayoutGuide.bottomAnchor
             ),
-        ])
+        ]
+        if let structuralDepthView {
+            constraints += [
+                structuralDepthView.leadingAnchor.constraint(
+                    equalTo: containerView.leadingAnchor
+                ),
+                structuralDepthView.trailingAnchor.constraint(
+                    equalTo: containerView.trailingAnchor
+                ),
+                structuralDepthView.topAnchor.constraint(
+                    equalTo: containerView.topAnchor
+                ),
+                structuralDepthView.bottomAnchor.constraint(
+                    equalTo: containerView.bottomAnchor
+                ),
+            ]
+        }
+        NSLayoutConstraint.activate(constraints)
         view = containerView
     }
 
@@ -294,7 +381,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             self.apparatusHost = apparatusHost
             libraryBackgroundController = ScholiumSurfaceContainerViewController(
                 contentViewController: libraryHost,
-                backgroundRole: .navigation
+                backgroundRole: .navigation,
+                structuralDepthRole: .documentNavigationBoundary
             )
             documentBackgroundController = ScholiumSurfaceContainerViewController(
                 contentViewController: documentTabsController,

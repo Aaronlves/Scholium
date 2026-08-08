@@ -8,8 +8,8 @@ human, packaged, or release acceptance unless explicitly stated.
 
 ## Current verification evidence
 
-**Latest documentation-only check:** 2026-08-07
-**Latest complete repository gate:** 2026-08-07
+**Latest documentation-only check:** 2026-08-08
+**Latest complete repository gate:** 2026-08-08
 
 ### Documentation authority
 
@@ -24,6 +24,29 @@ also passed.
 Documentation structure, local links, anchors, chapter ownership, and patch
 whitespace only. No source build, product test, UI journey, packaging, or
 release gate was rerun for this documentation-only cutover.
+
+### Document-navigation structural depth
+
+**Current passing result**
+
+On 2026-08-08, focused Xcode 27 beta App tests exercised the native Workspace
+container and semantic depth recipe. The Library alone installs one full-bounds
+projection above its content; the projection rejects pointer and accessibility
+participation; AppKit retains the thin divider; logical direction mirrors the
+horizontal offset; Light active opacity is 4%; Dark, inactive-window, and
+Reduce Transparency opacity is 2% without compounding; and Increase Contrast
+removes the shadow. Isolated 1380 × 760 QA screenshots with disposable fixtures
+also showed the cue continuing through the titlebar/toolbar band, content, and
+selected-row height in both Light and Dark appearance without creating an
+Apparatus-side counterpart.
+
+**Boundary of the claim**
+
+Focused native-container, pure-recipe, and exploratory QA screenshot evidence
+plus the complete repository gate. The screenshots are not a pixel baseline or
+human judgment; RTL, Increase Contrast, Reduce Transparency, and inactive-window
+behavior were not rendered. No genuine assistive-technology exercise, packaged
+runtime, or researcher visual acceptance was run.
 
 ### Committed source cleanup recovery
 

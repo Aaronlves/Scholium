@@ -32,7 +32,9 @@ Canonical design system in brief:
 - Document remains primary; Sidebar, Document, and Apparatus are distinct,
   opaque structural planes derived from one Paper resolver. The complete
   Sidebar shares one Navigation surface; Apparatus remains a document-adjacent
-  margin whose tone is much closer to Document than Navigation.
+  margin whose tone is much closer to Document than Navigation. One continuous
+  document-navigation boundary depth cue lets the Document/Apparatus work field
+  advance subtly over Sidebar without turning any plane into a card.
 - System sans organizes interface structure, Alegreya carries readable
   research content, and Victor Mono identifies exact source and revisions.
 - Typography, the purpose-named 4pt grid, whitespace, alignment, and semantic
@@ -69,10 +71,12 @@ gap. A local effect does not automatically become a design Variable, brand
 token, card recipe, or permission to glassify another surface.
 
 The structural Sidebar, Document, and Apparatus planes remain opaque under
-§18.2. The §18.3 Put Back veil is an explicitly approved bounded native Sidebar
-material: it transiently covers the untruncated title beneath the trailing
-control, owns no geometry or action state, and creates no card or additional
-plane.
+§18.2. Their one approved Workspace depth cue is the opaque-surface
+document-navigation boundary in §19.3; it adds no material or transparency to
+the planes. The §18.3 Put Back veil is an explicitly approved bounded native
+Sidebar material: it transiently covers the untruncated title beneath the
+trailing control, owns no geometry or action state, and creates no card or
+additional plane.
 
 System chrome, menus, presentations, controls, focus, selection, semantic
 Sidebar/Inspector, and tracking separators stay native. Document tabs are
@@ -85,12 +89,13 @@ cards, colorful category tiles, score badges, agent avatars, chat bubbles,
 nested rounded containers, or decorative workflow diagrams. Selection and
 consequence remain clear through native state, typography, symbols, and text.
 
-Library Locations retain one opaque navigation plane. Location content neither dims retained content nor floats
-above it, and adds no material, reflection, grabber, rounded panel, accessory
-row, separately measured bar, shadow, or sheet motion. The LocationPicker's
-transient menu remains system-owned rather than becoming a Scholium popover.
-Pane-local content hosts consume the native safe area once; the titlebar and
-its single native toolbar own visibility-control alignment.
+Library Locations retain one opaque navigation plane. Location content neither
+dims retained content nor floats above it, and adds no material, reflection,
+grabber, rounded panel, accessory row, separately measured bar, local shadow,
+or sheet motion. It neither owns nor alters the Workspace boundary depth cue.
+The LocationPicker's transient menu remains system-owned rather than becoming
+a Scholium popover. Pane-local content hosts consume the native safe area once;
+the titlebar and its single native toolbar own visibility-control alignment.
 
 Research Records reuses the existing native list/detail structure, search and
 empty/error states, structural rules, semantic surfaces, typography, native
@@ -220,8 +225,9 @@ radius, shadow, border, gradient, or paper scales.
   Semantic roles are resolver outputs, not additional Variables; components
   consume those roles without owning a palette value.
 - Structural Sidebar, Document, and Apparatus surfaces are opaque semantic
-  planes; bounded local glass or material follows §19.1. Dense evidence is
-  quietest and most legible.
+  planes; bounded local glass or material follows §19.1. Their sole structural
+  depth exception is the Workspace-owned document-navigation boundary below.
+  Dense evidence is quietest and most legible.
 - The Sidebar Attention alert is one state-derived presentation component, not
   an owner of diagnostics or counts. Zero produces no component. Nonzero combines
   the existing raised Navigation surface, warning symbol, label, and exact
@@ -234,18 +240,27 @@ radius, shadow, border, gradient, or paper scales.
   distinction.
 - Elevation is a purpose mapping, never a numbered depth or shadow scale.
   System-owned windows, panels, menus, popovers, sheets, and alerts retain
-  their native elevation and receive no Scholium shadow wrapper. A
-  Scholium-owned transient surface uses exactly one of three roles:
-  **floating control** for compact selection, status, and loading controls;
-  **bounded panel** for a larger custom menu, preview, or locally bounded
-  presentation above content; and **search overlay** for the centered Search
-  command surface. Structural Sidebar, Document, Apparatus, and ordinary
-  content surfaces have no elevation. A child does not accumulate its parent's
-  shadow, and a leaf view never supplies shadow color, opacity, blur, or offset.
-  The role resolver may weaken elevation for inactive windows or Reduce
-  Transparency and removes the soft shadow under Increase Contrast, where the
-  strengthened semantic boundary preserves separation. Surface, boundary,
-  text, and position must communicate ownership when shadow is absent.
+  their native elevation and receive no Scholium shadow wrapper. The sole
+  structural role is **document-navigation boundary**. Workspace owns it at the
+  Document's logical leading edge and casts it only into Sidebar, continuously
+  from the window top through the titlebar/toolbar background to the bottom.
+  The native toolbar and 1pt tracking separator remain in front, interactive,
+  and geometrically authoritative. The cue is noninteractive, has no motion,
+  mirrors in right-to-left presentation, disappears with Sidebar, and never
+  appears between Document and Apparatus. Its provisional active-Light recipe
+  uses AppKit's semantic shadow color at **0.04** opacity, **8pt** blur radius,
+  **2pt** logical offset toward Sidebar, zero vertical offset, and no spread.
+  Dark appearance, an inactive window, or Reduce Transparency resolves opacity
+  to **0.02** without compounding; Increase Contrast resolves it to zero and
+  relies on the native separator plus semantic surface difference.
+  A Scholium-owned transient surface separately uses exactly one of three
+  roles: **floating control** for compact selection, status, and loading
+  controls; **bounded panel** for a larger custom menu, preview, or locally
+  bounded presentation above content; and **search overlay** for the centered
+  Search command surface. No other structural or ordinary content surface has
+  elevation. A child does not accumulate its parent's shadow, and a leaf view
+  never supplies shadow color, opacity, blur, or offset. Surface, boundary,
+  text, and position must communicate ownership when any shadow is absent.
 - Native controls own interaction states. Custom targets prefer **28pt** and
   never fall below **20pt**; this does not redefine native sizes.
 - Standard actions and Vector Link relationship marks use direct SF Symbols.
@@ -436,7 +451,7 @@ the required meaning.
 
 | Component | Scholium task and presentation contract | Do not turn it into | Semantic owner |
 | --- | --- | --- | --- |
-| `Sidebar / Document / Apparatus` | Keep the Document primary while navigation and document-adjacent evidence remain distinct opaque planes. | A card stack, floating inspector, or decorative dashboard. | §18.2 |
+| `Sidebar / Document / Apparatus` | Keep Document primary across three opaque planes; one full-height Sidebar-edge cue advances the Document/Apparatus work field without replacing the native divider. | Cards, a floating Inspector, a parallel divider, or a dashboard. | §18.2 |
 | `ScopeIndex / ModeIndex` | Select a Library Scope or mode through one editorial underline and native focus/selection. | A filled segmented band or a second navigation state. | §§18.3, 18.5 |
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §§12, 18.5 |
@@ -457,7 +472,7 @@ the owning workflow chapter remains authoritative for meaning and permission.
 
 | Pattern | Scholium task | Presentation boundary | Semantic owner |
 | --- | --- | --- | --- |
-| `Workspace Shell` | Move among Library, the primary Document, and the document-adjacent Apparatus without losing context. | Native window and split geometry; Document remains visually primary. | §§18.1–18.3 |
+| `Workspace Shell` | Move among Library, the primary Document, and the document-adjacent Apparatus without losing context. | Native window and split geometry; one background-layer document-navigation depth cue keeps Document visually primary without altering system chrome. | §§18.1–18.3 |
 | `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §§5–7, 18.3–18.4 |
 | `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One editor session, one live current mode rather than a history keyed by Note, tab, or window, shared measure, and distinct source and rendered typography. | §§5–7, 18.4 |
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §§12–14, 18.3 |

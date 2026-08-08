@@ -67,9 +67,16 @@ content constraint is the expanded Library's **300pt minimum readable
 thickness**: the native split must keep it at or above that boundary or
 collapse it. This is neither a preferred width, restored divider value, nor parallel
 geometry owner. Library remains a semantic Sidebar and Apparatus a semantic
-Inspector. All three planes are opaque, and the native tracking separator is
-the sole inter-pane boundary; Scholium draws no parallel main divider or
-shadow.
+Inspector. All three planes are opaque, and the native tracking separator
+remains the sole interactive inter-pane boundary and divider-geometry owner.
+At the Sidebar–Document edge alone, the Workspace adds §19.3's secondary
+**document-navigation boundary** depth cue. It is visually continuous from the
+top of the window through the titlebar/toolbar band to the bottom, falls only
+into Sidebar, and remains behind the native toolbar and tracking separator.
+It neither obscures nor intercepts system chrome, changes divider geometry, or
+creates another boundary. It is absent while Sidebar is collapsed, mirrors the
+logical edge in right-to-left presentation, and never appears between Document
+and Apparatus.
 
 New windows show Library and hide Apparatus. Initial or restored peripheral
 visibility is installed before the native split's first presentation; the

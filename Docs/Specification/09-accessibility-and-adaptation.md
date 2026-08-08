@@ -15,6 +15,14 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   Transparency and inactive-window presentation may weaken it. The surface,
   boundary, label, focus, and placement must keep every floating action or
   presentation distinguishable when elevation is absent.
+- Treat the Workspace's document-navigation boundary cue as decoration. It is
+  outside the accessibility tree, receives no hit testing, changes no layout,
+  and remains visually continuous across the titlebar/toolbar background and
+  content region. It follows the logical Sidebar edge in right-to-left
+  presentation. Dark appearance, Reduce Transparency, and inactive windows
+  weaken it under §19.3; Increase Contrast removes it completely. The native
+  tracking separator and semantic Navigation/Document surface difference must
+  preserve the structural hierarchy when the cue is absent.
 - Give every important state two suitable channels; never rely only on color,
   motion, sound, location, or arrow direction.
 - Actions exposes every official and researcher-enabled operation as a linear

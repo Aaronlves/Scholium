@@ -708,7 +708,55 @@ struct FrontendArchitectureTests {
         #expect(contentController.view.superview === controller.view)
         #expect(controller.view.subviews.first === background)
         #expect(controller.view.subviews.last === contentController.view)
+        #expect(controller.structuralDepthView == nil)
 
+    }
+
+    @Test("Document-navigation depth is one full-height noninteractive Library projection")
+    func documentNavigationDepthContainer() throws {
+        let contentController = NSViewController()
+        contentController.view = NSView()
+        let controller = ScholiumSurfaceContainerViewController(
+            contentViewController: contentController,
+            backgroundRole: .navigation,
+            structuralDepthRole: .documentNavigationBoundary
+        )
+
+        controller.view.frame = NSRect(x: 0, y: 0, width: 300, height: 760)
+        controller.view.layoutSubtreeIfNeeded()
+        let depthView = try #require(controller.structuralDepthView)
+
+        #expect(depthView.superview === controller.view)
+        #expect(controller.view.subviews.first === controller.backgroundView)
+        #expect(controller.view.subviews.last === depthView)
+        #expect(depthView.frame == controller.view.bounds)
+        #expect(depthView.hitTest(NSPoint(x: 299, y: 380)) == nil)
+        #expect(depthView.isAccessibilityElement() == false)
+
+        let splitController = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>.Controller(
+            initialLibraryVisible: true,
+            initialApparatusVisible: false,
+            documentTabs: [],
+            selectedDocumentTabID: nil,
+            selectDocumentTab: { _ in },
+            closeDocumentTab: { _ in },
+            libraryVisibilityDidChange: { _ in },
+            researchInspectorVisibilityDidChange: { _ in },
+            splitControllerDidAttach: { _ in },
+            splitControllerDidDetach: { _ in },
+            library: EmptyView(),
+            document: EmptyView(),
+            apparatus: EmptyView()
+        )
+        _ = splitController.view
+
+        #expect(splitController.splitView.dividerStyle == .thin)
+        #expect(splitController.splitViewItems.count == 3)
+        let depthCounts = splitController.splitViewItems.map { item in
+            (item.viewController as? ScholiumSurfaceContainerViewController)?
+                .structuralDepthView == nil ? 0 : 1
+        }
+        #expect(depthCounts == [1, 0, 0])
     }
 
     @Test("Research Inspector keeps AppKit behavior after removing its fixed maximum")
@@ -3220,6 +3268,55 @@ struct FrontendArchitectureTests {
         #expect(Set(ScholiumElevationRole.allCases) == Set([
             .floatingControl, .boundedPanel, .searchOverlay,
         ]))
+        #expect(Set(ScholiumStructuralDepthRole.allCases) == Set([
+            .documentNavigationBoundary,
+        ]))
+        #expect(ScholiumStructuralDepthRole.documentNavigationBoundary.style(
+            isDark: false,
+            increasedContrast: false,
+            reduceTransparency: false,
+            appearsActive: true,
+            layoutDirection: .leftToRight
+        ) == .init(opacity: 0.04, radius: 8, x: -2, y: 0))
+        #expect(ScholiumStructuralDepthRole.documentNavigationBoundary.style(
+            isDark: false,
+            increasedContrast: false,
+            reduceTransparency: false,
+            appearsActive: true,
+            layoutDirection: .rightToLeft
+        ) == .init(opacity: 0.04, radius: 8, x: 2, y: 0))
+        for quietStyle in [
+            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
+                isDark: true,
+                increasedContrast: false,
+                reduceTransparency: false,
+                appearsActive: true,
+                layoutDirection: .leftToRight
+            ),
+            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
+                isDark: false,
+                increasedContrast: false,
+                reduceTransparency: true,
+                appearsActive: true,
+                layoutDirection: .leftToRight
+            ),
+            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
+                isDark: false,
+                increasedContrast: false,
+                reduceTransparency: false,
+                appearsActive: false,
+                layoutDirection: .leftToRight
+            ),
+        ] {
+            #expect(quietStyle.opacity == 0.02)
+        }
+        #expect(ScholiumStructuralDepthRole.documentNavigationBoundary.style(
+            isDark: true,
+            increasedContrast: true,
+            reduceTransparency: true,
+            appearsActive: false,
+            layoutDirection: .rightToLeft
+        ).opacity == 0)
         #expect(ScholiumElevationRole.floatingControl.style(
             increasedContrast: false,
             reduceTransparency: false,

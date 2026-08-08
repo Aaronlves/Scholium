@@ -509,7 +509,11 @@ Library, Document, and Apparatus. The split and each item's one opaque semantic
 background fill the frame beneath AppKit's transparent titlebar. The standard
 SwiftUI toolbar background is hidden, with no background-extension effect or
 duplicate color source. Native titlebar behavior remains, and each content
-controller is a foreground sibling inside the system safe area.
+controller is a foreground sibling inside the system safe area. The Library
+container alone adds one full-bounds, noninteractive structural-depth host above
+its content. That host clips the Document-owned shadow to the Library plane and
+contains no split geometry, visibility, toolbar, or semantic state; collapsing
+the native Sidebar removes the complete container projection with it.
 
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Before split attachment,
