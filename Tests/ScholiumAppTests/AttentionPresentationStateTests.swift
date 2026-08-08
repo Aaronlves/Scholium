@@ -6,20 +6,57 @@ import Testing
 @Suite("Attention presentation state")
 @MainActor
 struct AttentionPresentationStateTests {
-    @Test("Sidebar Attention projects one exact Triptych aggregate")
-    func scopeCountProjection() {
-        let counts = AttentionScopeCounts(values: [
-            .paperAnalysis: 2,
-            .topicKnowledge: 0,
-            .output: 1,
-        ])
+    @Test("Sidebar Attention projects one exact visible Triptych aggregate")
+    func totalCountProjection() {
+        let reference = VaultNoteReference(
+            vaultID: UUID(),
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            relativePath: "Analysis.md"
+        )
+        let first = AttentionQueueItem(
+            kind: .possibleOrphan,
+            severity: .information,
+            note: reference,
+            message: "Possible orphan."
+        )
+        let second = AttentionQueueItem(
+            kind: .changedSinceSettled,
+            severity: .warning,
+            note: reference,
+            message: "The committed source changed."
+        )
+        let catalog = WorkspaceCatalogBuilder.build(
+            vaults: [],
+            documents: [:],
+            additionalAttention: [first, second]
+        )
+        let assignment = makeAssignment()
 
-        #expect(counts.count(for: .paperAnalysis) == 2)
-        #expect(counts.count(for: .topicKnowledge) == 0)
-        #expect(counts.count(for: .output) == 1)
-        #expect(counts.total == 3)
-        #expect(AttentionScopeCounts(values: [:]).count(for: .paperAnalysis) == 0)
-        #expect(AttentionScopeCounts(values: [:]).total == 0)
+        #expect(AttentionPreferences.visibleTotalCount(
+            catalog: catalog,
+            assignment: assignment,
+            dismissalLedgerData: Data()
+        ) == 2)
+
+        let dismissalLedger = AttentionDismissalLedger(
+            dismissedUntilByItemID: [first.id: .distantFuture]
+        )
+        #expect(AttentionPreferences.visibleTotalCount(
+            catalog: catalog,
+            assignment: assignment,
+            dismissalLedgerData: AttentionPreferences.encodeLedger(dismissalLedger)
+        ) == 1)
+        #expect(AttentionPreferences.visibleTotalCount(
+            catalog: nil,
+            assignment: assignment,
+            dismissalLedgerData: Data()
+        ) == nil)
+        #expect(AttentionPreferences.visibleTotalCount(
+            catalog: catalog,
+            assignment: nil,
+            dismissalLedgerData: Data()
+        ) == nil)
     }
 
     @Test("Workspace Note totals preserve zero and distinguish unavailable")
@@ -110,5 +147,36 @@ struct AttentionPresentationStateTests {
         state.reconcileVisibleItems([])
         #expect(state.selectedItemID == nil)
         #expect(state.filterFocusRequestGeneration == focusGeneration + 1)
+    }
+
+    private func makeAssignment() -> TriptychAssignment {
+        let analyses = RegisteredVault(
+            name: "Analyses",
+            role: .sourceCorpus,
+            canonicalPath: "/fixtures/Analyses"
+        )
+        let topics = RegisteredVault(
+            name: "Topics",
+            role: .topicKnowledge,
+            canonicalPath: "/fixtures/Topics"
+        )
+        let works = RegisteredVault(
+            name: "Works",
+            role: .draftProject,
+            canonicalPath: "/fixtures/Works"
+        )
+        return TriptychAssignment(
+            triptych: ScholiumTriptych(
+                paperAnalysisVaultID: analyses.id,
+                topicKnowledgeVaultID: topics.id,
+                outputVaultID: works.id
+            ),
+            vaults: [
+                .paperAnalysis: analyses,
+                .topicKnowledge: topics,
+                .output: works,
+            ],
+            hasCommonParent: true
+        )
     }
 }

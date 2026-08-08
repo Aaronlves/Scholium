@@ -136,9 +136,9 @@ and the current immutable queue to the Sidebar and Inspector anchors without
 duplicating either. The adapter observes only the exact assignment and
 workspace-projection owners plus the single dismissal-duration setting; it
 borrows closed refresh and resynthesis effects and never observes or retains
-the complete `WindowModel`. `AttentionScopeCounts` is a read-only projection
-of the same catalog and machine-local dismissal ledger. Sidebar consumes its
-exact Triptych aggregate through one stable BrandHeader entry; workspace rows
+the complete `WindowModel`. Sidebar derives one read-only aggregate from the
+same catalog and machine-local dismissal ledger through its stable BrandHeader
+entry; workspace rows
 instead consume neutral ordinary-active-Note totals, and zero remains a real
 inventory value. The Document toolbar consumes
 no Attention count, observation, item, action, reserved width, or popover

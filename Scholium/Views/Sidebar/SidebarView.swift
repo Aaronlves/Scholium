@@ -20,7 +20,7 @@ struct SidebarWorkspaceNoteCounts: Equatable {
 /// owned by `DiscoveryController`; no view retains a parallel Library tree.
 struct SidebarContext {
     let triptychName: String
-    let attentionCounts: AttentionScopeCounts?
+    let attentionTotal: Int?
     let workspaceNoteCounts: SidebarWorkspaceNoteCounts
     let attentionError: String?
     /// Window-owned immutable hierarchy. The version changes only with its
@@ -99,7 +99,7 @@ struct SidebarView: View {
     }
 
     private var triptychAttentionState: SidebarTriptychAttentionState {
-        if let total = context.attentionCounts?.total {
+        if let total = context.attentionTotal {
             return total > 0 ? .active(count: total) : .zero
         }
         return context.attentionError == nil ? .checking : .unavailable

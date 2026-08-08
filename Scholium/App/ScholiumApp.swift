@@ -3684,7 +3684,6 @@ final class WindowModel: ObservableObject {
             restoredPresentation.documentTextScale
                 ?? ScholiumMetrics.Document.defaultTextScale
         )
-        _ = restoredPresentation.contentDestination
     }
 
     func persistWindowSessionNow() {
@@ -3761,7 +3760,6 @@ final class WindowModel: ObservableObject {
             workspaceSessions: workspaceSessions,
             libraryVisible: sidebarVisible,
             inspectorVisible: researchInspectorVisible,
-            contentDestination: .document,
             searchState: SearchWorkspaceState(scope: searchController.ordinaryScope),
             documentTextScale: documentTextScale
         )

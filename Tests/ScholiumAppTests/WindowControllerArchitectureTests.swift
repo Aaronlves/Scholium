@@ -188,7 +188,7 @@ struct WindowControllerArchitectureTests {
         #expect(route.contains("if appState.sidebarVisible"))
         #expect(route.contains("anchor: .sidebar"))
         #expect(route.contains("workspaceSlot: nil"))
-        #expect(!route.contains("visibleScopeCounts"))
+        #expect(!route.contains("visibleTotalCount"))
         #expect(!route.contains("count > 0"))
     }
 

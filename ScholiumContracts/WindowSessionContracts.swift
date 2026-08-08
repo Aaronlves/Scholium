@@ -1,9 +1,5 @@
 import Foundation
 
-public enum WindowContentDestination: String, Codable, Hashable, Sendable {
-    case document
-}
-
 /// Committed presentation state for one role workspace inside a window.
 /// Editor bytes remain solely in the conflict-aware document session and never
 /// enter this value.
@@ -93,7 +89,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
     public var workspaceSessions: [WindowWorkspaceSessionSnapshot]
     public var libraryVisible: Bool?
     public var inspectorVisible: Bool?
-    public var contentDestination: WindowContentDestination?
     public var searchState: SearchWorkspaceState
     public var documentTextScale: Double?
 
@@ -104,7 +99,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         workspaceSessions: [WindowWorkspaceSessionSnapshot] = [],
         libraryVisible: Bool? = nil,
         inspectorVisible: Bool? = nil,
-        contentDestination: WindowContentDestination? = nil,
         searchState: SearchWorkspaceState = SearchWorkspaceState(),
         documentTextScale: Double? = nil
     ) {
@@ -114,7 +108,6 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         self.workspaceSessions = workspaceSessions
         self.libraryVisible = libraryVisible
         self.inspectorVisible = inspectorVisible
-        self.contentDestination = contentDestination
         self.searchState = searchState
         self.documentTextScale = documentTextScale
     }

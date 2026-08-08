@@ -534,7 +534,7 @@ struct ContentView: View {
             : nil
         return SidebarContext(
             triptychName: appState.workspaceAssignment?.triptych.name ?? "Not Selected",
-            attentionCounts: sidebarAttentionCounts,
+            attentionTotal: sidebarAttentionTotal,
             workspaceNoteCounts: sidebarWorkspaceNoteCounts,
             attentionError: appState.workspaceCatalog == nil
                 ? appState.workspaceCatalogError
@@ -622,8 +622,8 @@ struct ContentView: View {
         )
     }
 
-    private var sidebarAttentionCounts: AttentionScopeCounts? {
-        AttentionPreferences.visibleScopeCounts(
+    private var sidebarAttentionTotal: Int? {
+        AttentionPreferences.visibleTotalCount(
             catalog: appState.workspaceCatalog,
             assignment: appState.workspaceAssignment,
             dismissalLedgerData: attentionDismissalLedgerData

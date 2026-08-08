@@ -251,7 +251,6 @@ private struct RuntimeMembershipFixture: Sendable {
                 ),
             ],
             inspectorVisible: true,
-            contentDestination: .document,
             searchState: SearchWorkspaceState(query: "reasons", scope: .currentVault),
             documentTextScale: 1.25
         )

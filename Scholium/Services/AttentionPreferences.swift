@@ -1,27 +1,6 @@
 import ScholiumContracts
 import Foundation
 
-/// A read-only presentation projection over the current catalog and dismissal
-/// ledger. It owns no queue state: Sidebar consumes one exact Triptych total
-/// while the popover continues to derive its own complete or Note-scoped list.
-struct AttentionScopeCounts: Equatable, Sendable {
-    private let values: [WorkspaceVaultSlot: Int]
-
-    init(values: [WorkspaceVaultSlot: Int]) {
-        self.values = values
-    }
-
-    func count(for slot: WorkspaceVaultSlot) -> Int {
-        values[slot, default: 0]
-    }
-
-    var total: Int {
-        WorkspaceVaultSlot.allCases.reduce(into: 0) { result, slot in
-            result += count(for: slot)
-        }
-    }
-}
-
 enum AttentionPreferences {
     static let dismissalLedgerKey = "attention.dismissalLedger"
 
@@ -41,17 +20,15 @@ enum AttentionPreferences {
         (try? JSONEncoder().encode(ledger)) ?? Data()
     }
 
-    static func visibleScopeCounts(
+    /// Returns the exact visible Triptych aggregate. The assignment remains an
+    /// availability gate so a window never presents a count before its
+    /// configured Triptych is ready.
+    static func visibleTotalCount(
         catalog: WorkspaceCatalogSnapshot?,
         assignment: TriptychAssignment?,
         dismissalLedgerData: Data
-    ) -> AttentionScopeCounts? {
-        guard let catalog, let assignment else { return nil }
-        let visibleItems = decodeLedger(dismissalLedgerData).visible(catalog.attention)
-        let values = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { slot in
-            let vaultID = assignment.vault(for: slot)?.id
-            return (slot, visibleItems.count { $0.note.vaultID == vaultID })
-        })
-        return AttentionScopeCounts(values: values)
+    ) -> Int? {
+        guard let catalog, assignment != nil else { return nil }
+        return decodeLedger(dismissalLedgerData).visible(catalog.attention).count
     }
 }

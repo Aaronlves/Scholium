@@ -1380,22 +1380,6 @@
         }
       }
     },
-    "ATTENTION" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "ATTENTION"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关注"
-          }
-        }
-      }
-    },
     "About" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -8529,22 +8513,6 @@
         }
       }
     },
-    "Document mode" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Document mode"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文档模式"
-          }
-        }
-      }
-    },
     "Document mode: %@" : {
       "localizations" : {
         "en" : {
@@ -9792,22 +9760,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "字段类型"
-          }
-        }
-      }
-    },
-    "Filter" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Filter"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "筛选"
           }
         }
       }
@@ -12517,22 +12469,6 @@
         }
       }
     },
-    "Loading checkpoints…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Loading checkpoints…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在加载恢复点…"
-          }
-        }
-      }
-    },
     "Loading citation methods…" : {
       "localizations" : {
         "en" : {
@@ -12559,48 +12495,12 @@
         }
       }
     },
-    "Loading collaboration policy…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在加载协作策略…"
-          }
-        }
-      }
-    },
-    "Loading document" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Loading document"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在载入文档"
-          }
-        }
-      }
-    },
     "Loading eligible notes…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在载入符合条件的笔记…"
-          }
-        }
-      }
-    },
-    "Loading methods…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在加载方法…"
           }
         }
       }
@@ -15573,22 +15473,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开分析"
-          }
-        }
-      }
-    },
-    "Open Attention" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Open Attention"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开关注事项"
           }
         }
       }
@@ -20147,22 +20031,6 @@
         }
       }
     },
-    "Retries loading the derived Attention queue." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Retries loading the derived Attention queue."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新加载派生的关注事项队列。"
-          }
-        }
-      }
-    },
     "Retries migration of app-owned records without changing the Markdown note." : {
       "localizations" : {
         "en" : {
@@ -20207,22 +20075,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试"
-          }
-        }
-      }
-    },
-    "Retry Attention" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Retry Attention"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重试关注事项"
           }
         }
       }
@@ -20625,22 +20477,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查看派生警告和可恢复的研究问题"
-          }
-        }
-      }
-    },
-    "Review mode is unavailable" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Review mode is unavailable"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅模式不可用"
           }
         }
       }

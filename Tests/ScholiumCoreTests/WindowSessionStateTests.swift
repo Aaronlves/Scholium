@@ -55,7 +55,6 @@ struct WindowSessionStateTests {
             ],
             libraryVisible: false,
             inspectorVisible: true,
-            contentDestination: .document,
             searchState: SearchWorkspaceState(scope: .triptych),
             documentTextScale: 2
         )
