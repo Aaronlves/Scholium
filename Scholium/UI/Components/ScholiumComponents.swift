@@ -516,7 +516,10 @@ struct ScholiumContentStateView<Actions: View>: View {
     var body: some View {
         Group {
             if density == .page {
-                VStack(alignment: horizontalAlignment, spacing: indicatorSpacing) {
+                VStack(
+                    alignment: horizontalAlignment,
+                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                ) {
                     indicatorView
                     copyAndActions
                 }
@@ -586,12 +589,6 @@ struct ScholiumContentStateView<Actions: View>: View {
 
     private var frameAlignment: Alignment {
         placement == .centered ? .center : .leading
-    }
-
-    private var indicatorSpacing: CGFloat {
-        density == .page
-            ? ScholiumGrid.Spacing.sectionSeparation
-            : ScholiumGrid.Spacing.inlineControlGap
     }
 
     private var contentInset: CGFloat {

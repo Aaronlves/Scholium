@@ -36,12 +36,6 @@ enum DocumentTabPlacement: Equatable, Sendable {
     case newTab
 }
 
-enum DocumentTabActivationResult: Equatable, Sendable {
-    case created(UUID)
-    case replaced(UUID)
-    case selectedExisting(UUID)
-}
-
 private enum DocumentTabKey: Hashable, Sendable {
     case workspace(DocumentSessionKey)
     case unavailable(vaultID: UUID, relativePath: String)
@@ -81,14 +75,13 @@ final class DocumentTabController: ObservableObject {
         return tabs(in: workspace).first { $0.id == selectedTabID }
     }
 
-    @discardableResult
     func activate(
         document: WindowSelectedDocument,
         title: String,
         toolTip: String,
         placement: DocumentTabPlacement,
         in workspace: WorkspaceVaultSlot
-    ) -> DocumentTabActivationResult {
+    ) {
         let key = DocumentTabKey(document)
         for candidate in WorkspaceVaultSlot.allCases {
             var candidateTabs = tabs(in: candidate)
@@ -100,7 +93,7 @@ final class DocumentTabController: ObservableObject {
             candidateTabs[existingIndex].toolTip = toolTip
             tabsByWorkspace[candidate] = candidateTabs
             selectedTabIDsByWorkspace[candidate] = candidateTabs[existingIndex].id
-            return .selectedExisting(candidateTabs[existingIndex].id)
+            return
         }
 
         var workspaceTabs = tabs(in: workspace)
@@ -111,7 +104,7 @@ final class DocumentTabController: ObservableObject {
             workspaceTabs[selectedIndex].title = title
             workspaceTabs[selectedIndex].toolTip = toolTip
             tabsByWorkspace[workspace] = workspaceTabs
-            return .replaced(selectedTabID)
+            return
         }
 
         let tab = DocumentTabItem(
@@ -122,7 +115,6 @@ final class DocumentTabController: ObservableObject {
         workspaceTabs.append(tab)
         tabsByWorkspace[workspace] = workspaceTabs
         selectedTabIDsByWorkspace[workspace] = tab.id
-        return .created(tab.id)
     }
 
     func selectTab(withID id: UUID) {

@@ -13,7 +13,7 @@ struct DocumentTabControllerTests {
         let controller = DocumentTabController()
         let document = fixtureDocument(path: "Topics/Agency.md")
 
-        let result = controller.activate(
+        controller.activate(
             document: document,
             title: "Agency",
             toolTip: "Agency — Topics/Agency.md",
@@ -22,38 +22,38 @@ struct DocumentTabControllerTests {
         )
 
         let tab = try #require(controller.tabs(in: workspace).first)
-        #expect(result == .created(tab.id))
         #expect(controller.tabs(in: workspace).count == 1)
         #expect(controller.selectedTabID(in: workspace) == tab.id)
         #expect(tab.document == document)
     }
 
     @Test("New Tab selects a distinct document without replacing its neighbor")
-    func newTabSelectsDistinctDocument() {
+    func newTabSelectsDistinctDocument() throws {
         let controller = DocumentTabController()
         let first = fixtureDocument(path: "Topics/Agency.md")
         let second = fixtureDocument(path: "Topics/Reasons.md")
-        _ = add(first, to: controller)
+        _ = try add(first, to: controller)
 
-        let secondID = tabID(from: controller.activate(
+        controller.activate(
             document: second,
             title: "Reasons",
             toolTip: "Reasons",
             placement: .newTab,
             in: workspace
-        ))
+        )
+        let secondID = try #require(controller.selectedTabID(in: workspace))
 
         #expect(controller.tabs(in: workspace).map(\.document) == [first, second])
         #expect(controller.selectedTabID(in: workspace) == secondID)
     }
 
     @Test("Repeated New Tab activation selects the existing stable document")
-    func repeatedNewTabSelectsExistingDocument() {
+    func repeatedNewTabSelectsExistingDocument() throws {
         let controller = DocumentTabController()
         let document = fixtureDocument(path: "Topics/Agency.md")
-        let firstID = add(document, to: controller)
+        let firstID = try add(document, to: controller)
 
-        let result = controller.activate(
+        controller.activate(
             document: document,
             title: "Updated Agency",
             toolTip: "Updated Agency",
@@ -61,22 +61,21 @@ struct DocumentTabControllerTests {
             in: workspace
         )
 
-        #expect(result == .selectedExisting(firstID))
         #expect(controller.tabs(in: workspace).count == 1)
         #expect(controller.tabs(in: workspace).first?.title == "Updated Agency")
         #expect(controller.selectedTabID(in: workspace) == firstID)
     }
 
     @Test("Replacing with an already open target preserves both existing tabs")
-    func replaceWithExistingTargetPreservesTabs() {
+    func replaceWithExistingTargetPreservesTabs() throws {
         let controller = DocumentTabController()
         let first = fixtureDocument(path: "Topics/Agency.md")
         let second = fixtureDocument(path: "Topics/Reasons.md")
-        let firstID = add(first, to: controller)
-        let secondID = add(second, to: controller)
+        let firstID = try add(first, to: controller)
+        let secondID = try add(second, to: controller)
         controller.selectTab(withID: firstID)
 
-        let result = controller.activate(
+        controller.activate(
             document: second,
             title: "Reasons",
             toolTip: "Reasons",
@@ -84,13 +83,12 @@ struct DocumentTabControllerTests {
             in: workspace
         )
 
-        #expect(result == .selectedExisting(secondID))
         #expect(controller.tabs(in: workspace).map(\.id) == [firstID, secondID])
         #expect(controller.selectedTabID(in: workspace) == secondID)
     }
 
     @Test("The same displayed path with different stable identities may coexist")
-    func samePathDifferentStableIdentityMayCoexist() {
+    func samePathDifferentStableIdentityMayCoexist() throws {
         let controller = DocumentTabController()
         let vaultID = UUID()
         let first = fixtureDocument(
@@ -104,8 +102,8 @@ struct DocumentTabControllerTests {
             noteID: UUID()
         )
 
-        _ = add(first, to: controller)
-        _ = add(second, to: controller)
+        _ = try add(first, to: controller)
+        _ = try add(second, to: controller)
 
         #expect(controller.tabs(in: workspace).count == 2)
     }
@@ -115,20 +113,22 @@ struct DocumentTabControllerTests {
         let controller = DocumentTabController()
         let analysis = fixtureDocument(path: "Analysis.md")
         let topic = fixtureDocument(path: "Topic.md")
-        let analysisID = tabID(from: controller.activate(
+        controller.activate(
             document: analysis,
             title: "Analysis",
             toolTip: "Analysis",
             placement: .newTab,
             in: .paperAnalysis
-        ))
-        let topicID = tabID(from: controller.activate(
+        )
+        let analysisID = try #require(controller.selectedTabID(in: .paperAnalysis))
+        controller.activate(
             document: topic,
             title: "Topic",
             toolTip: "Topic",
             placement: .newTab,
             in: .topicKnowledge
-        ))
+        )
+        let topicID = try #require(controller.selectedTabID(in: .topicKnowledge))
 
         #expect(controller.tabs(in: .paperAnalysis).map(\.id) == [analysisID])
         #expect(controller.tabs(in: .topicKnowledge).map(\.id) == [topicID])
@@ -146,9 +146,9 @@ struct DocumentTabControllerTests {
     @Test("Closing a selected middle tab chooses its next neighbor")
     func closeSelectedMiddleChoosesNext() throws {
         let controller = DocumentTabController()
-        let first = add(fixtureDocument(path: "Topics/One.md"), to: controller)
-        let middle = add(fixtureDocument(path: "Topics/Two.md"), to: controller)
-        let last = add(fixtureDocument(path: "Topics/Three.md"), to: controller)
+        let first = try add(fixtureDocument(path: "Topics/One.md"), to: controller)
+        let middle = try add(fixtureDocument(path: "Topics/Two.md"), to: controller)
+        let last = try add(fixtureDocument(path: "Topics/Three.md"), to: controller)
         controller.selectTab(withID: middle)
 
         let plan = try #require(controller.closePlan(forTabWithID: middle))
@@ -162,8 +162,8 @@ struct DocumentTabControllerTests {
     @Test("Closing the last selected tab chooses its previous neighbor")
     func closeLastChoosesPrevious() throws {
         let controller = DocumentTabController()
-        let first = add(fixtureDocument(path: "Topics/One.md"), to: controller)
-        let last = add(fixtureDocument(path: "Topics/Two.md"), to: controller)
+        let first = try add(fixtureDocument(path: "Topics/One.md"), to: controller)
+        let last = try add(fixtureDocument(path: "Topics/Two.md"), to: controller)
 
         let plan = try #require(controller.closePlan(forTabWithID: last))
         #expect(plan.selectedTabIDAfterClose == first)
@@ -176,7 +176,7 @@ struct DocumentTabControllerTests {
     @Test("Closing the only tab leaves the document region empty")
     func closeOnlyTabLeavesNoSelection() throws {
         let controller = DocumentTabController()
-        let only = add(fixtureDocument(path: "Topics/Only.md"), to: controller)
+        let only = try add(fixtureDocument(path: "Topics/Only.md"), to: controller)
 
         let plan = try #require(controller.closePlan(forTabWithID: only))
         #expect(plan.selectedTabIDAfterClose == nil)
@@ -190,8 +190,8 @@ struct DocumentTabControllerTests {
     @Test("Closing an inactive tab preserves the active tab")
     func closeInactivePreservesSelection() throws {
         let controller = DocumentTabController()
-        let inactive = add(fixtureDocument(path: "Topics/Inactive.md"), to: controller)
-        let active = add(fixtureDocument(path: "Topics/Active.md"), to: controller)
+        let inactive = try add(fixtureDocument(path: "Topics/Inactive.md"), to: controller)
+        let active = try add(fixtureDocument(path: "Topics/Active.md"), to: controller)
 
         let plan = try #require(controller.closePlan(forTabWithID: inactive))
         #expect(plan.documentToActivate == nil)
@@ -202,11 +202,11 @@ struct DocumentTabControllerTests {
     }
 
     @Test("A proven-missing batch cannot leave a stale selected tab")
-    func missingBatchClearsRemovedSelection() {
+    func missingBatchClearsRemovedSelection() throws {
         let controller = DocumentTabController()
-        let first = add(fixtureDocument(path: "Topics/First.md"), to: controller)
-        let selected = add(fixtureDocument(path: "Topics/Deleted.md"), to: controller)
-        let surviving = add(fixtureDocument(path: "Topics/Surviving.md"), to: controller)
+        let first = try add(fixtureDocument(path: "Topics/First.md"), to: controller)
+        let selected = try add(fixtureDocument(path: "Topics/Deleted.md"), to: controller)
+        let surviving = try add(fixtureDocument(path: "Topics/Surviving.md"), to: controller)
         controller.selectTab(withID: selected)
 
         controller.removeTabs(withIDs: [first, selected])
@@ -216,10 +216,10 @@ struct DocumentTabControllerTests {
     }
 
     @Test("A stable rename updates the retained tab projection")
-    func stableRenameUpdatesRetainedTab() {
+    func stableRenameUpdatesRetainedTab() throws {
         let controller = DocumentTabController()
         let original = fixtureDocument(path: "Topics/Old.md")
-        _ = add(original, to: controller)
+        _ = try add(original, to: controller)
         let descriptor = original.workspaceDescriptor!
         let renamed = WindowSelectedDocument.workspace(WindowDocumentDescriptor(
             sessionKey: descriptor.sessionKey,
@@ -246,20 +246,18 @@ struct DocumentTabControllerTests {
     private func add(
         _ document: WindowSelectedDocument,
         to controller: DocumentTabController
-    ) -> UUID {
-        tabID(from: controller.activate(
+    ) throws -> UUID {
+        controller.activate(
             document: document,
             title: document.relativePath,
             toolTip: document.relativePath,
             placement: .newTab,
             in: workspace
-        ))
-    }
-
-    private func tabID(from result: DocumentTabActivationResult) -> UUID {
-        switch result {
-        case .created(let id), .replaced(let id), .selectedExisting(let id): id
-        }
+        )
+        return try #require(
+            controller.selectedTabID(in: workspace),
+            "Activating a document must select its owned tab."
+        )
     }
 
     private func fixtureDocument(
