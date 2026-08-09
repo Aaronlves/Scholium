@@ -20,6 +20,7 @@ struct ResearchActionPanelView: View {
     @State private var pendingHandoff: PendingHandoff?
     @State private var handoffErrorMessage: String?
     @State private var evaluationHasUnsavedChanges = false
+    @State private var evaluationOperationInFlight = false
     @State private var confirmsDiscardEvaluation = false
     @State private var confirmsEndAction = false
 
@@ -69,8 +70,14 @@ struct ResearchActionPanelView: View {
                                     expectedResultFingerprint: resultFingerprint
                                 )
                             },
+                            reload: {
+                                try await controller.reloadResearcherEvaluation()
+                            },
                             draftStateDidChange: {
                                 evaluationHasUnsavedChanges = $0
+                            },
+                            operationStateDidChange: {
+                                evaluationOperationInFlight = $0
                             }
                         )
                         ScholiumStructuralRule()
@@ -131,6 +138,7 @@ struct ResearchActionPanelView: View {
             controller.phase == .preparing
                 || controller.phase == .cancelling
                 || evaluationHasUnsavedChanges
+                || evaluationOperationInFlight
         )
         .onAppear { focusFirstAcademicTextField() }
         .onChange(of: controller.phase) { _, phase in
@@ -571,7 +579,11 @@ struct ResearchActionPanelView: View {
                 }
             }
             .keyboardShortcut(.cancelAction)
-            .disabled(controller.phase == .preparing || controller.phase == .cancelling)
+            .disabled(
+                controller.phase == .preparing
+                    || controller.phase == .cancelling
+                    || evaluationOperationInFlight
+            )
             .accessibilityIdentifier("scholium.researchAction.dismiss")
             if controller.canCancelPreparedRun {
                 Button("End Action…", role: .destructive) {

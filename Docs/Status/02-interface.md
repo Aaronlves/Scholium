@@ -53,6 +53,15 @@
 - Action, Reading Lead note, and Researcher Evaluation sheets share the same
   fixed-header, scrolling-body, fixed-action layout while retaining separate
   workflow state and dimensions.
+- The Action and Record routes reuse one Researcher Evaluation field surface.
+  Saving locks its editable controls; a stale revision retains the local draft
+  as nonmutating **Out of Date** state until the researcher confirms reload,
+  which rereads the exact Record through the existing capability. Clear
+  explicitly discloses whether it also discards a local draft. Done and implicit
+  dismissal remain blocked while save, clear, or reload is unresolved. A
+  committed-refresh failure or commit-uncertain replacement remains
+  nonmutating and requires that reload; **Save Failed** means the mutation is
+  known not to have committed.
 
 ## Search, Attention, and Research Records
 

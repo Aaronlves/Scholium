@@ -28,6 +28,8 @@ struct ResearchRecordBrowserContext {
             UUID,
             DocumentFingerprint
         ) async throws -> PortableResearchRecord
+    let reloadEvaluation:
+        @MainActor (UUID) async throws -> PortableResearchRecord
     let deletePermanently: @MainActor (UUID) async throws -> Void
     let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
 }
@@ -2272,6 +2274,9 @@ private struct ResearchRecordWorkspaceView: View {
                             resultFingerprint
                         )
                     },
+                    reload: {
+                        try await context.reloadEvaluation(record.id)
+                    },
                     didUpdateRecord: model.acceptUpdatedRecord
                 )
 
@@ -3560,6 +3565,7 @@ private struct ResearchRecordResearcherEvaluationSection: View {
     let record: PortableResearchRecord
     let save: ResearcherEvaluationView.Save
     let clear: ResearcherEvaluationView.Clear
+    let reload: ResearcherEvaluationView.Reload
     let didUpdateRecord: (PortableResearchRecord) -> Void
     @State private var isPresentingEditor = false
     @FocusState private var isFocused: Bool
@@ -3615,6 +3621,7 @@ private struct ResearchRecordResearcherEvaluationSection: View {
                     record: record,
                     save: save,
                     clear: clear,
+                    reload: reload,
                     didUpdateRecord: didUpdateRecord
                 )
             }
@@ -3682,9 +3689,11 @@ private struct ResearchRecordEvaluationSheet: View {
     let record: PortableResearchRecord
     let save: ResearcherEvaluationView.Save
     let clear: ResearcherEvaluationView.Clear
+    let reload: ResearcherEvaluationView.Reload
     let didUpdateRecord: (PortableResearchRecord) -> Void
 
     @State private var hasUnsavedChanges = false
+    @State private var evaluationOperationInFlight = false
     @State private var confirmsDiscard = false
 
     var body: some View {
@@ -3713,8 +3722,12 @@ private struct ResearchRecordEvaluationSheet: View {
                     record: record,
                     save: save,
                     clear: clear,
+                    reload: reload,
                     didUpdateRecord: didUpdateRecord,
                     draftStateDidChange: { hasUnsavedChanges = $0 },
+                    operationStateDidChange: {
+                        evaluationOperationInFlight = $0
+                    },
                     showsIntroduction: false
                 )
                 .padding(ScholiumMetrics.ResearchSheet.contentInset)
@@ -3726,6 +3739,7 @@ private struct ResearchRecordEvaluationSheet: View {
                 Spacer(minLength: 0)
                 Button("Done", action: attemptDismiss)
                     .keyboardShortcut(.cancelAction)
+                    .disabled(evaluationOperationInFlight)
                     .accessibilityIdentifier("scholium.researchRecord.evaluationDismiss")
             }
             .padding(ScholiumMetrics.ResearchSheet.contentInset)
@@ -3737,7 +3751,9 @@ private struct ResearchRecordEvaluationSheet: View {
             idealHeight: ScholiumMetrics.ResearchSheet.RecordEvaluation.idealHeight
         )
         .scholiumSurface(.document)
-        .interactiveDismissDisabled(hasUnsavedChanges)
+        .interactiveDismissDisabled(
+            hasUnsavedChanges || evaluationOperationInFlight
+        )
         .accessibilityAddTraits(.isModal)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchRecord.evaluationSheet")

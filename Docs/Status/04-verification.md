@@ -95,6 +95,30 @@ fails closed, and the current Note revision remains actor-unknown unless a
 separate existing operation or Record owner proves authorship. No block-scalar
 support, field-level writer history, or attribution database was added.
 
+The Researcher Evaluation qualification audit and stale-draft hardening passed
+eight focused tests across six suites covering Contracts, Core-store,
+App-state, controller, and architecture boundaries with the same toolchain.
+The tests prove that both routes retain one finalized-result fingerprint and
+Evaluation partition,
+the store distinguishes stale evaluation revision from finalized-result
+mismatch, an **Out of Date** draft cannot become writable through later typing,
+the reload route reads and accepts only the exact current Record identity, and a
+pending save locks further field mutation and both dismissal routes until the
+operation resolves. Injected post-rename uncertainty leaves the committed
+evaluation readable, while both committed-refresh and commit-uncertain errors
+remain nonretryable **Out of Date** states and a proven pre-commit error remains
+**Save Failed**. Source inspection additionally
+confirms the shared Action/Record field surface, explicit discard-and-reload
+confirmation, and unsaved-sheet dismissal guards. Interface localization,
+documentation authority, and diff checks passed.
+
+This is bounded engineering evidence, not installed-app or human interface
+acceptance. The current UI still lacks the canonical pre-finalization local
+draft, and a draft does not yet survive cross-window permanent Record deletion;
+those owner gaps remain explicit in Open Work. Genuine VoiceOver, physical
+keyboard, 200% text, mixed-script input, appearance adaptations, and researcher
+acceptance were not exercised in this no-UI-automation stage.
+
 ## Search case pack
 
 These cases are the current researcher-review set for deciding whether static

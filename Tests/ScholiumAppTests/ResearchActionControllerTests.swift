@@ -833,13 +833,74 @@ struct ResearchActionControllerTests {
         #expect(controller.continuationRecords.isEmpty)
     }
 
+    @Test("Evaluation reload reads the exact current Record identity")
+    func evaluationReloadUsesCurrentRecordIdentity() async throws {
+        let action = try availability(.synthesize, order: 0)
+        let target = target()
+        let runID = UUID()
+        let prepared = try preparation(action: action, target: target, runID: runID)
+        let original = try portableActionRecord(id: runID, snapshot: prepared.snapshot)
+        let evaluation = try PortableResearcherEvaluation(
+            observedIssues: [.conceptOrInterpretation],
+            note: "The current evaluation from the authoritative Record."
+        )
+        let current = try portableActionRecord(
+            id: runID,
+            snapshot: prepared.snapshot,
+            researcherEvaluation: evaluation
+        )
+        var returnedRecord = current
+        var requestedIDs: [UUID] = []
+        let controller = ResearchActionController()
+        controller.bind(client(
+            actions: [action],
+            prepare: { _ in prepared },
+            reloadRecord: { recordID in
+                requestedIDs.append(recordID)
+                return returnedRecord
+            }
+        ))
+        #expect(controller.begin(
+            target: target,
+            availability: action,
+            selection: nil,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.canPrepare }
+        controller.prepare()
+        await waitUntil { controller.phase == .prepared }
+        controller.receive(records: [original])
+
+        let reloaded = try await controller.reloadResearcherEvaluation()
+        #expect(requestedIDs == [runID])
+        #expect(reloaded.researcherEvaluation?.revision == evaluation.revision)
+        #expect(controller.resultRecord?.researcherEvaluation?.revision
+            == evaluation.revision)
+
+        returnedRecord = try portableActionRecord(
+            id: UUID(),
+            snapshot: prepared.snapshot
+        )
+        await #expect(
+            throws: PortableResearchEvaluationMutationError.recordUnavailable
+        ) {
+            _ = try await controller.reloadResearcherEvaluation()
+        }
+    }
+
     private func client(
         actions: [ResearchActionAvailability],
         candidates: [ResearchActionNoteSnapshot] = [],
         sourceStatus: ResearchSourceAccessStatus = .repairRequired(.missingBinding),
         prepare: @escaping @MainActor (
             ResearchActionExecutionRequest
-        ) async throws -> ResearchActionPreparation = { _ in throw TestFailure.stopAfterCapture }
+        ) async throws -> ResearchActionPreparation = { _ in
+            throw TestFailure.stopAfterCapture
+        },
+        reloadRecord: @escaping @MainActor (UUID) async throws
+            -> PortableResearchRecord = { _ in
+                throw PortableResearchEvaluationMutationError.recordUnavailable
+            }
     ) -> ResearchActionClient {
         ResearchActionClient(
             availableActions: { _ in actions },
@@ -849,6 +910,7 @@ struct ResearchActionControllerTests {
             prepare: { request, _ in try await prepare(request) },
             handoff: { try testHandoff(runID: $0) },
             cancel: { _ in },
+            reloadRecord: reloadRecord,
             openActiveDiscussion: { _ in }
         )
     }
@@ -962,7 +1024,8 @@ struct ResearchActionControllerTests {
     private func portableActionRecord(
         id: UUID,
         snapshot: ResearchActionSnapshot,
-        continuationLineage: ResearchContinuationLineage? = nil
+        continuationLineage: ResearchContinuationLineage? = nil,
+        researcherEvaluation: PortableResearcherEvaluation? = nil
     ) throws -> PortableResearchRecord {
         let target = snapshot.target
         let participant = try PortableResearchNoteRevision(
@@ -986,7 +1049,8 @@ struct ResearchActionControllerTests {
             statements: [],
             fidelityCompletion: .notRequired,
             startedAt: Date(timeIntervalSince1970: 100),
-            finishedAt: Date(timeIntervalSince1970: 100)
+            finishedAt: Date(timeIntervalSince1970: 100),
+            researcherEvaluation: researcherEvaluation
         )
     }
 

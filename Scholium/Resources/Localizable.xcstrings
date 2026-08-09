@@ -9134,6 +9134,26 @@
         }
       }
     },
+    "Discard Draft and Reload" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "丢弃草稿并重新载入"
+          }
+        }
+      }
+    },
+    "Discard This Draft and Reload?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要丢弃此草稿并重新载入吗？"
+          }
+        }
+      }
+    },
     "Discard Unsaved Changes" : {
       "localizations" : {
         "en" : {
@@ -9156,6 +9176,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "是否丢弃未保存的评价草稿？"
+          }
+        }
+      }
+    },
+    "Discards this local draft and loads the current saved evaluation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "丢弃此本地草稿，并载入当前已保存的评价。"
           }
         }
       }
@@ -13785,6 +13815,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载…"
+          }
+        }
+      }
+    },
+    "Loads the current saved evaluation from the authoritative Research Record." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从权威研究记录中载入当前已保存的评价。"
           }
         }
       }
@@ -20100,6 +20140,26 @@
         }
       }
     },
+    "Reload Saved Evaluation…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新载入已保存的评价…"
+          }
+        }
+      }
+    },
+    "Reloading Researcher Evaluation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新载入研究者评价"
+          }
+        }
+      }
+    },
     "Reload from Disk" : {
       "localizations" : {
         "en" : {
@@ -26055,6 +26115,16 @@
         }
       }
     },
+    "The current saved evaluation will replace this unsaved local draft. The finalized Agent result remains unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前已保存的评价将替换此未保存的本地草稿。智能体已定稿的结果保持不变。"
+          }
+        }
+      }
+    },
     "The current source is now %@. Scholium will not overwrite it; inspect or copy the retained candidate instead." : {
       "localizations" : {
         "zh-Hans" : {
@@ -26573,6 +26643,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已保存的评价和已定稿的研究结果都将保持不变。"
+          }
+        }
+      }
+    },
+    "The saved evaluation changed elsewhere. Your local draft is preserved; reload or reconcile it before saving." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存的评价已在其他位置更改。你的本地草稿仍被保留；请重新载入或协调差异后再保存。"
           }
         }
       }
@@ -27384,6 +27464,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此关系为无向关系，因此会同时显示在传入和传出连接中。"
+          }
+        }
+      }
+    },
+    "This removes the one current researcher evaluation and discards this unsaved local draft. The finalized Agent result remains unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会移除当前唯一一份研究者评价，并丢弃此未保存的本地草稿。智能体已定稿的结果保持不变。"
           }
         }
       }

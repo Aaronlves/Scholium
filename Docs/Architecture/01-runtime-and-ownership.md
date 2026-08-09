@@ -296,11 +296,16 @@ AppKit commits to closing the exact native window. Close preparation only
 flushes content and finalizes recoverable presentation; if another window
 cancels application termination, every still-open window retains its flush
 ownership for the next attempt. `ResearchActionController` owns the exact
-window's transient write-set subset sheet, unsaved evaluation draft, and the
-read-only projection of direct Continue Research children beneath the current
-parent Action. Those values are keyed to one Run and discarded or retained
-according to their explicit close contracts; it owns no durable
-authorization, continuation, Record, or evaluation.
+window's transient write-set subset sheet and the read-only projection of
+direct Continue Research children beneath the current parent Action. The shared
+`ResearcherEvaluationView` owns the field draft for the exact rendered Record;
+`ResearchActionPanelView` and `ResearchRecordEvaluationSheet` independently own
+their route's dirty-state and operation-lifetime aggregation plus discard
+confirmation. Explicit and implicit dismissal remain blocked until a save,
+clear, or authoritative reload resolves. Those transient values are keyed to
+one Run or Record and discarded or retained according to their explicit close
+contracts; none owns durable authorization, continuation, Record, or Evaluation
+state.
 `WindowSearchController` owns Search/temporary Find execution and
 cancellation, provider-aware exact result-freshness validation, generation or
 Record-manifest reruns, and serialized Saved Search loading and persistence. It

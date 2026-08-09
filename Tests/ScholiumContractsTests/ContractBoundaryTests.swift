@@ -101,6 +101,10 @@ struct ContractBoundaryTests {
             operation: "research completion",
             reason: "index unavailable"
         )
+        let uncertainError = ScholiumApplicationError.operationCommitUncertain(
+            operation: "Researcher Evaluation save",
+            reason: "replacement durability unavailable"
+        )
 
         #expect(outcome.committedValue == revision)
         #expect(outcome.derivedRefreshWarning == "index unavailable")
@@ -108,7 +112,12 @@ struct ContractBoundaryTests {
         #expect(outcome.cleanupWarnings.map(\.message) == ["old source copy pending"])
         #expect(researchError.durableMutationWasCommitted)
         #expect(researchError.mustNotRetryMutation)
+        #expect(researchError.mutationRequiresReconciliation)
         #expect(researchError.refreshFailureReason == "index unavailable")
+        #expect(!uncertainError.durableMutationWasCommitted)
+        #expect(uncertainError.mustNotRetryMutation)
+        #expect(uncertainError.mutationRequiresReconciliation)
+        #expect(uncertainError.refreshFailureReason == nil)
     }
 
     @Test("Contract capability values remain delivery neutral")

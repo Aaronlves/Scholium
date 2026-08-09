@@ -294,6 +294,25 @@ fingerprint before/after the evaluation-only change. Record deletion removes
 the evaluation and writes the existing minimal machine-local tombstone; no
 other operation can recreate or reparent it.
 
+The shared Action/Record Evaluation surface receives only a safely finalized
+portable Record, keeps its unsaved draft in that route, and disables further
+mutation and route dismissal while a save, clear, or reload is unresolved, or
+while its expected revision is out of date.
+Confirmed reload rereads the exact Record ID through the existing Record use
+case and accepts no differently identified response; it adds no presentation
+cache or Evaluation owner.
+Application maps portable replacement commit uncertainty into the public
+mutation-outcome taxonomy rather than exposing a Core error to the interface.
+An already-committed refresh failure or commit-uncertain replacement is
+nonretryable until that exact-ID reload reconciles the Record; only a
+proven-not-committed failure appears as **Save Failed**.
+The current Action result pipeline publishes no separate pre-finalization
+result projection, so it does not yet instantiate the canonical
+pre-finalization local-draft state. Likewise, a workspace refresh that removes
+a Record removes the current presentation subtree; the store refuses any later
+write to that missing identity, but no window-level owner presently preserves
+the displaced local draft.
+
 `PortableResearchDiscussion` remains the single active exchange owner.
 Comments retain stable Note/fingerprint and inclusive line range without a
 passage copy. Each attributed researcher/Agent turn updates only the active

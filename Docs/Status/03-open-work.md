@@ -29,6 +29,13 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
+- Implement the canonical pre-finalization return-window Evaluation draft. The
+  current Action route first exposes the form after the safely finalized Record
+  is published, so that earlier local-only state is not reachable.
+- Preserve an open unsaved Evaluation draft when another window permanently
+  deletes its Record. Current store CAS refuses the missing identity and cannot
+  redirect the draft, but snapshot reconciliation removes the presenting view
+  and its window-local draft before an unavailable-state recovery can appear.
 
 ## Editor input and semantics
 

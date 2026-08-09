@@ -707,6 +707,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case vaultNotInWorkspace(UUID)
     case manifestIdentityMismatch(expected: UUID, actual: UUID)
     case operationCommittedButRefreshFailed(operation: String, reason: String)
+    case operationCommitUncertain(operation: String, reason: String)
     case noWorkspaceConfigured
     case researchStoreUnavailable(String)
     case runtimeConfigurationUnavailable
@@ -723,9 +724,22 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
         }
     }
 
-    /// A direct retry would repeat an already committed mutation. This
+    /// A direct retry would either repeat an already committed mutation or
+    /// act before a commit-uncertain replacement has been reconciled. This
     /// spelling is intentionally explicit for GUI and CLI error handling.
-    public var mustNotRetryMutation: Bool { durableMutationWasCommitted }
+    public var mustNotRetryMutation: Bool { mutationRequiresReconciliation }
+
+    /// `true` means retry is unsafe until the authoritative owner is reread.
+    /// The first case is committed; the second deliberately makes no claim
+    /// about whether the replacement crossed its durable boundary.
+    public var mutationRequiresReconciliation: Bool {
+        switch self {
+        case .operationCommittedButRefreshFailed, .operationCommitUncertain:
+            true
+        default:
+            false
+        }
+    }
 
     public var refreshFailureReason: String? {
         switch self {
@@ -756,6 +770,8 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "The portable Triptych identity is \(actual.uuidString), not \(expected.uuidString)."
         case .operationCommittedButRefreshFailed(let operation, let reason):
             "\(operation) committed successfully, but the workspace snapshot could not be refreshed: \(reason)"
+        case .operationCommitUncertain(let operation, let reason):
+            "Scholium could not prove whether \(operation) committed. Reload the authoritative state before trying another mutation: \(reason)"
         case .noWorkspaceConfigured:
             "No Scholium Triptych is configured."
         case .researchStoreUnavailable(let reason):

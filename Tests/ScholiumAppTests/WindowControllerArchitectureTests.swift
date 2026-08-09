@@ -2346,6 +2346,9 @@ struct WindowControllerArchitectureTests {
         let permissions = try source(
             "Scholium/Views/ResearchActions/ResearchWriteSetExtensionView.swift"
         )
+        let researchOperations = try source(
+            "ScholiumApplication/ResearchWorkspaceOperations.swift"
+        )
 
         for sharedView in [
             "ResearchFinalizedResultView(",
@@ -2371,6 +2374,30 @@ struct WindowControllerArchitectureTests {
         }
         #expect(evaluation.contains("let expectedRevision = baseline.revision"))
         #expect(evaluation.contains("record.finalizedResultFingerprint()"))
+        #expect(evaluation.contains("Reload Saved Evaluation…"))
+        #expect(evaluation.contains("Discard This Draft and Reload?"))
+        #expect(evaluation.contains(
+            ".disabled(status == .saving || isReloading)"
+        ))
+        #expect(actionPanel.contains("reloadResearcherEvaluation()"))
+        #expect(recordBrowser.contains("reload: reload"))
+        for operationLifetimeBoundary in [
+            "operationStateDidChange(true)",
+            "operationStateDidChange(false)",
+        ] {
+            #expect(evaluation.contains(operationLifetimeBoundary))
+        }
+        #expect(actionPanel.contains("|| evaluationOperationInFlight"))
+        #expect(recordBrowser.contains(
+            "hasUnsavedChanges || evaluationOperationInFlight"
+        ))
+        #expect(recordBrowser.contains(".disabled(evaluationOperationInFlight)"))
+        #expect(researchOperations.contains(
+            "case .replacementCommitUncertain(let reason)"
+        ))
+        #expect(researchOperations.contains(
+            "ScholiumApplicationError.operationCommitUncertain("
+        ))
         #expect(evaluation.contains("sourceEvaluationRevision:"))
         #expect(evaluation.contains("Improve Current Method…"))
         #expect(evaluation.contains(

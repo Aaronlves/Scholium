@@ -34,6 +34,7 @@ struct ResearchActionClient {
         UUID,
         DocumentFingerprint
     ) async throws -> PortableResearchRecord
+    let reloadRecord: @MainActor (UUID) async throws -> PortableResearchRecord
     let saveMethodFeedback: @MainActor (
         UUID,
         ResearchMethodFeedbackDraft,
@@ -74,6 +75,10 @@ struct ResearchActionClient {
         ) async throws -> PortableResearchRecord = { _, _, _ in
             throw PortableResearchEvaluationMutationError.recordUnavailable
         },
+        reloadRecord: @escaping @MainActor (UUID) async throws
+            -> PortableResearchRecord = { _ in
+                throw PortableResearchEvaluationMutationError.recordUnavailable
+            },
         saveMethodFeedback: @escaping @MainActor (
             UUID,
             ResearchMethodFeedbackDraft,
@@ -104,6 +109,7 @@ struct ResearchActionClient {
         self.cancel = cancel
         self.saveEvaluation = saveEvaluation
         self.clearEvaluation = clearEvaluation
+        self.reloadRecord = reloadRecord
         self.saveMethodFeedback = saveMethodFeedback
         self.clearMethodFeedback = clearMethodFeedback
         self.startMethodImprovement = startMethodImprovement
@@ -262,6 +268,18 @@ final class ResearchActionController: ObservableObject {
             expectedEvaluationRevision,
             expectedResultFingerprint
         )
+        resultRecord = updated
+        return updated
+    }
+
+    func reloadResearcherEvaluation() async throws -> PortableResearchRecord {
+        guard let client, let record = resultRecord else {
+            throw PortableResearchEvaluationMutationError.recordUnavailable
+        }
+        let updated = try await client.reloadRecord(record.id)
+        guard updated.id == record.id else {
+            throw PortableResearchEvaluationMutationError.recordUnavailable
+        }
         resultRecord = updated
         return updated
     }

@@ -1134,7 +1134,9 @@ struct ResearchRecordV1StoresTests {
         #expect(try first.finalizedResultFingerprint() == resultFingerprint)
         #expect(first.researcherEvaluation?.author == .researcher)
 
-        await #expect(throws: PortableResearchEvaluationMutationError.self) {
+        await #expect(
+            throws: PortableResearchEvaluationMutationError.staleEvaluationRevision
+        ) {
             _ = try await store.setResearcherEvaluation(
                 ResearcherEvaluationDraft(noIssuesObserved: true),
                 recordID: original.id,
@@ -1142,7 +1144,9 @@ struct ResearchRecordV1StoresTests {
                 expectedResultFingerprint: resultFingerprint
             )
         }
-        await #expect(throws: PortableResearchEvaluationMutationError.self) {
+        await #expect(
+            throws: PortableResearchEvaluationMutationError.finalizedResultChanged
+        ) {
             _ = try await store.clearResearcherEvaluation(
                 recordID: original.id,
                 expectedEvaluationRevision: firstRevision,
@@ -1157,6 +1161,28 @@ struct ResearchRecordV1StoresTests {
         )
         #expect(cleared.researcherEvaluation == nil)
         #expect(try cleared.finalizedResultFingerprint() == resultFingerprint)
+
+        enum InjectedFailure: Error { case afterRename }
+        await store.setPostCommitFaultForTesting { _ in
+            throw InjectedFailure.afterRename
+        }
+        do {
+            _ = try await store.setResearcherEvaluation(
+                ResearcherEvaluationDraft(noIssuesObserved: true),
+                recordID: original.id,
+                expectedEvaluationRevision: nil,
+                expectedResultFingerprint: resultFingerprint
+            )
+            Issue.record("Expected Evaluation replacement commit uncertainty.")
+        } catch let error as ResearchRecordStoreV1Error {
+            guard case .replacementCommitUncertain = error else {
+                Issue.record("Unexpected Evaluation replacement error: \(error)")
+                return
+            }
+        }
+        let reconciled = try await store.record(id: original.id)
+        #expect(reconciled.researcherEvaluation?.noIssuesObserved == true)
+        #expect(try reconciled.finalizedResultFingerprint() == resultFingerprint)
     }
 
     @Test("Method feedback is one explicit CAS comment and never a second Evaluation store")

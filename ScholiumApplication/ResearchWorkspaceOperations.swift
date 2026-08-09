@@ -681,13 +681,21 @@ extension WorkspaceHandle {
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         try requireActive()
-        let updated = try await services.portableResearchRecordStore
-            .setResearcherEvaluation(
-                draft,
-                recordID: recordID,
-                expectedEvaluationRevision: expectedEvaluationRevision,
-                expectedResultFingerprint: expectedResultFingerprint
+        let updated: PortableResearchRecord
+        do {
+            updated = try await services.portableResearchRecordStore
+                .setResearcherEvaluation(
+                    draft,
+                    recordID: recordID,
+                    expectedEvaluationRevision: expectedEvaluationRevision,
+                    expectedResultFingerprint: expectedResultFingerprint
+                )
+        } catch {
+            throw researcherEvaluationMutationError(
+                error,
+                operation: "the Researcher Evaluation save"
             )
+        }
         try await refreshAfterResearchCommit("The Researcher Evaluation")
         return updated
     }
@@ -698,12 +706,20 @@ extension WorkspaceHandle {
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         try requireActive()
-        let updated = try await services.portableResearchRecordStore
-            .clearResearcherEvaluation(
-                recordID: recordID,
-                expectedEvaluationRevision: expectedEvaluationRevision,
-                expectedResultFingerprint: expectedResultFingerprint
+        let updated: PortableResearchRecord
+        do {
+            updated = try await services.portableResearchRecordStore
+                .clearResearcherEvaluation(
+                    recordID: recordID,
+                    expectedEvaluationRevision: expectedEvaluationRevision,
+                    expectedResultFingerprint: expectedResultFingerprint
+                )
+        } catch {
+            throw researcherEvaluationMutationError(
+                error,
+                operation: "the Researcher Evaluation clear"
             )
+        }
         try await refreshAfterResearchCommit("The Researcher Evaluation clear")
         return updated
     }
@@ -1271,6 +1287,26 @@ extension WorkspaceHandle {
             operation,
             publication: .researchRecords
         )
+    }
+
+    private func researcherEvaluationMutationError(
+        _ error: Error,
+        operation: String
+    ) -> Error {
+        guard let storeError = error as? ResearchRecordStoreV1Error else {
+            return error
+        }
+        switch storeError {
+        case .replacementCommitUncertain(let reason):
+            return ScholiumApplicationError.operationCommitUncertain(
+                operation: operation,
+                reason: reason
+            )
+        case .recordNotFound, .recordPermanentlyDeleted:
+            return PortableResearchEvaluationMutationError.recordUnavailable
+        default:
+            return error
+        }
     }
 
     private func repositoriesBySlot() -> [WorkspaceVaultSlot: VaultRepository] {

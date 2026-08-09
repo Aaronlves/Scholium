@@ -126,12 +126,15 @@ struct ResearcherEvaluationView: View {
         UUID,
         DocumentFingerprint
     ) async throws -> PortableResearchRecord
+    typealias Reload = @MainActor () async throws -> PortableResearchRecord
 
     let record: PortableResearchRecord
     let save: Save
     let clear: Clear
+    let reload: Reload
     let didUpdateRecord: (PortableResearchRecord) -> Void
     let draftStateDidChange: (Bool) -> Void
+    let operationStateDidChange: (Bool) -> Void
     let showsIntroduction: Bool
 
     @State private var issues: Set<PortableResearchObservedIssue>
@@ -139,23 +142,29 @@ struct ResearcherEvaluationView: View {
     @State private var valuableDiscovery: Bool
     @State private var note: String
     @State private var baseline: EvaluationSnapshot
-    @State private var status: SaveStatus
+    @State private var status: ResearchFormSaveStatus
     @State private var statusMessage: String?
     @State private var confirmsClear = false
+    @State private var confirmsReload = false
+    @State private var isReloading = false
 
     init(
         record: PortableResearchRecord,
         save: @escaping Save,
         clear: @escaping Clear,
+        reload: @escaping Reload,
         didUpdateRecord: @escaping (PortableResearchRecord) -> Void = { _ in },
         draftStateDidChange: @escaping (Bool) -> Void = { _ in },
+        operationStateDidChange: @escaping (Bool) -> Void = { _ in },
         showsIntroduction: Bool = true
     ) {
         self.record = record
         self.save = save
         self.clear = clear
+        self.reload = reload
         self.didUpdateRecord = didUpdateRecord
         self.draftStateDidChange = draftStateDidChange
+        self.operationStateDidChange = operationStateDidChange
         self.showsIntroduction = showsIntroduction
         let snapshot = EvaluationSnapshot(record.researcherEvaluation)
         _issues = State(initialValue: snapshot.issues)
@@ -209,6 +218,7 @@ struct ResearcherEvaluationView: View {
                     .toggleStyle(.checkbox)
                     .frame(minHeight: 20)
             }
+            .disabled(status == .saving || isReloading)
 
             VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
                 Text("Evaluation Note")
@@ -231,6 +241,7 @@ struct ResearcherEvaluationView: View {
                     .font(ScholiumTypography.interface(.compact))
                     .scholiumForeground(.secondaryText)
             }
+            .disabled(status == .saving || isReloading)
 
             if let statusMessage {
                 Text(statusMessage)
@@ -245,35 +256,70 @@ struct ResearcherEvaluationView: View {
             }
 
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                if status == .outOfDate {
+                    if isDirty {
+                        Button("Reload Saved Evaluation…") {
+                            confirmsReload = true
+                        }
+                        .disabled(isReloading)
+                        .accessibilityHint(
+                            "Discards this local draft and loads the current saved evaluation."
+                        )
+                    } else {
+                        Button("Reload Saved Evaluation…") {
+                            reloadCurrentEvaluation()
+                        }
+                        .disabled(isReloading)
+                        .accessibilityHint(
+                            "Loads the current saved evaluation from the authoritative Research Record."
+                        )
+                    }
+                }
                 if baseline.revision != nil {
                     Button("Clear Saved Evaluation…") { confirmsClear = true }
-                        .disabled(status == .saving)
+                        .disabled(
+                            !status.permitsEvaluationMutation || isReloading
+                        )
                 }
                 Spacer()
                 if status == .saving {
                     ProgressView().controlSize(.small)
                         .accessibilityLabel("Saving Researcher Evaluation")
                 }
+                if isReloading {
+                    ProgressView().controlSize(.small)
+                        .accessibilityLabel("Reloading Researcher Evaluation")
+                }
                 Button("Save Evaluation") { saveDraft() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!canSave || status == .saving)
+                    .disabled(
+                        !canSave || !status.permitsEvaluationMutation || isReloading
+                    )
                     .accessibilityIdentifier("scholium.researchEvaluation.save")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: draftSnapshot) { _, newValue in
             let dirty = newValue != baseline
-            if dirty && status != .saving { status = .unsavedDraft }
-            if !dirty && status == .unsavedDraft { status = .saved }
+            let nextStatus = status.afterEvaluationDraftChange(
+                isDirty: dirty,
+                hasSavedEvaluation: baseline.revision != nil
+            )
+            if nextStatus != status {
+                status = nextStatus
+                statusMessage = nil
+            }
             draftStateDidChange(dirty)
         }
         .onChange(of: record.researcherEvaluation?.revision) { _, revision in
             guard revision != baseline.revision else { return }
             if isDirty {
                 status = .outOfDate
-                statusMessage = "The saved evaluation changed elsewhere. Your local draft is preserved; reload or reconcile it before saving."
+                statusMessage = String(localized:
+                    "The saved evaluation changed elsewhere. Your local draft is preserved; reload or reconcile it before saving."
+                )
             } else {
-                install(record.researcherEvaluation, status: .saved)
+                installCurrentRecordEvaluation()
             }
         }
         .onDisappear { draftStateDidChange(isDirty) }
@@ -281,7 +327,23 @@ struct ResearcherEvaluationView: View {
             Button("Cancel", role: .cancel) {}
             Button("Clear Evaluation", role: .destructive) { clearSavedEvaluation() }
         } message: {
-            Text("This removes the one current researcher evaluation. The finalized Agent result remains unchanged.")
+            if isDirty {
+                Text("This removes the one current researcher evaluation and discards this unsaved local draft. The finalized Agent result remains unchanged.")
+            } else {
+                Text("This removes the one current researcher evaluation. The finalized Agent result remains unchanged.")
+            }
+        }
+        .confirmationDialog(
+            "Discard This Draft and Reload?",
+            isPresented: $confirmsReload,
+            titleVisibility: .visible
+        ) {
+            Button("Keep Editing", role: .cancel) {}
+            Button("Discard Draft and Reload", role: .destructive) {
+                reloadCurrentEvaluation()
+            }
+        } message: {
+            Text("The current saved evaluation will replace this unsaved local draft. The finalized Agent result remains unchanged.")
         }
     }
 
@@ -328,6 +390,7 @@ struct ResearcherEvaluationView: View {
     }
 
     private func saveDraft() {
+        guard status.permitsEvaluationMutation, !isReloading else { return }
         let draft: ResearcherEvaluationDraft
         let resultFingerprint: DocumentFingerprint
         do {
@@ -347,8 +410,10 @@ struct ResearcherEvaluationView: View {
         }
         status = .saving
         statusMessage = nil
+        operationStateDidChange(true)
         let expectedRevision = baseline.revision
         Task { @MainActor in
+            defer { operationStateDidChange(false) }
             do {
                 let updated = try await save(
                     draft,
@@ -357,20 +422,16 @@ struct ResearcherEvaluationView: View {
                 )
                 install(updated.researcherEvaluation, status: .saved)
                 didUpdateRecord(updated)
-            } catch let error as PortableResearchEvaluationMutationError {
-                status = error == .staleEvaluationRevision
-                    || error == .finalizedResultChanged ? .outOfDate : .saveFailed
-                statusMessage = error.localizedDescription
-                draftStateDidChange(true)
             } catch {
-                status = .saveFailed
+                status = .afterEvaluationMutationFailure(error)
                 statusMessage = error.localizedDescription
-                draftStateDidChange(true)
+                draftStateDidChange(isDirty)
             }
         }
     }
 
     private func clearSavedEvaluation() {
+        guard status.permitsEvaluationMutation, !isReloading else { return }
         guard let revision = baseline.revision else { return }
         let resultFingerprint: DocumentFingerprint
         do { resultFingerprint = try record.finalizedResultFingerprint() }
@@ -381,25 +442,24 @@ struct ResearcherEvaluationView: View {
         }
         status = .saving
         statusMessage = nil
+        operationStateDidChange(true)
         Task { @MainActor in
+            defer { operationStateDidChange(false) }
             do {
                 let updated = try await clear(revision, resultFingerprint)
-                install(nil, status: .saved)
+                install(nil, status: .clean)
                 didUpdateRecord(updated)
-            } catch let error as PortableResearchEvaluationMutationError {
-                status = error == .staleEvaluationRevision
-                    || error == .finalizedResultChanged ? .outOfDate : .saveFailed
-                statusMessage = error.localizedDescription
             } catch {
-                status = .saveFailed
+                status = .afterEvaluationMutationFailure(error)
                 statusMessage = error.localizedDescription
+                draftStateDidChange(isDirty)
             }
         }
     }
 
     private func install(
         _ evaluation: PortableResearcherEvaluation?,
-        status: SaveStatus
+        status: ResearchFormSaveStatus
     ) {
         let snapshot = EvaluationSnapshot(evaluation)
         baseline = snapshot
@@ -410,6 +470,38 @@ struct ResearcherEvaluationView: View {
         self.status = status
         statusMessage = nil
         draftStateDidChange(false)
+    }
+
+    private func installCurrentRecordEvaluation() {
+        install(
+            record.researcherEvaluation,
+            status: record.researcherEvaluation == nil ? .clean : .saved
+        )
+    }
+
+    private func reloadCurrentEvaluation() {
+        guard status == .outOfDate, !isReloading else { return }
+        isReloading = true
+        statusMessage = nil
+        operationStateDidChange(true)
+        Task { @MainActor in
+            defer {
+                isReloading = false
+                operationStateDidChange(false)
+            }
+            do {
+                let updated = try await reload()
+                install(
+                    updated.researcherEvaluation,
+                    status: updated.researcherEvaluation == nil ? .clean : .saved
+                )
+                didUpdateRecord(updated)
+            } catch {
+                status = .outOfDate
+                statusMessage = error.localizedDescription
+                draftStateDidChange(true)
+            }
+        }
     }
 
     private func issueTitle(_ issue: PortableResearchObservedIssue) -> String {
@@ -459,13 +551,41 @@ private struct EvaluationSnapshot: Equatable {
     }
 }
 
-private enum SaveStatus: Equatable {
+enum ResearchFormSaveStatus: Equatable {
     case clean
     case unsavedDraft
     case saving
     case saved
     case outOfDate
     case saveFailed
+
+    static func afterEvaluationMutationFailure(_ error: Error) -> Self {
+        if error is PortableResearchEvaluationMutationError {
+            return .outOfDate
+        }
+        if let applicationError = error as? ScholiumApplicationError,
+           applicationError.mutationRequiresReconciliation {
+            return .outOfDate
+        }
+        return .saveFailed
+    }
+
+    func afterEvaluationDraftChange(
+        isDirty: Bool,
+        hasSavedEvaluation: Bool
+    ) -> Self {
+        switch self {
+        case .saving, .outOfDate:
+            self
+        case .clean, .unsavedDraft, .saved, .saveFailed:
+            if isDirty { .unsavedDraft }
+            else { hasSavedEvaluation ? .saved : .clean }
+        }
+    }
+
+    var permitsEvaluationMutation: Bool {
+        self != .saving && self != .outOfDate
+    }
 
     var title: String {
         switch self {
@@ -520,7 +640,7 @@ struct ResearchMethodFeedbackView: View {
     @State private var isEditing = false
     @State private var draftText: String
     @State private var baselineRevision: UUID?
-    @State private var status: SaveStatus
+    @State private var status: ResearchFormSaveStatus
     @State private var message: String?
     @State private var confirmsHandled = false
     @State private var isStartingImprovement = false

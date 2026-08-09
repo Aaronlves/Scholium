@@ -331,6 +331,17 @@ private struct ScholiumResearchRecordsRoot: View {
                                 expectedResultFingerprint: resultFingerprint
                             )
                     },
+                    reloadEvaluation: { recordID in
+                        let records = try await capabilities.research.records
+                            .finishedResearchRecords(noteID: nil)
+                        guard let record = records.first(where: {
+                            $0.id == recordID
+                        }) else {
+                            throw PortableResearchEvaluationMutationError
+                                .recordUnavailable
+                        }
+                        return record
+                    },
                     deletePermanently: { id in
                         try await capabilities.research.records
                             .deleteResearchRecordPermanently(id: id)
@@ -4041,6 +4052,14 @@ final class WindowModel: ObservableObject {
                     expectedEvaluationRevision: expectedEvaluationRevision,
                     expectedResultFingerprint: resultFingerprint
                 )
+            },
+            reloadRecord: { recordID in
+                let records = try await capabilities.research.records
+                    .finishedResearchRecords(noteID: nil)
+                guard let record = records.first(where: { $0.id == recordID }) else {
+                    throw PortableResearchEvaluationMutationError.recordUnavailable
+                }
+                return record
             },
             saveMethodFeedback: {
                 recordID, draft, expectedCommentRevision, resultFingerprint in
