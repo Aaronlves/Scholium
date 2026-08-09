@@ -6,14 +6,15 @@
 
 **Environment:** 2026-08-10, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete repository gate passed on interface baseline `da0ed52`. It
+The latest complete repository gate passed on Agent-inheritance closure
+`ca5742e`. It
 validated the closed documentation manifests and shipped resources; TypeScript
 checking and 185 Web editor tests; reproducible editor, mathematics, and Mermaid
-bundles; 450 Core tests plus 3 Search performance tests; 120 Contracts tests;
-187 Application tests, 9 bridge tests, and 1 serialized architecture
-measurement; 495 App tests; 7 executable Research Action CLI lifecycles; the
+bundles; 453 Core tests plus 3 Search performance tests; 121 Contracts tests;
+191 Application tests, 9 bridge tests, and 1 serialized architecture
+measurement; 499 App tests; 7 executable Research Action CLI lifecycles; the
 sandboxed local bridge probe; symbol/import/residue guards; and Debug and
-Release builds. The Release build completed in 161.97 seconds.
+Release builds. The Release build completed in 162.11 seconds.
 
 This proves deterministic repository conformance for that checkout and toolchain.
 It is not a packaged release, complete UI-suite result, human accessibility
