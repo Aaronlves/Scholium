@@ -1,6 +1,5 @@
-import ScholiumContracts
-import AppKit
 import CoreText
+import Foundation
 import SwiftUI
 
 /// Registers Scholium's editorial typefaces for this process. Alegreya is
@@ -54,50 +53,10 @@ enum ScholiumFontRegistry {
     }
 }
 
-/// Shared native typography helpers for source, code, diff, and revision
-/// surfaces. Review/Edit document typography is owned by
-/// `DocumentAppearanceSettings` and transported to WebKit from that contract.
-enum ScholiumTypography {
-    static let exactSourcePointSize: CGFloat = 14
-    static let codePointSize: CGFloat = 13
-    static let diffPointSize: CGFloat = 13
-    static let revisionIdentityPointSize: CGFloat = 11
-
-    static func exactSource(
-        scale: CGFloat = 1,
-        bold: Bool = false,
-        italic: Bool = false
-    ) -> NSFont {
-        monospaceFont(
-            size: exactSourcePointSize * scale,
-            bold: bold,
-            italic: italic
-        )
-    }
-
-    static func code(scale: CGFloat = 1) -> NSFont {
-        monospaceFont(size: codePointSize * scale)
-    }
-
-    static func monospaceFont(
-        size: CGFloat,
-        bold: Bool = false,
-        italic: Bool = false
-    ) -> NSFont {
-        let name: String
-        switch (bold, italic) {
-        case (false, false): name = "VictorMono-Regular"
-        case (false, true): name = "VictorMono-Italic"
-        case (true, false): name = "VictorMono-Bold"
-        case (true, true): name = "VictorMono-BoldItalic"
-        }
-        return NSFont(name: name, size: size) ?? NSFont.monospacedSystemFont(
-            ofSize: size,
-            weight: bold ? .bold : .regular
-        )
-    }
-
-    static func swiftUIMonospaceFont(
+/// Low-level bundled-family resolution. Product views consume only the
+/// semantic roles exposed by `ScholiumTypography` below.
+private enum ScholiumTypeface {
+    static func exact(
         size: CGFloat,
         relativeTo textStyle: Font.TextStyle,
         bold: Bool = false,
@@ -113,7 +72,7 @@ enum ScholiumTypography {
         return .custom(name, size: size, relativeTo: textStyle)
     }
 
-    static func swiftUIReadingFont(
+    static func scholarly(
         size: CGFloat,
         relativeTo textStyle: Font.TextStyle,
         bold: Bool = false,
@@ -128,94 +87,156 @@ enum ScholiumTypography {
         }
         return .custom(name, size: size, relativeTo: textStyle)
     }
+}
 
-    static func swiftUIDiff(
-        scale: CGFloat = 1,
-        bold: Bool = false,
-        italic: Bool = false
-    ) -> Font {
-        swiftUIMonospaceFont(
-            size: diffPointSize * scale,
-            relativeTo: .body,
-            bold: bold,
-            italic: italic
+/// The sole native typography resolver for Scholium-owned text. Family
+/// communicates content kind; role communicates hierarchy. Feature views do
+/// not publish aliases. Document typography remains owned by
+/// `DocumentAppearanceSettings` and generated CSS.
+enum ScholiumTypography {
+    enum InterfaceRole {
+        case primaryTitle
+        case sectionTitle
+        case rowTitle
+        case body
+        case compact
+        case small
+    }
+
+    enum ScholarlyRole {
+        case title
+        case sectionTitle
+        case body
+        case emphasis
+    }
+
+    enum ExactRole {
+        case body
+        case strong
+        case small
+    }
+
+    enum Emphasis {
+        case medium
+        case strong
+
+        fileprivate var weight: Font.Weight {
+            switch self {
+            case .medium: .medium
+            case .strong: .semibold
+            }
+        }
+    }
+
+    enum Brand {
+        /// The sole editorial typeface exception inside interface identity.
+        static let wordmark = ScholiumTypeface.scholarly(
+            size: 22,
+            relativeTo: .title2,
+            bold: true
         )
     }
 
-    static func swiftUIRevisionIdentity(scale: CGFloat = 1) -> Font {
-        swiftUIMonospaceFont(
-            size: revisionIdentityPointSize * scale,
-            relativeTo: .caption
+    enum Bootstrap {
+        static let wordmark = ScholiumTypeface.scholarly(
+            size: 34,
+            relativeTo: .largeTitle,
+            bold: true
         )
+        static let title = Font.system(size: 26, weight: .semibold)
+        static let statement = Font.system(size: 25, weight: .medium)
+    }
+
+    static func interface(
+        _ role: InterfaceRole,
+        emphasis: Emphasis? = nil,
+        tabularDigits: Bool = false
+    ) -> Font {
+        let size: CGFloat
+        let defaultWeight: Font.Weight
+        switch role {
+        case .primaryTitle:
+            (size, defaultWeight) = (17, .semibold)
+        case .sectionTitle:
+            (size, defaultWeight) = (12, .semibold)
+        case .rowTitle:
+            (size, defaultWeight) = (12, .medium)
+        case .body:
+            (size, defaultWeight) = (12, .regular)
+        case .compact:
+            (size, defaultWeight) = (11, .regular)
+        case .small:
+            (size, defaultWeight) = (10, .regular)
+        }
+        let font = Font.system(size: size, weight: emphasis?.weight ?? defaultWeight)
+        return tabularDigits ? font.monospacedDigit() : font
+    }
+
+    static func scholarly(
+        _ role: ScholarlyRole,
+        tabularDigits: Bool = false
+    ) -> Font {
+        let font: Font
+        switch role {
+        case .title:
+            font = ScholiumTypeface.scholarly(
+                size: 20,
+                relativeTo: .title2,
+                bold: true
+            )
+        case .sectionTitle:
+            font = ScholiumTypeface.scholarly(
+                size: 17,
+                relativeTo: .headline,
+                bold: true
+            )
+        case .body:
+            font = ScholiumTypeface.scholarly(size: 13, relativeTo: .body)
+        case .emphasis:
+            font = ScholiumTypeface.scholarly(size: 13, relativeTo: .body)
+                .weight(.medium)
+        }
+        return tabularDigits ? font.monospacedDigit() : font
+    }
+
+    static func exact(_ role: ExactRole) -> Font {
+        switch role {
+        case .body:
+            ScholiumTypeface.exact(size: 12, relativeTo: .body)
+        case .strong:
+            ScholiumTypeface.exact(size: 12, relativeTo: .body, bold: true)
+        case .small:
+            ScholiumTypeface.exact(size: 10, relativeTo: .caption)
+        }
     }
 }
 
-/// Scholarly Editorialism pairs an Alegreya publication hierarchy with system
-/// typography for operational chrome, metadata, and native controls.
-enum ScholiumInterfaceTypography {
-    /// Scholium's wordmark is the sole editorial exception inside window
-    /// chrome. Commands and all other operational labels remain system sans.
-    static let identity = ScholiumTypography.swiftUIReadingFont(
-        size: 22,
-        relativeTo: .title2,
-        bold: true
-    )
-    static let documentTitle = ScholiumTypography.swiftUIReadingFont(
-        size: 22.5,
-        relativeTo: .title,
-        bold: false
-    )
-    /// One scan rhythm for both folders and notes. Hierarchy is expressed by
-    /// weight, color, indentation, and symbols rather than a size change.
-    static let libraryHierarchy = Font.callout
-    /// Library Folders and unselected Notes share a regular scan weight.
-    /// Selection alone adds semibold emphasis without changing point size.
-    static let libraryFolderTitle = libraryHierarchy
-    static let libraryNoteTitle = libraryHierarchy
-    static let librarySelectedNoteTitle = libraryNoteTitle.weight(.semibold)
-    /// The compact native-toolbar identity is positional metadata. The
-    /// scrolling document title remains the primary editorial identity.
-    static let workspaceToolbarIdentity = Font.body
-    static let noteTitle = Font.body
-    static let apparatusTitle = ScholiumTypography.swiftUIReadingFont(
-        size: 17,
-        relativeTo: .headline,
-        bold: true
-    )
-    static let sectionTitle = Font.headline.weight(.medium)
-    static let rowTitle = libraryHierarchy.weight(.medium)
-    static let metadata = Font.caption.weight(.medium)
-    static let editorialLabel = Font.caption2.weight(.semibold)
-    /// The LocationPicker is a quiet peer of the commands in its stable
-    /// Library header. Interaction promotes its ink without changing weight.
-    static let libraryLocation = Font.system(size: 13, weight: .regular)
-    /// The Triptych Workspace Navigator is compact top-level navigation.
-    /// Selection changes weight without borrowing Inspector typography or
-    /// geometry.
-    static let libraryWorkspace = Font.system(size: 12, weight: .regular)
-    static let libraryWorkspaceSelected = Font.system(size: 12, weight: .semibold)
+/// Symbol scale is a component concern rather than a text-family role.
+enum ScholiumSymbolStyle {
+    case prominent
+    case emphasizedProminent
+    case large
+    case relationship
 
-    /// Inspector chrome follows the compact type scale frozen in the HTML
-    /// study. Selection changes weight, not size, so switching modes does not
-    /// disturb the three-column grid.
-    static let apparatusMode = Font.system(size: 11, weight: .medium)
-    static let apparatusModeSelected = Font.system(size: 11, weight: .semibold)
+    fileprivate var font: Font {
+        switch self {
+        case .prominent:
+            .system(size: 15, weight: .regular)
+        case .emphasizedProminent:
+            .system(size: 15, weight: .semibold)
+        case .large:
+            .system(size: 17, weight: .regular)
+        case .relationship:
+            .system(
+                size: ScholiumMetrics.Apparatus.relationGlyphSize,
+                weight: .regular
+            )
+        }
+    }
+}
 
-    /// Section headings stay quiet but gain enough weight and tracking to
-    /// remain distinct from their more tightly grouped content.
-    static let apparatusLabel = Font.system(size: 10, weight: .semibold)
-
-    /// Operational labels remain system sans-serif. Explanations, values, and
-    /// researcher-authored text use the editorial serif role below.
-    static let apparatusBody = Font.system(size: 11, weight: .regular)
-    static let apparatusMetadata = Font.system(size: 10, weight: .regular)
-    static let apparatusActionTitle = Font.system(size: 12, weight: .semibold)
-    /// Connect is operational interface language, even when its rows name
-    /// research Notes. It deliberately does not use the editorial serif role.
-    static let apparatusConnectionHeading = Font.system(size: 11, weight: .semibold)
-    static let apparatusConnectionContent = Font.system(size: 12, weight: .regular)
-    static let apparatusResearchContent = ScholiumTypography.swiftUIReadingFont(
-        size: 12,
-        relativeTo: .body
-    )
+extension Image {
+    func scholiumSymbolStyle(_ style: ScholiumSymbolStyle) -> some View {
+        font(style.font)
+    }
 }

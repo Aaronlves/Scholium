@@ -485,9 +485,9 @@ private struct DiscussionPanel: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Discussion")
-                        .font(.title3.weight(.semibold))
+                        .font(ScholiumTypography.interface(.primaryTitle))
                     Text(noteTitle)
-                        .font(.callout)
+                        .font(ScholiumTypography.interface(.body))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -517,7 +517,7 @@ private struct DiscussionPanel: View {
 
                     if let errorMessage {
                         Text(errorMessage)
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .foregroundStyle(ScholiumColorRole.attention.color)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("scholium.discussion.error")
@@ -550,7 +550,7 @@ private struct DiscussionPanel: View {
             agentHandoffControls
             VStack(alignment: .leading, spacing: 8) {
                 Text("AGENT REPLY")
-                    .font(ScholiumInterfaceTypography.apparatusLabel)
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .tracking(0.7)
                     .foregroundStyle(.secondary)
                 TextField("Agent name", text: $agentName)
@@ -558,7 +558,7 @@ private struct DiscussionPanel: View {
                     .accessibilityLabel("Agent name")
                     .accessibilityIdentifier("scholium.discussion.agentName")
                 TextEditor(text: $agentReply)
-                    .font(.body)
+                    .font(ScholiumTypography.scholarly(.body))
                     .frame(minHeight: 110)
                     .overlay {
                         RoundedRectangle(cornerRadius: 5)
@@ -587,7 +587,7 @@ private struct DiscussionPanel: View {
             )
             HStack {
                 Text("Review the reply. Finish creates one Research Record; Follow Up keeps this Discussion active.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 16)
@@ -603,13 +603,13 @@ private struct DiscussionPanel: View {
     private func transcript(_ discussion: PortableResearchDiscussion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("EXCHANGE")
-                .font(ScholiumInterfaceTypography.apparatusLabel)
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
             ForEach(discussion.statements) { statement in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(statement.attribution)
-                        .font(.caption.weight(.semibold))
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .foregroundStyle(.secondary)
                     if let reference = statement.lineReference {
                         Text(
@@ -617,7 +617,7 @@ private struct DiscussionPanel: View {
                                 ? "COMMENT AT LINE \(reference.line)"
                                 : "COMMENT AT LINES \(reference.line)–\(reference.endLine)"
                         )
-                        .font(ScholiumInterfaceTypography.apparatusLabel)
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .tracking(0.6)
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 4)
@@ -628,7 +628,7 @@ private struct DiscussionPanel: View {
                                     ? "PASSAGE AT LINE \(passage.line)"
                                     : "PASSAGE AT LINES \(passage.line)–\(passage.endLine)"
                             )
-                            .font(ScholiumInterfaceTypography.apparatusLabel)
+                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             .tracking(0.6)
                             .foregroundStyle(.secondary)
                             if passage.state == .needsReattachment {
@@ -636,7 +636,7 @@ private struct DiscussionPanel: View {
                                     "This passage no longer has one reliable location.",
                                     systemImage: "exclamationmark.triangle"
                                 )
-                                .font(.caption)
+                                .font(ScholiumTypography.interface(.small))
                                 .foregroundStyle(ScholiumColorRole.attention.color)
                                 .accessibilityIdentifier(
                                     "scholium.discussion.statementPassage.needsReattachment"
@@ -646,7 +646,7 @@ private struct DiscussionPanel: View {
                         .padding(.vertical, 4)
                     }
                     Text(statement.text)
-                        .font(.body)
+                        .font(ScholiumTypography.scholarly(.body))
                         .lineSpacing(2)
                         .textSelection(.enabled)
                 }
@@ -665,11 +665,11 @@ private struct DiscussionPanel: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(ScholiumInterfaceTypography.apparatusLabel)
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
             TextEditor(text: $researcherMessage)
-                .font(.body)
+                .font(ScholiumTypography.scholarly(.body))
                 .frame(minHeight: 100)
                 .overlay {
                     RoundedRectangle(cornerRadius: 5)
@@ -696,7 +696,7 @@ private struct DiscussionPanel: View {
             .disabled(isWorking || discussion == nil)
             .accessibilityIdentifier("scholium.discussion.copyHandoff")
             Text("The Discussion is waiting for an Agent reply. Copying a new handoff replaces its prior pairing; closing this sheet leaves it active.")
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1759,9 +1759,9 @@ private struct ConflictComparisonSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Compare Changes")
-                        .font(.title2.weight(.semibold))
+                        .font(ScholiumTypography.interface(.primaryTitle))
                     Text(conflict.relativePath)
-                        .font(ScholiumTypography.swiftUIRevisionIdentity())
+                        .font(ScholiumTypography.exact(.small))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -1797,12 +1797,12 @@ private struct ConflictComparisonSheet: View {
                                 spacing: DiffLayout.columnSpacing
                             ) {
                                 Text(marker(for: line.kind))
-                                    .font(ScholiumTypography.swiftUIDiff(bold: true))
+                                    .font(ScholiumTypography.exact(.strong))
                                     .scholiumForeground(colorRole(for: line.kind))
                                     .frame(width: DiffLayout.markerWidth)
                                     .accessibilityLabel(label(for: line.kind))
                                 Text(line.text.isEmpty ? " " : line.text)
-                                    .font(ScholiumTypography.swiftUIDiff())
+                                    .font(ScholiumTypography.exact(.body))
                                     .frame(
                                         width: diffTextWidth(in: viewport.size.width),
                                         alignment: .leading
@@ -1850,12 +1850,12 @@ private struct ConflictComparisonSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.headline)
+                .font(ScholiumTypography.interface(.sectionTitle))
             Text(short(fingerprint))
-                .font(ScholiumTypography.swiftUIRevisionIdentity())
+                .font(ScholiumTypography.exact(.small))
                 .textSelection(.enabled)
             Text(detail)
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
@@ -1956,9 +1956,9 @@ private struct CritiqueFindingDispositionRow: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(finding.title)
-                        .font(.callout.weight(.semibold))
+                        .font(ScholiumTypography.interface(.sectionTitle))
                     Text(finding.judgment.rawValue)
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
@@ -1983,14 +1983,14 @@ private struct CritiqueFindingDispositionRow: View {
                 )
                 .lineLimit(1...3)
                 Text("The Work still matches the Critique target revision, so Accept requires this explanation.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(ScholiumColorRole.attention.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1998,7 +1998,7 @@ private struct CritiqueFindingDispositionRow: View {
             HStack {
                 if let existing {
                     Text("Saved as \(existing.decision.interfaceTitle)")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)

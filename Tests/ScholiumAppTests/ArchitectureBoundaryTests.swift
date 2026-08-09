@@ -18,7 +18,8 @@ struct ArchitectureBoundaryTests {
         #expect(package.contains(#".library(name: "ScholiumContracts""#))
         #expect(!package.contains(#".library(name: "ScholiumCore""#))
         #expect(compact.contains(#"name:"ScholiumApplication",dependencies:["ScholiumContracts","ScholiumCore"]"#))
-        #expect(compact.contains(#"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication"]"#))
+        #expect(compact.contains(#"name:"ScholiumResearchRecordsFeature",dependencies:["ScholiumContracts"]"#))
+        #expect(compact.contains(#"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication","ScholiumResearchRecordsFeature",]"#))
         #expect(compact.contains(#"name:"ScholiumCLI",dependencies:["ScholiumContracts","ScholiumApplication"]"#))
     }
 
@@ -737,10 +738,12 @@ struct ArchitectureBoundaryTests {
         let paths = [
             "ScholiumContracts/ResearchLiteratureRecommendationContracts.swift",
             "ScholiumContracts/PortableResearchRecordContracts.swift",
-            "Scholium/Features/ResearchRecord/ResearchRecordBrowserModel.swift",
-            "Scholium/Features/ResearchRecord/ResearchRecordsWindowCoordinator.swift",
+            "ScholiumResearchRecordsFeature/ResearchRecordBrowserModel.swift",
+            "ScholiumResearchRecordsFeature/ResearchRecordsRoute.swift",
+            "Scholium/App/Window/ResearchRecordsWindowCoordinator.swift",
             "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift",
             "Scholium/App/ScholiumApp.swift",
+            "Package.swift",
         ]
         let source = try paths.map {
             try String(
@@ -753,6 +756,7 @@ struct ArchitectureBoundaryTests {
         #expect(source.contains("literatureRecommendations"))
         #expect(source.contains("ResearchLiteratureRecommendationDerivedIndex"))
         #expect(source.contains("ResearchRecordsWindowRequest"))
+        #expect(source.contains("name: \"ScholiumResearchRecordsFeature\""))
         #expect(source.contains("triptychID"))
         #expect(source.contains("for: UUID.self"))
         #expect(source.contains("WorkspaceStore"))
@@ -761,7 +765,7 @@ struct ArchitectureBoundaryTests {
         #expect(source.contains("if let title = recommendation.title,"))
         #expect(source.contains("title != recommendation.rawCitation"))
         #expect(source.contains(".toolbar(removing: .sidebarToggle)"))
-        #expect(!source.contains("struct ResearchRecommendation"))
+        #expect(!source.contains("struct ResearchRecommendation {"))
     }
 
     private func swiftFiles(beneath root: URL) throws -> [URL] {

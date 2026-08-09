@@ -43,6 +43,12 @@ struct ResearchActionPanelView: View {
                     if let result = controller.resultRecord {
                         ScholiumStructuralRule()
                         ResearchFinalizedResultView(record: result)
+                        if !controller.continuationRecords.isEmpty {
+                            ScholiumStructuralRule()
+                            ResearchActionContinuationRecordsView(
+                                records: controller.continuationRecords
+                            )
+                        }
                         ScholiumStructuralRule()
                         ResearcherEvaluationView(
                             record: result,
@@ -94,7 +100,7 @@ struct ResearchActionPanelView: View {
             ScholiumStructuralRule()
             if let handoffErrorMessage {
                 Label(handoffErrorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.destructive)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
@@ -163,23 +169,23 @@ struct ResearchActionPanelView: View {
                 systemName: controller.activeAvailability?.definition.interfaceSymbol
                     ?? "sparkles"
             )
-            .font(.title3.weight(.semibold))
+            .scholiumSymbolStyle(.emphasizedProminent)
             .foregroundStyle(ScholiumColorRole.secondaryText.color)
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: actionTitle)
-                    .font(.title2.weight(.semibold))
+                    .font(ScholiumTypography.interface(.primaryTitle))
                     .accessibilityAddTraits(.isHeader)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("Target")
-                        .fontWeight(.semibold)
+                        .font(ScholiumTypography.interface(.sectionTitle))
                     Text(verbatim: targetTitle)
                 }
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 .accessibilityElement(children: .combine)
                 Text(actionEffectLabel)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -239,10 +245,10 @@ struct ResearchActionPanelView: View {
     private func academicField(_ field: ResearchAcademicFieldDefinition) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(verbatim: field.label).font(.headline)
+                Text(verbatim: field.label).font(ScholiumTypography.interface(.sectionTitle))
                 if field.requirement != .required {
                     Text("Optional")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(ScholiumColorRole.mutedText.color)
                 }
             }
@@ -252,7 +258,7 @@ struct ResearchActionPanelView: View {
             )
             if let helpText = field.helpText {
                 Text(verbatim: helpText)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -272,6 +278,7 @@ struct ResearchActionPanelView: View {
             get: { controller.textValues[field.fieldID.rawValue] ?? "" },
             set: { controller.setText($0, field: field) }
         ))
+        .font(ScholiumTypography.scholarly(.body))
         .frame(minHeight: 92, maxHeight: 150)
         .scrollContentBackground(.hidden)
         .padding(6)
@@ -358,12 +365,12 @@ struct ResearchActionPanelView: View {
             } icon: {
                 Image(systemName: "doc.text.magnifyingglass")
             }
-            .font(.callout)
+            .font(ScholiumTypography.interface(.body))
             .accessibilityIdentifier("scholium.researchAction.source.available")
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Source access needs attention.", systemImage: "exclamationmark.triangle")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.attention)
                 Button(controller.isBindingSource ? "Binding Source…" : "Choose Source…") {
                     guard let url = context.chooseLocalSource() else { return }
@@ -372,7 +379,7 @@ struct ResearchActionPanelView: View {
                 .disabled(controller.isBindingSource)
                 .accessibilityIdentifier("scholium.researchAction.source.choose")
                 Text("Scholium retains permission and the fingerprint locally; the Research Record stores neither the path nor source bytes.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -391,11 +398,11 @@ struct ResearchActionPanelView: View {
                     .accessibilityIdentifier("scholium.researchAction.notes.loading")
             } else if controller.materialCandidates.isEmpty {
                 Text("No eligible notes are available.")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
             } else if visibleFocalNoteCandidates.isEmpty {
                 Text("Enter a title or path to find an eligible note.")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
             } else {
                 ForEach(visibleFocalNoteCandidates, id: \.noteID) { candidate in
@@ -432,9 +439,9 @@ struct ResearchActionPanelView: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("No passage selected", systemImage: "selection.pin.in.out")
-                        .font(.callout)
+                        .font(ScholiumTypography.interface(.body))
                     Text("Select a passage in the document, then reopen this Action.")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 }
             }
@@ -465,17 +472,17 @@ struct ResearchActionPanelView: View {
         VStack(alignment: .leading, spacing: 4) {
             selectorHeader(title, required: false)
             Text(detail)
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
         }
     }
 
     private func selectorHeader(_ title: String, required: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(LocalizedStringKey(title)).font(.headline)
+            Text(LocalizedStringKey(title)).font(ScholiumTypography.interface(.sectionTitle))
             if !required {
                 Text("Optional")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(ScholiumColorRole.mutedText.color)
             }
         }
@@ -485,7 +492,7 @@ struct ResearchActionPanelView: View {
     private var status: some View {
         if let errorMessage = controller.errorMessage {
             Label(errorMessage, systemImage: "exclamationmark.octagon")
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.destructive)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("scholium.researchAction.error")
@@ -494,15 +501,15 @@ struct ResearchActionPanelView: View {
            controller.resultRecord == nil {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Handoff ready", systemImage: "doc.on.clipboard")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .accessibilityIdentifier("scholium.researchAction.connection")
                 Text("Closing this sheet leaves the Action active.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
                 if let warning = preparation.derivedRefreshWarning {
                     Label(warning, systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.attention)
                 }
                 if let handoff = controller.agentHandoff,
@@ -510,7 +517,7 @@ struct ResearchActionPanelView: View {
                     Divider()
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text("Expires \(handoff.expiresAt, style: .relative).")
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .foregroundStyle(ScholiumColorRole.mutedText.color)
                         Spacer()
                         Button {
@@ -703,6 +710,77 @@ struct ResearchActionPanelView: View {
     private enum PendingHandoff {
         case copy
         case copyNew
+    }
+}
+
+private struct ResearchActionContinuationRecordsView: View {
+    let records: [PortableResearchRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("CONTINUE RESEARCH")
+                    .scholiumApparatusHeadingStyle()
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Text("\(records.count)")
+                    .font(ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true))
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            }
+            Text("The Agent continued this Action; the continuation remains attached here.")
+                .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Label(
+                            actionTitle(record.action?.actionID ?? .analyze),
+                            systemImage: "arrow.turn.down.right"
+                        )
+                        .font(ScholiumTypography.interface(.rowTitle))
+                        Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                        Text(record.finishedAt, format: .dateTime.year().month().day().hour().minute())
+                            .font(ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true))
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    }
+                    Text(record.title.value)
+                        .font(ScholiumTypography.scholarly(.body))
+                        .textSelection(.enabled)
+                    if let summary = summary(for: record) {
+                        Text(summary)
+                            .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .lineLimit(3)
+                            .textSelection(.enabled)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier(
+                    "scholium.researchAction.continuation.\(record.id.uuidString)"
+                )
+                if index + 1 < records.count { ScholiumStructuralRule() }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("scholium.researchAction.continuations")
+    }
+
+    private func summary(for record: PortableResearchRecord) -> String? {
+        if let result = record.academicResults.first(where: { $0.value != nil }),
+           let value = result.value {
+            return switch value {
+            case .freeText(let text): text
+            case .singleChoice(let choice):
+                result.definition.choices.first { $0.value == choice }?.label ?? choice
+            case .multipleChoice(let choices):
+                choices.map { choice in
+                    result.definition.choices.first { $0.value == choice }?.label ?? choice
+                }.joined(separator: ", ")
+            }
+        }
+        return record.statements.last?.text
     }
 }
 

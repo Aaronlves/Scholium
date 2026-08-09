@@ -74,10 +74,9 @@ struct FrontmatterEditorView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Properties")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                        .font(ScholiumTypography.interface(.primaryTitle))
                     Text(note.title ?? note.displayName)
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -112,7 +111,7 @@ struct FrontmatterEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Researcher Properties")
-                        .font(.headline)
+                        .font(ScholiumTypography.interface(.sectionTitle))
 
                     if supportsResearchUnit {
                         researchUnitEditor
@@ -123,7 +122,7 @@ struct FrontmatterEditorView: View {
                             "No other fields are enabled for structured editing in this vault. Change the vault-wide allowlist in Settings, or use Source mode to edit exact YAML.",
                             systemImage: "lock"
                         )
-                        .font(.callout)
+                        .font(ScholiumTypography.interface(.body))
                         .foregroundStyle(.secondary)
                     }
 
@@ -141,7 +140,7 @@ struct FrontmatterEditorView: View {
                                 )
                             }
                         }
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                     }
 
@@ -169,7 +168,7 @@ struct FrontmatterEditorView: View {
                             }
                             .padding(.top, 12)
                         }
-                        .font(.headline)
+                        .font(ScholiumTypography.interface(.sectionTitle))
                     }
                 }
                 .padding(20)
@@ -183,9 +182,9 @@ struct FrontmatterEditorView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .scholiumForeground(.destructive)
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                     Text("\(fieldErrors.count) validation error\(fieldErrors.count == 1 ? "" : "s")")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.destructive)
                     Spacer()
                 }
@@ -264,7 +263,7 @@ struct FrontmatterEditorView: View {
         GroupBox("Research Unit") {
             VStack(alignment: .leading, spacing: 10) {
                 Text(researchUnitHelp)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -273,7 +272,7 @@ struct FrontmatterEditorView: View {
                         "The existing Research Unit is not valid for this note role. Source mode preserves its exact YAML; changing these fields will replace it with a valid declaration.",
                         systemImage: "exclamationmark.triangle"
                     )
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.attention)
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -281,7 +280,7 @@ struct FrontmatterEditorView: View {
                 if note.schemaProfile == .analysis {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Completion")
-                            .font(.callout.weight(.medium))
+                            .font(ScholiumTypography.interface(.rowTitle))
                         TextField("complete, incomplete, or 6/11", text: $researchUnitCompletion)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel("Analysis completion")
@@ -290,7 +289,7 @@ struct FrontmatterEditorView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(note.schemaProfile == .draftProject ? "Research Scope" : "Scope")
-                            .font(.callout.weight(.medium))
+                            .font(ScholiumTypography.interface(.rowTitle))
                         TextField("Describe the boundary of this note's research", text: $researchUnitScope)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel(note.schemaProfile == .draftProject ? "Research Scope" : "Scope")
@@ -300,12 +299,12 @@ struct FrontmatterEditorView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Limitations")
-                        .font(.callout.weight(.medium))
+                        .font(ScholiumTypography.interface(.rowTitle))
                     Text("One material boundary per line.")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                     TextEditor(text: $researchUnitLimitationsText)
-                        .font(.body)
+                        .font(ScholiumTypography.scholarly(.body))
                         .frame(minHeight: 70)
                         .scrollContentBackground(.hidden)
                         .padding(4)
@@ -322,7 +321,7 @@ struct FrontmatterEditorView: View {
 
                 if let error = fieldErrors["research_unit"] {
                     Label(error, systemImage: "exclamationmark.circle.fill")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.destructive)
                 }
             }
@@ -341,11 +340,10 @@ struct FrontmatterEditorView: View {
             // Label
             HStack(spacing: 5) {
                 Text(field.label)
-                    .font(.callout)
-                    .fontWeight(.medium)
+                    .font(ScholiumTypography.interface(.rowTitle))
                 if field.isReadOnly {
                     Text("Read only")
-                        .font(.caption2)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -356,7 +354,7 @@ struct FrontmatterEditorView: View {
             // Description
             if let desc = field.help {
                 Text(desc)
-                    .font(.caption2)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.tertiary)
             }
 
@@ -375,9 +373,9 @@ struct FrontmatterEditorView: View {
             if let error = fieldErrors[field.key] {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.circle.fill")
-                        .font(.caption2)
+                        .font(ScholiumTypography.interface(.small))
                     Text(error)
-                        .font(.caption2)
+                        .font(ScholiumTypography.interface(.small))
                 }
                 .scholiumForeground(.destructive)
             }
@@ -398,10 +396,7 @@ struct FrontmatterEditorView: View {
 
         case .multilineText:
             TextEditor(text: binding)
-                .font(ScholiumTypography.swiftUIMonospaceFont(
-                    size: ScholiumTypography.exactSourcePointSize,
-                    relativeTo: .body
-                ))
+                .font(ScholiumTypography.scholarly(.body))
                 .frame(minHeight: 80)
                 .scrollContentBackground(.hidden)
                 .padding(4)
@@ -428,7 +423,7 @@ struct FrontmatterEditorView: View {
         case .dateField:
             if field.isReadOnly {
                 Text(fieldValues[field.key] ?? "—")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 4)
             } else {
@@ -453,7 +448,7 @@ struct FrontmatterEditorView: View {
                 set: { fieldValues[field.key] = $0 ? "true" : "false" }
             )) {
                 Text(field.label)
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
             }
             .disabled(field.isReadOnly)
 
@@ -493,13 +488,13 @@ struct FrontmatterEditorView: View {
                     ForEach(tags, id: \.self) { tag in
                         HStack(spacing: 3) {
                             Text(tag)
-                                .font(.caption)
+                                .font(ScholiumTypography.interface(.small))
                             Button {
                                 let updated = tags.filter { $0 != tag }
                                 fieldValues[field.key] = updated.joined(separator: "; ")
                             } label: {
                                 Image(systemName: "xmark")
-                                    .font(.system(size: 7, weight: .bold))
+                                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
@@ -539,7 +534,7 @@ struct FrontmatterEditorView: View {
                     addTag(field: field)
                 } label: {
                     Image(systemName: "plus.circle.fill")
-                        .font(.title3)
+                        .scholiumSymbolStyle(.prominent)
                         .scholiumForeground(.accent)
                 }
                 .buttonStyle(.plain)
@@ -600,7 +595,7 @@ struct FrontmatterEditorView: View {
                 fieldValues[field.key] = updated.joined(separator: "; ")
             } label: {
                 Label("Add item", systemImage: "plus.circle")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
             }
             .buttonStyle(.borderless)
         }

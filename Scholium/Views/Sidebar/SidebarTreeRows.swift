@@ -186,7 +186,7 @@ struct SidebarTreeNodeRow: View {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if node.children.isEmpty {
                     Image(systemName: "folder")
-                        .font(.caption.weight(.medium))
+                        .font(ScholiumTypography.interface(.small, emphasis: .medium))
                         .foregroundStyle(ScholiumColorRole.secondaryText.color)
                         .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
                         .accessibilityHidden(true)
@@ -197,7 +197,7 @@ struct SidebarTreeNodeRow: View {
                 }
 
                 Text(node.name)
-                    .font(ScholiumInterfaceTypography.libraryFolderTitle)
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(ScholiumColorRole.primaryText.color)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -501,15 +501,15 @@ struct SidebarNoteRow: View {
     var body: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: "doc.text")
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
                 .accessibilityHidden(true)
             Text(note.title ?? note.displayName)
                 .font(
                     isActive
-                        ? ScholiumInterfaceTypography.librarySelectedNoteTitle
-                        : ScholiumInterfaceTypography.libraryNoteTitle
+                        ? ScholiumTypography.interface(.body, emphasis: .strong)
+                        : ScholiumTypography.interface(.body)
                 )
                 .lineLimit(1)
                 .truncationMode(.middle)

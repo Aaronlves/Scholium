@@ -146,7 +146,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         case Item.researchRecords:
             return hostedItem(
                 identifier: itemIdentifier,
-                label: ScholiumL10n.string("This Note · Records"),
+                label: ScholiumL10n.string("This Note Records"),
                 visibilityPriority: .user,
                 view: ScholiumWorkspaceResearchRecordsToolbarView(
                     appState: appState,
@@ -217,7 +217,7 @@ private struct ScholiumWorkspaceToolbarEnvironment<Content: View>: View {
 /// body text style and medium symbol scale preserve the original SwiftUI
 /// toolbar content size instead of implicitly shrinking or enlarging it.
 @MainActor
-private enum ScholiumNativeToolbarPresentation {
+enum ScholiumNativeToolbarPresentation {
     static var controlSize: NSControl.ControlSize { .small }
 
     static var font: NSFont {
@@ -238,12 +238,14 @@ private enum ScholiumNativeToolbarPresentation {
 /// Native toolbar buttons retain AppKit's pointer, press, keyboard-focus, and
 /// disabled rendering. SwiftUI remains only the observation bridge that keeps
 /// the exact window's command state current inside the hosted toolbar item.
-private struct ScholiumNativeToolbarButton: NSViewRepresentable {
+struct ScholiumNativeToolbarButton: NSViewRepresentable {
     let title: String
     let systemImage: String
     let identifier: String
     var accessibilityValue: String? = nil
     var isEnabled = true
+    var keyEquivalent: String? = nil
+    var keyEquivalentModifierMask: NSEvent.ModifierFlags = []
     let action: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -275,6 +277,8 @@ private struct ScholiumNativeToolbarButton: NSViewRepresentable {
         button.title = ""
         button.toolTip = title
         button.isEnabled = isEnabled
+        button.keyEquivalent = keyEquivalent ?? ""
+        button.keyEquivalentModifierMask = keyEquivalentModifierMask
         button.setAccessibilityLabel(title)
         button.setAccessibilityValue(accessibilityValue)
         button.setAccessibilityIdentifier(identifier)
@@ -438,7 +442,6 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
                 Text(note.title ?? note.displayName)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .font(ScholiumInterfaceTypography.workspaceToolbarIdentity)
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .help(note.title ?? note.displayName)
                     .accessibilityIdentifier("scholium.documentNoteName")
@@ -554,7 +557,7 @@ private struct ScholiumWorkspaceResearchRecordsToolbarView: View {
 
     var body: some View {
         ScholiumNativeToolbarButton(
-            title: ScholiumL10n.dynamicString("This Note · Records"),
+            title: ScholiumL10n.dynamicString("This Note Records"),
             systemImage: hasCurrentNoteResearchRecords ? "tray.full" : "tray",
             identifier: "scholium.showResearchRecords",
             isEnabled: isAvailable

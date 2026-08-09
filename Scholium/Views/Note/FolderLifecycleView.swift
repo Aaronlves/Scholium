@@ -20,7 +20,7 @@ struct FolderLifecycleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Label(title, systemImage: symbol)
-                .font(.title2.weight(.semibold))
+                .font(ScholiumTypography.interface(.primaryTitle))
 
             switch request {
             case .rename:
@@ -44,7 +44,7 @@ struct FolderLifecycleView: View {
             }
 
             Text(helpText)
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 

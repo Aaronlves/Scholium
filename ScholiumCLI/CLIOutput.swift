@@ -281,7 +281,7 @@ private extension ScholiumCLI {
             "agent submit-result": AgentCLICommandHelp(
                 usage: "scholium agent submit-result --run <locator> --from <json|->",
                 inputContract: "ResearchAgentResultSubmission schema \(ResearchAgentResultSubmission.currentSchemaVersion) plus the current Run result_contract",
-                input: "Strict JSON fields: schema_version, disposition [completed, blocked], academic_results filled exactly from result_contract, context_use_claims with returned source_reference envelopes and testimony, fidelity_outcomes, and optional literature_recommendations only when the contract permits them.",
+                input: "Strict JSON fields: schema_version, record_title, disposition [completed, blocked], academic_results filled exactly from result_contract, context_use_claims with returned source_reference envelopes and testimony, fidelity_outcomes, and optional literature_recommendations only when the contract permits them. record_title is the concise, one-line identity shown in Records; it is not an academic result field.",
                 output: "ResearchAgentResultReceipt with disposition, finalization state, whether a portable Record was formed, and a message.",
                 nextSteps: [
                     "scholium agent continue --run <locator> --from <json|-> only for a distinct next Action",

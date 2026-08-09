@@ -56,6 +56,7 @@ struct ResearchFunctionContractsTests {
         let submission = ResearchFunctionCompletionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
+            recordTitle: try ResearchRecordTitle("Used selected analyses"),
             actuallyUsedMaterialNoteIDs: [second, first],
             summary: "Used both selected analyses.",
             didModifyTarget: false
@@ -72,6 +73,7 @@ struct ResearchFunctionContractsTests {
         let explicitlyEmpty = ResearchFunctionCompletionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
+            recordTitle: try ResearchRecordTitle("No selected material used"),
             actuallyUsedMaterialNoteIDs: [],
             summary: "No selected Material was actually used.",
             didModifyTarget: false

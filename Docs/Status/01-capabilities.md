@@ -142,17 +142,28 @@ and dated proof belongs in [Verification Evidence](04-verification.md).
   starting an Agent Run. Discuss combines saved Comments, whole-note turns,
   optional focal Notes, and attributed replies in one portable active
   exchange. Finish produces one neutral Research Record.
-- Completed Action Records retain the immutable finalized result, minimal
-  Method provenance, participating revisions, Context Use, confirmed changes,
+- Completed Action Records retain the required frozen one-line Record Title,
+  immutable finalized result, minimal Method provenance, participating revisions, Context Use, confirmed changes,
   discrepancies, Fidelity completion, and Analyze-only Literature
   Recommendations. Machine paths, credentials, prompts, raw transport logs,
   and token counts are excluded.
 - The independent Triptych-keyed Research Records window uses the same Record
-  provider as Search and CLI. Recommendations are rebuilt from parent Records;
-  occurrence handling and researcher notes update that one portable owner.
+  provider as Search and CLI. Opening starts at a full collection; one selected
+  Record replaces it with a reading/evidence workspace. Reading Leads are
+  rebuilt from parent Records; occurrence handling and researcher notes update
+  that one portable owner. Records expose exact filtered totals, provider-owned
+  Record/Action/Date ordering, and 100-row incremental slices; Reading Leads
+  use the same slice size over their rebuildable occurrence index. Exact
+  Context Used destinations reopen only when
+  resolvable, while unresolved locators remain selectable and noninteractive.
+- Continue Research remains an authenticated CLI/Agent operation. Its completed
+  child remains one portable, searchable Record, but the ordinary collection
+  folds it beneath its parent and the parent Action shows one read-only
+  Continue Research section rather than another peer row.
 - Action return and Record detail share one current Researcher Evaluation
   partition with exact Record revision and finalized-result fingerprint checks.
-  An explicit Method-feedback action can start one separately paired,
+  Record detail shows the saved judgment first and folds its editor. The parent
+  Action alone owns Method Feedback and can start one separately paired,
   one-target Method-improvement Run with ordinary Method or Practice recovery.
 
 ## Research Guidance and integrations

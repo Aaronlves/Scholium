@@ -138,7 +138,7 @@ struct AttentionQueueView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("Attention")
-                .font(ScholiumInterfaceTypography.sectionTitle)
+                .font(ScholiumTypography.interface(.sectionTitle))
                 .accessibilityAddTraits(.isHeader)
 
             ViewThatFits(in: .horizontal) {
@@ -167,7 +167,7 @@ struct AttentionQueueView: View {
                         .foregroundStyle(status.color)
                         .accessibilityHidden(true)
                     Text(status.message)
-                        .font(ScholiumInterfaceTypography.metadata)
+                        .font(ScholiumTypography.interface(.small, emphasis: .medium))
                         .foregroundStyle(ScholiumColorRole.secondaryText.color)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -186,9 +186,9 @@ struct AttentionQueueView: View {
     private var scopeSummary: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
             Text(scopeTitle)
-                .font(ScholiumInterfaceTypography.rowTitle)
+                .font(ScholiumTypography.interface(.rowTitle))
             Text(presentation.noteScope == nil ? "All Notes" : "This Note")
-                .font(ScholiumInterfaceTypography.metadata)
+                .font(ScholiumTypography.interface(.small, emphasis: .medium))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -290,7 +290,7 @@ struct AttentionQueueView: View {
         ) {
             if dismissedCount > 0 {
                 Text("\(dismissedCount) dismissed")
-                    .font(ScholiumInterfaceTypography.metadata)
+                    .font(ScholiumTypography.interface(.small, emphasis: .medium))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -441,9 +441,9 @@ struct AttentionQueueRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
                     Text(ScholiumL10n.dynamicString(item.kind.displayName))
-                        .font(ScholiumInterfaceTypography.rowTitle)
+                        .font(ScholiumTypography.interface(.rowTitle))
                     Text(item.message)
-                        .font(.body)
+                        .font(ScholiumTypography.interface(.body))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -451,11 +451,11 @@ struct AttentionQueueRow: View {
 
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
                 Text(noteTitle)
-                    .font(ScholiumInterfaceTypography.libraryNoteTitle)
+                    .font(ScholiumTypography.interface(.body))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(locator)
-                    .font(ScholiumInterfaceTypography.metadata.monospaced())
+                    .font(ScholiumTypography.exact(.small))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .lineLimit(1)
                     .truncationMode(.middle)

@@ -1,7 +1,9 @@
 import Foundation
 import ScholiumContracts
-@testable import ScholiumApp
 import Testing
+
+@testable import ScholiumApp
+@testable import ScholiumResearchRecordsFeature
 
 @MainActor
 private final class ResearchRecordSearchProbe {
@@ -9,9 +11,10 @@ private final class ResearchRecordSearchProbe {
     let handler: @MainActor @Sendable (SearchRequest) async throws -> SearchResponse
 
     init(
-        handler: @escaping @MainActor @Sendable (
-            SearchRequest
-        ) async throws -> SearchResponse
+        handler:
+            @escaping @MainActor @Sendable (
+                SearchRequest
+            ) async throws -> SearchResponse
     ) {
         self.handler = handler
     }
@@ -174,7 +177,7 @@ struct ResearchRecordBrowserModelTests {
             triptychID: record.triptychID,
             records: [record],
             fingerprints: [
-                record.id: DocumentFingerprint(content: "changed record bytes"),
+                record.id: DocumentFingerprint(content: "changed record bytes")
             ]
         )
         await model.waitForRecordSearchForTesting()
@@ -201,8 +204,7 @@ struct ResearchRecordBrowserModelTests {
             id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
             noteID: workID,
             title: "Argument Map",
-            finishedAt: now.addingTimeInterval(-20 * 86_400),
-            isPinned: true
+            finishedAt: now.addingTimeInterval(-20 * 86_400)
         )
         let model = ResearchRecordBrowserModel()
         let fingerprints = [
@@ -213,7 +215,7 @@ struct ResearchRecordBrowserModelTests {
             recordSearchResponse(
                 request: request,
                 triptychID: discussion.triptychID,
-                records: [action, discussion],
+                records: [discussion, action],
                 fingerprints: fingerprints
             )
         }
@@ -231,10 +233,13 @@ struct ResearchRecordBrowserModelTests {
         )
         await model.waitForRecordSearchForTesting()
 
-        #expect(model.visibleEntries.map(\.id) == [action.id, discussion.id])
-        #expect(probe.requests.last?.query.contains(
-            "note:\"\(topicID.uuidString.lowercased())\""
-        ) == true)
+        #expect(model.visibleEntries.map(\.id) == [discussion.id, action.id])
+        #expect(probe.requests.last?.resolvedRecordSort == .finishedAtDescending)
+        #expect(probe.requests.last?.limit == SearchContract.recordCollectionPageSize)
+        #expect(
+            probe.requests.last?.query.contains(
+                "note:\"\(topicID.uuidString.lowercased())\""
+            ) == true)
 
         model.scope = .triptych
         model.searchText = "cafe\u{301} 理由"
@@ -252,7 +257,56 @@ struct ResearchRecordBrowserModelTests {
         #expect(query.contains("skill:\"Argument Analysis\""))
         #expect(query.contains("participant:agent"))
         #expect(query.contains("date:7d"))
-        #expect(model.visibleEntries.map(\.id) == [action.id, discussion.id])
+        #expect(model.visibleEntries.map(\.id) == [discussion.id, action.id])
+    }
+
+    @Test("Collection rows project exact Analyze Reliability and Coverage states")
+    func collectionAcademicFieldProjection() async throws {
+        let action = try makeAction(
+            id: deterministicUUID(66),
+            noteID: deterministicUUID(67),
+            title: "Bounded source analysis",
+            finishedAt: Date(timeIntervalSince1970: 200),
+            academicResults: try analyzeLedgerResults()
+        )
+        let discussion = try makeDiscussion(
+            id: deterministicUUID(68),
+            noteID: deterministicUUID(69),
+            title: "Open research exchange",
+            text: "A discussion has no Analyze coverage contract.",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let fingerprints = [
+            action.id: DocumentFingerprint(content: "analyze ledger record"),
+            discussion.id: DocumentFingerprint(content: "discussion ledger record"),
+        ]
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: action.triptychID,
+                records: [action, discussion],
+                fingerprints: fingerprints
+            )
+        }
+        model.prepareForOpen(
+            triptychID: action.triptychID,
+            records: [action, discussion],
+            fingerprints: fingerprints,
+            request: ResearchRecordsWindowRequest(triptychID: action.triptychID)
+        )
+        await model.waitForRecordSearchForTesting()
+
+        let analyzeEntry = try #require(model.visibleEntries.first { $0.id == action.id })
+        #expect(analyzeEntry.reliability == .value("Incomplete access, Unverified"))
+        #expect(analyzeEntry.coverage == .value("Specified part only"))
+
+        let discussionEntry = try #require(
+            model.visibleEntries.first { $0.id == discussion.id }
+        )
+        #expect(discussionEntry.reliability == .notApplicable)
+        #expect(discussionEntry.coverage == .notApplicable)
     }
 
     @Test("Binding the provider requeries and invalid provider or fingerprint fails closed")
@@ -304,7 +358,7 @@ struct ResearchRecordBrowserModelTests {
                 triptychID: record.triptychID,
                 records: [record],
                 fingerprints: [
-                    record.id: DocumentFingerprint(content: "wrong record bytes"),
+                    record.id: DocumentFingerprint(content: "wrong record bytes")
                 ]
             )
         }
@@ -316,7 +370,8 @@ struct ResearchRecordBrowserModelTests {
         model.bindRecordSearch { request in try await valid.search(request) }
         await model.waitForRecordSearchForTesting()
         #expect(model.visibleEntries.map(\.id) == [record.id])
-        #expect(model.selectedRecord?.id == record.id)
+        #expect(model.route == .collection)
+        #expect(model.selectedRecord == nil)
         #expect(!model.isShowingError)
         #expect(model.errorMessage.isEmpty)
     }
@@ -379,185 +434,27 @@ struct ResearchRecordBrowserModelTests {
             executionScope: .triptych,
             limit: SearchContract.maximumInterfaceResults
         )
-        firstContinuation?.resume(returning: recordSearchResponse(
-            request: staleRequest,
-            triptychID: first.triptychID,
-            records: [first],
-            fingerprints: fingerprints
-        ))
+        firstContinuation?.resume(
+            returning: recordSearchResponse(
+                request: staleRequest,
+                triptychID: first.triptychID,
+                records: [first],
+                fingerprints: fingerprints
+            ))
         await Task.yield()
 
         #expect(model.visibleEntries.map(\.id) == [second.id])
-        #expect(model.selectedRecord?.id == second.id)
+        #expect(model.route == .collection)
     }
 
-    @Test("Pin completion refreshes the provider row and preserves browser criteria")
-    func pinCompletionReordersWithoutResettingFilters() async throws {
-        let record = try makeDiscussion(
-            id: deterministicUUID(1),
-            noteID: deterministicUUID(2),
-            title: "Focused Topic",
-            text: "Researcher statement",
-            author: .researcher,
-            finishedAt: Date(timeIntervalSince1970: 100)
-        )
-        let model = ResearchRecordBrowserModel()
-        let fingerprint = DocumentFingerprint(content: "focused record")
-        let provider = ResearchRecordProviderState(records: [record])
-        model.bindRecordSearch { request in
-            recordSearchResponse(
-                request: request,
-                triptychID: record.triptychID,
-                records: provider.records,
-                fingerprints: [record.id: fingerprint]
-            )
-        }
-        model.prepareForOpen(
-            triptychID: record.triptychID,
-            records: [record],
-            fingerprints: [record.id: fingerprint],
-            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
-        )
-        await model.waitForRecordSearchForTesting()
-        model.searchText = "Focused"
-
-        await model.setPinned(recordID: record.id) { _, requestedPin in
-            #expect(requestedPin)
-            let updated = try PortableResearchRecord(
-                id: record.id,
-                triptychID: record.triptychID,
-                kind: record.kind,
-                action: record.action,
-                method: record.method,
-                sourceReference: record.sourceReference,
-                continuationLineage: record.continuationLineage,
-                primaryNoteID: record.primaryNoteID,
-                participatingNotes: record.participatingNotes,
-                statements: record.statements,
-                actuallyUsedMaterials: record.actuallyUsedMaterials,
-                fidelityCompletion: record.fidelityCompletion,
-                confirmedChanges: record.confirmedChanges,
-                discrepancies: record.discrepancies,
-                startedAt: record.startedAt,
-                finishedAt: record.finishedAt,
-                isPinned: true
-            )
-            provider.records = [updated]
-            return updated
-        }
-        await model.waitForRecordSearchForTesting()
-
-        #expect(model.searchText == "Focused")
-        #expect(model.visibleEntries.first?.isPinned == true)
-        #expect(model.selectedRecord?.isPinned == true)
-    }
-
-    @Test("Pin and confirmed deletion cannot race a removed record back into the browser")
-    func pinAndDeletionAreSerializedPerRecord() async throws {
-        let record = try makeDiscussion(
-            id: deterministicUUID(11),
-            noteID: deterministicUUID(12),
-            title: "Concurrent Record",
-            text: "One lifecycle mutation at a time",
-            author: .researcher,
-            finishedAt: Date(timeIntervalSince1970: 100)
-        )
-        let pinned = try PortableResearchRecord(
-            id: record.id,
-            triptychID: record.triptychID,
-            kind: record.kind,
-            action: record.action,
-            method: record.method,
-            sourceReference: record.sourceReference,
-            continuationLineage: record.continuationLineage,
-            primaryNoteID: record.primaryNoteID,
-            participatingNotes: record.participatingNotes,
-            statements: record.statements,
-            actuallyUsedMaterials: record.actuallyUsedMaterials,
-            fidelityCompletion: record.fidelityCompletion,
-            confirmedChanges: record.confirmedChanges,
-            discrepancies: record.discrepancies,
-            startedAt: record.startedAt,
-            finishedAt: record.finishedAt,
-            isPinned: true
-        )
-        let model = ResearchRecordBrowserModel()
-        let fingerprint = DocumentFingerprint(content: "concurrent record")
-        let provider = ResearchRecordProviderState(records: [record])
-        model.bindRecordSearch { request in
-            recordSearchResponse(
-                request: request,
-                triptychID: record.triptychID,
-                records: provider.records,
-                fingerprints: [record.id: fingerprint]
-            )
-        }
-        model.prepareForOpen(
-            triptychID: record.triptychID,
-            records: [record],
-            fingerprints: [record.id: fingerprint],
-            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
-        )
-        await model.waitForRecordSearchForTesting()
-        var pinContinuation: CheckedContinuation<PortableResearchRecord, Never>?
-        let pinTask = Task { @MainActor in
-            await model.setPinned(recordID: record.id) { _, _ in
-                await withCheckedContinuation { continuation in
-                    pinContinuation = continuation
-                }
-            }
-        }
-        while pinContinuation == nil {
-            await Task.yield()
-        }
-
-        var deletionCallCount = 0
-        await model.deletePermanently(recordID: record.id) { _ in
-            deletionCallCount += 1
-        }
-        #expect(deletionCallCount == 0)
-        #expect(model.visibleEntries.map(\.id) == [record.id])
-
-        provider.records = [pinned]
-        pinContinuation?.resume(returning: pinned)
-        await pinTask.value
-        await model.waitForRecordSearchForTesting()
-        #expect(model.visibleEntries.map(\.id) == [record.id])
-        #expect(model.selectedRecord?.isPinned == true)
-
-        // A concurrent reload/removal is also forbidden from being resurrected
-        // by a late pin result, even if another caller bypasses the UI guards.
-        var lateContinuation: CheckedContinuation<PortableResearchRecord, Never>?
-        let latePinTask = Task { @MainActor in
-            await model.setPinned(recordID: record.id) { _, _ in
-                await withCheckedContinuation { continuation in
-                    lateContinuation = continuation
-                }
-            }
-        }
-        while lateContinuation == nil {
-            await Task.yield()
-        }
-        model.prepareForOpen(
-            triptychID: record.triptychID,
-            records: [],
-            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
-        )
-        lateContinuation?.resume(returning: record)
-        await latePinTask.value
-        #expect(model.visibleEntries.isEmpty)
-        #expect(model.selectedRecord == nil)
-    }
-
-    @Test("An Action row summarizes live participants without guessing its Target")
+    @Test("An Action row keeps its frozen title and projects live note participants")
     func actionTitleSummarizesLiveParticipants() async throws {
         let targetID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
         let base = try makeAction(
             id: deterministicUUID(90),
             noteID: targetID,
             title: "Live Analysis",
-            finishedAt: Date(timeIntervalSince1970: 100),
-            isPinned: false
+            finishedAt: Date(timeIntervalSince1970: 100)
         )
         let topic = try makeParticipant(
             id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
@@ -573,6 +470,7 @@ struct ResearchRecordBrowserModelTests {
         let record = try PortableResearchRecord(
             id: base.id,
             triptychID: base.triptychID,
+            title: base.title,
             kind: base.kind,
             action: base.action,
             method: base.method,
@@ -602,8 +500,10 @@ struct ResearchRecordBrowserModelTests {
         )
         await model.waitForRecordSearchForTesting()
 
-        #expect(model.visibleEntries.first?.contextTitle
-            == "Additional Analysis, Live Analysis")
+        #expect(model.visibleEntries.first?.title == "Live Analysis")
+        #expect(
+            model.visibleEntries.first?.noteTitle
+                == "Additional Analysis, Live Analysis")
     }
 
     @Test("Confirmed record deletion removes only the selected disposable projection")
@@ -617,102 +517,79 @@ struct ResearchRecordBrowserModelTests {
             finishedAt: Date(timeIntervalSince1970: 100)
         )
         let model = ResearchRecordBrowserModel()
-        model.prepareForOpen(
-            triptychID: record.triptychID,
-            records: [record],
-            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
-        )
-
-        await model.deletePermanently(recordID: record.id) { _ in }
-        #expect(model.visibleEntries.isEmpty)
-        #expect(model.selectedRecord == nil)
-    }
-
-    @Test("Closing a disposable comparison cancels its load")
-    func comparisonCancellation() async throws {
-        let record = try makeDiscussion(
-            id: deterministicUUID(401),
-            noteID: deterministicUUID(402),
-            title: "Large Record",
-            text: "Large comparison",
-            author: .researcher,
-            finishedAt: Date(timeIntervalSince1970: 100)
-        )
-        let model = ResearchRecordBrowserModel()
-        model.prepareForOpen(
-            triptychID: record.triptychID,
-            records: [record],
-            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
-        )
-        model.compare(recordID: record.id, noteID: record.participatingNotes[0].noteID) {
-            _, _ in
-            try await Task.sleep(for: .seconds(30))
-            return ResearchRecordComparison(
-                startingRevision: record.participatingNotes[0].startingRevision,
-                endingRevision: record.participatingNotes[0].endingRevision!,
-                startingHasUTF8BOM: false,
-                endingHasUTF8BOM: false,
-                lines: []
+        let fingerprint = DocumentFingerprint(content: "record to delete")
+        let probe = ResearchRecordSearchProbe { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [record.id: fingerprint]
             )
         }
-        #expect(model.comparingNoteID == record.participatingNotes[0].noteID)
-        model.cancelComparison()
-        await Task.yield()
-        #expect(model.comparingNoteID == nil)
-        #expect(model.comparison == nil)
-        #expect(!model.isShowingError)
-    }
-
-    @Test("A stale noncooperative comparison cannot erase its replacement")
-    func staleComparisonCannotReplaceCurrentResult() async throws {
-        let record = try makeDiscussion(
-            id: deterministicUUID(501),
-            noteID: deterministicUUID(502),
-            title: "Replacement Record",
-            text: "Latest comparison wins",
-            author: .researcher,
-            finishedAt: Date(timeIntervalSince1970: 100)
-        )
-        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch(probe.search)
         model.prepareForOpen(
             triptychID: record.triptychID,
             records: [record],
-            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
+            fingerprints: [record.id: fingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                noteID: record.participatingNotes[0].noteID
+            )
         )
-        let staleRevision = DocumentFingerprint(content: "stale")
-        let currentRevision = DocumentFingerprint(content: "current")
-        var staleContinuation: CheckedContinuation<ResearchRecordComparison, Never>?
-        model.compare(recordID: record.id, noteID: record.participatingNotes[0].noteID) {
-            _, _ in
-            await withCheckedContinuation { continuation in
-                staleContinuation = continuation
+        await model.waitForRecordSearchForTesting()
+        let requestsBeforeDeletion = probe.requests.count
+        #expect(requestsBeforeDeletion > 0)
+
+        var deletionContinuation: CheckedContinuation<Void, Never>?
+        let deletionTask = Task { @MainActor in
+            await model.deletePermanently(recordID: record.id) { _ in
+                await withCheckedContinuation { continuation in
+                    deletionContinuation = continuation
+                }
             }
         }
-        await Task.yield()
-        let continuation = try #require(staleContinuation)
-
-        model.compare(recordID: record.id, noteID: record.participatingNotes[0].noteID) {
-            _, _ in
-            ResearchRecordComparison(
-                startingRevision: currentRevision,
-                endingRevision: currentRevision,
-                startingHasUTF8BOM: false,
-                endingHasUTF8BOM: false,
-                lines: []
-            )
+        while deletionContinuation == nil {
+            await Task.yield()
         }
-        await Task.yield()
-        #expect(model.comparison?.startingRevision == currentRevision)
+        #expect(model.visibleEntries.isEmpty)
+        #expect(model.selectedRecord == nil)
+        deletionContinuation?.resume()
+        await deletionTask.value
+        #expect(!model.isShowingError)
+        #expect(
+            probe.requests.count == requestsBeforeDeletion,
+            "An empty published Record corpus must not be reparsed as an unauthorized Note query."
+        )
+    }
 
-        continuation.resume(returning: ResearchRecordComparison(
-            startingRevision: staleRevision,
-            endingRevision: staleRevision,
-            startingHasUTF8BOM: false,
-            endingHasUTF8BOM: false,
-            lines: []
-        ))
-        await Task.yield()
-        #expect(model.comparison?.startingRevision == currentRevision)
+    @Test("This Note without a Record candidate is a quiet empty collection")
+    func emptyThisNoteScopeSkipsImpossibleRecordSearch() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(311),
+            noteID: deterministicUUID(312),
+            title: "Other Note Record",
+            text: "Only another Note participates.",
+            author: .agent,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let model = ResearchRecordBrowserModel()
+        let probe = ResearchRecordSearchProbe { _ in
+            Issue.record("The provider must not receive an impossible This Note query.")
+            throw CancellationError()
+        }
+        model.bindRecordSearch(probe.search)
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                noteID: deterministicUUID(313)
+            )
+        )
+
+        await model.waitForRecordSearchForTesting()
+        #expect(probe.requests.isEmpty)
+        #expect(model.visibleEntries.isEmpty)
         #expect(!model.isShowingError)
     }
 
@@ -725,24 +602,26 @@ struct ResearchRecordBrowserModelTests {
             noteID: firstNoteID,
             title: "First Analysis",
             finishedAt: Date(timeIntervalSince1970: 300),
-            isPinned: false,
-            recommendations: [try makeRecommendation(
-                id: deterministicUUID(621),
-                citation: "First source",
-                doi: "https://doi.org/10.1000/same"
-            )]
+            recommendations: [
+                try makeRecommendation(
+                    id: deterministicUUID(621),
+                    citation: "First source",
+                    doi: "https://doi.org/10.1000/same"
+                )
+            ]
         )
         let second = try makeAction(
             id: deterministicUUID(612),
             noteID: secondNoteID,
             title: "Second Analysis",
             finishedAt: Date(timeIntervalSince1970: 200),
-            isPinned: false,
-            recommendations: [try makeRecommendation(
-                id: deterministicUUID(622),
-                citation: "Second source",
-                doi: "doi:10.1000/same"
-            )]
+            recommendations: [
+                try makeRecommendation(
+                    id: deterministicUUID(622),
+                    citation: "Second source",
+                    doi: "doi:10.1000/same"
+                )
+            ]
         )
         let model = ResearchRecordBrowserModel()
         let fingerprints = [
@@ -750,7 +629,8 @@ struct ResearchRecordBrowserModelTests {
             second.id: DocumentFingerprint(content: "second record"),
         ]
         let probe = ResearchRecordSearchProbe { request in
-            let visible = request.query.contains(firstNoteID.uuidString.lowercased())
+            let visible =
+                request.query.contains(firstNoteID.uuidString.lowercased())
                 ? [first]
                 : [first, second]
             return recordSearchResponse(
@@ -795,64 +675,69 @@ struct ResearchRecordBrowserModelTests {
                 noteID: noteID,
                 title: "Analysis One",
                 finishedAt: Date(timeIntervalSince1970: 400),
-                isPinned: false,
-                recommendations: [try makeRecommendation(
-                    id: deterministicUUID(721),
-                    citation: "Shared title",
-                    doi: "https://doi.org/10.1000/exact",
-                    zoteroItemKey: "ABCD1234"
-                )]
+                recommendations: [
+                    try makeRecommendation(
+                        id: deterministicUUID(721),
+                        citation: "Shared title",
+                        doi: "https://doi.org/10.1000/exact",
+                        zoteroItemKey: "ABCD1234"
+                    )
+                ]
             ),
             makeAction(
                 id: deterministicUUID(712),
                 noteID: noteID,
                 title: "Analysis Two",
                 finishedAt: Date(timeIntervalSince1970: 300),
-                isPinned: false,
-                recommendations: [try makeRecommendation(
-                    id: deterministicUUID(722),
-                    citation: "Shared title",
-                    doi: "doi:10.1000/exact",
-                    zoteroItemKey: "abcd1234"
-                )]
+                recommendations: [
+                    try makeRecommendation(
+                        id: deterministicUUID(722),
+                        citation: "Shared title",
+                        doi: "doi:10.1000/exact",
+                        zoteroItemKey: "abcd1234"
+                    )
+                ]
             ),
             makeAction(
                 id: deterministicUUID(713),
                 noteID: noteID,
                 title: "Analysis Three",
                 finishedAt: Date(timeIntervalSince1970: 200),
-                isPinned: false,
-                recommendations: [try makeRecommendation(
-                    id: deterministicUUID(723),
-                    citation: "Shared title",
-                    doi: "10.1000/exact",
-                    zoteroItemKey: "CONFLICT"
-                )]
+                recommendations: [
+                    try makeRecommendation(
+                        id: deterministicUUID(723),
+                        citation: "Shared title",
+                        doi: "10.1000/exact",
+                        zoteroItemKey: "CONFLICT"
+                    )
+                ]
             ),
             makeAction(
                 id: deterministicUUID(714),
                 noteID: noteID,
                 title: "Analysis Four",
                 finishedAt: Date(timeIntervalSince1970: 100),
-                isPinned: false,
-                recommendations: [try makeRecommendation(
-                    id: deterministicUUID(724),
-                    citation: "Shared title"
-                )]
+                recommendations: [
+                    try makeRecommendation(
+                        id: deterministicUUID(724),
+                        citation: "Shared title"
+                    )
+                ]
             ),
             makeAction(
                 id: deterministicUUID(715),
                 noteID: noteID,
                 title: "Analysis Five",
                 finishedAt: Date(timeIntervalSince1970: 50),
-                isPinned: false,
-                recommendations: [try makeRecommendation(
-                    id: deterministicUUID(725),
-                    citation: "A different work",
-                    title: "Different work",
-                    doi: "10.1000/exact",
-                    zoteroItemKey: "ABCD1234"
-                )]
+                recommendations: [
+                    try makeRecommendation(
+                        id: deterministicUUID(725),
+                        citation: "A different work",
+                        title: "Different work",
+                        doi: "10.1000/exact",
+                        zoteroItemKey: "ABCD1234"
+                    )
+                ]
             ),
         ]
         let index = ResearchLiteratureRecommendationDerivedIndex(records: records)
@@ -862,8 +747,9 @@ struct ResearchRecordBrowserModelTests {
         #expect(groups.map(\.occurrences.count).sorted() == [1, 1, 1, 2])
         #expect(groups.flatMap(\.occurrences).count == 5)
         #expect(groups.filter(\.displaysSharedIdentityHeader).count == 1)
-        #expect(groups.first { $0.occurrences.count == 1 }?
-            .displaysSharedIdentityHeader == false)
+        #expect(
+            groups.first { $0.occurrences.count == 1 }?
+                .displaysSharedIdentityHeader == false)
     }
 
     @Test("A growing exact-identity group performs one signature check per occurrence")
@@ -879,14 +765,14 @@ struct ResearchRecordBrowserModelTests {
                     doi: "https://doi.org/10.1000/large-group"
                 )
             }
-            records.append(try makeAction(
-                id: deterministicUUID(20_000 + recordOrdinal),
-                noteID: deterministicUUID(21_000 + recordOrdinal),
-                title: "Analysis \(recordOrdinal)",
-                finishedAt: Date(timeIntervalSince1970: Double(recordOrdinal)),
-                isPinned: false,
-                recommendations: recommendations
-            ))
+            records.append(
+                try makeAction(
+                    id: deterministicUUID(20_000 + recordOrdinal),
+                    noteID: deterministicUUID(21_000 + recordOrdinal),
+                    title: "Analysis \(recordOrdinal)",
+                    finishedAt: Date(timeIntervalSince1970: Double(recordOrdinal)),
+                    recommendations: recommendations
+                ))
         }
 
         let index = ResearchLiteratureRecommendationDerivedIndex(records: records)
@@ -919,7 +805,6 @@ struct ResearchRecordBrowserModelTests {
             noteID: deterministicUUID(812),
             title: "Recoverable Analysis",
             finishedAt: Date(timeIntervalSince1970: 100),
-            isPinned: false,
             recommendations: [recommendation]
         )
         let model = ResearchRecordBrowserModel()
@@ -936,6 +821,7 @@ struct ResearchRecordBrowserModelTests {
             recordID: record.id,
             recommendationID: storedRecommendation.id
         )
+        model.selectRecommendation(occurrenceID)
 
         await #expect(throws: SaveFailure.self) {
             try await model.setRecommendationNote(
@@ -952,6 +838,127 @@ struct ResearchRecordBrowserModelTests {
         )
         #expect(model.mutatingRecommendationIDs.isEmpty)
         #expect(!model.isShowingError)
+    }
+
+    @Test("Handled changes are visible before the durable update returns in both directions")
+    func recommendationDispositionUsesImmediateOptimisticFeedback() async throws {
+        let recommendationID = deterministicUUID(821)
+        let recordID = deterministicUUID(822)
+        let noteID = deterministicUUID(823)
+        let unprocessed = try makeAction(
+            id: recordID,
+            noteID: noteID,
+            title: "Immediate Reading Lead Feedback",
+            finishedAt: Date(timeIntervalSince1970: 100),
+            recommendations: [
+                try makeRecommendation(
+                    id: recommendationID,
+                    citation: "A reading lead whose disposition is responsive"
+                )
+            ]
+        )
+        let handled = try makeAction(
+            id: recordID,
+            noteID: noteID,
+            title: "Immediate Reading Lead Feedback",
+            finishedAt: Date(timeIntervalSince1970: 100),
+            recommendations: [
+                try makeRecommendation(
+                    id: recommendationID,
+                    citation: "A reading lead whose disposition is responsive",
+                    status: .handled
+                )
+            ]
+        )
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: unprocessed.triptychID,
+            records: [unprocessed],
+            request: ResearchRecordsWindowRequest(
+                triptychID: unprocessed.triptychID,
+                initialView: .recommendations
+            )
+        )
+        let occurrenceID = ResearchLiteratureRecommendationOccurrenceID(
+            recordID: recordID,
+            recommendationID: try #require(
+                unprocessed.literatureRecommendations.first?.id
+            )
+        )
+
+        model.setRecommendationDisposition(
+            occurrenceID: occurrenceID,
+            status: .handled
+        ) { _, _, _ in
+            try await Task.sleep(for: .milliseconds(50))
+            return handled
+        }
+
+        #expect(model.recommendationDispositionStatus(for: occurrenceID) == .handled)
+        #expect(model.mutatingRecommendationIDs.contains(occurrenceID))
+        await model.waitForRecommendationMutationForTesting(occurrenceID)
+        #expect(model.recommendationDispositionStatus(for: occurrenceID) == .handled)
+        #expect(model.mutatingRecommendationIDs.isEmpty)
+
+        model.setRecommendationDisposition(
+            occurrenceID: occurrenceID,
+            status: .unprocessed
+        ) { _, _, _ in
+            try await Task.sleep(for: .milliseconds(50))
+            return unprocessed
+        }
+
+        #expect(model.recommendationDispositionStatus(for: occurrenceID) == .unprocessed)
+        #expect(model.mutatingRecommendationIDs.contains(occurrenceID))
+        await model.waitForRecommendationMutationForTesting(occurrenceID)
+        #expect(model.recommendationDispositionStatus(for: occurrenceID) == .unprocessed)
+        #expect(model.mutatingRecommendationIDs.isEmpty)
+    }
+
+    @Test("A failed Handled change rolls the immediate feedback back")
+    func recommendationDispositionFailureRollsBackOptimisticFeedback() async throws {
+        enum DispositionFailure: Error {
+            case notCommitted
+        }
+
+        let record = try makeAction(
+            id: deterministicUUID(831),
+            noteID: deterministicUUID(832),
+            title: "Recoverable Reading Lead Disposition",
+            finishedAt: Date(timeIntervalSince1970: 100),
+            recommendations: [
+                try makeRecommendation(
+                    id: deterministicUUID(833),
+                    citation: "A reading lead whose failed change remains honest"
+                )
+            ]
+        )
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                initialView: .recommendations
+            )
+        )
+        let occurrenceID = ResearchLiteratureRecommendationOccurrenceID(
+            recordID: record.id,
+            recommendationID: try #require(record.literatureRecommendations.first?.id)
+        )
+
+        model.setRecommendationDisposition(
+            occurrenceID: occurrenceID,
+            status: .handled
+        ) { _, _, _ in
+            await Task.yield()
+            throw DispositionFailure.notCommitted
+        }
+
+        #expect(model.recommendationDispositionStatus(for: occurrenceID) == .handled)
+        await model.waitForRecommendationMutationForTesting(occurrenceID)
+        #expect(model.recommendationDispositionStatus(for: occurrenceID) == .unprocessed)
+        #expect(model.isShowingError)
     }
 
     @Test("Opening a Record recommendation clears filters that would hide its row")
@@ -972,7 +979,6 @@ struct ResearchRecordBrowserModelTests {
             noteID: deterministicUUID(904),
             title: "Linked Analysis",
             finishedAt: Date(timeIntervalSince1970: 100),
-            isPinned: false,
             recommendations: [first, second]
         )
         let targetID = record.literatureRecommendations[1].id
@@ -993,9 +999,207 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.recommendationSearchText.isEmpty)
         #expect(model.recommendationFilter == .all)
         #expect(model.selectedRecommendationID?.recommendationID == targetID)
-        #expect(model.visibleRecommendationGroups.flatMap(\.occurrences).contains {
-            $0.recommendation.id == targetID
+        #expect(
+            model.visibleRecommendationGroups.flatMap(\.occurrences).contains {
+                $0.recommendation.id == targetID
+            })
+    }
+
+    @Test(
+        "Continue Research remains one portable child but folds beneath its parent collection row")
+    func continueResearchFoldsBeneathParent() async throws {
+        let parentID = deterministicUUID(951)
+        let childID = deterministicUUID(952)
+        let parent = try makeAction(
+            id: parentID,
+            noteID: deterministicUUID(953),
+            title: "Parent Analysis",
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let child = try makeAction(
+            id: childID,
+            noteID: deterministicUUID(954),
+            title: "Continued Analysis",
+            finishedAt: Date(timeIntervalSince1970: 200),
+            continuationLineage: ResearchContinuationLineage(
+                groupID: deterministicUUID(955),
+                parentRunID: parentID,
+                requestID: deterministicUUID(956),
+                kind: .continueResearch
+            )
+        )
+        let model = ResearchRecordBrowserModel()
+        let fingerprints = [
+            parentID: DocumentFingerprint(content: "parent-record"),
+            childID: DocumentFingerprint(content: "child-record"),
+        ]
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: parent.triptychID,
+                records: [parent, child],
+                fingerprints: fingerprints
+            )
+        }
+        model.prepareForOpen(
+            triptychID: parent.triptychID,
+            records: [parent, child],
+            fingerprints: fingerprints,
+            request: ResearchRecordsWindowRequest(triptychID: parent.triptychID)
+        )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.route == .collection)
+        #expect(model.visibleEntries.map(\.id) == [parentID])
+        #expect(model.totalRecordCount == 1)
+        #expect(model.record(id: childID)?.id == childID)
+        #expect(model.continuationChildren(for: parentID).map(\.id) == [childID])
+
+        model.openRecord(id: childID)
+        #expect(model.route == .record(childID))
+        #expect(model.continuationParent(for: child)?.id == parentID)
+    }
+
+    @Test("Record and Reading Lead collections expose exact totals across 100-row pages")
+    func collectionPaginationAndSorting() async throws {
+        let triptychID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
+        let records = try (0..<205).map { index in
+            try makeDiscussion(
+                id: deterministicUUID(10_000 + index),
+                triptychID: triptychID,
+                noteID: deterministicUUID(20_000 + index),
+                title: String(format: "Record %03d", index),
+                text: "A representative discussion turn for page \(index).",
+                author: .researcher,
+                finishedAt: Date(timeIntervalSince1970: TimeInterval(index))
+            )
+        }
+        let fingerprints = Dictionary(uniqueKeysWithValues: records.map {
+            ($0.id, DocumentFingerprint(content: "record-\($0.id.uuidString)"))
         })
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: triptychID,
+                records: records,
+                fingerprints: fingerprints
+            )
+        }
+        model.prepareForOpen(
+            triptychID: triptychID,
+            records: records,
+            fingerprints: fingerprints,
+            request: ResearchRecordsWindowRequest(triptychID: triptychID)
+        )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.recordResultCount == 205)
+        #expect(model.visibleEntries.count == 100)
+        #expect(model.visibleEntries.first?.title == "Record 204")
+        #expect(model.hasMoreRecords)
+
+        model.loadMoreRecordsIfNeeded(currentID: try #require(model.visibleEntries.last?.id))
+        await model.waitForRecordSearchForTesting()
+        #expect(model.visibleEntries.count == 200)
+        model.loadMoreRecordsIfNeeded(currentID: try #require(model.visibleEntries.last?.id))
+        await model.waitForRecordSearchForTesting()
+        #expect(model.visibleEntries.count == 205)
+        #expect(!model.hasMoreRecords)
+
+        model.recordSort = .titleAscending
+        await model.waitForRecordSearchForTesting()
+        #expect(model.visibleEntries.first?.title == "Record 000")
+
+        let recommendations = try (0..<105).map { index in
+            try makeRecommendation(
+                id: deterministicUUID(30_000 + index),
+                citation: "Citation \(index)",
+                title: String(format: "Lead %03d", index)
+            )
+        }
+        let analysis = try makeAction(
+            id: deterministicUUID(40_000),
+            noteID: deterministicUUID(40_001),
+            title: "Reading Lead Pagination",
+            finishedAt: Date(timeIntervalSince1970: 500),
+            recommendations: recommendations
+        )
+        let leadFingerprint = DocumentFingerprint(content: "lead-parent")
+        let leadModel = ResearchRecordBrowserModel()
+        leadModel.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: triptychID,
+                records: [analysis],
+                fingerprints: [analysis.id: leadFingerprint]
+            )
+        }
+        leadModel.prepareForOpen(
+            triptychID: triptychID,
+            records: [analysis],
+            fingerprints: [analysis.id: leadFingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: triptychID,
+                initialView: .recommendations
+            )
+        )
+        await leadModel.waitForRecordSearchForTesting()
+        #expect(leadModel.recommendationResultCount == 105)
+        #expect(leadModel.visibleRecommendationOccurrences.count == 100)
+        leadModel.loadMoreRecommendationsIfNeeded(
+            currentID: try #require(leadModel.visibleRecommendationOccurrences.last?.id)
+        )
+        #expect(leadModel.visibleRecommendationOccurrences.count == 105)
+        #expect(!leadModel.hasMoreRecommendations)
+    }
+
+    @Test("A later Record page failure preserves loaded rows and remains retryable")
+    func laterPageFailurePreservesRows() async throws {
+        let triptychID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
+        let records = try (0..<101).map { index in
+            try makeDiscussion(
+                id: deterministicUUID(50_000 + index),
+                triptychID: triptychID,
+                noteID: deterministicUUID(60_000 + index),
+                title: String(format: "Retry Record %03d", index),
+                text: "A record retained across a later-page failure.",
+                author: .agent,
+                finishedAt: Date(timeIntervalSince1970: TimeInterval(index))
+            )
+        }
+        let fingerprints = Dictionary(uniqueKeysWithValues: records.map {
+            ($0.id, DocumentFingerprint(content: "retry-\($0.id.uuidString)"))
+        })
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in
+            if request.resultOffset > 0 {
+                throw CocoaError(.fileReadUnknown)
+            }
+            return recordSearchResponse(
+                request: request,
+                triptychID: triptychID,
+                records: records,
+                fingerprints: fingerprints
+            )
+        }
+        model.prepareForOpen(
+            triptychID: triptychID,
+            records: records,
+            fingerprints: fingerprints,
+            request: ResearchRecordsWindowRequest(triptychID: triptychID)
+        )
+        await model.waitForRecordSearchForTesting()
+        model.loadMoreRecordsIfNeeded(
+            currentID: try #require(model.visibleEntries.last?.id)
+        )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.visibleEntries.count == 100)
+        #expect(model.recordResultCount == 101)
+        #expect(model.hasMoreRecords)
+        #expect(model.recordLoadMoreErrorMessage != nil)
+        #expect(!model.isShowingError)
     }
 
     private func makeDiscussion(
@@ -1006,8 +1210,7 @@ struct ResearchRecordBrowserModelTests {
         text: String,
         author: PortableResearchStatementAuthor,
         finishedAt: Date,
-        isTombstone: Bool = false,
-        isPinned: Bool = false
+        isTombstone: Bool = false
     ) throws -> PortableResearchRecord {
         let fingerprint = DocumentFingerprint(content: title)
         let note = try PortableResearchNoteRevision(
@@ -1033,6 +1236,7 @@ struct ResearchRecordBrowserModelTests {
         return try PortableResearchRecord(
             id: id,
             triptychID: triptychID,
+            title: ResearchRecordTitle(title),
             kind: .discussion,
             action: nil,
             method: nil,
@@ -1041,8 +1245,7 @@ struct ResearchRecordBrowserModelTests {
             statements: [statement],
             fidelityCompletion: .notApplicable,
             startedAt: finishedAt,
-            finishedAt: finishedAt,
-            isPinned: isPinned
+            finishedAt: finishedAt
         )
     }
 
@@ -1051,8 +1254,9 @@ struct ResearchRecordBrowserModelTests {
         noteID: UUID,
         title: String,
         finishedAt: Date,
-        isPinned: Bool,
-        recommendations: [ResearchLiteratureRecommendation] = []
+        recommendations: [ResearchLiteratureRecommendation] = [],
+        continuationLineage: ResearchContinuationLineage? = nil,
+        academicResults: [PortableResearchAcademicFieldResult] = []
     ) throws -> PortableResearchRecord {
         let fingerprint = DocumentFingerprint(content: title)
         let note = try PortableResearchNoteRevision(
@@ -1068,9 +1272,10 @@ struct ResearchRecordBrowserModelTests {
         )
         let method = try JSONDecoder().decode(
             PortableResearchMethodReference.self,
-            from: Data("""
-            {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","practice_names":[],"profile_revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)}}
-            """.utf8)
+            from: Data(
+                """
+                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","practice_names":[],"profile_revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)}}
+                """.utf8)
         )
         let recommendations = try recommendations.enumerated().map {
             ordinal, recommendation in
@@ -1094,6 +1299,7 @@ struct ResearchRecordBrowserModelTests {
         return try PortableResearchRecord(
             id: id,
             triptychID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
+            title: ResearchRecordTitle(title),
             kind: .action,
             action: ResearchActionRecordIdentity(actionID: .analyze),
             method: method,
@@ -1102,21 +1308,48 @@ struct ResearchRecordBrowserModelTests {
                 displayName: "Source.pdf",
                 fingerprint: fingerprint
             ),
+            continuationLineage: continuationLineage,
             participatingNotes: [note],
-            statements: [try PortableResearchStatement(
-                id: id,
-                author: .agent,
-                kind: .agentFeedback,
-                attribution: "Agent",
-                text: "The argument map was reviewed.",
-                createdAt: finishedAt
-            )],
+            statements: [
+                try PortableResearchStatement(
+                    id: id,
+                    author: .agent,
+                    kind: .agentFeedback,
+                    attribution: "Agent",
+                    text: "The argument map was reviewed.",
+                    createdAt: finishedAt
+                )
+            ],
+            academicResults: academicResults,
             fidelityCompletion: .notRequired,
             literatureRecommendations: recommendations,
             startedAt: finishedAt,
-            finishedAt: finishedAt,
-            isPinned: isPinned
+            finishedAt: finishedAt
         )
+    }
+
+    private func analyzeLedgerResults() throws -> [PortableResearchAcademicFieldResult] {
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .analyze
+            }
+        )
+        let coverage = try #require(
+            profile.academicResultFields.first { $0.fieldID.rawValue == "coverage" }
+        )
+        let reliability = try #require(
+            profile.academicResultFields.first { $0.fieldID.rawValue == "reliability" }
+        )
+        return [
+            try PortableResearchAcademicFieldResult(
+                definition: coverage,
+                value: .singleChoice("specified-part-only")
+            ),
+            try PortableResearchAcademicFieldResult(
+                definition: reliability,
+                value: .multipleChoice(["incomplete-access", "unverified"])
+            ),
+        ]
     }
 
     private func makeRecommendation(
@@ -1124,7 +1357,8 @@ struct ResearchRecordBrowserModelTests {
         citation: String,
         title: String = "Shared title",
         doi: String? = nil,
-        zoteroItemKey: String? = nil
+        zoteroItemKey: String? = nil,
+        status: ResearchLiteratureRecommendationDispositionStatus = .unprocessed
     ) throws -> ResearchLiteratureRecommendation {
         try ResearchLiteratureRecommendation(
             id: id,
@@ -1134,7 +1368,7 @@ struct ResearchRecordBrowserModelTests {
             zoteroItemKey: zoteroItemKey,
             reason: "The exact Analysis source identifies a relevant argument.",
             disposition: PortableResearchRecommendationDisposition(
-                status: .unprocessed,
+                status: status,
                 updatedAt: Date(timeIntervalSince1970: 100)
             )
         )
@@ -1175,32 +1409,71 @@ struct ResearchRecordBrowserModelTests {
         )
         let freshness = SearchFreshnessToken.record(generation)
         let parsed = SearchQueryParser.parse(request.query)
-        let explanation = parsed.ast?.explanation(scope: request.presentationScope) ?? SearchExplanation(
-            provider: .record,
-            providerWasExplicit: true,
-            scope: request.presentationScope,
-            clauses: []
-        )
-        let results = records.compactMap { record -> SearchResult? in
+        let explanation =
+            parsed.ast?.explanation(scope: request.presentationScope)
+            ?? SearchExplanation(
+                provider: .record,
+                providerWasExplicit: true,
+                scope: request.presentationScope,
+                clauses: []
+            )
+        var orderedRecords = records.filter {
+            request.recordSort == nil
+                || $0.continuationLineage?.kind != .continueResearch
+        }
+        orderedRecords.sort { lhs, rhs in
+            let action: (PortableResearchRecord) -> String = {
+                $0.kind == .discussion
+                    ? ResearchActionID.discuss.rawValue
+                    : ($0.action?.actionID ?? .discuss).rawValue
+            }
+            switch request.resolvedRecordSort {
+            case .finishedAtDescending:
+                if lhs.finishedAt != rhs.finishedAt { return lhs.finishedAt > rhs.finishedAt }
+            case .finishedAtAscending:
+                if lhs.finishedAt != rhs.finishedAt { return lhs.finishedAt < rhs.finishedAt }
+            case .titleAscending, .titleDescending:
+                let comparison = lhs.title.value.localizedStandardCompare(rhs.title.value)
+                if comparison != .orderedSame {
+                    return request.resolvedRecordSort == .titleAscending
+                        ? comparison == .orderedAscending
+                        : comparison == .orderedDescending
+                }
+            case .actionAscending, .actionDescending:
+                let comparison = action(lhs).localizedStandardCompare(action(rhs))
+                if comparison != .orderedSame {
+                    return request.resolvedRecordSort == .actionAscending
+                        ? comparison == .orderedAscending
+                        : comparison == .orderedDescending
+                }
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+        let totalResultCount = orderedRecords.count
+        let lowerBound = min(request.resultOffset, totalResultCount)
+        let upperBound = min(lowerBound + request.limit, totalResultCount)
+        let page = orderedRecords[lowerBound..<upperBound]
+        let results = page.compactMap { record -> SearchResult? in
             guard let fingerprint = fingerprints[record.id] else { return nil }
-            let actionID = record.kind == .discussion
+            let actionID =
+                record.kind == .discussion
                 ? ResearchActionID.discuss
                 : record.action?.actionID ?? .discuss
-            return .record(RecordSearchResult(
-                recordID: record.id,
-                matchedField: .context,
-                matchedReason: "fixture provider result",
-                context: record.researchRecordContextTitle ?? actionID.rawValue,
-                actionID: actionID.rawValue,
-                methodName: record.method?.displayName,
-                sourceDisplayName: record.sourceReference?.displayName,
-                finishedAt: record.finishedAt,
-                pinned: record.isPinned,
-                participatingNotes: record.participatingNotes.map(\.note),
-                snippet: record.researchRecordContextTitle ?? actionID.rawValue,
-                freshnessToken: freshness,
-                fingerprint: fingerprint
-            ))
+            return .record(
+                RecordSearchResult(
+                    recordID: record.id,
+                    matchedField: .context,
+                    matchedReason: "fixture provider result",
+                    context: record.title.value,
+                    actionID: actionID.rawValue,
+                    methodName: record.method?.displayName,
+                    sourceDisplayName: record.sourceReference?.displayName,
+                    finishedAt: record.finishedAt,
+                    participatingNotes: record.participatingNotes.map(\.note),
+                    snippet: record.title.value,
+                    freshnessToken: freshness,
+                    fingerprint: fingerprint
+                ))
         }
         return SearchResponse(
             requestID: request.id,
@@ -1209,7 +1482,8 @@ struct ResearchRecordBrowserModelTests {
             freshnessToken: freshness,
             availability: .record(.current(generation)),
             results: results,
-            hasMore: false,
+            hasMore: upperBound < totalResultCount,
+            totalResultCount: totalResultCount,
             diagnostics: parsed.diagnostics
         )
     }

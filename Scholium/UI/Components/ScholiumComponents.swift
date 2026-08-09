@@ -130,14 +130,14 @@ struct SidebarTriptychAttentionEntry: View {
                         .frame(height: ScholiumMetrics.Accessibility.preferredCustomTarget)
                 } else {
                     Text(Image(systemName: "exclamationmark.triangle"))
-                        .font(.system(size: 12, weight: .medium))
+                        .font(ScholiumTypography.interface(.rowTitle))
                         .foregroundStyle(symbolColor)
                         .accessibilityHidden(true)
                 }
 
                 if case .active(let count) = state {
                     Text(count.formatted())
-                        .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                        .font(ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true))
                         .foregroundStyle(ScholiumColorRole.attention.color)
                 }
             }
@@ -332,7 +332,7 @@ private struct ScholiumLibraryLocationPickerLabel: View {
 
     var body: some View {
         Text(title)
-            .font(ScholiumInterfaceTypography.libraryLocation)
+            .font(ScholiumTypography.interface(.body))
             .foregroundStyle(
                 isEmphasized
                     ? ScholiumColorRole.primaryText.color
@@ -417,13 +417,13 @@ private struct ScholiumTriptychWorkspaceButton: View {
                 Text(ScholiumL10n.dynamicString(slot.displayName))
                     .font(
                         isSelected
-                            ? ScholiumInterfaceTypography.libraryWorkspaceSelected
-                            : ScholiumInterfaceTypography.libraryWorkspace
+                            ? ScholiumTypography.interface(.body, emphasis: .strong)
+                            : ScholiumTypography.interface(.body)
                     )
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Text(noteCount.map { $0.formatted() } ?? "—")
-                    .font(ScholiumInterfaceTypography.metadata.monospacedDigit())
+                    .font(ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true))
                     .foregroundStyle(ScholiumColorRole.mutedText.color)
             }
             .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
@@ -601,7 +601,7 @@ struct ScholiumContentStateView<Actions: View>: View {
         switch indicator {
         case .symbol(let name, let role):
             Image(systemName: name)
-                .font(indicatorFont)
+                .scholiumSymbolStyle(indicatorSymbolStyle)
                 .foregroundStyle(role.color)
                 .accessibilityHidden(true)
         case .progress:
@@ -635,16 +635,20 @@ struct ScholiumContentStateView<Actions: View>: View {
             : 0
     }
 
-    private var indicatorFont: Font {
-        density == .page ? .title2 : .body
+    private var indicatorSymbolStyle: ScholiumSymbolStyle {
+        density == .page ? .large : .prominent
     }
 
     private var titleFont: Font {
-        density == .page ? .headline : ScholiumInterfaceTypography.rowTitle
+        density == .page
+            ? ScholiumTypography.interface(.sectionTitle)
+            : ScholiumTypography.interface(.rowTitle)
     }
 
     private var detailFont: Font {
-        density == .page ? .subheadline : ScholiumInterfaceTypography.metadata
+        density == .page
+            ? ScholiumTypography.interface(.body)
+            : ScholiumTypography.interface(.small, emphasis: .medium)
     }
 }
 
@@ -779,14 +783,14 @@ struct ScholiumRecoveryNotice<Action: View>: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
                 Text(presentation.title)
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                 presentation.message
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail = presentation.detail {
                     detail
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
@@ -845,9 +849,9 @@ struct ScholiumDocumentStatusToast<Actions: View>: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.callout.weight(.semibold))
+                        .font(ScholiumTypography.interface(.sectionTitle))
                     Text(detail)
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                         .textSelection(.enabled)
                 }

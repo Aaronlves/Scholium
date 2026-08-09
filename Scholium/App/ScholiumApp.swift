@@ -4,6 +4,7 @@ import Combine
 import notify
 import QuartzCore
 import ScholiumApplication
+import ScholiumResearchRecordsFeature
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -157,6 +158,7 @@ struct ScholiumApp: App {
             },
             defaultValue: { UUID() }
         )
+        .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 760, height: 680)
         .windowResizability(.contentMinSize)
         .defaultLaunchBehavior(.suppressed)
@@ -238,13 +240,16 @@ private struct ScholiumResearchRecordsRoot: View {
             }
         }
         .frame(minWidth: 700, minHeight: 520)
-        .scholiumSurface(.denseEvidence)
+        .scholiumSurface(.document)
         .tint(ScholiumColorRole.accent.color)
         .preferredColorScheme(
             WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
         )
         .environment(\.layoutDirection, recordsLayoutDirection)
-        .background(ResearchRecordsWindowAttachment(triptychID: triptychID))
+        .background(ResearchRecordsWindowAttachment(
+            triptychID: triptychID,
+            usesFullHeightContent: browserModel.route.recordID != nil
+        ))
         .task(id: triptychID) { await loadCapabilities() }
         .onAppear { registerRecordsEndpoint() }
         .onDisappear { unregisterRecordsEndpoint() }
@@ -289,15 +294,8 @@ private struct ScholiumResearchRecordsRoot: View {
     ) -> some View {
             ResearchRecordBrowserView(
                 model: browserModel,
-                triptychName: capabilities.assignment.triptych.name,
                 loadIssues: recordLoadIssues,
                 context: ResearchRecordBrowserContext(
-                    setPinned: { id, isPinned in
-                        try await capabilities.research.records.setResearchRecordPinned(
-                            id: id,
-                            isPinned: isPinned
-                        )
-                    },
                     setRecommendationDisposition: { recordID, recommendationID, status in
                         try await capabilities.research.records
                             .setResearchRecordRecommendationDisposition(
@@ -333,41 +331,9 @@ private struct ScholiumResearchRecordsRoot: View {
                                 expectedResultFingerprint: resultFingerprint
                             )
                     },
-                    saveMethodFeedback: {
-                        recordID, draft, expectedCommentRevision, resultFingerprint in
-                        try await capabilities.research.records
-                            .saveMethodFeedbackComment(
-                                recordID: recordID,
-                                draft: draft,
-                                expectedCommentRevision: expectedCommentRevision,
-                                expectedResultFingerprint: resultFingerprint
-                            )
-                    },
-                    clearMethodFeedback: {
-                        recordID, expectedCommentRevision, resultFingerprint in
-                        try await capabilities.research.records
-                            .clearMethodFeedbackComment(
-                                recordID: recordID,
-                                expectedCommentRevision: expectedCommentRevision,
-                                expectedResultFingerprint: resultFingerprint
-                            )
-                    },
-                    startMethodImprovement: { recordID in
-                        try await capabilities.research.records
-                            .issueMethodImprovementHandoff(
-                                recordID: recordID,
-                                validity: 10 * 60
-                            )
-                    },
                     deletePermanently: { id in
                         try await capabilities.research.records
                             .deleteResearchRecordPermanently(id: id)
-                    },
-                    comparison: { recordID, noteID in
-                        try await capabilities.research.records.researchRecordComparison(
-                            recordID: recordID,
-                            noteID: noteID
-                        )
                     },
                     openNote: { noteID, note, sourceLine in
                         openNote(
@@ -1388,7 +1354,7 @@ private struct ScholiumCommands: Commands {
                 }
             }
             Divider()
-            Button("Triptych · Records") {
+            Button("Triptych Records") {
                 workspaceWindowActions?.showTriptychResearchRecords()
             }
             .disabled(

@@ -9,6 +9,7 @@ struct ResearchRecordSearchIndex: Sendable {
         let availability: RecordSearchAvailability
         let results: [RecordSearchResult]
         let hasMore: Bool
+        let totalResultCount: Int?
         let diagnostics: [SearchQueryDiagnostic]
     }
 
@@ -83,6 +84,9 @@ struct ResearchRecordSearchIndex: Sendable {
         ast: SearchQueryAST,
         scope: SearchExecutionScope,
         limit: Int,
+        offset: Int = 0,
+        sort: RecordSearchSortOrder = .finishedAtDescending,
+        topLevelOnly: Bool = false,
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> Execution {
@@ -96,6 +100,7 @@ struct ResearchRecordSearchIndex: Sendable {
                 ),
                 results: [],
                 hasMore: false,
+                totalResultCount: nil,
                 diagnostics: [SearchQueryDiagnostic(
                     code: .notApplicable,
                     message: "Research Record Search is unavailable because the portable Record corpus could not be read completely.",
@@ -112,25 +117,19 @@ struct ResearchRecordSearchIndex: Sendable {
                 availability: .current(generation),
                 results: [],
                 hasMore: false,
+                totalResultCount: 0,
                 diagnostics: [diagnostic]
             )
         }
 
         let boundedLimit = min(max(0, limit), SearchContract.maximumCLIResults)
-        guard boundedLimit > 0 else {
-            return Execution(
-                generation: generation,
-                availability: .current(generation),
-                results: [],
-                hasMore: false,
-                diagnostics: []
-            )
-        }
         let freshness = SearchFreshnessToken.record(generation)
-        var results: [RecordSearchResult] = []
+        var matchingEntries: [Entry] = []
         for entry in entries {
             try Task.checkCancellation()
-            guard includes(entry.record, in: scope),
+            guard (!topLevelOnly
+                    || entry.record.continuationLineage?.kind != .continueResearch),
+                  includes(entry.record, in: scope),
                   satisfies(
                     entry,
                     clauses: ast.recordClauses,
@@ -138,21 +137,26 @@ struct ResearchRecordSearchIndex: Sendable {
                     now: now,
                     calendar: calendar
                   ) else { continue }
-            results.append(makeResult(
-                entry,
+            matchingEntries.append(entry)
+        }
+        matchingEntries.sort { Self.ordersEntries($0, $1, by: sort) }
+        let totalResultCount = matchingEntries.count
+        let lowerBound = min(max(0, offset), totalResultCount)
+        let upperBound = min(lowerBound + boundedLimit, totalResultCount)
+        let results = matchingEntries[lowerBound..<upperBound].map {
+            makeResult(
+                $0,
                 clauses: ast.recordClauses,
                 resolvedNotes: noteResolutions.identities,
                 freshness: freshness
-            ))
-            if results.count > boundedLimit { break }
+            )
         }
-        let hasMore = results.count > boundedLimit
-        if hasMore { results.removeLast(results.count - boundedLimit) }
         return Execution(
             generation: generation,
             availability: .current(generation),
             results: results,
-            hasMore: hasMore,
+            hasMore: upperBound < totalResultCount,
+            totalResultCount: totalResultCount,
             diagnostics: []
         )
     }
@@ -389,7 +393,6 @@ struct ResearchRecordSearchIndex: Sendable {
             methodName: entry.methodName,
             sourceDisplayName: entry.record.sourceReference?.displayName,
             finishedAt: entry.record.finishedAt,
-            pinned: entry.record.isPinned,
             participatingNotes: entry.record.participatingNotes.map(\.note),
             snippet: presentation.text,
             highlights: presentation.highlights,
@@ -405,7 +408,7 @@ struct ResearchRecordSearchIndex: Sendable {
         let actionID = record.kind == .discussion
             ? ResearchActionID.discuss.rawValue
             : record.action?.actionID.rawValue ?? ResearchActionID.discuss.rawValue
-        let context = contextTitle(record) ?? actionID
+        let context = record.title.value
         var segments: [Segment] = [segment(.context, context), segment(.action, actionID)]
         if let method = record.method {
             segments.append(segment(.skill, method.displayName))
@@ -465,21 +468,6 @@ struct ResearchRecordSearchIndex: Sendable {
         )
     }
 
-    private static func contextTitle(_ record: PortableResearchRecord) -> String? {
-        if let primaryNoteID = record.primaryNoteID,
-           let primary = record.participatingNotes.first(where: {
-               $0.noteID == primaryNoteID
-           }) {
-            return primary.title
-        }
-        let titles = record.participatingNotes.map(\.title).sorted {
-            let lhs = normalize($0)
-            let rhs = normalize($1)
-            return lhs == rhs ? $0 < $1 : lhs < rhs
-        }
-        return titles.isEmpty ? nil : titles.joined(separator: ", ")
-    }
-
     private static func normalize(_ value: String) -> String {
         SearchTextNormalization.lexicalNormalize(value)
     }
@@ -524,7 +512,39 @@ struct ResearchRecordSearchIndex: Sendable {
     }
 
     private static func ordersEntries(_ lhs: Entry, _ rhs: Entry) -> Bool {
-        if lhs.record.isPinned != rhs.record.isPinned { return lhs.record.isPinned }
+        if lhs.record.finishedAt != rhs.record.finishedAt {
+            return lhs.record.finishedAt > rhs.record.finishedAt
+        }
+        return lhs.record.id.uuidString < rhs.record.id.uuidString
+    }
+
+    private static func ordersEntries(
+        _ lhs: Entry,
+        _ rhs: Entry,
+        by sort: RecordSearchSortOrder
+    ) -> Bool {
+        switch sort {
+        case .finishedAtDescending:
+            return ordersEntries(lhs, rhs)
+        case .finishedAtAscending:
+            if lhs.record.finishedAt != rhs.record.finishedAt {
+                return lhs.record.finishedAt < rhs.record.finishedAt
+            }
+        case .titleAscending, .titleDescending:
+            let comparison = lhs.record.title.value.localizedStandardCompare(rhs.record.title.value)
+            if comparison != .orderedSame {
+                return sort == .titleAscending
+                    ? comparison == .orderedAscending
+                    : comparison == .orderedDescending
+            }
+        case .actionAscending, .actionDescending:
+            let comparison = lhs.actionID.localizedStandardCompare(rhs.actionID)
+            if comparison != .orderedSame {
+                return sort == .actionAscending
+                    ? comparison == .orderedAscending
+                    : comparison == .orderedDescending
+            }
+        }
         if lhs.record.finishedAt != rhs.record.finishedAt {
             return lhs.record.finishedAt > rhs.record.finishedAt
         }

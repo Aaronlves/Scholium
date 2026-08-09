@@ -360,6 +360,7 @@ struct ResearchMethodImprovementOperationsTests {
             credential: credential,
             run: handoff.run,
             submission: try ResearchAgentResultSubmission(
+                recordTitle: ResearchRecordTitle("Bounded synthesis"),
                 academicResults: ResearchAcademicFieldValues(
                     rawValues: [
                         "synthesis-outcome": .freeText(

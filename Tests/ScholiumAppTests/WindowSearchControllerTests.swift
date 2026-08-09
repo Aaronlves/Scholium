@@ -211,7 +211,6 @@ struct WindowSearchControllerTests {
             matchedReason: "researcher statement matches ‘objection’",
             context: "Reasons and value",
             finishedAt: Date(timeIntervalSince1970: 100),
-            pinned: false,
             participatingNotes: [],
             snippet: "A narrower objection is needed.",
             freshnessToken: freshness,

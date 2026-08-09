@@ -548,7 +548,6 @@ extension ScholiumCLI {
         let methodName: String?
         let sourceDisplayName: String?
         let finishedAt: Date
-        let pinned: Bool
         let participatingNotes: [VaultQualifiedNoteID]
         let snippet: String
         let highlights: [SearchHighlight]
@@ -572,7 +571,6 @@ extension ScholiumCLI {
             methodName = hit.methodName
             sourceDisplayName = hit.sourceDisplayName
             finishedAt = hit.finishedAt
-            pinned = hit.pinned
             participatingNotes = hit.participatingNotes
             snippet = hit.snippet
             highlights = hit.highlights

@@ -2585,7 +2585,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let execution = try index.search(
             ast: ast,
             scope: request.executionScope,
-            limit: request.limit
+            limit: request.limit,
+            offset: request.resultOffset,
+            sort: request.resolvedRecordSort,
+            topLevelOnly: request.recordSort != nil
         )
         return SearchResponse(
             requestID: request.id,
@@ -2595,6 +2598,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             availability: .record(execution.availability),
             results: execution.results.map(SearchResult.record),
             hasMore: execution.hasMore,
+            totalResultCount: execution.totalResultCount,
             diagnostics: execution.diagnostics
         )
     }

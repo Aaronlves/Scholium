@@ -157,10 +157,10 @@ struct ContentView: View {
                             Task { await appState.retryDerivedRefresh() }
                         }
                         .buttonStyle(.borderless)
-                        .font(.caption.weight(.semibold))
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     }
                 }
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .scholiumEditorialSurface(
@@ -1086,11 +1086,10 @@ struct ToastView: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(color)
             Text(message)
-                .font(.callout)
-                .fontWeight(.medium)
+                .font(ScholiumTypography.interface(.rowTitle))
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)

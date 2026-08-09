@@ -12,7 +12,7 @@ cross-functional state language. Section 20 remains the complete accessibility
 and adaptation authority. The app implements the design contract in
 `Scholium/UI/Foundation` through `ScholiumColorVariables`,
 `ScholiumColorResolver`, derived `ScholiumColorRole`s, `ScholiumGrid`,
-`ScholiumMetrics`, `ScholiumMotion`, and `ScholiumInterfaceTypography`.
+`ScholiumMetrics`, `ScholiumMotion`, and `ScholiumTypography`.
 
 Accent and Paper are the only configurable inputs. Section 19.2's Paper is the exact
 Light Document anchor; one resolver derives every other appearance role for
@@ -32,15 +32,18 @@ masks without introducing a second path catalog.
 boundary and, where applicable, one purpose-named `ScholiumElevationRole`.
 `floatingControl`, `boundedPanel`, and `searchOverlay` are the complete custom
 transient elevation set; ordinary structural surfaces resolve to none. The
-native-only `ScholiumStructuralDepthRole.documentNavigationBoundary` instead
-resolves the one Workspace plane relationship and is not exported to WebKit.
-Its Library-owned host clips a Document-color caster just outside the logical
-edge, leaving only the shadow inside Library while AppKit's thin divider stays
-visible and interactive. The host covers the complete split-item bounds beneath
-the native toolbar, is excluded from hit testing and accessibility, and mirrors
-in right-to-left presentation. The native modifiers use AppKit's semantic
-shadow color, while `ScholiumWebDesignTokens` exports only the transient role
-names as CSS shadow declarations without converting points to CSS pixels.
+native-only `ScholiumStructuralDepthRole` instead owns exactly the
+`documentNavigationBoundary` and `readingEvidenceBoundary` plane relationships
+and is not exported to WebKit. The Workspace Library host clips a Document-
+color caster just outside the logical edge, leaving only the shadow inside
+Library while AppKit's thin divider stays visible and interactive. The Record
+detail host uses the same full-height split grammar to cast from the dominant
+reading plane into the Evidence rail. Each host covers the complete receiving
+split-item bounds beneath the native toolbar, is excluded from hit testing and
+accessibility, and mirrors in right-to-left presentation. The native modifiers
+use AppKit's semantic shadow color, while `ScholiumWebDesignTokens` exports only
+the transient role names as CSS shadow declarations without converting points
+to CSS pixels.
 Selection bars consume `floatingControl`; custom selection menus, the shared
 link preview, and Edit input-suggestion lists consume `boundedPanel`; Search
 consumes `searchOverlay`. The shared preview uses the complete opaque bounded-
@@ -51,6 +54,16 @@ strengthens. Reduce Transparency or an inactive native window reduces opacity;
 Dark appearance applies the same quiet structural-depth opacity without
 compounding these adaptations. Native menus, popovers, sheets, panels, alerts,
 and windows retain their system-owned elevation and are never double-shadowed.
+
+Repository ownership tests treat authored shadow syntax as a closed inventory.
+The two native renderers are the only `.shadow` owners; generated WebKit
+elevation consumes only the three purpose-named CSS variables. The remaining
+inset `box-shadow` declarations are classified as editor boundaries or focus
+rings rather than elevation. Adding a raw shadow, a direct SwiftUI hover site,
+a WebKit `:hover` site, or another AppKit pointer tracker fails the inventory
+until its semantic owner and exception class are made explicit. The bounded
+hover inventory may shrink during the current ownership cutover but must not
+grow.
 
 `ScholiumLibraryLocationPicker` owns the borderless native Location menu and
 its single native indicator and shared interaction surface without owning
@@ -103,23 +116,80 @@ font and body-medium SF Symbol scale that the original SwiftUI toolbar used;
 SwiftUI does not reconstruct a
 toolbar interaction surface or persistent active state.
 
-Research Records uses the existing semantic Document and Navigation surfaces,
-native `HSplitView`, compact search/filter controls, structural rules,
-empty/error content, checkbox, and sheet presentation. Its View index privately
-owns the remaining compact underline and purpose-named dimensions at the top
-of the Navigation plane; it does not supply selection styling to Library or
-Inspector. Scope is a borderless native `Menu` in the list-context row. Neither
-creates a full-width header, feature toolbar, or Liquid Glass container. Lists
-hide their default scroll background and expose the Navigation role; editorial
-actions reuse one borderless ink-and-hover component while sheet confirmation
-actions remain system-owned.
-Recommendation groups and occurrences reuse list hierarchy rather than cards.
+Research Records uses one continuous semantic Document surface, collection-
+first routing, native TextField/Menu/Toggle/sheet behavior, structural rules,
+and two independent detail scroll owners. Its View index uses the shared
+shallow interaction surface without an underline; Scope and Filters remain
+borderless native Menus. The View index and detail navigation are native-
+toolbar content; the adaptive
+collection header owns identity, search, Scope, Filters, and count. The selected
+Record allocates the remaining width to reading while its default-visible
+Evidence rail stays between 260pt and 304pt. One native toolbar control removes
+or restores the rail. One adaptive divider and the full-height
+`readingEvidenceBoundary`, never color or shadow alone, distinguish the visible
+planes; Increase Contrast removes the depth cue while retaining the divider and
+surface relationship.
+The Records scene uses a standard content view rather than
+`fullSizeContentView`; AppKit's content-layout rectangle is therefore the one
+titlebar boundary for every collection and detail scroll owner. The root hides
+the native toolbar background, and macOS 26+ toolbar content hides its automatic
+shared background, so Document color remains continuous without Liquid Glass or
+a painted masking layer.
+
+Every custom Records target routes hover, keyboard focus, and press through
+`ScholiumContentInteractionSurface`. The toolbar View index and Inspector
+ModeIndex also resolve persistent selection through that same shallow surface,
+without an Accent underline or a filled segmented band. View items, menu labels, search clear,
+ordinary actions, evidence links, and continuity links use the editorial-
+control continuous shape; native toolbar Back and Evidence controls retain
+system interaction geometry. Collection destinations and their leading Handled
+control share one purpose-owned 8pt row surface with no icon well or
+detached background. Press changes ink/surface immediately without geometry
+animation; no leaf supplies a raw hover color or radius. Record groups and
+Reading Lead occurrences retain fixed scanning rhythm and flat textual
+hierarchy without elevation or nested card families. The provider-bounded
+Record ledger and rebuildable Reading Leads index publish exact totals and
+stable 100-row slices to flat native lazy containers; later slices append at
+the collection boundary without replacing loaded rows. Both
+ledgers align through one fixed shared header and row rhythm; their whole-row
+destination needs no trailing glyph. Triptych Record rows own an unlabeled 28pt
+Attention gutter, a flexible two-line frozen-title/focal-Note Record track, a
+fixed Action track, and a fixed Date track; This Note omits the focal-Note line. Attention
+projects only explicit frozen exceptions and otherwise stays empty. Completed
+adds no repeated status. Action is a centered text-only neutral capsule with no
+icon, category tint, or independent control semantics. The visually unlabeled
+32pt Handled track keeps an accessible label and independent native-control
+semantics.
+System confirmation actions remain native-owned.
+Evidence rows reuse one prototype-derived ledger component with an aligned
+symbol column and no trailing action button. Academic evidence remains visible
+when the rail is shown; the evaluation editor and technical identity use
+separate disclosure controls, and permanent deletion remains in the Record
+header.
+Bibliography and both Record and Reading Lead technical identity reuse
+`ScholiumApparatusFactGrid`, the same adaptive label/value owner as Inspector
+About. Consumers provide semantic values only; the grid alone chooses aligned
+or stacked structure and its value-style token distinguishes scholarly prose
+from exact revision identity.
 The window observes `WindowColorSchemeChoice.defaultsKey` and resolves it
 through the same `swiftUIColorScheme` mapping used by Workspace content and
 toolbar hosts; it owns no second appearance preference.
-`ScholiumInterfaceTypography` owns the Folder, unselected Note, selected Note,
-compact toolbar identity, record row, metadata, and editorial detail roles;
-leaf views do not restate their sizes or weights. No recommendation-specific
+`ScholiumTypography` is the sole native text resolver for Scholium-owned
+surfaces. It exposes only `InterfaceRole`, `ScholarlyRole`, and `ExactRole`;
+feature modules publish no Library, Apparatus, Research Records, or Chrome font
+aliases. Every custom top-level view shares the 17pt Semibold Interface primary
+title, while research-object titles share the 20pt Bold Scholarly title.
+Emphasis and tabular figures are resolver inputs rather than cross-product
+roles. Brand and Bootstrap retain the approved identity/hero exceptions.
+Alegreya and Victor Mono resolution remains private. `ScholiumSymbolStyle`
+separately maps purpose-named component scale to SF Symbols.
+Repository tests reject fixed SwiftUI point sizes, raw SwiftUI text styles,
+leaf-owned font weight, direct SwiftUI system-font construction, and low-level
+typeface access outside the owner. Scholium-owned explanatory copy selects an
+explicit semantic role; standard control labels, menus, alerts, and toolbar
+identity retain platform typography. A runtime test registers every bundled
+Alegreya and Victor Mono face and resolves it through AppKit. Document
+typography remains in the Appearance/CSS pipeline. No recommendation-specific
 color, spacing, radius, footer, badge, or elevation Variable exists.
 
 `ScholiumGrid.Peripheral.contentInset` is the one 28pt outer page-edge source
@@ -162,8 +232,6 @@ mirror exists.
 
 `ScholiumMotion` exposes purpose-named animations and returns no animation
 when Reduce Motion is active. It does not install a global animation policy.
-The existing `ScholiumInterfaceTypography` namespace remains the sole
-interface typography namespace.
 
 ## Component boundaries
 

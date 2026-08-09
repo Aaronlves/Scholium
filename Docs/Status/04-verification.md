@@ -10,7 +10,7 @@ human, packaged, or release acceptance unless explicitly stated.
 
 **Latest documentation-only check:** 2026-08-08
 **Latest complete repository gate:** 2026-08-08
-**Latest focused interface check:** 2026-08-08
+**Latest focused interface check:** 2026-08-10
 
 ### Documentation authority
 
@@ -25,6 +25,30 @@ also passed.
 Documentation structure, local links, anchors, chapter ownership, and patch
 whitespace only. No source build, product test, UI journey, packaging, or
 release gate was rerun for this documentation-only cutover.
+
+### Research Record title and collection cutover
+
+**Current passing result**
+
+On 2026-08-09, the Xcode 27 beta toolchain built the Debug application and the
+isolated signed QA bundle. Focused Contract, Store, Search, and browser-model
+tests passed with strict schema-6 Record Titles, no Pin contract, focal-Note
+then finish-time collection ordering, Analyze exception projection, Reading
+Lead derivation, exact Record locators, and confirmed deletion. Documentation
+authority, localization, and patch-whitespace validation also passed. The
+disposable QA corpus contained 50 long Records and 17 Reading Leads after
+schema-6 migration. One selected Records XCUITest then passed in 74.8 seconds
+with zero failures. It opened the Record detail, exercised bounded Participants
+and Context Used popovers, opened and dismissed Researcher Evaluation, verified
+the confirmed-deletion cancellation path, permanently deleted the Record, and
+confirmed its absence after reopening the Records window.
+
+**Boundary of the claim**
+
+These are focused unit/integration, QA-build, and one representative automated
+journey result, not the complete repository or UI suite. Human visual,
+minimum-width, Dark, contrast, transparency, and assistive-technology
+acceptance remain open.
 
 ### Triptych workspace-session ownership cutover
 
@@ -255,6 +279,30 @@ One threshold-conformance run on Mac16,12 / macOS 27.0 / Xcode 27 beta; it does 
 causation or packaged GUI latency.
 
 ### Architecture-focused UI
+
+#### Shadow and hover ownership inventory
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed four focused
+`InterfacePresentationOwnershipTests` plus the adjacent semantic-surface,
+custom-control, and Apparatus ModeIndex contracts. The source inventory admits
+only two native shadow renderers, four WebKit elevation consumers, four inset
+editor-boundary/focus declarations, the current bounded SwiftUI and WebKit
+hover sites, and two explicit AppKit tracking owners. It also identifies the
+Research Record permanent-delete control as the sole declared compound pointer
+owner pending cutover. Documentation authority, Swift formatting, and patch-
+whitespace validation passed.
+
+**Boundary of the claim**
+
+This is static ownership and focused recipe evidence; no runtime appearance or
+interaction behavior changed. The migration inventory prevents new owners but
+still admits current feature-local hover sites and the one compound deletion
+wrapper so that the following cutover can remove them explicitly. The complete
+Frontend Architecture suite is not claimed: its current broad split-source
+assertion still misclassifies the Records evidence-width
+`preferredThicknessFraction` as Workspace residue.
 
 #### Content-control focus and hover normalization
 

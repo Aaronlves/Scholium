@@ -12,7 +12,7 @@ struct ResearchRecordSearchIndexTests {
             "kind:record note:\"Current Akrasia\" action:synthesize skill:Synthesize participant:researcher date:7d"
         )
 
-        #expect(execution.results.map(\.recordID) == [fixture.pinnedRecordID])
+        #expect(execution.results.map(\.recordID) == [fixture.historicalRecordID])
         let result = try #require(execution.results.first)
         #expect(result.actionID == "synthesize")
         #expect(result.methodName == "Synthesize")
@@ -45,7 +45,7 @@ struct ResearchRecordSearchIndexTests {
             scope: .triptych
         )
 
-        #expect(currentNote.results.map(\.recordID) == [fixture.pinnedRecordID])
+        #expect(currentNote.results.map(\.recordID) == [fixture.historicalRecordID])
         #expect(currentVault.results.map(\.recordID) == [fixture.tombstoneRecordID])
         #expect(triptych.results.map(\.recordID) == [fixture.otherVaultRecordID])
     }
@@ -64,32 +64,67 @@ struct ResearchRecordSearchIndexTests {
         let selectedOnly = try fixture.search("kind:record \"Selected Appendix\"")
         let repeated = try fixture.search("kind:record shared-token")
 
-        #expect(andQuery.results.map(\.recordID) == [fixture.pinnedRecordID])
+        #expect(andQuery.results.map(\.recordID) == [fixture.historicalRecordID])
         #expect(andQuery.results[0].matchedFields.contains(.sourceReference))
         #expect(attribution.results[0].statementAuthor == .researcher)
         #expect(attribution.results[0].statementID == fixture.researcherStatementID)
         #expect(used.results[0].matchedFields.contains(.material))
         #expect(!selectedOnly.results[0].matchedFields.contains(.material))
-        #expect(repeated.results.map(\.recordID) == [fixture.pinnedRecordID])
+        #expect(repeated.results.map(\.recordID) == [fixture.historicalRecordID])
     }
 
-    @Test("Local calendar windows, pinned ordering, manifest generation, and exact fingerprints are deterministic")
+    @Test("Local calendar windows, finished-time ordering, manifest generation, and exact fingerprints are deterministic")
     func dateOrderingAndFreshness() throws {
         let fixture = try Fixture()
         let execution = try fixture.search("kind:record date:7d sortable")
 
         #expect(execution.results.map(\.recordID) == [
-            fixture.pinnedRecordID,
             fixture.todayRecordID,
+            fixture.historicalRecordID,
         ])
         #expect(execution.generation.sourceManifestHash == fixture.manifestHash)
         #expect(execution.results[0].fingerprint == fixture.fingerprints[
-            fixture.pinnedRecordID
+            fixture.todayRecordID
         ])
         #expect(execution.results.allSatisfy {
             $0.freshnessToken == .record(execution.generation)
         })
         #expect(execution.availability == .current(execution.generation))
+    }
+
+    @Test("Record collection paging reports an exact total and sorts before slicing")
+    func collectionPagingAndSorting() throws {
+        let fixture = try Fixture()
+        let firstPage = try fixture.search(
+            "kind:record",
+            limit: 2,
+            sort: .finishedAtDescending,
+            topLevelOnly: true
+        )
+        let secondPage = try fixture.search(
+            "kind:record",
+            limit: 2,
+            offset: 2,
+            sort: .finishedAtDescending,
+            topLevelOnly: true
+        )
+        let byTitle = try fixture.search(
+            "kind:record",
+            sort: .titleAscending,
+            topLevelOnly: true
+        )
+
+        #expect(firstPage.totalResultCount == 7)
+        #expect(firstPage.results.count == 2)
+        #expect(firstPage.hasMore)
+        #expect(secondPage.totalResultCount == 7)
+        #expect(secondPage.results.count == 2)
+        #expect(Set(firstPage.results.map(\.recordID)).isDisjoint(
+            with: Set(secondPage.results.map(\.recordID))
+        ))
+        #expect(byTitle.results.map(\.context) == byTitle.results.map(\.context).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        })
     }
 
     @Test("Ambiguous Note identities and incomplete Record corpora fail closed")
@@ -131,7 +166,7 @@ private extension ResearchRecordSearchIndexTests {
         let analysisVaultID = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
         let topicVaultID = UUID(uuidString: "20000000-0000-0000-0000-000000000002")!
         let alphaNoteID = UUID(uuidString: "30000000-0000-0000-0000-000000000001")!
-        let pinnedRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000001")!
+        let historicalRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000001")!
         let todayRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000002")!
         let tombstoneRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000003")!
         let otherVaultRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000004")!
@@ -175,31 +210,32 @@ private extension ResearchRecordSearchIndexTests {
                 role: .topic,
                 title: "Selected Appendix"
             )
-            let pinnedFinished = calendar.date(byAdding: .day, value: -2, to: now)!
+            let historicalFinished = calendar.date(byAdding: .day, value: -2, to: now)!
             let researcherStatement = try PortableResearchStatement(
                 id: researcherStatementID,
                 author: .researcher,
                 kind: .researcherResponse,
                 attribution: "Professor Imna",
                 text: "A shared-token premise remains contested and sortable.",
-                createdAt: pinnedFinished.addingTimeInterval(-60)
+                createdAt: historicalFinished.addingTimeInterval(-60)
             )
             let agentStatement = try PortableResearchStatement(
                 author: .agent,
                 kind: .agentFeedback,
                 attribution: "Research Agent",
                 text: "A shared-token dialectical objection remains sortable.",
-                createdAt: pinnedFinished
+                createdAt: historicalFinished
             )
             let method = try Self.method(displayName: "Synthesize")
-            let pinned = try PortableResearchRecord(
-                id: pinnedRecordID,
+            let historical = try PortableResearchRecord(
+                id: historicalRecordID,
                 triptychID: triptychID,
+                title: try ResearchRecordTitle("A contested dialectical objection"),
                 kind: .action,
                 action: ResearchActionRecordIdentity(actionID: .synthesize),
                 method: method,
                 sourceReference: try ResearchSourceReference(
-                    identity: .localFile(id: pinnedRecordID),
+                    identity: .localFile(id: historicalRecordID),
                     displayName: "Aristotle Source.pdf",
                     fingerprint: DocumentFingerprint(content: "source-v1")
                 ),
@@ -214,9 +250,8 @@ private extension ResearchRecordSearchIndexTests {
                     revision: used.startingRevision
                 )],
                 fidelityCompletion: .notRequired,
-                startedAt: pinnedFinished.addingTimeInterval(-120),
-                finishedAt: pinnedFinished,
-                isPinned: true
+                startedAt: historicalFinished.addingTimeInterval(-120),
+                finishedAt: historicalFinished
             )
 
             let today = try Self.actionRecord(
@@ -298,7 +333,7 @@ private extension ResearchRecordSearchIndexTests {
             )
 
             records = [
-                pinned, today, tombstoneRecord, otherVaultRecord,
+                historical, today, tombstoneRecord, otherVaultRecord,
                 ambiguousOne, ambiguousTwo, future,
             ]
             fingerprints = Dictionary(uniqueKeysWithValues: records.map {
@@ -323,7 +358,11 @@ private extension ResearchRecordSearchIndexTests {
 
         func search(
             _ query: String,
-            scope: SearchExecutionScope = .triptych
+            scope: SearchExecutionScope = .triptych,
+            limit: Int = 100,
+            offset: Int = 0,
+            sort: RecordSearchSortOrder = .finishedAtDescending,
+            topLevelOnly: Bool = false
         ) throws -> ResearchRecordSearchIndex.Execution {
             let index = ResearchRecordSearchIndex(
                 triptychID: triptychID,
@@ -337,7 +376,10 @@ private extension ResearchRecordSearchIndexTests {
             return try index.search(
                 ast: try ast(query),
                 scope: scope,
-                limit: 100,
+                limit: limit,
+                offset: offset,
+                sort: sort,
+                topLevelOnly: topLevelOnly,
                 now: now,
                 calendar: calendar
             )
@@ -399,6 +441,7 @@ private extension ResearchRecordSearchIndexTests {
             try PortableResearchRecord(
                 id: id,
                 triptychID: triptychID,
+                title: try ResearchRecordTitle(String(text.prefix(80))),
                 kind: .action,
                 action: ResearchActionRecordIdentity(actionID: .synthesize),
                 method: method,

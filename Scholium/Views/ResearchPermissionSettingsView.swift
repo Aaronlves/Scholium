@@ -49,7 +49,7 @@ struct ResearchPermissionSettingsView: View {
                             )
 
                             Text(detail(snapshot.document.policy))
-                                .font(.callout)
+                                .font(ScholiumTypography.interface(.body))
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

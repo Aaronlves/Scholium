@@ -414,6 +414,7 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: preparation.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: target.fingerprint,
                 summary: "Checked the exact Analysis revision.",
                 didModifyTarget: false,
@@ -465,6 +466,7 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: preparation.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: target.fingerprint,
                 summary: "Checked the exact Analysis revision.",
                 didModifyTarget: false,
@@ -587,6 +589,7 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Revised the Work; final Fidelity remains pending.",
                 didModifyTarget: true
             )
@@ -611,6 +614,7 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionCompletionSubmission(
                 runID: fidelity.runID,
                 confirmationToken: fidelity.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: revisedFingerprint,
                 summary: "Checked the exact final Work revision.",
                 didModifyTarget: false,
@@ -621,6 +625,7 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Revised the Work and linked final Fidelity evidence.",
                 didModifyTarget: true,
                 childRunIDs: [fidelity.runID]
@@ -638,6 +643,7 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionCompletionSubmission(
                 runID: manuscript.runID,
                 confirmationToken: manuscript.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: revisedFingerprint,
                 summary: "Coordinated the selected manuscript activity.",
                 didModifyTarget: true,

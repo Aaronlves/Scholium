@@ -256,7 +256,7 @@ struct SpotlightSearchPanelView: View {
 
             if let explanationText {
                 Text(explanationText)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
@@ -366,7 +366,7 @@ struct SpotlightSearchPanelView: View {
     private var searchBar: some View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.body)
+                .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
                 .accessibilityHidden(true)
 
@@ -376,7 +376,7 @@ struct SpotlightSearchPanelView: View {
                 prompt: Text("Spotlight Search").foregroundStyle(.secondary)
             )
                 .textFieldStyle(.plain)
-                .font(.body)
+                .font(ScholiumTypography.interface(.body))
                 .lineLimit(1)
                 .focused($searchFocused)
                 .accessibilityIdentifier("scholium.searchField")
@@ -484,9 +484,9 @@ struct SpotlightSearchPanelView: View {
                 } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(completion.displayText)
-                            .font(.body.monospaced())
+                            .font(ScholiumTypography.exact(.body))
                         Text(completion.detail)
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .foregroundStyle(.secondary)
                         Spacer(minLength: 0)
                     }
@@ -542,7 +542,7 @@ struct SpotlightSearchPanelView: View {
     private func searchDiagnostic(_ diagnostic: SearchQueryDiagnostic) -> some View {
         let message = localizedDiagnostic(diagnostic)
         return Label(message, systemImage: "exclamationmark.circle")
-            .font(.caption)
+            .font(ScholiumTypography.interface(.small))
             .scholiumForeground(.destructive)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
@@ -588,14 +588,14 @@ struct SpotlightSearchPanelView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Label(presentation.title, systemImage: presentation.systemImage)
-                    .font(.caption.weight(.semibold))
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .foregroundStyle(
                         presentation.meaning.colorRole.color(
                             increasedContrast: increasedContrast
                         )
                     )
                 Text(presentation.message)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -632,7 +632,7 @@ struct SpotlightSearchPanelView: View {
     private var searchSummary: some View {
         if isExpanded, !controller.search.isRunning {
             Text(searchResultSummary)
-                .font(.caption.weight(.medium))
+                .font(ScholiumTypography.interface(.small, emphasis: .medium))
                 .foregroundStyle(.secondary)
                 .contentTransition(.numericText())
         }
@@ -851,11 +851,11 @@ struct SpotlightSearchPanelView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
             Text(title)
-                .font(ScholiumInterfaceTypography.editorialLabel)
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .scholiumForeground(.secondaryText)
             if let detail {
                 Text(detail)
-                    .font(.caption2)
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.mutedText)
             }
         }
@@ -1040,8 +1040,8 @@ struct SpotlightSearchPanelView: View {
         switch ordering {
         case .noteExactIdentityThenBM25ThenTitleRolePath:
             "exact Note identity, then one-corpus lexical relevance, then normalized title, vault role, and path"
-        case .recordPinnedThenFinishedAtThenUUID:
-            "pinned Records, then finished time descending, then Record UUID"
+        case .recordFinishedAtThenUUID:
+            "finished time descending, then Record UUID"
         }
     }
 
@@ -1168,17 +1168,17 @@ private struct NoteSearchResultRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(note.title)
-                    .font(ScholiumInterfaceTypography.rowTitle)
+                    .font(ScholiumTypography.interface(.rowTitle))
                     .lineLimit(1)
                 Spacer()
                 Text(note.vaultName)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
             Text(highlightedSnippet)
-                .font(.body)
+                .font(ScholiumTypography.scholarly(.body))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
 
@@ -1196,7 +1196,7 @@ private struct NoteSearchResultRow: View {
                 }
                 Text("Retrieval lead")
             }
-            .font(ScholiumInterfaceTypography.metadata)
+            .font(ScholiumTypography.interface(.small, emphasis: .medium))
             .scholiumForeground(.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1261,15 +1261,15 @@ private struct RecordSearchResultRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(record.context)
-                    .font(ScholiumInterfaceTypography.rowTitle)
+                    .font(ScholiumTypography.interface(.rowTitle))
                     .lineLimit(1)
                 Spacer()
                 Text("Research Record")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
             }
             Text(record.snippet)
-                .font(.body)
+                .font(ScholiumTypography.scholarly(.body))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
             HStack(spacing: 8) {
@@ -1281,7 +1281,7 @@ private struct RecordSearchResultRow: View {
                 }
                 Text("Retrieval lead")
             }
-            .font(ScholiumInterfaceTypography.metadata)
+            .font(ScholiumTypography.interface(.small, emphasis: .medium))
             .scholiumForeground(.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

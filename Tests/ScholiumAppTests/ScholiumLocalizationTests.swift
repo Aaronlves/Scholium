@@ -103,12 +103,16 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Unprocessed", locale: simplifiedChinese) == "未处理")
         #expect(ScholiumL10n.string("Handled", locale: simplifiedChinese) == "已处理")
         #expect(
-            ScholiumL10n.string("This Note · Records", locale: simplifiedChinese)
-                == "此笔记 · 记录"
+            ScholiumL10n.string("This Note Records", locale: simplifiedChinese)
+                == "此笔记的记录"
         )
         #expect(
-            ScholiumL10n.string("Triptych · Records", locale: simplifiedChinese)
-                == "研究脉络 · 记录"
+            ScholiumL10n.string("Triptych Records", locale: simplifiedChinese)
+                == "研究脉络记录"
+        )
+        #expect(
+            ScholiumL10n.string("ATTRIBUTED RECORD", locale: simplifiedChinese)
+                == "署名记录"
         )
         #expect(ScholiumL10n.string("Storage Unavailable", locale: simplifiedChinese) == "存储不可用")
         #expect(ScholiumL10n.string("Details", locale: simplifiedChinese) == "详细信息")

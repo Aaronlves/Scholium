@@ -154,16 +154,6 @@ final class ResearchController: ObservableObject {
         try await requireRecords().activeDiscussion(id: id)
     }
 
-    func setResearchRecordPinned(
-        id: UUID,
-        isPinned: Bool
-    ) async throws -> PortableResearchRecord {
-        try await requireRecords().setResearchRecordPinned(
-            id: id,
-            isPinned: isPinned
-        )
-    }
-
     func deleteResearchRecordPermanently(id: UUID) async throws {
         let operations = try requireRecords()
         do {

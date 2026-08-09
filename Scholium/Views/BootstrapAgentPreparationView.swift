@@ -45,20 +45,20 @@ struct BootstrapAgentPreparationView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Prepare an Agent")
-                            .font(.title.weight(.semibold))
+                            .font(ScholiumTypography.interface(.primaryTitle))
                             .accessibilityAddTraits(.isHeader)
                         Text("Optional. Research access still begins only from a specific Scholium Run handoff.")
-                            .font(.callout)
+                            .font(ScholiumTypography.interface(.body))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Project and workspace location")
-                            .font(.caption.weight(.semibold))
+                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             .foregroundStyle(.secondary)
                         Text(triptychRootPath)
-                            .font(.system(.caption, design: .monospaced))
+                            .font(ScholiumTypography.exact(.small))
                             .textSelection(.enabled)
                             .lineLimit(2)
                             .truncationMode(.middle)
@@ -73,7 +73,7 @@ struct BootstrapAgentPreparationView: View {
                             HStack(alignment: .center, spacing: 10) {
                                 if let status {
                                     Label(statusLabel(status), systemImage: statusSymbol(status))
-                                        .font(.caption)
+                                        .font(ScholiumTypography.interface(.small))
                                         .scholiumForeground(status.state == .installed ? .confirmed : .secondaryText)
                                         .accessibilityLabel("Scholium CLI status")
                                         .accessibilityValue(statusLabel(status))
@@ -96,14 +96,14 @@ struct BootstrapAgentPreparationView: View {
                             }
                             if let status {
                                 Text(status.installPath)
-                                    .font(.system(.caption, design: .monospaced))
+                                    .font(ScholiumTypography.exact(.small))
                                     .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 if let repairMessage = status.repairMessage {
                                     Text(repairMessage)
-                                        .font(.caption)
+                                        .font(ScholiumTypography.interface(.small))
                                         .foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
@@ -118,7 +118,7 @@ struct BootstrapAgentPreparationView: View {
                             Text(promptCopied
                                 ? "Setup Prompt Copied"
                                 : "Ask the Agent to prepare its project and applicable instruction file.")
-                                .font(.caption)
+                                .font(ScholiumTypography.interface(.small))
                                 .scholiumForeground(promptCopied ? .confirmed : .secondaryText)
 
                             HStack(spacing: 10) {
@@ -141,14 +141,14 @@ struct BootstrapAgentPreparationView: View {
 
                     BootstrapAgentTaskRow(number: 3, title: "Return and confirm") {
                         Text("After the Agent reports Ready, confirm below. Scholium records only your confirmation; it cannot inspect the external configuration.")
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Label {
                         Text("A local connection does not imply a local model. Cloud-provider data practices still apply.")
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.mutedText)
                             .fixedSize(horizontal: false, vertical: true)
                     } icon: {
@@ -158,7 +158,7 @@ struct BootstrapAgentPreparationView: View {
 
                     if let errorMessage {
                         Text(errorMessage)
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.destructive)
                             .textSelection(.enabled)
                             .accessibilityLabel("Agent setup error: \(errorMessage)")
@@ -325,7 +325,7 @@ private struct BootstrapAgentTaskRow<Content: View>: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Text(number, format: .number)
-                .font(.caption.weight(.semibold))
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .scholiumForeground(.accent)
                 .frame(width: 24, height: 24)
                 .overlay {
@@ -336,7 +336,7 @@ private struct BootstrapAgentTaskRow<Content: View>: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.body.weight(.semibold))
+                    .font(ScholiumTypography.interface(.sectionTitle))
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -352,7 +352,7 @@ private struct BootstrapAgentPromptSheet: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Agent Setup Prompt")
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
@@ -365,7 +365,7 @@ private struct BootstrapAgentPromptSheet: View {
 
             ScrollView {
                 Text(prompt)
-                    .font(.system(.callout, design: .monospaced))
+                    .font(ScholiumTypography.exact(.body))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(24)

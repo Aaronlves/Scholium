@@ -631,6 +631,7 @@ func makeTestAgentResultSubmission(
 ) throws -> ResearchAgentResultSubmission {
     let action = try #require(preparation.snapshot.actionSnapshot)
     return try ResearchAgentResultSubmission(
+        recordTitle: ResearchRecordTitle("Test research result"),
         disposition: disposition,
         academicResults: testAcademicResults(for: action),
         contextUseClaims: contextUseClaims,
@@ -698,6 +699,7 @@ func completeTestProtectedFunction(
             submissionFingerprint: DocumentFingerprint(
                 content: "test-result:\(submission.runID.uuidString.lowercased())"
             ),
+            recordTitle: submission.recordTitle,
             disposition: .completed,
             academicResults: academicResults,
             contextUseReport: nil,

@@ -792,6 +792,47 @@ struct ResearchActionControllerTests {
         #expect(handoffCount == 2)
     }
 
+    @Test("Agent-chosen Continue Research is projected beneath the parent Action")
+    func continueResearchBelongsToParentAction() async throws {
+        let action = try availability(.synthesize, order: 0)
+        let target = target()
+        let runID = UUID()
+        let prepared = try preparation(action: action, target: target, runID: runID)
+        let controller = ResearchActionController()
+        controller.bind(client(actions: [action], prepare: { _ in prepared }))
+        #expect(controller.begin(
+            target: target,
+            availability: action,
+            selection: nil,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.canPrepare }
+        controller.prepare()
+        await waitUntil { controller.phase == .prepared }
+
+        let parent = try portableActionRecord(
+            id: runID,
+            snapshot: prepared.snapshot
+        )
+        let child = try portableActionRecord(
+            id: UUID(),
+            snapshot: prepared.snapshot,
+            continuationLineage: ResearchContinuationLineage(
+                groupID: UUID(),
+                parentRunID: runID,
+                requestID: UUID(),
+                kind: .continueResearch
+            )
+        )
+
+        controller.receive(records: [child, parent])
+        #expect(controller.resultRecord?.id == runID)
+        #expect(controller.continuationRecords.map(\.id) == [child.id])
+
+        controller.receive(records: [parent])
+        #expect(controller.continuationRecords.isEmpty)
+    }
+
     private func client(
         actions: [ResearchActionAvailability],
         candidates: [ResearchActionNoteSnapshot] = [],
@@ -915,6 +956,37 @@ struct ResearchActionControllerTests {
             runID: runID,
             instructions: "Prepared instructions",
             state: .prepared
+        )
+    }
+
+    private func portableActionRecord(
+        id: UUID,
+        snapshot: ResearchActionSnapshot,
+        continuationLineage: ResearchContinuationLineage? = nil
+    ) throws -> PortableResearchRecord {
+        let target = snapshot.target
+        let participant = try PortableResearchNoteRevision(
+            noteID: target.noteID,
+            note: target.note,
+            role: target.role,
+            title: target.title,
+            startingRevision: target.fingerprint,
+            endingRevision: target.fingerprint
+        )
+        return try PortableResearchRecord(
+            id: id,
+            triptychID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
+            title: try ResearchRecordTitle("Controller test result"),
+            kind: .action,
+            action: ResearchActionRecordIdentity(snapshot: snapshot),
+            method: PortableResearchMethodReference(snapshot: snapshot),
+            continuationLineage: continuationLineage,
+            primaryNoteID: target.noteID,
+            participatingNotes: [participant],
+            statements: [],
+            fidelityCompletion: .notRequired,
+            startedAt: Date(timeIntervalSince1970: 100),
+            finishedAt: Date(timeIntervalSince1970: 100)
         )
     }
 

@@ -22,13 +22,14 @@ struct IdentityResolutionView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "questionmark.folder")
-                    .font(.title2)
+                    .scholiumSymbolStyle(.large)
                     .scholiumForeground(.attention)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Confirm Note Identity")
-                        .font(.title2.weight(.semibold))
+                        .font(ScholiumTypography.interface(.primaryTitle))
                     Text("Scholium found the file at a new location but cannot safely determine which previous note it belongs to.")
+                        .font(ScholiumTypography.interface(.body))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -36,18 +37,19 @@ struct IdentityResolutionView: View {
             LabeledContent("Vault", value: vaultName)
             LabeledContent("Current Location") {
                 Text(ambiguity.relativePath)
+                    .font(ScholiumTypography.exact(.body))
                     .textSelection(.enabled)
             }
             LabeledContent("Content Fingerprint") {
                 Text(shortFingerprint)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(ScholiumTypography.exact(.small))
                     .textSelection(.enabled)
                     .help(ambiguity.fingerprint.sha256)
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Which note is this?")
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                 Picker("Note identity", selection: $choice) {
                     ForEach(ambiguity.candidates) { candidate in
                         Text("Previously at \(candidate.relativePath)")
@@ -62,7 +64,7 @@ struct IdentityResolutionView: View {
             }
 
             Text("Confirming a previous note moves its current Discussion, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file.")
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 

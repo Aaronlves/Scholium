@@ -14,14 +14,15 @@ struct RestoreWorkspaceAccessView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Restore Access")
-                .font(.title2.weight(.semibold))
+                .font(ScholiumTypography.interface(.primaryTitle))
 
             Text(explanation)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(recovery.expectedPath)
-                .font(.callout.monospaced())
+                .font(ScholiumTypography.exact(.body))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
 

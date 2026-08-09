@@ -66,10 +66,10 @@ struct ResearchWriteSetExtensionView: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text("Allow Additional Notes for This Research Run?")
-                    .font(ScholiumInterfaceTypography.documentTitle)
+                    .font(ScholiumTypography.scholarly(.title))
                     .accessibilityAddTraits(.isHeader)
                 Text("Select the requested Notes this Run may modify.")
-                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                    .font(ScholiumTypography.scholarly(.body))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -85,7 +85,7 @@ struct ResearchWriteSetExtensionView: View {
                         ? "clock.badge.exclamationmark"
                         : "checkmark.shield"
                 )
-                .font(.headline)
+                .font(ScholiumTypography.interface(.sectionTitle))
                 Spacer()
                 HStack {
                     Spacer()
@@ -106,26 +106,26 @@ struct ResearchWriteSetExtensionView: View {
     private var requestContent: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Text("ACADEMIC REASON")
-                .font(ScholiumInterfaceTypography.apparatusLabel)
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
             Text(record.intent.academicReason)
-                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                .font(ScholiumTypography.scholarly(.body))
                 .textSelection(.enabled)
 
             Text("REQUESTED NOTES")
-                .font(ScholiumInterfaceTypography.apparatusLabel)
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(record.candidates) { candidate in
                         Toggle(isOn: selectionBinding(candidate.handle)) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(candidate.title).font(.body.weight(.semibold))
+                                Text(candidate.title).font(ScholiumTypography.interface(.sectionTitle))
                                 Text("\(roleTitle(candidate.role))  \(candidate.note.relativePath)")
-                                    .font(.caption)
+                                    .font(ScholiumTypography.interface(.small))
                                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                                 Text(operationTitles(candidate.operations))
-                                    .font(.caption)
+                                    .font(ScholiumTypography.interface(.small))
                                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -212,10 +212,10 @@ private struct ResearchContinuationPermissionView: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text("Allow the Next Research Action?")
-                    .font(ScholiumInterfaceTypography.documentTitle)
+                    .font(ScholiumTypography.scholarly(.title))
                     .accessibilityAddTraits(.isHeader)
                 Text("This starts a new independent Run with current permissions for the selected Action and target.")
-                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                    .font(ScholiumTypography.scholarly(.body))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -231,7 +231,7 @@ private struct ResearchContinuationPermissionView: View {
                         ? "clock.badge.exclamationmark"
                         : "checkmark.shield"
                 )
-                .font(.headline)
+                .font(ScholiumTypography.interface(.sectionTitle))
                 Spacer()
                 HStack {
                     Spacer()
@@ -260,7 +260,7 @@ private struct ResearchContinuationPermissionView: View {
                 permissionValue("ACADEMIC PURPOSE", record.request.academicPurpose)
 
                 Text("BOUNDED HANDOFF")
-                    .font(ScholiumInterfaceTypography.apparatusLabel)
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .accessibilityAddTraits(.isHeader)
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -268,12 +268,12 @@ private struct ResearchContinuationPermissionView: View {
                         index, item in
                         VStack(alignment: .leading, spacing: 3) {
                             Text("\(index + 1). \(epistemicStatusTitle(item.epistemicStatus))")
-                                .font(.body.weight(.semibold))
+                                .font(ScholiumTypography.interface(.sectionTitle))
                             Text(item.content)
-                                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                                .font(ScholiumTypography.scholarly(.body))
                                 .textSelection(.enabled)
                             Text("Next use: \(item.nextUse)")
-                                .font(.caption)
+                                .font(ScholiumTypography.interface(.small))
                                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
                                 .textSelection(.enabled)
                         }
@@ -309,11 +309,11 @@ private struct ResearchContinuationPermissionView: View {
     private func permissionValue(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
-                .font(ScholiumInterfaceTypography.apparatusLabel)
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 .accessibilityAddTraits(.isHeader)
             Text(value)
-                .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                .font(ScholiumTypography.scholarly(.body))
                 .textSelection(.enabled)
         }
     }

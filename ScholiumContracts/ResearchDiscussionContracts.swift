@@ -35,6 +35,26 @@ public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Senda
         statements.last?.author == .researcher
     }
 
+    /// Uses the researcher-authored opening as the finished Discussion title.
+    /// This is a bounded identity projection, not a generated result summary.
+    public func recordTitle() throws -> ResearchRecordTitle {
+        let source = statements.first(where: { $0.author == .researcher })?.text
+            ?? primaryNote.title
+        let normalized = source.split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+            .joined(separator: " ")
+        var candidate = ""
+        for character in normalized {
+            let proposed = candidate + String(character)
+            if proposed.utf8.count > ResearchRecordTitle.maximumUTF8Count - 3 {
+                break
+            }
+            candidate = proposed
+        }
+        if candidate != normalized { candidate += "..." }
+        return try ResearchRecordTitle(candidate)
+    }
+
     public init(
         id: UUID = UUID(),
         triptychID: UUID,
@@ -189,6 +209,7 @@ public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Senda
         return try PortableResearchRecord(
             id: id,
             triptychID: triptychID,
+            title: recordTitle(),
             kind: .discussion,
             action: action,
             method: method,

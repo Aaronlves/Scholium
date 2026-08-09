@@ -160,6 +160,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: protectedRun.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: analysis.fingerprint,
                 summary: "Returned one bounded clarification.",
                 didModifyTarget: false,
@@ -222,6 +223,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: preparation.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     finalTargetFingerprint: analysis.fingerprint,
                     summary: "A mismatched record must not complete the run.",
                     didModifyTarget: false
@@ -323,6 +325,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: protectedRun.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     actuallyUsedMaterialNoteIDs: [analysis.noteID],
                     summary: "I read /Users/researcher/private/source.pdf.",
                     didModifyTarget: false,
@@ -333,6 +336,7 @@ extension ResearchFunctionOperationsTests {
         let submission = ResearchFunctionCompletionSubmission(
             runID: protectedRun.runID,
             confirmationToken: protectedRun.snapshot.confirmationToken,
+            recordTitle: try ResearchRecordTitle("Test research result"),
             actuallyUsedMaterialNoteIDs: [analysis.noteID],
             summary: "No Topic change was warranted by the selected information.",
             didModifyTarget: false,
@@ -360,6 +364,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: protectedRun.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     actuallyUsedMaterialNoteIDs: [analysis.noteID],
                     summary: "No Topic change was warranted by the selected information.",
                     didModifyTarget: false,
@@ -473,6 +478,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: child.runID,
                 confirmationToken: child.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 actuallyUsedMaterialNoteIDs: [refreshedAnalysis.noteID],
                 summary: "The current Analysis revision was used without changing the Topic.",
                 didModifyTarget: false,
@@ -528,6 +534,7 @@ extension ResearchFunctionOperationsTests {
                     ResearchFunctionCompletionSubmission(
                         runID: run.runID,
                         confirmationToken: run.snapshot.confirmationToken,
+                        recordTitle: try ResearchRecordTitle("Test research result"),
                         actuallyUsedMaterialNoteIDs: invalid,
                         summary: "Invalid actually-used testimony.",
                         didModifyTarget: false,
@@ -542,6 +549,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: run.runID,
                     confirmationToken: run.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     actuallyUsedMaterialNoteIDs: nil,
                     summary: "The Material-use report was omitted.",
                     didModifyTarget: false,
@@ -554,6 +562,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: run.runID,
                 confirmationToken: run.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "The selected Analysis was not used.",
                 didModifyTarget: false,
                 submittedAt: submittedAt
@@ -730,6 +739,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: run.runID,
                 confirmationToken: run.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 actuallyUsedMaterialNoteIDs: [first.noteID, second.noteID],
                 summary: "Both Analyses were used.",
                 didModifyTarget: false

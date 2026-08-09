@@ -187,7 +187,6 @@ public struct RecordSearchResult: Codable, Hashable, Sendable {
     public let methodName: String?
     public let sourceDisplayName: String?
     public let finishedAt: Date
-    public let pinned: Bool
     public let participatingNotes: [VaultQualifiedNoteID]
     public let snippet: String
     public let highlights: [SearchHighlight]
@@ -209,7 +208,6 @@ public struct RecordSearchResult: Codable, Hashable, Sendable {
         methodName: String? = nil,
         sourceDisplayName: String? = nil,
         finishedAt: Date,
-        pinned: Bool,
         participatingNotes: [VaultQualifiedNoteID],
         snippet: String,
         highlights: [SearchHighlight] = [],
@@ -231,7 +229,6 @@ public struct RecordSearchResult: Codable, Hashable, Sendable {
         self.methodName = methodName
         self.sourceDisplayName = sourceDisplayName
         self.finishedAt = finishedAt
-        self.pinned = pinned
         self.participatingNotes = participatingNotes
         self.snippet = snippet
         self.highlights = highlights

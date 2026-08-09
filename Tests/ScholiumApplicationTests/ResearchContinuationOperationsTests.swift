@@ -276,6 +276,7 @@ struct ResearchContinuationOperationsTests {
             credential: credential,
             run: handoff.run,
             submission: ResearchAgentResultSubmission(
+                recordTitle: try ResearchRecordTitle("Continuation fixture result"),
                 academicResults: values
             )
         )

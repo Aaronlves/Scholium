@@ -183,6 +183,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: develop.runID,
                 confirmationToken: develop.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Developed one bounded claim.",
                 didModifyTarget: true,
                 literatureRecommendations: recommendations
@@ -230,6 +231,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: automatic.preparation.runID,
                 confirmationToken: automatic.preparation.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: saved.fingerprint,
                 summary: "Checked the exact final revision.",
                 didModifyTarget: false,
@@ -247,6 +249,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: develop.runID,
                     confirmationToken: develop.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     summary: "Developed and checked one bounded claim.",
                     didModifyTarget: true,
                     literatureRecommendations: [
@@ -264,6 +267,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: develop.runID,
                 confirmationToken: develop.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Developed and checked one bounded claim.",
                 didModifyTarget: true,
                 literatureRecommendations: recommendations,
@@ -330,6 +334,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: parent.runID,
                 confirmationToken: parent.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Added one source-bound claim.",
                 didModifyTarget: true,
                 literatureRecommendations: [],
@@ -345,6 +350,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: automatic.preparation.runID,
                 confirmationToken: automatic.preparation.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: saved.fingerprint,
                 summary: "Checked the exact final Analysis revision.",
                 didModifyTarget: false,
@@ -356,6 +362,7 @@ extension ResearchFunctionOperationsTests {
         let retry = ResearchFunctionCompletionSubmission(
             runID: parent.runID,
             confirmationToken: parent.snapshot.confirmationToken,
+            recordTitle: try ResearchRecordTitle("Test research result"),
             summary: "Added one source-bound claim.",
             didModifyTarget: true,
             literatureRecommendations: [],
@@ -440,6 +447,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: manual.runID,
                 confirmationToken: manual.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: analysis.fingerprint,
                 summary: "Checked the unchanged Analysis revision manually.",
                 didModifyTarget: false,
@@ -451,6 +459,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: develop.runID,
                     confirmationToken: develop.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     summary: "No Analysis change was needed.",
                     didModifyTarget: false,
                     literatureRecommendations: [],
@@ -463,6 +472,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: develop.runID,
                 confirmationToken: develop.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "No Analysis change was needed.",
                 didModifyTarget: false,
                 literatureRecommendations: []
@@ -485,6 +495,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "No Work change was needed.",
                 didModifyTarget: false
             )
@@ -549,6 +560,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: manual.runID,
                 confirmationToken: manual.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: finalTarget.fingerprint,
                 summary: "Checked the exact final revision.",
                 didModifyTarget: false,
@@ -560,6 +572,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: develop.runID,
                 confirmationToken: develop.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Developed one bounded claim.",
                 didModifyTarget: true,
                 literatureRecommendations: []
@@ -612,6 +625,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: preEditFidelity.runID,
                 confirmationToken: preEditFidelity.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: target.fingerprint,
                 summary: "Checked only the pre-edit Analysis revision.",
                 didModifyTarget: false,
@@ -631,6 +645,7 @@ extension ResearchFunctionOperationsTests {
         let awaitingSubmission = ResearchFunctionCompletionSubmission(
             runID: develop.runID,
             confirmationToken: develop.snapshot.confirmationToken,
+            recordTitle: try ResearchRecordTitle("Test research result"),
             summary: "Developed one bounded claim.",
             didModifyTarget: true,
             literatureRecommendations: []
@@ -642,6 +657,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: develop.runID,
                     confirmationToken: develop.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     summary: "Tried to reuse an audit of the pre-edit revision.",
                     didModifyTarget: true,
                     literatureRecommendations: [],
@@ -654,6 +670,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: develop.runID,
                     confirmationToken: develop.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     summary: "Tried to attach an unprepared audit claim.",
                     didModifyTarget: true,
                     fidelityOutcomes: [.passedContent],
@@ -678,6 +695,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: finalFidelity.runID,
                 confirmationToken: finalFidelity.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: finalTarget.fingerprint,
                 summary: "Checked the exact post-edit Analysis revision.",
                 didModifyTarget: false,
@@ -688,6 +706,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: develop.runID,
                 confirmationToken: develop.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Developed and checked one bounded claim.",
                 didModifyTarget: true,
                 literatureRecommendations: [],
@@ -777,6 +796,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: fidelity.runID,
                 confirmationToken: fidelity.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: target.fingerprint,
                 summary: "Checked content and citations under the selected style.",
                 didModifyTarget: false,
@@ -871,6 +891,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: critique.runID,
                 confirmationToken: critique.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: work.fingerprint,
                 summary: "Recorded one bounded Critique finding.",
                 didModifyTarget: false
@@ -949,6 +970,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Revised the inference; final Fidelity remains pending.",
                 didModifyTarget: true
             )
@@ -970,6 +992,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: revisionFidelity.runID,
                 confirmationToken: revisionFidelity.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: work.fingerprint,
                 summary: "Checked the exact final Work revision.",
                 didModifyTarget: false,
@@ -982,6 +1005,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Revised the inference and linked final Fidelity evidence.",
                 didModifyTarget: true,
                 childRunIDs: [revisionFidelity.runID]
@@ -1001,6 +1025,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: manuscript.runID,
                 confirmationToken: manuscript.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: work.fingerprint,
                 summary: "Coordinated the selected manuscript activities.",
                 didModifyTarget: true,

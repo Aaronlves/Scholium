@@ -47,6 +47,8 @@ restate those forms.
 
 ## Result
 
-Return the frozen Result Contract, including an explicit blocked result when
-the required research cannot be completed safely or faithfully. Do not provide
-process narration merely to demonstrate compliance.
+Return a concise one-line Record Title and the frozen academic Result Contract,
+including an explicit blocked result when the required research cannot be
+completed safely or faithfully. The Record Title names the completed research
+record; it is not a second result, source title, or process narration. Do not
+provide process narration merely to demonstrate compliance.

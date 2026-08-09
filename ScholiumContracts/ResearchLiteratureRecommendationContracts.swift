@@ -8,6 +8,7 @@ public struct ResearchLiteratureRecommendationSubmission: Codable, Hashable, Sen
     public let title: String?
     public let authors: [String]
     public let year: Int?
+    public let publication: String?
     public let doi: String?
     public let zoteroItemKey: String?
     public let sourceLocators: [String]
@@ -19,6 +20,7 @@ public struct ResearchLiteratureRecommendationSubmission: Codable, Hashable, Sen
         title: String? = nil,
         authors: [String] = [],
         year: Int? = nil,
+        publication: String? = nil,
         doi: String? = nil,
         zoteroItemKey: String? = nil,
         sourceLocators: [String] = [],
@@ -28,6 +30,7 @@ public struct ResearchLiteratureRecommendationSubmission: Codable, Hashable, Sen
         let rawCitation = Self.required(rawCitation)
         let title = Self.optional(title)
         let authors = authors.map(Self.required)
+        let publication = Self.optional(publication)
         let doi = Self.optional(doi)
         let zoteroItemKey = try ResearchSourceIdentity.normalizedZoteroKey(zoteroItemKey)
         let sourceLocators = sourceLocators.map(Self.required)
@@ -40,18 +43,19 @@ public struct ResearchLiteratureRecommendationSubmission: Codable, Hashable, Sen
               authors.count <= 64,
               authors.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 2 * 1024 }),
               year.map({ (-9_999...9_999).contains($0) }) ?? true,
+              publication.map({ $0.utf8.count <= 16 * 1024 }) ?? true,
               doi.map({ $0.utf8.count <= 2 * 1024 }) ?? true,
               sourceLocators.count <= 64,
               sourceLocators.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 4 * 1024 }),
               !reason.isEmpty,
               reason.utf8.count <= 64 * 1024,
               uncertainty.map({ $0.utf8.count <= 64 * 1024 }) ?? true,
-              [rawCitation, title, doi, reason, uncertainty]
+              [rawCitation, title, publication, doi, reason, uncertainty]
                 .compactMap({ $0 })
                 .allSatisfy(Self.hasNoControlCharacters),
               authors.allSatisfy(Self.hasNoControlCharacters),
               sourceLocators.allSatisfy(Self.hasNoControlCharacters),
-              [rawCitation, title, doi, zoteroItemKey, reason, uncertainty]
+              [rawCitation, title, publication, doi, zoteroItemKey, reason, uncertainty]
                 .compactMap({ $0 })
                 .allSatisfy({
                     !PortableResearchRecordValidation.containsAbsolutePath($0)
@@ -69,6 +73,7 @@ public struct ResearchLiteratureRecommendationSubmission: Codable, Hashable, Sen
         self.title = title
         self.authors = authors
         self.year = year
+        self.publication = publication
         self.doi = doi
         self.zoteroItemKey = zoteroItemKey
         self.sourceLocators = sourceLocators
@@ -81,6 +86,7 @@ public struct ResearchLiteratureRecommendationSubmission: Codable, Hashable, Sen
         case title
         case authors
         case year
+        case publication
         case doi
         case zoteroItemKey
         case sourceLocators
@@ -99,6 +105,7 @@ public struct ResearchLiteratureRecommendationSubmission: Codable, Hashable, Sen
             title: container.decodeIfPresent(String.self, forKey: .title),
             authors: container.decodeIfPresent([String].self, forKey: .authors) ?? [],
             year: container.decodeIfPresent(Int.self, forKey: .year),
+            publication: container.decodeIfPresent(String.self, forKey: .publication),
             doi: container.decodeIfPresent(String.self, forKey: .doi),
             zoteroItemKey: container.decodeIfPresent(String.self, forKey: .zoteroItemKey),
             sourceLocators: container.decodeIfPresent(
@@ -193,6 +200,7 @@ public struct ResearchLiteratureRecommendation: Codable, Hashable, Identifiable,
     public let title: String?
     public let authors: [String]
     public let year: Int?
+    public let publication: String?
     public let doi: String?
     public let zoteroItemKey: String?
     public let sourceLocators: [String]
@@ -210,6 +218,7 @@ public struct ResearchLiteratureRecommendation: Codable, Hashable, Identifiable,
         title = submission.title
         authors = submission.authors
         year = submission.year
+        publication = submission.publication
         doi = submission.doi
         zoteroItemKey = submission.zoteroItemKey
         sourceLocators = submission.sourceLocators
@@ -224,6 +233,7 @@ public struct ResearchLiteratureRecommendation: Codable, Hashable, Identifiable,
         title: String? = nil,
         authors: [String] = [],
         year: Int? = nil,
+        publication: String? = nil,
         doi: String? = nil,
         zoteroItemKey: String? = nil,
         sourceLocators: [String] = [],
@@ -236,6 +246,7 @@ public struct ResearchLiteratureRecommendation: Codable, Hashable, Identifiable,
             title: title,
             authors: authors,
             year: year,
+            publication: publication,
             doi: doi,
             zoteroItemKey: zoteroItemKey,
             sourceLocators: sourceLocators,
@@ -268,6 +279,7 @@ public struct ResearchLiteratureRecommendation: Codable, Hashable, Identifiable,
             title: title,
             authors: authors,
             year: year,
+            publication: publication,
             doi: doi,
             zoteroItemKey: zoteroItemKey,
             sourceLocators: sourceLocators,
@@ -283,6 +295,7 @@ public struct ResearchLiteratureRecommendation: Codable, Hashable, Identifiable,
         case title
         case authors
         case year
+        case publication
         case doi
         case zoteroItemKey = "zotero_item_key"
         case sourceLocators = "source_locators"
@@ -303,6 +316,7 @@ public struct ResearchLiteratureRecommendation: Codable, Hashable, Identifiable,
             title: container.decodeIfPresent(String.self, forKey: .title),
             authors: container.decode([String].self, forKey: .authors),
             year: container.decodeIfPresent(Int.self, forKey: .year),
+            publication: container.decodeIfPresent(String.self, forKey: .publication),
             doi: container.decodeIfPresent(String.self, forKey: .doi),
             zoteroItemKey: container.decodeIfPresent(String.self, forKey: .zoteroItemKey),
             sourceLocators: container.decode([String].self, forKey: .sourceLocators),

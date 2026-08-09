@@ -9,6 +9,7 @@ public enum SearchContract {
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
     public static let maximumInterfaceResults = 100
+    public static let recordCollectionPageSize = 100
     public static let defaultCLIResults = 20
     public static let maximumCLIResults = 500
     public static let maximumQueryUTF16Count = 16_384
@@ -102,25 +103,48 @@ public enum SearchExecutionScope: Codable, Hashable, Sendable {
     case triptych
 }
 
+/// Provider-owned ordering for the dedicated Research Records collection.
+/// Ordinary cross-provider Search retains its canonical relevance/date order.
+public enum RecordSearchSortOrder: String, Codable, Hashable, Sendable {
+    case finishedAtDescending
+    case finishedAtAscending
+    case titleAscending
+    case titleDescending
+    case actionAscending
+    case actionDescending
+}
+
 public struct SearchRequest: Codable, Hashable, Sendable {
     public let id: UUID
     public let query: String
     public let presentationScope: SearchPresentationScope
     public let executionScope: SearchExecutionScope
     public let limit: Int
+    public let offset: Int?
+    public let recordSort: RecordSearchSortOrder?
 
     public init(
         id: UUID = UUID(),
         query: String,
         presentationScope: SearchPresentationScope,
         executionScope: SearchExecutionScope,
-        limit: Int
+        limit: Int,
+        offset: Int = 0,
+        recordSort: RecordSearchSortOrder? = nil
     ) {
         self.id = id
         self.query = query
         self.presentationScope = presentationScope
         self.executionScope = executionScope
         self.limit = limit
+        self.offset = offset > 0 ? offset : nil
+        self.recordSort = recordSort
+    }
+
+    public var resultOffset: Int { max(0, offset ?? 0) }
+
+    public var resolvedRecordSort: RecordSearchSortOrder {
+        recordSort ?? .finishedAtDescending
     }
 
     public var hasConsistentScopes: Bool {
@@ -381,6 +405,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
     public let availability: SearchProviderAvailability
     public let results: [SearchResult]
     public let hasMore: Bool
+    public let totalResultCount: Int?
     public let diagnostics: [SearchQueryDiagnostic]
 
     public init(
@@ -392,6 +417,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
         availability: SearchProviderAvailability,
         results: [SearchResult],
         hasMore: Bool,
+        totalResultCount: Int? = nil,
         diagnostics: [SearchQueryDiagnostic] = []
     ) {
         self.contractVersion = contractVersion
@@ -402,6 +428,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
         self.availability = availability
         self.results = results
         self.hasMore = hasMore
+        self.totalResultCount = totalResultCount
         self.diagnostics = diagnostics
     }
 

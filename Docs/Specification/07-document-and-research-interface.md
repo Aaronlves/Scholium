@@ -153,7 +153,7 @@ Import, duplicate, rename, reorder, edit, reload, remove, and reveal act only on
 those managed copies.
 
 Window toolbar order is Sidebar visibility before the Library separator;
-Heading Outline and compact identity; mode and Search; **This Note · Records**;
+Heading Outline and compact identity; mode and Search; **This Note Records**;
 Inspector visibility before the Apparatus separator. Scholium controls are
 borderless ink. No second identity row,
 Document Properties button, or More control exists.
@@ -172,32 +172,171 @@ quiet, and `zotero_item_key` and Analysis title are never selectable there.
 
 Apparatus contains Research Inspector only; active Discussion, Research Records,
 and checkpoint recovery keep distinct ownership. Active Discussion opens as an
-Action sheet. Research Records is an independent, nonrestored ordinary native
-auxiliary window keyed to one Triptych. It reads that Triptych directly instead
-of following focused `WindowModel`, defaults to **760 × 680pt**, and is resizable
-down to **700 × 520pt**. It uses one native list/detail split, has no Workspace
-Sidebar control or alternate primary-interface mode, and never appears inside
-Inspector. Its leading list remains compact and top-aligned in ready, empty,
-filtered-empty, and partial-load states; controls and rows use compact native
-macOS density while every custom target retains the minimum accessible hit
-region. Its ordinary native titlebar carries only window identity. Scope and
-View remain independent, but both belong to the leading collection-navigation
-plane: a restrained **Records / Recommendations** editorial index begins that
-pane, while a borderless native Scope menu sits in the list-context row above
-search. The reading plane begins directly beneath the ordinary titlebar; no
-full-width control band, toolbar, or glass treatment crosses it. Focus changes
-in other windows never retarget either control.
+Action sheet. Research Records is an independent, nonrestored native auxiliary
+window keyed to one Triptych. It reads that Triptych directly instead of
+following focused `WindowModel`, defaults to **760 × 680pt**, and is resizable
+down to **700 × 520pt**. It has no Workspace Sidebar control or alternate
+primary-interface mode and never appears inside Inspector.
+
+The ordinary entry is a full-window collection on one continuous semantic
+Document surface. The native toolbar owns the restrained **Records / Reading
+Leads** editorial index. It uses the same shallow editorial-selection surface
+as ModeIndex, with equal destinations and no underline or filled segmented
+band. Below it, one adaptive header places search and the borderless native
+Scope and filter menus on one scanning row at wide widths and stacks them only
+when space requires it. The toolbar index is the visible collection identity
+and never appends a count; the search field receives the available header width.
+Ready, empty, filtered-empty, partial-load, unavailable, and error states retain
+that stable hierarchy. Controls and rows use compact native macOS density while
+every custom target retains the minimum accessible hit region. The titlebar,
+toolbar, collection header, and content resolve the same Document background
+and use adaptive 1pt rules rather than contrasting bars, materials, or shadows.
+Native traffic lights, dragging, resizing, full screen, key-window appearance,
+and the window menu remain system-owned. The collection and Reading Lead routes
+do not use a full-size content view: AppKit's `contentLayoutRect` ends scrolling
+content below the titlebar while the hidden toolbar background lets the
+window's Document color remain continuous without Liquid Glass or a masking
+overlay. Record detail alone uses a full-height native split so the reading and
+evidence plane backgrounds, tracking separator, and semantic depth continue
+behind the toolbar; each hosted scroll view remains constrained to AppKit's
+safe area and cannot pass through the titlebar.
+
+Records form one flat rule-separated ledger, not cards or date groups. One
+compact 48pt Triptych row owns an unlabeled 28pt Attention gutter, a two-line
+**Record** cell, **Action**, and **Date**. Record is the frozen one-line Record
+Title in the regular 12pt Default interface role; its second line is the focal Note in
+muted 10pt Sans. This Note omits the redundant second line. Attention, Action, and Date
+center against the complete Record cell. Method, source, and complete results
+remain in detail. Attention stays empty
+normally and uses one icon-only exception mark for Blocked or limited,
+unavailable, or missing Analyze Reliability/Coverage. Help and accessibility
+preserve exact values. Action is a centered, text-only neutral capsule with no
+category color or symbol and no independent action semantics. Records default
+to finished time descending and stable identity. Record, Action, and Date
+headers request provider-owned ordering before pagination. The collection has
+no visible content title, explanatory subtitle, Pin, Research Result synopsis,
+source line, or note count. Reading Leads apply the same compact row, column-header, separator,
+and interaction rhythm. The visible header begins with Title: the leading 32pt
+checkbox track retains the accessible Handled label and sits 8pt from Title,
+followed by Author(s), Year, and Publication. Academic row values use the
+interface family throughout: Title uses the regular 12pt Default interface
+role, while Author(s), Year, Publication, and unavailable-field state use the
+11pt Compact interface role. Switching family does not promote supporting
+values to 12pt; capsules remain 10pt Sans. The checkbox remains independent;
+the four academic columns open detail
+without another glyph. Missing bibliographic facts read **Not recorded**.
+Reason, uncertainty, locators, note, and parent context
+stay in detail. Neither collection introduces an icon well, nested card, badge,
+or trailing detached action region.
+
+Both collections load exact 100-row slices. The first content-column header
+shows the exact filtered total beside Record or Title in muted 10pt tabular
+figures, without parentheses or a “results” suffix. Reaching the loaded boundary
+requests the next slice while preserving collection state. Later-page failure
+retains loaded rows and exposes Retry at that boundary.
+
+Selecting a row enters one route-owned detail and removes the collection from
+the active accessibility tree. The native toolbar owns Back and the restrained
+route title; Back returns to the retained collection state.
+A Record detail contains one dominant reading plane and one narrower
+**Evidence & Judgment** rail at an approximately **64/36** working proportion;
+additional width accrues to reading first. The panes use the Document and
+Apparatus semantic backgrounds respectively. One 1pt adaptive divider and one
+purpose-named reading-evidence structural shadow distinguish the quieter rail
+from the dominant reading plane; both continue to the top of the native
+full-height split. Increase Contrast removes the shadow and relies on the
+strengthened divider and semantic surface difference. Evidence is expanded by default. A
+native trailing-toolbar control hides or shows the whole rail; hiding it gives
+the available width to reading and does not alter Record, route, or judgment
+state. Reading Leads use a corresponding single-occurrence detail route. Focus
+changes in other windows never retarget Scope, View, route, filters, or the
+current detail.
+
+A Reading Lead detail uses one centered reading flow rather than the Record's
+split workspace. Its header places one independently operable disposition
+button beside the scholarly title. Unprocessed presents the accented
+**Mark as handled** action with a clock; the immediate optimistic state becomes
+a neutral bordered **Handled** button with a checkmark and remains reversible.
+The control retains an accessible action label and current value; concise Help
+and an accessibility hint preserve that Handled means processed only, never
+read, accepted, cited, verified, or endorsed. The selectable full citation
+follows in muted Scholarly body above the information band. Bibliography
+keeps authors, year, publication, DOI, and Zotero item key together. At regular reading widths Bibliography occupies the wider left side
+of one information band and Discovery Locators occupies its bounded right side;
+at genuinely narrow widths the two complete groups stack in the same order.
+Recommendation reason, uncertainty, researcher note, source and parent
+destinations, then closed Technical Details follow the band.
+Bibliography, Record identity, and Technical Details reuse the
+Inspector About label/value grid, with Sans labels and Note names, Scholarly
+body values. DOI, Zotero item key, and Discovery Locators are scholarly
+content and use that same Scholarly value treatment rather than technical
+identity typography. Exact Record and revision identity remains monospaced.
+Missing bibliography or locator facts remain explicit.
+Across both Record and Reading Lead detail routes, academic prose and
+content-derived values use Scholarly body. Their long collection ledgers are
+interface indexes and therefore remain Sans: primary row values use Default
+interface, supporting values use Compact interface, and annotations or metadata
+use Small. Supporting explanations and explicit empty or unavailable-state
+descriptions outside a ledger use Compact interface. Visual subordination never
+permits an empty, unavailable, or error state to disappear.
+
+The Record header shows Action and finished time once, one scholarly title, and
+only distinct role, Method, or source metadata. Completed is not repeated there;
+Blocked remains visible. **Research Result** remains present when its Result
+Contract has no academic fields and states that exact condition. It and
+every other reading-plane section share the Apparatus heading token. Attributed
+rows align one fixed authorship track with one Serif academic-prose track.
+Researcher and Agent use distinct semantic
+colors and symbols with visible role labels; generic response-kind labels do not
+repeat the author. Records metadata uses spacing and alignment, never middots.
 The auxiliary window's Scope remains **This Note / Triptych**. A Record result
 found through global **This Vault** Search still opens this existing Triptych-
 keyed window, reapplies its **Triptych** Scope, selects Records View and the
-exact Record, and locates its matched attributed statement when one was
+exact Record detail, and locates its matched attributed statement when one was
 returned. The window does not add a This Vault control, reconstruct cached
-result prose, or create a second Record-query owner.
-Normal Action Material-use and Fidelity facts remain in the existing collapsed
-**Record Details**. An `unverified` Fidelity state instead appears once in the
-evidence area as a complete textual statement; it is not duplicated in Details
-and does not acquire a badge, score, color-only meaning, tooltip, filter, or
-new disclosure. Discussions show neither inapplicable row.
+result prose, or create a second Record-query owner. A continuation child
+Record remains searchable but appears beneath its parent Action/Record rather
+than as another peer row in the ordinary Records collection.
+
+Evidence & Judgment prioritizes scholarly legibility in this order:
+**Participants**, **Context Used**, **Effects**, then **Researcher Evaluation**.
+Every section title shares one height, inset, baseline, and Apparatus heading
+style. Each fact uses one aligned monochrome symbol, title, and short provenance
+text. Note and Record names, roles, dates, state, and provenance use Sans, with
+minor facts in `mutedText`; attributed testimony and academic result prose use
+Serif. Context Used uses a quotation symbol distinct from every Participant
+document symbol.
+A Participants or Context Used preview contains at most three rows; the focal
+Note and other safely actionable entries lead, while deleted or unresolved
+provenance remains available. When the complete set exceeds three, the title is
+one rounded, keyboard-operable disclosure showing the total and a right
+chevron, then opens a native transient popover with every entry. The popover
+closes through native outside-click,
+Escape, or source navigation and introduces no custom close button, material,
+shadow, or persistent state. Its automatic first-responder assignment uses the
+native focus effect and never appears as a pre-hovered evidence row; the shared
+rounded hover surface appears only under an actual pointer or press.
+A safely resolved Note or Record destination makes the complete rounded row
+interactive without adding an **Open** glyph or button. An unresolved source
+retains its exact locator and testimony as selectable, copyable,
+noninteractive text. Agent-reported Material use is a fallback only when a
+verified Context Use report is absent. Effects state confirmed source changes,
+Record completion, applicable Fidelity, and discrepancies without badges,
+scores, or color-only meaning.
+
+The current researcher judgment remains directly readable. Its right-chevron
+section title is the one Review/Edit control and opens a native sheet; an
+unsaved draft blocks implicit dismissal and requires explicit discard
+confirmation. One
+default-closed **Technical Details** group contains only Record kind, schema,
+integrity, identifier, Method/source identity, and exact participant revisions.
+It uses the same adaptive Inspector About label/value grid rather than a local
+field layout; a narrow region stacks the complete group as one unit.
+The single confirmed permanent-delete route is a named `trash` icon in the
+single-Record header, never on collection rows or inside
+Technical Details. The Record route exposes no inline revision comparison,
+Method Feedback, or Method-improvement command. Those source-recovery and
+parent-Action workflows retain their separate owners.
 There is exactly one native trailing Inspector per window, with **Overview,
 Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
@@ -415,8 +554,8 @@ explanations, and research prose use Alegreya; exact paths and revisions remain
 monospaced. Counts use monospaced digits without changing the surrounding
 face.
 
-Provisional rhythm is a 28pt minimum scanning/action row, 12pt Alegreya with
-approximately 17–18pt reading leading, 4pt label-to-copy gap, 8pt between
+Provisional rhythm is a 28pt minimum scanning/action row, the Scholarly body
+role with approximately 17–18pt reading leading, 4pt label-to-copy gap, 8pt between
 reading blocks, and 16pt between sections. Apparatus sections, ordinary Action
 rows, and relation rows draw no boundary by default. A local boundary must be
 enabled explicitly for a named ownership, consequence, or recovery distinction.

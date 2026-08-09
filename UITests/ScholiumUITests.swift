@@ -85,10 +85,13 @@ final class ScholiumUITests: XCTestCase {
 
     struct QAResearchRecordFixture {
         let recordID: UUID
+        let researcherStatementID: UUID
+        let agentStatementID: UUID
         let recommendationID: UUID?
         let analysisNoteID: UUID
         let topicNoteID: UUID
         let tombstoneNoteID: UUID
+        let overflowParticipantNoteIDs: [UUID]
     }
 
     /// `defaultSize` is a first-presentation input. Tests that need a specific

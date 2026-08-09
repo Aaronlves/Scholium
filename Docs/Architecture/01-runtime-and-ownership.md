@@ -46,11 +46,9 @@ The macOS app and CLI depend only on Contracts and Application; Core is not a
 library product and cannot be imported by either delivery target.
 
 ```text
-ScholiumContracts
-       ↑
-ScholiumCore ← ScholiumApplication
-                       ↑
-              ScholiumApp / ScholiumCLI
+ScholiumApp → ScholiumApplication → ScholiumCore → ScholiumContracts
+ScholiumApp → ScholiumResearchRecordsFeature → ScholiumContracts
+ScholiumCLI → ScholiumApplication → ScholiumCore → ScholiumContracts
 
 ApplicationBootstrapController (one app-owned storage gate)
 ├── Registry Recovery (preserve malformed registry, then relink)
@@ -88,9 +86,25 @@ ScholiumApplicationDelegate
 Research Records WindowGroup (one UUID value per Triptych)
 └── ScholiumResearchRecordsRoot
     ├── direct WindowWorkspaceCapabilities for that Triptych
-    └── ResearchRecordBrowserModel (Application Record query plus local
-        presentation and rebuildable Recommendations projection)
+    ├── ResearchRecordBrowserModel (feature-owned Record query, collection
+    │   route, filters, and rebuildable Reading Leads projection)
+    └── ResearchRecordBrowserView (App-owned macOS presentation and Design
+        System consumption)
 ```
+
+`ScholiumResearchRecordsFeature` is a package-internal target that depends
+only on `ScholiumContracts`. It owns the transient route, collection/filter
+model, conservative Reading Leads index, continuation folding, and comparison-
+task cancellation. Its collection index stores a lightweight scanning
+projection without scholarly result or statement bodies rather than every
+complete portable Record. Confirmed permanent deletion first publishes a
+reversible in-memory projection, then serializes the authoritative Application
+mutation; success reconciles the removal, while failure restores the prior
+projection. It imports neither
+SwiftUI nor App delivery state.
+`ScholiumApp` adapts those values to the semantic Design System and Application
+capabilities; `ResearchRecordsWindowCoordinator` remains an App shell route
+owner under `Scholium/App/Window` and retains no Record data.
 
 ### Runtime bootstrap, refresh, and Search
 
@@ -209,7 +223,7 @@ canonical `PropertyContract`: it can report key/value source ranges without
 granting an unknown key semantic or judgment authority. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-5 objects and
+matcher. The portable Record store supplies exact decoded schema-6 objects and
 their source-byte fingerprints; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or
@@ -282,9 +296,11 @@ AppKit commits to closing the exact native window. Close preparation only
 flushes content and finalizes recoverable presentation; if another window
 cancels application termination, every still-open window retains its flush
 ownership for the next attempt. `ResearchActionController` owns the exact
-window's transient write-set subset sheet and unsaved evaluation draft, both
-keyed to one Run and discarded or retained according to their explicit close
-contracts; it owns no durable authorization or evaluation.
+window's transient write-set subset sheet, unsaved evaluation draft, and the
+read-only projection of direct Continue Research children beneath the current
+parent Action. Those values are keyed to one Run and discarded or retained
+according to their explicit close contracts; it owns no durable
+authorization, continuation, Record, or evaluation.
 `WindowSearchController` owns Search/temporary Find execution and
 cancellation, provider-aware exact result-freshness validation, generation or
 Record-manifest reruns, and serialized Saved Search loading and persistence. It
@@ -331,6 +347,12 @@ capabilities and immutable snapshot for their keyed Triptych. Their coordinator
 retains pending presentation requests and same-Triptych navigation endpoints,
 never Record data or authorization. `ContentView`, Inspector, Actions, and
 Research Records leaves observe only the owner whose state they render.
+The feature model begins at `.collection`; selecting one Record or Reading
+Lead replaces the collection through a typed transient route. Closing the
+window drops that route and every presentation filter without altering the
+portable store. A Continue Research child remains available by exact ID and
+Search, but the feature folds it beneath its direct parent instead of
+projecting a peer collection row.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable catalog, per-vault snapshots, selected Location's
 Notes/tags/authors/years/revisions and property-filter options, graph, Note

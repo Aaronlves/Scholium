@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumContracts
+@testable import ScholiumResearchRecordsFeature
 @testable import ScholiumApp
 import Testing
 

@@ -4,6 +4,32 @@ import Testing
 
 @Suite("Current Search contracts")
 struct SearchProtocolContractsTests {
+    @Test("Record collection paging remains additive to existing Search requests")
+    func recordCollectionPagingContract() throws {
+        let request = SearchRequest(
+            query: "kind:record",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: SearchContract.recordCollectionPageSize,
+            offset: 200,
+            recordSort: .titleDescending
+        )
+        let encoded = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(SearchRequest.self, from: encoded)
+        #expect(decoded.resultOffset == 200)
+        #expect(decoded.resolvedRecordSort == .titleDescending)
+
+        var legacyObject = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        legacyObject["offset"] = nil
+        legacyObject["recordSort"] = nil
+        let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
+        let legacy = try JSONDecoder().decode(SearchRequest.self, from: legacyData)
+        #expect(legacy.resultOffset == 0)
+        #expect(legacy.resolvedRecordSort == .finishedAtDescending)
+    }
+
     @Test("Note provider remains the default and preserves finite lexical syntax")
     func noteProviderFiniteSyntax() throws {
         let result = SearchQueryParser.parse(#"title:"reflective \"equilibrium\"" summary:autonomy autonom* -tag:survey"#)
@@ -184,7 +210,7 @@ struct SearchProtocolContractsTests {
             .canonicalUnicodeCaseWhitespace,
             .lexicalUnicodeCaseDiacriticWhitespace,
         ])
-        #expect(recordExplanation.ordering == .recordPinnedThenFinishedAtThenUUID)
+        #expect(recordExplanation.ordering == .recordFinishedAtThenUUID)
         #expect(recordExplanation.limitations.contains(.recordNoCrossObjectRelevance))
         #expect(explanation.clauses.contains {
             if case .property(let key, let value) = $0.kind {

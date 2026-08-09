@@ -109,11 +109,66 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   Inspector, or Window menu. It retains the current queue on loading failure,
   dismisses natively, and keeps Inspect, Resynthesize, and Leave Unchanged
   explicit.
-- The Research Records window uses a Navigation/Document split, independent
-  Records and Recommendations views, a native Scope menu, shared search and
-  filters, comparison, deletion, provenance navigation, recommendation
-  handling, and researcher notes. Same-Triptych requests reuse one window;
-  different Triptychs remain isolated.
+- The Research Records window opens as a full-width Records or Reading Leads
+  collection with a native-toolbar shallow-surface View index, no underline,
+  and one adaptive content header for continuous search and native Scope/filter
+  menus. The toolbar index is the visible identity and carries no count; search
+  expands into the available width.
+  Rule-separated compact 48pt rows use one continuous rounded hover/focus/press
+  surface, omit duplicated long synopsis, resolve their bounded scroll range
+  before interaction, and use no automatic selection. Identity has no
+  explanatory subtitle. Triptych Records show an unlabeled Attention gutter,
+  one two-line Record cell, Action, and Date. Record uses the strict frozen
+  title and the second line is muted focal-Note context; This Note omits that
+  redundant line. Attention shows only an explicit
+  exception for Blocked or limited/unavailable/missing Analyze
+  Reliability/Coverage; normal rows stay empty. Action is a centered text-only
+  neutral capsule without icon or category color. Completed is implicit, and
+  source and Method remain in detail. The collection is flat, defaults to finish
+  date descending, and offers provider-owned Record, Action, and Date sorting.
+  It shows no visible content title, Pin, generated Research Result synopsis,
+  source line, note count, or date group. Reading Leads share the same header,
+  row-height, separator, and interaction rhythm. Their visible header begins
+  with Title; a visually unlabeled 32pt checkbox track retains the accessible
+  Handled label 8pt before it, followed by Author(s), Year, and Publication.
+  Academic Record and Lead values use regular 12pt Scholarly body, Note names
+  and unavailable-field state remain Sans, and capsules use 10pt. Reason,
+  uncertainty, locators, researcher note, and parent context live in detail.
+  Whole-row destinations omit redundant trailing
+  chevrons while Handled remains independent. One item replaces the collection;
+  each ledger loads exact 100-row slices and shows its exact filtered total in
+  the first content-column header; later-page failure retains loaded rows and
+  exposes Retry.
+  native-toolbar Back retains collection state. A selected Record uses a
+  reading-first plane and a default-expanded, toolbar-collapsible Evidence &
+  Judgment rail on one Document background with one divider and one
+  full-height reading-evidence depth cue cast into the rail. A Reading Lead
+  uses one centered reading flow rather than a second split workspace. Its
+  header disposition button publishes a prominent **Mark as handled** to
+  neutral **Handled** transition immediately while the atomic Record write and
+  Workspace refresh continue, then reconciles or rolls back. A selectable muted
+  full citation sits above the adaptive information band. Bibliography retains
+  structured publication facts, DOI, and Zotero key in the wider column while
+  Discovery Locators uses the bounded peer column; the two groups stack at
+  narrow widths before the academic reason and uncertainty. The
+  window now removes `fullSizeContentView`, so AppKit's content-layout rectangle
+  prevents every collection and detail scroll owner from entering the titlebar.
+  Toolbar and automatic shared-item backgrounds remain hidden without Liquid
+  Glass or a masking overlay.
+  Its nonduplicative header omits repeated completion while important empty
+  sections state their condition. Reading-plane sections share one heading recipe;
+  statements align colored, labelled Researcher/Agent authorship beside Serif
+  academic prose. The prototype-derived Evidence ledger aligns every section
+  header, uses Sans Note/Record names, `mutedText` provenance, Serif testimony,
+  and quotation symbols for Context Used. Participants and Context Used preview three useful
+  rows and open complete native popovers; Effects and saved researcher judgment
+  remain visible. Safe destinations use complete rounded rows; unresolved
+  locators stay selectable. Evaluation opens a draft-protected sheet, Technical
+  Details folds schema/provenance, and Bibliography and technical identity reuse
+  Inspector About's adaptive label/value grid with 12pt scholarly or exact
+  values. `trash` owns confirmed deletion.
+  Inline comparison and Method Feedback are absent. Same-Triptych
+  requests reuse one window; different Triptychs remain isolated.
 
 ## Document and editor
 
@@ -173,6 +228,9 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   End Action, current result or recovery state, and explicit next steps. It
   does not expose implementation hashes, schema data, internal protocol prose,
   or a separate Pairing Code field.
+- When the authenticated Agent chooses Continue Research, the completed child
+  is shown beneath the parent Action in one read-only continuation section; the
+  Action sheet exposes no Continue Research command or credential.
 - A Discussion sheet preserves passage Comments, whole-note turns, focal Notes,
   attributed replies, Copy Handoff, nonterminal Close, Finish, and End
   Discussion as distinct actions.
@@ -187,10 +245,19 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   derive from `DocumentAppearanceSettings.defaultSettings`; no parallel Native
   heading table remains. Advanced CSS operates on managed sanitized copies
   with validation, Safe Mode, and Disable All Snippets recovery.
-- Semantic typography, grid, boundary, elevation, symbol, and purpose-named
-  motion components are shared across workspace, editor, Inspector, and
-  Research Records. Increase Contrast strengthens boundaries and removes
-  custom soft shadows; Reduce Motion removes custom animation.
+- Native custom text uses one three-family resolver: Interface, Scholarly, and
+  Exact. Feature-specific Library, Apparatus, Research Records, and Chrome font
+  aliases are absent; a shared 17pt Interface primary title and 20pt Scholarly
+  research-object title replace them. Emphasis and tabular figures remain
+  orthogonal inputs. Brand/Bootstrap hero typography and component-owned Symbol
+  scale are the bounded exceptions. Presentations no longer declare fixed point
+  sizes, raw SwiftUI text styles, direct SwiftUI system fonts, or leaf-owned
+  font weights. Standard controls remain platform-owned, all bundled Alegreya
+  and Victor Mono faces resolve through AppKit, and Document remains CSS-owned.
+  Grid, boundary, elevation, symbol, and purpose-named motion
+  components remain shared. Increase Contrast
+  strengthens boundaries and removes custom soft shadows; Reduce Motion removes
+  custom animation.
 - English and Simplified Chinese catalogs are reachable. Stable identifiers,
   paths, exact Markdown, researcher-authored titles and prose, and Skill names
   remain verbatim.

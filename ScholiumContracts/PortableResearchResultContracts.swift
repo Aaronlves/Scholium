@@ -351,13 +351,14 @@ public enum PortableResearchEvaluationMutationError: LocalizedError, Hashable,
 
 public extension PortableResearchRecord {
     /// Fingerprint of the finalized Agent/Scholium result partition. Mutable
-    /// researcher-owned pin, recommendation disposition, evaluation, and
-    /// method-comment fields are excluded by construction.
+    /// researcher-owned recommendation disposition, evaluation, and method-
+    /// comment fields are excluded by construction.
     func finalizedResultFingerprint() throws -> DocumentFingerprint {
         let partition = PortableResearchFinalizedResultPartition(
             schemaVersion: schemaVersion,
             id: id,
             triptychID: triptychID,
+            title: title,
             kind: kind,
             action: action,
             method: method,
@@ -390,6 +391,7 @@ private struct PortableResearchFinalizedResultPartition: Encodable {
     let schemaVersion: Int
     let id: UUID
     let triptychID: UUID
+    let title: ResearchRecordTitle
     let kind: PortableResearchRecordKind
     let action: ResearchActionRecordIdentity?
     let method: PortableResearchMethodReference?

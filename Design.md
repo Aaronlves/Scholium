@@ -27,29 +27,13 @@ pixel gate. Except accessibility, readability, source safety, and native
 boundaries, Sections 18–20 metrics remain provisional and cannot override
 native behavior, add state owners, or delay the core.
 
-Canonical design system in brief:
-
-- Document remains primary; Sidebar, Document, and Apparatus are distinct,
-  opaque structural planes derived from one Paper resolver. The complete
-  Sidebar shares one Navigation surface; Apparatus remains a document-adjacent
-  margin whose tone is much closer to Document than Navigation. One continuous
-  document-navigation boundary depth cue lets the Document/Apparatus work field
-  advance subtly over Sidebar without turning any plane into a card.
-- System sans organizes interface structure, Alegreya carries readable
-  research content, and Victor Mono identifies exact source and revisions.
-- Typography, the purpose-named 4pt grid, whitespace, alignment, and semantic
-  color establish hierarchy before rules, containers, or elevation.
-- Native macOS controls own geometry, focus, selection, menus, sheets, and
-  transient presentation. Scholium adds no parallel window or control skin.
-- Inspector uses one ModeIndex with one selected editorial-control surface,
-  section/fact/reading grammar, a native local
-  Connection Direction Control, relationship clusters, Action rows, and local
-  state views; ordinary rows and sections are borderless by default. Library's
-  canonical target uses one TriptychWorkspaceNavigator, stable Triptych
-  Attention entry, LocationPicker, and Source List under §18.3.
-- Interface copy follows §19.6; cross-functional state presentation follows
-  §19.9; and every component carries the applicable keyboard, accessibility,
-  localization, appearance, and recovery requirements from §20.
+Document remains primary across the opaque Sidebar, Document, and Apparatus
+planes. System sans, Alegreya, and Victor Mono distinguish interface,
+scholarly, and exact content; purpose-named typography, spacing, alignment, and
+semantic color establish hierarchy before boundaries or elevation. Native
+controls retain platform behavior. Library and Inspector use the components in
+§19.7, copy follows §19.6, state presentation follows §19.9, and every
+surface carries §20 adaptation requirements.
 
 Exploratory documents retain only unresolved proposals. Once a visual recipe
 enters this specification and becomes reachable, its implementation evidence
@@ -58,18 +42,12 @@ parallel design guide.
 
 ### 19.1 Liquid Glass and material boundary
 
-Liquid Glass is not part of Scholium's interface language. Do not use
-`glassEffect`, `GlassEffectContainer`, glass button styles, refractive morphing
-chrome, or another Liquid Glass treatment to define Scholium surfaces or
-controls.
-
-Transparency, blur, vibrancy, and native or custom glass/material effects are
-not categorically prohibited. They may be used for a named local task when
-they preserve readability, contrast, focus, hit testing, adaptation, and the
-surrounding native ownership boundary. Native material is preferred when it
-fully serves the task; a custom effect still requires a concrete remaining
-gap. A local effect does not automatically become a design Variable, brand
-token, card recipe, or permission to glassify another surface.
+Liquid Glass is not Scholium's interface language: `glassEffect`,
+`GlassEffectContainer`, glass button styles, and refractive chrome do not define
+surfaces or controls. A named local task may use native, or when necessary
+custom, transparency, blur, vibrancy, or material only while preserving
+readability, contrast, focus, hit testing, adaptation, and native ownership.
+That bounded use creates no reusable Variable or permission elsewhere.
 
 The structural Sidebar, Document, and Apparatus planes remain opaque under
 §18.2. Their one approved Workspace depth cue is the opaque-surface
@@ -79,60 +57,126 @@ Sidebar material: it transiently covers the untruncated title beneath the
 trailing control, owns no geometry or action state, and creates no card or
 additional plane.
 
-System chrome, menus, presentations, controls, focus, selection, semantic
-Sidebar/Inspector, and tracking separators stay native. Document tabs are
-ordinary Document controls, not simulated window tabs.
+Chrome, menus, presentations, controls, focus, selection, separators, and
+Document tabs stay native. Research Guidance, Actions, permission sheets, and
+Research Record use continuous planes, textual collection/detail structure,
+editorial hierarchy, rules, alignment, and whitespace—not cards, tiles, badges,
+avatars, chat bubbles, nested rounded containers, or decorative diagrams.
+Finite ledger fields may use the quiet semantic capsules defined below; they
+are compact value presentations, not decorative badges or status collections.
 
-Research Guidance, Actions, permission sheets, and Research Record use
-continuous native planes, textual list/detail structure, editorial hierarchy,
-fine rules, alignment, and deliberate whitespace. They do not use per-Skill
-cards, colorful category tiles, score badges, agent avatars, chat bubbles,
-nested rounded containers, or decorative workflow diagrams. Selection and
-consequence remain clear through native state, typography, symbols, and text.
+Library Locations remain in the opaque Navigation plane, never alter Workspace
+depth, and add no floating layer, local elevation, accessory bar, or sheet
+motion. LocationPicker stays system-owned; pane hosts consume native safe area
+once and the titlebar/toolbar own visibility-control alignment.
 
-Library Locations retain one opaque navigation plane. Location content neither
-dims retained content nor floats above it, and adds no material, reflection,
-grabber, rounded panel, accessory row, separately measured bar, local shadow,
-or sheet motion. It neither owns nor alters the Workspace boundary depth cue.
-The LocationPicker's transient menu remains system-owned rather than becoming
-a Scholium popover. Pane-local content hosts consume the native safe area once;
-the titlebar and its single native toolbar own visibility-control alignment.
+Research Records is collection-first. Toolbar owns one shallow-surface View
+index without an underline; its labels are always Records and Reading Leads,
+with no appended count. One adaptive row owns search and Scope/Filters; the
+search field receives available width and the toolbar index is the visible
+collection identity. Records and Leads are
+rule-separated ledgers, never cards, and share one compact 48pt row, column
+header, separator, and interaction rhythm. Rows need no navigation glyph.
+The Triptych Record columns are an unlabeled 28pt Attention gutter, a two-line
+Record cell, Action, and Date. The frozen Record Title is collection interface
+language and uses the regular 12pt Default interface role;
+the focal Note is a second 10pt muted Sans line. This Note omits that redundant
+line. Attention, Action, and Date center against the complete Record cell.
+Source, Method, and complete results remain in detail. Completed
+is implicit. Attention stays empty normally and uses one icon-only exception
+mark for Blocked or limited, unavailable, or missing Analyze
+Reliability/Coverage; Help and accessibility preserve exact values. Action is
+a quiet, text-only, neutral capsule with no category tint or symbol. It is a
+finite ledger value, not a control. Records default to finished date descending
+and expose provider-owned Record, Action, and Date sorting. The collection has
+no visible content title, subtitle, Pin, date grouping, generated
+Research Result synopsis, source line, or note-count projection. Leads visually omit the
+Handled header, place its 32pt checkbox track 8pt from Title, then show
+Author(s), Year, and Publication. Reading Lead Title uses the regular 12pt
+Default interface role; Author(s), Year, Publication, and unavailable-field
+state use the 11pt Compact interface role. Changing a long-list value to Sans
+does not promote supporting information to 12pt. Action uses medium weight and
+capsules use 10pt. Record detail is 64/36:
+Document is the dominant reading plane and Apparatus is the quieter evidence
+rail. Their adaptive divider and semantic reading-evidence depth run behind the
+toolbar while both scroll contents remain below it.
+Lead detail keeps one centered reading flow: its header places an independently
+operable Handled disposition button beside the title. Unprocessed is an
+accented **Mark as handled** action with a clock; the immediate optimistic
+result becomes a neutral bordered **Handled** state with a checkmark and can be
+reversed. The full citation follows as selectable Scholarly body in muted
+ink, above one adaptive Bibliography/Discovery information band. Bibliography
+keeps Authors, Year, Publication, DOI, and Zotero item key together in the
+shared About FactGrid grammar. DOI, Zotero item key, and Discovery Locators are
+academic values and use the Scholarly body role; exact Record and revision
+identity retains the Exact family.
+Record and Reading Lead detail academic prose and content-derived values use
+the Scholarly body role. Long scrolling ledgers are navigation and scanning
+surfaces, so their complete visible language uses Sans: primary values use the
+12pt Default interface role, supporting values use the 11pt Compact interface
+role, and annotations or metadata use the 10pt Small role. Supporting
+explanations and explicit content-state descriptions outside a ledger use
+Compact interface; Small remains limited to labels, annotations, and metadata.
+Empty or unavailable content remains explicit even when its explanatory
+treatment is visually secondary.
+At regular reading widths,
+Bibliography owns the wider left column and Discovery Locators the bounded
+right column; a genuinely narrow window stacks the same complete groups in
+that order without changing their semantics. Recommendation reason and
+uncertainty, researcher note, source and parent, and closed Technical Details
+follow the band.
 
-Research Records reuses the existing native list/detail structure, search and
-empty/error states, structural rules, semantic surfaces, typography, native
-menu, checkbox, sheet, and focus behavior. Its native titlebar remains ordinary
-window chrome. View uses the existing restrained editorial-index underline at
-the top of the Navigation plane; Scope uses one borderless native menu in the
-list-context row. Neither becomes a filled segment, full-width control band,
-feature toolbar, or Liquid Glass container. The leading List reveals the
-Navigation surface instead of a default scroll background, and reading-plane
-actions share one borderless ink-and-hover treatment. The auxiliary window
-consumes the same persisted System/Light/Dark choice and resolved semantic roles
-as Workspace rather than inventing a local appearance state. Recommendations
-adds no palette, card recipe, badge, bespoke split, Sidebar treatment, or new
-visual Variable.
+Both ledgers load exact 100-row slices. A muted 10pt tabular total sits beside
+Record or Title in the first content-column header, never in the toolbar or
+controls and never with parentheses or “results”. Reaching the loaded boundary
+requests the next slice; later-page failure keeps loaded content and offers
+Retry at the same boundary.
+
+Header states Action/date/title once, then distinct metadata. Completion is not
+repeated; empty sections state status. Reading shares Apparatus headings. Fixed
+authorship/Serif tracks label Researcher Accent/`person`
+and Agent `agentAuthorship`/`sparkle`.
+
+Evidence headings align. Sans owns names/provenance, Alegreya testimony/judgment,
+`mutedText` minor facts; Context alone uses `text.quote`.
+Participants/Context preview three; chevrons show all. Effects/judgment remain;
+Technical Details closes; `trash` deletes. Dense facts use Inspector About's
+label/value grid. Metadata omits middots.
 
 ### 19.2 Typography and color
 
-- System sans is interface structure: navigation names, chrome, menus,
-  controls, Settings, alerts, section headings, field labels, action names,
-  dates, compact scanning cues, and every Connect relationship heading and Note
-  row. The fixed **Scholium** Alegreya wordmark remains the identity exception.
-- Library Folder and unselected Note titles use the same 12pt Regular system
-  role; only the selected Note uses Semibold. The compact Document-toolbar
-  identity uses the 13pt system body role with secondary ink.
-- **Alegreya** is for Review/Edit prose and may identify content-derived
-  titles, linked research objects, researcher judgments, field values,
-  explanations, Scope, Limitations, and other research content when density,
-  scaling, and mixed-script fallback remain legible.
-- Apparatus text never exceeds the adjacent Document Body at the default
-  Appearance. Its interface labels and headings use the quieter semantic text
-  roles; its 12pt content values and explanations may use Alegreya, but small
-  text still meets §20 contrast and mixed-script legibility requirements.
-  Connect remains a flat operational scan surface and therefore uses Sans for
-  its complete visible language even when a row names a research Note.
-- **Victor Mono** is for Source, code, exact excerpts, anchored review content,
-  revision identities, paths, stable identifiers, and diffs.
+Family communicates content kind; size communicates hierarchy. The two axes are
+independent:
+
+| Role outside Document | Family | Base size | Constraint |
+| --- | --- | --- | --- |
+| Default interface | System sans | **12pt** Regular | Includes Library Folder and Note titles; selection changes only weight. |
+| Compact interface | System sans | **11pt** | Dense ledgers and scanning rows. |
+| Small | Same family as its content | **10pt** | Labels, annotations, and metadata; ordinary floor, never a way to hide important state. |
+| Scholarly body | Alegreya | **13pt** | Optically compensates for Alegreya's lower x-height; research prose, judgments, and content-derived values. |
+| Exact body | Victor Mono | **12pt** | Source, code, paths, identifiers, revisions, and diffs. |
+
+Native text resolves through only three families: Interface, Scholarly, and
+Exact. Interface has one **17pt Semibold primary title**, then section, row,
+body, compact, and small roles; every custom window, sheet, Settings page, and
+top-level route shares that primary title. Scholarly has one **20pt Bold title**,
+one **17pt Bold section title**, body, and emphasis. Exact has body, strong, and
+small. Tabular figures are an option on a role, never another role. Feature
+areas publish no font aliases. Brand and Bootstrap hero typography are the only
+exceptions; symbols remain a component concern. Native controls retain platform
+typography. Apparatus may pair compact Sans labels with scholarly values;
+Connect remains entirely Sans. `DocumentAppearanceSettings` and generated
+Appearance CSS own all Document typography and renderer adaptations.
+
+A long, repeated, scrolling list is an interface index even when it names
+academic objects. Its visible rows therefore remain Sans for comfortable
+scanning. Family does not flatten hierarchy: the primary row value uses Default
+interface, supporting values use Compact interface, and annotations or metadata
+use Small. Selecting an item returns its academic prose and content-derived
+values to Scholarly typography in the detail or reading surface. Bounded
+evidence previews and detail sections do not become long-list interface merely
+because they repeat entries.
+
 - The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
   **2.0** line spacing, **1em** paragraph spacing, **0.02em** tracking,
   zero first-line indent, zero word spacing, justified text, no hyphenation,
@@ -219,36 +263,23 @@ radius, shadow, border, gradient, or paper scales.
 Corner geometry follows component responsibility and containment rather than
 one application-wide numeric scale.
 
-- System windows, toolbars, menus, sheets, popovers, and native controls retain
-  their platform-owned shapes. Scholium neither copies their current numeric
-  radii nor adds a parallel control skin.
-- Matching instances of the same component responsibility and size use one
-  shape recipe. A leaf View never names a raw radius; a fixed radius belongs
-  only to the owning component, surface role, or purpose-named feature metric.
-- A custom surface adjacent to or nested inside a rounded container uses
-  container-concentric geometry. When the supported platform cannot resolve
-  that geometry, one purpose-owned fixed fallback preserves the same visual
-  relationship rather than creating a second appearance.
-- A border does not imply rounding. Ordinary lists, structural separators,
-  toolbar symbols, and unbounded content do not acquire a custom rounded
-  enclosure merely to make geometry appear uniform. Capsules remain
-  native-owned or require a named full-height enclosure; they do not create
-  tag walls, card families, or decoration.
-- Native and WebKit presentations share a corner recipe only when they express
-  the same semantic construct. Distinct constructs may use distinct fixed
-  geometry.
+- Native windows, toolbars, menus, sheets, popovers, and controls retain their
+  platform shapes; Scholium copies no system radius or control skin.
+- Matching component responsibilities and sizes use one recipe. Leaf Views name
+  no raw radius. Nested custom surfaces use container-concentric geometry or one
+  purpose-owned fallback when the platform cannot resolve it.
+- Borders do not imply rounding. Lists, separators, symbols, and unbounded
+  content remain unenclosed; capsules are native-owned or named full-height
+  enclosures, never decoration or tag walls.
+- Native and WebKit share geometry only for the same semantic construct.
 
 Corner shape never carries state or authority by itself; boundary and focus
 adaptation continue to follow §20.
 
-- Interface type roles: identity, section title, row title, metadata, and
-  narrowly approved editorial hierarchy. Library exposes purpose-named Folder,
-  Note, selected-Note, and Attention-alert roles; the toolbar exposes the
-  compact-identity role.
-  These roles may resolve to a shared point
-  size but leaf views do not recreate their weights or sizes. Document Body
-  and heading roles are owned by `DocumentAppearanceSettings`; native helpers
-  cover Exact Source, Code, Diff, and Revision Identity only.
+- Interface roles map default, compact, and small text to 12pt, 11pt, and 10pt;
+  purpose-named identity, section, row, metadata, Library, and toolbar roles
+  derive from them without leaf-owned values. Document typography remains
+  CSS-owned; native exact-content helpers serve only non-Document presentations.
 - Document Appearance exposes one machine-local Line width input with the
   default, range, unit, and shared-mode ownership in §18.4. Document Rhythm
   adds no second built-in typography or measure path.
@@ -256,78 +287,59 @@ adaptation continue to follow §20.
   Semantic roles are resolver outputs, not additional Variables; components
   consume those roles without owning a palette value.
 - Structural Sidebar, Document, and Apparatus surfaces are opaque semantic
-  planes; bounded local glass or material follows §19.1. Their sole structural
-  depth exception is the Workspace-owned document-navigation boundary below.
+  planes; bounded local glass or material follows §19.1. Their structural depth
+  exceptions are the Workspace-owned document-navigation boundary and the
+  single-Record reading-evidence boundary below.
   Dense evidence is quietest and most legible.
-- The Sidebar's Triptych Attention entry is one stable presentation component,
-  not an owner of diagnostics or counts. It shares the Triptych identity row
-  and uses one direct warning symbol. At rest it has no background: zero uses
-  secondary ink without a number, while nonzero places the exact aggregate
-  Triptych total beside, never over, the symbol and uses Attention ink for both.
-  Hover, keyboard focus, press, and an open popover place one shared shallow
-  interaction surface behind the complete symbol-and-count target; the symbol
-  never owns a separate circle and the count never becomes a badge. Checking
-  and unavailable retain the same identity and expose complete state and Retry.
-  No Attention count, aggregate, or anchor is projected into the Document
-  toolbar or individual workspace rows.
+- Triptych Attention is one stable Sidebar presentation, not a diagnostics or
+  count owner. At rest, zero has secondary ink and no number; nonzero places the
+  exact aggregate beside its direct warning symbol and uses Attention ink for
+  both. Hover, focus, press, and open-popover states raise the complete target,
+  never a symbol circle or count badge. Checking and unavailable retain identity,
+  complete state, and Retry. Document toolbar and workspace rows expose no
+  Attention projection.
 - Purpose-named boundaries are structural divider, subtle boundary, and
   floating boundary; Increase Contrast strengthens roles rather than adding
   new ones. Apparatus sections, ordinary rows, and Action rows default to no
   boundary; a consumer must explicitly request a boundary for a named semantic
   distinction.
-- Elevation is a purpose mapping, never a numbered depth or shadow scale.
-  System-owned windows, panels, menus, popovers, sheets, and alerts retain
-  their native elevation and receive no Scholium shadow wrapper. The sole
-  structural role is **document-navigation boundary**. Workspace owns it at the
-  Document's logical leading edge and casts it only into Sidebar, continuously
-  from the window top through the titlebar/toolbar background to the bottom.
-  The native toolbar and 1pt tracking separator remain in front, interactive,
-  and geometrically authoritative. The cue is noninteractive, has no motion,
-  mirrors in right-to-left presentation, disappears with Sidebar, and never
-  appears between Document and Apparatus. Its provisional active-Light recipe
-  uses AppKit's semantic shadow color at **0.04** opacity, **8pt** blur radius,
-  **2pt** logical offset toward Sidebar, zero vertical offset, and no spread.
-  Dark appearance, an inactive window, or Reduce Transparency resolves opacity
-  to **0.02** without compounding; Increase Contrast resolves it to zero and
-  relies on the native separator plus semantic surface difference.
-  A Scholium-owned transient surface separately uses exactly one of three
-  roles: **floating control** for compact selection, status, and loading
-  controls; **bounded panel** for a larger custom menu, preview, or locally
-  bounded presentation above content; and **search overlay** for the centered
-  Search command surface. No other structural or ordinary content surface has
-  elevation. A child does not accumulate its parent's shadow, and a leaf view
-  never supplies shadow color, opacity, blur, or offset. Surface, boundary,
-  text, and position must communicate ownership when any shadow is absent.
-- Native controls own interaction states. Custom targets prefer **28pt** and
-  never fall below **20pt**; this does not redefine native sizes. Custom
-  button-like controls share one pointer-neutral focus policy: each stays in
-  the complete native keyboard focus chain, while a pointer press clears the
-  keyboard-only focus state before activation settles. Matching controls
-  locally replace the system focus effect with the shared content-focus
-  surface; a caller never samples the current AppKit event or suppresses focus
-  effects for the window or application.
-- Toolbar symbols use system-owned geometry, hover, focus, and press behavior;
-  they receive no Scholium underline or custom active enclosure. A custom
-  content control uses an immediate state change with no geometry animation:
-  secondary ink at rest, primary ink on hover or focus, and a purpose-owned
-  surface only when its component responsibility requires one. Every
-  Scholium-owned content control consumes one shared adaptive hover-surface
-  resolver; no SwiftUI or AppKit caller supplies a local hover color or opacity.
-  That resolver uses one translucent semantic-ink veil whose relative contrast
-  follows the native toolbar's system hover on every underlying content plane;
-  it does not sample, copy, or freeze the toolbar's current AppKit pixel value.
-  Keyboard focus remains a stronger raised treatment, while Navigation
-  selection keeps its purpose-owned persistent surface.
-  Matching LocationHeader icon controls reuse one exact **28 × 28pt** outer
-  target and the editorial-control shape recipe; LocationPicker and Triptych
-  Attention instead fit their complete text or count content at the same
-  preferred height. LocationPicker uses 13pt Regular secondary ink at rest and
-  promotes to primary ink on hover or keyboard focus without changing weight;
-  its hover, focus, and press states use the same editorial-control shape
-  rather than stacking a native enclosure. Triptych workspace rows own one continuous Navigation
-  selection shape, while ModeIndex selected and hover surfaces use the
-  editorial-control recipe. No leaf supplies a raw radius, and no capsule is
-  inferred from selection or a count.
+- Elevation is purpose-named, never a depth scale; system presentations retain
+  native elevation. Workspace owns the structural **document-navigation
+  boundary** at Document's logical leading edge, cast into Sidebar from window
+  top to bottom behind the native toolbar and 1pt separator. Single-Record
+  detail owns the corresponding **reading-evidence boundary**, cast from the
+  dominant Document reading plane into the Apparatus evidence rail through the
+  same full-height native split grammar. Each is noninteractive, motionless,
+  RTL-aware, and absent with its receiving plane. Active Light uses AppKit
+  semantic shadow at
+  **0.04** opacity, **8pt** blur, **2pt** logical Sidebar offset, zero vertical
+  offset, and no spread. Dark, inactive, or Reduce Transparency uses **0.02**;
+  values never compound. Increase Contrast removes it and relies on separator
+  and surface difference.
+  Transient custom surfaces use only **floating control**, **bounded panel**, or
+  **search overlay**. No other content elevation, inherited child shadow, or
+  leaf-owned shadow value exists; ownership remains legible without shadow.
+- Native controls own interaction states. Custom targets prefer **28pt**, never
+  fall below **20pt**, and remain in the keyboard focus chain. Pointer press
+  clears keyboard-only focus before activation; matching controls use the shared
+  content-focus surface without sampling events or suppressing app/window focus.
+  Evidence rows inside transient popovers retain the native focus effect: the
+  popover's automatic first-responder assignment never paints a pointer-hover
+  surface, while actual hover and press still use the shared content feedback.
+- Toolbar symbols retain one native small-control recipe, system body symbol
+  geometry, and platform hover, press, focus, and disabled feedback across the
+  main Workspace and auxiliary windows, without Scholium underline or custom
+  enclosure. Custom content controls change immediately: secondary ink at
+  rest, primary ink on hover/focus, and a purpose-owned surface only when needed.
+  One adaptive semantic-ink resolver supplies hover surfaces across content
+  planes without copying toolbar pixels; keyboard focus is stronger and
+  Navigation selection remains persistent.
+  LocationHeader icons share one **28 × 28pt** target and editorial-control
+  shape. LocationPicker and Triptych Attention fit complete content at that
+  height and reuse that hover/focus/press shape; LocationPicker uses 12pt Regular
+  secondary ink, promoted to primary without weight change. Triptych rows own
+  continuous Navigation selection; ModeIndex owns editorial-control selection
+  and hover.
 - Standard actions and Vector Link relationship marks use direct SF Symbols.
   Text remains primary; Scholium owns no parallel custom Vector Link glyph
   family.
@@ -343,70 +355,52 @@ adaptation continue to follow §20.
 - The Library's **300pt minimum readable thickness** is a component-specific
   containment threshold outside the grid, not a spacing role, preferred width,
   or scene minimum.
-- Peripheral metrics own the shared **28pt** outer page edge for Library and
-  Inspector. Library metrics independently own the
-  Library's **12pt** row-surface inset, **28pt** minimum row rhythm, **16pt**
-  hierarchy indentation step, **12–14pt** semantic leading slot, **8pt**
-  leading-to-title gap, and the Triptych workspace-row selection recipe.
-  Ordinary row content begins at the 12pt inset while a selected or pressed
-  navigation feedback surface may span the Source List width; the surface does
-  not change the content axis. Content headings and principal controls align to
-  the shared 28pt page edge. BrandHeader and LocationHeader retain
-  intrinsic content-driven height rather than copying a toolbar or
-  footer height. BrandHeader-to-workspace spacing uses the **12pt**
-  nested-content role rather than another local value. Workspace rows retain
-  the preferred **28pt** target, grow rather than clip, and align their
-  noninteractive Note total at the logical trailing edge. That total uses
-  system Sans, monospaced digits, and `mutedText` without a background or
-  hover promotion. These values remain provisional until they pass the 300pt,
-  localization, scaling, contrast, and human visual-acceptance matrix.
-- Apparatus metrics map the outer inset to the shared peripheral edge and
-  independently own the Inspector ModeIndex's shallow editorial-control state
-  surface, **4pt** separation between adjacent local states, **78pt** minimum fact
-  label column, **14pt** fact-column gap, **204pt** horizontal FactGrid
-  threshold, and **44pt** Action-row rhythm. Connect uses a four-level
-  Inspector cadence rather than copying the Library: **16pt** separates its
-  direction control, freshness line, and complete role groups; **8pt** leads
-  from a nonempty role heading to its first relationship cluster; **12pt**
-  separates relationship clusters; and Note rows use a **28pt** minimum rhythm
-  with **4pt** between each relationship heading and its rows. Its native
-  direction control is centered on the Inspector content axis and grows only
-  to a **240pt** maximum before narrower Inspectors compress it. Absent
-  freshness, empty groups, and the scroll anchor add no hidden spacing. These
-  names may reuse a general value only when the purpose is genuinely the same;
-  Inspector-specific rhythm is not expressed by borrowing a peripheral or
-  Library metric.
-- Research Records independently retains its existing **18pt × 1pt** View
-  selection underline; it does not borrow the removed Inspector-mode metric.
+- Library and Inspector share a **28pt** outer page edge. Library owns a
+  **12pt** row inset, **28pt** minimum row rhythm, **16pt** hierarchy step,
+  **12–14pt** leading slot, **8pt** title gap, and Triptych selection recipe.
+  Full-width feedback never shifts the 12pt content axis. Headings align to the
+  outer edge; BrandHeader and LocationHeader remain intrinsic, with **12pt** to
+  workspace content. Workspace rows grow rather than clip and align a trailing,
+  noninteractive Sans monospaced `mutedText` total without background or hover
+  promotion. The 300pt, localization, scaling, contrast, and human-acceptance
+  matrix remains the gate.
+- Apparatus owns the ModeIndex surface, **4pt** local-state gap, **78pt** fact
+  label minimum, **14pt** fact gap, **204pt** horizontal FactGrid threshold, and
+  **44pt** Action rhythm. Connect cadence is **16pt** between direction,
+  freshness, and role groups; **8pt** heading-to-first-cluster; **12pt** between
+  clusters; and **28pt** Note rows with a **4pt** relationship-heading gap. Its
+  centered native direction control caps at **240pt**. Absent content adds no
+  spacing; Inspector roles never borrow Library metrics merely by equal value.
+- Records: **240pt** shallow-surface View index, **28pt** page-edge/column
+  header, **24pt** section header, **8pt** corners, **48pt** Record/Lead rows,
+  a **28pt** Attention gutter, **96pt** Action, **104pt** Date,
+  **32pt** collection Handled track with an **8pt** Title gap, and
+  **116/48/184pt** author/year/publication. The detail owns a **260–304pt** context rail,
+  **three-row** preview, **328 × 384pt** popover, **680pt** reading measure,
+  **92pt** authorship track, **20pt** statement gap, and **28pt** Evidence heading.
 - The one-time **320pt** first-reveal request is a native-container initial
   condition outside the grid. It is not a design Variable, persisted setting,
   minimum, maximum, or continuously enforced preference.
 - Set Aside and Trash reuse the Library metrics and common OutlineRow
   and LocationHeader components. They create no parallel lifecycle spacing
   namespace, destination header, or footer role.
-- Motion is purpose-named, interruptible, and removed under Reduce Motion. No
-  duration scale, parallax, animated grain, decorative motion, or repeating
-  Attention pulse. Conditional Attention count and emphasis remain
-  understandable with motion entirely absent. Native controls retain their
-  system feedback; custom controls use an immediate semantic state change for
-  hover, focus, press, and
-  disabled feedback rather than adding geometry animation to frequent actions.
-  Motion is reserved for a named content or structure transition: disclosure,
-  document reveal, search presentation/expansion, transient status, Triptych
-  workspace change, and the bounded Bootstrap step transition. A Triptych
-  workspace change keeps the selected-workspace control, LocationHeader,
-  native titlebar, toolbar, split surfaces, dividers, Document, and Apparatus
-  stationary. Only the safely committed destination Source List content uses
-  one shallow top-origin settle: it begins **6pt** above its final position,
-  remains clipped to the source region, and moves downward while fading in over
-  **0.18s ease-out**. The complete tree or Location state moves as one object;
-  rows never cascade, a long tree receives no sweep or delayed tail, and the
-  origin tree does not remain as a second interactive or accessibility
-  subtree. Repeated input interrupts and retargets the latest safely committed
-  destination rather than queueing animations. Reduce Motion installs the
-  destination without offset, opacity transition, or delay. Workspace identity,
-  selection, and destination content remain fully legible when motion is
-  absent.
+- Motion is purpose-named, interruptible, and absent under Reduce Motion: no
+  duration scale, parallax, grain, decoration, or repeating Attention pulse.
+  Native feedback stays system-owned; custom hover, focus, press, and disabled
+  states change immediately without geometry animation. Named transitions are
+  disclosure, document reveal, search presentation/expansion, transient status,
+  Handled disposition feedback, Triptych workspace change, and bounded Bootstrap
+  steps. Handled disposition feedback applies the shared **0.12s**
+  symbol-replacement easing to the collection checkbox or detail button label
+  only after the model publishes an immediate optimistic value. The detail
+  button reserves its longer label width, moves no surrounding geometry, rolls
+  back on write failure, and becomes immediate under Reduce Motion.
+  During Triptych change, controls, chrome, splits, Document, and Apparatus stay
+  fixed. Only committed destination Source List content settles as one clipped
+  object from **6pt** above while fading over **0.18s ease-out**; rows never
+  cascade and the origin leaves no interactive/accessibility subtree. Repeated
+  input retargets the latest committed destination. Reduce Motion installs it
+  immediately; identity, selection, and content remain complete without motion.
 - Document rhythm is renderer-aware and uses the approved default and adaptive
   behavior in §18.4 and §19.2.
 
@@ -551,7 +545,7 @@ the required meaning.
 | --- | --- | --- | --- |
 | `Sidebar / Document / Apparatus` | Keep Document primary across three opaque planes; one full-height Sidebar-edge cue advances the Document/Apparatus work field without replacing the native divider. | Cards, a floating Inspector, a parallel divider, or a dashboard. | §18.2 |
 | `Triptych Workspace Navigator` | Presents Analyses, Topics, and Works as full-width destinations with one persistent Navigation selection and quiet, exact Note totals. | A Scope filter, pipeline, project selector, segmented band, or Attention counter. | §§3.2, 18.2–18.3 |
-| `ModeIndex` | Selects one local Inspector mode through a shallow editorial-control surface while retaining focus, pointer, keyboard, and RTL behavior without an Accent underline. | A workspace navigator, filled segmented band, or Document tab strip. | §18.5 |
+| `ModeIndex` | Selects one local Inspector mode or auxiliary-window view through a shallow editorial-control surface while retaining focus, pointer, keyboard, and RTL behavior without an Accent underline. | A workspace navigator, filled segmented band, or Document tab strip. | §18.5 |
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §§12, 18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
@@ -581,7 +575,7 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | `Attention` | Enter the complete Triptych queue from one stable Sidebar control or add an exact current-Note subset from Inspector without interruption. | One native transient presentation; zero removes emphasis and count but not the Triptych route. | §14, §§18.2–18.3 |
 | `Research Action` | Prepare, run, inspect, settle, and optionally write a bounded Agent result. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §§12–14, 18.4–18.6 |
-| `Research Records` | Review portable records without reconstructing writable research Markdown. | Native list/detail reading structure with source and derived evidence distinct. | §14, §18.5 |
+| `Research Records` | Review portable records without reconstructing writable research Markdown. | Collection-first navigation into one reading-first Record or Reading Lead detail, with source and derived evidence distinct. | §14, §18.5 |
 | `Bootstrap Agent Preparation` | Installs the CLI, copies one prompt, and accepts confirmation without granting research access. | An Agent launcher, provider picker, readiness manager, Session, or Run handoff. | §16 |
 
 Patterns may reference multiple components, but they must not introduce a

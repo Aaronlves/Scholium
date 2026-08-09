@@ -220,9 +220,10 @@ private struct ApplicationRegistryRecoveryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Triptych Registry Needs Repair")
-                .font(.title2.weight(.semibold))
+                .font(ScholiumTypography.interface(.primaryTitle))
                 .accessibilityAddTraits(.isHeader)
             Text(recovery.summary)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
 
             Button {
@@ -247,7 +248,7 @@ private struct ApplicationRegistryRecoveryView: View {
 
             if showsDetails {
                 Text(recovery.details)
-                    .font(.callout.monospaced())
+                    .font(ScholiumTypography.exact(.body))
                     .textSelection(.enabled)
                     .accessibilityIdentifier("scholium.registryRecovery.details")
             }
@@ -292,9 +293,10 @@ private struct ApplicationStorageUnavailableView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Storage Unavailable")
-                .font(.title2.weight(.semibold))
+                .font(ScholiumTypography.interface(.primaryTitle))
                 .accessibilityAddTraits(.isHeader)
             Text(failure.summary)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
 
             Button {
@@ -319,7 +321,7 @@ private struct ApplicationStorageUnavailableView: View {
 
             if showsDetails {
                 Text(failure.details)
-                    .font(.callout.monospaced())
+                    .font(ScholiumTypography.exact(.body))
                     .textSelection(.enabled)
                     .accessibilityIdentifier("scholium.storageUnavailable.details")
             }

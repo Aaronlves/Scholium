@@ -622,10 +622,10 @@ private struct BootstrapStepHeading: View {
     var body: some View {
         VStack(alignment: alignment, spacing: 6) {
             Text(title)
-                .font(.largeTitle.weight(.semibold))
+                .font(ScholiumTypography.Bootstrap.title)
                 .accessibilityAddTraits(.isHeader)
             Text(subtitle)
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -641,18 +641,18 @@ private struct BootstrapWelcomeStep: View {
         BootstrapStepCanvas {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Scholium")
-                    .font(.system(size: 34, weight: .semibold, design: .serif))
+                    .font(ScholiumTypography.Bootstrap.wordmark)
                     .accessibilityAddTraits(.isHeader)
 
                 Text("A local-first, document-authoritative research environment for philosophy and the humanities.")
-                    .font(.system(size: 25, weight: .medium, design: .serif))
+                    .font(ScholiumTypography.Bootstrap.statement)
                     .tracking(-0.1)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 18)
 
                 Text("The research document—not a dashboard, task board, or Agent conversation—remains the primary interface.")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 16)
@@ -663,7 +663,7 @@ private struct BootstrapWelcomeStep: View {
                     .padding(.vertical, 24)
 
                 Text("A field of inquiry takes shape as a Triptych.")
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
 
                 HStack(alignment: .top, spacing: 16) {
                     BootstrapWelcomeTriptychRole(
@@ -682,7 +682,7 @@ private struct BootstrapWelcomeStep: View {
                 .padding(.top, 16)
 
                 Text("Markdown stays ordinary and inspectable. Reading, writing, Search, Connections, review, and recovery work without an Agent.")
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 22)
@@ -700,9 +700,9 @@ private struct BootstrapWelcomeTriptychRole: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.callout.weight(.semibold))
+                .font(ScholiumTypography.interface(.sectionTitle))
             Text(detail)
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.mutedText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -738,7 +738,7 @@ private struct BootstrapChoosePathStep: View {
                     action: chooseExisting
                 )
                 Text("You can manage Triptych locations later in Research Guidance Settings.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.mutedText)
             }
             .frame(maxHeight: .infinity, alignment: .center)
@@ -758,7 +758,7 @@ private struct BootstrapSetupPathChoice: View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: symbol)
-                    .font(.title3)
+                    .scholiumSymbolStyle(.prominent)
                     .foregroundStyle(
                         isSelected
                             ? ScholiumColorRole.accent.color
@@ -768,10 +768,10 @@ private struct BootstrapSetupPathChoice: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(title)
-                        .font(.body.weight(.semibold))
+                        .font(ScholiumTypography.interface(.sectionTitle))
                         .scholiumForeground(.primaryText)
                     Text(detail)
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -822,14 +822,14 @@ private struct BootstrapCreateStructureStep: View {
                 )
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Triptych Name")
-                        .font(.callout.weight(.medium))
+                        .font(ScholiumTypography.interface(.rowTitle))
                     TextField("Triptych Name", text: $triptychName)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("scholium.triptychName")
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Parent Location")
-                        .font(.callout.weight(.medium))
+                        .font(ScholiumTypography.interface(.rowTitle))
                     BootstrapPathSelectionRow(
                         path: parentURL,
                         emptyText: "No location selected",
@@ -839,7 +839,7 @@ private struct BootstrapCreateStructureStep: View {
                 }
                 BootstrapStructurePreview(rootURL: proposedRootURL)
                 Text("Nothing is created until you review and confirm the structure.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.mutedText)
             }
             .frame(maxHeight: .infinity, alignment: .center)
@@ -865,7 +865,7 @@ private struct BootstrapExistingFolderStep: View {
                     action: chooseAction
                 )
                 Text("Only this folder is selected at this step.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.mutedText)
             }
             .frame(maxHeight: .infinity, alignment: .center)
@@ -897,7 +897,7 @@ private struct BootstrapPathSelectionRow: View {
                         Text(emptyText)
                     }
                 }
-                .font(.system(.callout, design: .monospaced))
+                .font(ScholiumTypography.exact(.body))
                 .foregroundStyle(
                     path == nil
                         ? ScholiumColorRole.secondaryText.color
@@ -941,7 +941,7 @@ private struct BootstrapAuthorizeParentStep: View {
                 )
                 Label {
                     Text("macOS still requires one system confirmation. The detected folder opens directly, so you do not browse the file tree again.")
-                        .font(.callout)
+                        .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
@@ -963,15 +963,15 @@ private struct BootstrapExplanationBlock: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
-                .font(.title3)
+                .scholiumSymbolStyle(.prominent)
                 .scholiumForeground(.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.body.weight(.medium))
+                    .font(ScholiumTypography.interface(.rowTitle))
                 Text(detail)
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1015,7 +1015,7 @@ private struct BootstrapReviewTriptychStep: View {
                 }
                 Label {
                     Text("Agent setup comes next and remains optional. The copied prompt asks your Agent to inspect and create only the applicable instruction file.")
-                        .font(.callout)
+                        .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
@@ -1023,7 +1023,7 @@ private struct BootstrapReviewTriptychStep: View {
                         .scholiumForeground(.accent)
                 }
                 Text("Agent write-set extensions ask you every time by default. You can change the Triptych collaboration policy later in Research Guidance Settings.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.mutedText)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("scholium.bootstrap.permissionDefault")
@@ -1040,9 +1040,9 @@ private struct BootstrapStructurePreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Proposed Structure")
-                .font(.callout.weight(.semibold))
+                .font(ScholiumTypography.interface(.sectionTitle))
             Text(rootURL?.path(percentEncoded: false) ?? "Chosen location/Triptych name")
-                .font(.system(.caption, design: .monospaced))
+                .font(ScholiumTypography.exact(.small))
                 .scholiumForeground(.secondaryText)
                 .textSelection(.enabled)
                 .lineLimit(2)
@@ -1056,7 +1056,7 @@ private struct BootstrapStructurePreview: View {
                 BootstrapRoleSummary(title: "Works", detail: "Writing")
             }
             Text(".scholium/ · portable control folder")
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.mutedText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1070,9 +1070,9 @@ private struct BootstrapRoleSummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.callout.weight(.semibold))
+                .font(ScholiumTypography.interface(.sectionTitle))
             Text(detail)
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1086,10 +1086,10 @@ private struct BootstrapFolderSummaryRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(title)
-                .font(.callout.weight(.medium))
+                .font(ScholiumTypography.interface(.rowTitle))
                 .frame(width: 112, alignment: .leading)
             Text(path?.path(percentEncoded: false) ?? "Not selected")
-                .font(.system(.caption, design: .monospaced))
+                .font(ScholiumTypography.exact(.small))
                 .scholiumForeground(.secondaryText)
                 .textSelection(.enabled)
                 .lineLimit(2)
@@ -1162,15 +1162,15 @@ private struct BootstrapCompletionStatusRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
-                .font(.title3)
+                .scholiumSymbolStyle(.prominent)
                 .scholiumForeground(.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.body.weight(.medium))
+                    .font(ScholiumTypography.interface(.rowTitle))
                 Text(detail)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1192,7 +1192,7 @@ private struct BootstrapSetupStatus: View {
                 ? "exclamationmark.triangle.fill"
                 : "folder.badge.questionmark"
         )
-        .font(.caption)
+        .font(ScholiumTypography.interface(.small))
         .scholiumForeground(isError ? .destructive : .attention)
         .lineLimit(2)
         .padding(.horizontal, 12)

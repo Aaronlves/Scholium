@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ResearchFinalizedResultView: View {
     let record: PortableResearchRecord
+    var presentation: ResearchFinalizedResultPresentation = .actionSheet
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
@@ -11,24 +12,27 @@ struct ResearchFinalizedResultView: View {
                 Text("RESEARCH RESULT")
                     .scholiumApparatusHeadingStyle()
                     .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Label(dispositionTitle, systemImage: dispositionSymbol)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                if presentation.showsDisposition {
+                    Spacer()
+                    Label(dispositionTitle, systemImage: dispositionSymbol)
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                }
             }
             if record.academicResults.isEmpty {
-                Text("This Action's frozen Result Contract has no academic fields.")
-                    .font(.callout)
+                Text("No academic result fields were configured for this Action.")
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 ForEach(Array(record.academicResults.enumerated()), id: \.element.id) {
                     index, result in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(verbatim: result.definition.label)
-                            .font(.headline)
+                            .font(ScholiumTypography.interface(.sectionTitle))
                             .accessibilityAddTraits(.isHeader)
                         Text(verbatim: resultValue(result))
-                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                            .font(ScholiumTypography.scholarly(.body))
                             .foregroundStyle(
                                 result.value == nil
                                     ? ScholiumColorRole.secondaryText.color
@@ -42,10 +46,10 @@ struct ResearchFinalizedResultView: View {
                     }
                 }
             }
-            if let contextUse = record.contextUseReport {
+            if presentation.showsContextUse, let contextUse = record.contextUseReport {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Verified Context Use")
-                        .font(.headline)
+                        .font(ScholiumTypography.interface(.sectionTitle))
                         .accessibilityAddTraits(.isHeader)
                     Text(
                         contextUse.entries.isEmpty
@@ -54,15 +58,17 @@ struct ResearchFinalizedResultView: View {
                                 ? "Scholium verified one claimed Context item against its current owner and recorded the reference."
                                 : "Scholium verified \(contextUse.entries.count) claimed Context items against their current owners and recorded references."
                     )
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Text("The result partition above is finalized. Researcher evaluation below is a separate, editable researcher-authored judgment.")
-                .font(.caption)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .fixedSize(horizontal: false, vertical: true)
+            if presentation.showsJudgmentBoundary {
+                Text(judgmentBoundaryCopy)
+                    .font(ScholiumTypography.interface(.compact))
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("scholium.researchResult.finalized")
@@ -73,6 +79,10 @@ struct ResearchFinalizedResultView: View {
         case .completed: String(localized: "Completed")
         case .blocked: String(localized: "Blocked")
         }
+    }
+
+    private var judgmentBoundaryCopy: String {
+        "The result above is finalized. The evaluation below is a separate, editable researcher judgment."
     }
 
     private var dispositionSymbol: String {
@@ -97,6 +107,15 @@ struct ResearchFinalizedResultView: View {
     }
 }
 
+enum ResearchFinalizedResultPresentation {
+    case actionSheet
+    case recordDetail
+
+    var showsDisposition: Bool { self == .actionSheet }
+    var showsContextUse: Bool { self == .actionSheet }
+    var showsJudgmentBoundary: Bool { self == .actionSheet }
+}
+
 struct ResearcherEvaluationView: View {
     typealias Save = @MainActor (
         ResearcherEvaluationDraft,
@@ -113,6 +132,7 @@ struct ResearcherEvaluationView: View {
     let clear: Clear
     let didUpdateRecord: (PortableResearchRecord) -> Void
     let draftStateDidChange: (Bool) -> Void
+    let showsIntroduction: Bool
 
     @State private var issues: Set<PortableResearchObservedIssue>
     @State private var noIssuesObserved: Bool
@@ -128,13 +148,15 @@ struct ResearcherEvaluationView: View {
         save: @escaping Save,
         clear: @escaping Clear,
         didUpdateRecord: @escaping (PortableResearchRecord) -> Void = { _ in },
-        draftStateDidChange: @escaping (Bool) -> Void = { _ in }
+        draftStateDidChange: @escaping (Bool) -> Void = { _ in },
+        showsIntroduction: Bool = true
     ) {
         self.record = record
         self.save = save
         self.clear = clear
         self.didUpdateRecord = didUpdateRecord
         self.draftStateDidChange = draftStateDidChange
+        self.showsIntroduction = showsIntroduction
         let snapshot = EvaluationSnapshot(record.researcherEvaluation)
         _issues = State(initialValue: snapshot.issues)
         _noIssuesObserved = State(initialValue: snapshot.noIssuesObserved)
@@ -146,24 +168,28 @@ struct ResearcherEvaluationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("RESEARCHER EVALUATION")
-                    .scholiumApparatusHeadingStyle()
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Label(status.title, systemImage: status.symbol)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(status.foreground)
-                    .accessibilityIdentifier("scholium.researchEvaluation.saveState")
+            if showsIntroduction {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("RESEARCHER EVALUATION")
+                        .scholiumApparatusHeadingStyle()
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    saveState
+                }
+                Text("Record your explicit research judgment. This does not change the Agent's finalized result and does not by itself establish a philosophical truth.")
+                    .font(ScholiumTypography.interface(.compact))
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack {
+                    Spacer()
+                    saveState
+                }
             }
-            Text("Record your explicit research judgment. This does not change the Agent's finalized result and does not by itself establish a philosophical truth.")
-                .font(.caption)
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
-                .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text("Observed Issues")
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                     .accessibilityAddTraits(.isHeader)
                 ForEach(PortableResearchObservedIssue.allCases, id: \.self) { issue in
                     Toggle(issueTitle(issue), isOn: issueBinding(issue))
@@ -186,8 +212,9 @@ struct ResearcherEvaluationView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Evaluation Note")
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                 TextEditor(text: $note)
+                    .font(ScholiumTypography.scholarly(.body))
                     .frame(minHeight: 104, idealHeight: 128)
                     .scrollContentBackground(.hidden)
                     .padding(6)
@@ -201,13 +228,13 @@ struct ResearcherEvaluationView: View {
                     .accessibilityLabel("Evaluation Note")
                     .accessibilityIdentifier("scholium.researchEvaluation.note")
                 Text("Optional. Keep the note about this result; use Improve Current Method only for an explicit method-change comment.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
             }
 
             if let statusMessage {
                 Text(statusMessage)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(
                         status == .outOfDate || status == .saveFailed
                             ? ScholiumColorRole.destructive.color
@@ -256,6 +283,13 @@ struct ResearcherEvaluationView: View {
         } message: {
             Text("This removes the one current researcher evaluation. The finalized Agent result remains unchanged.")
         }
+    }
+
+    private var saveState: some View {
+        Label(status.title, systemImage: status.symbol)
+            .font(ScholiumTypography.interface(.small, emphasis: .strong))
+            .foregroundStyle(status.foreground)
+            .accessibilityIdentifier("scholium.researchEvaluation.saveState")
     }
 
     private var draftSnapshot: EvaluationSnapshot {
@@ -526,7 +560,7 @@ struct ResearchMethodFeedbackView: View {
                             ? "No unhandled Method feedback comment."
                             : "One researcher-authored Method feedback comment is still unhandled."
                     )
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 }
                 Spacer()
@@ -541,7 +575,7 @@ struct ResearchMethodFeedbackView: View {
 
             if let comment = record.methodFeedbackComment, !isEditing {
                 Text(comment.text)
-                    .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                    .font(ScholiumTypography.scholarly(.body))
                     .textSelection(.enabled)
                 HStack {
                     Button("Improve Current Method…") {
@@ -568,7 +602,7 @@ struct ResearchMethodFeedbackView: View {
                     Text("METHOD IMPROVEMENT HANDOFF")
                         .scholiumApparatusHeadingStyle()
                     Text(improvementInstructions(handoff))
-                        .font(.caption.monospaced())
+                        .font(ScholiumTypography.exact(.small))
                         .textSelection(.enabled)
                     HStack {
                         Button("Copy Improvement Handoff") {
@@ -587,7 +621,7 @@ struct ResearchMethodFeedbackView: View {
                         }
                         Spacer()
                         Text("Expires \(handoff.expiresAt, style: .relative).")
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     }
                 }
@@ -600,10 +634,11 @@ struct ResearchMethodFeedbackView: View {
 
             if isEditing {
                 Text("Write a bounded comment about the Method used for this Record. Scholium will not alter the Method until you explicitly enter the separate Method maintenance flow.")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .fixedSize(horizontal: false, vertical: true)
                 TextEditor(text: $draftText)
+                    .font(ScholiumTypography.scholarly(.body))
                     .frame(minHeight: 88, idealHeight: 112)
                     .scrollContentBackground(.hidden)
                     .padding(6)
@@ -617,7 +652,7 @@ struct ResearchMethodFeedbackView: View {
                     .accessibilityLabel("Method Feedback Comment")
                 HStack {
                     Label(status.title, systemImage: status.symbol)
-                        .font(.caption.weight(.semibold))
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .foregroundStyle(status.foreground)
                     Spacer()
                     if status == .saving {
@@ -636,7 +671,7 @@ struct ResearchMethodFeedbackView: View {
 
             if let message {
                 Text(message)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(
                         status == .outOfDate || status == .saveFailed
                             ? ScholiumColorRole.destructive.color
@@ -646,7 +681,7 @@ struct ResearchMethodFeedbackView: View {
             }
             if let improvementMessage {
                 Text(improvementMessage)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.compact))
                     .foregroundStyle(ScholiumColorRole.secondaryText.color)
                     .textSelection(.enabled)
             }

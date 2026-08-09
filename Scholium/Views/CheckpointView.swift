@@ -11,8 +11,9 @@ struct CreateCheckpointView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Create Checkpoint", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                .font(.title2.weight(.semibold))
+                .font(ScholiumTypography.interface(.primaryTitle))
             Text("A manual checkpoint is a self-contained copy of the complete Triptych. It remains until you delete its folder in Finder.")
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("Checkpoint name", text: $name)
@@ -90,13 +91,13 @@ struct RestoreCheckpointView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                    .font(.title2)
+                    .scholiumSymbolStyle(.large)
                     .scholiumForeground(.secondaryText)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Restore from Checkpoint")
-                        .font(.title2.weight(.semibold))
+                        .font(ScholiumTypography.interface(.primaryTitle))
                     Text("Compare the current Triptych, then restore selected notes or the complete checkpoint.")
-                        .font(.callout)
+                        .font(ScholiumTypography.interface(.body))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -125,7 +126,7 @@ struct RestoreCheckpointView: View {
                 VStack(spacing: 0) {
                     if let listingError {
                         Label(listingError, systemImage: "exclamationmark.triangle")
-                            .font(.callout)
+                            .font(ScholiumTypography.interface(.body))
                             .scholiumForeground(.attention)
                             .textSelection(.enabled)
                             .padding(10)
@@ -190,9 +191,9 @@ struct RestoreCheckpointView: View {
             if let selectedCheckpoint {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(selectedCheckpoint.name).font(.headline)
+                        Text(selectedCheckpoint.name).font(ScholiumTypography.interface(.sectionTitle))
                         Text(selectedCheckpoint.triptychFingerprint)
-                            .font(.caption.monospaced())
+                            .font(ScholiumTypography.exact(.small))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -222,16 +223,17 @@ struct RestoreCheckpointView: View {
                                         .frame(width: 18)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(change.currentPath ?? change.checkpointPath ?? "Unknown file")
+                                            .font(ScholiumTypography.exact(.small))
                                             .lineLimit(1)
                                         if change.kind == .moved,
                                            let old = change.checkpointPath,
                                            let current = change.currentPath {
                                             Text("Checkpoint: \(old) — Current: \(current)")
-                                                .font(.caption)
+                                                .font(ScholiumTypography.interface(.small))
                                                 .foregroundStyle(.secondary)
                                         } else {
                                             Text(change.area.rawValue)
-                                                .font(.caption)
+                                                .font(ScholiumTypography.interface(.small))
                                                 .foregroundStyle(.secondary)
                                         }
                                     }
@@ -256,9 +258,10 @@ struct RestoreCheckpointView: View {
     private var checkpointList: some View {
         List(checkpoints, selection: $selectedCheckpointID) { checkpoint in
             VStack(alignment: .leading, spacing: 3) {
-                Text(checkpoint.name).fontWeight(.medium)
+                Text(checkpoint.name)
+                    .font(ScholiumTypography.interface(.rowTitle))
                 Text("\(checkpoint.kind.displayName) — \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
             }
             .tag(checkpoint.id)

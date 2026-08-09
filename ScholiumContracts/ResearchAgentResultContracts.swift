@@ -56,9 +56,10 @@ public struct ResearchContextUseClaim: Codable, Hashable, Identifiable, Sendable
 /// explicit source-use testimony; Run identity, timestamps, revisions,
 /// actual writes, recovery, and completion state are Application-owned.
 public struct ResearchAgentResultSubmission: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
+    public let recordTitle: ResearchRecordTitle
     public let disposition: ResearchAgentResultDisposition
     public let academicResults: ResearchAcademicFieldValues
     public let contextUseClaims: [ResearchContextUseClaim]
@@ -66,6 +67,7 @@ public struct ResearchAgentResultSubmission: Codable, Hashable, Sendable {
     public let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
 
     public init(
+        recordTitle: ResearchRecordTitle,
         disposition: ResearchAgentResultDisposition = .completed,
         academicResults: ResearchAcademicFieldValues,
         contextUseClaims: [ResearchContextUseClaim] = [],
@@ -78,6 +80,7 @@ public struct ResearchAgentResultSubmission: Codable, Hashable, Sendable {
             throw ResearchAgentResultContractError.invalidSubmission
         }
         schemaVersion = Self.currentSchemaVersion
+        self.recordTitle = recordTitle
         self.disposition = disposition
         self.academicResults = academicResults
         self.contextUseClaims = contextUseClaims
@@ -87,6 +90,7 @@ public struct ResearchAgentResultSubmission: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
+        case recordTitle = "record_title"
         case disposition
         case academicResults = "academic_results"
         case contextUseClaims = "context_use_claims"
@@ -105,6 +109,7 @@ public struct ResearchAgentResultSubmission: Codable, Hashable, Sendable {
             throw ResearchAgentResultContractError.unsupportedSchemaVersion
         }
         try self.init(
+            recordTitle: container.decode(ResearchRecordTitle.self, forKey: .recordTitle),
             disposition: container.decode(
                 ResearchAgentResultDisposition.self,
                 forKey: .disposition
@@ -138,11 +143,12 @@ public struct ResearchAgentResultSubmission: Codable, Hashable, Sendable {
 /// One normalized Run-owned result payload. This is temporary machine state
 /// until all started writes are known and one portable Record is finalized.
 public struct ResearchRunResultPayload: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let runID: UUID
     public let submissionFingerprint: DocumentFingerprint
+    public let recordTitle: ResearchRecordTitle
     public let disposition: ResearchAgentResultDisposition
     public let academicResults: ResearchAcademicFieldValues
     public let contextUseReport: ContextUseReport?
@@ -153,6 +159,7 @@ public struct ResearchRunResultPayload: Codable, Hashable, Sendable {
     public init(
         runID: UUID,
         submissionFingerprint: DocumentFingerprint,
+        recordTitle: ResearchRecordTitle,
         disposition: ResearchAgentResultDisposition,
         academicResults: ResearchAcademicFieldValues,
         contextUseReport: ContextUseReport?,
@@ -175,6 +182,7 @@ public struct ResearchRunResultPayload: Codable, Hashable, Sendable {
         schemaVersion = Self.currentSchemaVersion
         self.runID = runID
         self.submissionFingerprint = submissionFingerprint
+        self.recordTitle = recordTitle
         self.disposition = disposition
         self.academicResults = academicResults
         self.contextUseReport = contextUseReport
@@ -187,6 +195,7 @@ public struct ResearchRunResultPayload: Codable, Hashable, Sendable {
         case schemaVersion = "schema_version"
         case runID = "run_id"
         case submissionFingerprint = "submission_fingerprint"
+        case recordTitle = "record_title"
         case disposition
         case academicResults = "academic_results"
         case contextUseReport = "context_use_report"
@@ -211,6 +220,7 @@ public struct ResearchRunResultPayload: Codable, Hashable, Sendable {
                 DocumentFingerprint.self,
                 forKey: .submissionFingerprint
             ),
+            recordTitle: container.decode(ResearchRecordTitle.self, forKey: .recordTitle),
             disposition: container.decode(
                 ResearchAgentResultDisposition.self,
                 forKey: .disposition

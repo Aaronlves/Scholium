@@ -601,14 +601,6 @@ public actor ResearchOperations:
         return try await handle.finishedResearchRecords(noteID: noteID)
     }
 
-    public func setResearchRecordPinned(
-        id: UUID,
-        isPinned: Bool
-    ) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.setResearchRecordPinned(id: id, isPinned: isPinned)
-    }
-
     public func saveResearcherEvaluation(
         recordID: UUID,
         draft: ResearcherEvaluationDraft,

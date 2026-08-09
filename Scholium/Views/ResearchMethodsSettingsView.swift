@@ -78,6 +78,7 @@ struct ResearchMethodsSettingsView: View {
                     bundle: .module
                 )) {
                     Text("Method and Practice prose guides scholarly work. It cannot change Platform Action support, Session scope, collaboration policy, write authorization, exact revisions, conflicts, or recovery.")
+                        .font(ScholiumTypography.interface(.body))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -142,18 +143,18 @@ struct ResearchMethodsSettingsView: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(registration.displayName)
-                    .font(.body.weight(.medium))
+                    .font(ScholiumTypography.interface(.rowTitle))
                 Text(registration.isEnabled ? "Enabled" : "Disabled")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                 if let method {
                     if method.practices.isEmpty {
                         Text("No linked Practices")
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .foregroundStyle(.secondary)
                     } else {
                         Text("Practices: \(method.practices.map(\.title).joined(separator: ", "))")
-                            .font(.caption)
+                            .font(ScholiumTypography.interface(.small))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -162,7 +163,7 @@ struct ResearchMethodsSettingsView: View {
                             practiceIssueText(issue),
                             systemImage: "exclamationmark.triangle"
                         )
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(ScholiumColorRole.attention.color)
                     }
                     if let folder = method.skillFolderPath {
@@ -172,13 +173,13 @@ struct ResearchMethodsSettingsView: View {
                                 : "Local folder unavailable",
                             value: folder
                         )
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                     }
                 } else {
                     Label("Primary Markdown unavailable", systemImage: "exclamationmark.triangle")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(ScholiumColorRole.attention.color)
                 }
             }
@@ -436,11 +437,11 @@ private struct ResearchMethodSourceEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Edit \(context.method.registration.displayName)")
-                .font(.title2.weight(.semibold))
+                .font(ScholiumTypography.interface(.primaryTitle))
             Text("This edits the current primary Markdown only. Linked Practices and optional folder files keep their own exact bytes.")
                 .foregroundStyle(.secondary)
             TextEditor(text: $source)
-                .font(.system(.body, design: .monospaced))
+                .font(ScholiumTypography.exact(.body))
                 .frame(minWidth: 700, minHeight: 480)
                 .accessibilityLabel("Primary Research Skill Markdown")
             if let errorMessage {
@@ -496,13 +497,13 @@ private struct NewResearchMethodEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Create Research Skill")
-                .font(.title2.weight(.semibold))
+                .font(ScholiumTypography.interface(.primaryTitle))
             Text("Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("Display name", text: $name)
             TextEditor(text: $source)
-                .font(.system(.body, design: .monospaced))
+                .font(ScholiumTypography.exact(.body))
                 .frame(minWidth: 700, minHeight: 430)
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")

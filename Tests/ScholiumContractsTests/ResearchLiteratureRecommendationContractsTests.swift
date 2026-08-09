@@ -11,6 +11,7 @@ struct ResearchLiteratureRecommendationContractsTests {
             title: "A Relevant Work",
             authors: ["A. Author"],
             year: 2020,
+            publication: "Journal of Relevant Work",
             doi: "10.1000/relevant",
             zoteroItemKey: "abcd1234",
             sourceLocators: ["p. 42"],
@@ -23,7 +24,7 @@ struct ResearchLiteratureRecommendationContractsTests {
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
         #expect(Set(object.keys) == [
-            "rawCitation", "title", "authors", "year", "doi",
+            "rawCitation", "title", "authors", "year", "publication", "doi",
             "zoteroItemKey", "sourceLocators", "reason", "uncertainty",
         ])
         for forbidden in ["id", "status", "handled", "match", "score", "category"] {
@@ -166,10 +167,12 @@ struct ResearchLiteratureRecommendationContractsTests {
             definitions: []
         )
         let omitted = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("Omitted recommendations"),
             academicResults: academicResults,
             literatureRecommendations: nil
         )
         let explicit = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("Explicit recommendations"),
             academicResults: academicResults,
             literatureRecommendations: []
         )

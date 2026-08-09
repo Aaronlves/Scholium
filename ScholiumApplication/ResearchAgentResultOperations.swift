@@ -83,6 +83,7 @@ extension WorkspaceHandle {
                         ResearchFunctionCompletionSubmission(
                             runID: authenticated.runID,
                             confirmationToken: stored.snapshot.confirmationToken,
+                            recordTitle: existing.recordTitle,
                             finalTargetFingerprint: completion.targetFingerprint,
                             finalMaterialFingerprints: completion.materialFingerprints,
                             actuallyUsedMaterialNoteIDs:
@@ -126,6 +127,7 @@ extension WorkspaceHandle {
         let payload = try ResearchRunResultPayload(
             runID: authenticated.runID,
             submissionFingerprint: submissionFingerprint,
+            recordTitle: submission.recordTitle,
             disposition: submission.disposition,
             academicResults: academicResults,
             contextUseReport: contextUseReport,
@@ -154,6 +156,7 @@ extension WorkspaceHandle {
         let completionSubmission = ResearchFunctionCompletionSubmission(
             runID: authenticated.runID,
             confirmationToken: stored.snapshot.confirmationToken,
+            recordTitle: submission.recordTitle,
             finalTargetFingerprint: target.fingerprint,
             finalMaterialFingerprints: materialFingerprints,
             actuallyUsedMaterialNoteIDs: actuallyUsedMaterialIDs,

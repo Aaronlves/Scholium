@@ -242,6 +242,7 @@ final class ResearchFunctionCoordinator: Sendable {
             runID: runID,
             function: snapshot.request.function,
             state: .cancelled,
+            recordTitle: try ResearchRecordTitle("Cancelled"),
             targetFingerprint: snapshot.request.target.fingerprint,
             materialFingerprints: Dictionary(
                 uniqueKeysWithValues: snapshot.request.materials.map {

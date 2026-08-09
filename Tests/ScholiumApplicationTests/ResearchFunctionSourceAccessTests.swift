@@ -96,6 +96,7 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionCompletionSubmission(
                     runID: preparation.runID,
                     confirmationToken: preparation.snapshot.confirmationToken,
+                    recordTitle: try ResearchRecordTitle("Test research result"),
                     finalTargetFingerprint: analysis.fingerprint,
                     summary: "Attempted completion after source removal.",
                     didModifyTarget: false,

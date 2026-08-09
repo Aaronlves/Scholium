@@ -155,7 +155,7 @@ struct SidebarView: View {
     private var brandHeader: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Text("Scholium")
-                .font(ScholiumInterfaceTypography.identity)
+                .font(ScholiumTypography.Brand.wordmark)
                 .foregroundStyle(ScholiumColorRole.primaryText.color)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("scholium.wordmark")
@@ -189,7 +189,7 @@ struct SidebarView: View {
             }
         } label: {
             Text(verbatim: context.triptychName)
-                .font(ScholiumInterfaceTypography.editorialLabel)
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -436,7 +436,7 @@ struct SidebarView: View {
             Text(activeLibraryMenuFilterCount == 1
                 ? "1 filter applied"
                 : "\(activeLibraryMenuFilterCount) filters applied")
-                .font(ScholiumInterfaceTypography.metadata)
+                .font(ScholiumTypography.interface(.small, emphasis: .medium))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
             Spacer(minLength: 0)
             Button("Clear", action: clearAllFilters)

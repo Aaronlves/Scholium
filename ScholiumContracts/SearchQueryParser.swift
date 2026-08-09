@@ -196,7 +196,7 @@ public enum SearchExplanationNormalization: String, Codable, Hashable, Sendable 
 
 public enum SearchExplanationOrdering: String, Codable, Hashable, Sendable {
     case noteExactIdentityThenBM25ThenTitleRolePath = "note_exact_identity_then_bm25_then_title_role_path"
-    case recordPinnedThenFinishedAtThenUUID = "record_pinned_then_finished_at_then_uuid"
+    case recordFinishedAtThenUUID = "record_finished_at_then_uuid"
 }
 
 public enum SearchExplanationLimitation: String, Codable, Hashable, Sendable {
@@ -250,7 +250,7 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
         self.normalization = Self.normalization(for: provider)
         self.ordering = switch provider {
         case .note: .noteExactIdentityThenBM25ThenTitleRolePath
-        case .record: .recordPinnedThenFinishedAtThenUUID
+        case .record: .recordFinishedAtThenUUID
         }
         self.limitations = switch provider {
         case .note:

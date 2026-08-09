@@ -89,9 +89,10 @@ func settingsTitle(
 ) -> some View {
     VStack(alignment: .leading, spacing: 6) {
         Text(title)
-            .font(.title2.weight(.semibold))
+            .font(ScholiumTypography.interface(.primaryTitle))
             .accessibilityAddTraits(.isHeader)
         Text(detail)
+            .font(ScholiumTypography.interface(.body))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -103,7 +104,7 @@ func researchSettingsSection<Content: View>(
 ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
         Text(title)
-            .font(.caption.weight(.semibold))
+            .font(ScholiumTypography.interface(.small, emphasis: .strong))
             .foregroundStyle(.secondary)
             .accessibilityAddTraits(.isHeader)
         content()

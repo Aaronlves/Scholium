@@ -565,37 +565,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 ]
             ))
         }
-        for record in workspace.research.finishedResearchRecords
-            .filter({ record in
-                record.isPinned
-                    && record.participatingNotes.contains {
-                        $0.noteID == action.target.noteID
-                    }
-            })
-            .sorted(by: { lhs, rhs in
-                if lhs.finishedAt != rhs.finishedAt {
-                    return lhs.finishedAt > rhs.finishedAt
-                }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }) where items.count < limit {
-            guard let recordFingerprint = workspace.research
-                .finishedResearchRecordFingerprints[record.id] else {
-                continue
-            }
-            let content = "The researcher explicitly pinned this exact Research Record for retention and later attention."
-            items.append(try researcherStateItem(
-                query: query,
-                clause: clause,
-                identity: "record:\(record.id.uuidString.lowercased()):pin",
-                title: "Researcher Retention: \(record.action?.actionID.rawValue ?? "research_action")",
-                content: content,
-                fingerprint: recordFingerprint,
-                currentness: .current,
-                limitations: [
-                    "Pin records only retention and later attention; it does not adopt, verify, or assess the sufficiency or truth of Agent claims."
-                ]
-            ))
-        }
         for association in workspace.research.critiques
             .filter({ $0.workNoteID == action.target.noteID })
             .sorted(by: { lhs, rhs in

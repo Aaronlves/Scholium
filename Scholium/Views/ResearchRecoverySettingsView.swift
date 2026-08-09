@@ -42,7 +42,7 @@ struct ResearchRecoverySettingsView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Keep per Note")
                             Text("Settle preserves the exact saved revision of that Note. Temporary Action recovery is managed separately.")
-                                .font(.caption)
+                                .font(ScholiumTypography.interface(.small))
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -64,7 +64,7 @@ struct ResearchRecoverySettingsView: View {
                         .accessibilityIdentifier("scholium.recovery.settledRetention")
                     }
                     Text(settledVersionSummary)
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                 }
             }

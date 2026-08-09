@@ -29,8 +29,15 @@ automated or visual evidence.
   lifecycle and auxiliary-window operations.
 - Complete direct acceptance for long Connect clusters, Attention zero/one/
   several states, folder drag in both directions, Folder-to-root movement,
-  Library shortcuts, Research Records comparison/deletion, and Action/Discussion
-  cancellation and recovery.
+  Library shortcuts, the collection-first Research Records window at ordinary
+  and minimum width, its 64/36 reading/evidence hierarchy, rounded hover/press
+  feedback, folded technical deletion, and Action/Discussion cancellation and
+  recovery.
+- Complete the interface-presentation ownership cutover: remove feature-local
+  hover/press owners and the duplicate permanent-delete wrapper in Research
+  Records, confirm that native Menus add no second enclosure, and route matching
+  WebKit hover/focus states through the shared semantic interaction roles. The
+  executable shadow and pointer inventory may shrink but must not grow.
 
 Synthetic accessibility trees, screenshots, and isolated QA controls remain
 bounded engineering evidence; they do not close human or assistive-technology

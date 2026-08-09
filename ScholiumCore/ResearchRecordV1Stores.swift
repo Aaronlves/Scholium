@@ -478,20 +478,6 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    /// Replaces only the explicit researcher-owned pin state of one finished
-    /// record. The current file is reread under the shared portable-record
-    /// lock so concurrent tombstones or other record changes are preserved.
-    @discardableResult
-    public func setPinned(
-        _ isPinned: Bool,
-        for id: UUID
-    ) throws -> PortableResearchRecord {
-        try replaceFinishedRecord(id: id) { current in
-            guard current.isPinned != isPinned else { return current }
-            return try Self.replacingPin(in: current, isPinned: isPinned)
-        }
-    }
-
     /// Atomically replaces the one current evaluation partition after both
     /// its own optimistic revision and the immutable finalized result have
     /// been revalidated under the portable-record lock.
@@ -613,9 +599,9 @@ public actor PortableResearchRecordStore {
     }
 
     /// Replaces only one occurrence's researcher-owned handled state. The
-    /// current record is reread under the same cross-process lock used by Pin,
-    /// so concurrent Pin, disposition, tombstone, and other record content are
-    /// preserved by the single atomic replacement.
+    /// current record is reread under the portable-record lock so concurrent
+    /// disposition, tombstone, and other record content are preserved by the
+    /// single atomic replacement.
     @discardableResult
     public func setRecommendationDisposition(
         _ status: ResearchLiteratureRecommendationDispositionStatus,
@@ -1573,8 +1559,10 @@ public actor PortableResearchRecordStore {
         _ record: PortableResearchRecord,
         from discussion: PortableResearchDiscussion
     ) -> Bool {
-        guard record.id == discussion.id,
+        guard let expectedTitle = try? discussion.recordTitle(),
+              record.id == discussion.id,
               record.triptychID == discussion.triptychID,
+              record.title == expectedTitle,
               record.kind == .discussion,
               record.action == discussion.action,
               record.method == discussion.method,
@@ -1611,6 +1599,7 @@ public actor PortableResearchRecordStore {
         try PortableResearchRecord(
             id: record.id,
             triptychID: record.triptychID,
+            title: record.title,
             kind: record.kind,
             action: record.action,
             method: record.method,
@@ -1629,38 +1618,6 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            isPinned: record.isPinned,
-            researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment
-        )
-    }
-
-    private static func replacingPin(
-        in record: PortableResearchRecord,
-        isPinned: Bool
-    ) throws -> PortableResearchRecord {
-        try PortableResearchRecord(
-            id: record.id,
-            triptychID: record.triptychID,
-            kind: record.kind,
-            action: record.action,
-            method: record.method,
-            sourceReference: record.sourceReference,
-            continuationLineage: record.continuationLineage,
-            primaryNoteID: record.primaryNoteID,
-            participatingNotes: record.participatingNotes,
-            statements: record.statements,
-            resultDisposition: record.resultDisposition,
-            academicResults: record.academicResults,
-            contextUseReport: record.contextUseReport,
-            actuallyUsedMaterials: record.actuallyUsedMaterials,
-            fidelityCompletion: record.fidelityCompletion,
-            confirmedChanges: record.confirmedChanges,
-            discrepancies: record.discrepancies,
-            literatureRecommendations: record.literatureRecommendations,
-            startedAt: record.startedAt,
-            finishedAt: record.finishedAt,
-            isPinned: isPinned,
             researcherEvaluation: record.researcherEvaluation,
             methodFeedbackComment: record.methodFeedbackComment
         )
@@ -1673,6 +1630,7 @@ public actor PortableResearchRecordStore {
         try PortableResearchRecord(
             id: record.id,
             triptychID: record.triptychID,
+            title: record.title,
             kind: record.kind,
             action: record.action,
             method: record.method,
@@ -1691,7 +1649,6 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: recommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            isPinned: record.isPinned,
             researcherEvaluation: record.researcherEvaluation,
             methodFeedbackComment: record.methodFeedbackComment
         )
@@ -1704,6 +1661,7 @@ public actor PortableResearchRecordStore {
         try PortableResearchRecord(
             id: record.id,
             triptychID: record.triptychID,
+            title: record.title,
             kind: record.kind,
             action: record.action,
             method: record.method,
@@ -1722,7 +1680,6 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            isPinned: record.isPinned,
             researcherEvaluation: evaluation,
             methodFeedbackComment: record.methodFeedbackComment
         )
@@ -1735,6 +1692,7 @@ public actor PortableResearchRecordStore {
         try PortableResearchRecord(
             id: record.id,
             triptychID: record.triptychID,
+            title: record.title,
             kind: record.kind,
             action: record.action,
             method: record.method,
@@ -1753,7 +1711,6 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            isPinned: record.isPinned,
             researcherEvaluation: record.researcherEvaluation,
             methodFeedbackComment: comment
         )

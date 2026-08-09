@@ -78,7 +78,7 @@ struct CritiqueProvenanceView: View {
                     metadata.isAgentAttributed ? "Agent-authored Critique" : "Agent attribution missing",
                     systemImage: metadata.isAgentAttributed ? "sparkles" : "exclamationmark.triangle"
                 )
-                .font(.headline)
+                .font(ScholiumTypography.interface(.sectionTitle))
                 .scholiumForeground(
                     metadata.isAgentAttributed ? .agentAuthorship : .attention
                 )
@@ -92,19 +92,21 @@ struct CritiqueProvenanceView: View {
 
                 if let scope = metadata.scope {
                     Text(scope.rawValue)
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                 }
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text("Target")
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(.secondary)
                 if let targetPath {
                     Button {
                         context.openTarget(targetPath)
                     } label: {
                         Text(targetNote?.title ?? targetNote?.displayName ?? targetPath)
+                            .font(ScholiumTypography.interface(.body))
                     }
                     .buttonStyle(.link)
                     .disabled(targetNote == nil)
@@ -116,7 +118,7 @@ struct CritiqueProvenanceView: View {
 
                 if let capturedSHA256 {
                     Text("SHA-256 \(capturedSHA256.prefix(12))…")
-                        .font(.caption.monospaced())
+                        .font(ScholiumTypography.exact(.small))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
@@ -125,11 +127,11 @@ struct CritiqueProvenanceView: View {
 
                 if isStale {
                     Label("Earlier Work version", systemImage: "clock.badge.exclamationmark")
-                        .font(.caption.weight(.semibold))
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .scholiumForeground(.attention)
                 } else if targetNote != nil, capturedSHA256 != nil {
                     Label("Current Work version", systemImage: "checkmark.circle")
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -139,14 +141,14 @@ struct CritiqueProvenanceView: View {
                     "Critique metadata does not match the latest recorded request. Treat its target as uncertain until the agent or researcher reconciles it.",
                     systemImage: "exclamationmark.triangle"
                 )
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.attention)
             } else if association == nil {
                 Label(
                     "No Scholium request history is associated with this Critique.",
                     systemImage: "info.circle"
                 )
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .foregroundStyle(.secondary)
             }
 
@@ -156,7 +158,7 @@ struct CritiqueProvenanceView: View {
                 } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             .scholiumForeground(.mutedText)
                             .frame(width: 12)
                             .rotationEffect(.degrees(findingsAreExpanded ? 90 : 0))
@@ -166,10 +168,10 @@ struct CritiqueProvenanceView: View {
                             )
                             .accessibilityHidden(true)
                         Text("Specific Findings")
-                            .font(.callout.weight(.semibold))
+                            .font(ScholiumTypography.interface(.sectionTitle))
                         Spacer(minLength: 8)
                         Text(findings.count.formatted())
-                            .font(.caption.monospacedDigit())
+                            .font(ScholiumTypography.interface(.small, tabularDigits: true))
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
@@ -241,7 +243,7 @@ struct CritiqueProvenanceView: View {
                         stale: stale,
                         anchorResolved: resolvedLine != nil
                     ))
-                        .font(.caption)
+                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(stale ? .attention : .secondaryText)
                 }
                 Spacer(minLength: 0)

@@ -360,6 +360,7 @@ struct ResearchAgentSessionAuthorityTests {
         )
         let evaluatedRecord = try PortableResearchRecord(
             triptychID: fixture.assignment.id,
+            title: try ResearchRecordTitle("One bounded synthesis"),
             kind: .action,
             action: ResearchActionRecordIdentity(actionID: .synthesize),
             method: PortableResearchMethodReference(snapshot: actionSnapshot),
@@ -375,7 +376,6 @@ struct ResearchAgentSessionAuthorityTests {
             fidelityCompletion: .notRequired,
             startedAt: finishedAt.addingTimeInterval(-60),
             finishedAt: finishedAt,
-            isPinned: true,
             researcherEvaluation: evaluation
         )
         let finding = CritiqueFinding(
@@ -468,15 +468,6 @@ struct ResearchAgentSessionAuthorityTests {
         #expect(critiqueItem.sourceReference.currentness == .current)
         #expect(critiqueItem.sourceReference.materialLimitations.contains {
             $0.contains("truth claim")
-        })
-
-        let retentionItem = try #require(researcherState.items.first {
-            $0.title.contains("Researcher Retention")
-        })
-        #expect(retentionItem.semanticContent
-            == "The researcher explicitly pinned this exact Research Record for retention and later attention.")
-        #expect(retentionItem.sourceReference.materialLimitations.contains {
-            $0.contains("does not adopt")
         })
 
         let discussionItem = try #require(researcherState.items.first {

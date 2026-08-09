@@ -399,6 +399,7 @@ struct ResearchAgentResultOperationsTests {
         contextUseClaims: [ResearchContextUseClaim] = []
     ) throws -> ResearchAgentResultSubmission {
         try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle(String(outcome.prefix(80))),
             academicResults: ResearchAcademicFieldValues(
                 rawValues: [
                     "synthesis-outcome": .freeText(outcome),

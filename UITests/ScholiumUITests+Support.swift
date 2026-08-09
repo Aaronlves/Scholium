@@ -711,6 +711,7 @@ extension ScholiumUITests {
 
     func seedResearchRecordFixture(
         hasUnavailableTopicRevision: Bool = false,
+        hasEvidenceOverflow: Bool = false,
         createsSynthesisAttention: Bool = false
     ) throws -> QAResearchRecordFixture {
         let triptychID = try triptychID(at: triptychDirectory)
@@ -755,9 +756,14 @@ extension ScholiumUITests {
         }
 
         let analysis = try identity("QA Autosave A.md")
+        let secondAnalysis = try identity("QA Autosave B.md")
         let topic = try identity("QA Topic.md")
+        let work = try identity("QA Work.md")
         let recordID = UUID(uuidString: "5E551019-0000-4000-8000-000000000001")!
-        let statementID = UUID(uuidString: "5E551019-0000-4000-8000-000000000002")!
+        let agentStatementID = UUID(uuidString: "5E551019-0000-4000-8000-000000000002")!
+        let researcherStatementID = UUID(
+            uuidString: "5E551019-0000-4000-8000-000000000006"
+        )!
         let tombstoneNoteID = UUID(
             uuidString: "5E551019-0000-4000-8000-000000000003"
         )!
@@ -808,10 +814,82 @@ extension ScholiumUITests {
         }
         topicParticipant["starting_revision"] = topicStartingRevision
 
+        var participatingNotes: [[String: Any]] = [
+            note(analysis, role: "analysis", title: "QA Autosave A"),
+            topicParticipant,
+            [
+                "note_id": tombstoneNoteID.uuidString,
+                "note": [
+                    "vaultID": analysis.vaultID.uuidString,
+                    "relativePath": "Deleted QA Note.md",
+                ],
+                "role": "analysis",
+                "title": "Deleted QA Note",
+                "starting_revision": deletedRevision,
+                "is_tombstone": true,
+            ],
+        ]
+        if hasEvidenceOverflow {
+            participatingNotes.append(
+                note(secondAnalysis, role: "analysis", title: "QA Autosave B")
+            )
+            participatingNotes.append(
+                note(work, role: "work", title: "QA Work")
+            )
+        }
+
+        func material(
+            _ identity: QAStoredNoteIdentity,
+            role: String,
+            title: String,
+            revision: [String: Any]? = nil,
+            recordedRelativePath: String? = nil
+        ) -> [String: Any] {
+            [
+                "note_id": identity.noteID.uuidString,
+                "note": [
+                    "vaultID": identity.vaultID.uuidString,
+                    "relativePath": recordedRelativePath ?? identity.relativePath,
+                ],
+                "role": role,
+                "title": title,
+                "revision": revision ?? identity.fingerprint,
+            ]
+        }
+
+        var usedMaterials: [[String: Any]] = [
+            createsSynthesisAttention
+                ? material(analysis, role: "analysis", title: "QA Autosave A")
+                : material(
+                    topic,
+                    role: "topic",
+                    title: "QA Topic",
+                    revision: topicStartingRevision,
+                    recordedRelativePath: "Historical/QA Topic Before Rename.md"
+                ),
+        ]
+        if hasEvidenceOverflow {
+            usedMaterials = [
+                material(analysis, role: "analysis", title: "QA Autosave A"),
+                material(
+                    topic,
+                    role: "topic",
+                    title: "QA Topic",
+                    revision: topicStartingRevision,
+                    recordedRelativePath: "Historical/QA Topic Before Rename.md"
+                ),
+                material(secondAnalysis, role: "analysis", title: "QA Autosave B"),
+                material(work, role: "work", title: "QA Work"),
+            ]
+        }
+
         var portableRecord: [String: Any] = [
-            "schema_version": 5,
+            "schema_version": 6,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
+            "record_title": createsSynthesisAttention
+                ? "The practical consequences of fittingness"
+                : "Emotional fittingness and practical attention",
             "kind": "action",
             "action": [
                 "schema_version": 1,
@@ -827,49 +905,28 @@ extension ScholiumUITests {
                 "practice_names": [],
                 "profile_revision": profileRevision,
             ],
-            "participating_notes": [
-                note(analysis, role: "analysis", title: "QA Autosave A"),
-                topicParticipant,
+            "participating_notes": participatingNotes,
+            "statements": [
                 [
-                    "note_id": tombstoneNoteID.uuidString,
-                    "note": [
-                        "vaultID": analysis.vaultID.uuidString,
-                        "relativePath": "Deleted QA Note.md",
-                    ],
-                    "role": "analysis",
-                    "title": "Deleted QA Note",
-                    "starting_revision": deletedRevision,
-                    "is_tombstone": true,
+                    "id": researcherStatementID.uuidString,
+                    "author": "researcher",
+                    "kind": "researcher_response",
+                    "attribution": "Researcher",
+                    "text": "Distinguish the emotion's evaluative target from what it gives me reason to do; do not treat salience as authority.",
+                    "created_at": startedAt,
+                ],
+                [
+                    "id": agentStatementID.uuidString,
+                    "author": "agent",
+                    "kind": "agent_feedback",
+                    "attribution": "Synthetic Action Agent",
+                    "text": "The available material supports a narrower distinction: fittingness concerns the emotion's normative target, while practical uptake remains a further question in deliberation.",
+                    "created_at": finishedAt,
                 ],
             ],
-            "statements": [[
-                "id": statementID.uuidString,
-                "author": "agent",
-                "kind": "agent_feedback",
-                "attribution": "Synthetic Action Agent",
-                "text": "A bounded nonconversational analysis report.",
-                "created_at": finishedAt,
-            ]],
             "result_disposition": "completed",
             "academic_results": [],
-            "actually_used_materials": [[
-                "note_id": createsSynthesisAttention
-                    ? analysis.noteID.uuidString
-                    : topic.noteID.uuidString,
-                "note": [
-                    "vaultID": createsSynthesisAttention
-                        ? analysis.vaultID.uuidString
-                        : topic.vaultID.uuidString,
-                    "relativePath": createsSynthesisAttention
-                        ? analysis.relativePath
-                        : "Historical/QA Topic Before Rename.md",
-                ],
-                "role": createsSynthesisAttention ? "analysis" : "topic",
-                "title": createsSynthesisAttention ? "QA Autosave A" : "QA Topic",
-                "revision": createsSynthesisAttention
-                    ? analysis.fingerprint
-                    : topicStartingRevision,
-            ]],
+            "actually_used_materials": usedMaterials,
             "fidelity_completion": "unverified",
             "confirmed_changes": [],
             "discrepancies": [],
@@ -879,6 +936,7 @@ extension ScholiumUITests {
                 "title": "Source-Grounded Inquiry",
                 "authors": ["Ada Rivera"],
                 "year": 2024,
+                "publication": "Journal of Source-Grounded Inquiry",
                 "doi": "10.1000/qa-reading",
                 "zotero_item_key": "QAREAD01",
                 "source_locators": ["p. 42"],
@@ -891,7 +949,6 @@ extension ScholiumUITests {
             ]],
             "started_at": startedAt,
             "finished_at": finishedAt,
-            "is_pinned": false,
         ]
         if createsSynthesisAttention {
             portableRecord["primary_note_id"] = topic.noteID.uuidString
@@ -943,10 +1000,15 @@ extension ScholiumUITests {
 
         return QAResearchRecordFixture(
             recordID: recordID,
+            researcherStatementID: researcherStatementID,
+            agentStatementID: agentStatementID,
             recommendationID: createsSynthesisAttention ? nil : recommendationID,
             analysisNoteID: analysis.noteID,
             topicNoteID: topic.noteID,
-            tombstoneNoteID: tombstoneNoteID
+            tombstoneNoteID: tombstoneNoteID,
+            overflowParticipantNoteIDs: hasEvidenceOverflow
+                ? [secondAnalysis.noteID, work.noteID]
+                : []
         )
     }
 

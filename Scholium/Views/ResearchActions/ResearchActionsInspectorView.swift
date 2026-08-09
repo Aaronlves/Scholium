@@ -356,16 +356,16 @@ struct ResearchActionsInspectorView: View {
     private var settlementPopover: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(presentation.latestSettlement == nil ? "Settle" : "Settle Again")
-                .font(.headline)
+                .font(ScholiumTypography.interface(.sectionTitle))
             Text("Record this saved revision as sufficiently stable for current research.")
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("Optional rationale", text: $settlementRationale, axis: .vertical)
                 .lineLimit(2...4)
             if let settlementError {
                 Text(settlementError)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(ScholiumColorRole.attention.color)
             }
             HStack {

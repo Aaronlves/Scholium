@@ -1,5 +1,39 @@
 import Foundation
 
+/// One concise, frozen scholarly identity for a finished Research Record.
+/// It is authored with the result rather than generated later from result prose.
+public struct ResearchRecordTitle: Codable, Hashable, Sendable, CustomStringConvertible {
+    public static let maximumUTF8Count = 240
+
+    public let value: String
+
+    public var description: String { value }
+
+    public init(_ value: String) throws {
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty,
+              value.utf8.count <= Self.maximumUTF8Count,
+              !PortableResearchRecordValidation.containsAbsolutePath(value),
+              !value.unicodeScalars.contains(where: {
+                  CharacterSet.newlines.contains($0)
+                      || CharacterSet.controlCharacters.contains($0)
+              }) else {
+            throw PortableResearchRecordError.invalidRecordTitle
+        }
+        self.value = value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        try self.init(container.decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
+}
+
 /// The durable scholarly shape of one portable Research Record.
 ///
 /// Storage location is intentionally not encoded: active Discussions and
@@ -549,11 +583,12 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 5
+    public static let currentSchemaVersion = 6
 
     public let schemaVersion: Int
     public let id: UUID
     public let triptychID: UUID
+    public let title: ResearchRecordTitle
     public let kind: PortableResearchRecordKind
     public let action: ResearchActionRecordIdentity?
     public let method: PortableResearchMethodReference?
@@ -572,13 +607,13 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let literatureRecommendations: [ResearchLiteratureRecommendation]
     public let startedAt: Date
     public let finishedAt: Date
-    public let isPinned: Bool
     public let researcherEvaluation: PortableResearcherEvaluation?
     public let methodFeedbackComment: PortableResearchMethodFeedbackComment?
 
     public init(
         id: UUID = UUID(),
         triptychID: UUID,
+        title: ResearchRecordTitle,
         kind: PortableResearchRecordKind,
         action: ResearchActionRecordIdentity?,
         method: PortableResearchMethodReference?,
@@ -597,7 +632,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         literatureRecommendations: [ResearchLiteratureRecommendation] = [],
         startedAt: Date,
         finishedAt: Date,
-        isPinned: Bool = false,
         researcherEvaluation: PortableResearcherEvaluation? = nil,
         methodFeedbackComment: PortableResearchMethodFeedbackComment? = nil
     ) throws {
@@ -693,6 +727,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         schemaVersion = Self.currentSchemaVersion
         self.id = id
         self.triptychID = triptychID
+        self.title = title
         self.kind = kind
         self.action = action
         self.method = method
@@ -720,7 +755,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.literatureRecommendations = literatureRecommendations
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.isPinned = isPinned
         self.researcherEvaluation = researcherEvaluation
         self.methodFeedbackComment = methodFeedbackComment
     }
@@ -729,6 +763,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case schemaVersion = "schema_version"
         case id
         case triptychID = "triptych_id"
+        case title = "record_title"
         case kind, action, method
         case sourceReference = "source_reference"
         case continuationLineage = "continuation_lineage"
@@ -745,7 +780,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case literatureRecommendations = "literature_recommendations"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
-        case isPinned = "is_pinned"
         case researcherEvaluation = "researcher_evaluation"
         case methodFeedbackComment = "method_feedback_comment"
     }
@@ -767,6 +801,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         try self.init(
             id: container.decode(UUID.self, forKey: .id),
             triptychID: container.decode(UUID.self, forKey: .triptychID),
+            title: container.decode(ResearchRecordTitle.self, forKey: .title),
             kind: container.decode(PortableResearchRecordKind.self, forKey: .kind),
             action: container.decodeIfPresent(
                 ResearchActionRecordIdentity.self,
@@ -824,7 +859,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             ),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decode(Date.self, forKey: .finishedAt),
-            isPinned: container.decode(Bool.self, forKey: .isPinned),
             researcherEvaluation: container.decodeIfPresent(
                 PortableResearcherEvaluation.self,
                 forKey: .researcherEvaluation
@@ -845,6 +879,7 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
     case invalidMethodReference
     case invalidMaterialUse
     case invalidConfirmedChange
+    case invalidRecordTitle
     case invalidRecord
 
     public var errorDescription: String? {
@@ -863,6 +898,8 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
             "The portable Research Record contains an invalid actually-used Material."
         case .invalidConfirmedChange:
             "The portable Research Record contains an invalid confirmed change."
+        case .invalidRecordTitle:
+            "The portable Research Record title must be one concise line."
         case .invalidRecord:
             "The portable Research Record violates its bounded schema."
         }

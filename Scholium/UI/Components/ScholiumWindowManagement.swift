@@ -1,4 +1,5 @@
 import ScholiumContracts
+import ScholiumResearchRecordsFeature
 import AppKit
 import notify
 import SwiftUI
@@ -1009,6 +1010,7 @@ struct WorkspaceWindowAttachment: NSViewRepresentable {
 
 struct ResearchRecordsWindowAttachment: NSViewRepresentable {
     let triptychID: UUID
+    let usesFullHeightContent: Bool
 
     func makeNSView(context: Context) -> WindowAttachmentView {
         let view = WindowAttachmentView()
@@ -1024,8 +1026,16 @@ struct ResearchRecordsWindowAttachment: NSViewRepresentable {
         window.identifier = NSUserInterfaceItemIdentifier(
             "scholium-research-records-\(triptychID.uuidString.lowercased())"
         )
-        window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = false
+        if usesFullHeightContent {
+            window.styleMask.insert(.fullSizeContentView)
+        } else {
+            window.styleMask.remove(.fullSizeContentView)
+        }
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
+        window.isMovableByWindowBackground = true
         window.tabbingMode = .disallowed
     }
 }

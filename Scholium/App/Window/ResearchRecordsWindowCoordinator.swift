@@ -1,43 +1,6 @@
 import Foundation
 import ScholiumContracts
-
-enum ResearchRecordsViewKind: String, CaseIterable, Codable, Hashable, Sendable {
-    case records
-    case recommendations
-}
-
-enum ResearchRecordsScope: String, CaseIterable, Hashable, Sendable {
-    case thisNote
-    case triptych
-}
-
-/// A one-shot presentation request for the one Research Records window owned
-/// by a Triptych. Records remain owned by the portable Research Record store;
-/// this value carries only transient routing state.
-struct ResearchRecordsWindowRequest: Hashable, Sendable {
-    let triptychID: UUID
-    let noteID: UUID?
-    let initialView: ResearchRecordsViewKind
-    let recordID: UUID?
-    let expectedRecordFingerprint: DocumentFingerprint?
-    let statementID: UUID?
-
-    init(
-        triptychID: UUID,
-        noteID: UUID? = nil,
-        initialView: ResearchRecordsViewKind = .records,
-        recordID: UUID? = nil,
-        expectedRecordFingerprint: DocumentFingerprint? = nil,
-        statementID: UUID? = nil
-    ) {
-        self.triptychID = triptychID
-        self.noteID = noteID
-        self.initialView = initialView
-        self.recordID = recordID
-        self.expectedRecordFingerprint = expectedRecordFingerprint
-        self.statementID = statementID
-    }
-}
+import ScholiumResearchRecordsFeature
 
 /// Routes transient requests to a Triptych-identified Research Records window
 /// and to an already-open workspace. It retains no Research Record data.

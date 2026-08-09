@@ -21,7 +21,7 @@ struct NoteLifecycleView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .firstTextBaseline) {
                     Label(sheetTitle, systemImage: symbol)
-                        .font(.title2.weight(.semibold))
+                        .font(ScholiumTypography.interface(.primaryTitle))
                     Spacer()
                 }
 
@@ -29,17 +29,17 @@ struct NoteLifecycleView: View {
                     fieldTitle,
                     wide: {
                         TextField(fieldPlaceholder, text: $destination)
-                            .font(.body.monospaced())
+                            .font(ScholiumTypography.exact(.body))
                             .frame(minWidth: 300)
                     },
                     compact: {
                         TextField(fieldPlaceholder, text: $destination)
-                            .font(.body.monospaced())
+                            .font(ScholiumTypography.exact(.body))
                     }
                 )
 
                 Text(helpText)
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(.secondary)
 
                 Divider()
@@ -82,7 +82,7 @@ struct NoteLifecycleView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
-                    .font(.callout.weight(.medium))
+                    .font(ScholiumTypography.interface(.rowTitle))
                 compact()
             }
             .frame(maxWidth: .infinity, alignment: .leading)

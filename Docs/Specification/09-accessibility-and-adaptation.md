@@ -139,15 +139,60 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   rows operable while status and Retry remain named. When the selected task
   disappears, focus follows the next/previous/filter sequence in §18.3.
 - Research Records exposes **Scope** as a named native menu and **View** as a
-  named editorial index of native buttons; selection, count, and availability
-  remain current without relying on position or color. Left/Right Arrow moves
-  between View choices without coupling the Scope value. Each Literature
-  Recommendation occurrence exposes its
-  title, parent Analysis context, date, and independently operable Handled
-  checkbox. Detail preserves a linear reading order from identity and reason
-  through locators, uncertainty, provenance, navigation, and researcher note.
+  named toolbar editorial index of native buttons; its labels remain **Records**
+  and **Reading Leads** without appended counts. Selection and availability
+  remain current without relying on position or color. Left/Right
+  Arrow moves between View choices without coupling the Scope value. Each
+  collection exposes one ordered, readable column header; Record, Action, and
+  Date headers expose current sort direction and keyboard-operable sorting.
+  The exact filtered total is announced with the first content-column header,
+  not as part of a toolbar control. Incremental loading preserves the current
+  rows, exposes loading and recoverable Retry status at the list boundary, and
+  never changes the announced total to the loaded slice size. Each Record row
+  exposes one complete destination without requiring a navigation glyph. Its
+  unlabeled visual Attention gutter receives a semantic accessibility label
+  only when an exception exists; the Action capsule is included as a value in
+  the row label and is not exposed as a separate control; the focal Note and
+  finished date are included in the row label. Each
+  Literature Recommendation occurrence exposes its independently operable,
+  labelled Handled checkbox first, then Title, Author(s), Year, and Publication
+  in one detail destination. The checkbox may omit visible row text but retains
+  its complete name and current value. Detail preserves one linear order from
+  scholarly identity and the independently operable header disposition button
+  through the selectable full citation, Bibliography, Discovery Locators,
+  reason, uncertainty, researcher note, source, parent, and technical identity.
+  The muted full citation precedes the visual information band and remains
+  exposed as a complete citation; Bibliography keeps Zotero identity with the
+  other structured bibliographic fields. Bibliography and Discovery Locators may share a
+  regular-width visual row, but enlarged text or a narrow width stacks the two
+  complete groups in the same accessibility order. The detail button exposes
+  the action **Mark as handled** or **Mark as unprocessed**, the current
+  Unprocessed/Handled value, concise Help, keyboard focus, and the semantic
+  hint that processing implies no reading, acceptance, citation, verification,
+  or endorsement. Its immediate clock/checkmark and text response is not the
+  only state channel and becomes motionless under Reduce Motion. Label/value
+  grids expose labels and values in source order even when their visual layout
+  changes from columns to stacked rows.
   Group headings never imply a shared handled state. Empty, load-error, and
   partially unsupported Record states remain named and keyboard reachable.
+  Participants and Context Used headings expose their total and bounded-preview
+  state, and become keyboard-operable controls only when a complete popover is
+  available. Popover rows retain headings, source labels, exact unavailable
+  provenance, selection, and source-opening routes in a linear order; Escape or
+  dismissal returns focus to the originating heading. Native-toolbar Back and
+  Evidence controls have distinct names, help, roles, focus, and immediate
+  pressed feedback. Evidence exposes **Shown / Hidden** as its current value;
+  hiding the rail removes it from the active accessibility tree without
+  disturbing reading-plane order, and showing it restores the same first
+  Evidence heading. The Record-header permanent-delete icon has a distinct
+  name, help, role, focus, and pressed feedback; delete is not communicated by icon shape or destructive color alone,
+  and confirmation dismissal returns focus to it. Attributed statements expose
+  author before prose in reading order; Researcher and Agent remain distinct by
+  visible label and symbol when authorship color is unavailable. Their fixed
+  visual columns reflow prose without clipping at the window minimum. Evidence
+  section headings retain one heading level and aligned target rhythm; quotation
+  and document symbols are decorative supplements rather than the sole
+  distinction between Context Used and Participants.
 - Keep VoiceOver names, roles, values, headings, anchors, selection, errors,
   and consequences current. Hide decoration from accessibility.
 - A running Action exposes its Action name and **Running** state together while
@@ -163,7 +208,8 @@ This chapter owns Section 20: accessibility and adaptation requirements; sibling
   fields the researcher must read or enter.
 - Researcher Evaluation follows the returned result in the Action sheet and
   uses the same label, help, choice, note, error, save-status, and focus order
-  in Record detail. Observed Issues, the mutually exclusive no-issue option,
+  in the Record-detail sheet opened by its named section heading. Observed
+  Issues, the mutually exclusive no-issue option,
   Valuable Discovery, note, Save, and Clear are fully keyboard operable. Draft,
   saving, saved, stale revision, conflict, deletion, and failure are announced
   without color, hover, or visual position as the sole channel. Save returns a

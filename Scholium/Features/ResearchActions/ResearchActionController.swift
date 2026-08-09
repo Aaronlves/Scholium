@@ -154,6 +154,7 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var preparation: ResearchActionPreparation?
     @Published private(set) var agentHandoff: ResearchAgentHandoff?
     @Published private(set) var resultRecord: PortableResearchRecord?
+    @Published private(set) var continuationRecords: [PortableResearchRecord] = []
     @Published private(set) var errorMessage: String?
     @Published private(set) var isBindingSource = false
     @Published private(set) var cancellationRecoveries: [ResearchActionCancellationRecovery] = []
@@ -222,6 +223,13 @@ final class ResearchActionController: ObservableObject {
     func receive(records: [PortableResearchRecord]) {
         guard let runID = preparation?.runID else { return }
         resultRecord = records.first { $0.id == runID }
+        continuationRecords = records.filter {
+            $0.continuationLineage?.kind == .continueResearch
+                && $0.continuationLineage?.parentRunID == runID
+        }.sorted {
+            if $0.finishedAt != $1.finishedAt { return $0.finishedAt < $1.finishedAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     func saveResearcherEvaluation(
@@ -552,6 +560,7 @@ final class ResearchActionController: ObservableObject {
                 }
                 preparation = result
                 resultRecord = nil
+                continuationRecords = []
                 do {
                     let handoff = try await client.handoff(result.runID)
                     guard self.accepts(token), self.presentationID == presentationID else {
@@ -616,6 +625,7 @@ final class ResearchActionController: ObservableObject {
                 preparation = nil
                 agentHandoff = nil
                 resultRecord = nil
+                continuationRecords = []
                 phase = .cancelled
             } catch {
                 if accepts(token) {
@@ -861,6 +871,7 @@ final class ResearchActionController: ObservableObject {
         preparation = nil
         agentHandoff = nil
         resultRecord = nil
+        continuationRecords = []
         errorMessage = nil
         isBindingSource = false
         textValues = [:]

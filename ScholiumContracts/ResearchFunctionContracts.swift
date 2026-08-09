@@ -1044,6 +1044,7 @@ public struct ResearchFunctionFidelityTargetResult: Codable, Hashable, Sendable 
 public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable {
     public let runID: UUID
     public let confirmationToken: UUID
+    public let recordTitle: ResearchRecordTitle
     /// Legacy and read-only completion evidence. A keyed Develop or Revise
     /// omits this value because Scholium reads every frozen target itself.
     public let finalTargetFingerprint: DocumentFingerprint?
@@ -1065,6 +1066,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
     public init(
         runID: UUID,
         confirmationToken: UUID,
+        recordTitle: ResearchRecordTitle,
         finalTargetFingerprint: DocumentFingerprint? = nil,
         finalMaterialFingerprints: [UUID: DocumentFingerprint] = [:],
         actuallyUsedMaterialNoteIDs: [UUID]? = [],
@@ -1078,6 +1080,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
     ) {
         self.runID = runID
         self.confirmationToken = confirmationToken
+        self.recordTitle = recordTitle
         self.finalTargetFingerprint = finalTargetFingerprint
         self.finalMaterialFingerprints = finalMaterialFingerprints
         self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs?.sorted {
@@ -1101,6 +1104,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
     public let runID: UUID
     public let function: ResearchFunctionID
     public let state: ResearchFunctionRunState
+    public let recordTitle: ResearchRecordTitle
     public let targetFingerprint: DocumentFingerprint
     public let materialFingerprints: [UUID: DocumentFingerprint]
     public let actuallyUsedMaterialNoteIDs: [UUID]?
@@ -1126,6 +1130,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         runID: UUID,
         function: ResearchFunctionID,
         state: ResearchFunctionRunState,
+        recordTitle: ResearchRecordTitle,
         targetFingerprint: DocumentFingerprint,
         materialFingerprints: [UUID: DocumentFingerprint],
         actuallyUsedMaterialNoteIDs: [UUID]? = [],
@@ -1144,6 +1149,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         self.runID = runID
         self.function = function
         self.state = state
+        self.recordTitle = recordTitle
         self.targetFingerprint = targetFingerprint
         self.materialFingerprints = materialFingerprints
         self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs?.sorted {

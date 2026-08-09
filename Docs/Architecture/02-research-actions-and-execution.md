@@ -224,9 +224,9 @@ retains unresolved recovery state.
 
 ## Result submission and finalization
 
-Agent submission contains only the frozen contract's academic fields, explicit
-blocked state where applicable, and optional Source Reference Envelopes plus
-testimony for Context Use.
+Agent submission contains the required one-line Record Title, the frozen
+contract's academic fields, explicit blocked state where applicable, and
+optional Source Reference Envelopes plus testimony for Context Use.
 Application validates field presence/type/cardinality/exclusive choices and
 that each claimed reference is current, in Run-readable scope, and has one
 authoritative owner, revision, and locator. Agent use remains testimony;
@@ -234,8 +234,8 @@ Application validation is a separate machine fact and does not claim delivery
 history proves use. An invalid field returns field-level repair without mutating
 the Record or write set.
 
-The Run stores one `ResearchResultPayload` partitioned into Agent and machine
-fields. For write Actions, submission may precede final transaction
+The Run stores one `ResearchResultPayload` partitioned into Record Title, Agent
+academic fields, and machine fields. For write Actions, submission may precede final transaction
 reconciliation, but Record finalization cannot. Application derives actual
 changed/unchanged/conflicted/unknown documents from operation entries,
 completes Fidelity status from exact evidence, and creates one strict portable
@@ -245,9 +245,9 @@ closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
 
-`PortableResearchRecordStore` owns strict current-schema Records and exact
-source-byte fingerprints. Record mutation is
-limited to Pin, Analyze recommendation disposition/note, and the Record-owned
+`PortableResearchRecordStore` owns strict schema-6 Records, including the
+frozen Record Title, and exact source-byte fingerprints. Record mutation is
+limited to Analyze recommendation disposition/note and the Record-owned
 Researcher Evaluation partition. Those paths all use one revision-safe
 replacement primitive under portable coordination and lock, distinguish
 pre-commit refusal from post-commit uncertainty, and read back before success.
@@ -272,15 +272,20 @@ Research Records presentation remains Triptych-keyed:
 Document / Research menu / Search Record result
         -> ResearchRecordsWindowCoordinator (routing only)
         -> ScholiumResearchRecordsRoot (exact Triptych capabilities)
-        -> ResearchRecordBrowserModel
+        -> ScholiumResearchRecordsFeature.ResearchRecordBrowserModel
              +-- Application Record Search
+                  +-- exact total, provider-owned sort, 100-row slices
              +-- Portable Record mutation/evaluation use cases
-             +-- rebuildable Recommendations/evaluation summaries
+             +-- collection / Record / Reading Lead route
+             +-- rebuildable paged Reading Leads and continuation relations
+        -> ResearchRecordBrowserView (App-owned native presentation)
 ```
 
 The coordinator owns no Record data, current Workspace focus, or authorization.
-Window-local Scope/View/search/selection state disappears on close. Portable
-Records remain the only durable owner.
+The package-internal feature imports Contracts only and owns no SwiftUI,
+Workspace, window, Agent Bridge, or Application capability. Window-local
+Scope/View/search/route state disappears on close. Portable Records remain the
+only durable owner.
 
 ## Continue Research and method improvement
 
@@ -291,10 +296,16 @@ idempotently. The new Run performs ordinary fresh preparation and Research
 Context query. It inherits no prior method, Profile, Session-only write
 authority, Bounded Write Set, response, rank, cache, or provider availability.
 
-Only after the next Record safely forms does that Record persist
-`continuedFrom`; reverse `continuedAs` is a rebuildable Record-index relation.
-Denied/abandoned continuation leaves the old Record unchanged. Initiator actor
-is explicit and never inferred as researcher adoption.
+The CLI and authenticated Agent Session remain the only Continue Research
+operation owners. The Records interface exposes no continuation command or
+credential path. Only after the next Record safely forms does that child
+persist `ResearchContinuationLineage(.continueResearch)` with its parent Run;
+the parent relation is rebuildable. The child remains one portable Record and
+one Search result for audit, while the Records collection folds it beneath the
+parent instead of presenting a second peer row. The parent Action sheet derives
+the same direct children as a read-only **Continue Research** section. A denied
+or abandoned continuation leaves the old Record unchanged, and initiator actor
+is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
 the one current `methodImprovementRun` in its parent Local Execution schema-8

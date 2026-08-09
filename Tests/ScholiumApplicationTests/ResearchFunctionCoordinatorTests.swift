@@ -50,6 +50,7 @@ struct ResearchFunctionCoordinatorTests {
         let submission = ResearchFunctionCompletionSubmission(
             runID: preparation.runID,
             confirmationToken: preparation.snapshot.confirmationToken,
+            recordTitle: try ResearchRecordTitle("Test research result"),
             finalTargetFingerprint: note.fingerprint,
             summary: "Checked the frozen Analysis revision.",
             didModifyTarget: false,
@@ -66,6 +67,7 @@ struct ResearchFunctionCoordinatorTests {
                 submissionFingerprint: DocumentFingerprint(
                     content: "coordinator-result"
                 ),
+                recordTitle: submission.recordTitle,
                 disposition: .completed,
                 academicResults: testAcademicResults(for: action),
                 contextUseReport: nil,

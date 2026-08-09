@@ -3,14 +3,14 @@ import SwiftUI
 private struct ScholiumApparatusHeadingModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .font(ScholiumInterfaceTypography.apparatusLabel)
+            .font(ScholiumTypography.interface(.small, emphasis: .strong))
             .tracking(0.7)
             .foregroundStyle(ScholiumColorRole.secondaryText.color)
     }
 }
 
 extension View {
-    /// The single visual token for every Inspector section and group heading.
+    /// The single visual token for every Inspector and Research Record section heading.
     func scholiumApparatusHeadingStyle() -> some View {
         modifier(ScholiumApparatusHeadingModifier())
     }
@@ -86,8 +86,8 @@ private struct ScholiumInspectorModeButton: View {
             Text(mode.interfaceTitleResource)
                 .font(
                     isSelected
-                        ? ScholiumInterfaceTypography.apparatusModeSelected
-                        : ScholiumInterfaceTypography.apparatusMode
+                        ? ScholiumTypography.interface(.compact, emphasis: .strong)
+                        : ScholiumTypography.interface(.compact, emphasis: .medium)
                 )
                 .lineLimit(1)
                 .minimumScaleFactor(0.9)
@@ -102,10 +102,11 @@ private struct ScholiumInspectorModeButton: View {
                         style: .continuous
                     )
                 )
-                .contentShape(RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                ))
+                .contentShape(
+                    RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    ))
         }
         .buttonStyle(.plain)
         .frame(
@@ -129,11 +130,8 @@ private struct ScholiumInspectorModeButton: View {
     }
 
     private var modeSurface: Color {
-        if isSelected {
-            return ScholiumColorRole.raisedSurfaceBackground
-                .color(increasedContrast: increasedContrast)
-        }
-        return ScholiumContentInteractionSurface.color(
+        ScholiumContentInteractionSurface.selectionColor(
+            isSelected: isSelected,
             isHovering: isHovering,
             isFocused: isFocused,
             increasedContrast: increasedContrast
@@ -181,22 +179,31 @@ struct ScholiumApparatusSection<Content: View, Trailing: View>: View {
     }
 }
 
+enum ScholiumApparatusFactValueStyle: Hashable {
+    case researchContent
+    case exactContent
+    case revisionIdentity
+}
+
 struct ScholiumApparatusFact: Identifiable, Hashable {
     let id: String
     let label: String
     let value: String
     let monospacedDigits: Bool
+    let valueStyle: ScholiumApparatusFactValueStyle
 
     init(
         id: String,
         label: String,
         value: String,
-        monospacedDigits: Bool = false
+        monospacedDigits: Bool = false,
+        valueStyle: ScholiumApparatusFactValueStyle = .researchContent
     ) {
         self.id = id
         self.label = label
         self.value = value
         self.monospacedDigits = monospacedDigits
+        self.valueStyle = valueStyle
     }
 }
 
@@ -226,7 +233,8 @@ struct ScholiumApparatusFactGrid: View {
                                     .gridColumnAlignment(.trailing)
                                 factValue(
                                     fact.value,
-                                    monospacedDigits: fact.monospacedDigits
+                                    monospacedDigits: fact.monospacedDigits,
+                                    valueStyle: fact.valueStyle
                                 )
                                 .frame(
                                     minWidth: ScholiumMetrics.Apparatus.factValueMinimumWidth,
@@ -256,7 +264,8 @@ struct ScholiumApparatusFactGrid: View {
                                 factLabel(fact.label)
                                 factValue(
                                     fact.value,
-                                    monospacedDigits: fact.monospacedDigits
+                                    monospacedDigits: fact.monospacedDigits,
+                                    valueStyle: fact.valueStyle
                                 )
                                 .padding(
                                     .leading,
@@ -278,24 +287,38 @@ struct ScholiumApparatusFactGrid: View {
 
     private func factLabel(_ label: String) -> some View {
         Text(label)
-            .font(ScholiumInterfaceTypography.apparatusBody.weight(.semibold))
+            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
             .foregroundStyle(ScholiumColorRole.secondaryText.color)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     private func factValue(
         _ value: String,
-        monospacedDigits: Bool
+        monospacedDigits: Bool,
+        valueStyle: ScholiumApparatusFactValueStyle
     ) -> some View {
         Text(value)
-            .font(
-                monospacedDigits
-                    ? ScholiumInterfaceTypography.apparatusResearchContent.monospacedDigit()
-                    : ScholiumInterfaceTypography.apparatusResearchContent
-            )
+            .font(factValueFont(monospacedDigits: monospacedDigits, style: valueStyle))
             .foregroundStyle(ScholiumColorRole.primaryText.color)
             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
             .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+    }
+
+    private func factValueFont(
+        monospacedDigits: Bool,
+        style: ScholiumApparatusFactValueStyle
+    ) -> Font {
+        switch style {
+        case .researchContent:
+            monospacedDigits
+                ? ScholiumTypography.scholarly(.body, tabularDigits: true)
+                : ScholiumTypography.scholarly(.body)
+        case .exactContent:
+            ScholiumTypography.exact(.body)
+        case .revisionIdentity:
+            ScholiumTypography.exact(.small)
+        }
     }
 }
 
@@ -312,13 +335,13 @@ struct ScholiumApparatusReadingBlock: View {
             spacing: ScholiumMetrics.Apparatus.longTextLabelSpacing
         ) {
             Text(label)
-                .font(ScholiumInterfaceTypography.apparatusBody.weight(.semibold))
+                .font(ScholiumTypography.interface(.compact, emphasis: .strong))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
             Text(text)
                 .font(
                     monospacedDigits
-                        ? ScholiumInterfaceTypography.apparatusResearchContent.monospacedDigit()
-                        : ScholiumInterfaceTypography.apparatusResearchContent
+                        ? ScholiumTypography.scholarly(.body, tabularDigits: true)
+                        : ScholiumTypography.scholarly(.body)
                 )
                 .foregroundStyle(ScholiumColorRole.primaryText.color)
                 .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
@@ -355,7 +378,7 @@ struct ScholiumApparatusActionRowContent: View {
             spacing: ScholiumMetrics.Apparatus.iconToTextSpacing
         ) {
             Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
+                .font(ScholiumTypography.interface(.compact, emphasis: .strong))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
                 .frame(width: ScholiumMetrics.Apparatus.iconColumnWidth)
                 .accessibilityHidden(true)
@@ -365,11 +388,11 @@ struct ScholiumApparatusActionRowContent: View {
                 spacing: ScholiumMetrics.Apparatus.actionCopySpacing
             ) {
                 title
-                    .font(ScholiumInterfaceTypography.apparatusActionTitle)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                     .foregroundStyle(ScholiumColorRole.primaryText.color)
                 if let detail {
                     detail
-                        .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                        .font(ScholiumTypography.scholarly(.body))
                         .foregroundStyle(ScholiumColorRole.secondaryText.color)
                         .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
                         .fixedSize(horizontal: false, vertical: true)
@@ -379,7 +402,7 @@ struct ScholiumApparatusActionRowContent: View {
 
             if showsChevron {
                 Image(systemName: "chevron.forward")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .foregroundStyle(ScholiumColorRole.mutedText.color)
                     .accessibilityHidden(true)
             }
@@ -421,16 +444,18 @@ struct ScholiumApparatusSectionHeaderButton: View {
                     .scholiumApparatusHeadingStyle()
                 Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
                 Image(systemName: systemImage)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(ScholiumTypography.interface(.small, emphasis: .medium))
                     .foregroundStyle(ScholiumColorRole.mutedText.color)
                     .accessibilityHidden(true)
             }
         }
-        .buttonStyle(ScholiumQuietRowButtonStyle(
-            isHovering: isHovering,
-            minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
-            verticalInset: 0
-        ))
+        .buttonStyle(
+            ScholiumQuietRowButtonStyle(
+                isHovering: isHovering,
+                minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                verticalInset: 0
+            )
+        )
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
         .onHover { isHovering = $0 }
         .help(actionLabel)
@@ -492,7 +517,7 @@ struct ScholiumApparatusStateView<Actions: View>: View {
                         .controlSize(.small)
                 } else {
                     Image(systemName: systemImage)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(ScholiumTypography.interface(.compact, emphasis: .medium))
                         .foregroundStyle(ScholiumColorRole.secondaryText.color)
                         .accessibilityHidden(true)
                 }
@@ -503,11 +528,11 @@ struct ScholiumApparatusStateView<Actions: View>: View {
                     spacing: ScholiumMetrics.Apparatus.actionCopySpacing
                 ) {
                     Text(title)
-                        .font(ScholiumInterfaceTypography.apparatusBody.weight(.semibold))
+                        .font(ScholiumTypography.interface(.compact, emphasis: .strong))
                         .foregroundStyle(ScholiumColorRole.primaryText.color)
                     if let detail, !detail.isEmpty {
                         Text(detail)
-                            .font(ScholiumInterfaceTypography.apparatusResearchContent)
+                            .font(ScholiumTypography.scholarly(.body))
                             .foregroundStyle(ScholiumColorRole.secondaryText.color)
                             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
                             .fixedSize(horizontal: false, vertical: true)

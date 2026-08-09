@@ -174,7 +174,7 @@ Menus follow researcher tasks:
 - **Window:** standard window navigation plus **Attention**. The command is
   enabled only when the focused window has a visible Triptych or Inspector
   Attention anchor, and opens that anchor's transient popover.
-- **Research:** role-valid Actions and **Triptych · Records**, never Attention
+- **Research:** role-valid Actions and **Triptych Records**, never Attention
   or Checkpoints.
 - **Settings:** Triptychs, Property profiles, Appearance, Attention, and one
   Research Guidance surface for Methods, Profiles & Practices, Collaboration,

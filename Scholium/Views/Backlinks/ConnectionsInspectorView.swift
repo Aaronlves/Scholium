@@ -317,7 +317,7 @@ struct ConnectionsInspectorView: View {
             ScholiumApparatusRow(
                 leading: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .scholiumForeground(.mutedText)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .animation(
@@ -334,8 +334,7 @@ struct ConnectionsInspectorView: View {
                 trailing: {
                     Text(itemCount.formatted())
                         .font(
-                            ScholiumInterfaceTypography.apparatusMetadata
-                                .monospacedDigit()
+                            ScholiumTypography.interface(.small, tabularDigits: true)
                         )
                         .foregroundStyle(.secondary)
                 }
@@ -392,25 +391,21 @@ private struct ConnectionRelationshipCluster: View {
     private var relationshipHeading: some View {
         HStack(spacing: ScholiumMetrics.Apparatus.relationGlyphToTextSpacing) {
             Image(systemName: cluster.presentation.systemSymbol.systemName)
-                .font(.system(
-                    size: ScholiumMetrics.Apparatus.relationGlyphSize,
-                    weight: .regular
-                ))
+                .scholiumSymbolStyle(.relationship)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(ScholiumColorRole.mutedText.color)
                 .frame(width: ScholiumMetrics.Apparatus.relationGlyphColumnWidth)
                 .accessibilityHidden(true)
 
             Text(cluster.presentation.title)
-                .font(ScholiumInterfaceTypography.apparatusConnectionHeading)
+                .font(ScholiumTypography.interface(.compact, emphasis: .strong))
                 .foregroundStyle(ScholiumColorRole.secondaryText.color)
 
             Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
 
             Text(cluster.items.count.formatted())
                 .font(
-                    ScholiumInterfaceTypography.apparatusMetadata
-                        .monospacedDigit()
+                    ScholiumTypography.interface(.small, tabularDigits: true)
                 )
                 .foregroundStyle(ScholiumColorRole.mutedText.color)
         }
@@ -490,7 +485,7 @@ private struct CombinedConnectionRow: View {
 
     private var relationLabel: some View {
         Text(title)
-            .font(ScholiumInterfaceTypography.apparatusConnectionContent)
+            .font(ScholiumTypography.interface(.body))
             .foregroundStyle(
                 isHovering || isFocused
                     ? ScholiumColorRole.primaryText.color

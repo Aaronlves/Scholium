@@ -143,23 +143,21 @@ struct ResearchOverviewView: View {
             ) {
                 HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(ScholiumTypography.interface(.small, emphasis: .medium))
                         .foregroundStyle(ScholiumColorRole.attention.color)
                         .accessibilityHidden(true)
                     Text("NEEDS ATTENTION")
-                        .font(ScholiumInterfaceTypography.apparatusLabel)
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .tracking(0.7)
                         .foregroundStyle(ScholiumColorRole.attention.color)
                     Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
                     Text(context.visibleAttentionItems.count.formatted())
                         .font(
-                            ScholiumInterfaceTypography.apparatusMetadata
-                                .monospacedDigit()
-                                .weight(.semibold)
+                            ScholiumTypography.interface(.small, emphasis: .strong, tabularDigits: true)
                         )
                         .foregroundStyle(ScholiumColorRole.attention.color)
                     Image(systemName: "chevron.forward")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .foregroundStyle(ScholiumColorRole.mutedText.color)
                         .accessibilityHidden(true)
                 }
@@ -174,10 +172,7 @@ struct ResearchOverviewView: View {
                             id: \.rawValue
                         ) { kind in
                             Text(attentionTitle(for: kind))
-                                .font(
-                                    ScholiumInterfaceTypography.apparatusResearchContent
-                                        .weight(.medium)
-                                )
+                                .font(ScholiumTypography.scholarly(.emphasis))
                                 .foregroundStyle(ScholiumColorRole.primaryText.color)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

@@ -86,14 +86,15 @@ struct PortableResearchRecordContractsTests {
         )
 
         #expect(Set(object.keys) == [
-            "schema_version", "id", "triptych_id", "kind", "action", "method",
+            "schema_version", "id", "triptych_id", "record_title", "kind", "action", "method",
             "participating_notes", "statements", "actually_used_materials",
             "fidelity_completion", "confirmed_changes", "discrepancies",
             "literature_recommendations", "started_at", "finished_at",
-            "is_pinned", "primary_note_id", "result_disposition",
+            "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 5)
+        #expect(object["schema_version"] as? Int == 6)
+        #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
         #expect(changes.first?["actor"] as? String == "agent")
@@ -111,8 +112,14 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 5 requires every authoritative array and rejects earlier schemas")
-    func schemaFiveIsStrict() throws {
+    @Test("Schema 6 requires a frozen title and every authoritative array")
+    func schemaSixIsStrict() throws {
+        for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
+            #expect(throws: PortableResearchRecordError.self) {
+                _ = try ResearchRecordTitle(invalidTitle)
+            }
+        }
+
         for fidelity in [
             PortableResearchFidelityCompletion.notRequired,
             .completed,
@@ -131,7 +138,7 @@ struct PortableResearchRecordContractsTests {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
 
-        for version in [1, 2, 3, 4] {
+        for version in [1, 2, 3, 4, 5] {
             object["schema_version"] = version
             #expect(throws: PortableResearchRecordError.self) {
                 _ = try JSONDecoder.scholium.decode(
@@ -139,6 +146,17 @@ struct PortableResearchRecordContractsTests {
                     from: JSONSerialization.data(withJSONObject: object)
                 )
             }
+        }
+
+        object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "record_title")
+        #expect(throws: (any Error).self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
         }
 
         object = try #require(
@@ -472,6 +490,7 @@ struct PortableResearchRecordContractsTests {
         #expect(throws: PortableResearchRecordError.self) {
             _ = try PortableResearchRecord(
                 triptychID: UUID(),
+                title: try ResearchRecordTitle("Invalid material use"),
                 kind: .action,
                 action: ResearchActionRecordIdentity(snapshot: snapshot),
                 method: try PortableResearchMethodReference(snapshot: snapshot),
@@ -493,6 +512,7 @@ struct PortableResearchRecordContractsTests {
         #expect(throws: PortableResearchRecordError.self) {
             _ = try PortableResearchRecord(
                 triptychID: UUID(),
+                title: try ResearchRecordTitle("Invalid confirmed change"),
                 kind: .action,
                 action: ResearchActionRecordIdentity(snapshot: snapshot),
                 method: try PortableResearchMethodReference(snapshot: snapshot),
@@ -563,6 +583,7 @@ struct PortableResearchRecordContractsTests {
         let evaluated = try PortableResearchRecord(
             id: base.id,
             triptychID: base.triptychID,
+            title: base.title,
             kind: base.kind,
             action: base.action,
             method: base.method,
@@ -581,7 +602,6 @@ struct PortableResearchRecordContractsTests {
             literatureRecommendations: base.literatureRecommendations,
             startedAt: base.startedAt,
             finishedAt: base.finishedAt,
-            isPinned: true,
             researcherEvaluation: evaluation,
             methodFeedbackComment: comment
         )
@@ -649,6 +669,7 @@ struct PortableResearchRecordContractsTests {
         return try PortableResearchRecord(
             id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
+            title: try ResearchRecordTitle("The remaining pressure"),
             kind: .action,
             action: ResearchActionRecordIdentity(snapshot: snapshot),
             method: try PortableResearchMethodReference(snapshot: snapshot),
@@ -682,6 +703,7 @@ struct PortableResearchRecordContractsTests {
         return try PortableResearchRecord(
             id: base.id,
             triptychID: base.triptychID,
+            title: base.title,
             kind: base.kind,
             action: ResearchActionRecordIdentity(actionID: .analyze),
             method: base.method,
@@ -696,8 +718,7 @@ struct PortableResearchRecordContractsTests {
             discrepancies: base.discrepancies,
             literatureRecommendations: recommendations,
             startedAt: base.startedAt,
-            finishedAt: base.finishedAt,
-            isPinned: base.isPinned
+            finishedAt: base.finishedAt
         )
     }
 

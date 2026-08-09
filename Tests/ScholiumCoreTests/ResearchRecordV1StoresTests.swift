@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 5 and Local Execution schema 8")
+@Suite("Portable Research Record storage v1/schema 6 and Local Execution schema 8")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -135,52 +135,6 @@ struct ResearchRecordV1StoresTests {
         #expect(reversed.sourceManifestHash == listing.sourceManifestHash)
     }
 
-    @Test("Pinning replaces only the portable record pin")
-    func portablePinReplacementPreservesRecord() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = try fixture.portableStore()
-        let recommendation = try makeRecommendation(ordinal: 0)
-        let record = try makePortableRecord(
-            actionID: .analyze,
-            recommendations: [recommendation]
-        )
-        _ = try await store.createFinishedRecord(record)
-        let initialListing = try await store.listing()
-        let initialFingerprint = try #require(initialListing.revisions.first?.fingerprint)
-
-        let pinned = try await store.setPinned(true, for: record.id)
-        let pinnedListing = try await store.listing()
-        let pinnedFingerprint = try #require(pinnedListing.revisions.first?.fingerprint)
-
-        #expect(pinned.isPinned)
-        #expect(pinned.id == record.id)
-        #expect(pinned.triptychID == record.triptychID)
-        #expect(pinned.kind == record.kind)
-        #expect(pinned.action == record.action)
-        #expect(pinned.method == record.method)
-        #expect(pinned.primaryNoteID == record.primaryNoteID)
-        #expect(pinned.participatingNotes == record.participatingNotes)
-        #expect(pinned.statements == record.statements)
-        #expect(pinned.actuallyUsedMaterials == record.actuallyUsedMaterials)
-        #expect(pinned.fidelityCompletion == record.fidelityCompletion)
-        #expect(pinned.confirmedChanges == record.confirmedChanges)
-        #expect(pinned.discrepancies == record.discrepancies)
-        #expect(pinned.literatureRecommendations == record.literatureRecommendations)
-        #expect(pinned.sourceReference == record.sourceReference)
-        #expect(pinned.startedAt == record.startedAt)
-        #expect(pinned.finishedAt == record.finishedAt)
-        #expect(try await store.record(id: record.id) == pinned)
-        #expect(pinnedFingerprint != initialFingerprint)
-        #expect(pinnedListing.sourceManifestHash != initialListing.sourceManifestHash)
-
-        let restored = try await store.setPinned(false, for: record.id)
-        #expect(restored == record)
-        let restoredListing = try await store.listing()
-        #expect(restoredListing.revisions.first?.fingerprint == initialFingerprint)
-        #expect(restoredListing.sourceManifestHash == initialListing.sourceManifestHash)
-    }
-
     @Test("Disposition and researcher note replace only one recommendation occurrence")
     func recommendationMutationPreservesRecord() async throws {
         let fixture = try Fixture()
@@ -207,7 +161,7 @@ struct ResearchRecordV1StoresTests {
         #expect(handled.literatureRecommendations[0].disposition.researcherNote == nil)
         #expect(handled.literatureRecommendations[1] == second)
         #expect(handled.statements == record.statements)
-        #expect(handled.isPinned == record.isPinned)
+        #expect(handled.title == record.title)
 
         let noted = try await store.setRecommendationNote(
             "Compare its account of the objection.",
@@ -237,34 +191,6 @@ struct ResearchRecordV1StoresTests {
         }
         #expect(try Data(contentsOf: recordURL) == exactBytesBeforeRefusal)
         #expect(try await store.record(id: record.id) == noted)
-    }
-
-    @Test("Pin and disposition serialize across store instances without lost updates")
-    func concurrentPinAndDispositionPreserveBothChanges() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let firstStore = try fixture.portableStore()
-        let secondStore = try fixture.portableStore()
-        let recommendation = try makeRecommendation(ordinal: 0)
-        let record = try makePortableRecord(
-            actionID: .analyze,
-            recommendations: [recommendation]
-        )
-        _ = try await firstStore.createFinishedRecord(record)
-
-        async let pinned = firstStore.setPinned(true, for: record.id)
-        async let handled = secondStore.setRecommendationDisposition(
-            .handled,
-            recommendationID: recommendation.id,
-            recordID: record.id,
-            updatedAt: Date(timeIntervalSince1970: 30)
-        )
-        _ = try await (pinned, handled)
-
-        let final = try await firstStore.record(id: record.id)
-        #expect(final.isPinned)
-        #expect(final.literatureRecommendations[0].disposition.status == .handled)
-        #expect(final.literatureRecommendations[0].rawCitation == recommendation.rawCitation)
     }
 
     @Test("Recommendation replacement distinguishes pre-commit failure from uncertainty")
@@ -916,6 +842,7 @@ struct ResearchRecordV1StoresTests {
             runID: runID,
             function: .develop,
             state: .complete,
+            recordTitle: try ResearchRecordTitle("No change was warranted"),
             targetFingerprint: target.fingerprint,
             materialFingerprints: [:],
             summary: "No change was warranted.",
@@ -1059,6 +986,7 @@ struct ResearchRecordV1StoresTests {
             runID: runID,
             function: .develop,
             state: .awaitingFidelity,
+            recordTitle: try ResearchRecordTitle("Analyze completion awaiting fidelity"),
             targetFingerprint: local.snapshot.request.target.fingerprint,
             materialFingerprints: [:],
             summary: "Analyze completion awaiting exact-revision Fidelity.",
@@ -1087,6 +1015,7 @@ struct ResearchRecordV1StoresTests {
             runID: runID,
             function: .develop,
             state: .complete,
+            recordTitle: awaiting.recordTitle,
             targetFingerprint: awaiting.targetFingerprint,
             materialFingerprints: awaiting.materialFingerprints,
             summary: awaiting.summary,
@@ -1266,6 +1195,7 @@ struct ResearchRecordV1StoresTests {
         return try PortableResearchRecord(
             id: id,
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
+            title: ResearchRecordTitle("No source change was needed"),
             kind: .action,
             action: ResearchActionRecordIdentity(snapshot: action),
             method: try PortableResearchMethodReference(snapshot: action),

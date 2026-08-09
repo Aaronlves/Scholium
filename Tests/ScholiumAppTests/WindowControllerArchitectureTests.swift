@@ -2322,7 +2322,7 @@ struct WindowControllerArchitectureTests {
         #expect(toolbarSource.contains("@ObservedObject var shellState: WindowShellState"))
     }
 
-    @Test("Return and Record windows share one accessible Result, Evaluation, and Method-feedback surface")
+    @Test("Return and Record windows share Result and Evaluation while Method Feedback stays Action-owned")
     func sharedResearchEvaluationSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2350,11 +2350,13 @@ struct WindowControllerArchitectureTests {
         for sharedView in [
             "ResearchFinalizedResultView(",
             "ResearcherEvaluationView(",
-            "ResearchMethodFeedbackView(",
         ] {
             #expect(actionPanel.contains(sharedView))
             #expect(recordBrowser.contains(sharedView))
         }
+        #expect(actionPanel.contains("ResearchMethodFeedbackView("))
+        #expect(!recordBrowser.contains("ResearchMethodFeedbackView("))
+        #expect(recordBrowser.contains("ResearchRecordTechnicalDetails("))
         for semanticBoundary in [
             "RESEARCH RESULT", "RESEARCHER EVALUATION", "METHOD FEEDBACK",
             "does not change the Agent's finalized result",

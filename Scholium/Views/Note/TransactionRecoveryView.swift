@@ -168,13 +168,14 @@ struct TransactionRecoveryView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
-                .font(.title2)
+                .scholiumSymbolStyle(.large)
                 .scholiumForeground(.attention)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Recovery")
-                    .font(.title2.weight(.semibold))
+                    .font(ScholiumTypography.interface(.primaryTitle))
                 Text("Inspect exact save candidates retained after an interruption and durable records from file operations that could not finish cleanly.")
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -189,6 +190,7 @@ struct TransactionRecoveryView: View {
             LabeledContent("Recorded", value: record.createdAt.formatted(date: .abbreviated, time: .standard))
             LabeledContent("Failure") {
                 Text(record.failure)
+                    .font(ScholiumTypography.interface(.body))
                     .textSelection(.enabled)
                     .multilineTextAlignment(.trailing)
             }
@@ -314,33 +316,33 @@ private struct InterruptedSaveRecoveryRow: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline) {
                 Label(sourceStateTitle, systemImage: sourceStateSymbol)
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                 Spacer()
                 Text("Interrupted save")
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
             }
             Text(verbatim: vaultName)
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .foregroundStyle(.secondary)
             Text(verbatim: recovery.relativePath)
-                .font(.system(.body, design: .monospaced))
+                .font(ScholiumTypography.exact(.body))
                 .textSelection(.enabled)
             Text("Expected: \(short(recovery.expectedRevision))")
-                .font(.system(.caption, design: .monospaced))
+                .font(ScholiumTypography.exact(.small))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
             Text("Candidate: \(short(recovery.candidateRevision))")
-                .font(.system(.caption, design: .monospaced))
+                .font(ScholiumTypography.exact(.small))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
             Text(recovery.retainedReason)
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let sourceStateDetail {
                 Text(sourceStateDetail)
-                    .font(.callout)
+                    .font(ScholiumTypography.interface(.body))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
@@ -369,7 +371,7 @@ private struct InterruptedSaveRecoveryRow: View {
             }
             if let actionMessage {
                 Text(actionMessage)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -388,11 +390,12 @@ private struct InterruptedSaveRecoveryRow: View {
             VStack(alignment: .leading, spacing: 8) {
                 if content.exactSource.isEmpty {
                     Text("This candidate is an empty document.")
+                        .font(ScholiumTypography.interface(.body))
                         .foregroundStyle(.secondary)
                 } else {
                     ScrollView {
                         Text(verbatim: content.exactSource)
-                            .font(.system(.body, design: .monospaced))
+                            .font(ScholiumTypography.exact(.body))
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                             .textSelection(.enabled)
                     }
@@ -403,6 +406,7 @@ private struct InterruptedSaveRecoveryRow: View {
             }
         } else if let contentError {
             Text(contentError)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         }
@@ -452,7 +456,7 @@ private struct InterruptedSaveRecoveryRow: View {
 
     private var timestamp: some View {
         Text(recovery.createdAt.formatted(date: .abbreviated, time: .shortened))
-            .font(.caption)
+            .font(ScholiumTypography.interface(.small))
             .foregroundStyle(.tertiary)
     }
 
@@ -574,30 +578,30 @@ private struct RecoveryFileRow: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
                 Label(stateName, systemImage: stateSymbol)
-                    .font(.headline)
+                    .font(ScholiumTypography.interface(.sectionTitle))
                     .scholiumForeground(stateColorRole)
                 Spacer()
                 Text(roleName)
-                    .font(.caption)
+                    .font(ScholiumTypography.interface(.small))
                     .foregroundStyle(.secondary)
             }
             Text(vaultName)
-                .font(.caption)
+                .font(ScholiumTypography.interface(.small))
                 .foregroundStyle(.secondary)
             Text(file.path)
-                .font(.system(.body, design: .monospaced))
+                .font(ScholiumTypography.exact(.body))
                 .textSelection(.enabled)
             if let alternatePath = file.alternatePath {
                 Text("Also inspect: \(alternatePath)")
-                    .font(.system(.callout, design: .monospaced))
+                    .font(ScholiumTypography.exact(.body))
                     .textSelection(.enabled)
             }
             Text(file.detail)
-                .font(.callout)
+                .font(ScholiumTypography.interface(.body))
                 .foregroundStyle(.secondary)
             if let observed = file.observedRevision {
                 Text("Observed revision: \(short(observed))")
-                    .font(.system(.caption, design: .monospaced))
+                    .font(ScholiumTypography.exact(.small))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }

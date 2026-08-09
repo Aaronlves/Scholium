@@ -26,6 +26,10 @@ This chapter owns source layout, native presentation, interface ownership, and l
 - `ScholiumApplication` contains runtime configuration and pooling, capability
   actors, the typed event stream, CSS/App Support I/O, Obsidian appearance
   projection, and Zotero transport.
+- `ScholiumResearchRecordsFeature` is a package-internal, Contracts-only target
+  containing Records routes, browser state, query projection, continuation
+  folding, and the rebuildable Reading Leads index. It contains no SwiftUI,
+  AppKit, Workspace adapter, Application capability, or durable store.
 - `Scholium/Features` contains the Discovery, Document, Research, Properties,
   and Settings delivery controllers and per-window editor sessions.
 - `Scholium/App/Window` contains `WindowShellState`,
@@ -33,7 +37,8 @@ This chapter owns source layout, native presentation, interface ownership, and l
   exclusive window presentation
   routing, and the document-transition,
   presentation-persistence, workspace-session, and immutable-projection
-  coordinators. These
+  coordinators. It also contains the transient Triptych-keyed
+  `ResearchRecordsWindowCoordinator`. These
   coordinators do not duplicate a feature controller or writable document
   owner.
 - Feature-root view files remain inside `Scholium/Views`. The application and
@@ -116,34 +121,55 @@ or document changes cannot retarget it. A transient
 Triptych-scoped presentation requests, global-Search Record/statement
 selection, and same-Triptych Note openings without retaining Record data. Each
 Triptych window owns one `ResearchRecordBrowserModel`: Application Record-query
-requests, a disposable recommendation index, independent Scope and View,
-presentation filters, selection, and at most one cancellable comparison task.
+requests, a disposable Reading Leads index, independent Scope and View,
+presentation filters, and one collection/detail route.
 It owns no Record parser, flattened Record corpus, ranking, or freshness rule.
-The native resizable list/detail
-split has a 760 × 680 default frame and 700 × 520 minimum. Its left list is a
-secondary navigation surface, not a Workspace Sidebar, and receives no Sidebar
-toolbar treatment. The standard titlebar shows the window identity without a
-feature toolbar. The Navigation plane owns a local View index above its List
-and a borderless Scope menu in the list-context row; the independent controls
-do not introduce a full-width header across the Document plane. List scroll
-backgrounds are hidden so the semantic Navigation plane remains continuous.
+The native resizable window has a 760 × 680 default frame and 700 × 520
+minimum. Its hidden-title style retains native traffic lights, toolbar, and
+dragging, but deliberately removes `fullSizeContentView`; AppKit's content-layout
+rectangle keeps every scroll owner below system chrome while toolbar, collection
+header, and content resolve to one Document background. Opening presents a full-window
+Records or Reading Leads collection with the View index in the toolbar and an
+adaptive identity/search/Scope/filter/count header. Fixed-rhythm,
+rule-separated scan rows consume lightweight index entries rather than full
+portable Records. No row is selected automatically. Selecting an item replaces
+the collection; one native-toolbar Back route retains its filters, Scope, and
+View.
+
+One Record detail uses two independent vertical scroll owners: a reading plane
+that receives the remaining width up to a 680pt measure and a default-expanded,
+toolbar-collapsible 260–304pt Evidence & Judgment rail, separated by one 1pt
+adaptive divider. Both planes use the same Document background. Reading owns the finalized
+result, attributed record, continuity relation, and Reading Lead links;
+Evidence directly owns participants, verified Context Used, observed effects,
+and the saved researcher judgment. One default-closed Technical Details group
+owns schema, identity, and exact revision hashes; confirmed permanent deletion
+remains in the Record header. Record
+detail exposes neither revision-comparison nor Method-feedback controls; Method
+Feedback remains with the parent Action presentation. A Context Used Note or
+Record entry is interactive only when its current exact destination resolves;
+otherwise its exact locator and testimony remain selectable and noninteractive.
 
 The window renders finished portable Discussion and nonconversational Action
 records, preserves attribution and evidence-class qualifications, exposes
 tombstones, and routes live participating Notes only to a same-Triptych
-Workspace. Pin replaces only `is_pinned`; recommendation disposition and note
-updates replace only their selected occurrence; **Delete Record…** requires a
+Workspace. Reading Lead disposition and note updates replace only their
+selected occurrence; **Delete Record…** requires a
 second confirmation before Core permanently removes only the selected portable
 record under the same descriptor-relative coordination boundary. Ordinary
 Markdown annotations remain in the document and never become separate
 chronology. The window never enters the trailing split item and never owns
 checkpoints, a document buffer, autosave, undo, conflict, retained trash, or a
-second recommendation store. Its diff and recommendation grouping are
-disposable projections over retained exact bytes. Closing Research Records
+second recommendation store. Reading Lead grouping is a disposable projection
+over parent Records. Closing Research Records
 therefore cannot reveal or resize Research Inspector or mutate its presentation.
 Its visible Scope remains This Note/Triptych; a Record found through global
 This Vault Search reapplies Triptych Scope before selection without adding a
 third auxiliary-window Scope or changing the shared provider semantics.
+Direct Continue Research remains CLI/Agent-owned. A completed continuation
+Record stays exact-ID addressable and searchable, but the collection omits its
+peer row and the parent Record/Action presentation derives it underneath the
+parent.
 
 Attention is one native transient SwiftUI popover owned by each exact
 `WindowModel`, not an app-wide Scene, sheet, inline Library destination,

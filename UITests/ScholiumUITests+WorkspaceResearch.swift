@@ -2002,23 +2002,20 @@ extension ScholiumUITests {
         XCTAssertTrue(recordWindow.descendants(matching: .any)[
             "scholium.researchRecord.list"
         ].exists)
+        let row = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.\(recordID.uuidString)"
+        ]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+
+        row.click()
+        XCTAssertTrue(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.detail"
+        ].waitForExistence(timeout: 5))
         XCTAssertTrue(recordWindow.staticTexts[
             "What follows from this passage?"
         ].waitForExistence(timeout: 5))
         XCTAssertTrue(recordWindow.staticTexts["Synthetic Agent"].exists)
         XCTAssertTrue(recordWindow.staticTexts["A bounded synthetic reply."].exists)
-
-        let pin = recordWindow.buttons[
-            "scholium.researchRecord.pin.\(recordID.uuidString)"
-        ]
-        XCTAssertTrue(pin.waitForExistence(timeout: 5))
-        XCTAssertEqual(pin.value as? String, "Not Pinned")
-        pin.click()
-        XCTAssertTrue(waitUntil(timeout: 8) { (pin.value as? String) == "Pinned" })
-
-        XCTAssertTrue(recordWindow.descendants(matching: .any)[
-            "scholium.researchRecord.detail"
-        ].waitForExistence(timeout: 5))
         XCTAssertTrue(recordWindow.staticTexts["Participating Notes"].exists)
         recordWindow.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !recordWindow.exists })

@@ -99,6 +99,7 @@ extension ResearchFunctionOperationsTests {
         let incomplete = ResearchFunctionCompletionSubmission(
             runID: preparation.runID,
             confirmationToken: protectedRun.snapshot.confirmationToken,
+            recordTitle: try ResearchRecordTitle("Test research result"),
             finalTargetFingerprint: target.fingerprint,
             summary: "A reply was allegedly produced.",
             didModifyTarget: false
@@ -689,6 +690,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: run.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: target.fingerprint,
                 summary: "A bounded reply was recorded before Finish.",
                 didModifyTarget: false

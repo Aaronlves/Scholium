@@ -640,6 +640,7 @@ struct ActionCLIExecutableLifecycleTests {
             }
         }
         let resultSubmission = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("CLI lifecycle result"),
             academicResults: ResearchAcademicFieldValues(
                 rawValues: rawResults,
                 definitions: profile.academicResultFields

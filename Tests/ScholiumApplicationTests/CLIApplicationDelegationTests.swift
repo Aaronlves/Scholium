@@ -91,6 +91,7 @@ struct CLIApplicationDelegationTests {
             }
         }
         let submission = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("CLI delegated result"),
             academicResults: ResearchAcademicFieldValues(
                 rawValues: rawResults,
                 definitions: profile.academicResultFields

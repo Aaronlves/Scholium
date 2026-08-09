@@ -1,6 +1,6 @@
-import ScholiumContracts
 import AppKit
 import Foundation
+import ScholiumContracts
 import SwiftUI
 
 /// The complete configurable color boundary.
@@ -74,11 +74,12 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
 
     private func makeNSColor(increasedContrast: Bool?) -> NSColor {
         NSColor(name: nil) { appearance in
-            Self.rgb(resolvedRGBValue(
-                for: appearance,
-                increasedContrast: increasedContrast
-                    ?? NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-            ))
+            Self.rgb(
+                resolvedRGBValue(
+                    for: appearance,
+                    increasedContrast: increasedContrast
+                        ?? NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+                ))
         }
     }
 
@@ -91,20 +92,23 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     }
 
     func resolvedRGBValue(isDark: Bool, increasedContrast: Bool) -> UInt32 {
-        let palette: ScholiumResolvedColorPalette = switch (isDark, increasedContrast) {
-        case (false, false): Self.lightPalette
-        case (false, true): Self.increasedContrastLightPalette
-        case (true, false): Self.darkPalette
-        case (true, true): Self.increasedContrastDarkPalette
-        }
+        let palette: ScholiumResolvedColorPalette =
+            switch (isDark, increasedContrast) {
+            case (false, false): Self.lightPalette
+            case (false, true): Self.increasedContrastLightPalette
+            case (true, false): Self.darkPalette
+            case (true, true): Self.increasedContrastDarkPalette
+            }
         return palette[self]
     }
 
     private static let resolver = ScholiumColorResolver(variables: .editorialCopper)
     private static let lightPalette = resolver.resolve(isDark: false, increasedContrast: false)
-    private static let increasedContrastLightPalette = resolver.resolve(isDark: false, increasedContrast: true)
+    private static let increasedContrastLightPalette = resolver.resolve(
+        isDark: false, increasedContrast: true)
     private static let darkPalette = resolver.resolve(isDark: true, increasedContrast: false)
-    private static let increasedContrastDarkPalette = resolver.resolve(isDark: true, increasedContrast: true)
+    private static let increasedContrastDarkPalette = resolver.resolve(
+        isDark: true, increasedContrast: true)
 
     private static func rgb(_ value: UInt32) -> NSColor {
         NSColor(
@@ -183,7 +187,8 @@ struct ScholiumColorResolver: Sendable {
         // In Light appearance the approved Paper Variable is the illuminated
         // document plane itself. Dark appearance remains a resolver output
         // rather than a hard-coded inversion.
-        let documentBackground = isDark
+        let documentBackground =
+            isDark
             ? Self.tone(paperSource, lightness: 0.285, chromaLimit: paperChroma)
             : variables.paper
         let surfaceBackground = Self.tone(
@@ -275,7 +280,8 @@ struct ScholiumColorResolver: Sendable {
                 : (increasedContrast ? 0.54 : 0.62),
             chromaLimit: increasedContrast ? 0.13 : 0.10
         )
-        let semanticStart = isDark
+        let semanticStart =
+            isDark
             ? (increasedContrast ? 0.88 : 0.78)
             : (increasedContrast ? 0.34 : 0.48)
 
@@ -357,11 +363,12 @@ struct ScholiumColorResolver: Sendable {
         lightness: Double,
         chromaLimit: Double
     ) -> UInt32 {
-        rgbValue(from: OKLCH(
-            lightness: lightness,
-            chroma: min(source.chroma, chromaLimit),
-            hue: source.hue
-        ))
+        rgbValue(
+            from: OKLCH(
+                lightness: lightness,
+                chroma: min(source.chroma, chromaLimit),
+                hue: source.hue
+            ))
     }
 
     private static func contrastColor(
@@ -391,11 +398,12 @@ struct ScholiumColorResolver: Sendable {
         var chroma = max(0, color.chroma)
         var channels = [Double](repeating: 0, count: 3)
         for _ in 0..<40 {
-            channels = sRGBChannels(from: OKLCH(
-                lightness: clamp(color.lightness, minimum: 0, maximum: 1),
-                chroma: chroma,
-                hue: color.hue
-            ))
+            channels = sRGBChannels(
+                from: OKLCH(
+                    lightness: clamp(color.lightness, minimum: 0, maximum: 1),
+                    chroma: chroma,
+                    hue: color.hue
+                ))
             if channels.allSatisfy({ $0 >= 0 && $0 <= 1 }) {
                 break
             }
@@ -468,16 +476,17 @@ enum ScholiumConnectionPresentation: Int, CaseIterable, Hashable, Identifiable, 
     var id: Self { self }
 
     init(vectorKind: VectorLinkKind?, currentIsSource: Bool) {
-        self = switch vectorKind {
-        case .supports:
-            currentIsSource ? .supports : .supportsThisNote
-        case .opposes:
-            currentIsSource ? .opposes : .opposesThisNote
-        case .incompatible:
-            .incompatible
-        case .neutral, .none:
-            .neutral
-        }
+        self =
+            switch vectorKind {
+            case .supports:
+                currentIsSource ? .supports : .supportsThisNote
+            case .opposes:
+                currentIsSource ? .opposes : .opposesThisNote
+            case .incompatible:
+                .incompatible
+            case .neutral, .none:
+                .neutral
+            }
     }
 
     var title: String {
@@ -513,9 +522,9 @@ enum ScholiumWebDesignTokens {
     /// participate in the Accent/Paper resolver. They are shared verbatim by
     /// Review and Edit so Markdown semantics cannot drift by mode or theme.
     static let fixedDocumentSyntaxCSSDeclarations = """
-    --scholium-mark-highlight-background: #ff9a00;
-    --scholium-mark-highlight-text: #28241d;
-    """
+        --scholium-mark-highlight-background: #ff9a00;
+        --scholium-mark-highlight-text: #28241d;
+        """
     static let resolvedColorRoleCSSVariableNames = Set(
         ScholiumColorRole.allCases.map(\.cssVariableName)
     )
@@ -531,46 +540,46 @@ enum ScholiumWebDesignTokens {
             String(format: "%.4g", locale: Locale(identifier: "en_US_POSIX"), $0)
         }
         return """
-        --scholium-document-line-width: \(number(defaults.lineWidthCharacterUnits))ch;
-        --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
-        --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
-        --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
-        --scholium-document-h1-size: \(number(headings.title.scale * 100))%;
-        --scholium-document-h2-size: \(number(headings.level1.scale * 100))%;
-        --scholium-document-h3-size: \(number(headings.level2.scale * 100))%;
-        --scholium-document-h4-size: \(number(headings.level2.scale * 100))%;
-        --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
-        --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
-        --scholium-document-text-scale-factor: 1;
-        --scholium-rhythm-paragraph-gap: \(number(
-          body.paragraphSpacingEm * body.fontSizePoints * (96 / 72)
-        ))px;
-        --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
-        \(DocumentAppearanceStyles.headingTransportDeclarations(for: defaults))
-        --scholium-rhythm-title-before: \(number(headings.title.spaceBeforeEm))em;
-        --scholium-rhythm-title-after: \(number(headings.title.spaceAfterEm))em;
-        --scholium-appearance-h2-before: \(number(headings.level1.spaceBeforeEm))em;
-        --scholium-appearance-h2-after: \(number(headings.level1.spaceAfterEm))em;
-        --scholium-appearance-h3-before: \(number(headings.level2.spaceBeforeEm))em;
-        --scholium-appearance-h3-after: \(number(headings.level2.spaceAfterEm))em;
-        --scholium-rhythm-title-rule-gap: 0.5em;
-        --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
-        --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
-        --scholium-rhythm-semantic-block-gap: 1em;
-        --scholium-rhythm-rule-block-gap: 0.5em;
-        --scholium-list-marker-track: 1.25em;
-        --scholium-list-marker-gap: 0.35em;
-        --scholium-list-indent: calc(
-          var(--scholium-list-marker-track) + var(--scholium-list-marker-gap)
-        );
-        --scholium-task-checkbox-size: max(1em, 20px);
-        --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
-        --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
-        --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
-        --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
-        --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInsetCSSPixels)px;
-        --scholium-document-text-scale: 1em;
-        """
+            --scholium-document-line-width: \(number(defaults.lineWidthCharacterUnits))ch;
+            --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
+            --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
+            --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
+            --scholium-document-h1-size: \(number(headings.title.scale * 100))%;
+            --scholium-document-h2-size: \(number(headings.level1.scale * 100))%;
+            --scholium-document-h3-size: \(number(headings.level2.scale * 100))%;
+            --scholium-document-h4-size: \(number(headings.level2.scale * 100))%;
+            --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
+            --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
+            --scholium-document-text-scale-factor: 1;
+            --scholium-rhythm-paragraph-gap: \(number(
+                body.paragraphSpacingEm * body.fontSizePoints * (96 / 72)
+            ))px;
+            --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
+            \(DocumentAppearanceStyles.headingTransportDeclarations(for: defaults))
+            --scholium-rhythm-title-before: \(number(headings.title.spaceBeforeEm))em;
+            --scholium-rhythm-title-after: \(number(headings.title.spaceAfterEm))em;
+            --scholium-appearance-h2-before: \(number(headings.level1.spaceBeforeEm))em;
+            --scholium-appearance-h2-after: \(number(headings.level1.spaceAfterEm))em;
+            --scholium-appearance-h3-before: \(number(headings.level2.spaceBeforeEm))em;
+            --scholium-appearance-h3-after: \(number(headings.level2.spaceAfterEm))em;
+            --scholium-rhythm-title-rule-gap: 0.5em;
+            --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
+            --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
+            --scholium-rhythm-semantic-block-gap: 1em;
+            --scholium-rhythm-rule-block-gap: 0.5em;
+            --scholium-list-marker-track: 1.25em;
+            --scholium-list-marker-gap: 0.35em;
+            --scholium-list-indent: calc(
+              var(--scholium-list-marker-track) + var(--scholium-list-marker-gap)
+            );
+            --scholium-task-checkbox-size: max(1em, 20px);
+            --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
+            --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
+            --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
+            --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
+            --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInsetCSSPixels)px;
+            --scholium-document-text-scale: 1em;
+            """
     }()
 
     private static let colorResolver = ScholiumColorResolver(variables: .editorialCopper)
@@ -636,570 +645,570 @@ enum ScholiumWebDesignTokens {
     /// resource stylesheet consumes these variables rather than duplicating
     /// provisional layout and typography values.
     static let documentPresentationCSS = """
-    :root {
-      color-scheme: light dark;
-      \(rootCSSDeclarations)
-      \(elevationCSSDeclarations)
-      \(fixedDocumentSyntaxCSSDeclarations)
-      \(rhythmCSSDeclarations)
-    }
-    .scholium-document,
-    .cm-editor.scholium-live-mode .cm-content {
-      box-sizing: border-box;
-      min-width: 0;
-      inline-size: 100%;
-      margin: 0;
-      padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll);
-      padding-inline: max(
-        var(--scholium-rhythm-inline-regular),
-        calc(50% - var(--scholium-document-half-line-width))
-      );
-      font-family: Alegreya, Georgia, serif;
-      font-size: calc(
-        var(--scholium-document-prose-font-size)
-        * var(--scholium-document-text-scale-factor)
-      );
-      line-height: var(--scholium-rhythm-prose-line-height);
-      overflow-wrap: anywhere;
-    }
-    .cm-editor.scholium-source-mode .cm-content {
-      padding-inline: max(
-        var(--scholium-rhythm-inline-source),
-        calc(50% - var(--scholium-document-half-line-width))
-      );
-    }
-    .scholium-document p,
-    .cm-editor.scholium-live-mode .cm-live-paragraph {
-      box-sizing: border-box;
-    }
-    .scholium-document p {
-      margin: 0;
-      padding-block: 0 var(--scholium-rhythm-paragraph-gap);
-    }
-    .scholium-document > ul,
-    .scholium-document > ol,
-    .scholium-document > blockquote,
-    .scholium-document > pre {
-      margin-block: var(--scholium-rhythm-semantic-block-gap);
-    }
-    .scholium-document li > ul,
-    .scholium-document li > ol {
-      margin-block: 0;
-    }
-    .scholium-document ul,
-    .scholium-document ol {
-      box-sizing: border-box;
-      margin-inline: 0;
-      padding-inline-start: var(--scholium-list-indent);
-      list-style-position: outside;
-    }
-    .scholium-document li {
-      padding-inline: 0;
-    }
-    .scholium-document li::marker {
-      color: var(--scholium-color-primary-text);
-      font-family: inherit;
-      font-weight: 400;
-    }
-    .scholium-document li.scholium-task-list-item {
-      position: relative;
-      list-style: none;
-    }
-    .scholium-document .scholium-task-checkbox {
-      position: absolute;
-      inset-block-start: calc((1lh - var(--scholium-task-checkbox-size)) / 2);
-      inset-inline-end: calc(100% + var(--scholium-list-marker-gap));
-      box-sizing: border-box;
-      inline-size: var(--scholium-task-checkbox-size);
-      block-size: var(--scholium-task-checkbox-size);
-      margin: 0;
-      opacity: 1;
-      accent-color: var(--scholium-color-accent);
-      font: inherit;
-      pointer-events: none;
-    }
-    .scholium-document > hr {
-      margin-block: var(--scholium-rhythm-rule-block-gap);
-    }
-    .scholium-document > hr,
-    .cm-editor.scholium-live-mode .cm-live-rule {
-      box-sizing: border-box;
-      block-size: 1px;
-      min-block-size: 1px;
-      border: 0;
-      border-block-start: 1px solid var(--scholium-color-separator);
-    }
-    .scholium-document li > p,
-    .cm-editor.scholium-live-mode .cm-live-list {
-      box-sizing: border-box;
-      padding-inline-start: 0;
-      text-align: start;
-    }
-    .scholium-document li > p {
-      padding-block-end: 0;
-    }
-    .scholium-document blockquote,
-    .cm-editor.scholium-live-mode .cm-live-quote {
-      box-sizing: border-box;
-      margin-inline: 0;
-      padding-inline-start: var(--scholium-rhythm-quote-inset);
-      border-inline-start: 3px solid var(--scholium-color-accent);
-      color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
-    }
-    .scholium-document pre,
-    .cm-editor.scholium-live-mode .cm-live-codeblock {
-      box-sizing: border-box;
-      font-family: "Victor Mono", ui-monospace, monospace;
-      background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
-    }
-    .scholium-document pre.raw-html,
-    .cm-editor.scholium-live-mode .cm-live-raw-html {
-      box-sizing: border-box;
-      color: var(--scholium-color-muted-text);
-      background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
-      font-family: "Victor Mono", ui-monospace, monospace;
-    }
-    .cm-editor.scholium-live-mode .cm-live-raw-html {
-      padding-inline: var(--scholium-rhythm-code-inset);
-    }
-    .scholium-document pre {
-      max-inline-size: 100%;
-      padding: var(--scholium-rhythm-code-inset);
-      overflow: auto;
-      border-radius: 10px;
-    }
-    .cm-editor.scholium-live-mode .cm-live-codeblock {
-      padding-inline: var(--scholium-rhythm-code-inset);
-    }
-    .cm-editor.scholium-live-mode .cm-live-codeblock-start {
-      padding-block-start: var(--scholium-rhythm-code-inset);
-      border-start-start-radius: 10px;
-      border-start-end-radius: 10px;
-    }
-    .cm-editor.scholium-live-mode .cm-live-raw-html-start {
-      padding-block-start: var(--scholium-rhythm-code-inset);
-      border-start-start-radius: 10px;
-      border-start-end-radius: 10px;
-    }
-    .cm-editor.scholium-live-mode .cm-live-codeblock-end {
-      padding-block-end: var(--scholium-rhythm-code-inset);
-      border-end-start-radius: 10px;
-      border-end-end-radius: 10px;
-    }
-    .cm-editor.scholium-live-mode .cm-live-codeblock-active.cm-live-codeblock-end {
-      /* The visible closing fence is already the active block's final source
-         line. Do not synthesize a blank-looking inset below those exact bytes. */
-      padding-block-end: 0;
-    }
-    .cm-editor.scholium-live-mode .cm-live-raw-html-end {
-      padding-block-end: var(--scholium-rhythm-code-inset);
-      border-end-start-radius: 10px;
-      border-end-end-radius: 10px;
-    }
-    .scholium-callout p,
-    .footnote-content p {
-      padding-block: 0;
-    }
-    .scholium-document strong,
-    .scholium-live-mode .cm-live-strong {
-      font-weight: 700;
-    }
-    .scholium-document em,
-    .scholium-live-mode .cm-live-emphasis {
-      font-style: italic;
-    }
-    .scholium-document del,
-    .scholium-live-mode .cm-live-strike {
-      color: var(--scholium-color-primary-text);
-      text-decoration: line-through;
-    }
-    .scholium-document .scholium-highlight,
-    .scholium-live-mode .cm-live-highlight {
-      padding-inline: 0.06em;
-      color: var(--scholium-mark-highlight-text);
-      background: var(--scholium-mark-highlight-background);
-      border-radius: 3px;
-    }
-    .scholium-document :not(pre) > code,
-    .scholium-live-mode .cm-live-code {
-      padding: 0.08em 0.25em;
-      border-radius: 4px;
-      background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
-      font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-      font-size: 0.82em;
-    }
-    .scholium-document a:not(.scholium-vector-link),
-    .scholium-live-mode .cm-live-link {
-      color: var(--scholium-color-accent);
-      text-decoration: underline;
-      text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
-      text-underline-offset: 0.15em;
-    }
-    .scholium-document .scholium-vector-link,
-    .scholium-live-mode .cm-live-vector-link {
-      line-height: 1.2;
-    }
-    .scholium-document h1,
-    .scholium-document h2,
-    .scholium-document h3,
-    .scholium-document h4,
-    .scholium-document h5,
-    .scholium-document h6,
-    .scholium-live-mode .cm-live-heading {
-      font-family: var(--scholium-document-heading-font-family);
-      font-style: var(--scholium-document-heading-font-style);
-      font-variant-caps: var(--scholium-document-heading-font-variant-caps);
-      font-weight: var(--scholium-document-heading-weight);
-      line-height: var(--scholium-rhythm-heading-line-height);
-      letter-spacing: var(--scholium-document-heading-letter-spacing);
-      text-align: start;
-      text-decoration-line: none;
-      text-decoration: none;
-      text-wrap: balance;
-      box-sizing: border-box;
-      margin: 0;
-      padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
-    }
-    .scholium-document h1,
-    .scholium-live-mode .cm-live-h1 {
-      font-size: var(--scholium-document-h1-size);
-      font-weight: var(--scholium-document-heading-weight);
-    }
-    .scholium-document h2,
-    .scholium-live-mode .cm-live-h2 {
-      font-size: var(--scholium-document-h2-size);
-      padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
-    }
-    .scholium-document h3,
-    .scholium-live-mode .cm-live-h3 {
-      font-size: var(--scholium-document-h3-size);
-      padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
-    }
-    .scholium-document h4,
-    .scholium-document h5,
-    .scholium-document h6,
-    .scholium-live-mode .cm-live-h4,
-    .scholium-live-mode .cm-live-h5,
-    .scholium-live-mode .cm-live-h6 {
-      font-size: var(--scholium-document-h4-size);
-      padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
-    }
-    .scholium-document h1 a,
-    .scholium-document h2 a,
-    .scholium-document h3 a,
-    .scholium-document h4 a,
-    .scholium-document h5 a,
-    .scholium-document h6 a,
-    .scholium-live-mode .cm-live-heading .cm-live-link,
-    .scholium-live-mode .cm-live-heading .cm-live-wikilink,
-    .scholium-live-mode .cm-live-heading .cm-live-vector-link {
-      text-decoration: underline;
-    }
-    .scholium-document > h1:first-child,
-    .scholium-live-mode .cm-live-document-title,
-    .scholium-live-mode .cm-live-h1 {
-      position: relative;
-      margin: 0;
-      padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
-      text-align: center;
-      border-block-end: 0;
-    }
-    .scholium-document > h1:first-child::after,
-    .scholium-live-mode .cm-live-document-title::after,
-    .scholium-live-mode .cm-live-h1::after {
-      content: "";
-      position: absolute;
-      inset-inline: 0;
-      inset-block-end: max(
-        0px,
-        calc(var(--scholium-rhythm-title-after) - var(--scholium-rhythm-title-rule-gap))
-      );
-      border-block-start: 1px solid var(--scholium-color-separator);
-      pointer-events: none;
-    }
-    .scholium-document .scholium-embed {
-      color: var(--scholium-color-accent);
-      font-weight: 650;
-      padding: 0.08em 0.3em;
-      border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
-      border-radius: 5px;
-      text-decoration: none;
-    }
-    .scholium-selection-actions {
-      --scholium-selection-glyph-size: 16px;
-      position: fixed;
-      z-index: 110;
-      box-sizing: border-box;
-      padding: 4px;
-      border: 1px solid var(--scholium-color-separator);
-      border-radius: 9px;
-      color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-surface-background);
-      box-shadow: var(--scholium-elevation-floating-control);
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      line-height: 1;
-    }
-    .scholium-selection-actions[hidden] {
-      display: none;
-    }
-    .scholium-selection-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 1px;
-    }
-    .scholium-selection-control {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 3px;
-      box-sizing: border-box;
-      min-width: 28px;
-      min-height: 28px;
-      padding: 3px 6px;
-      border: 0;
-      border-radius: 5px;
-      color: inherit;
-      background: transparent;
-      font: inherit;
-      cursor: default;
-    }
-    .scholium-selection-control:hover,
-    .scholium-selection-menu-item:hover,
-    .scholium-selection-control:focus,
-    .scholium-selection-menu-item:focus,
-    .scholium-selection-control.scholium-selection-keyboard-focus,
-    .scholium-selection-menu-item.scholium-selection-keyboard-focus {
-      color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-raised-surface-background);
-    }
-    .scholium-selection-control:active,
-    .scholium-selection-menu-item:active {
-      color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-raised-surface-background);
-    }
-    .scholium-selection-control:focus-visible,
-    .scholium-selection-menu-item:focus-visible {
-      color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-raised-surface-background);
-      outline: 2px solid var(--scholium-color-accent);
-      outline-offset: 1px;
-    }
-    .scholium-selection-control.scholium-selection-keyboard-focus,
-    .scholium-selection-menu-item.scholium-selection-keyboard-focus {
-      outline: 2px solid var(--scholium-color-accent);
-      outline-offset: 1px;
-    }
-    .scholium-selection-symbol {
-      inline-size: var(--scholium-selection-glyph-size);
-      block-size: var(--scholium-selection-glyph-size);
-    }
-    .scholium-selection-icon-style {
-      inline-size: 18px;
-    }
-    .scholium-selection-chevron {
-      inline-size: 10px;
-      block-size: 10px;
-    }
-    .scholium-selection-highlight-icon,
-    .scholium-selection-link-icon,
-    .scholium-selection-more-icon {
-      inline-size: var(--scholium-selection-glyph-size);
-      block-size: var(--scholium-selection-glyph-size);
-    }
-    .scholium-selection-menu-symbol {
-      inline-size: 14px;
-      block-size: 14px;
-    }
-    .scholium-selection-label,
-    .scholium-selection-menu-label {
-      font-size: 12px;
-      line-height: 16px;
-      letter-spacing: -0.01em;
-      white-space: nowrap;
-    }
-    .scholium-selection-style-trigger {
-      padding-inline: 6px 4px;
-    }
-    .scholium-selection-wiki-group {
-      display: inline-flex;
-      align-items: center;
-      gap: 0;
-    }
-    .scholium-selection-wiki-primary {
-      min-width: 0;
-      padding-inline: 7px 3px;
-      border-start-end-radius: 3px;
-      border-end-end-radius: 3px;
-    }
-    .scholium-selection-wiki-menu-trigger {
-      min-width: 22px;
-      padding-inline: 2px 5px;
-      border-start-start-radius: 3px;
-      border-end-start-radius: 3px;
-    }
-    .scholium-selection-separator {
-      inline-size: 1px;
-      block-size: 18px;
-      margin-inline: 2px;
-      background: var(--scholium-color-separator);
-    }
-    .scholium-selection-menu {
-      position: fixed;
-      z-index: 112;
-      box-sizing: border-box;
-      inline-size: max-content;
-      max-inline-size: calc(100vw - 16px);
-      max-block-size: calc(100vh - 16px);
-      padding: 4px;
-      overflow: auto;
-      border: 1px solid var(--scholium-color-separator);
-      border-radius: 8px;
-      color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-surface-background);
-      box-shadow: var(--scholium-elevation-bounded-panel);
-    }
-    .scholium-selection-menu[hidden] {
-      display: none;
-    }
-    .scholium-selection-menu-item {
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 6px;
-      box-sizing: border-box;
-      inline-size: 100%;
-      min-block-size: 28px;
-      padding: 4px 8px;
-      border: 0;
-      border-radius: 5px;
-      color: inherit;
-      background: transparent;
-      font: inherit;
-      text-align: start;
-      cursor: default;
-    }
-    .scholium-selection-menu-check {
-      inline-size: 12px;
-      block-size: 12px;
-      color: transparent;
-    }
-    .scholium-selection-menu-check-active {
-      color: currentColor;
-    }
-    .scholium-selection-submenu-trigger {
-      justify-content: space-between;
-    }
-    .scholium-selection-menu-leading {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .scholium-selection-submenu-chevron {
-      inline-size: 12px;
-      block-size: 12px;
-      transform: rotate(-90deg);
-    }
-    .scholium-selection-compact-only {
-      display: none;
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions {
-      z-index: 112;
-      box-sizing: border-box;
-      min-inline-size: 220px;
-      inline-size: max-content;
-      max-inline-size: min(360px, calc(100vw - 16px));
-      padding: 4px;
-      overflow: hidden;
-      border: 1px solid var(--scholium-color-separator);
-      border-radius: 8px;
-      color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-surface-background);
-      box-shadow: var(--scholium-elevation-bounded-panel);
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      font-size: 12px;
-      line-height: 16px;
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul {
-      min-inline-size: 0;
-      max-block-size: min(200px, calc(100vh - 24px));
-      margin: 0;
-      padding: 0;
-      border: 0;
-      font-family: inherit;
-      font-size: inherit;
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      box-sizing: border-box;
-      min-block-size: 28px;
-      max-inline-size: 352px;
-      padding: 4px 8px;
-      overflow: hidden;
-      border-radius: 5px;
-      color: inherit;
-      background: transparent;
-      white-space: nowrap;
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover,
-    .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li[aria-selected="true"] {
-      color: var(--scholium-color-primary-text);
-      background: var(--scholium-color-raised-surface-background);
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions .scholium-completion-symbol {
-      flex: 0 0 14px;
-      inline-size: 14px;
-      block-size: 14px;
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionLabel {
-      min-inline-size: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionMatchedText {
-      color: inherit;
-      font-weight: 600;
-      text-decoration: none;
-    }
-    .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionDetail {
-      min-inline-size: 0;
-      max-inline-size: 168px;
-      margin-inline-start: auto;
-      overflow: hidden;
-      color: var(--scholium-color-secondary-text);
-      font-size: 11px;
-      font-style: normal;
-      text-overflow: ellipsis;
-      unicode-bidi: plaintext;
-    }
-    @media (max-width: 520px) {
-      .scholium-selection-wide-only {
-        display: none;
-      }
-      .scholium-selection-menu-item.scholium-selection-compact-only {
-        display: flex;
-      }
-    }
-    @media (prefers-color-scheme: dark) {
-      :root { \(darkAppearanceCSSDeclarations) }
-    }
-    @media (prefers-reduced-transparency: reduce) {
-      :root { \(reducedTransparencyElevationCSSDeclarations) }
-    }
-    @media (prefers-contrast: more) {
-      :root {
-        \(increasedContrastCSSDeclarations)
-        \(increasedContrastElevationCSSDeclarations)
-      }
-      .scholium-selection-actions,
-      .scholium-selection-menu,
-      .cm-tooltip-autocomplete.scholium-editor-suggestions { border-width: 2px; }
-    }
-    @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
-      :root { \(darkIncreasedContrastCSSDeclarations) }
-    }
-    """
+        :root {
+          color-scheme: light dark;
+          \(rootCSSDeclarations)
+          \(elevationCSSDeclarations)
+          \(fixedDocumentSyntaxCSSDeclarations)
+          \(rhythmCSSDeclarations)
+        }
+        .scholium-document,
+        .cm-editor.scholium-live-mode .cm-content {
+          box-sizing: border-box;
+          min-width: 0;
+          inline-size: 100%;
+          margin: 0;
+          padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll);
+          padding-inline: max(
+            var(--scholium-rhythm-inline-regular),
+            calc(50% - var(--scholium-document-half-line-width))
+          );
+          font-family: Alegreya, Georgia, serif;
+          font-size: calc(
+            var(--scholium-document-prose-font-size)
+            * var(--scholium-document-text-scale-factor)
+          );
+          line-height: var(--scholium-rhythm-prose-line-height);
+          overflow-wrap: anywhere;
+        }
+        .cm-editor.scholium-source-mode .cm-content {
+          padding-inline: max(
+            var(--scholium-rhythm-inline-source),
+            calc(50% - var(--scholium-document-half-line-width))
+          );
+        }
+        .scholium-document p,
+        .cm-editor.scholium-live-mode .cm-live-paragraph {
+          box-sizing: border-box;
+        }
+        .scholium-document p {
+          margin: 0;
+          padding-block: 0 var(--scholium-rhythm-paragraph-gap);
+        }
+        .scholium-document > ul,
+        .scholium-document > ol,
+        .scholium-document > blockquote,
+        .scholium-document > pre {
+          margin-block: var(--scholium-rhythm-semantic-block-gap);
+        }
+        .scholium-document li > ul,
+        .scholium-document li > ol {
+          margin-block: 0;
+        }
+        .scholium-document ul,
+        .scholium-document ol {
+          box-sizing: border-box;
+          margin-inline: 0;
+          padding-inline-start: var(--scholium-list-indent);
+          list-style-position: outside;
+        }
+        .scholium-document li {
+          padding-inline: 0;
+        }
+        .scholium-document li::marker {
+          color: var(--scholium-color-primary-text);
+          font-family: inherit;
+          font-weight: 400;
+        }
+        .scholium-document li.scholium-task-list-item {
+          position: relative;
+          list-style: none;
+        }
+        .scholium-document .scholium-task-checkbox {
+          position: absolute;
+          inset-block-start: calc((1lh - var(--scholium-task-checkbox-size)) / 2);
+          inset-inline-end: calc(100% + var(--scholium-list-marker-gap));
+          box-sizing: border-box;
+          inline-size: var(--scholium-task-checkbox-size);
+          block-size: var(--scholium-task-checkbox-size);
+          margin: 0;
+          opacity: 1;
+          accent-color: var(--scholium-color-accent);
+          font: inherit;
+          pointer-events: none;
+        }
+        .scholium-document > hr {
+          margin-block: var(--scholium-rhythm-rule-block-gap);
+        }
+        .scholium-document > hr,
+        .cm-editor.scholium-live-mode .cm-live-rule {
+          box-sizing: border-box;
+          block-size: 1px;
+          min-block-size: 1px;
+          border: 0;
+          border-block-start: 1px solid var(--scholium-color-separator);
+        }
+        .scholium-document li > p,
+        .cm-editor.scholium-live-mode .cm-live-list {
+          box-sizing: border-box;
+          padding-inline-start: 0;
+          text-align: start;
+        }
+        .scholium-document li > p {
+          padding-block-end: 0;
+        }
+        .scholium-document blockquote,
+        .cm-editor.scholium-live-mode .cm-live-quote {
+          box-sizing: border-box;
+          margin-inline: 0;
+          padding-inline-start: var(--scholium-rhythm-quote-inset);
+          border-inline-start: 3px solid var(--scholium-color-accent);
+          color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
+        }
+        .scholium-document pre,
+        .cm-editor.scholium-live-mode .cm-live-codeblock {
+          box-sizing: border-box;
+          font-family: "Victor Mono", ui-monospace, monospace;
+          background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
+        }
+        .scholium-document pre.raw-html,
+        .cm-editor.scholium-live-mode .cm-live-raw-html {
+          box-sizing: border-box;
+          color: var(--scholium-color-muted-text);
+          background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
+          font-family: "Victor Mono", ui-monospace, monospace;
+        }
+        .cm-editor.scholium-live-mode .cm-live-raw-html {
+          padding-inline: var(--scholium-rhythm-code-inset);
+        }
+        .scholium-document pre {
+          max-inline-size: 100%;
+          padding: var(--scholium-rhythm-code-inset);
+          overflow: auto;
+          border-radius: 10px;
+        }
+        .cm-editor.scholium-live-mode .cm-live-codeblock {
+          padding-inline: var(--scholium-rhythm-code-inset);
+        }
+        .cm-editor.scholium-live-mode .cm-live-codeblock-start {
+          padding-block-start: var(--scholium-rhythm-code-inset);
+          border-start-start-radius: 10px;
+          border-start-end-radius: 10px;
+        }
+        .cm-editor.scholium-live-mode .cm-live-raw-html-start {
+          padding-block-start: var(--scholium-rhythm-code-inset);
+          border-start-start-radius: 10px;
+          border-start-end-radius: 10px;
+        }
+        .cm-editor.scholium-live-mode .cm-live-codeblock-end {
+          padding-block-end: var(--scholium-rhythm-code-inset);
+          border-end-start-radius: 10px;
+          border-end-end-radius: 10px;
+        }
+        .cm-editor.scholium-live-mode .cm-live-codeblock-active.cm-live-codeblock-end {
+          /* The visible closing fence is already the active block's final source
+             line. Do not synthesize a blank-looking inset below those exact bytes. */
+          padding-block-end: 0;
+        }
+        .cm-editor.scholium-live-mode .cm-live-raw-html-end {
+          padding-block-end: var(--scholium-rhythm-code-inset);
+          border-end-start-radius: 10px;
+          border-end-end-radius: 10px;
+        }
+        .scholium-callout p,
+        .footnote-content p {
+          padding-block: 0;
+        }
+        .scholium-document strong,
+        .scholium-live-mode .cm-live-strong {
+          font-weight: 700;
+        }
+        .scholium-document em,
+        .scholium-live-mode .cm-live-emphasis {
+          font-style: italic;
+        }
+        .scholium-document del,
+        .scholium-live-mode .cm-live-strike {
+          color: var(--scholium-color-primary-text);
+          text-decoration: line-through;
+        }
+        .scholium-document .scholium-highlight,
+        .scholium-live-mode .cm-live-highlight {
+          padding-inline: 0.06em;
+          color: var(--scholium-mark-highlight-text);
+          background: var(--scholium-mark-highlight-background);
+          border-radius: 3px;
+        }
+        .scholium-document :not(pre) > code,
+        .scholium-live-mode .cm-live-code {
+          padding: 0.08em 0.25em;
+          border-radius: 4px;
+          background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
+          font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+          font-size: 0.82em;
+        }
+        .scholium-document a:not(.scholium-vector-link),
+        .scholium-live-mode .cm-live-link {
+          color: var(--scholium-color-accent);
+          text-decoration: underline;
+          text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
+          text-underline-offset: 0.15em;
+        }
+        .scholium-document .scholium-vector-link,
+        .scholium-live-mode .cm-live-vector-link {
+          line-height: 1.2;
+        }
+        .scholium-document h1,
+        .scholium-document h2,
+        .scholium-document h3,
+        .scholium-document h4,
+        .scholium-document h5,
+        .scholium-document h6,
+        .scholium-live-mode .cm-live-heading {
+          font-family: var(--scholium-document-heading-font-family);
+          font-style: var(--scholium-document-heading-font-style);
+          font-variant-caps: var(--scholium-document-heading-font-variant-caps);
+          font-weight: var(--scholium-document-heading-weight);
+          line-height: var(--scholium-rhythm-heading-line-height);
+          letter-spacing: var(--scholium-document-heading-letter-spacing);
+          text-align: start;
+          text-decoration-line: none;
+          text-decoration: none;
+          text-wrap: balance;
+          box-sizing: border-box;
+          margin: 0;
+          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+        }
+        .scholium-document h1,
+        .scholium-live-mode .cm-live-h1 {
+          font-size: var(--scholium-document-h1-size);
+          font-weight: var(--scholium-document-heading-weight);
+        }
+        .scholium-document h2,
+        .scholium-live-mode .cm-live-h2 {
+          font-size: var(--scholium-document-h2-size);
+          padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
+        }
+        .scholium-document h3,
+        .scholium-live-mode .cm-live-h3 {
+          font-size: var(--scholium-document-h3-size);
+          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+        }
+        .scholium-document h4,
+        .scholium-document h5,
+        .scholium-document h6,
+        .scholium-live-mode .cm-live-h4,
+        .scholium-live-mode .cm-live-h5,
+        .scholium-live-mode .cm-live-h6 {
+          font-size: var(--scholium-document-h4-size);
+          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+        }
+        .scholium-document h1 a,
+        .scholium-document h2 a,
+        .scholium-document h3 a,
+        .scholium-document h4 a,
+        .scholium-document h5 a,
+        .scholium-document h6 a,
+        .scholium-live-mode .cm-live-heading .cm-live-link,
+        .scholium-live-mode .cm-live-heading .cm-live-wikilink,
+        .scholium-live-mode .cm-live-heading .cm-live-vector-link {
+          text-decoration: underline;
+        }
+        .scholium-document > h1:first-child,
+        .scholium-live-mode .cm-live-document-title,
+        .scholium-live-mode .cm-live-h1 {
+          position: relative;
+          margin: 0;
+          padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
+          text-align: center;
+          border-block-end: 0;
+        }
+        .scholium-document > h1:first-child::after,
+        .scholium-live-mode .cm-live-document-title::after,
+        .scholium-live-mode .cm-live-h1::after {
+          content: "";
+          position: absolute;
+          inset-inline: 0;
+          inset-block-end: max(
+            0px,
+            calc(var(--scholium-rhythm-title-after) - var(--scholium-rhythm-title-rule-gap))
+          );
+          border-block-start: 1px solid var(--scholium-color-separator);
+          pointer-events: none;
+        }
+        .scholium-document .scholium-embed {
+          color: var(--scholium-color-accent);
+          font-weight: 650;
+          padding: 0.08em 0.3em;
+          border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
+          border-radius: 5px;
+          text-decoration: none;
+        }
+        .scholium-selection-actions {
+          --scholium-selection-glyph-size: 16px;
+          position: fixed;
+          z-index: 110;
+          box-sizing: border-box;
+          padding: 4px;
+          border: 1px solid var(--scholium-color-separator);
+          border-radius: 9px;
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-color-surface-background);
+          box-shadow: var(--scholium-elevation-floating-control);
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          line-height: 1;
+        }
+        .scholium-selection-actions[hidden] {
+          display: none;
+        }
+        .scholium-selection-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 1px;
+        }
+        .scholium-selection-control {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          box-sizing: border-box;
+          min-width: 28px;
+          min-height: 28px;
+          padding: 3px 6px;
+          border: 0;
+          border-radius: 5px;
+          color: inherit;
+          background: transparent;
+          font: inherit;
+          cursor: default;
+        }
+        .scholium-selection-control:hover,
+        .scholium-selection-menu-item:hover,
+        .scholium-selection-control:focus,
+        .scholium-selection-menu-item:focus,
+        .scholium-selection-control.scholium-selection-keyboard-focus,
+        .scholium-selection-menu-item.scholium-selection-keyboard-focus {
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-color-raised-surface-background);
+        }
+        .scholium-selection-control:active,
+        .scholium-selection-menu-item:active {
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-color-raised-surface-background);
+        }
+        .scholium-selection-control:focus-visible,
+        .scholium-selection-menu-item:focus-visible {
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-color-raised-surface-background);
+          outline: 2px solid var(--scholium-color-accent);
+          outline-offset: 1px;
+        }
+        .scholium-selection-control.scholium-selection-keyboard-focus,
+        .scholium-selection-menu-item.scholium-selection-keyboard-focus {
+          outline: 2px solid var(--scholium-color-accent);
+          outline-offset: 1px;
+        }
+        .scholium-selection-symbol {
+          inline-size: var(--scholium-selection-glyph-size);
+          block-size: var(--scholium-selection-glyph-size);
+        }
+        .scholium-selection-icon-style {
+          inline-size: 18px;
+        }
+        .scholium-selection-chevron {
+          inline-size: 10px;
+          block-size: 10px;
+        }
+        .scholium-selection-highlight-icon,
+        .scholium-selection-link-icon,
+        .scholium-selection-more-icon {
+          inline-size: var(--scholium-selection-glyph-size);
+          block-size: var(--scholium-selection-glyph-size);
+        }
+        .scholium-selection-menu-symbol {
+          inline-size: 14px;
+          block-size: 14px;
+        }
+        .scholium-selection-label,
+        .scholium-selection-menu-label {
+          font-size: 12px;
+          line-height: 16px;
+          letter-spacing: -0.01em;
+          white-space: nowrap;
+        }
+        .scholium-selection-style-trigger {
+          padding-inline: 6px 4px;
+        }
+        .scholium-selection-wiki-group {
+          display: inline-flex;
+          align-items: center;
+          gap: 0;
+        }
+        .scholium-selection-wiki-primary {
+          min-width: 0;
+          padding-inline: 7px 3px;
+          border-start-end-radius: 3px;
+          border-end-end-radius: 3px;
+        }
+        .scholium-selection-wiki-menu-trigger {
+          min-width: 22px;
+          padding-inline: 2px 5px;
+          border-start-start-radius: 3px;
+          border-end-start-radius: 3px;
+        }
+        .scholium-selection-separator {
+          inline-size: 1px;
+          block-size: 18px;
+          margin-inline: 2px;
+          background: var(--scholium-color-separator);
+        }
+        .scholium-selection-menu {
+          position: fixed;
+          z-index: 112;
+          box-sizing: border-box;
+          inline-size: max-content;
+          max-inline-size: calc(100vw - 16px);
+          max-block-size: calc(100vh - 16px);
+          padding: 4px;
+          overflow: auto;
+          border: 1px solid var(--scholium-color-separator);
+          border-radius: 8px;
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-color-surface-background);
+          box-shadow: var(--scholium-elevation-bounded-panel);
+        }
+        .scholium-selection-menu[hidden] {
+          display: none;
+        }
+        .scholium-selection-menu-item {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 6px;
+          box-sizing: border-box;
+          inline-size: 100%;
+          min-block-size: 28px;
+          padding: 4px 8px;
+          border: 0;
+          border-radius: 5px;
+          color: inherit;
+          background: transparent;
+          font: inherit;
+          text-align: start;
+          cursor: default;
+        }
+        .scholium-selection-menu-check {
+          inline-size: 12px;
+          block-size: 12px;
+          color: transparent;
+        }
+        .scholium-selection-menu-check-active {
+          color: currentColor;
+        }
+        .scholium-selection-submenu-trigger {
+          justify-content: space-between;
+        }
+        .scholium-selection-menu-leading {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .scholium-selection-submenu-chevron {
+          inline-size: 12px;
+          block-size: 12px;
+          transform: rotate(-90deg);
+        }
+        .scholium-selection-compact-only {
+          display: none;
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions {
+          z-index: 112;
+          box-sizing: border-box;
+          min-inline-size: 220px;
+          inline-size: max-content;
+          max-inline-size: min(360px, calc(100vw - 16px));
+          padding: 4px;
+          overflow: hidden;
+          border: 1px solid var(--scholium-color-separator);
+          border-radius: 8px;
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-color-surface-background);
+          box-shadow: var(--scholium-elevation-bounded-panel);
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 12px;
+          line-height: 16px;
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions > ul {
+          min-inline-size: 0;
+          max-block-size: min(200px, calc(100vh - 24px));
+          margin: 0;
+          padding: 0;
+          border: 0;
+          font-family: inherit;
+          font-size: inherit;
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          box-sizing: border-box;
+          min-block-size: 28px;
+          max-inline-size: 352px;
+          padding: 4px 8px;
+          overflow: hidden;
+          border-radius: 5px;
+          color: inherit;
+          background: transparent;
+          white-space: nowrap;
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover,
+        .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li[aria-selected="true"] {
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-color-raised-surface-background);
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions .scholium-completion-symbol {
+          flex: 0 0 14px;
+          inline-size: 14px;
+          block-size: 14px;
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionLabel {
+          min-inline-size: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionMatchedText {
+          color: inherit;
+          font-weight: 600;
+          text-decoration: none;
+        }
+        .cm-tooltip-autocomplete.scholium-editor-suggestions .cm-completionDetail {
+          min-inline-size: 0;
+          max-inline-size: 168px;
+          margin-inline-start: auto;
+          overflow: hidden;
+          color: var(--scholium-color-secondary-text);
+          font-size: 11px;
+          font-style: normal;
+          text-overflow: ellipsis;
+          unicode-bidi: plaintext;
+        }
+        @media (max-width: 520px) {
+          .scholium-selection-wide-only {
+            display: none;
+          }
+          .scholium-selection-menu-item.scholium-selection-compact-only {
+            display: flex;
+          }
+        }
+        @media (prefers-color-scheme: dark) {
+          :root { \(darkAppearanceCSSDeclarations) }
+        }
+        @media (prefers-reduced-transparency: reduce) {
+          :root { \(reducedTransparencyElevationCSSDeclarations) }
+        }
+        @media (prefers-contrast: more) {
+          :root {
+            \(increasedContrastCSSDeclarations)
+            \(increasedContrastElevationCSSDeclarations)
+          }
+          .scholium-selection-actions,
+          .scholium-selection-menu,
+          .cm-tooltip-autocomplete.scholium-editor-suggestions { border-width: 2px; }
+        }
+        @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
+          :root { \(darkIncreasedContrastCSSDeclarations) }
+        }
+        """
 }
 
 /// The approved adaptive editorial grid. Values are named by responsibility,
@@ -1272,7 +1281,8 @@ enum ScholiumGrid {
         static let factGridMinimumWidth = foundationUnit * 51
         static let factLabelMinimumWidth = foundationUnit * 19.5
         static let factColumnGap = foundationUnit * 3.5
-        static let factValueMinimumWidth = factGridMinimumWidth
+        static let factValueMinimumWidth =
+            factGridMinimumWidth
             - factLabelMinimumWidth
             - factColumnGap
         static let longTextLabelGap = foundationUnit
@@ -1282,8 +1292,33 @@ enum ScholiumGrid {
     }
 
     enum ResearchRecords {
-        static let viewIndicatorWidth = foundationUnit * 4.5
-        static let viewIndicatorHeight = foundationUnit / 4
+        static let viewIndexWidth = foundationUnit * 60
+        static let pageEdge = foundationUnit * 7
+        static let collectionSearchMinimumWidth = foundationUnit * 48
+        static let collectionColumnHeaderHeight = foundationUnit * 7
+        static let collectionRowCornerRadius = foundationUnit * 2
+        static let collectionRowHeight = foundationUnit * 12
+        static let collectionColumnGap = foundationUnit * 3
+        static let recordAttentionColumnWidth = foundationUnit * 7
+        static let recordActionColumnWidth = foundationUnit * 24
+        static let recordDateColumnWidth = foundationUnit * 26
+        static let recordActionCapsuleHeight = foundationUnit * 5
+        static let readingLeadHandledColumnWidth = foundationUnit * 8
+        static let readingLeadSelectionGap = foundationUnit * 2
+        static let readingLeadAuthorColumnWidth = foundationUnit * 29
+        static let readingLeadYearColumnWidth = foundationUnit * 12
+        static let readingLeadPublicationColumnWidth = foundationUnit * 46
+        static let evidenceMinimumWidth = foundationUnit * 65
+        static let evidenceMaximumWidth = foundationUnit * 76
+        static let evidenceWidthFraction: CGFloat = 0.36
+        static let readingMeasure = foundationUnit * 170
+        static let evidencePreviewLimit = 3
+        static let evidenceCollectionPopoverWidth = foundationUnit * 82
+        static let evidenceCollectionPopoverHeight = foundationUnit * 96
+        static let statementAttributionWidth = foundationUnit * 23
+        static let statementColumnGap = foundationUnit * 5
+        static let evidenceSectionHeaderHeight = foundationUnit * 7
+        static let evidenceIconColumnWidth = foundationUnit * 5
     }
 
     /// Page- and pane-level state copy shares one readable measure. Placement
@@ -1419,8 +1454,50 @@ enum ScholiumMetrics {
     }
 
     enum ResearchRecords {
-        static let viewIndicatorWidth = ScholiumGrid.ResearchRecords.viewIndicatorWidth
-        static let viewIndicatorHeight = ScholiumGrid.ResearchRecords.viewIndicatorHeight
+        static let viewIndexWidth = ScholiumGrid.ResearchRecords.viewIndexWidth
+        static let pageEdge = ScholiumGrid.ResearchRecords.pageEdge
+        static let collectionSearchMinimumWidth =
+            ScholiumGrid.ResearchRecords.collectionSearchMinimumWidth
+        static let collectionColumnHeaderHeight =
+            ScholiumGrid.ResearchRecords.collectionColumnHeaderHeight
+        static let collectionRowCornerRadius =
+            ScholiumGrid.ResearchRecords.collectionRowCornerRadius
+        static let collectionRowHeight = ScholiumGrid.ResearchRecords.collectionRowHeight
+        static let collectionColumnGap = ScholiumGrid.ResearchRecords.collectionColumnGap
+        static let recordAttentionColumnWidth =
+            ScholiumGrid.ResearchRecords.recordAttentionColumnWidth
+        static let recordActionColumnWidth =
+            ScholiumGrid.ResearchRecords.recordActionColumnWidth
+        static let recordDateColumnWidth =
+            ScholiumGrid.ResearchRecords.recordDateColumnWidth
+        static let recordActionCapsuleHeight =
+            ScholiumGrid.ResearchRecords.recordActionCapsuleHeight
+        static let readingLeadHandledColumnWidth =
+            ScholiumGrid.ResearchRecords.readingLeadHandledColumnWidth
+        static let readingLeadSelectionGap =
+            ScholiumGrid.ResearchRecords.readingLeadSelectionGap
+        static let readingLeadAuthorColumnWidth =
+            ScholiumGrid.ResearchRecords.readingLeadAuthorColumnWidth
+        static let readingLeadYearColumnWidth =
+            ScholiumGrid.ResearchRecords.readingLeadYearColumnWidth
+        static let readingLeadPublicationColumnWidth =
+            ScholiumGrid.ResearchRecords.readingLeadPublicationColumnWidth
+        static let evidenceMinimumWidth = ScholiumGrid.ResearchRecords.evidenceMinimumWidth
+        static let evidenceMaximumWidth = ScholiumGrid.ResearchRecords.evidenceMaximumWidth
+        static let evidenceWidthFraction = ScholiumGrid.ResearchRecords.evidenceWidthFraction
+        static let readingMeasure = ScholiumGrid.ResearchRecords.readingMeasure
+        static let evidencePreviewLimit = ScholiumGrid.ResearchRecords.evidencePreviewLimit
+        static let evidenceCollectionPopoverWidth =
+            ScholiumGrid.ResearchRecords.evidenceCollectionPopoverWidth
+        static let evidenceCollectionPopoverHeight =
+            ScholiumGrid.ResearchRecords.evidenceCollectionPopoverHeight
+        static let statementAttributionWidth =
+            ScholiumGrid.ResearchRecords.statementAttributionWidth
+        static let statementColumnGap = ScholiumGrid.ResearchRecords.statementColumnGap
+        static let evidenceSectionHeaderHeight =
+            ScholiumGrid.ResearchRecords.evidenceSectionHeaderHeight
+        static let evidenceIconColumnWidth =
+            ScholiumGrid.ResearchRecords.evidenceIconColumnWidth
     }
 
     enum ContentState {
@@ -1477,26 +1554,26 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
         let locale = Locale(identifier: "en_US_POSIX")
         return String(
             format: """
-            :root {
-              --scholium-document-text-scale: %.6fem;
-              --scholium-document-text-scale-factor: %.6f;
-              --scholium-document-content-top-inset: %.6fpx;
-              --scholium-rhythm-inline-regular: %.6fpx;
-              --scholium-rhythm-inline-source: %.6fpx;
-              --scholium-rhythm-inline-narrow: %.6fpx;
-              --scholium-rhythm-paragraph-gap: %.6fpx;
-            }
-            @media (max-width: %.6frem) {
-              .scholium-document,
-              .cm-editor.scholium-live-mode .cm-content,
-              .cm-editor.scholium-source-mode .cm-content {
-                padding-inline: max(
-                  var(--scholium-rhythm-inline-narrow),
-                  calc(50%% - var(--scholium-document-half-line-width))
-                );
-              }
-            }
-            """,
+                :root {
+                  --scholium-document-text-scale: %.6fem;
+                  --scholium-document-text-scale-factor: %.6f;
+                  --scholium-document-content-top-inset: %.6fpx;
+                  --scholium-rhythm-inline-regular: %.6fpx;
+                  --scholium-rhythm-inline-source: %.6fpx;
+                  --scholium-rhythm-inline-narrow: %.6fpx;
+                  --scholium-rhythm-paragraph-gap: %.6fpx;
+                }
+                @media (max-width: %.6frem) {
+                  .scholium-document,
+                  .cm-editor.scholium-live-mode .cm-content,
+                  .cm-editor.scholium-source-mode .cm-content {
+                    padding-inline: max(
+                      var(--scholium-rhythm-inline-narrow),
+                      calc(50%% - var(--scholium-document-half-line-width))
+                    );
+                  }
+                }
+                """,
             locale: locale,
             textScale,
             textScale,
@@ -1559,12 +1636,33 @@ enum ScholiumContentInteractionSurface {
     ) -> Color {
         surfaceRole(isFocused: isFocused)
             .color(increasedContrast: increasedContrast)
-            .opacity(opacity(
-                isHovering: isHovering,
-                isFocused: isFocused,
-                isPressed: isPressed,
-                increasedContrast: increasedContrast
-            ))
+            .opacity(
+                opacity(
+                    isHovering: isHovering,
+                    isFocused: isFocused,
+                    isPressed: isPressed,
+                    increasedContrast: increasedContrast
+                ))
+    }
+
+    /// Persistent local selection uses the same shallow editorial surface as
+    /// transient hover and keyboard focus. It adds no Accent underline, glass,
+    /// or filled segmented-control band.
+    static func selectionColor(
+        isSelected: Bool,
+        isHovering: Bool,
+        isFocused: Bool,
+        increasedContrast: Bool
+    ) -> Color {
+        if isSelected {
+            return ScholiumColorRole.raisedSurfaceBackground
+                .color(increasedContrast: increasedContrast)
+        }
+        return color(
+            isHovering: isHovering,
+            isFocused: isFocused,
+            increasedContrast: increasedContrast
+        )
     }
 
     static func nsColor(
@@ -1575,12 +1673,13 @@ enum ScholiumContentInteractionSurface {
     ) -> NSColor {
         surfaceRole(isFocused: isFocused)
             .nsColor(increasedContrast: increasedContrast)
-            .withAlphaComponent(opacity(
-                isHovering: isHovering,
-                isFocused: isFocused,
-                isPressed: isPressed,
-                increasedContrast: increasedContrast
-            ))
+            .withAlphaComponent(
+                opacity(
+                    isHovering: isHovering,
+                    isFocused: isFocused,
+                    isPressed: isPressed,
+                    increasedContrast: increasedContrast
+                ))
     }
 
     private static func surfaceRole(isFocused: Bool) -> ScholiumColorRole {
@@ -1642,6 +1741,19 @@ struct ScholiumElevationStyle: Equatable, Sendable {
 /// document surfaces must not receive window-container presentation tokens.
 enum ScholiumStructuralDepthRole: CaseIterable, Sendable {
     case documentNavigationBoundary
+    case readingEvidenceBoundary
+
+    /// The hidden one-point caster belongs to the dominant Document plane.
+    /// Workspace navigation receives the shadow from its trailing edge; the
+    /// Record evidence rail receives it from its leading edge.
+    var castsFromTrailingEdge: Bool {
+        switch self {
+        case .documentNavigationBoundary:
+            true
+        case .readingEvidenceBoundary:
+            false
+        }
+    }
 
     func style(
         isDark: Bool,
@@ -1651,10 +1763,11 @@ enum ScholiumStructuralDepthRole: CaseIterable, Sendable {
         layoutDirection: LayoutDirection
     ) -> ScholiumElevationStyle {
         let usesQuietOpacity = isDark || reduceTransparency || !appearsActive
+        let logicalDirection: CGFloat = layoutDirection == .leftToRight ? 1 : -1
         return .init(
             opacity: increasedContrast ? 0 : (usesQuietOpacity ? 0.02 : 0.04),
             radius: 8,
-            x: layoutDirection == .leftToRight ? -2 : 2,
+            x: logicalDirection * (castsFromTrailingEdge ? -2 : 2),
             y: 0
         )
     }
@@ -1678,14 +1791,15 @@ enum ScholiumElevationRole: CaseIterable, Sendable {
         reduceTransparency: Bool,
         appearsActive: Bool
     ) -> ScholiumElevationStyle {
-        let recipe: ScholiumElevationStyle = switch self {
-        case .floatingControl:
-            .init(opacity: 0.04, radius: 4, x: 0, y: 2)
-        case .boundedPanel:
-            .init(opacity: 0.08, radius: 8, x: 0, y: 4)
-        case .searchOverlay:
-            .init(opacity: 0.12, radius: 12, x: 0, y: 6)
-        }
+        let recipe: ScholiumElevationStyle =
+            switch self {
+            case .floatingControl:
+                .init(opacity: 0.04, radius: 4, x: 0, y: 2)
+            case .boundedPanel:
+                .init(opacity: 0.08, radius: 8, x: 0, y: 4)
+            case .searchOverlay:
+                .init(opacity: 0.12, radius: 12, x: 0, y: 6)
+            }
         let contrastMultiplier = increasedContrast ? 0.0 : 1.0
         let transparencyMultiplier = reduceTransparency ? 0.5 : 1.0
         let activityMultiplier = appearsActive ? 1.0 : 0.6
@@ -1741,11 +1855,17 @@ enum ScholiumBoundaryRole: CaseIterable, Sendable {
         let emphasized = increasedContrast || reduceTransparency
         return switch self {
         case .structuralDivider:
-            .init(colorRole: .separator, opacity: emphasized ? 0.78 : 0.42, lineWidth: emphasized ? 1 : 0.5)
+            .init(
+                colorRole: .separator, opacity: emphasized ? 0.78 : 0.42,
+                lineWidth: emphasized ? 1 : 0.5)
         case .subtleBoundary:
-            .init(colorRole: .separator, opacity: emphasized ? 0.82 : 0.34, lineWidth: emphasized ? 1 : 0.75)
+            .init(
+                colorRole: .separator, opacity: emphasized ? 0.82 : 0.34,
+                lineWidth: emphasized ? 1 : 0.75)
         case .floatingBoundary:
-            .init(colorRole: .separator, opacity: emphasized ? 0.82 : 0.34, lineWidth: emphasized ? 1 : 0.75)
+            .init(
+                colorRole: .separator, opacity: emphasized ? 0.82 : 0.34,
+                lineWidth: emphasized ? 1 : 0.75)
         }
     }
 }
@@ -1830,12 +1950,13 @@ enum ScholiumDocumentRhythm {
         for renderer: ScholiumDocumentRenderer,
         widthClass: ScholiumDocumentWidthClass
     ) -> ScholiumDocumentContentInsets {
-        let inline: CGFloat = switch (renderer, widthClass) {
-        case (.source, .regular): ScholiumGrid.Spacing.sourceShellInsetCSSPixels
-        case (.read, .regular), (.livePreview, .regular):
-            ScholiumGrid.Spacing.documentShellInsetCSSPixels
-        case (_, .narrow): ScholiumGrid.Document.compactShellInsetCSSPixels
-        }
+        let inline: CGFloat =
+            switch (renderer, widthClass) {
+            case (.source, .regular): ScholiumGrid.Spacing.sourceShellInsetCSSPixels
+            case (.read, .regular), (.livePreview, .regular):
+                ScholiumGrid.Spacing.documentShellInsetCSSPixels
+            case (_, .narrow): ScholiumGrid.Document.compactShellInsetCSSPixels
+            }
         return .init(
             inline: inline,
             trailingViewportFraction: ScholiumGrid.Document.trailingScrollViewportFraction
@@ -1849,9 +1970,10 @@ private struct ScholiumSurfaceModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.background {
-            Rectangle().fill(role.colorRole.color(
-                increasedContrast: increasedContrast
-            ))
+            Rectangle().fill(
+                role.colorRole.color(
+                    increasedContrast: increasedContrast
+                ))
         }
     }
 }
@@ -1914,7 +2036,8 @@ private struct ScholiumEditorialSurfaceModifier<S: InsettableShape>: ViewModifie
             increasedContrast: increasedContrast,
             reduceTransparency: reduceTransparency
         )
-        let surfacedContent = content
+        let surfacedContent =
+            content
             .background(
                 role.colorRole.color(
                     increasedContrast: increasedContrast
@@ -1943,9 +2066,10 @@ private struct ScholiumForegroundModifier: ViewModifier {
     let role: ScholiumColorRole
 
     func body(content: Content) -> some View {
-        content.foregroundStyle(role.color(
-            increasedContrast: increasedContrast
-        ))
+        content.foregroundStyle(
+            role.color(
+                increasedContrast: increasedContrast
+            ))
     }
 }
 
@@ -2037,11 +2161,12 @@ private final class ScholiumPointerTrackingView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(
-            rect: .zero,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-            owner: self
-        ))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self
+            ))
     }
 
     override func viewDidMoveToWindow() {
@@ -2123,7 +2248,8 @@ private struct ScholiumContentControlPointerFeedbackModifier<S: Shape>: ViewModi
     let shape: S
 
     func body(content: Content) -> some View {
-        let isEmphasized = isEnabled
+        let isEmphasized =
+            isEnabled
             && (isActive || isHovering || isFocused || isPressed)
 
         content
@@ -2147,15 +2273,22 @@ private struct ScholiumContentControlPointerFeedbackModifier<S: Shape>: ViewModi
 
 /// Keeps custom content controls in the complete keyboard focus chain while
 /// preventing pointer presses from manufacturing a keyboard-only focus state.
-/// The system focus effect is replaced locally because matching controls paint
-/// the shared Scholium keyboard-focus surface themselves.
+/// Ordinary content controls replace the system effect with Scholium's shared
+/// focus surface; transient popover rows retain the native effect so AppKit's
+/// automatic first responder never resembles a pre-existing pointer hover.
+enum ScholiumActivationFocusPresentation: Sendable {
+    case contentSurface
+    case native
+}
+
 private struct ScholiumBooleanActivationFocusModifier: ViewModifier {
     let focus: FocusState<Bool>.Binding
+    let presentation: ScholiumActivationFocusPresentation
 
     func body(content: Content) -> some View {
         content
             .focusable()
-            .focusEffectDisabled()
+            .focusEffectDisabled(presentation == .contentSurface)
             .focused(focus)
             .simultaneousGesture(pointerFocusReset)
     }
@@ -2170,11 +2303,12 @@ private struct ScholiumBooleanActivationFocusModifier: ViewModifier {
 private struct ScholiumValueActivationFocusModifier<Value: Hashable>: ViewModifier {
     let focus: FocusState<Value?>.Binding
     let value: Value
+    let presentation: ScholiumActivationFocusPresentation
 
     func body(content: Content) -> some View {
         content
             .focusable()
-            .focusEffectDisabled()
+            .focusEffectDisabled(presentation == .contentSurface)
             .focused(focus, equals: value)
             .simultaneousGesture(pointerFocusReset)
     }
@@ -2203,29 +2337,63 @@ struct ScholiumInkIconControl: View {
     let systemImage: String
     let identifier: String
     var isActive = false
+    var symbolVerticalOffset: CGFloat = 0
+    var role: ButtonRole? = nil
+    var emphasizedColorRole: ScholiumColorRole = .primaryText
+    var focus: FocusState<Bool>.Binding? = nil
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button(role: role, action: action) {
             Image(systemName: systemImage)
+                .offset(y: symbolVerticalOffset)
                 .frame(
                     width: ScholiumMetrics.Accessibility.preferredCustomTarget,
                     height: ScholiumMetrics.Accessibility.preferredCustomTarget
                 )
                 .contentShape(Rectangle())
                 .foregroundStyle(
-                    isActive || isHovering || isFocused
-                        ? ScholiumColorRole.primaryText.color
+                    isActive || isHovering || hasFocus
+                        ? emphasizedColorRole.color
                         : ScholiumColorRole.secondaryText.color
                 )
                 .opacity(isEnabled ? 1 : 0.42)
         }
         .buttonStyle(ScholiumInkIconButtonStyle())
-        .focused($isFocused)
+        .modifier(
+            ScholiumInkIconFocusModifier(
+                externalFocus: focus,
+                localFocus: $isFocused
+            )
+        )
         .onHover { isHovering = $0 }
         .help(title)
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
+    }
+
+    private var hasFocus: Bool {
+        focus?.wrappedValue ?? isFocused
+    }
+}
+
+private struct ScholiumInkIconFocusModifier: ViewModifier {
+    let externalFocus: FocusState<Bool>.Binding?
+    let localFocus: FocusState<Bool>.Binding
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let externalFocus {
+            content
+                .focusable()
+                .focusEffectDisabled()
+                .focused(externalFocus)
+        } else {
+            content
+                .focusable()
+                .focusEffectDisabled()
+                .focused(localFocus)
+        }
     }
 }
 
@@ -2276,20 +2444,27 @@ extension View {
     /// Applies the shared pointer-neutral, keyboard-complete focus policy to a
     /// custom button-like control with Boolean focus state.
     func scholiumActivationFocus(
-        _ focus: FocusState<Bool>.Binding
+        _ focus: FocusState<Bool>.Binding,
+        presentation: ScholiumActivationFocusPresentation = .contentSurface
     ) -> some View {
-        modifier(ScholiumBooleanActivationFocusModifier(focus: focus))
+        modifier(ScholiumBooleanActivationFocusModifier(
+            focus: focus,
+            presentation: presentation
+        ))
     }
 
     /// Applies the same policy to one value in a focusable control group.
     func scholiumActivationFocus<Value: Hashable>(
         _ focus: FocusState<Value?>.Binding,
-        equals value: Value
+        equals value: Value,
+        presentation: ScholiumActivationFocusPresentation = .contentSurface
     ) -> some View {
-        modifier(ScholiumValueActivationFocusModifier(
-            focus: focus,
-            value: value
-        ))
+        modifier(
+            ScholiumValueActivationFocusModifier(
+                focus: focus,
+                value: value,
+                presentation: presentation
+            ))
     }
 
     /// Paints the shared shallow interaction surface inside content regions.
@@ -2300,12 +2475,13 @@ extension View {
         isPressed: Bool = false,
         in shape: S
     ) -> some View {
-        modifier(ScholiumContentInteractionSurfaceModifier(
-            isHovering: isHovering,
-            isFocused: isFocused,
-            isPressed: isPressed,
-            shape: shape
-        ))
+        modifier(
+            ScholiumContentInteractionSurfaceModifier(
+                isHovering: isHovering,
+                isFocused: isFocused,
+                isPressed: isPressed,
+                shape: shape
+            ))
     }
 
     /// Applies the complete shared pointer presentation to a matching custom
@@ -2316,11 +2492,12 @@ extension View {
         isFocused: Bool = false,
         in shape: S
     ) -> some View {
-        modifier(ScholiumContentControlPointerFeedbackModifier(
-            isActive: isActive,
-            isFocused: isFocused,
-            shape: shape
-        ))
+        modifier(
+            ScholiumContentControlPointerFeedbackModifier(
+                isActive: isActive,
+                isFocused: isFocused,
+                shape: shape
+            ))
     }
 
     func scholiumForeground(_ role: ScholiumColorRole) -> some View {
@@ -2348,17 +2525,18 @@ extension View {
         boundary: ScholiumBoundaryRole? = nil,
         elevation: ScholiumElevationRole? = nil
     ) -> some View {
-        modifier(ScholiumEditorialSurfaceModifier(
-            role: role,
-            boundary: boundary ?? role.defaultBoundaryRole,
-            elevation: elevation ?? role.defaultElevationRole,
-            shape: shape
-        ))
+        modifier(
+            ScholiumEditorialSurfaceModifier(
+                role: role,
+                boundary: boundary ?? role.defaultBoundaryRole,
+                elevation: elevation ?? role.defaultElevationRole,
+                shape: shape
+            ))
     }
 }
 
-private extension String {
-    var kebabCased: String {
+extension String {
+    fileprivate var kebabCased: String {
         unicodeScalars.reduce(into: "") { result, scalar in
             if CharacterSet.uppercaseLetters.contains(scalar), !result.isEmpty {
                 result.append("-")

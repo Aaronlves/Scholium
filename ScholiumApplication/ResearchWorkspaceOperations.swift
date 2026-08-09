@@ -674,19 +674,6 @@ extension WorkspaceHandle {
         }
     }
 
-    func setResearchRecordPinned(
-        id: UUID,
-        isPinned: Bool
-    ) async throws -> PortableResearchRecord {
-        try requireActive()
-        let updated = try await services.portableResearchRecordStore.setPinned(
-            isPinned,
-            for: id
-        )
-        try await refreshAfterResearchCommit("The Research Record pin")
-        return updated
-    }
-
     func saveResearcherEvaluation(
         recordID: UUID,
         draft: ResearcherEvaluationDraft,

@@ -72,6 +72,7 @@ struct ResearchAgentResultContractsTests {
     @Test("Agent Result submission is strict and its receipt exposes no repository or Session identity")
     func strictResultSubmissionAndMinimalReceipt() throws {
         let submission = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("A bounded result"),
             academicResults: ResearchAcademicFieldValues(
                 rawValues: [:],
                 definitions: []
@@ -83,6 +84,8 @@ struct ResearchAgentResultContractsTests {
         var object = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
+        #expect(object["record_title"] as? String == "A bounded result")
+        #expect(object["schema_version"] as? Int == 2)
         object["session_secret"] = "must-not-be-accepted"
         #expect(throws: ResearchAgentResultContractError.self) {
             _ = try JSONDecoder().decode(
@@ -123,6 +126,7 @@ struct ResearchAgentResultContractsTests {
             _ = try ResearchRunResultPayload(
                 runID: UUID(),
                 submissionFingerprint: fingerprint,
+                recordTitle: ResearchRecordTitle("Stored result"),
                 disposition: .completed,
                 academicResults: academicResults,
                 contextUseReport: nil,

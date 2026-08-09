@@ -147,14 +147,15 @@ six or twenty-nine local calendar days. `note` resolves the ordinary stable
 Note identity; `action` matches the retained public Action identity and `skill`
 matches only the exact retained Method display name; `participant` requires an
 attributed statement from that speaker.
-Unfielded terms search context, Action, Skill, participant Note titles,
+Unfielded terms search the frozen Record Title, Action, Skill, participant Note titles,
 attributed statements, and Application-validated actually-used Material
 titles. Note-only fields, Property, and relation clauses fail with a provider-
 mismatch diagnostic.
 
 One result row always represents one provider object. Record results are one
-row per complete Research Record, sorted pinned first, then `finishedAt`
-descending and UUID; lexical matching does not invent a cross-object relevance
+row per complete Research Record, sorted by `finishedAt` descending and UUID by
+default;
+lexical matching does not invent a cross-object relevance
 score. A Record hit identifies the exact Record source fingerprint, matched
 field, and, when applicable, statement UUID, speaker, and snippet. Opening it
 uses the existing Triptych-keyed Research Records window and locates the Record
@@ -177,9 +178,15 @@ Complete normalized title, alias, filename stem, and relative-path identity
 precede one-corpus BM25, then normalized title, fixed Analyses/Topics/Works
 order, and normalized path break ties. Exact identity candidates come directly
 from ordinary tables and cannot be lost to a lexical candidate cutoff. Public
-results explain matched field and rank reason without exposing raw BM25. The
-interface caps at 100 rows and reports only `N Results` or `N+ Results`; Search
-does not perform an expensive exact total count.
+results explain matched field and rank reason without exposing raw BM25.
+Ordinary cross-provider Search caps at 100 rows and reports only `N Results` or
+`N+ Results`; it does not perform an expensive exact total count. The dedicated
+Research Records collection is a bounded exception within the same parser and
+provider ownership: it requests 100-row slices, receives the exact filtered
+Record total, and may request provider-owned Record, Action, or finished-date
+ordering before slicing. Reading Leads applies the same 100-row presentation
+slices to its already-complete derived occurrence set. Neither collection
+creates a second query language, parser, or retrieval owner.
 
 Each response binds a versioned query contract, Triptych generation, sorted
 source-manifest hash, provider-specific source fingerprints, and freshness.
