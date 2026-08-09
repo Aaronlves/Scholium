@@ -238,6 +238,15 @@ optical exception, semantic spacing, and component anchors. `ScholiumMetrics`
 maps responsibilities to those roles without copying values; no geometry JSON
 mirror exists.
 
+The shared foundation values are closed at their call sites: 4pt
+label/accessory, 8pt inline-control, 12pt nested-content, 16pt section, and
+20pt region spacing are always expressed through `ScholiumGrid.Spacing` rather
+than repeated by leaf Views. The architecture inventory rejects those raw
+`spacing` and `padding` literals across production Swift. Structural zero
+spacing, native control geometry, scene/window dimensions, Document CSS units,
+and explicitly component-owned metrics remain separate classifications rather
+than being forced into the shared spacing family.
+
 `ScholiumCornerRole` is the closed responsibility vocabulary for custom corner
 geometry. `ScholiumShape` exposes the Native aliases and generates only the
 WebKit custom properties needed by the same or WebKit-specific constructs; it

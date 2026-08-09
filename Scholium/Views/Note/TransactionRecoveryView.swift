@@ -166,12 +166,12 @@ struct TransactionRecoveryView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
                 .scholiumSymbolStyle(.large)
                 .scholiumForeground(.attention)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text("Recovery")
                     .font(ScholiumTypography.interface(.primaryTitle))
                 Text("Inspect exact save candidates retained after an interruption and durable records from file operations that could not finish cleanly.")
@@ -180,7 +180,7 @@ struct TransactionRecoveryView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(20)
+        .padding(ScholiumGrid.Spacing.regionContentInset)
     }
 
     @ViewBuilder
@@ -207,7 +207,7 @@ struct TransactionRecoveryView: View {
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             if let operationError {
                 Label("Recovery could not be completed. \(operationError)", systemImage: "exclamationmark.triangle.fill")
                     .scholiumForeground(.destructive)
@@ -231,7 +231,7 @@ struct TransactionRecoveryView: View {
                     .keyboardShortcut(.cancelAction)
             }
         }
-        .padding(16)
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
     }
 
     private func recoveryErrorSection(
@@ -387,7 +387,7 @@ private struct InterruptedSaveRecoveryRow: View {
                 .controlSize(.small)
                 .accessibilityLabel("Loading candidate…")
         } else if let content {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if content.exactSource.isEmpty {
                     Text("This candidate is an empty document.")
                         .font(ScholiumTypography.interface(.body))

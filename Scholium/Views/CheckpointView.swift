@@ -9,7 +9,7 @@ struct CreateCheckpointView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
             Label("Create Checkpoint", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("A manual checkpoint is a self-contained copy of the complete Triptych. It remains until you delete its folder in Finder.")
@@ -89,7 +89,7 @@ struct RestoreCheckpointView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     .scholiumSymbolStyle(.large)
                     .scholiumForeground(.secondaryText)
@@ -295,7 +295,7 @@ struct RestoreCheckpointView: View {
                         || isRestoring
                 )
         }
-        .padding(16)
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
     }
 
     private func load() async {

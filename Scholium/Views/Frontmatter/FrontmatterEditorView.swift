@@ -80,7 +80,7 @@ struct FrontmatterEditorView: View {
                         .scholiumForeground(.secondaryText)
                 }
                 Spacer()
-                HStack(spacing: 8) {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Button("Cancel") { closeEditor() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -103,13 +103,13 @@ struct FrontmatterEditorView: View {
                     .disabled(isSaving)
                 }
             }
-            .padding(20)
+            .padding(ScholiumGrid.Spacing.regionContentInset)
 
             Divider()
 
             // Form fields
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                     Text("Researcher Properties")
                         .font(ScholiumTypography.interface(.sectionTitle))
 
@@ -152,33 +152,33 @@ struct FrontmatterEditorView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 4)
+                            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
                         }
                     }
 
                     if !availableFields.isEmpty {
                         Divider()
-                            .padding(.vertical, 4)
+                            .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
 
                         DisclosureGroup("Add a Property", isExpanded: $showAvailableProperties) {
-                            VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                                 ForEach(availableFields) { field in
                                     fieldEditor(for: field)
                                 }
                             }
-                            .padding(.top, 12)
+                            .padding(.top, ScholiumGrid.Spacing.nestedContentInset)
                         }
                         .font(ScholiumTypography.interface(.sectionTitle))
                     }
                 }
-                .padding(20)
+                .padding(ScholiumGrid.Spacing.regionContentInset)
             }
 
             // Footer with validation summary
             if !fieldErrors.isEmpty {
                 Divider()
 
-                HStack(spacing: 8) {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .scholiumForeground(.destructive)
                         .font(ScholiumTypography.interface(.small))
@@ -187,8 +187,8 @@ struct FrontmatterEditorView: View {
                         .scholiumForeground(.destructive)
                     Spacer()
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
+                .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
         }
         .scholiumSurface(.boundedPanel)
@@ -306,7 +306,7 @@ struct FrontmatterEditorView: View {
                         .font(ScholiumTypography.scholarly(.body))
                         .frame(minHeight: 70)
                         .scrollContentBackground(.hidden)
-                        .padding(4)
+                        .padding(ScholiumGrid.Spacing.labelAccessoryGap)
                         .background(
                             ScholiumColorRole.documentBackground.color,
                             in: RoundedRectangle(
@@ -331,7 +331,7 @@ struct FrontmatterEditorView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 4)
+            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
         }
     }
 
@@ -379,7 +379,7 @@ struct FrontmatterEditorView: View {
 
             // Error message
             if let error = fieldErrors[field.key] {
-                HStack(spacing: 4) {
+                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     Image(systemName: "exclamationmark.circle.fill")
                         .font(ScholiumTypography.interface(.small))
                     Text(error)
@@ -407,7 +407,7 @@ struct FrontmatterEditorView: View {
                 .font(ScholiumTypography.scholarly(.body))
                 .frame(minHeight: 80)
                 .scrollContentBackground(.hidden)
-                .padding(4)
+                .padding(ScholiumGrid.Spacing.labelAccessoryGap)
                 .background(
                     ScholiumColorRole.documentBackground.color,
                     in: RoundedRectangle(
@@ -439,7 +439,7 @@ struct FrontmatterEditorView: View {
                 Text(fieldValues[field.key] ?? "—")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
             } else {
                 if let value = fieldValues[field.key], let date = parseDate(value) {
                     DatePicker("", selection: Binding(
@@ -494,7 +494,7 @@ struct FrontmatterEditorView: View {
 
     @ViewBuilder
     private func tagEditor(for field: PropertyEditorField) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             // Current tags
             let tags = parseArray(fieldValues[field.key])
             if !tags.isEmpty {
@@ -520,7 +520,7 @@ struct FrontmatterEditorView: View {
                             .help("Remove tag \(tag)")
                             .accessibilityLabel("Remove tag \(tag)")
                         }
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
                         .padding(.vertical, 3)
                         .background(
                             ScholiumColorRole.raisedSurfaceBackground.color,

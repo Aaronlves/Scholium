@@ -73,7 +73,7 @@ struct CritiqueProvenanceView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Label(
                     metadata.isAgentAttributed ? "Agent-authored Critique" : "Agent attribution missing",
                     systemImage: metadata.isAgentAttributed ? "sparkles" : "exclamationmark.triangle"
@@ -199,7 +199,7 @@ struct CritiqueProvenanceView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .scholiumSurface(.boundedPanel)
@@ -230,7 +230,7 @@ struct CritiqueProvenanceView: View {
         Button {
             context.openFinding(finding, targetPath)
         } label: {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Image(systemName: stale ? "clock.badge.exclamationmark" : "arrow.right.circle")
                     .scholiumForeground(stale ? .attention : .secondaryText)
                     .accessibilityHidden(true)

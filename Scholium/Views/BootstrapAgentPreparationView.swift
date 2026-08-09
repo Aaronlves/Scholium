@@ -42,7 +42,7 @@ struct BootstrapAgentPreparationView: View {
     private var preparationPane: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Prepare an Agent")
                             .font(ScholiumTypography.interface(.primaryTitle))
@@ -69,7 +69,7 @@ struct BootstrapAgentPreparationView: View {
                     Divider()
 
                     BootstrapAgentTaskRow(number: 1, title: "Install and verify Scholium CLI") {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                             HStack(alignment: .center, spacing: 10) {
                                 if let status {
                                     Label(statusLabel(status), systemImage: statusSymbol(status))
@@ -172,7 +172,7 @@ struct BootstrapAgentPreparationView: View {
 
             Divider()
 
-            HStack(spacing: 12) {
+            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 Button("Back", action: goBack)
                     .keyboardShortcut(.cancelAction)
                     .disabled(!allowsBack || isCompletingBootstrap)
@@ -334,7 +334,7 @@ private struct BootstrapAgentTaskRow<Content: View>: View {
                 }
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text(title)
                     .font(ScholiumTypography.interface(.sectionTitle))
                 content
@@ -358,7 +358,7 @@ private struct BootstrapAgentPromptSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 22)
-            .padding(.vertical, 16)
+            .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
             .background(ScholiumColorRole.navigationSurfaceBackground.color)
 
             Divider()

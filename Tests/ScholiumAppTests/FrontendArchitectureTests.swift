@@ -150,7 +150,12 @@ struct FrontendArchitectureTests {
             !noteSource.contains("Native save/conflict recovery owns focus while it is visible."))
         #expect(componentSource.contains("struct ScholiumDocumentStatusToast<Actions: View>"))
         #expect(componentSource.contains("HStack(alignment: .center, spacing: 10)"))
-        #expect(componentSource.contains("HStack(alignment: .center, spacing: 8)"))
+        #expect(
+            componentSource.contains(
+                "HStack(alignment: .center, "
+                    + "spacing: ScholiumGrid.Spacing.inlineControlGap)"
+            )
+        )
         #expect(!componentSource.contains("verticalAlignment"))
         #expect(componentSource.contains(".accessibilityLabel(title)"))
         #expect(componentSource.contains(".accessibilityValue(detail)"))
@@ -3582,6 +3587,34 @@ struct FrontendArchitectureTests {
         #expect(!foundation.contains("383 CSS-typographic-point"))
         #expect(tabs.contains("ScholiumGrid.Dimension.documentTabStripHeight"))
         #expect(tabs.contains("ScholiumGrid.Spacing.regionContentInset"))
+
+        let applicationRoot = repository.appendingPathComponent("Scholium")
+        let enumerator = try #require(
+            FileManager.default.enumerator(
+                at: applicationRoot,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+        )
+        let rawSharedSpacing = try NSRegularExpression(
+            pattern:
+                #"(?:spacing:\s*(?:4|8|12|16|20)\b|\.padding\((?:\.[A-Za-z]+,\s*)?(?:4|8|12|16|20)\))"#
+        )
+        while let sourceURL = enumerator.nextObject() as? URL {
+            guard sourceURL.pathExtension == "swift" else { continue }
+            let source = try String(contentsOf: sourceURL, encoding: .utf8)
+            let sourceRange = NSRange(
+                source.startIndex..<source.endIndex,
+                in: source
+            )
+            #expect(
+                rawSharedSpacing.firstMatch(
+                    in: source,
+                    range: sourceRange
+                ) == nil,
+                "Shared Grid spacing escaped its semantic owner: \(sourceURL.path)"
+            )
+        }
     }
 
     @Test("Live Preview omits Source chrome and consumes shared document layout")

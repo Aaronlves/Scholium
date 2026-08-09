@@ -12,7 +12,7 @@ struct RestoreWorkspaceAccessView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
             Text("Restore Access")
                 .font(ScholiumTypography.interface(.primaryTitle))
 
@@ -42,7 +42,7 @@ struct RestoreWorkspaceAccessView: View {
                     .disabled(isRestoring)
             }
         }
-        .padding(20)
+        .padding(ScholiumGrid.Spacing.regionContentInset)
         .frame(width: 500)
         .interactiveDismissDisabled()
         .accessibilityElement(children: .contain)

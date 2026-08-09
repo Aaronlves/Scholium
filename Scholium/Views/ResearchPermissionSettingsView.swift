@@ -30,7 +30,7 @@ struct ResearchPermissionSettingsView: View {
                     bundle: .module
                 )) {
                     if let snapshot {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
                             Picker(
                                 "Collaboration policy",
                                 selection: Binding(

@@ -141,7 +141,7 @@ struct ResearchMethodsSettingsView: View {
     private func methodRow(_ registration: ResearchSkillRegistration) -> some View {
         let method = methods[registration.actionID]
         HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(registration.displayName)
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text(registration.isEnabled ? "Enabled" : "Disabled")
@@ -467,7 +467,7 @@ private struct ResearchMethodSourceEditor: View {
                 .disabled(isSaving || source == context.method.primaryMarkdownSource)
             }
         }
-        .padding(20)
+        .padding(ScholiumGrid.Spacing.regionContentInset)
         .frame(minWidth: 740, minHeight: 580)
     }
 }
@@ -532,7 +532,7 @@ private struct NewResearchMethodEditor: View {
                 )
             }
         }
-        .padding(20)
+        .padding(ScholiumGrid.Spacing.regionContentInset)
         .frame(minWidth: 740, minHeight: 560)
     }
 }

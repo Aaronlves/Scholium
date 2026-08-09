@@ -136,7 +136,7 @@ struct ContentView: View {
                             ? .opacity
                             : .move(edge: .bottom).combined(with: .opacity)
                     )
-                    .padding(.bottom, 20)
+                    .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
             }
         }
         .animation(
@@ -1084,7 +1084,7 @@ struct ToastView: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: symbol)
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(colorRole)

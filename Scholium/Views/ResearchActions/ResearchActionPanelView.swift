@@ -103,7 +103,7 @@ struct ResearchActionPanelView: View {
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.destructive)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("scholium.researchAction.handoffError")
@@ -164,7 +164,7 @@ struct ResearchActionPanelView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Image(
                 systemName: controller.activeAvailability?.definition.interfaceSymbol
                     ?? "sparkles"
@@ -191,7 +191,7 @@ struct ResearchActionPanelView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(20)
+        .padding(ScholiumGrid.Spacing.regionContentInset)
     }
 
     @ViewBuilder
@@ -243,7 +243,7 @@ struct ResearchActionPanelView: View {
 
     @ViewBuilder
     private func academicField(_ field: ResearchAcademicFieldDefinition) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(verbatim: field.label).font(ScholiumTypography.interface(.sectionTitle))
                 if field.requirement != .required {
@@ -368,7 +368,7 @@ struct ResearchActionPanelView: View {
             .font(ScholiumTypography.interface(.body))
             .accessibilityIdentifier("scholium.researchAction.source.available")
         } else {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Label("Source access needs attention.", systemImage: "exclamationmark.triangle")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.attention)
@@ -387,7 +387,7 @@ struct ResearchActionPanelView: View {
     }
 
     private var focalNotesSelector: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             selectorHeader("Focal Notes", required: selectorIsRequired(.focalNotes))
             TextField("Search eligible notes", text: $focalNoteQuery)
                 .textFieldStyle(.roundedBorder)
@@ -423,14 +423,14 @@ struct ResearchActionPanelView: View {
                     .accessibilityIdentifier(
                         "scholium.researchAction.focalNote.\(candidate.noteID.uuidString.lowercased())"
                     )
-                    .padding(.vertical, 4)
+                    .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
                 }
             }
         }
     }
 
     private var passageSelector: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             selectorHeader("Passage", required: selectorIsRequired(.passage))
             if controller.passageIsAvailable {
                 Toggle("Use selected passage", isOn: $controller.usesPassage)
@@ -449,7 +449,7 @@ struct ResearchActionPanelView: View {
     }
 
     private var fidelityChecksSelector: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             selectorHeader(
                 "Fidelity Checks",
                 required: selectorIsRequired(.fidelityChecks)
@@ -469,7 +469,7 @@ struct ResearchActionPanelView: View {
     }
 
     private func machineResolvedSelector(title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             selectorHeader(title, required: false)
             Text(detail)
                 .font(ScholiumTypography.interface(.small))
@@ -576,7 +576,7 @@ struct ResearchActionPanelView: View {
                 .accessibilityIdentifier("scholium.researchAction.copyHandoff")
             }
         }
-        .padding(16)
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
     }
 
     @ViewBuilder

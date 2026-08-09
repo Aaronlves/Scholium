@@ -53,7 +53,7 @@ struct ScholiumSettingsView: View {
                 .tabItem { Label(ScholiumL10n.Settings.zotero, systemImage: "books.vertical") }
                 .tag(WorkspaceSettingsPane.zotero)
         }
-        .padding(8)
+        .padding(ScholiumGrid.Spacing.inlineControlGap)
         .overlay(alignment: .bottom) {
             if let message = settingsModel.toastMessage {
                 ToastView(message: message)
@@ -62,7 +62,7 @@ struct ScholiumSettingsView: View {
                             ? .opacity
                             : .move(edge: .bottom).combined(with: .opacity)
                     )
-                    .padding(.bottom, 20)
+                    .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
             }
         }
         .animation(
@@ -141,7 +141,7 @@ private struct AttentionSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(12)
+        .padding(ScholiumGrid.Spacing.nestedContentInset)
         .task {
             let stored = settingsModel.triptychSettings.attentionDismissalDays
             dismissalDays = durations.contains(stored)
@@ -245,7 +245,7 @@ private struct PropertiesSettingsView: View {
             }
             .frame(maxHeight: .infinity)
 
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 TextField("Custom top-level YAML field", text: $customField)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { addCustomFieldToDisplay() }
@@ -291,7 +291,7 @@ private struct PropertiesSettingsView: View {
 
     private var displayOrderColumn: some View {
         GroupBox("Shown in This Order") {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if selectedConfiguration.visibleFields.isEmpty {
                     Text("No fields are shown when Properties is opened.")
                         .font(ScholiumTypography.interface(.body))
@@ -489,7 +489,7 @@ struct AgentCLISettingsView: View {
 
     var body: some View {
         GroupBox("Scholium CLI") {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if let status {
                     Label(statusLabel(status), systemImage: statusSymbol(status))
                         .accessibilityLabel("Scholium CLI status")
@@ -593,7 +593,7 @@ struct ResearchCitationMethodSettingsView: View {
 
     var body: some View {
         GroupBox {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 VStack(alignment: .leading, spacing: 6) {
                     if let status {
                         if status.availableStyles.isEmpty {
@@ -757,7 +757,7 @@ struct ZoteroSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(12)
+        .padding(ScholiumGrid.Spacing.nestedContentInset)
         .task { info = await settingsModel.zoteroConnectionInfo() }
     }
 
@@ -825,8 +825,8 @@ struct WorkspaceSettingsView: View {
                     )
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
+            .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+            .padding(.top, ScholiumGrid.Spacing.nestedContentInset)
 
             if let selectedTriptychID {
                 WorkspacePathEditor(
@@ -846,7 +846,7 @@ struct WorkspaceSettingsView: View {
                 )
             }
         }
-        .padding(8)
+        .padding(ScholiumGrid.Spacing.inlineControlGap)
         .task {
             await settingsModel.refreshRegisteredVaults()
             if selectedTriptychID == nil {
@@ -899,9 +899,9 @@ private struct AppearanceSettingsView: View {
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+            .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+            .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
+            .padding(.bottom, ScholiumGrid.Spacing.nestedContentInset)
 
             Divider()
 
@@ -995,23 +995,23 @@ private struct AppearanceSettingsView: View {
                 Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.attention)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
             if let storeError = store.storeError {
                 Label(storeError, systemImage: "exclamationmark.triangle.fill")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.destructive)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityIdentifier("settings.css.store-error")
             }
             if let importError {
                 Label(importError, systemImage: "exclamationmark.triangle.fill")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.destructive)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
         }
         .onAppear { loadSelectedDraft() }
@@ -1279,7 +1279,7 @@ private struct AppearanceDoubleControl: View {
 
     var body: some View {
         LabeledContent(title) {
-            HStack(spacing: 8) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 AppearanceNativeSlider(
                     value: $value,
                     range: range,
@@ -1638,14 +1638,14 @@ private struct WorkspacePathEditor: View {
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.destructive)
                     .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityLabel("Workspace error: \(errorMessage)")
             } else if let recoveryMessage = settingsModel.workspaceRecoveryMessage {
                 Label(recoveryMessage, systemImage: "folder.badge.questionmark")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.attention)
                     .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityLabel("Workspace access: \(recoveryMessage)")
             }
 
@@ -1663,7 +1663,7 @@ private struct WorkspacePathEditor: View {
                     .disabled(!canSave || isSaving)
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
         }
         .accessibilityIdentifier("scholium.triptychSetup")
         .task {
@@ -1770,7 +1770,7 @@ struct PortableControlFolderRow: View {
     @Binding var containerURL: URL?
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Image(systemName: "folder.badge.gearshape")
                 .scholiumSymbolStyle(.prominent)
                 .scholiumForeground(.accent)
@@ -1800,7 +1800,7 @@ struct PortableControlFolderRow: View {
             .disabled(worksURL == nil)
             .accessibilityLabel("Authorize folder containing Works")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
         .accessibilityIdentifier("scholium.portableControlAccess")
     }
 
@@ -1831,7 +1831,7 @@ struct WorkspaceFolderRow: View {
     @Binding var url: URL?
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Image(systemName: symbol)
                 .scholiumSymbolStyle(.prominent)
                 .scholiumForeground(.accent)
@@ -1859,7 +1859,7 @@ struct WorkspaceFolderRow: View {
             }
             .accessibilityLabel("Choose \(title) folder")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
     }
 
     private func chooseFolder() {

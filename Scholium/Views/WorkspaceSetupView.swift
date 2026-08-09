@@ -577,7 +577,7 @@ private struct BootstrapFooter: View {
             Rectangle()
                 .fill(ScholiumColorRole.separator.color)
                 .frame(height: 1)
-            HStack(spacing: 12) {
+            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 if showsBack {
                     Button("Back", action: onBack)
                         .keyboardShortcut(.cancelAction)
@@ -655,7 +655,7 @@ private struct BootstrapWelcomeStep: View {
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 16)
+                    .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
 
                 Rectangle()
                     .fill(ScholiumColorRole.separator.color)
@@ -665,7 +665,7 @@ private struct BootstrapWelcomeStep: View {
                 Text("A field of inquiry takes shape as a Triptych.")
                     .font(ScholiumTypography.interface(.sectionTitle))
 
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                     BootstrapWelcomeTriptychRole(
                         title: "Analyses",
                         detail: "Sources and interpretations"
@@ -679,7 +679,7 @@ private struct BootstrapWelcomeStep: View {
                         detail: "Arguments of your own"
                     )
                 }
-                .padding(.top, 16)
+                .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
 
                 Text("Markdown stays ordinary and inspectable. Reading, writing, Search, Connections, review, and recovery work without an Agent.")
                     .font(ScholiumTypography.interface(.body))
@@ -698,7 +698,7 @@ private struct BootstrapWelcomeTriptychRole: View {
     let detail: LocalizedStringResource
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Text(title)
                 .font(ScholiumTypography.interface(.sectionTitle))
             Text(detail)
@@ -718,7 +718,7 @@ private struct BootstrapChoosePathStep: View {
 
     var body: some View {
         BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
                 BootstrapStepHeading(
                     title: "Choose a Starting Point",
                     subtitle: "Create the Triptych together, or connect the folders you already use."
@@ -784,7 +784,7 @@ private struct BootstrapSetupPathChoice: View {
                     )
                     .accessibilityHidden(true)
             }
-            .padding(16)
+            .padding(ScholiumGrid.Spacing.sectionSeparation)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 isSelected
@@ -823,19 +823,19 @@ private struct BootstrapCreateStructureStep: View {
 
     var body: some View {
         BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
                 BootstrapStepHeading(
                     title: "Create a Research Structure",
                     subtitle: "Name the Triptych and choose its parent location once."
                 )
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text("Triptych Name")
                         .font(ScholiumTypography.interface(.rowTitle))
                     TextField("Triptych Name", text: $triptychName)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("scholium.triptychName")
                 }
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text("Parent Location")
                         .font(ScholiumTypography.interface(.rowTitle))
                     BootstrapPathSelectionRow(
@@ -926,7 +926,7 @@ private struct BootstrapPathSelectionRow: View {
                 }
             }
         }
-        .padding(16)
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
         .background(ScholiumColorRole.surfaceBackground.color)
         .clipShape(
             RoundedRectangle(
@@ -974,13 +974,13 @@ private struct BootstrapExplanationBlock: View {
     let detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Image(systemName: symbol)
                 .scholiumSymbolStyle(.prominent)
                 .scholiumForeground(.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(title)
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text(detail)
@@ -990,7 +990,7 @@ private struct BootstrapExplanationBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(16)
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
         .background(ScholiumColorRole.apparatusSurfaceBackground.color)
         .clipShape(
             RoundedRectangle(
@@ -1017,7 +1017,7 @@ private struct BootstrapReviewTriptychStep: View {
 
     var body: some View {
         BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
                 BootstrapStepHeading(
                     title: setupPath == .createNew
                         ? "Review the New Triptych"
@@ -1059,7 +1059,7 @@ private struct BootstrapStructurePreview: View {
     let rootURL: URL?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Text("Proposed Structure")
                 .font(ScholiumTypography.interface(.sectionTitle))
             Text(rootURL?.path(percentEncoded: false) ?? "Chosen location/Triptych name")
@@ -1071,7 +1071,7 @@ private struct BootstrapStructurePreview: View {
             Rectangle()
                 .fill(ScholiumColorRole.separator.color)
                 .frame(height: 1)
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 BootstrapRoleSummary(title: "Analyses", detail: "Evidence")
                 BootstrapRoleSummary(title: "Topics", detail: "Synthesis")
                 BootstrapRoleSummary(title: "Works", detail: "Writing")
@@ -1105,7 +1105,7 @@ private struct BootstrapFolderSummaryRow: View {
     let path: URL?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Text(title)
                 .font(ScholiumTypography.interface(.rowTitle))
                 .frame(width: 112, alignment: .leading)
@@ -1181,7 +1181,7 @@ private struct BootstrapCompletionStatusRow: View {
     let detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Image(systemName: symbol)
                 .scholiumSymbolStyle(.prominent)
                 .scholiumForeground(.accent)
@@ -1216,8 +1216,8 @@ private struct BootstrapSetupStatus: View {
         .font(ScholiumTypography.interface(.small))
         .scholiumForeground(isError ? .destructive : .attention)
         .lineLimit(2)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
+        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
         .background(ScholiumColorRole.documentBackground.color)
         .accessibilityLabel("Workspace setup: \(message)")
     }

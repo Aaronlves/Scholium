@@ -20,12 +20,12 @@ struct IdentityResolutionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 Image(systemName: "questionmark.folder")
                     .scholiumSymbolStyle(.large)
                     .scholiumForeground(.attention)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     Text("Confirm Note Identity")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text("Scholium found the file at a new location but cannot safely determine which previous note it belongs to.")
@@ -47,7 +47,7 @@ struct IdentityResolutionView: View {
                     .help(ambiguity.fingerprint.sha256)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text("Which note is this?")
                     .font(ScholiumTypography.interface(.sectionTitle))
                 Picker("Note identity", selection: $choice) {

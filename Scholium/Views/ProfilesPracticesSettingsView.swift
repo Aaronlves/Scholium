@@ -195,7 +195,7 @@ struct ProfilesPracticesSettingsView: View {
         snapshot: ResearchAcademicProfileSnapshot
     ) -> some View {
         HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(profile.displayName)
                     .font(ScholiumTypography.interface(.rowTitle))
                 LabeledContent(
@@ -215,7 +215,7 @@ struct ProfilesPracticesSettingsView: View {
                     .scholiumForeground(.secondaryText)
             }
             Spacer(minLength: 12)
-            VStack(alignment: .trailing, spacing: 8) {
+            VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Toggle("Enabled", isOn: Binding(
                     get: { profile.isEnabled },
                     set: { saveProfileEnabled($0, profile: profile, snapshot: snapshot) }
@@ -256,7 +256,7 @@ struct ProfilesPracticesSettingsView: View {
 
     private func practiceRow(_ practice: ResearchPracticeSnapshot) -> some View {
         HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(practice.title)
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text(practice.relativePath)
@@ -436,7 +436,7 @@ private struct ResearchAcademicProfileEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     Text("Edit Academic Profile")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(actionTitle(profile.actionID))
@@ -455,7 +455,7 @@ private struct ResearchAcademicProfileEditor: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Text("PROFILE")
                             .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             .scholiumForeground(.secondaryText)
@@ -463,7 +463,7 @@ private struct ResearchAcademicProfileEditor: View {
                         TextField("Profile Name", text: $displayName)
                         Text("Applicable Roles")
                             .font(ScholiumTypography.interface(.sectionTitle))
-                        HStack(spacing: 16) {
+                        HStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
                             ForEach(allowedRoles, id: \.self) { role in
                                 Toggle(
                                     role.rawValue.capitalized,
@@ -485,7 +485,7 @@ private struct ResearchAcademicProfileEditor: View {
                         fields: $academicResultFields
                     )
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
             }
 
             if let errorMessage {
@@ -607,7 +607,7 @@ private struct ResearchAcademicFieldDraftEditor: View {
     let remove: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             HStack {
                 TextField("Field Name", text: $field.label)
                     .font(ScholiumTypography.interface(.rowTitle))
@@ -857,7 +857,7 @@ private struct ResearchPracticeSourceEditor: View {
                     .disabled(isWorking || source == context.practice.source)
             }
         }
-        .padding(20)
+        .padding(ScholiumGrid.Spacing.regionContentInset)
         .frame(minWidth: 740, minHeight: 560)
     }
 
@@ -922,7 +922,7 @@ private struct NewResearchPracticeEditor: View {
                 )
             }
         }
-        .padding(20)
+        .padding(ScholiumGrid.Spacing.regionContentInset)
         .frame(minWidth: 740, minHeight: 540)
     }
 }

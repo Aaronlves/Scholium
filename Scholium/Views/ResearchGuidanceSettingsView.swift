@@ -104,7 +104,7 @@ func researchSettingsSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
 ) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
         Text(title)
             .font(ScholiumTypography.interface(.small, emphasis: .strong))
             .scholiumForeground(.secondaryText)

@@ -508,7 +508,7 @@ private struct DiscussionPanel: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
                     if let discussion {
                         transcript(discussion)
                     }
@@ -523,7 +523,7 @@ private struct DiscussionPanel: View {
                             .accessibilityIdentifier("scholium.discussion.error")
                     }
                 }
-                .padding(20)
+                .padding(ScholiumGrid.Spacing.regionContentInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -548,7 +548,7 @@ private struct DiscussionPanel: View {
     private var exchangeControls: some View {
         if discussion?.awaitsAgentReply == true {
             agentHandoffControls
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text("AGENT REPLY")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .tracking(0.7)
@@ -603,7 +603,7 @@ private struct DiscussionPanel: View {
     }
 
     private func transcript(_ discussion: PortableResearchDiscussion) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("EXCHANGE")
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
@@ -622,7 +622,7 @@ private struct DiscussionPanel: View {
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .tracking(0.6)
                         .scholiumForeground(.secondaryText)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
                     } else if let passage = statement.passage {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(
@@ -645,7 +645,7 @@ private struct DiscussionPanel: View {
                                 )
                             }
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
                     }
                     Text(statement.text)
                         .font(ScholiumTypography.scholarly(.body))
@@ -665,7 +665,7 @@ private struct DiscussionPanel: View {
         buttonTitle: String,
         action: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text(title)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
@@ -936,8 +936,8 @@ struct NoteContentView: View {
                 IdentityAmbiguityNotice(ambiguity: ambiguity) {
                     actions.requestIdentityResolution()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             } else if let pending = state.pendingIdentityRebinding {
                 IdentityMigrationNotice(
                     rebinding: pending,
@@ -946,8 +946,8 @@ struct NoteContentView: View {
                 ) {
                     await actions.retryIdentityRecovery()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
 
             if state.isManagedCritique {
@@ -1788,7 +1788,7 @@ private struct ConflictComparisonSheet: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 18)
-            .padding(.vertical, 12)
+            .padding(.vertical, ScholiumGrid.Spacing.nestedContentInset)
 
             Divider()
 
@@ -1828,7 +1828,7 @@ private struct ConflictComparisonSheet: View {
                             )
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                 }
             }
 
@@ -1840,7 +1840,7 @@ private struct ConflictComparisonSheet: View {
                 Spacer()
                 Button("Reload from Disk", role: .destructive, action: onReloadFromDisk)
             }
-            .padding(16)
+            .padding(ScholiumGrid.Spacing.sectionSeparation)
         }
         .frame(minWidth: 760, idealWidth: 900, minHeight: 520, idealHeight: 680)
         .scholiumSurface(.boundedPanel)

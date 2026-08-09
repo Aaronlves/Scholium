@@ -487,6 +487,26 @@ selection rule, Light/Dark transitions, Increase Contrast, and system search
 highlight were not inspected in an isolated QA journey; those appearances
 remain bounded visual uncertainty.
 
+#### Foundational spacing ownership
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed all 78
+`FrontendArchitectureTests` after 145 production Swift call sites stopped
+repeating the shared 4/8/12/16/20pt spacing values. The new closed inventory
+scans every production Swift source and rejects raw `spacing` or `padding`
+calls for those values; their rendered measurements remain unchanged because
+the purpose-named `ScholiumGrid.Spacing` roles resolve to the same values.
+
+**Boundary of the claim**
+
+This closes ownership of the shared foundation values without claiming that
+every numeric layout value is shared spacing. Structural zero spacing,
+native-owned geometry, scene and component dimensions, Document CSS units, and
+the remaining component-specific cadences still require
+responsibility-by-responsibility classification. No isolated visual QA was
+required for this value-preserving cutover.
+
 ### Complete UI baseline
 
 **Current passing result**

@@ -363,7 +363,7 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Image(systemName: "magnifyingglass")
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
@@ -448,7 +448,7 @@ struct SpotlightSearchPanelView: View {
 
     private var searchScopeBar: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
+            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 scopePicker
                     .frame(width: ScholiumMetrics.Search.scopeWidth)
 
@@ -457,7 +457,7 @@ struct SpotlightSearchPanelView: View {
                 searchSummary
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 scopePicker
                     .frame(maxWidth: .infinity)
                 searchSummary
@@ -585,7 +585,7 @@ struct SpotlightSearchPanelView: View {
     private func operationalBanner(
         _ presentation: SearchStateBannerPresentation
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             VStack(alignment: .leading, spacing: 2) {
                 Label(presentation.title, systemImage: presentation.systemImage)
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
@@ -602,7 +602,7 @@ struct SpotlightSearchPanelView: View {
                     .controlSize(.small)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
         .padding(.vertical, 9)
         .background(
             ScholiumColorRole.raisedSurfaceBackground.color(
@@ -1178,7 +1178,7 @@ private struct NoteSearchResultRow: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
 
-            HStack(spacing: 8) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text(note.vaultRole.displayName)
                 Text(parentPath)
                 if scope == .thisNote {
@@ -1269,7 +1269,7 @@ private struct RecordSearchResultRow: View {
                 .font(ScholiumTypography.scholarly(.body))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
-            HStack(spacing: 8) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if let actionID = record.actionID { Text(actionID) }
                 if let methodName = record.methodName { Text(methodName) }
                 Text(record.matchedReason)

@@ -281,6 +281,11 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   editorial-text-editor recipe. Increase Contrast
   strengthens boundaries and removes custom soft shadows; Reduce Motion removes
   custom animation.
+- The shared native spacing foundation is now explicit at every matching leaf
+  call site: 4/8/12/16/20pt gaps and insets consume the purpose-named Grid
+  roles. Zero spacing, native geometry, window/component dimensions, Document
+  CSS rhythm, and remaining component-specific cadence are not reclassified as
+  shared spacing merely because their values are numeric.
 - English and Simplified Chinese catalogs are reachable. Stable identifiers,
   paths, exact Markdown, researcher-authored titles and prose, and Skill names
   remain verbatim.

@@ -394,7 +394,7 @@ struct ResearchActionsInspectorView: View {
                 .disabled(isSettling || presentation.target == nil)
             }
         }
-        .padding(16)
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
         .frame(width: 300)
     }
 

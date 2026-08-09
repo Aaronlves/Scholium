@@ -808,7 +808,7 @@ struct ScholiumDocumentStatusToast<Actions: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Image(systemName: kind.symbol)
                     .scholiumForeground(kind.colorRole)
                     .accessibilityHidden(true)
@@ -825,7 +825,7 @@ struct ScholiumDocumentStatusToast<Actions: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             actions()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
         .padding(.vertical, 10)
         .frame(maxWidth: 520, alignment: .leading)
         .scholiumEditorialSurface(

@@ -27,7 +27,7 @@ struct ResearchFinalizedResultView: View {
             } else {
                 ForEach(Array(record.academicResults.enumerated()), id: \.element.id) {
                     index, result in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                         Text(verbatim: result.definition.label)
                             .font(ScholiumTypography.interface(.sectionTitle))
                             .accessibilityAddTraits(.isHeader)
@@ -47,7 +47,7 @@ struct ResearchFinalizedResultView: View {
                 }
             }
             if presentation.showsContextUse, let contextUse = record.contextUseReport {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     Text("Verified Context Use")
                         .font(ScholiumTypography.interface(.sectionTitle))
                         .accessibilityAddTraits(.isHeader)
@@ -598,7 +598,7 @@ struct ResearchMethodFeedbackView: View {
             }
 
             if let handoff = improvementHandoff {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text("METHOD IMPROVEMENT HANDOFF")
                         .scholiumApparatusHeadingStyle()
                     Text(improvementInstructions(handoff))
@@ -625,7 +625,7 @@ struct ResearchMethodFeedbackView: View {
                             .scholiumForeground(.secondaryText)
                     }
                 }
-                .padding(12)
+                .padding(ScholiumGrid.Spacing.nestedContentInset)
                 .background(ScholiumColorRole.raisedSurfaceBackground.color)
                 .clipShape(RoundedRectangle(
                     cornerRadius: ScholiumShape.editorialControlCornerRadius
