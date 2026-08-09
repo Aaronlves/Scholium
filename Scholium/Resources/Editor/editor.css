@@ -1,28 +1,6 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  --scholium-color-document-background: #fef8ed;
-  --scholium-color-surface-background: #f4eee3;
-  --scholium-color-navigation-surface-background: #ece8e1;
-  --scholium-color-apparatus-surface-background: #f9f3e8;
-  --scholium-color-raised-surface-background: #ddd8cf;
-  --scholium-color-primary-text: #28241d;
-  --scholium-color-secondary-text: #4c473e;
-  --scholium-color-muted-text: #615c53;
-  --scholium-color-separator: #c5c0b5;
-  --scholium-color-accent: #9d4114;
-  --scholium-color-accent-hover: #812f02;
-  --scholium-color-notification-highlight: #ad7b3d;
-  --scholium-color-information: #3d6379;
-  --scholium-color-attention: #81520a;
-  --scholium-color-destructive: #8d453e;
-  --scholium-color-confirmed: #3e664b;
-  --scholium-color-agent-authorship: #61577c;
-  --scholium-color-connection-neutral: #6f593f;
-  --scholium-color-connection-support: #2f675e;
-  --scholium-color-connection-incompatible: #72516a;
-  --scholium-mark-highlight-background: #ff9a00;
-  --scholium-mark-highlight-text: #28241d;
 }
 
 html,
@@ -118,7 +96,7 @@ body,
   background: var(--scholium-color-surface-background);
   border: 1px solid var(--scholium-color-attention);
   border-inline-start-width: 4px;
-  border-radius: 6px;
+  border-radius: var(--scholium-corner-inline-status);
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.35;
 }
@@ -263,7 +241,7 @@ body,
   font-weight: 650;
   padding: 0.08em 0.3em;
   border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
-  border-radius: 5px;
+  border-radius: var(--scholium-corner-document-inline-embed);
 }
 
 .cm-line.cm-live-list {
@@ -400,82 +378,8 @@ body,
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --scholium-color-document-background: #2e2921;
-    --scholium-color-surface-background: #3f3a31;
-    --scholium-color-navigation-surface-background: #383530;
-    --scholium-color-apparatus-surface-background: #332e26;
-    --scholium-color-raised-surface-background: #4d483f;
-    --scholium-color-primary-text: #f0eae1;
-    --scholium-color-secondary-text: #d0cabf;
-    --scholium-color-muted-text: #beb8ad;
-    --scholium-color-separator: #7c776d;
-    --scholium-color-accent: #ffa17b;
-    --scholium-color-accent-hover: #feae8e;
-    --scholium-color-notification-highlight: #daa668;
-    --scholium-color-information: #95bed6;
-    --scholium-color-attention: #e3af71;
-    --scholium-color-destructive: #f6a39a;
-    --scholium-color-confirmed: #99c4a6;
-    --scholium-color-agent-authorship: #bdb3dd;
-    --scholium-color-connection-neutral: #ccb396;
-    --scholium-color-connection-support: #8cc5ba;
-    --scholium-color-connection-incompatible: #d2adc8;
-  }
-}
-
 @media (prefers-contrast: more) {
-  :root {
-    --scholium-color-document-background: #fef8ed;
-    --scholium-color-surface-background: #f4eee3;
-    --scholium-color-navigation-surface-background: #ece8e1;
-    --scholium-color-apparatus-surface-background: #f9f3e8;
-    --scholium-color-raised-surface-background: #ddd8cf;
-    --scholium-color-primary-text: #28241d;
-    --scholium-color-secondary-text: #454138;
-    --scholium-color-muted-text: #474239;
-    --scholium-color-separator: #8b857c;
-    --scholium-color-accent: #6e2b0a;
-    --scholium-color-accent-hover: #501a01;
-    --scholium-color-notification-highlight: #95631e;
-    --scholium-color-information: #163c50;
-    --scholium-color-attention: #4e3107;
-    --scholium-color-destructive: #681212;
-    --scholium-color-confirmed: #1a4129;
-    --scholium-color-agent-authorship: #3b3154;
-    --scholium-color-connection-neutral: #48331a;
-    --scholium-color-connection-support: #01423a;
-    --scholium-color-connection-incompatible: #4a2c43;
-  }
-
   .cm-live-vector-link {
     text-decoration-thickness: 2px;
-  }
-
-}
-
-@media (prefers-color-scheme: dark) and (prefers-contrast: more) {
-  :root {
-    --scholium-color-document-background: #2e2921;
-    --scholium-color-surface-background: #3f3a31;
-    --scholium-color-navigation-surface-background: #383530;
-    --scholium-color-apparatus-surface-background: #332e26;
-    --scholium-color-raised-surface-background: #4d483f;
-    --scholium-color-primary-text: #f0eae1;
-    --scholium-color-secondary-text: #eae4d9;
-    --scholium-color-muted-text: #eae4d9;
-    --scholium-color-separator: #a39e94;
-    --scholium-color-accent: #fedccf;
-    --scholium-color-accent-hover: #fdded2;
-    --scholium-color-notification-highlight: #f6bf7e;
-    --scholium-color-information: #c5e8fd;
-    --scholium-color-attention: #fedfbc;
-    --scholium-color-destructive: #ffdbd6;
-    --scholium-color-confirmed: #c3efd0;
-    --scholium-color-agent-authorship: #e6e0fd;
-    --scholium-color-connection-neutral: #fae0c2;
-    --scholium-color-connection-support: #b6f0e5;
-    --scholium-color-connection-incompatible: #fed7f4;
   }
 }

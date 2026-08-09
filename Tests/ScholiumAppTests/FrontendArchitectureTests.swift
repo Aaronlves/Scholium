@@ -229,7 +229,12 @@ struct FrontendArchitectureTests {
         #expect(recoveryComponent.contains("case documentInline"))
         #expect(recoveryComponent.contains("case workspaceBanner"))
         #expect(recoveryComponent.contains("struct ScholiumRecoveryNotice<Action: View>"))
-        #expect(recoveryComponent.contains("ScholiumColorRole.attention.color"))
+        #expect(recoveryComponent.contains(".scholiumForeground(.attention)"))
+        #expect(
+            recoveryComponent.contains(
+                "ScholiumColorRole.raisedSurfaceBackground.color"
+            )
+        )
         #expect(recoveryComponent.contains("ScholiumStructuralRule()"))
         #expect(recoveryComponent.contains("ViewThatFits(in: .horizontal)"))
         #expect(recoveryComponent.contains(".accessibilityElement(children: .combine)"))
@@ -265,7 +270,7 @@ struct FrontendArchitectureTests {
         #expect(!searchSource.contains("ScholiumRecoveryNotice("))
     }
 
-    @Test("Feature views use resolved functional color roles")
+    @Test("Production colors have one semantic owner with bounded exceptions")
     func featureViewsUseResolvedFunctionalColorRoles() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -299,6 +304,104 @@ struct FrontendArchitectureTests {
                 range: NSRange(source.startIndex..<source.endIndex, in: source)
             )
             #expect(match == nil, "\(path) contains a raw functional color")
+        }
+
+        let applicationRoot = repository.appendingPathComponent("Scholium")
+        let applicationEnumerator = try #require(
+            FileManager.default.enumerator(
+                at: applicationRoot,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+        )
+        var applicationSources: [String: String] = [:]
+        while let file = applicationEnumerator.nextObject() as? URL {
+            guard file.pathExtension == "swift" else { continue }
+            let relativePath = file.path.replacingOccurrences(
+                of: repository.path + "/",
+                with: ""
+            )
+            applicationSources[relativePath] = try String(contentsOf: file, encoding: .utf8)
+        }
+
+        let designSystemPath = "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+        let bootstrapArtworkPath = "Scholium/Views/BootstrapStageArtworkView.swift"
+        let searchPath = "Scholium/Views/SearchWorkspaceView.swift"
+        let rawAppKitPaletteAccess = try NSRegularExpression(
+            pattern:
+                #"\.(?:labelColor|secondaryLabelColor|tertiaryLabelColor|windowBackgroundColor|controlBackgroundColor|textBackgroundColor|findHighlightColor|shadowColor)\b"#
+        )
+        let directSystemForeground = try NSRegularExpression(
+            pattern: #"\.foregroundStyle\(\.(?:primary|secondary|tertiary)\)"#
+        )
+        let directRoleForeground = try NSRegularExpression(
+            pattern: #"\.foregroundStyle\(ScholiumColorRole\.[A-Za-z]+\.color\)"#
+        )
+        let localSemanticOpacity = try NSRegularExpression(
+            pattern: #"ScholiumColorRole\.[A-Za-z]+\.color(?:\([^)]*\))?\.opacity\([0-9]"#
+        )
+        let rawSwiftColorInput = try NSRegularExpression(
+            pattern: #"\b(?:Color\((?:red|white):|NSColor\((?:calibrated|device|sRGB))"#
+        )
+
+        for (path, source) in applicationSources.sorted(by: { $0.key < $1.key }) {
+            let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
+            if path != designSystemPath {
+                #expect(
+                    rawAppKitPaletteAccess.firstMatch(
+                        in: source,
+                        range: sourceRange
+                    ) == nil,
+                    "\(path) reaches into AppKit's color palette directly"
+                )
+                #expect(
+                    localSemanticOpacity.firstMatch(
+                        in: source,
+                        range: sourceRange
+                    ) == nil,
+                    "\(path) owns a numeric semantic-color opacity recipe"
+                )
+            }
+            #expect(
+                directSystemForeground.firstMatch(
+                    in: source,
+                    range: sourceRange
+                ) == nil,
+                "\(path) bypasses Scholium foreground roles"
+            )
+
+            let directRoleMatches = directRoleForeground.matches(
+                in: source,
+                range: sourceRange
+            )
+            if path == searchPath {
+                #expect(directRoleMatches.count == 1)
+                #expect(
+                    source.contains(
+                        "prompt: Text(\"Spotlight Search\")\n"
+                            + "                    .foregroundStyle("
+                            + "ScholiumColorRole.secondaryText.color)"
+                    )
+                )
+            } else if path != designSystemPath {
+                #expect(
+                    directRoleMatches.isEmpty,
+                    "\(path) bypasses the adaptive Scholium foreground modifier"
+                )
+            }
+
+            let rawInputMatches = rawSwiftColorInput.matches(
+                in: source,
+                range: sourceRange
+            )
+            if path == bootstrapArtworkPath {
+                #expect(rawInputMatches.count == 7)
+            } else if path != designSystemPath {
+                #expect(
+                    rawInputMatches.isEmpty,
+                    "\(path) introduces a raw Swift color input"
+                )
+            }
         }
 
         let checkpoint = try #require(viewSources["Scholium/Views/CheckpointView.swift"])
@@ -1157,7 +1260,7 @@ struct FrontendArchitectureTests {
         #expect(workspaceButton.contains("ScholiumContentControlButtonStyle("))
         #expect(workspaceButton.contains(".scholiumContentControlInk()"))
         #expect(!workspaceButton.contains("ScholiumControlActivation"))
-        #expect(workspaceButton.contains("ScholiumColorRole.mutedText.color"))
+        #expect(workspaceButton.contains(".scholiumForeground(.mutedText)"))
         #expect(
             workspaceButton.contains(
                 "ScholiumShape.workspaceNavigationCornerRadius"
@@ -1176,7 +1279,7 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains("case checking"))
         #expect(componentsSource.contains("case unavailable"))
         #expect(!componentsSource.contains("Circle().fill(controlSurface)"))
-        #expect(componentsSource.contains("ScholiumColorRole.attention.color"))
+        #expect(componentsSource.contains(".scholiumForeground(.attention)"))
         #expect(componentsSource.contains("scholiumAttentionPopoverIsPresented"))
         #expect(!componentsSource.contains("SidebarTriptychAttentionButtonStyle"))
         #expect(componentsSource.contains("ScholiumContentControlButtonStyle("))
@@ -1946,7 +2049,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(researchSource.contains("attentionSection"))
         #expect(!researchSource.contains("if !context.visibleAttentionItems.isEmpty"))
-        #expect(researchSource.contains("ScholiumColorRole.attention.color"))
+        #expect(researchSource.contains(".scholiumForeground(.attention)"))
         #expect(
             researchSource.contains(
                 "ScholiumTypography.scholarly(.emphasis)"
@@ -2730,7 +2833,7 @@ struct FrontendArchitectureTests {
         #expect(browser.contains("focusPresentation: .native"))
         #expect(!browser.contains("ResearchRecordCollectionRowMainButtonStyle"))
         #expect(browser.contains("ScholiumContentControlButtonStyle("))
-        #expect(browser.contains("ScholiumMetrics.ResearchRecords.collectionRowCornerRadius"))
+        #expect(browser.contains("ScholiumShape.researchRecordCollectionRowCornerRadius"))
         #expect(browser.contains("ScholiumShape.editorialControlCornerRadius"))
         #expect(browser.contains(".scholiumContentControlPointerFeedback("))
         #expect(!browser.contains("ResearchRecordsToolbar"))
@@ -2895,18 +2998,34 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let cssURL = repository.appendingPathComponent("Scholium/Resources/Editor/editor.css")
-        let css = try String(contentsOf: cssURL, encoding: .utf8)
+        let cssRoot = repository.appendingPathComponent("Scholium/Resources/Editor")
+        let cssEnumerator = try #require(
+            FileManager.default.enumerator(
+                at: cssRoot,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+        )
+        var authoredCSS = ""
+        while let file = cssEnumerator.nextObject() as? URL {
+            guard file.pathExtension == "css" else { continue }
+            authoredCSS += try String(contentsOf: file, encoding: .utf8)
+            authoredCSS.append("\n")
+        }
+        #expect(!authoredCSS.isEmpty)
 
         let nativeNames = Set(ScholiumColorRole.allCases.map(\.cssVariableName))
         let expression = try NSRegularExpression(pattern: #"--scholium-color-[a-z-]+"#)
-        let range = NSRange(css.startIndex..<css.endIndex, in: css)
-        let cssNames = Set(
-            expression.matches(in: css, range: range).compactMap { match in
-                Range(match.range, in: css).map { String(css[$0]) }
+        let range = NSRange(
+            authoredCSS.startIndex..<authoredCSS.endIndex,
+            in: authoredCSS
+        )
+        let authoredCSSNames = Set(
+            expression.matches(in: authoredCSS, range: range).compactMap { match in
+                Range(match.range, in: authoredCSS).map { String(authoredCSS[$0]) }
             })
 
-        #expect(cssNames == nativeNames)
+        #expect(authoredCSSNames.isSubset(of: nativeNames))
         #expect(Set(ScholiumWebDesignTokens.resolvedColorRoleCSSVariableNames) == nativeNames)
 
         for declarations in [
@@ -2915,12 +3034,51 @@ struct FrontendArchitectureTests {
             ScholiumWebDesignTokens.increasedContrastCSSDeclarations,
             ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations,
         ] {
-            for declaration in declarations.split(separator: "\n") {
-                let normalized = declaration.trimmingCharacters(in: .whitespaces)
-                guard normalized.hasPrefix("--scholium-color-") else { continue }
-                #expect(css.contains(normalized))
-            }
+            let declarationRange = NSRange(
+                declarations.startIndex..<declarations.endIndex,
+                in: declarations
+            )
+            let declarationNames = Set(
+                expression.matches(
+                    in: declarations,
+                    range: declarationRange
+                ).compactMap { match in
+                    Range(match.range, in: declarations).map {
+                        String(declarations[$0])
+                    }
+                }
+            )
+            #expect(declarationNames == nativeNames)
         }
+
+        let authoredColorDeclaration = try NSRegularExpression(
+            pattern: #"--scholium-(?:color|mark-highlight)-[a-z-]+\s*:"#
+        )
+        let authoredHexColor = try NSRegularExpression(
+            pattern: #"#[0-9A-Fa-f]{3,8}\b"#
+        )
+        #expect(
+            authoredColorDeclaration.firstMatch(
+                in: authoredCSS,
+                range: range
+            ) == nil
+        )
+        #expect(
+            authoredHexColor.firstMatch(
+                in: authoredCSS,
+                range: range
+            ) == nil
+        )
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                ScholiumWebDesignTokens.rootCSSDeclarations
+            )
+        )
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                ScholiumWebDesignTokens.fixedDocumentSyntaxCSSDeclarations
+            )
+        )
     }
 
     @Test("Document and interface typography expose semantic roles")
@@ -3157,7 +3315,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Accessibility.preferredCustomTarget == 28)
         #expect(ScholiumMetrics.Accessibility.minimumCustomTarget == 20)
         #expect(ScholiumMetrics.Search.preferredWidth == 640)
-        #expect(ScholiumMetrics.Search.cornerRadius == 12)
+        #expect(ScholiumShape.searchOverlayCornerRadius == 12)
         #expect(
             ScholiumMetrics.Search.resultHorizontalInset == ScholiumGrid.Spacing.regionContentInset)
         #expect(
@@ -3167,6 +3325,7 @@ struct FrontendArchitectureTests {
                 == ScholiumGrid.Spacing.opticalAlignmentAdjustment)
         #expect(ScholiumShape.editorialControlCornerRadius == 8)
         #expect(ScholiumShape.editorialPanelCornerRadius == 10)
+        #expect(ScholiumShape.editorialTextEditorCornerRadius == 6)
         #expect(
             ScholiumMetrics.Library.workspaceNavigatorTopSpacing
                 == ScholiumGrid.Spacing.nestedContentInset
@@ -3175,7 +3334,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.ResearchRecords.pageEdge == 28)
         #expect(ScholiumMetrics.ResearchRecords.collectionSearchMinimumWidth == 192)
         #expect(ScholiumMetrics.ResearchRecords.collectionColumnHeaderHeight == 28)
-        #expect(ScholiumMetrics.ResearchRecords.collectionRowCornerRadius == 8)
+        #expect(ScholiumShape.researchRecordCollectionRowCornerRadius == 8)
         #expect(ScholiumMetrics.ResearchRecords.collectionRowHeight == 48)
         #expect(ScholiumMetrics.ResearchRecords.collectionColumnGap == 12)
         #expect(ScholiumMetrics.ResearchRecords.recordAttentionColumnWidth == 28)
@@ -3190,6 +3349,141 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.ResearchRecords.evidenceMinimumWidth == 260)
         #expect(ScholiumMetrics.ResearchRecords.evidenceMaximumWidth == 304)
         #expect(ScholiumMetrics.ResearchRecords.readingMeasure == 680)
+    }
+
+    @Test("Native and WebKit corner geometry has one semantic owner")
+    func semanticCornerGeometryContract() throws {
+        #expect(
+            Set(ScholiumCornerRole.allCases)
+                == Set([
+                    .inlineStatus,
+                    .editorialControl,
+                    .workspaceNavigation,
+                    .editorialPanel,
+                    .loadingSurface,
+                    .editorialTextEditor,
+                    .searchOverlay,
+                    .researchRecordCollectionRow,
+                    .boundedPanel,
+                    .documentCodeBlock,
+                    .documentMarkHighlight,
+                    .documentInlineCode,
+                    .documentInlineEmbed,
+                    .floatingSelectionControl,
+                    .documentControl,
+                    .selectionSplitControl,
+                    .calloutDisclosureFocus,
+                ]))
+        #expect(ScholiumCornerRole.editorialTextEditor.radius == 6)
+        #expect(ScholiumCornerRole.boundedPanel.radius == 8)
+        #expect(ScholiumCornerRole.documentControl.radius == 5)
+
+        let webNames = Set(ScholiumCornerRole.allCases.compactMap(\.cssVariableName))
+        #expect(ScholiumWebDesignTokens.resolvedCornerRoleCSSVariableNames == webNames)
+        for declaration in ScholiumShape.webCSSDeclarations.split(separator: "\n") {
+            #expect(
+                ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                    declaration.trimmingCharacters(in: .whitespaces)
+                ))
+        }
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repository.appendingPathComponent("Scholium", isDirectory: true)
+        let enumerator = try #require(
+            FileManager.default.enumerator(
+                at: applicationRoot,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ))
+        let rawNativeCorner = try NSRegularExpression(
+            pattern:
+                #"(?:cornerRadius|topLeadingRadius|bottomLeadingRadius|topTrailingRadius|bottomTrailingRadius)\s*:\s*\d|\.cornerRadius\(\s*\d"#
+        )
+        let rawWebCorner = try NSRegularExpression(
+            pattern: #"border(?:-[a-z-]+)?-radius\s*:\s*\d"#
+        )
+        while let sourceURL = enumerator.nextObject() as? URL {
+            guard ["css", "swift"].contains(sourceURL.pathExtension) else { continue }
+            let source = try String(contentsOf: sourceURL, encoding: .utf8)
+            let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
+            #expect(
+                rawNativeCorner.firstMatch(in: source, range: sourceRange) == nil,
+                "A leaf-owned native radius escaped ScholiumCornerRole: \(sourceURL.path)"
+            )
+            #expect(
+                rawWebCorner.firstMatch(in: source, range: sourceRange) == nil,
+                "A leaf-owned WebKit radius escaped ScholiumCornerRole: \(sourceURL.path)"
+            )
+        }
+
+        let designSystem = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+            ),
+            encoding: .utf8
+        )
+        let search = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/SearchWorkspaceView.swift"
+            ),
+            encoding: .utf8
+        )
+        let bootstrap = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/WorkspaceSetupView.swift"
+            ),
+            encoding: .utf8
+        )
+        let frontmatter = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+            ),
+            encoding: .utf8
+        )
+        let note = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let review = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        let shapeStart = try #require(designSystem.range(of: "enum ScholiumShape {"))
+        let shapeSuffix = designSystem[shapeStart.lowerBound...]
+        let shapeEnd = try #require(
+            shapeSuffix.range(of: "/// The shared shallow interaction surface")
+        )
+        var designSystemOutsideShape = designSystem
+        designSystemOutsideShape.removeSubrange(
+            shapeStart.lowerBound..<shapeEnd.lowerBound
+        )
+        let parallelCornerOwner = try NSRegularExpression(
+            pattern: #"static let [A-Za-z0-9_]*(?:cornerRadius|CornerRadius)"#
+        )
+        #expect(
+            parallelCornerOwner.firstMatch(
+                in: designSystemOutsideShape,
+                range: NSRange(
+                    designSystemOutsideShape.startIndex..<designSystemOutsideShape.endIndex,
+                    in: designSystemOutsideShape
+                )
+            ) == nil,
+            "Corner geometry regained a Metrics or Grid owner outside ScholiumShape"
+        )
+        #expect(designSystem.contains(".containerShape(shape)"))
+        #expect(search.contains("in: ConcentricRectangle()"))
+        #expect(search.contains("ScholiumShape.searchOverlayCornerRadius"))
+        #expect(bootstrap.contains("ScholiumShape.editorialPanelCornerRadius"))
+        #expect(frontmatter.contains("ScholiumShape.editorialTextEditorCornerRadius"))
+        #expect(note.contains("ScholiumShape.editorialTextEditorCornerRadius"))
+        #expect(review.contains("var(--scholium-corner-editorial-text-editor)"))
     }
 
     @Test("Search and Properties consume purpose-named component dimensions")
@@ -4048,7 +4342,7 @@ struct FrontendArchitectureTests {
         #expect(!recordSource.contains("ResearchRecordCollectionRowMainButtonStyle"))
         #expect(!recordSource.contains("ResearchRecordsEditorialButtonStyle"))
         #expect(recordSource.contains("ScholiumContentControlButtonStyle("))
-        #expect(recordSource.contains("ScholiumMetrics.ResearchRecords.collectionRowCornerRadius"))
+        #expect(recordSource.contains("ScholiumShape.researchRecordCollectionRowCornerRadius"))
     }
 
     @Test("Semantic surfaces, depth, and boundaries adapt without numbered visual scales")
@@ -4952,14 +5246,6 @@ struct FrontendArchitectureTests {
 
     @Test("Relationship colors provide increased-contrast variants")
     func increasedContrastRelationshipColors() throws {
-        let sourceFile = URL(fileURLWithPath: #filePath)
-        let repository =
-            sourceFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let cssURL = repository.appendingPathComponent("Scholium/Resources/Editor/editor.css")
-        let css = try String(contentsOf: cssURL, encoding: .utf8)
         let aqua = try #require(NSAppearance(named: .aqua))
         let darkAqua = try #require(NSAppearance(named: .darkAqua))
 
@@ -5009,9 +5295,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#4a2c43"))
         #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#b6f0e5"))
         #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#fed7f4"))
-        for value in ["#01423a", "#4a2c43", "#b6f0e5", "#fed7f4"] {
-            #expect(css.contains(value))
-        }
     }
 
     @Test("The live Connections inspector uses one semantic presentation")

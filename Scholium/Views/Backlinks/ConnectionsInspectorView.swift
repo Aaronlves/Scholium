@@ -336,7 +336,7 @@ struct ConnectionsInspectorView: View {
                         .font(
                             ScholiumTypography.interface(.small, tabularDigits: true)
                         )
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
             )
             .contentShape(Rectangle())
@@ -393,13 +393,13 @@ private struct ConnectionRelationshipCluster: View {
             Image(systemName: cluster.presentation.systemSymbol.systemName)
                 .scholiumSymbolStyle(.relationship)
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(ScholiumColorRole.mutedText.color)
+                .scholiumForeground(.mutedText)
                 .frame(width: ScholiumMetrics.Apparatus.relationGlyphColumnWidth)
                 .accessibilityHidden(true)
 
             Text(cluster.presentation.title)
                 .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
 
             Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
 
@@ -407,7 +407,7 @@ private struct ConnectionRelationshipCluster: View {
                 .font(
                     ScholiumTypography.interface(.small, tabularDigits: true)
                 )
-                .foregroundStyle(ScholiumColorRole.mutedText.color)
+                .scholiumForeground(.mutedText)
         }
         .frame(
             maxWidth: .infinity,

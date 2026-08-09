@@ -359,14 +359,14 @@ struct ResearchActionsInspectorView: View {
                 .font(ScholiumTypography.interface(.sectionTitle))
             Text("Record this saved revision as sufficiently stable for current research.")
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("Optional rationale", text: $settlementRationale, axis: .vertical)
                 .lineLimit(2...4)
             if let settlementError {
                 Text(settlementError)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(ScholiumColorRole.attention.color)
+                    .scholiumForeground(.attention)
             }
             HStack {
                 Button("Cancel") {

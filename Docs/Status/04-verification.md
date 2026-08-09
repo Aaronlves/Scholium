@@ -432,6 +432,61 @@ Representative Debug/QA paths only; headless tests own durable, authentication, 
 claims. The direct-relation Search behavior is accepted for the Search Foundation engineering
 handoff; a successful XCTest host-automation run remains test-infrastructure closure work.
 
+#### Corner geometry normalization
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed all 78
+`FrontendArchitectureTests`, the four interface-presentation ownership tests,
+and the attached-WKWebView Review/inactive-Edit geometry baseline. The new
+closed inventory scans production Swift and CSS and found no numeric leaf
+corner arguments or declarations. It also confirms the shared Native/WebKit
+editorial-text-editor role, generated WebKit corner properties, the custom
+surface `containerShape` owner, and Search's nested `ConcentricRectangle`.
+
+The editor-resource gate separately passed TypeScript checking, all 185 tests
+in 33 files, and exact CodeMirror, mathematics, and Mermaid bundle
+reproduction. Documentation-authority validation passed for three manifests,
+22 chapters, and 102 local links.
+
+**Boundary of the claim**
+
+This closes deterministic source ownership, generated-resource parity, and the
+fixed WebKit geometry baseline. It is not researcher visual or
+assistive-technology acceptance. Search concentric geometry across arbitrary
+window sizes and the normalized Bootstrap panel corners were not inspected in
+an isolated QA journey; their appearance remains bounded visual uncertainty,
+not an unverified state or source-fidelity claim.
+
+#### Color ownership normalization
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed all 78
+`FrontendArchitectureTests` and all four
+`InterfacePresentationOwnershipTests`. The closed color inventory scans every
+production Swift source and every authored Editor stylesheet. Outside the
+Design System, the exact Bootstrap artwork palette, and one semantic
+`TextField` prompt constrained to remain `Text`, it rejects raw Swift color
+inputs, direct AppKit palette access, system primary/secondary foregrounds,
+resolved-role foreground bypasses, and numeric semantic-color opacity recipes.
+It also rejects authored WebKit palette declarations and hexadecimal colors.
+
+The editor-resource gate separately passed TypeScript checking, all 185 tests
+in 33 files, and exact CodeMirror, mathematics, and Mermaid bundle
+reproduction after the static `editor.css` Light, Dark, and Increase Contrast
+palettes were removed. Native and WebKit appearance values continue to be
+generated from the same Accent and Paper resolver inputs.
+
+**Boundary of the claim**
+
+This closes deterministic color ownership, generated WebKit palette transport,
+and contrast-role regression evidence. It is not researcher visual or
+assistive-technology acceptance. The normalized raised surfaces, Accent tab
+selection rule, Light/Dark transitions, Increase Contrast, and system search
+highlight were not inspected in an isolated QA journey; those appearances
+remain bounded visual uncertainty.
+
 ### Complete UI baseline
 
 **Current passing result**

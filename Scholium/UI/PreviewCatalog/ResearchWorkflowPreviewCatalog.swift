@@ -86,7 +86,7 @@ private struct ResearchProofHeader: View {
             Spacer()
             Text("Synthetic data")
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
         }
         .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
         .frame(minHeight: ScholiumGrid.Dimension.regionHeaderHeight)
@@ -246,7 +246,7 @@ private struct ResearchSheetIdentity: View {
                 .accessibilityAddTraits(.isHeader)
             Text(skill)
                 .font(ScholiumTypography.scholarly(.body))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
             LabeledContent("Target", value: target)
             LabeledContent("Starting revision", value: revision)
                 .font(ScholiumTypography.exact(.body))
@@ -272,7 +272,7 @@ private struct ResearchAuthorityFacts: View {
                 LabeledContent("Conflict recovery", value: "Retained displaced bytes")
                 Text("The Method may guide scholarly work, but it cannot hide or expand these app-owned facts.")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -365,7 +365,7 @@ private struct ResearchGuidanceSettingsDetail: View {
             ResearchProofSection(title: "RESEARCH SKILLS") {
                         Text("Each Platform Action routes to one current primary Markdown Method. Exact Wikilinks select Practices; an optional local folder is ordinary Agent-readable storage, not a package.")
                     .font(ScholiumTypography.scholarly(.body))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                         VStack(spacing: 0) {
                             ForEach([
@@ -385,7 +385,7 @@ private struct ResearchGuidanceSettingsDetail: View {
             ResearchProofSection(title: "BOUNDARY") {
                 Text("Method and Practice prose can guide scholarly work. It cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery.")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         case .profilesPractices:
@@ -400,7 +400,7 @@ private struct ResearchGuidanceSettingsDetail: View {
             ], actionTitle: "Edit")
             Text("A Practice keeps one replaceable previous edit. It guides research but never grants authority.")
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         case .collaboration:
             ResearchProofSection(title: "TRIPTYCH COLLABORATION") {
@@ -411,7 +411,7 @@ private struct ResearchGuidanceSettingsDetail: View {
                 }
                 Text("The policy only controls when Scholium asks to extend one Run's bounded write set. It is not attached to a Skill or Agent and never grants blanket writes.")
                     .font(ScholiumTypography.scholarly(.body))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         case .sources:
@@ -447,7 +447,7 @@ private struct ResearchWorkingMethodProofRow: View {
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text("Practices: \(practices)")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
             }
             Spacer()
             Menu("Manage") {
@@ -475,7 +475,7 @@ private struct ResearchSkillGroup: View {
         ResearchProofSection(title: title) {
             Text(detail)
                 .font(ScholiumTypography.scholarly(.body))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
             VStack(spacing: 0) {
                 ForEach(rows, id: \.self) { row in
                     HStack {
@@ -518,7 +518,7 @@ private struct ResearchWriteSetExtensionProof: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("Select the requested Notes this Run may modify.")
                     .font(ScholiumTypography.scholarly(.body))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 ResearchProofSection(title: "REQUEST") {

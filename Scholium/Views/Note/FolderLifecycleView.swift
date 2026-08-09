@@ -45,7 +45,7 @@ struct FolderLifecycleView: View {
 
             Text(helpText)
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider()

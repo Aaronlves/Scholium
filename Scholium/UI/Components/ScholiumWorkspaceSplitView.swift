@@ -41,7 +41,7 @@ private struct ScholiumStructuralDepthView: View {
                 ))
                 .frame(width: 1)
                 .shadow(
-                    color: Color(nsColor: .shadowColor).opacity(style.opacity),
+                    color: ScholiumNativeColorRole.structuralShadow.color.opacity(style.opacity),
                     radius: style.radius,
                     x: style.x,
                     y: style.y
@@ -977,7 +977,7 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
             ofSize: NSFont.systemFontSize,
             weight: .regular
         )
-        titleButton.contentTintColor = .secondaryLabelColor
+        titleButton.contentTintColor = ScholiumColorRole.secondaryText.nsColor
         titleButton.toolTip = tab.toolTip
         titleButton.lineBreakMode = .byTruncatingTail
         titleButton.translatesAutoresizingMaskIntoConstraints = false
@@ -997,7 +997,7 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         closeButton.tabID = tab.id
         closeButton.isBordered = false
         closeButton.imagePosition = .imageOnly
-        closeButton.contentTintColor = .secondaryLabelColor
+        closeButton.contentTintColor = ScholiumColorRole.secondaryText.nsColor
         closeButton.toolTip = closeLabel
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.setAccessibilityLabel(closeLabel)
@@ -1067,14 +1067,16 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
             ofSize: NSFont.systemFontSize,
             weight: isSelected ? .medium : .regular
         )
-        selector.title.contentTintColor = isSelected ? .labelColor : .secondaryLabelColor
+        selector.title.contentTintColor = isSelected
+            ? ScholiumColorRole.primaryText.nsColor
+            : ScholiumColorRole.secondaryText.nsColor
         selector.title.setAccessibilityLabel(tab.title)
         selector.title.setAccessibilityValue(isSelected ? "Selected" : "")
         let closeLabel = "Close \(tab.title)"
         selector.close.toolTip = closeLabel
         selector.close.setAccessibilityLabel(closeLabel)
         selector.selectionRule.layer?.backgroundColor = isSelected
-            ? NSColor.labelColor.withAlphaComponent(0.72).cgColor
+            ? ScholiumColorRole.accent.nsColor.cgColor
             : NSColor.clear.cgColor
     }
 

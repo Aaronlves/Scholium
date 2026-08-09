@@ -20,13 +20,27 @@ native and generated WebKit CSS. The complete Sidebar uses the Navigation
 surface; Inspector uses a distinct Apparatus role whose tone is deliberately
 much closer to Document than Navigation. Sticky Inspector headers and
 relationship-symbol occlusion reuse that exact Apparatus role rather than a
-floating-control surface. Matching `editor.css`
-fallbacks preserve deterministic first paint. Functional/status anchors stay
-private. Tests enforce the input boundary, mappings, parity, contrast, and
-relationship variants; no static appearance palette or JSON mirror exists.
+floating-control surface. `ScholiumWebDesignTokens` injects the resolved role
+declarations and fixed Markup syntax exception into every document HTML
+surface; authored Editor styles only consume those properties and contain no
+fallback palette. Functional/status anchors stay private. Tests enforce the
+input boundary, mappings, parity, contrast, and relationship variants; no
+static appearance palette or JSON mirror exists.
 `ScholiumSystemSymbol` centralizes native symbol names, while
 `ScholiumWebSymbolAssets` transports the same SF Symbols into WebKit as CSS
 masks without introducing a second path catalog.
+
+`scholiumForeground` is the adaptive SwiftUI foreground boundary for
+Scholium-owned copy and glyphs. Feature views select a `ScholiumColorRole`
+rather than system primary/secondary styles or a resolved `Color`; the single
+`TextField` prompt that must remain a `Text` value consumes the same semantic
+role directly. `ScholiumNativeColorRole` names the only AppKit-owned effect
+colors used by custom rendering: search-match highlight and structural shadow.
+Bootstrap's closed narrative-art palette and the fixed Markup highlight remain
+the two nonconfigurable authored exceptions declared by Design §19.2.
+Repository inventory tests reject raw Swift inputs outside those owners,
+direct AppKit palette access, leaf semantic-color opacity recipes, and authored
+WebKit color declarations or literals.
 
 `ScholiumSurfaceRole` maps a Scholium-owned surface to its default semantic
 boundary and, where applicable, one purpose-named `ScholiumElevationRole`.
@@ -41,9 +55,9 @@ detail host uses the same full-height split grammar to cast from the dominant
 reading plane into the Evidence rail. Each host covers the complete receiving
 split-item bounds beneath the native toolbar, is excluded from hit testing and
 accessibility, and mirrors in right-to-left presentation. The native modifiers
-use AppKit's semantic shadow color, while `ScholiumWebDesignTokens` exports only
-the transient role names as CSS shadow declarations without converting points
-to CSS pixels.
+consume the named structural-shadow exception, while
+`ScholiumWebDesignTokens` exports only the transient role names as CSS shadow
+declarations without converting points to CSS pixels.
 Selection bars consume `floatingControl`; custom selection menus, the shared
 link preview, and Edit input-suggestion lists consume `boundedPanel`; Search
 consumes `searchOverlay`. The shared preview uses the complete opaque bounded-
@@ -223,6 +237,17 @@ populated OutlineRows or alter their denser row-surface inset.
 optical exception, semantic spacing, and component anchors. `ScholiumMetrics`
 maps responsibilities to those roles without copying values; no geometry JSON
 mirror exists.
+
+`ScholiumCornerRole` is the closed responsibility vocabulary for custom corner
+geometry. `ScholiumShape` exposes the Native aliases and generates only the
+WebKit custom properties needed by the same or WebKit-specific constructs; it
+does not define a numbered radius scale. `scholiumEditorialSurface` accepts a
+`RoundedRectangularShape` and publishes it with `containerShape`, so a genuinely
+nested custom surface such as the Search availability banner can resolve
+`ConcentricRectangle` from its container. Independent Native controls consume a
+purpose-named role, while Review/Edit styles consume generated
+`--scholium-corner-*` properties. The architecture inventory rejects numeric
+Swift corner arguments and numeric CSS corner declarations outside this owner.
 
 - AppKit owns window, toolbar, split, divider, collapse, fullscreen, and frame
   geometry. The Library's 300pt content minimum is native split-item state, not

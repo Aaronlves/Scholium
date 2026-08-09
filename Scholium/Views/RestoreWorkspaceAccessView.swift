@@ -18,7 +18,7 @@ struct RestoreWorkspaceAccessView: View {
 
             Text(explanation)
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(recovery.expectedPath)

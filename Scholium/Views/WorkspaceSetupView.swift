@@ -139,7 +139,7 @@ private struct BootstrapFlowView: View {
                 }
             }
         }
-        .foregroundStyle(ScholiumColorRole.primaryText.color)
+        .scholiumForeground(.primaryText)
         .background(ScholiumColorRole.documentBackground.color)
         .tint(ScholiumColorRole.accent.color)
         .task {
@@ -759,10 +759,10 @@ private struct BootstrapSetupPathChoice: View {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: symbol)
                     .scholiumSymbolStyle(.prominent)
-                    .foregroundStyle(
+                    .scholiumForeground(
                         isSelected
-                            ? ScholiumColorRole.accent.color
-                            : ScholiumColorRole.secondaryText.color
+                            ? .accent
+                            : .secondaryText
                     )
                     .frame(width: 24)
                     .accessibilityHidden(true)
@@ -777,10 +777,10 @@ private struct BootstrapSetupPathChoice: View {
                 }
                 Spacer(minLength: 8)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(
+                    .scholiumForeground(
                         isSelected
-                            ? ScholiumColorRole.accent.color
-                            : ScholiumColorRole.mutedText.color
+                            ? .accent
+                            : .mutedText
                     )
                     .accessibilityHidden(true)
             }
@@ -788,12 +788,20 @@ private struct BootstrapSetupPathChoice: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 isSelected
-                    ? ScholiumColorRole.accent.color.opacity(0.08)
+                    ? ScholiumColorRole.raisedSurfaceBackground.color
                     : ScholiumColorRole.surfaceBackground.color
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                    style: .continuous
+                )
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                    style: .continuous
+                )
                     .stroke(
                         isSelected
                             ? ScholiumColorRole.accent.color
@@ -883,10 +891,10 @@ private struct BootstrapPathSelectionRow: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: path == nil ? "folder" : "folder.fill")
-                    .foregroundStyle(
+                    .scholiumForeground(
                         path == nil
-                            ? ScholiumColorRole.secondaryText.color
-                            : ScholiumColorRole.accent.color
+                            ? .secondaryText
+                            : .accent
                     )
                     .frame(width: 18)
                     .accessibilityHidden(true)
@@ -898,10 +906,10 @@ private struct BootstrapPathSelectionRow: View {
                     }
                 }
                 .font(ScholiumTypography.exact(.body))
-                .foregroundStyle(
+                .scholiumForeground(
                     path == nil
-                        ? ScholiumColorRole.secondaryText.color
-                        : ScholiumColorRole.primaryText.color
+                        ? .secondaryText
+                        : .primaryText
                 )
                 .textSelection(.enabled)
                 .lineLimit(3)
@@ -920,7 +928,12 @@ private struct BootstrapPathSelectionRow: View {
         }
         .padding(16)
         .background(ScholiumColorRole.surfaceBackground.color)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                style: .continuous
+            )
+        )
     }
 }
 
@@ -979,9 +992,17 @@ private struct BootstrapExplanationBlock: View {
         }
         .padding(16)
         .background(ScholiumColorRole.apparatusSurfaceBackground.color)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                style: .continuous
+            )
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                style: .continuous
+            )
                 .stroke(ScholiumColorRole.separator.color, lineWidth: 1)
         }
     }

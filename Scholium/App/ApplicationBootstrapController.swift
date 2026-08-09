@@ -224,7 +224,7 @@ private struct ApplicationRegistryRecoveryView: View {
                 .accessibilityAddTraits(.isHeader)
             Text(recovery.summary)
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
 
             Button {
                 showsDetails.toggle()
@@ -297,7 +297,7 @@ private struct ApplicationStorageUnavailableView: View {
                 .accessibilityAddTraits(.isHeader)
             Text(failure.summary)
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
 
             Button {
                 showsDetails.toggle()

@@ -93,14 +93,14 @@ struct CritiqueProvenanceView: View {
                 if let scope = metadata.scope {
                     Text(scope.rawValue)
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text("Target")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 if let targetPath {
                     Button {
                         context.openTarget(targetPath)
@@ -119,7 +119,7 @@ struct CritiqueProvenanceView: View {
                 if let capturedSHA256 {
                     Text("SHA-256 \(capturedSHA256.prefix(12))…")
                         .font(ScholiumTypography.exact(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                         .textSelection(.enabled)
                 }
 
@@ -132,7 +132,7 @@ struct CritiqueProvenanceView: View {
                 } else if targetNote != nil, capturedSHA256 != nil {
                     Label("Current Work version", systemImage: "checkmark.circle")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
             }
 
@@ -149,7 +149,7 @@ struct CritiqueProvenanceView: View {
                     systemImage: "info.circle"
                 )
                 .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
             }
 
             if !findings.isEmpty {
@@ -172,7 +172,7 @@ struct CritiqueProvenanceView: View {
                         Spacer(minLength: 8)
                         Text(findings.count.formatted())
                             .font(ScholiumTypography.interface(.small, tabularDigits: true))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                     }
                     .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
                     .contentShape(Rectangle())
@@ -202,7 +202,7 @@ struct CritiqueProvenanceView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .scholiumSurface(.boundedPanel)
         .overlay(alignment: .bottom) { Divider() }
         .task(id: note.relativePath + document.fingerprint.sha256) {
             association = try? await context.loadAssociation(note.relativePath)
@@ -236,7 +236,7 @@ struct CritiqueProvenanceView: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(finding.judgment.rawValue): \(finding.title)")
-                        .foregroundStyle(.primary)
+                        .scholiumForeground(.primaryText)
                     Text(findingDestination(
                         finding,
                         path: path,

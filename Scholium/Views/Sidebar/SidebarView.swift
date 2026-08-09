@@ -156,7 +156,7 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Text("Scholium")
                 .font(ScholiumTypography.Brand.wordmark)
-                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                .scholiumForeground(.primaryText)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("scholium.wordmark")
 
@@ -437,7 +437,7 @@ struct SidebarView: View {
                 ? "1 filter applied"
                 : "\(activeLibraryMenuFilterCount) filters applied")
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
             Spacer(minLength: 0)
             Button("Clear", action: clearAllFilters)
                 .buttonStyle(.link)

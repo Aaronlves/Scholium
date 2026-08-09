@@ -141,21 +141,21 @@ struct ResearchOverviewView: View {
                 HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .scholiumForeground(.attention)
                         .accessibilityHidden(true)
                     Text("NEEDS ATTENTION")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .tracking(0.7)
-                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .scholiumForeground(.attention)
                     Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
                     Text(context.visibleAttentionItems.count.formatted())
                         .font(
                             ScholiumTypography.interface(.small, emphasis: .strong, tabularDigits: true)
                         )
-                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .scholiumForeground(.attention)
                     Image(systemName: "chevron.forward")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .scholiumForeground(.mutedText)
                         .accessibilityHidden(true)
                 }
 
@@ -170,7 +170,7 @@ struct ResearchOverviewView: View {
                         ) { kind in
                             Text(attentionTitle(for: kind))
                                 .font(ScholiumTypography.scholarly(.emphasis))
-                                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                                .scholiumForeground(.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }

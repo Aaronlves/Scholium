@@ -76,7 +76,7 @@ private struct ResearchRecordsLoadIssuesBanner: View {
                         .textSelection(.enabled)
                 }
             }
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            .scholiumForeground(.secondaryText)
             .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
         } label: {
             Label(
@@ -373,7 +373,7 @@ private struct ResearchRecordCollectionIndex: View {
                             Button("Retry") { model.retryLoadingMoreRecords() }
                                 .buttonStyle(.plain)
                                 .font(ScholiumTypography.interface(.compact, emphasis: .medium))
-                                .foregroundStyle(ScholiumColorRole.accent.color)
+                                .scholiumForeground(.accent)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: ScholiumMetrics.ResearchRecords.collectionRowHeight)
                                 .accessibilityHint("Retry loading more Research Records")
@@ -560,7 +560,7 @@ private struct ResearchRecordsLedgerColumnLabel: View {
     var body: some View {
         Text(title)
             .font(ScholiumTypography.interface(.small, emphasis: .strong))
-            .foregroundStyle(ScholiumColorRole.mutedText.color)
+            .scholiumForeground(.mutedText)
             .tracking(0.8)
             .textCase(.uppercase)
             .lineLimit(1)
@@ -578,7 +578,7 @@ private struct ResearchRecordsLedgerCount: View {
     var body: some View {
         Text(count.formatted())
             .font(ScholiumTypography.interface(.small, tabularDigits: true))
-            .foregroundStyle(ScholiumColorRole.mutedText.color)
+            .scholiumForeground(.mutedText)
             .lineLimit(1)
             .accessibilityLabel(
                 String.localizedStringWithFormat(
@@ -631,7 +631,7 @@ private struct ResearchRecordsSortableColumnHeader: View {
                 if isSelected {
                     Image(systemName: sort == ascending ? "chevron.up" : "chevron.down")
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .scholiumForeground(.mutedText)
                         .accessibilityHidden(true)
                 }
             }
@@ -673,7 +673,7 @@ private struct ResearchRecordCollectionRow: View {
 
     var body: some View {
         let shape = RoundedRectangle(
-            cornerRadius: ScholiumMetrics.ResearchRecords.collectionRowCornerRadius,
+            cornerRadius: ScholiumShape.researchRecordCollectionRowCornerRadius,
             style: .continuous
         )
         Button(action: select) {
@@ -693,13 +693,13 @@ private struct ResearchRecordCollectionRow: View {
                 ) {
                     Text(entry.title)
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+                        .scholiumForeground(.primaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if showsNoteColumn {
                         Text(entry.noteTitle)
                             .font(ScholiumTypography.interface(.small))
-                            .foregroundStyle(ScholiumColorRole.mutedText.color)
+                            .scholiumForeground(.mutedText)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -714,7 +714,7 @@ private struct ResearchRecordCollectionRow: View {
 
                 Text(entry.finishedAt.formatted(date: .abbreviated, time: .omitted))
                     .font(ScholiumTypography.interface(.compact, tabularDigits: true))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                     .frame(
@@ -746,13 +746,13 @@ private struct ResearchRecordCollectionRow: View {
     private var actionCapsule: some View {
         Text(actionTitle(entry.actionID))
             .font(ScholiumTypography.interface(.compact, emphasis: .medium))
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            .scholiumForeground(.secondaryText)
             .lineLimit(1)
             .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
             .frame(height: ScholiumMetrics.ResearchRecords.recordActionCapsuleHeight)
             .background {
                 Capsule(style: .continuous)
-                    .fill(ScholiumColorRole.secondaryText.color.opacity(0.08))
+                    .fill(ScholiumColorRole.raisedSurfaceBackground.color)
             }
             .accessibilityHidden(true)
     }
@@ -773,7 +773,7 @@ private struct ResearchRecordCollectionAttention: View {
         if let attention {
             Image(systemName: "exclamationmark.triangle")
                 .font(ScholiumTypography.interface(.compact, emphasis: .medium))
-                .foregroundStyle(ScholiumColorRole.attention.color)
+                .scholiumForeground(.attention)
                 .help(attention.detail)
                 .accessibilityLabel(attention.detail)
         } else {
@@ -1045,10 +1045,10 @@ private struct ResearchRecordsMenuLabel: View {
     var body: some View {
         Label(title, systemImage: systemImage)
             .font(ScholiumTypography.interface(.compact, emphasis: .medium))
-            .foregroundStyle(
+            .scholiumForeground(
                 isEmphasized
-                    ? ScholiumColorRole.primaryText.color
-                    : ScholiumColorRole.secondaryText.color
+                    ? .primaryText
+                    : .secondaryText
             )
             .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
             .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
@@ -1129,7 +1129,7 @@ private struct ResearchRecordsSearchField: View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: "magnifyingglass")
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
                 .accessibilityHidden(true)
             TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
@@ -1312,7 +1312,7 @@ private struct ResearchLiteratureRecommendationListRow: View {
 
     var body: some View {
         let shape = RoundedRectangle(
-            cornerRadius: ScholiumMetrics.ResearchRecords.collectionRowCornerRadius,
+            cornerRadius: ScholiumShape.researchRecordCollectionRowCornerRadius,
             style: .continuous
         )
         Button(action: select) {
@@ -1329,7 +1329,7 @@ private struct ResearchLiteratureRecommendationListRow: View {
 
                     Text(occurrence.displayTitle)
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+                        .scholiumForeground(.primaryText)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1342,7 +1342,7 @@ private struct ResearchLiteratureRecommendationListRow: View {
                         : occurrence.recommendation.authors.formatted()
                 )
                 .font(ScholiumTypography.interface(.compact))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(
@@ -1352,7 +1352,7 @@ private struct ResearchLiteratureRecommendationListRow: View {
 
                 Text(occurrence.recommendation.year.map(String.init) ?? "Not recorded")
                     .font(ScholiumTypography.interface(.compact, tabularDigits: true))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
                     .lineLimit(1)
                     .frame(
                         width: ScholiumMetrics.ResearchRecords.readingLeadYearColumnWidth,
@@ -1361,7 +1361,7 @@ private struct ResearchLiteratureRecommendationListRow: View {
 
                 Text(occurrence.recommendation.publication ?? "Not recorded")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(
@@ -1570,7 +1570,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Text(occurrence.recommendation.rawCitation)
                 .font(ScholiumTypography.scholarly(.body))
-                .foregroundStyle(ScholiumColorRole.mutedText.color)
+                .scholiumForeground(.mutedText)
                 .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
                 .textSelection(.enabled)
                 .accessibilityLabel(
@@ -1662,7 +1662,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
             if occurrence.recommendation.sourceLocators.isEmpty {
                 Text("No discovery locators were recorded.")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
             } else {
                 ForEach(
                     Array(occurrence.recommendation.sourceLocators.enumerated()),
@@ -1679,7 +1679,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
                                     emphasis: .medium
                                 )
                             )
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .scholiumForeground(.secondaryText)
                             .accessibilityHidden(true)
                         Text(locator)
                             .font(ScholiumTypography.scholarly(.body))
@@ -1705,10 +1705,10 @@ private struct ResearchLiteratureRecommendationDetailView: View {
                 ) {
                     Text("UNCERTAINTY")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                     Text(uncertainty)
                         .font(ScholiumTypography.scholarly(.body))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .textSelection(.enabled)
                 }
             }
@@ -1732,7 +1732,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
             } else {
                 Text("No researcher note has been added.")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
             }
         }
     }
@@ -1823,7 +1823,7 @@ private struct ResearchLiteratureRecommendationNoteSheet: View {
                         "This note records how you handled the reading lead. Saving an empty note removes it without changing the handling status."
                     )
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     TextEditor(text: $draft)
                         .font(ScholiumTypography.scholarly(.body))
                         .scrollContentBackground(.hidden)
@@ -1850,7 +1850,7 @@ private struct ResearchLiteratureRecommendationNoteSheet: View {
                     if let saveErrorMessage {
                         Label(saveErrorMessage, systemImage: "exclamationmark.triangle")
                             .font(ScholiumTypography.interface(.compact, emphasis: .medium))
-                            .foregroundStyle(ScholiumColorRole.attention.color)
+                            .scholiumForeground(.attention)
                             .textSelection(.enabled)
                             .accessibilityIdentifier(
                                 "scholium.researchRecommendation.noteSaveError"
@@ -1974,7 +1974,7 @@ private struct ResearchRecordsRouteToolbarTitle: View {
     var body: some View {
         Text(title)
             .font(ScholiumTypography.interface(.body))
-            .foregroundStyle(ScholiumColorRole.primaryText.color)
+            .scholiumForeground(.primaryText)
             .lineLimit(1)
             .accessibilityAddTraits(.isHeader)
             .accessibilityIdentifier("scholium.researchRecords.routeTitle")
@@ -2206,7 +2206,7 @@ private struct ResearchRecordWorkspaceView: View {
                         .accessibilityHeading(.h1)
                     Text("What this Record used, changed, and leaves to the researcher.")
                         .font(ScholiumTypography.interface(.compact))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -2305,7 +2305,7 @@ private struct ResearchRecordContinuitySection: View {
             if !children.isEmpty {
                 Text("Continue Research")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                 ForEach(children) { child in
                     continuityButton(
                         title: child.title.value,
@@ -2333,7 +2333,7 @@ private struct ResearchRecordContinuitySection: View {
         } label: {
             HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Image(systemName: symbol)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .frame(width: ScholiumMetrics.Apparatus.iconColumnWidth)
                     .accessibilityHidden(true)
                 VStack(
@@ -2341,15 +2341,15 @@ private struct ResearchRecordContinuitySection: View {
                 ) {
                     Text(title)
                         .font(ScholiumTypography.interface(.rowTitle))
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+                        .scholiumForeground(.primaryText)
                     Text(detail)
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
                     .accessibilityHidden(true)
             }
             .frame(
@@ -2473,7 +2473,7 @@ private struct ResearchRecordEvidenceEntry: View {
             ) {
                 Text(title)
                     .font(ScholiumTypography.interface(.sectionTitle))
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .scholiumForeground(.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if !metadata.isEmpty {
                     metadataView
@@ -2481,16 +2481,16 @@ private struct ResearchRecordEvidenceEntry: View {
                 if let bodyText, !bodyText.isEmpty {
                     Text(bodyText)
                         .font(ScholiumTypography.interface(.compact))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let tertiary, !tertiary.isEmpty {
                     Text(tertiary)
                         .font(ScholiumTypography.scholarly(.body))
-                        .foregroundStyle(
+                        .scholiumForeground(
                             emphasizesTertiary
-                                ? ScholiumColorRole.primaryText.color
-                                : ScholiumColorRole.secondaryText.color
+                                ? .primaryText
+                                : .secondaryText
                         )
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2523,7 +2523,7 @@ private struct ResearchRecordEvidenceEntry: View {
             }
         }
         .font(ScholiumTypography.interface(.small, emphasis: .medium))
-        .foregroundStyle(ScholiumColorRole.mutedText.color)
+        .scholiumForeground(.mutedText)
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -2608,7 +2608,7 @@ private struct ResearchRecordEvidenceSectionHeader: View {
                     .font(
                         ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true)
                     )
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
             }
             if action != nil {
                 Image(systemName: "chevron.right")
@@ -2667,7 +2667,7 @@ private struct ResearchRecordEvidenceCollectionPopover<Content: View>: View {
                     .font(
                         ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true)
                     )
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
 
@@ -2993,7 +2993,7 @@ private struct ResearchRecordLiteratureRecommendationsSection: View {
                             {
                                 Text(recommendation.rawCitation)
                                     .font(ScholiumTypography.scholarly(.body))
-                                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                                    .scholiumForeground(.secondaryText)
                                     .lineLimit(2)
                             }
                         }
@@ -3003,7 +3003,7 @@ private struct ResearchRecordLiteratureRecommendationsSection: View {
                                 : "Unprocessed"
                         )
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                     }
                     .padding(.horizontal, ScholiumGrid.Spacing.labelAccessoryGap)
                     .frame(
@@ -3036,13 +3036,13 @@ private struct ResearchRecordDetailHeader: View {
             HStack(alignment: .firstTextBaseline) {
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text(verbatim: actionTitle(actionID))
-                        .foregroundStyle(ScholiumColorRole.accent.color)
+                        .scholiumForeground(.accent)
                     if record.resultDisposition == .blocked {
                         Text("BLOCKED")
-                            .foregroundStyle(ScholiumColorRole.attention.color)
+                            .scholiumForeground(.attention)
                     }
                     Text(record.finishedAt, format: .dateTime.year().month().day().hour().minute())
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .scholiumForeground(.mutedText)
                 }
                 .font(ScholiumTypography.interface(.small, emphasis: .strong, tabularDigits: true))
                 Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
@@ -3064,7 +3064,7 @@ private struct ResearchRecordDetailHeader: View {
 
             Text(record.title.value)
                 .font(ScholiumTypography.scholarly(.title))
-                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                .scholiumForeground(.primaryText)
                 .textSelection(.enabled)
                 .accessibilityHeading(.h1)
 
@@ -3074,7 +3074,7 @@ private struct ResearchRecordDetailHeader: View {
                 ) {
                     Image(systemName: headerSymbol)
                         .font(ScholiumTypography.interface(.compact, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .accessibilityHidden(true)
                     ViewThatFits(in: .horizontal) {
                         HStack(
@@ -3088,7 +3088,7 @@ private struct ResearchRecordDetailHeader: View {
                         }
                     }
                     .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
                 }
                 .textSelection(.enabled)
             }
@@ -3295,7 +3295,7 @@ private struct ResearchRecordStatementSection: View {
             if statements.isEmpty {
                 Text("No attributed prose was recorded.")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
             } else {
                 ForEach(statements) { statement in
                     ResearchRecordStatementView(
@@ -3312,7 +3312,7 @@ private struct ResearchRecordStatementSection: View {
                     .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
                     .background(
                         statement.id == focusedStatementID
-                            ? ScholiumColorRole.accent.color.opacity(0.10)
+                            ? ScholiumColorRole.raisedSurfaceBackground.color
                             : Color.clear,
                         in: RoundedRectangle(
                             cornerRadius: ScholiumShape.editorialControlCornerRadius,
@@ -3359,7 +3359,7 @@ private struct ResearchRecordStatementView: View {
                     Text(author.interfaceTitle)
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 }
-                .foregroundStyle(authorColor)
+                .scholiumForeground(authorColorRole)
                 .accessibilityIdentifier(
                     "scholium.researchRecord.statementRole.\(statementID.uuidString)"
                 )
@@ -3367,13 +3367,13 @@ private struct ResearchRecordStatementView: View {
                 if let distinctAttribution {
                     Text(distinctAttribution)
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .scholiumForeground(.mutedText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Text(createdAt, format: .dateTime.month().day().hour().minute())
                     .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
             }
             .frame(
                 width: ScholiumMetrics.ResearchRecords.statementAttributionWidth,
@@ -3383,7 +3383,7 @@ private struct ResearchRecordStatementView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text(text)
                     .font(ScholiumTypography.scholarly(.body))
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .scholiumForeground(.primaryText)
                     .lineSpacing(ScholiumGrid.Spacing.labelAccessoryGap)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3411,10 +3411,10 @@ private struct ResearchRecordStatementView: View {
         )
     }
 
-    private var authorColor: Color {
+    private var authorColorRole: ScholiumColorRole {
         switch author {
-        case .researcher: ScholiumColorRole.accent.color
-        case .agent: ScholiumColorRole.agentAuthorship.color
+        case .researcher: .accent
+        case .agent: .agentAuthorship
         }
     }
 
@@ -3672,7 +3672,7 @@ private struct ResearchRecordEvaluationSheet: View {
                     "Review or record your judgment without changing the Agent's finalized result."
                 )
                 .font(ScholiumTypography.interface(.compact))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
@@ -3804,7 +3804,7 @@ private struct ResearchRecordRevisionDetails: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text(participant.title)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
             ScholiumApparatusFactGrid(facts: [
                 ScholiumApparatusFact(
                     id: "\(participant.id)-starting",
@@ -3877,7 +3877,7 @@ private struct ResearchRecordsTechnicalDetailsDisclosure<Content: View>: View {
                     Image(systemName: "chevron.right")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .foregroundStyle(ScholiumColorRole.mutedText.color)
+                        .scholiumForeground(.mutedText)
                         .accessibilityHidden(true)
                     Text("TECHNICAL DETAILS")
                         .scholiumApparatusHeadingStyle()

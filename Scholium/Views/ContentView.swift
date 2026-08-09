@@ -1069,25 +1069,25 @@ private struct LoadingOverlay: View {
 struct ToastView: View {
     let message: String
     let symbol: String
-    let color: Color
+    let colorRole: ScholiumColorRole
 
     init(toast: WindowToast) {
         message = toast.message
         symbol = toast.kind.symbol
-        color = toast.kind.color
+        colorRole = toast.kind.colorRole
     }
 
     init(message: String) {
         self.message = message
         symbol = "checkmark.circle"
-        color = ScholiumColorRole.confirmed.color
+        colorRole = .confirmed
     }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(color)
+                .scholiumForeground(colorRole)
             Text(message)
                 .font(ScholiumTypography.interface(.rowTitle))
         }

@@ -70,7 +70,7 @@ struct ResearchWriteSetExtensionView: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("Select the requested Notes this Run may modify.")
                     .font(ScholiumTypography.scholarly(.body))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             ScholiumStructuralRule()
@@ -107,14 +107,14 @@ struct ResearchWriteSetExtensionView: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             Text("ACADEMIC REASON")
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
             Text(record.intent.academicReason)
                 .font(ScholiumTypography.scholarly(.body))
                 .textSelection(.enabled)
 
             Text("REQUESTED NOTES")
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(record.candidates) { candidate in
@@ -123,10 +123,10 @@ struct ResearchWriteSetExtensionView: View {
                                 Text(candidate.title).font(ScholiumTypography.interface(.sectionTitle))
                                 Text("\(roleTitle(candidate.role))  \(candidate.note.relativePath)")
                                     .font(ScholiumTypography.interface(.small))
-                                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                                    .scholiumForeground(.secondaryText)
                                 Text(operationTitles(candidate.operations))
                                     .font(ScholiumTypography.interface(.small))
-                                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                                    .scholiumForeground(.secondaryText)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -216,7 +216,7 @@ private struct ResearchContinuationPermissionView: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("This starts a new independent Run with current permissions for the selected Action and target.")
                     .font(ScholiumTypography.scholarly(.body))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             ScholiumStructuralRule()
@@ -261,7 +261,7 @@ private struct ResearchContinuationPermissionView: View {
 
                 Text("BOUNDED HANDOFF")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .accessibilityAddTraits(.isHeader)
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     ForEach(Array(record.request.handoff.enumerated()), id: \.offset) {
@@ -274,7 +274,7 @@ private struct ResearchContinuationPermissionView: View {
                                 .textSelection(.enabled)
                             Text("Next use: \(item.nextUse)")
                                 .font(ScholiumTypography.interface(.small))
-                                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                                .scholiumForeground(.secondaryText)
                                 .textSelection(.enabled)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -310,7 +310,7 @@ private struct ResearchContinuationPermissionView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
                 .accessibilityAddTraits(.isHeader)
             Text(value)
                 .font(ScholiumTypography.scholarly(.body))

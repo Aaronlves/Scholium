@@ -77,7 +77,7 @@ struct FrontmatterEditorView: View {
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(note.title ?? note.displayName)
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer()
                 HStack(spacing: 8) {
@@ -123,7 +123,7 @@ struct FrontmatterEditorView: View {
                             systemImage: "lock"
                         )
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                     }
 
                     if hiddenPropertyCount > 0 {
@@ -141,7 +141,7 @@ struct FrontmatterEditorView: View {
                             }
                         }
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                     }
 
                     ForEach(groupedPresentFields, id: \.group) { group in
@@ -177,7 +177,6 @@ struct FrontmatterEditorView: View {
             // Footer with validation summary
             if !fieldErrors.isEmpty {
                 Divider()
-                    .opacity(0.5)
 
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -192,7 +191,7 @@ struct FrontmatterEditorView: View {
                 .padding(.vertical, 8)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .scholiumSurface(.boundedPanel)
         .accessibilityIdentifier("scholium.propertiesEditor")
         .task {
             // Initialize field values from existing frontmatter
@@ -264,7 +263,7 @@ struct FrontmatterEditorView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(researchUnitHelp)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if researchUnitWasInvalid {
@@ -302,19 +301,25 @@ struct FrontmatterEditorView: View {
                         .font(ScholiumTypography.interface(.rowTitle))
                     Text("One material boundary per line.")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                     TextEditor(text: $researchUnitLimitationsText)
                         .font(ScholiumTypography.scholarly(.body))
                         .frame(minHeight: 70)
                         .scrollContentBackground(.hidden)
                         .padding(4)
                         .background(
-                            Color(nsColor: .textBackgroundColor),
-                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            ScholiumColorRole.documentBackground.color,
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
+                                style: .continuous
+                            )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                            RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
+                                style: .continuous
+                            )
+                                .stroke(ScholiumColorRole.separator.color, lineWidth: 1)
                         )
                         .accessibilityLabel("Research Unit Limitations")
                 }
@@ -344,10 +349,13 @@ struct FrontmatterEditorView: View {
                 if field.isReadOnly {
                     Text("Read only")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1), in: Capsule())
+                        .background(
+                            ScholiumColorRole.raisedSurfaceBackground.color,
+                            in: Capsule()
+                        )
                 }
             }
 
@@ -355,7 +363,7 @@ struct FrontmatterEditorView: View {
             if let desc = field.help {
                 Text(desc)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.tertiary)
+                    .scholiumForeground(.mutedText)
             }
 
             // Editor
@@ -401,15 +409,21 @@ struct FrontmatterEditorView: View {
                 .scrollContentBackground(.hidden)
                 .padding(4)
                 .background(
-                    Color(nsColor: .textBackgroundColor),
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    ScholiumColorRole.documentBackground.color,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
+                        style: .continuous
+                    )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
+                        style: .continuous
+                    )
                         .stroke(
                             hasError
                                 ? ScholiumColorRole.destructive.color
-                                : Color.secondary.opacity(0.2),
+                                : ScholiumColorRole.separator.color,
                             lineWidth: 1
                         )
                 )
@@ -424,7 +438,7 @@ struct FrontmatterEditorView: View {
             if field.isReadOnly {
                 Text(fieldValues[field.key] ?? "—")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .padding(.vertical, 4)
             } else {
                 if let value = fieldValues[field.key], let date = parseDate(value) {
@@ -497,7 +511,7 @@ struct FrontmatterEditorView: View {
                                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                             .frame(
                                 minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
                                 minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
@@ -509,13 +523,13 @@ struct FrontmatterEditorView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
-                            ScholiumColorRole.accent.color.opacity(0.12),
+                            ScholiumColorRole.raisedSurfaceBackground.color,
                             in: Capsule()
                         )
                         .overlay(
                             Capsule()
                                 .stroke(
-                                    ScholiumColorRole.accent.color.opacity(0.15),
+                                    ScholiumColorRole.separator.color,
                                     lineWidth: 1
                                 )
                         )
@@ -576,7 +590,7 @@ struct FrontmatterEditorView: View {
                         fieldValues[field.key] = updated.joined(separator: "; ")
                     } label: {
                         Image(systemName: "minus.circle.fill")
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                     }
                     .buttonStyle(.plain)
                     .frame(

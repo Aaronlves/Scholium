@@ -2400,7 +2400,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         #selection-actions.scholium-comment-composing { padding: 6px; }
         #comment-composer { position: relative; display: grid; gap: 5px; width: clamp(220px, calc(100vw - 28px), 288px); }
         #comment-composer[hidden], #selection-toolbar[hidden] { display: none; }
-        #comment-text { appearance: none; box-sizing: border-box; width: 100%; min-height: 64px; max-height: 132px; resize: none; overflow-y: auto; padding: 8px 9px; border: 0; border-radius: 5px; outline: 0; color: var(--scholium-color-primary-text); caret-color: var(--scholium-color-accent); background: var(--scholium-color-document-background); font: 13px/17px -apple-system, BlinkMacSystemFont, sans-serif; }
+        #comment-text { appearance: none; box-sizing: border-box; width: 100%; min-height: 64px; max-height: 132px; resize: none; overflow-y: auto; padding: 8px 9px; border: 0; border-radius: var(--scholium-corner-editorial-text-editor); outline: 0; color: var(--scholium-color-primary-text); caret-color: var(--scholium-color-accent); background: var(--scholium-color-document-background); font: 13px/17px -apple-system, BlinkMacSystemFont, sans-serif; }
         #comment-text::placeholder { color: var(--scholium-color-muted-text); opacity: .72; }
         #comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-content-focus-ring); }
         #comment-text:read-only { opacity: .72; }

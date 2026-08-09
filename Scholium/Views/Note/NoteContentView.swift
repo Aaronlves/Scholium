@@ -488,7 +488,7 @@ private struct DiscussionPanel: View {
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(noteTitle)
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer()
                 Button("End Discussion…", role: .destructive) {
@@ -518,7 +518,7 @@ private struct DiscussionPanel: View {
                     if let errorMessage {
                         Text(errorMessage)
                             .font(ScholiumTypography.interface(.small))
-                            .foregroundStyle(ScholiumColorRole.attention.color)
+                            .scholiumForeground(.attention)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("scholium.discussion.error")
                     }
@@ -552,7 +552,7 @@ private struct DiscussionPanel: View {
                 Text("AGENT REPLY")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .tracking(0.7)
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 TextField("Agent name", text: $agentName)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Agent name")
@@ -561,7 +561,9 @@ private struct DiscussionPanel: View {
                     .font(ScholiumTypography.scholarly(.body))
                     .frame(minHeight: 110)
                     .overlay {
-                        RoundedRectangle(cornerRadius: 5)
+                        RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialTextEditorCornerRadius
+                        )
                             .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
                     }
                     .accessibilityLabel("Agent reply")
@@ -588,7 +590,7 @@ private struct DiscussionPanel: View {
             HStack {
                 Text("Review the reply. Finish creates one Research Record; Follow Up keeps this Discussion active.")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 16)
                 Button("Finish", action: finishExchange)
@@ -605,12 +607,12 @@ private struct DiscussionPanel: View {
             Text("EXCHANGE")
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
             ForEach(discussion.statements) { statement in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(statement.attribution)
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                     if let reference = statement.lineReference {
                         Text(
                             reference.line == reference.endLine
@@ -619,7 +621,7 @@ private struct DiscussionPanel: View {
                         )
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .tracking(0.6)
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                         .padding(.vertical, 4)
                     } else if let passage = statement.passage {
                         VStack(alignment: .leading, spacing: 3) {
@@ -630,14 +632,14 @@ private struct DiscussionPanel: View {
                             )
                             .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             .tracking(0.6)
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                             if passage.state == .needsReattachment {
                                 Label(
                                     "This passage no longer has one reliable location.",
                                     systemImage: "exclamationmark.triangle"
                                 )
                                 .font(ScholiumTypography.interface(.small))
-                                .foregroundStyle(ScholiumColorRole.attention.color)
+                                .scholiumForeground(.attention)
                                 .accessibilityIdentifier(
                                     "scholium.discussion.statementPassage.needsReattachment"
                                 )
@@ -667,12 +669,14 @@ private struct DiscussionPanel: View {
             Text(title)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
             TextEditor(text: $researcherMessage)
                 .font(ScholiumTypography.scholarly(.body))
                 .frame(minHeight: 100)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialTextEditorCornerRadius
+                    )
                         .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
                 }
                 .accessibilityLabel(title.capitalized)
@@ -697,7 +701,7 @@ private struct DiscussionPanel: View {
             .accessibilityIdentifier("scholium.discussion.copyHandoff")
             Text("The Discussion is waiting for an Agent reply. Copying a new handoff replaces its prior pairing; closing this sheet leaves it active.")
                 .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -1762,7 +1766,7 @@ private struct ConflictComparisonSheet: View {
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(conflict.relativePath)
                         .font(ScholiumTypography.exact(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer()
             }
@@ -1814,8 +1818,9 @@ private struct ConflictComparisonSheet: View {
                             .padding(.vertical, 2)
                             .frame(width: max(viewport.size.width, 1), alignment: .leading)
                             .background(
-                                colorRole(for: line.kind).color
-                                    .opacity(line.kind == .unchanged ? 0 : 0.08)
+                                line.kind == .unchanged
+                                    ? Color.clear
+                                    : ScholiumColorRole.raisedSurfaceBackground.color
                             )
                             .accessibilityElement(children: .contain)
                             .accessibilityIdentifier(
@@ -1838,7 +1843,7 @@ private struct ConflictComparisonSheet: View {
             .padding(16)
         }
         .frame(minWidth: 760, idealWidth: 900, minHeight: 520, idealHeight: 680)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .scholiumSurface(.boundedPanel)
         .accessibilityIdentifier("scholium.conflictComparison")
     }
 
@@ -1856,7 +1861,7 @@ private struct ConflictComparisonSheet: View {
                 .textSelection(.enabled)
             Text(detail)
                 .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(
@@ -1959,7 +1964,7 @@ private struct CritiqueFindingDispositionRow: View {
                         .font(ScholiumTypography.interface(.sectionTitle))
                     Text(finding.judgment.rawValue)
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer(minLength: 12)
                 Picker("Disposition", selection: $decision) {
@@ -1984,14 +1989,14 @@ private struct CritiqueFindingDispositionRow: View {
                 .lineLimit(1...3)
                 Text("The Work still matches the Critique target revision, so Accept requires this explanation.")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if let errorMessage {
                 Text(errorMessage)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(ScholiumColorRole.attention.color)
+                    .scholiumForeground(.attention)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -1999,7 +2004,7 @@ private struct CritiqueFindingDispositionRow: View {
                 if let existing {
                     Text("Saved as \(existing.decision.interfaceTitle)")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer(minLength: 0)
                 Button(existing == nil ? "Save Disposition" : "Update Disposition") {

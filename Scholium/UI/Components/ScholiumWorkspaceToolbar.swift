@@ -442,7 +442,7 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
                 Text(note.title ?? note.displayName)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .help(note.title ?? note.displayName)
                     .accessibilityIdentifier("scholium.documentNoteName")
             }

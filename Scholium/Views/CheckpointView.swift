@@ -14,7 +14,7 @@ struct CreateCheckpointView: View {
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("A manual checkpoint is a self-contained copy of the complete Triptych. It remains until you delete its folder in Finder.")
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("Checkpoint name", text: $name)
                 .onSubmit { create() }
@@ -98,7 +98,7 @@ struct RestoreCheckpointView: View {
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text("Compare the current Triptych, then restore selected notes or the complete checkpoint.")
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer()
             }
@@ -194,7 +194,7 @@ struct RestoreCheckpointView: View {
                         Text(selectedCheckpoint.name).font(ScholiumTypography.interface(.sectionTitle))
                         Text(selectedCheckpoint.triptychFingerprint)
                             .font(ScholiumTypography.exact(.small))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                             .lineLimit(1)
                     }
                     Spacer()
@@ -230,11 +230,11 @@ struct RestoreCheckpointView: View {
                                            let current = change.currentPath {
                                             Text("Checkpoint: \(old) — Current: \(current)")
                                                 .font(ScholiumTypography.interface(.small))
-                                                .foregroundStyle(.secondary)
+                                                .scholiumForeground(.secondaryText)
                                         } else {
                                             Text(change.area.rawValue)
                                                 .font(ScholiumTypography.interface(.small))
-                                                .foregroundStyle(.secondary)
+                                                .scholiumForeground(.secondaryText)
                                         }
                                     }
                                 }
@@ -262,7 +262,7 @@ struct RestoreCheckpointView: View {
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text("\(checkpoint.kind.displayName) — \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
             .tag(checkpoint.id)
         }

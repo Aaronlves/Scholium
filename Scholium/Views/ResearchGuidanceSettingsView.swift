@@ -83,6 +83,7 @@ struct ResearchGuidanceSettingsView: View {
     }
 }
 
+@MainActor
 func settingsTitle(
     _ title: LocalizedStringResource,
     detail: LocalizedStringResource
@@ -93,11 +94,12 @@ func settingsTitle(
             .accessibilityAddTraits(.isHeader)
         Text(detail)
             .font(ScholiumTypography.interface(.body))
-            .foregroundStyle(.secondary)
+            .scholiumForeground(.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
 
+@MainActor
 func researchSettingsSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
@@ -105,7 +107,7 @@ func researchSettingsSection<Content: View>(
     VStack(alignment: .leading, spacing: 8) {
         Text(title)
             .font(ScholiumTypography.interface(.small, emphasis: .strong))
-            .foregroundStyle(.secondary)
+            .scholiumForeground(.secondaryText)
             .accessibilityAddTraits(.isHeader)
         content()
     }

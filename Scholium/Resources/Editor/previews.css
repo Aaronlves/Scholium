@@ -7,7 +7,7 @@
   overflow: auto;
   padding: 0.85rem 1rem;
   border: 1px solid var(--scholium-color-separator);
-  border-radius: 0.75rem;
+  border-radius: var(--scholium-corner-bounded-panel);
   color: var(--scholium-color-primary-text);
   background: var(--scholium-color-surface-background);
   box-shadow: var(--scholium-elevation-bounded-panel);

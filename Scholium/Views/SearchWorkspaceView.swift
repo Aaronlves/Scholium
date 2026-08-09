@@ -249,7 +249,6 @@ struct SpotlightSearchPanelView: View {
             }
 
             Divider()
-                .opacity(0.55)
                 .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
 
             searchScopeBar
@@ -257,7 +256,7 @@ struct SpotlightSearchPanelView: View {
             if let explanationText {
                 Text(explanationText)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
                     .padding(.bottom, 6)
@@ -284,7 +283,7 @@ struct SpotlightSearchPanelView: View {
         .scholiumEditorialSurface(
             .searchOverlay,
             in: RoundedRectangle(
-                cornerRadius: ScholiumMetrics.Search.cornerRadius,
+                cornerRadius: ScholiumShape.searchOverlayCornerRadius,
                 style: .continuous
             ),
             elevation: .searchOverlay
@@ -373,7 +372,8 @@ struct SpotlightSearchPanelView: View {
             TextField(
                 "",
                 text: query,
-                prompt: Text("Spotlight Search").foregroundStyle(.secondary)
+                prompt: Text("Spotlight Search")
+                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
             )
                 .textFieldStyle(.plain)
                 .font(ScholiumTypography.interface(.body))
@@ -487,14 +487,14 @@ struct SpotlightSearchPanelView: View {
                             .font(ScholiumTypography.exact(.body))
                         Text(completion.detail)
                             .font(ScholiumTypography.interface(.small))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
                     .frame(minHeight: 32)
                     .background(
                         completionSelection == index
-                            ? ScholiumColorRole.accent.color.opacity(0.12)
+                            ? ScholiumColorRole.raisedSurfaceBackground.color
                             : Color.clear
                     )
                     .contentShape(Rectangle())
@@ -589,14 +589,10 @@ struct SpotlightSearchPanelView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Label(presentation.title, systemImage: presentation.systemImage)
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .foregroundStyle(
-                        presentation.meaning.colorRole.color(
-                            increasedContrast: increasedContrast
-                        )
-                    )
+                    .scholiumForeground(presentation.meaning.colorRole)
                 Text(presentation.message)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .textSelection(.enabled)
             }
             .accessibilityElement(children: .combine)
@@ -609,10 +605,10 @@ struct SpotlightSearchPanelView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(
-            presentation.meaning.colorRole.color(
+            ScholiumColorRole.raisedSurfaceBackground.color(
                 increasedContrast: increasedContrast
-            ).opacity(0.12),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            ),
+            in: ConcentricRectangle()
         )
         .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
     }
@@ -633,7 +629,7 @@ struct SpotlightSearchPanelView: View {
         if isExpanded, !controller.search.isRunning {
             Text(searchResultSummary)
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .contentTransition(.numericText())
         }
     }
@@ -1173,7 +1169,7 @@ private struct NoteSearchResultRow: View {
                 Spacer()
                 Text(note.vaultName)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .lineLimit(1)
             }
 
@@ -1215,7 +1211,8 @@ private struct NoteSearchResultRow: View {
             let upper = String.Index(utf16Offset: highlight.utf16UpperBound, in: note.snippet)
             guard let lower = AttributedString.Index(lower, within: result),
                   let upper = AttributedString.Index(upper, within: result) else { continue }
-            result[lower..<upper].backgroundColor = Color(nsColor: .findHighlightColor)
+            result[lower..<upper].backgroundColor =
+                ScholiumNativeColorRole.searchMatchHighlight.color
         }
         return result
     }
@@ -1266,7 +1263,7 @@ private struct RecordSearchResultRow: View {
                 Spacer()
                 Text("Research Record")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
             Text(record.snippet)
                 .font(ScholiumTypography.scholarly(.body))

@@ -71,7 +71,7 @@
 }
 
 .scholium-callout > summary:focus-visible {
-  border-radius: 2px;
+  border-radius: var(--scholium-corner-callout-disclosure-focus);
   outline: 2px solid var(--scholium-content-focus-ring, Highlight);
   outline-offset: 4px;
 }

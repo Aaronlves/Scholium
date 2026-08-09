@@ -83,10 +83,10 @@ struct ScholiumEditorialIconControlLabel: View {
                 height: ScholiumMetrics.Accessibility.preferredCustomTarget
             )
             .contentShape(Rectangle())
-            .foregroundStyle(
+            .scholiumForeground(
                 isEmphasized
-                    ? ScholiumColorRole.primaryText.color
-                    : ScholiumColorRole.secondaryText.color
+                    ? .primaryText
+                    : .secondaryText
             )
             .tint(
                 isEmphasized
@@ -140,7 +140,7 @@ struct SidebarTriptychAttentionEntry: View {
                 if case .active(let count) = state {
                     Text(count.formatted())
                         .font(ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true))
-                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .scholiumForeground(.attention)
                 }
             }
             .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
@@ -324,10 +324,10 @@ private struct ScholiumLibraryLocationPickerLabel: View {
     var body: some View {
         Text(title)
             .font(ScholiumTypography.interface(.body))
-            .foregroundStyle(
+            .scholiumForeground(
                 isEmphasized
-                    ? ScholiumColorRole.primaryText.color
-                    : ScholiumColorRole.secondaryText.color
+                    ? .primaryText
+                    : .secondaryText
             )
             .lineLimit(1)
             .contentShape(Rectangle())
@@ -413,7 +413,7 @@ private struct ScholiumTriptychWorkspaceButton: View {
                 Spacer(minLength: 0)
                 Text(noteCount.map { $0.formatted() } ?? "—")
                     .font(ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
             }
             .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
             .frame(
@@ -544,12 +544,12 @@ struct ScholiumContentStateView<Actions: View>: View {
             VStack(alignment: horizontalAlignment, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 title
                     .font(titleFont)
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .scholiumForeground(.primaryText)
 
                 if let detail {
                     detail
                         .font(detailFont)
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -567,7 +567,7 @@ struct ScholiumContentStateView<Actions: View>: View {
         case .symbol(let name, let role):
             Image(systemName: name)
                 .scholiumSymbolStyle(indicatorSymbolStyle)
-                .foregroundStyle(role.color)
+                .scholiumForeground(role)
                 .accessibilityHidden(true)
         case .progress:
             ProgressView()
@@ -699,7 +699,7 @@ struct ScholiumRecoveryNotice<Action: View>: View {
             noticeContent
                 .padding(ScholiumGrid.Spacing.nestedContentInset)
                 .background(
-                    ScholiumColorRole.attention.color.opacity(0.08),
+                    ScholiumColorRole.raisedSurfaceBackground.color,
                     in: RoundedRectangle(
                         cornerRadius: ScholiumShape.inlineStatusCornerRadius,
                         style: .continuous
@@ -717,7 +717,7 @@ struct ScholiumRecoveryNotice<Action: View>: View {
                 .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
                 .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ScholiumColorRole.attention.color.opacity(0.08))
+                .background(ScholiumColorRole.raisedSurfaceBackground.color)
                 .overlay(alignment: .bottom) {
                     ScholiumStructuralRule()
                 }

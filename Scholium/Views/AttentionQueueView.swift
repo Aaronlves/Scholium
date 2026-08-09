@@ -164,11 +164,11 @@ struct AttentionQueueView: View {
             if let status = refreshStatus {
                 HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Image(systemName: status.symbol)
-                        .foregroundStyle(status.color)
+                        .scholiumForeground(status.colorRole)
                         .accessibilityHidden(true)
                     Text(status.message)
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     if status.offersRetry {
@@ -189,7 +189,7 @@ struct AttentionQueueView: View {
                 .font(ScholiumTypography.interface(.rowTitle))
             Text(presentation.noteScope == nil ? "All Notes" : "This Note")
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -378,7 +378,7 @@ struct AttentionQueueView: View {
     private struct RefreshStatus {
         let symbol: String
         let message: String
-        let color: Color
+        let colorRole: ScholiumColorRole
         let offersRetry: Bool
     }
 
@@ -387,7 +387,7 @@ struct AttentionQueueView: View {
             return RefreshStatus(
                 symbol: "arrow.triangle.2.circlepath",
                 message: "Refreshing — showing the last available results.",
-                color: ScholiumColorRole.information.color,
+                colorRole: .information,
                 offersRetry: false
             )
         }
@@ -396,14 +396,14 @@ struct AttentionQueueView: View {
             return RefreshStatus(
                 symbol: "clock.badge.exclamationmark",
                 message: "Results may be out of date. \(issue.reason)",
-                color: ScholiumColorRole.attention.color,
+                colorRole: .attention,
                 offersRetry: true
             )
         case .failed(let issue):
             return RefreshStatus(
                 symbol: "exclamationmark.triangle",
                 message: "Refresh failed. Showing the last available results. \(issue.reason)",
-                color: ScholiumColorRole.destructive.color,
+                colorRole: .destructive,
                 offersRetry: true
             )
         case .current, nil:
@@ -411,7 +411,7 @@ struct AttentionQueueView: View {
                 return RefreshStatus(
                     symbol: "exclamationmark.triangle",
                     message: "Refresh failed. Showing the last available results. \(error)",
-                    color: ScholiumColorRole.destructive.color,
+                    colorRole: .destructive,
                     offersRetry: true
                 )
             }
@@ -436,7 +436,7 @@ struct AttentionQueueRow: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Image(systemName: symbol)
-                    .foregroundStyle(severityColor)
+                    .scholiumForeground(severityColorRole)
                     .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
@@ -456,7 +456,7 @@ struct AttentionQueueRow: View {
                     .truncationMode(.middle)
                 Text(locator)
                     .font(ScholiumTypography.exact(.small))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -495,10 +495,10 @@ struct AttentionQueueRow: View {
         Array(Set([1, 7, 30, dismissalDays])).sorted()
     }
 
-    private var severityColor: Color {
+    private var severityColorRole: ScholiumColorRole {
         item.severity == .warning
-            ? ScholiumColorRole.attention.color
-            : ScholiumColorRole.information.color
+            ? .attention
+            : .information
     }
 
     private var symbol: String {

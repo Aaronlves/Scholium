@@ -128,16 +128,16 @@ private struct AttentionSettingsView: View {
 
                 Text("Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again or you restore dismissed items here. Neither action changes a note, its Connections, or Research Record facts.")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
 
             Section("What Attention Can Report") {
                 Text("Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity.")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 Text("Attention does not judge truth, evidence, philosophical quality, or how a note may be used.")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
         }
         .formStyle(.grouped)
@@ -231,7 +231,7 @@ private struct PropertiesSettingsView: View {
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("Set the optional About fields, display order, and structured-editing allowlist for each Triptych vault. The role-specific Research Unit remains part of the default About profile; Source mode always exposes the exact YAML.")
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
             Picker("Vault", selection: $selectedSlot) {
                 ForEach(WorkspaceVaultSlot.allCases) { slot in
                     Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
@@ -257,7 +257,7 @@ private struct PropertiesSettingsView: View {
             if let customFieldMessage {
                 Text(customFieldMessage)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
 
             HStack {
@@ -295,7 +295,7 @@ private struct PropertiesSettingsView: View {
                 if selectedConfiguration.visibleFields.isEmpty {
                     Text("No fields are shown when Properties is opened.")
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ScrollView {
@@ -388,7 +388,7 @@ private struct PropertiesSettingsView: View {
                             if !ResearcherPropertyPolicy.isHumanEditable(key) {
                                 Text("Protected")
                                     .font(ScholiumTypography.interface(.small))
-                                    .foregroundStyle(.secondary)
+                                    .scholiumForeground(.secondaryText)
                             }
                         }
                     }
@@ -497,14 +497,14 @@ struct AgentCLISettingsView: View {
                         .accessibilityIdentifier("scholium.agentCLI.status")
                     Text(status.installPath)
                         .font(ScholiumTypography.exact(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                         .textSelection(.enabled)
                         .accessibilityLabel("CLI installation path")
                         .accessibilityValue(status.installPath)
                     if let repair = status.repairMessage {
                         Text(repair)
                             .font(ScholiumTypography.interface(.small))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                     }
                     HStack {
                         if status.state == .notInstalled || status.state == .updateAvailable {
@@ -541,7 +541,7 @@ struct AgentCLISettingsView: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(ScholiumColorRole.attention.color)
+                        .scholiumForeground(.attention)
                         .textSelection(.enabled)
                 }
             }
@@ -599,7 +599,7 @@ struct ResearchCitationMethodSettingsView: View {
                         if status.availableStyles.isEmpty {
                             Text("No citation styles are available in this build.")
                                 .font(ScholiumTypography.interface(.body))
-                                .foregroundStyle(.secondary)
+                                .scholiumForeground(.secondaryText)
                         } else {
                             Picker("Citation style", selection: activeStyleSelection) {
                                 Text("None").tag(String?.none)
@@ -618,12 +618,12 @@ struct ResearchCitationMethodSettingsView: View {
                         }) {
                             Text(active.description)
                                 .font(ScholiumTypography.interface(.small))
-                                .foregroundStyle(.secondary)
+                                .scholiumForeground(.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {
                             Text("Citation checking remains unavailable until a style is selected.")
                                 .font(ScholiumTypography.interface(.small))
-                                .foregroundStyle(.secondary)
+                                .scholiumForeground(.secondaryText)
                         }
                     } else {
                         ProgressView("Loading citation styles…")
@@ -725,7 +725,7 @@ struct ZoteroSettingsView: View {
                 }
                 LabeledContent("Last Connected") {
                     Text(info.lastSuccessfulConnection?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 HStack {
                     Button("Open Zotero") {
@@ -742,7 +742,7 @@ struct ZoteroSettingsView: View {
                 }
                 Text("Scholium talks only to Zotero Desktop on localhost. No account, password, online API key, or Zotero data-folder permission is required. Scholium never modifies Zotero data.")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 if info.status == .apiDisabled {
                     Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
                         .font(ScholiumTypography.interface(.small))
@@ -896,7 +896,7 @@ private struct AppearanceSettingsView: View {
                     .font(ScholiumTypography.interface(.primaryTitle))
                 Text("Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source.")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 20)
@@ -931,7 +931,7 @@ private struct AppearanceSettingsView: View {
                     }
                     Text("Exactly one configuration is active. Configurations are stored in Scholium’s Application Support folder, not in the research vault.")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
 
                 if let draftBinding {
@@ -949,7 +949,7 @@ private struct AppearanceSettingsView: View {
                             if hasUnsavedChanges {
                                 Text("Unsaved changes")
                                     .font(ScholiumTypography.interface(.small))
-                                    .foregroundStyle(.secondary)
+                                    .scholiumForeground(.secondaryText)
                             }
                         }
                     }
@@ -958,7 +958,7 @@ private struct AppearanceSettingsView: View {
                 Section("Advanced CSS") {
                     Text("Optional CSS snippets remain available for advanced compatibility. They are additive and do not replace the selected structured configuration.")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
 
                     ForEach(store.snippets) { snippet in
                         CSSSnippetRow(
@@ -971,7 +971,7 @@ private struct AppearanceSettingsView: View {
                     if store.snippets.isEmpty {
                         Text("No CSS snippets imported.")
                             .font(ScholiumTypography.interface(.body))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                     }
 
                     HStack {
@@ -1113,7 +1113,7 @@ private struct AppearanceProfileEditor: View {
             )
             Text("Line width is measured in CSS character-width units; the exact number of characters varies by typeface.")
                 .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
         }
 
         Section("Body") {
@@ -1171,7 +1171,7 @@ private struct AppearanceProfileEditor: View {
         Section("Callouts") {
             Text("Typography is inherited from Body. These controls adjust the role’s spacing and composition without changing its semantic identity.")
                 .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
             ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { role in
                 if let index = profile.settings.callouts.firstIndex(where: { $0.role == role }) {
                     DisclosureGroup(role.label) {
@@ -1185,11 +1185,11 @@ private struct AppearanceProfileEditor: View {
             LabeledContent("Display equations") {
                 Text("Centered, italic, numbered at right")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
             Text("Mathematics, code, and tables use Scholium’s shared restrained styles so their semantics and Read/Live parity remain stable across configurations.")
                 .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
         }
     }
 }
@@ -1293,7 +1293,7 @@ private struct AppearanceDoubleControl: View {
                     .frame(width: 52, alignment: .trailing)
                 Text(suffix)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .frame(width: 24, alignment: .leading)
             }
         }
@@ -1500,7 +1500,7 @@ private struct CSSSnippetRow: View {
                     } else {
                         Text(snippet.isEnabled ? "Enabled" : "Disabled")
                             .font(ScholiumTypography.interface(.small))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                     }
                 }
             }
@@ -1572,7 +1572,7 @@ private struct WorkspacePathEditor: View {
                     .font(ScholiumTypography.interface(.primaryTitle))
                 Text(ScholiumL10n.dynamicString(explanation))
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 24)
@@ -1587,7 +1587,7 @@ private struct WorkspacePathEditor: View {
                         .accessibilityIdentifier("scholium.triptychName")
                     Text("The name distinguishes complete research domains. Works folders remain ordinary researcher-controlled folders, not app-managed projects.")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
 
                 Section("Research Folders") {
@@ -1618,7 +1618,7 @@ private struct WorkspacePathEditor: View {
                     )
                     Text("Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault.")
                         .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
 
                 Section {
@@ -1627,7 +1627,7 @@ private struct WorkspacePathEditor: View {
                             .scholiumForeground(.confirmed)
                     } else if allFoldersSelected {
                         Label("These folders are independent. Keeping them under one parent can make the workspace easier to move and back up.", systemImage: "info.circle")
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                     }
                 }
             }
@@ -1782,10 +1782,12 @@ struct PortableControlFolderRow: View {
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text("Authorizes portable settings stored beside Works")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 Text(containerURL?.path(percentEncoded: false) ?? "Authorization required")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(containerURL == nil ? Color.secondary : Color.primary)
+                    .scholiumForeground(
+                        containerURL == nil ? .secondaryText : .primaryText
+                    )
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -1841,10 +1843,10 @@ struct WorkspaceFolderRow: View {
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text(ScholiumL10n.dynamicString(subtitle))
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 Text(url?.path(percentEncoded: false) ?? "No folder selected")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(url == nil ? Color.secondary : Color.primary)
+                    .scholiumForeground(url == nil ? .secondaryText : .primaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help(url?.path(percentEncoded: false) ?? "Choose a folder")

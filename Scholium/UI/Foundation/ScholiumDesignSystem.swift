@@ -120,6 +120,26 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     }
 }
 
+/// System-owned colors used for effects whose appearance is defined by
+/// AppKit rather than by Scholium's configurable editorial palette. Keeping
+/// these exceptions named prevents feature views from reaching into AppKit's
+/// color catalog directly or treating them as additional product Variables.
+enum ScholiumNativeColorRole: Sendable {
+    case searchMatchHighlight
+    case structuralShadow
+
+    var nsColor: NSColor {
+        switch self {
+        case .searchMatchHighlight: .findHighlightColor
+        case .structuralShadow: .shadowColor
+        }
+    }
+
+    var color: Color {
+        Color(nsColor: nsColor)
+    }
+}
+
 /// A complete appearance result generated from the two configurable inputs.
 /// Call sites consume `ScholiumColorRole`; this value never becomes a second
 /// configuration or persistence authority.
@@ -531,6 +551,9 @@ enum ScholiumWebDesignTokens {
     static let resolvedElevationRoleCSSVariableNames = Set(
         ScholiumElevationRole.allCases.map(\.cssVariableName)
     )
+    static let resolvedCornerRoleCSSVariableNames = Set(
+        ScholiumCornerRole.allCases.compactMap(\.cssVariableName)
+    )
 
     static let rhythmCSSDeclarations: String = {
         let defaults = DocumentAppearanceSettings.defaultSettings
@@ -649,6 +672,7 @@ enum ScholiumWebDesignTokens {
           color-scheme: light dark;
           \(rootCSSDeclarations)
           \(elevationCSSDeclarations)
+          \(ScholiumShape.webCSSDeclarations)
           \(ScholiumContentInteractionSurface.webCSSDeclarations)
           \(fixedDocumentSyntaxCSSDeclarations)
           \(rhythmCSSDeclarations)
@@ -776,25 +800,25 @@ enum ScholiumWebDesignTokens {
           max-inline-size: 100%;
           padding: var(--scholium-rhythm-code-inset);
           overflow: auto;
-          border-radius: 10px;
+          border-radius: var(--scholium-corner-document-code-block);
         }
         .cm-editor.scholium-live-mode .cm-live-codeblock {
           padding-inline: var(--scholium-rhythm-code-inset);
         }
         .cm-editor.scholium-live-mode .cm-live-codeblock-start {
           padding-block-start: var(--scholium-rhythm-code-inset);
-          border-start-start-radius: 10px;
-          border-start-end-radius: 10px;
+          border-start-start-radius: var(--scholium-corner-document-code-block);
+          border-start-end-radius: var(--scholium-corner-document-code-block);
         }
         .cm-editor.scholium-live-mode .cm-live-raw-html-start {
           padding-block-start: var(--scholium-rhythm-code-inset);
-          border-start-start-radius: 10px;
-          border-start-end-radius: 10px;
+          border-start-start-radius: var(--scholium-corner-document-code-block);
+          border-start-end-radius: var(--scholium-corner-document-code-block);
         }
         .cm-editor.scholium-live-mode .cm-live-codeblock-end {
           padding-block-end: var(--scholium-rhythm-code-inset);
-          border-end-start-radius: 10px;
-          border-end-end-radius: 10px;
+          border-end-start-radius: var(--scholium-corner-document-code-block);
+          border-end-end-radius: var(--scholium-corner-document-code-block);
         }
         .cm-editor.scholium-live-mode .cm-live-codeblock-active.cm-live-codeblock-end {
           /* The visible closing fence is already the active block's final source
@@ -803,8 +827,8 @@ enum ScholiumWebDesignTokens {
         }
         .cm-editor.scholium-live-mode .cm-live-raw-html-end {
           padding-block-end: var(--scholium-rhythm-code-inset);
-          border-end-start-radius: 10px;
-          border-end-end-radius: 10px;
+          border-end-start-radius: var(--scholium-corner-document-code-block);
+          border-end-end-radius: var(--scholium-corner-document-code-block);
         }
         .scholium-callout p,
         .footnote-content p {
@@ -828,12 +852,12 @@ enum ScholiumWebDesignTokens {
           padding-inline: 0.06em;
           color: var(--scholium-mark-highlight-text);
           background: var(--scholium-mark-highlight-background);
-          border-radius: 3px;
+          border-radius: var(--scholium-corner-document-mark-highlight);
         }
         .scholium-document :not(pre) > code,
         .scholium-live-mode .cm-live-code {
           padding: 0.08em 0.25em;
-          border-radius: 4px;
+          border-radius: var(--scholium-corner-document-inline-code);
           background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
           font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
           font-size: 0.82em;
@@ -932,7 +956,7 @@ enum ScholiumWebDesignTokens {
           font-weight: 650;
           padding: 0.08em 0.3em;
           border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
-          border-radius: 5px;
+          border-radius: var(--scholium-corner-document-inline-embed);
           text-decoration: none;
         }
         .scholium-selection-actions {
@@ -942,7 +966,7 @@ enum ScholiumWebDesignTokens {
           box-sizing: border-box;
           padding: 4px;
           border: 1px solid var(--scholium-color-separator);
-          border-radius: 9px;
+          border-radius: var(--scholium-corner-floating-selection-control);
           color: var(--scholium-color-primary-text);
           background: var(--scholium-color-surface-background);
           box-shadow: var(--scholium-elevation-floating-control);
@@ -967,7 +991,7 @@ enum ScholiumWebDesignTokens {
           min-height: 28px;
           padding: 3px 6px;
           border: 0;
-          border-radius: 5px;
+          border-radius: var(--scholium-corner-document-control);
           color: inherit;
           background: transparent;
           font: inherit;
@@ -1038,14 +1062,14 @@ enum ScholiumWebDesignTokens {
         .scholium-selection-wiki-primary {
           min-width: 0;
           padding-inline: 7px 3px;
-          border-start-end-radius: 3px;
-          border-end-end-radius: 3px;
+          border-start-end-radius: var(--scholium-corner-selection-split-control);
+          border-end-end-radius: var(--scholium-corner-selection-split-control);
         }
         .scholium-selection-wiki-menu-trigger {
           min-width: 22px;
           padding-inline: 2px 5px;
-          border-start-start-radius: 3px;
-          border-end-start-radius: 3px;
+          border-start-start-radius: var(--scholium-corner-selection-split-control);
+          border-end-start-radius: var(--scholium-corner-selection-split-control);
         }
         .scholium-selection-separator {
           inline-size: 1px;
@@ -1063,7 +1087,7 @@ enum ScholiumWebDesignTokens {
           padding: 4px;
           overflow: auto;
           border: 1px solid var(--scholium-color-separator);
-          border-radius: 8px;
+          border-radius: var(--scholium-corner-bounded-panel);
           color: var(--scholium-color-primary-text);
           background: var(--scholium-color-surface-background);
           box-shadow: var(--scholium-elevation-bounded-panel);
@@ -1081,7 +1105,7 @@ enum ScholiumWebDesignTokens {
           min-block-size: 28px;
           padding: 4px 8px;
           border: 0;
-          border-radius: 5px;
+          border-radius: var(--scholium-corner-document-control);
           color: inherit;
           background: transparent;
           font: inherit;
@@ -1121,7 +1145,7 @@ enum ScholiumWebDesignTokens {
           padding: 4px;
           overflow: hidden;
           border: 1px solid var(--scholium-color-separator);
-          border-radius: 8px;
+          border-radius: var(--scholium-corner-bounded-panel);
           color: var(--scholium-color-primary-text);
           background: var(--scholium-color-surface-background);
           box-shadow: var(--scholium-elevation-bounded-panel);
@@ -1147,7 +1171,7 @@ enum ScholiumWebDesignTokens {
           max-inline-size: 352px;
           padding: 4px 8px;
           overflow: hidden;
-          border-radius: 5px;
+          border-radius: var(--scholium-corner-document-control);
           color: inherit;
           background: transparent;
           white-space: nowrap;
@@ -1301,7 +1325,6 @@ enum ScholiumGrid {
         static let pageEdge = foundationUnit * 7
         static let collectionSearchMinimumWidth = foundationUnit * 48
         static let collectionColumnHeaderHeight = foundationUnit * 7
-        static let collectionRowCornerRadius = foundationUnit * 2
         static let collectionRowHeight = foundationUnit * 12
         static let collectionColumnGap = foundationUnit * 3
         static let recordAttentionColumnWidth = foundationUnit * 7
@@ -1465,8 +1488,6 @@ enum ScholiumMetrics {
             ScholiumGrid.ResearchRecords.collectionSearchMinimumWidth
         static let collectionColumnHeaderHeight =
             ScholiumGrid.ResearchRecords.collectionColumnHeaderHeight
-        static let collectionRowCornerRadius =
-            ScholiumGrid.ResearchRecords.collectionRowCornerRadius
         static let collectionRowHeight = ScholiumGrid.ResearchRecords.collectionRowHeight
         static let collectionColumnGap = ScholiumGrid.ResearchRecords.collectionColumnGap
         static let recordAttentionColumnWidth =
@@ -1520,7 +1541,6 @@ enum ScholiumMetrics {
         static let expandedHeight: CGFloat = 520
         static let scopeWidth: CGFloat = 320
         static let responsiveMargin = ScholiumGrid.Spacing.regionContentInset
-        static let cornerRadius: CGFloat = 12
     }
 
 }
@@ -1595,12 +1615,100 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
     }
 }
 
+enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
+    case inlineStatus
+    case editorialControl
+    case workspaceNavigation
+    case editorialPanel
+    case loadingSurface
+    case editorialTextEditor
+    case searchOverlay
+    case researchRecordCollectionRow
+    case boundedPanel
+    case documentCodeBlock
+    case documentMarkHighlight
+    case documentInlineCode
+    case documentInlineEmbed
+    case floatingSelectionControl
+    case documentControl
+    case selectionSplitControl
+    case calloutDisclosureFocus
+
+    var radius: CGFloat {
+        switch self {
+        case .inlineStatus, .editorialControl, .workspaceNavigation,
+             .researchRecordCollectionRow, .boundedPanel:
+            8
+        case .editorialPanel, .loadingSurface, .documentCodeBlock:
+            10
+        case .editorialTextEditor:
+            6
+        case .documentMarkHighlight, .selectionSplitControl:
+            3
+        case .documentInlineCode:
+            4
+        case .documentInlineEmbed, .documentControl:
+            5
+        case .floatingSelectionControl:
+            9
+        case .searchOverlay:
+            12
+        case .calloutDisclosureFocus:
+            2
+        }
+    }
+
+    var cssVariableName: String? {
+        switch self {
+        case .inlineStatus:
+            "--scholium-corner-inline-status"
+        case .editorialTextEditor:
+            "--scholium-corner-editorial-text-editor"
+        case .boundedPanel:
+            "--scholium-corner-bounded-panel"
+        case .documentCodeBlock:
+            "--scholium-corner-document-code-block"
+        case .documentMarkHighlight:
+            "--scholium-corner-document-mark-highlight"
+        case .documentInlineCode:
+            "--scholium-corner-document-inline-code"
+        case .documentInlineEmbed:
+            "--scholium-corner-document-inline-embed"
+        case .floatingSelectionControl:
+            "--scholium-corner-floating-selection-control"
+        case .documentControl:
+            "--scholium-corner-document-control"
+        case .selectionSplitControl:
+            "--scholium-corner-selection-split-control"
+        case .calloutDisclosureFocus:
+            "--scholium-corner-callout-disclosure-focus"
+        case .editorialControl, .workspaceNavigation, .editorialPanel, .loadingSurface,
+             .searchOverlay, .researchRecordCollectionRow:
+            nil
+        }
+    }
+}
+
 enum ScholiumShape {
-    static let inlineStatusCornerRadius: CGFloat = 8
-    static let editorialControlCornerRadius: CGFloat = 8
-    static let workspaceNavigationCornerRadius: CGFloat = 8
-    static let editorialPanelCornerRadius: CGFloat = 10
-    static let loadingSurfaceCornerRadius: CGFloat = 10
+    static let inlineStatusCornerRadius = ScholiumCornerRole.inlineStatus.radius
+    static let editorialControlCornerRadius = ScholiumCornerRole.editorialControl.radius
+    static let workspaceNavigationCornerRadius = ScholiumCornerRole.workspaceNavigation.radius
+    static let editorialPanelCornerRadius = ScholiumCornerRole.editorialPanel.radius
+    static let loadingSurfaceCornerRadius = ScholiumCornerRole.loadingSurface.radius
+    static let editorialTextEditorCornerRadius = ScholiumCornerRole.editorialTextEditor.radius
+    static let searchOverlayCornerRadius = ScholiumCornerRole.searchOverlay.radius
+    static let researchRecordCollectionRowCornerRadius =
+        ScholiumCornerRole.researchRecordCollectionRow.radius
+
+    static let webCSSDeclarations = ScholiumCornerRole.allCases.compactMap { role in
+        guard let name = role.cssVariableName else { return nil }
+        let value = String(
+            format: "%.4g",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(role.radius)
+        )
+        return "\(name): \(value)px;"
+    }.joined(separator: "\n")
 }
 
 /// The shared shallow interaction surface for Scholium-owned controls inside
@@ -2038,7 +2146,7 @@ private struct ScholiumElevationModifier: ViewModifier {
             appearsActive: appearsActive
         )
         content.shadow(
-            color: Color(nsColor: .shadowColor).opacity(style.opacity),
+            color: ScholiumNativeColorRole.structuralShadow.color.opacity(style.opacity),
             radius: style.radius,
             x: style.x,
             y: style.y
@@ -2069,7 +2177,7 @@ private struct ScholiumBoundaryModifier<S: InsettableShape>: ViewModifier {
     }
 }
 
-private struct ScholiumEditorialSurfaceModifier<S: InsettableShape>: ViewModifier {
+private struct ScholiumEditorialSurfaceModifier<S: RoundedRectangularShape>: ViewModifier {
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     let role: ScholiumSurfaceRole
@@ -2100,6 +2208,7 @@ private struct ScholiumEditorialSurfaceModifier<S: InsettableShape>: ViewModifie
                 )
                 .allowsHitTesting(false)
             }
+            .containerShape(shape)
         if let elevation {
             surfacedContent.scholiumElevation(elevation)
         } else {
@@ -2683,7 +2792,7 @@ extension View {
         modifier(ScholiumBoundaryModifier(role: role, shape: shape))
     }
 
-    func scholiumEditorialSurface<S: InsettableShape>(
+    func scholiumEditorialSurface<S: RoundedRectangularShape>(
         _ role: ScholiumSurfaceRole,
         in shape: S,
         boundary: ScholiumBoundaryRole? = nil,

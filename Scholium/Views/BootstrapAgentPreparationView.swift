@@ -49,14 +49,14 @@ struct BootstrapAgentPreparationView: View {
                             .accessibilityAddTraits(.isHeader)
                         Text("Optional. Research access still begins only from a specific Scholium Run handoff.")
                             .font(ScholiumTypography.interface(.body))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Project and workspace location")
                             .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                         Text(triptychRootPath)
                             .font(ScholiumTypography.exact(.small))
                             .textSelection(.enabled)
@@ -97,14 +97,14 @@ struct BootstrapAgentPreparationView: View {
                             if let status {
                                 Text(status.installPath)
                                     .font(ScholiumTypography.exact(.small))
-                                    .foregroundStyle(.secondary)
+                                    .scholiumForeground(.secondaryText)
                                     .textSelection(.enabled)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 if let repairMessage = status.repairMessage {
                                     Text(repairMessage)
                                         .font(ScholiumTypography.interface(.small))
-                                        .foregroundStyle(.secondary)
+                                        .scholiumForeground(.secondaryText)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
@@ -142,7 +142,7 @@ struct BootstrapAgentPreparationView: View {
                     BootstrapAgentTaskRow(number: 3, title: "Return and confirm") {
                         Text("After the Agent reports Ready, confirm below. Scholium records only your confirmation; it cannot inspect the external configuration.")
                             .font(ScholiumTypography.interface(.small))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 

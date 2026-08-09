@@ -30,7 +30,7 @@ struct IdentityResolutionView: View {
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text("Scholium found the file at a new location but cannot safely determine which previous note it belongs to.")
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
             }
 
@@ -65,7 +65,7 @@ struct IdentityResolutionView: View {
 
             Text("Confirming a previous note moves its current Discussion, Critique association, Research Record, and window state to the current location. Scholium does not change the Markdown file.")
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let errorMessage {

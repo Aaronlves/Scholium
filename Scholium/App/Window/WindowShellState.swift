@@ -40,12 +40,12 @@ struct WindowToast: Equatable {
             }
         }
 
-        var color: Color {
+        var colorRole: ScholiumColorRole {
             switch self {
-            case .success: ScholiumColorRole.confirmed.color
-            case .information: ScholiumColorRole.information.color
-            case .warning: ScholiumColorRole.attention.color
-            case .error: ScholiumColorRole.destructive.color
+            case .success: .confirmed
+            case .information: .information
+            case .warning: .attention
+            case .error: .destructive
             }
         }
     }

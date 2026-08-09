@@ -5,7 +5,7 @@ private struct ScholiumApparatusHeadingModifier: ViewModifier {
         content
             .font(ScholiumTypography.interface(.small, emphasis: .strong))
             .tracking(0.7)
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            .scholiumForeground(.secondaryText)
     }
 }
 
@@ -273,7 +273,7 @@ struct ScholiumApparatusFactGrid: View {
     private func factLabel(_ label: String) -> some View {
         Text(label)
             .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+            .scholiumForeground(.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -284,7 +284,7 @@ struct ScholiumApparatusFactGrid: View {
     ) -> some View {
         Text(value)
             .font(factValueFont(monospacedDigits: monospacedDigits, style: valueStyle))
-            .foregroundStyle(ScholiumColorRole.primaryText.color)
+            .scholiumForeground(.primaryText)
             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
@@ -321,14 +321,14 @@ struct ScholiumApparatusReadingBlock: View {
         ) {
             Text(label)
                 .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
             Text(text)
                 .font(
                     monospacedDigits
                         ? ScholiumTypography.scholarly(.body, tabularDigits: true)
                         : ScholiumTypography.scholarly(.body)
                 )
-                .foregroundStyle(ScholiumColorRole.primaryText.color)
+                .scholiumForeground(.primaryText)
                 .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, ScholiumMetrics.Apparatus.longTextIndent)
@@ -364,7 +364,7 @@ struct ScholiumApparatusActionRowContent: View {
         ) {
             Image(systemName: systemImage)
                 .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                .scholiumForeground(.secondaryText)
                 .frame(width: ScholiumMetrics.Apparatus.iconColumnWidth)
                 .accessibilityHidden(true)
 
@@ -374,11 +374,11 @@ struct ScholiumApparatusActionRowContent: View {
             ) {
                 title
                     .font(ScholiumTypography.interface(.sectionTitle))
-                    .foregroundStyle(ScholiumColorRole.primaryText.color)
+                    .scholiumForeground(.primaryText)
                 if let detail {
                     detail
                         .font(ScholiumTypography.scholarly(.body))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -388,7 +388,7 @@ struct ScholiumApparatusActionRowContent: View {
             if showsChevron {
                 Image(systemName: "chevron.forward")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
                     .accessibilityHidden(true)
             }
         }
@@ -428,7 +428,7 @@ struct ScholiumApparatusSectionHeaderButton: View {
                 Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
                 Image(systemName: systemImage)
                     .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                    .foregroundStyle(ScholiumColorRole.mutedText.color)
+                    .scholiumForeground(.mutedText)
                     .accessibilityHidden(true)
             }
         }
@@ -499,7 +499,7 @@ struct ScholiumApparatusStateView<Actions: View>: View {
                 } else {
                     Image(systemName: systemImage)
                         .font(ScholiumTypography.interface(.compact, emphasis: .medium))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                         .accessibilityHidden(true)
                 }
             },
@@ -510,11 +510,11 @@ struct ScholiumApparatusStateView<Actions: View>: View {
                 ) {
                     Text(title)
                         .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                        .foregroundStyle(ScholiumColorRole.primaryText.color)
+                        .scholiumForeground(.primaryText)
                     if let detail, !detail.isEmpty {
                         Text(detail)
                             .font(ScholiumTypography.scholarly(.body))
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .scholiumForeground(.secondaryText)
                             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
                             .fixedSize(horizontal: false, vertical: true)
                     }

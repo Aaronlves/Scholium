@@ -93,7 +93,7 @@ struct ProfilesPracticesSettingsView: View {
                         HStack {
                             Text("Methods opt into Practices only through exact Wikilinks.")
                                 .font(ScholiumTypography.interface(.body))
-                                .foregroundStyle(.secondary)
+                                .scholiumForeground(.secondaryText)
                             Spacer()
                             Button("New Practice…") {
                                 newPractice = NewResearchPracticeContext()
@@ -126,7 +126,7 @@ struct ProfilesPracticesSettingsView: View {
                 )) {
                     Text("Profiles and Practices can shape scholarly work and truthful Result fields. They cannot change Platform Actions, Research Context ownership, Session lifetime, collaboration policy, a Bounded Write Set, exact revisions, conflicts, or recovery.")
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -203,16 +203,16 @@ struct ProfilesPracticesSettingsView: View {
                     value: "\(profile.academicInputFields.count)"
                 )
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 LabeledContent(
                     "Academic Results",
                     value: "\(profile.academicResultFields.count)"
                 )
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                 Text("Roles: \(profile.applicableRoles.map(\.rawValue).joined(separator: ", "))")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
             Spacer(minLength: 12)
             VStack(alignment: .trailing, spacing: 8) {
@@ -261,7 +261,7 @@ struct ProfilesPracticesSettingsView: View {
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text(practice.relativePath)
                     .font(ScholiumTypography.exact(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
                     .textSelection(.enabled)
             }
             Spacer(minLength: 12)
@@ -441,7 +441,7 @@ private struct ResearchAcademicProfileEditor: View {
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(actionTitle(profile.actionID))
                         .font(ScholiumTypography.interface(.body))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                 }
                 Spacer()
                 Toggle("Enabled", isOn: $isEnabled)
@@ -450,7 +450,7 @@ private struct ResearchAcademicProfileEditor: View {
 
             Text("Configure only researcher-facing academic fields. Platform selectors, machine facts, permissions, write scope, and recovery are not Profile fields.")
                 .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             ScrollView {
@@ -458,7 +458,7 @@ private struct ResearchAcademicProfileEditor: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("PROFILE")
                             .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                            .foregroundStyle(.secondary)
+                            .scholiumForeground(.secondaryText)
                             .accessibilityAddTraits(.isHeader)
                         TextField("Profile Name", text: $displayName)
                         Text("Applicable Roles")
@@ -491,7 +491,7 @@ private struct ResearchAcademicProfileEditor: View {
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(ScholiumColorRole.attention.color)
+                    .scholiumForeground(.attention)
                     .textSelection(.enabled)
             }
 
@@ -572,7 +572,7 @@ private struct ResearchAcademicFieldsEditor: View {
             if fields.isEmpty {
                 Text("No academic fields are included in this section.")
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
             }
             ForEach($fields) { $field in
                 ResearchAcademicFieldDraftEditor(
@@ -654,7 +654,7 @@ private struct ResearchAcademicFieldDraftEditor: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Closed Options")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .foregroundStyle(.secondary)
+                        .scholiumForeground(.secondaryText)
                     ForEach($field.choices) { $choice in
                         HStack {
                             TextField("Option Name", text: $choice.label)
@@ -838,14 +838,14 @@ private struct ResearchPracticeSourceEditor: View {
             Text("Edit \(context.practice.title)")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("This is exact Markdown. Saving replaces only this Practice; one previous edit remains recoverable.")
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
             TextEditor(text: $source)
                 .font(ScholiumTypography.exact(.body))
                 .frame(minWidth: 700, minHeight: 460)
                 .accessibilityLabel("Philosophical Practice Markdown")
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(ScholiumColorRole.attention.color)
+                    .scholiumForeground(.attention)
             }
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -889,7 +889,7 @@ private struct NewResearchPracticeEditor: View {
             Text("New Philosophical Practice")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("Scholium creates one ordinary Markdown document. Link its title exactly from a primary Method to include it in Research Context.")
-                .foregroundStyle(.secondary)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("Practice title", text: $title)
             TextEditor(text: $source)
@@ -897,7 +897,7 @@ private struct NewResearchPracticeEditor: View {
                 .frame(minWidth: 700, minHeight: 410)
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(ScholiumColorRole.attention.color)
+                    .scholiumForeground(.attention)
             }
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }

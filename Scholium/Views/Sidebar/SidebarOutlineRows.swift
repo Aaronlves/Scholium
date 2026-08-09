@@ -153,7 +153,7 @@ final class SidebarOutlineHostingCell: NSTableCellView {
         )
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
-        button.contentTintColor = .secondaryLabelColor
+        button.contentTintColor = ScholiumColorRole.secondaryText.nsColor
         button.focusRingType = .default
         button.target = self
         button.action = #selector(activatePutBack)

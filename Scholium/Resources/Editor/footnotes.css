@@ -73,7 +73,7 @@
   min-inline-size: 1.7em;
   min-block-size: 1.7em;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--scholium-corner-document-control);
   color: var(--scholium-color-accent);
   background: color-mix(in srgb, var(--scholium-color-accent) 9%, transparent);
   cursor: pointer;

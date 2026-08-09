@@ -251,6 +251,14 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 - System, Light, and Dark appearance choices use one semantic native/WebKit
   role resolver. Navigation, Document, and Inspector/Apparatus surfaces remain
   distinct; Accent and Paper are the only configurable color inputs.
+- Native feature views now select semantic foreground, surface, boundary, and
+  status roles without direct system primary/secondary styles, AppKit palette
+  access, or leaf-owned percentage tints. Search highlight and structural
+  shadow are named system-effect exceptions; Bootstrap narrative art and the
+  fixed Markup highlight remain the closed nonconfigurable exceptions.
+- WebKit document HTML receives its resolved Light, Dark, and Increase Contrast
+  declarations from `ScholiumWebDesignTokens`. Authored Editor CSS only
+  consumes the generated properties and no longer carries a fallback palette.
 - Named Appearance configurations provide shared line width, Body and heading
   typography, and semantic Callout presentation. The built-in WebKit values
   derive from `DocumentAppearanceSettings.defaultSettings`; no parallel Native
@@ -265,8 +273,12 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   sizes, raw SwiftUI text styles, direct SwiftUI system fonts, or leaf-owned
   font weights. Standard controls remain platform-owned, all bundled Alegreya
   and Victor Mono faces resolve through AppKit, and Document remains CSS-owned.
-  Grid, boundary, elevation, symbol, and purpose-named motion
-  components remain shared. Increase Contrast
+  Grid, boundary, elevation, corner, symbol, and purpose-named motion
+  components remain shared. Custom corner geometry now has one closed semantic
+  owner across Native and WebKit: leaf Views and resource styles contain no raw
+  radius, Search uses container-concentric geometry for its nested availability
+  banner, and native and Review Comment multiline editors share the same
+  editorial-text-editor recipe. Increase Contrast
   strengthens boundaries and removes custom soft shadows; Reduce Motion removes
   custom animation.
 - English and Simplified Chinese catalogs are reachable. Stable identifiers,

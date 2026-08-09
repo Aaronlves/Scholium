@@ -50,7 +50,7 @@ struct ResearchPermissionSettingsView: View {
 
                             Text(detail(snapshot.document.policy))
                                 .font(ScholiumTypography.interface(.body))
-                                .foregroundStyle(.secondary)
+                                .scholiumForeground(.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else if isWorking {

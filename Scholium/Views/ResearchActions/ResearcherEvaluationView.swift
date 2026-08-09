@@ -16,13 +16,13 @@ struct ResearchFinalizedResultView: View {
                     Spacer()
                     Label(dispositionTitle, systemImage: dispositionSymbol)
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                        .scholiumForeground(.secondaryText)
                 }
             }
             if record.academicResults.isEmpty {
                 Text("No academic result fields were configured for this Action.")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 ForEach(Array(record.academicResults.enumerated()), id: \.element.id) {
@@ -33,10 +33,10 @@ struct ResearchFinalizedResultView: View {
                             .accessibilityAddTraits(.isHeader)
                         Text(verbatim: resultValue(result))
                             .font(ScholiumTypography.scholarly(.body))
-                            .foregroundStyle(
+                            .scholiumForeground(
                                 result.value == nil
-                                    ? ScholiumColorRole.secondaryText.color
-                                    : ScholiumColorRole.primaryText.color
+                                    ? .secondaryText
+                                    : .primaryText
                             )
                             .textSelection(.enabled)
                     }
@@ -59,14 +59,14 @@ struct ResearchFinalizedResultView: View {
                                 : "Scholium verified \(contextUse.entries.count) claimed Context items against their current owners and recorded references."
                     )
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
             if presentation.showsJudgmentBoundary {
                 Text(judgmentBoundaryCopy)
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -178,7 +178,7 @@ struct ResearcherEvaluationView: View {
                 }
                 Text("Record your explicit research judgment. This does not change the Agent's finalized result and does not by itself establish a philosophical truth.")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 HStack {
@@ -229,16 +229,16 @@ struct ResearcherEvaluationView: View {
                     .accessibilityIdentifier("scholium.researchEvaluation.note")
                 Text("Optional. Keep the note about this result; use Improve Current Method only for an explicit method-change comment.")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
             }
 
             if let statusMessage {
                 Text(statusMessage)
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(
+                    .scholiumForeground(
                         status == .outOfDate || status == .saveFailed
-                            ? ScholiumColorRole.destructive.color
-                            : ScholiumColorRole.secondaryText.color
+                            ? .destructive
+                            : .secondaryText
                     )
                     .textSelection(.enabled)
                     .accessibilityIdentifier("scholium.researchEvaluation.message")
@@ -288,7 +288,7 @@ struct ResearcherEvaluationView: View {
     private var saveState: some View {
         Label(status.title, systemImage: status.symbol)
             .font(ScholiumTypography.interface(.small, emphasis: .strong))
-            .foregroundStyle(status.foreground)
+            .scholiumForeground(status.foregroundRole)
             .accessibilityIdentifier("scholium.researchEvaluation.saveState")
     }
 
@@ -489,11 +489,11 @@ private enum SaveStatus: Equatable {
         }
     }
 
-    var foreground: Color {
+    var foregroundRole: ScholiumColorRole {
         switch self {
-        case .outOfDate, .saveFailed: ScholiumColorRole.destructive.color
-        case .unsavedDraft: ScholiumColorRole.attention.color
-        case .clean, .saving, .saved: ScholiumColorRole.secondaryText.color
+        case .outOfDate, .saveFailed: .destructive
+        case .unsavedDraft: .attention
+        case .clean, .saving, .saved: .secondaryText
         }
     }
 }
@@ -561,7 +561,7 @@ struct ResearchMethodFeedbackView: View {
                             : "One researcher-authored Method feedback comment is still unhandled."
                     )
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                 }
                 Spacer()
                 Button(isEditing ? "Close Editor" : "Add Method Feedback…") {
@@ -622,7 +622,7 @@ struct ResearchMethodFeedbackView: View {
                         Spacer()
                         Text("Expires \(handoff.expiresAt, style: .relative).")
                             .font(ScholiumTypography.interface(.small))
-                            .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                            .scholiumForeground(.secondaryText)
                     }
                 }
                 .padding(12)
@@ -635,7 +635,7 @@ struct ResearchMethodFeedbackView: View {
             if isEditing {
                 Text("Write a bounded comment about the Method used for this Record. Scholium will not alter the Method until you explicitly enter the separate Method maintenance flow.")
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 TextEditor(text: $draftText)
                     .font(ScholiumTypography.scholarly(.body))
@@ -653,7 +653,7 @@ struct ResearchMethodFeedbackView: View {
                 HStack {
                     Label(status.title, systemImage: status.symbol)
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .foregroundStyle(status.foreground)
+                        .scholiumForeground(status.foregroundRole)
                     Spacer()
                     if status == .saving {
                         ProgressView().controlSize(.small)
@@ -672,17 +672,17 @@ struct ResearchMethodFeedbackView: View {
             if let message {
                 Text(message)
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(
+                    .scholiumForeground(
                         status == .outOfDate || status == .saveFailed
-                            ? ScholiumColorRole.destructive.color
-                            : ScholiumColorRole.secondaryText.color
+                            ? .destructive
+                            : .secondaryText
                     )
                     .textSelection(.enabled)
             }
             if let improvementMessage {
                 Text(improvementMessage)
                     .font(ScholiumTypography.interface(.compact))
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
+                    .scholiumForeground(.secondaryText)
                     .textSelection(.enabled)
             }
         }

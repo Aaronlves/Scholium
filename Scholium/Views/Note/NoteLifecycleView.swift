@@ -40,7 +40,7 @@ struct NoteLifecycleView: View {
 
                 Text(helpText)
                     .font(ScholiumTypography.interface(.body))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(.secondaryText)
 
                 Divider()
 
