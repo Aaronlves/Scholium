@@ -309,7 +309,8 @@ extension WorkspaceHandle {
                 targetRole: request.targetRole
             )
             let checks = try await continuationReferenceChecks(
-                continuationReferences
+                continuationReferences,
+                parentSnapshot: parentExecution.snapshot
             )
             handoffContext = try ResearchContinuationHandoffContext(
                 parentRecordID: authenticated.runID,
@@ -553,12 +554,16 @@ extension WorkspaceHandle {
     }
 
     private func continuationReferenceChecks(
-        _ references: [SourceReferenceEnvelope]
+        _ references: [SourceReferenceEnvelope],
+        parentSnapshot: ResearchFunctionSnapshot
     ) async throws -> [ResearchContinuationReferenceCheck] {
         var seen: Set<UUID> = []
         var checks: [ResearchContinuationReferenceCheck] = []
         for reference in references where seen.insert(reference.id).inserted {
-            let result = try await continuationReferenceStatus(reference)
+            let result = try await continuationReferenceStatus(
+                reference,
+                parentSnapshot: parentSnapshot
+            )
             checks.append(try ResearchContinuationReferenceCheck(
                 sourceReference: reference,
                 status: result.status,
@@ -569,7 +574,8 @@ extension WorkspaceHandle {
     }
 
     private func continuationReferenceStatus(
-        _ reference: SourceReferenceEnvelope
+        _ reference: SourceReferenceEnvelope,
+        parentSnapshot: ResearchFunctionSnapshot
     ) async throws -> (
         status: ResearchContinuationReferenceStatus,
         explanation: String
@@ -658,7 +664,69 @@ extension WorkspaceHandle {
                 .current,
                 "The authoritative Research Record owner, revision, and locator are current."
             )
-        case .material, .researcherState:
+        case .material:
+            guard let frozen = parentSnapshot.sourceReference,
+                  ResearchContextMaterialProjection.isCurrentReference(
+                    reference,
+                    source: frozen,
+                    zoteroBibliographicContext:
+                        parentSnapshot.zoteroBibliographicContext,
+                    runID: parentSnapshot.runID,
+                    triptychID: services.manifest.id
+                  ) else {
+                throw ResearchContinuationContractError.invalidHandoff
+            }
+            let status = await services.researchSourceAccessStore.status(
+                analysisNoteID: parentSnapshot.request.target.noteID
+            )
+            switch status.state {
+            case .available:
+                guard let current = status.reference else {
+                    return (
+                        .unavailable,
+                        "The authoritative source owner returned no current Material reference."
+                    )
+                }
+                guard current.identity == frozen.identity else {
+                    return (
+                        .missing,
+                        "The Run's selected source Material is no longer the current source binding."
+                    )
+                }
+                guard current.fingerprint == frozen.fingerprint,
+                      reference.currentness == .current else {
+                    return (
+                        .changed,
+                        "The selected source Material has a different current revision; reopen it before use."
+                    )
+                }
+                return (
+                    .current,
+                    "The authoritative source Material identity, fingerprint, and locator are current."
+                )
+            case .repairRequired:
+                switch status.failure?.code {
+                case .sourceChanged:
+                    return (
+                        .changed,
+                        "The selected source Material changed after the parent Run used it."
+                    )
+                case .missingBinding, .sourceMissing, .zoteroAttachmentMissing:
+                    return (
+                        .missing,
+                        "The selected source Material is missing from its authoritative binding."
+                    )
+                case .corruptBinding, .bookmarkUnavailable, .bookmarkStale,
+                        .sourceUnreadable, .sourceNotRegular,
+                        .sourceIsSymbolicLink, .zoteroUnavailable,
+                        .zoteroIdentityMismatch, .none:
+                    return (
+                        .unavailable,
+                        "The authoritative source owner cannot currently verify this Material."
+                    )
+                }
+            }
+        case .researcherState:
             return (.unsupported, "This owner kind must be queried again through its current Application-owned channel.")
         }
     }

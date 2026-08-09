@@ -210,6 +210,128 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Current Run source Material and Zotero metadata use one revalidated Context lineage")
+    func verifiedSourceMaterialContextUse() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "META0001")
+        defer { fixture.remove() }
+        let script = ZoteroRequestScript(steps: [
+            .response(
+                status: 200,
+                data: Data(ResearchFunctionOperationsTests.zoteroItemJSON.utf8)
+            ),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let prepared = try await preparedAnalysis(handle: handle, fixture: fixture)
+        let response = try await handle.research.queryAgentResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: try ResearchContextRequest(
+                clauses: [try ResearchContextClause(
+                    kind: .inspectMaterials,
+                    useEligibility: .contextUse
+                )]
+            )
+        )
+        let outcome = try #require(response.outcomes.first)
+        let item = try #require(outcome.items.first)
+        let frozen = try #require(
+            try await handle.services.localResearchExecutionStore.record(
+                id: prepared.preparation.runID
+            ).snapshot.sourceReference
+        )
+        #expect(outcome.availability == .current)
+        #expect(item.contentKind == .sourceMaterial)
+        #expect(item.contextUseEligibility == .contextUse)
+        #expect(item.materialContent?.source == frozen)
+        #expect(item.materialContent?.zoteroBibliographicContext?.metadata?.title
+            == "Fittingness")
+        #expect(item.sourceReference.owner.materialID == frozen.identity.id)
+        #expect(item.sourceReference.fingerprint == frozen.fingerprint)
+        #expect(item.sourceReference.locator == (try .materialSource(frozen)))
+        #expect(item.sourceReference.evidentialLayer == .sourceMaterial)
+        #expect(item.sourceReference.materialLimitations.contains {
+            $0.contains("cannot alter Method Context")
+        })
+
+        let forgedLimitations = try SourceReferenceEnvelope(
+            id: item.sourceReference.id,
+            sourceKind: item.sourceReference.sourceKind,
+            owner: item.sourceReference.owner,
+            actorClass: item.sourceReference.actorClass,
+            objectRole: item.sourceReference.objectRole,
+            vaultRole: item.sourceReference.vaultRole,
+            fingerprint: item.sourceReference.fingerprint,
+            locator: item.sourceReference.locator,
+            authorizedScope: item.sourceReference.authorizedScope,
+            currentness: item.sourceReference.currentness,
+            evidentialLayer: item.sourceReference.evidentialLayer,
+            retrievalReason: item.sourceReference.retrievalReason,
+            materialLimitations: [
+                "Forged provider prose must not replace Application-owned Material provenance."
+            ]
+        )
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await handle.research.submitAgentResult(
+                credential: prepared.credential,
+                run: prepared.handoff.run,
+                submission: try analysisSubmission(
+                    preparation: prepared.preparation,
+                    contextUseClaims: [try ResearchContextUseClaim(
+                        sourceReference: forgedLimitations,
+                        testimony: "This forged Material reference must fail."
+                    )]
+                )
+            )
+        }
+
+        let originalSource = try Data(contentsOf: fixture.analysisSourceURL)
+        try Data("Changed after inspect_materials and before Result submission.".utf8)
+            .write(to: fixture.analysisSourceURL)
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await handle.research.submitAgentResult(
+                credential: prepared.credential,
+                run: prepared.handoff.run,
+                submission: try analysisSubmission(
+                    preparation: prepared.preparation,
+                    contextUseClaims: [try ResearchContextUseClaim(
+                        sourceReference: item.sourceReference,
+                        testimony: "A source changed after inspection must fail revalidation."
+                    )]
+                )
+            )
+        }
+        try originalSource.write(to: fixture.analysisSourceURL)
+
+        let receipt = try await handle.research.submitAgentResult(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            submission: try analysisSubmission(
+                preparation: prepared.preparation,
+                contextUseClaims: [try ResearchContextUseClaim(
+                    sourceReference: item.sourceReference,
+                    testimony: "The exact selected source constrained the reconstruction."
+                )]
+            )
+        )
+        #expect(receipt.state == .finalized)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: prepared.preparation.runID
+        )
+        let entry = try #require(record.contextUseReport?.entries.first)
+        #expect(entry.sourceReference == item.sourceReference)
+        #expect(Set(entry.verificationFacts) == [
+            .authoritativeOwnerRead,
+            .revisionMatched,
+            .locatorResolved,
+        ])
+        #expect(record.sourceReference == frozen)
+        #expect(await script.requestCount() == 1)
+        await runtime.shutdown()
+    }
+
     @Test("Researcher-state Context Use preserves content and verifies its current owner")
     func verifiedResearcherStateContextUse() async throws {
         let fixture = try await ResearchFixture.make()
@@ -392,6 +514,58 @@ struct ResearchAgentResultOperationsTests {
             pairingCode: handoff.pairingCode
         )
         return (preparation, handoff, credential)
+    }
+
+    private func preparedAnalysis(
+        handle: WorkspaceHandle,
+        fixture: ResearchFixture
+    ) async throws -> (
+        preparation: ResearchActionPreparation,
+        handoff: ResearchAgentHandoff,
+        credential: ResearchConnectionCredential
+    ) {
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let helpers = ResearchFunctionOperationsTests()
+        let preparation = try await handle.research.prepareAction(
+            try await helpers.actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: helpers.actionNote(target)
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+        return (preparation, handoff, credential)
+    }
+
+    private func analysisSubmission(
+        preparation: ResearchActionPreparation,
+        contextUseClaims: [ResearchContextUseClaim]
+    ) throws -> ResearchAgentResultSubmission {
+        try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("Source Material lineage fixture"),
+            academicResults: ResearchAcademicFieldValues(
+                rawValues: [
+                    "source-reconstruction": .freeText(
+                        "The exact source supports one bounded reconstruction."
+                    ),
+                    "coverage": .singleChoice("specified-part-only"),
+                    "reliability": .multipleChoice(["no-material-limitations"]),
+                ],
+                definitions: preparation.snapshot.resultContract.academicFields
+            ),
+            contextUseClaims: contextUseClaims,
+            literatureRecommendations: []
+        )
     }
 
     private func submission(

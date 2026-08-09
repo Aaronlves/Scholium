@@ -235,7 +235,7 @@ public struct ResearchMethodContext: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.

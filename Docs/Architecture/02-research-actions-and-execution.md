@@ -134,9 +134,13 @@ Triptych scope, and snapshots current generation before any provider call. Its
 production provider composes the existing Application Search use case, exact
 Note/section reader, same-snapshot explicit Graph relations, Property
 projection, Application Record provider, Settle/Discussion/Evaluation owner
-reads, and existing Zotero metadata or Record-owned literature-recommendation
-capabilities when explicitly requested. It never imports `ScholiumCore` types
-across the Application boundary or reaches private JSON/index files directly.
+reads, and the authenticated Run's already-frozen `ResearchSourceReference`
+plus Zotero bibliographic snapshot when explicitly inspected. Material
+inspection has no search string and cannot enumerate another source: an
+already-authorized closure asks `ResearchSourceAccessStore` only for the
+current status of that Run's selected binding. It never imports `ScholiumCore`
+types across the Application boundary, reaches private JSON/index files
+directly, or copies source bytes, bookmarks, or paths into Research Context.
 
 Search remains the only parser/ranker and keeps Note and Record identities
 discriminated. Direct Relations remain same-manifest explicit Markdown
@@ -146,15 +150,17 @@ adapter can only convert an already returned owner value into the closed Source
 Reference Envelope; it cannot fill unknown actor/locator/revision, add a
 confidence score, or broaden scope.
 
-Research Context request schema 2 contains only closed clause values. The
+Research Context request schema 3 contains only closed clause schema 2 values.
+The nested clause version changes with its closed kind and legal-shape set; a
+schema 1 clause therefore cannot silently acquire Material inspection. The
 Application validates the clause's legal query shape and platform capability,
-then dispatches every clause through its current owner. Response schema 3
+then dispatches every clause through its current owner. Response schema 4
 retains one ordered outcome for every requested clause, with Current, Partial,
 Stale, Unavailable, or Invalid Query availability and explicit limitations.
 Owner failures become their clause's Unavailable outcome; they do not erase
 other outcomes or masquerade as an empty current channel.
 
-Response schema 3 also copies the Note result's closed `NoteSearchMatchReason`
+Response schema 4 also copies the Note result's closed `NoteSearchMatchReason`
 values from that same Search response. The Application adapter does not
 reconstruct them: Property provenance retains exact source ranges and
 direct-relation provenance retains relation, direction, anchor, target, and
@@ -170,6 +176,13 @@ continuation, the provider rechecks every binding and returns Stale rather than
 reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
+
+Continue Result schema 2 and authenticated Run Context schema 4 carry the
+closed Material reference states `current`, `changed`, `missing`, and
+`unavailable`. Local Execution schema 9 persists the same typed handoff inside
+the child Run. Retired Result schema 1, authenticated Context schema 3, and
+Local Execution schema 8 fail closed instead of interpreting the expanded
+state set under an old version.
 
 Opaque reference resolution rechecks Session, Run, scope, current owner, and
 revision. Ending/re-pairing/revocation, Triptych change, deletion, or source
@@ -294,6 +307,11 @@ and platform support. It reserves one new Run and `continuedFrom` identity
 idempotently. The new Run performs ordinary fresh preparation and Research
 Context query. It inherits no prior method, Profile, Session-only write
 authority, Bounded Write Set, response, rank, cache, or provider availability.
+Note and Record handoff references re-read their current owners. A selected
+source-Material reference rechecks the parent Run's frozen source identity and
+fingerprint through `ResearchSourceAccessStore` and reports current, changed,
+missing, or unavailable; it transfers no bookmark, path, bytes, or source
+authority.
 
 The CLI and authenticated Agent Session remain the only Continue Research
 operation owners. The Records interface exposes no continuation command or
@@ -307,7 +325,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-8
+the one current `methodImprovementRun` in its parent Local Execution schema-9
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every
@@ -341,9 +359,12 @@ not proxy them.
 value. `ResearchSourceAccessStore` retains local bookmarks/paths privately and
 reopens exact regular files through the established security-scoped,
 descriptor-relative, fingerprinted boundary. Analyze cannot complete without
-its required current source. Zotero bibliographic metadata is read once per
-Run, labelled as metadata, and never substitutes for source content; a resumed
-Run uses its frozen snapshot and a new Run reads again.
+its required current source. Research Context can adapt only the authenticated
+Run's frozen reference and the source owner's current status into a Material
+envelope; the protected delivery path remains the only source-byte route.
+Zotero bibliographic metadata is read once per Run, labelled as metadata, and
+never substitutes for source content; a resumed Run uses its frozen snapshot
+and a new Run reads again.
 
 Check Fidelity remains a read-only exact-revision Action. Multi-document writes
 may request separate checks for each final revision, but no check collapses

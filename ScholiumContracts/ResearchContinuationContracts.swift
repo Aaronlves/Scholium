@@ -162,6 +162,7 @@ public enum ResearchContinuationReferenceStatus: String, Codable, Hashable, Send
     case current
     case changed
     case missing
+    case unavailable
     case unsupported
 }
 
@@ -451,7 +452,7 @@ public enum ResearchContinuationResultState: String, Codable, Hashable, Sendable
 }
 
 public struct ResearchContinuationResult: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let state: ResearchContinuationResultState

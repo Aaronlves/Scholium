@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 6 and Local Execution schema 8")
+@Suite("Portable Research Record storage v1/schema 6 and Local Execution schema 9")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -935,6 +935,37 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.issues.count == 1)
         await #expect(throws: Error.self) {
             _ = try await store.record(id: corruptID)
+        }
+    }
+
+    @Test("Local Execution schema 9 round-trips and rejects retired schema 8")
+    func localExecutionSchemaCutover() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.localStore()
+        let record = try makeLocalExecutionRecord(runID: UUID())
+        let stored = try await store.create(record)
+        #expect(stored.schemaVersion == 9)
+
+        let url = store.storageURL
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        let currentBytes = try Data(contentsOf: url)
+        #expect(try JSONDecoder().decode(
+            LocalResearchExecutionRecord.self,
+            from: currentBytes
+        ) == stored)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
+        )
+        #expect(object["schema_version"] as? Int == 9)
+        object["schema_version"] = 8
+        try JSONSerialization.data(withJSONObject: object).write(to: url)
+
+        let listing = try await store.listing()
+        #expect(listing.records.isEmpty)
+        #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
+        await #expect(throws: Error.self) {
+            _ = try await store.record(id: record.id)
         }
     }
 

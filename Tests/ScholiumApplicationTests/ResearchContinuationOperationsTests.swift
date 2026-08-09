@@ -222,6 +222,148 @@ struct ResearchContinuationOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Material handoff rechecks current, changed, missing, and unavailable source-owner states")
+    func materialReferenceCurrentness() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parent = try await finalizedMaterialParent(handle: handle, fixture: fixture)
+        var policy = try await handle.research.collaborationPolicy()
+        policy = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+
+        func result(for purpose: String) async throws -> ResearchContinuationResult {
+            let result = try await handle.research.continueAgentResearch(
+                credential: parent.credential,
+                run: parent.handoff.run,
+                request: try continuationRequest(
+                    actionID: .synthesize,
+                    role: .topic,
+                    path: "Agency.md",
+                    purpose: purpose,
+                    sourceReferences: [parent.materialReference]
+                )
+            )
+            #expect(result.state == .created)
+            return result
+        }
+
+        let current = try await result(for: "Current Material owner check.")
+        #expect(current.handoffContext?.referenceChecks.first?.status == .current)
+
+        try Data("Changed source bytes after the parent Run.".utf8).write(
+            to: fixture.analysisSourceURL
+        )
+        let changed = try await result(for: "Changed Material owner check.")
+        #expect(changed.handoffContext?.referenceChecks.first?.status == .changed)
+
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        try await handle.research.removeSourceAccess(for: analysis)
+        let missing = try await result(for: "Missing Material owner check.")
+        #expect(missing.handoffContext?.referenceChecks.first?.status == .missing)
+
+        let bindingURL = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(
+                fixture.assignment.id.uuidString,
+                isDirectory: true
+            )
+            .appendingPathComponent("source-access", isDirectory: true)
+            .appendingPathComponent("source-bindings-v1.json")
+        try Data("not a valid source binding".utf8).write(
+            to: bindingURL,
+            options: .atomic
+        )
+        let unavailablePurpose = "Unavailable Material owner check."
+        let unavailable = try await result(for: unavailablePurpose)
+        #expect(unavailable.handoffContext?.referenceChecks.first?.status
+            == .unavailable)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let decoder = JSONDecoder()
+        let resultBytes = try encoder.encode(unavailable)
+        #expect(try decoder.decode(
+            ResearchContinuationResult.self,
+            from: resultBytes
+        ) == unavailable)
+        var retiredResult = try #require(
+            JSONSerialization.jsonObject(with: resultBytes) as? [String: Any]
+        )
+        #expect(retiredResult["schema_version"] as? Int == 2)
+        retiredResult["schema_version"] = 1
+        #expect(throws: ResearchContinuationContractError.self) {
+            _ = try decoder.decode(
+                ResearchContinuationResult.self,
+                from: JSONSerialization.data(withJSONObject: retiredResult)
+            )
+        }
+
+        let childRun = try #require(unavailable.nextRun)
+        let parentRecord = try await handle.services.localResearchExecutionStore
+            .record(id: parent.preparation.runID)
+        let childID = try #require(parentRecord.continuationRequests.first {
+            $0.request.academicPurpose == unavailablePurpose
+        }?.childRunID)
+        let child = try await handle.services.localResearchExecutionStore.record(
+            id: childID
+        )
+        #expect(child.schemaVersion == 9)
+        #expect(child.snapshot.continuationHandoff?.referenceChecks.first?.status
+            == .unavailable)
+
+        let context = try await handle.research.authenticatedAgentContext(
+            credential: parent.credential,
+            run: childRun
+        )
+        let contextBytes = try encoder.encode(context)
+        #expect(try decoder.decode(
+            ResearchAuthenticatedRunContext.self,
+            from: contextBytes
+        ) == context)
+        var retiredContext = try #require(
+            JSONSerialization.jsonObject(with: contextBytes) as? [String: Any]
+        )
+        #expect(retiredContext["schema_version"] as? Int == 4)
+        retiredContext["schema_version"] = 3
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try decoder.decode(
+                ResearchAuthenticatedRunContext.self,
+                from: JSONSerialization.data(withJSONObject: retiredContext)
+            )
+        }
+
+        let resultWire = try LocalAgentBridgeResponse(
+            correlationID: UUID(),
+            continuationResult: unavailable
+        )
+        #expect(try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(resultWire)
+        ).continuationResult?.handoffContext?.referenceChecks.first?.status
+            == .unavailable)
+        let contextWire = try LocalAgentBridgeResponse(
+            correlationID: UUID(),
+            context: context
+        )
+        #expect(try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(contextWire)
+        ).context?.continuationHandoff?.referenceChecks.first?.status
+            == .unavailable)
+        await runtime.shutdown()
+    }
+
     private func finalizedParent(
         handle: WorkspaceHandle,
         fixture: ResearchFixture
@@ -283,6 +425,75 @@ struct ResearchContinuationOperationsTests {
         #expect(receipt.state == .finalized)
         #expect(receipt.recordFormed)
         return (preparation, handoff, credential, contextReference)
+    }
+
+    private func finalizedMaterialParent(
+        handle: WorkspaceHandle,
+        fixture: ResearchFixture
+    ) async throws -> (
+        preparation: ResearchActionPreparation,
+        handoff: ResearchAgentHandoff,
+        credential: ResearchConnectionCredential,
+        materialReference: SourceReferenceEnvelope
+    ) {
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let helpers = ResearchFunctionOperationsTests()
+        let preparation = try await handle.research.prepareAction(
+            try await helpers.actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: helpers.actionNote(target)
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+        let context = try await handle.research.queryAgentResearchContext(
+            credential: credential,
+            run: handoff.run,
+            request: try ResearchContextRequest(
+                clauses: [try ResearchContextClause(
+                    kind: .inspectMaterials,
+                    useEligibility: .contextUse
+                )]
+            )
+        )
+        let materialReference = try #require(
+            context.items.first?.sourceReference
+        )
+        let values = try ResearchAcademicFieldValues(
+            rawValues: [
+                "source-reconstruction": .freeText(
+                    "The exact source supports one bounded reconstruction."
+                ),
+                "coverage": .singleChoice("specified-part-only"),
+                "reliability": .multipleChoice(["no-material-limitations"]),
+            ],
+            definitions: preparation.snapshot.resultContract.academicFields
+        )
+        let receipt = try await handle.research.submitAgentResult(
+            credential: credential,
+            run: handoff.run,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: try ResearchRecordTitle("Material continuation fixture"),
+                academicResults: values,
+                contextUseClaims: [try ResearchContextUseClaim(
+                    sourceReference: materialReference,
+                    testimony: "The exact source constrained the reconstruction."
+                )],
+                literatureRecommendations: []
+            )
+        )
+        #expect(receipt.state == .finalized)
+        return (preparation, handoff, credential, materialReference)
     }
 
     private func continuationRequest(

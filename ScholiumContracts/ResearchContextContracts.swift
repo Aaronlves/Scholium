@@ -255,6 +255,19 @@ public struct ResearchContextSourceLocator: Codable, Hashable, Sendable {
         try Self(kind: .materialLocator, materialLocator: locator)
     }
 
+    /// A path-free locator derived only from the authoritative source identity.
+    /// Local filenames, bookmarks, and absolute paths never enter the envelope.
+    public static func materialSource(_ source: ResearchSourceReference) throws -> Self {
+        let identity = source.identity
+        let locator: String = switch identity.route {
+        case .localFile:
+            "local-file:\(identity.id.uuidString.lowercased())"
+        case .zoteroAttachment:
+            "zotero-item:\(identity.zoteroItemKey!);attachment:\(identity.zoteroAttachmentKey!)"
+        }
+        return try material(locator)
+    }
+
     public static let wholeObject = try! Self(kind: .wholeObject)
     public static let unknown = try! Self(kind: .unknown)
 
@@ -739,12 +752,14 @@ public enum ResearchContextClauseKind: String, Codable, CaseIterable, Hashable, 
     case inspectRelations = "inspect_relations"
     case inspectProperties = "inspect_properties"
     case inspectRecords = "inspect_records"
+    case inspectMaterials = "inspect_materials"
     case inspectResearcherState = "inspect_researcher_state"
 
     public var sourceKind: ResearchContextSourceKind {
         switch self {
         case .discoverNote, .readNote, .inspectRelations, .inspectProperties: .note
         case .inspectRecords: .record
+        case .inspectMaterials: .material
         case .inspectResearcherState: .researcherState
         }
     }
@@ -834,7 +849,7 @@ public struct ResearchContextPageCursor: Codable, Hashable, Sendable {
 /// product, Run, Triptych, or authorization scope; Application binds those
 /// facts after authenticating the request.
 public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let maximumLimit = 20
 
     public let schemaVersion: Int
@@ -900,7 +915,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             hasQuery && normalizedHeading == nil && cursor == nil
         case .readNote:
             hasQuery && cursor.map { $0.clauseID == id } != false
-        case .inspectResearcherState:
+        case .inspectMaterials, .inspectResearcherState:
             !hasQuery && normalizedHeading == nil && cursor == nil
         }
         guard clauseIsValid else { throw ResearchContextContractError.invalidQuery }
@@ -939,7 +954,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
 /// Agent-facing request. Run and Triptych authority are deliberately absent:
 /// the authenticated Application boundary supplies them before provider work.
 public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let maximumClauses = 4
 
     public let schemaVersion: Int
@@ -979,7 +994,7 @@ public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable 
 }
 
 public struct ResearchContextQuery: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let id: UUID
@@ -1045,7 +1060,51 @@ public enum ResearchContextContentKind: String, Codable, CaseIterable, Hashable,
     case noteSection = "note_section"
     case noteDocument = "note_document"
     case recordStatement = "record_statement"
+    case sourceMaterial = "source_material"
     case researcherState = "researcher_state"
+}
+
+/// Ephemeral, typed material data supplied by the existing source and Zotero
+/// owners. It is response data only: it creates no source cache or durable
+/// Material owner, and it never carries a bookmark, path, or source bytes.
+public struct ResearchContextMaterialContent: Codable, Hashable, Sendable {
+    public let source: ResearchSourceReference
+    public let zoteroBibliographicContext: ZoteroBibliographicContext?
+
+    public init(
+        source: ResearchSourceReference,
+        zoteroBibliographicContext: ZoteroBibliographicContext? = nil
+    ) throws {
+        if source.identity.route == .zoteroAttachment,
+           let zoteroBibliographicContext {
+            guard zoteroBibliographicContext.itemKey
+                    == source.identity.zoteroItemKey else {
+                throw ResearchContextContractError.invalidResponse
+            }
+        }
+        self.source = source
+        self.zoteroBibliographicContext = zoteroBibliographicContext
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case source
+        case zoteroBibliographicContext
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            source: try container.decode(
+                ResearchSourceReference.self,
+                forKey: .source
+            ),
+            zoteroBibliographicContext: try container.decodeIfPresent(
+                ZoteroBibliographicContext.self,
+                forKey: .zoteroBibliographicContext
+            )
+        )
+    }
 }
 
 /// Exact source bytes represented as their lossless UTF-8 String form. The
@@ -1091,6 +1150,7 @@ public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Send
     public let contentKind: ResearchContextContentKind
     public let semanticContent: String?
     public let exactSource: ResearchContextExactSource?
+    public let materialContent: ResearchContextMaterialContent?
     public let contextUseEligibility: ResearchContextUseEligibility
     /// Exact structured provenance returned by the one Foundation Search
     /// owner. This remains typed data beside source content so a direct
@@ -1104,15 +1164,30 @@ public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Send
         contentKind: ResearchContextContentKind,
         semanticContent: String? = nil,
         exactSource: ResearchContextExactSource? = nil,
+        materialContent: ResearchContextMaterialContent? = nil,
         contextUseEligibility: ResearchContextUseEligibility,
         noteMatchReasons: [NoteSearchMatchReason] = []
     ) throws {
         let expectsExact = contentKind == .noteSection || contentKind == .noteDocument
+        let expectsMaterial = contentKind == .sourceMaterial
+        let materialMatchesEnvelope = materialContent.map { material in
+            sourceReference.sourceKind == .material
+                && sourceReference.owner.materialID == material.source.identity.id
+                && sourceReference.owner.stableObjectIdentity
+                    == material.source.identity.id.uuidString.lowercased()
+                && sourceReference.fingerprint == material.source.fingerprint
+                && sourceReference.locator
+                    == (try? ResearchContextSourceLocator.materialSource(material.source))
+        } ?? false
         guard noteMatchReasons.count <= Self.maximumNoteMatchReasons,
               sourceReference.sourceKind == .note || noteMatchReasons.isEmpty,
               (expectsExact && semanticContent == nil && exactSource != nil
+                  && materialContent == nil
                   && sourceReference.locator.kind == .sourceRange)
-                  || (!expectsExact && semanticContent != nil && exactSource == nil),
+                  || (expectsMaterial && semanticContent == nil && exactSource == nil
+                      && materialMatchesEnvelope)
+                  || (!expectsExact && !expectsMaterial && semanticContent != nil
+                      && exactSource == nil && materialContent == nil),
               Self.primaryReasonMatchesEnvelope(
                   noteMatchReasons.first,
                   retrievalReason: sourceReference.retrievalReason
@@ -1133,12 +1208,14 @@ public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Send
             )
         }
         self.exactSource = exactSource
+        self.materialContent = materialContent
         self.contextUseEligibility = contextUseEligibility
         self.noteMatchReasons = noteMatchReasons
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case clauseID, sourceReference, title, contentKind, semanticContent, exactSource, contextUseEligibility, noteMatchReasons
+        case clauseID, sourceReference, title, contentKind, semanticContent,
+             exactSource, materialContent, contextUseEligibility, noteMatchReasons
     }
 
     public init(from decoder: Decoder) throws {
@@ -1151,6 +1228,10 @@ public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Send
             contentKind: try container.decode(ResearchContextContentKind.self, forKey: .contentKind),
             semanticContent: try container.decodeIfPresent(String.self, forKey: .semanticContent),
             exactSource: try container.decodeIfPresent(ResearchContextExactSource.self, forKey: .exactSource),
+            materialContent: try container.decodeIfPresent(
+                ResearchContextMaterialContent.self,
+                forKey: .materialContent
+            ),
             contextUseEligibility: try container.decode(ResearchContextUseEligibility.self, forKey: .contextUseEligibility),
             noteMatchReasons: try container.decode([NoteSearchMatchReason].self, forKey: .noteMatchReasons)
         )
@@ -1276,7 +1357,7 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
 }
 
 public struct ResearchContextResponse: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
     /// Leaves a material margin below the 1 MiB local-bridge frame for its
     /// envelope, error fields, and future transport metadata.
     public static let maximumEncodedByteCount = 768 * 1_024

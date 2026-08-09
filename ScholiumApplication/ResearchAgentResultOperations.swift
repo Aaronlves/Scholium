@@ -121,7 +121,7 @@ extension WorkspaceHandle {
             claims: submission.contextUseClaims,
             runID: authenticated.runID,
             triptychID: authenticated.triptychID,
-            action: action
+            snapshot: stored.snapshot
         )
         let submittedAt = stored.resultPayload?.submittedAt ?? Date()
         let payload = try ResearchRunResultPayload(
@@ -255,7 +255,7 @@ extension WorkspaceHandle {
         claims: [ResearchContextUseClaim],
         runID: UUID,
         triptychID: UUID,
-        action: ResearchActionSnapshot
+        snapshot: ResearchFunctionSnapshot
     ) async throws -> ContextUseReport? {
         guard !claims.isEmpty else { return nil }
         var entries: [ContextUseEntry] = []
@@ -274,11 +274,14 @@ extension WorkspaceHandle {
             case .record:
                 facts = try await verifyRecordReference(reference)
             case .material:
-                // The current Research Context provider never returns Material
-                // references. Frozen Action Materials remain verified through
-                // their existing exact-note completion path instead.
-                throw ResearchAgentResultContractError.invalidContextUse
+                facts = try await verifyMaterialReference(
+                    reference,
+                    snapshot: snapshot
+                )
             case .researcherState:
+                guard let action = snapshot.actionSnapshot else {
+                    throw ResearchAgentResultContractError.invalidContextUse
+                }
                 guard try FoundationResearchContextProvider()
                     .isCurrentResearcherStateReference(
                         reference,
@@ -332,6 +335,31 @@ extension WorkspaceHandle {
         let document = try await loadDocument(noteID)
         guard document.fingerprint == snapshot.fingerprint,
               Self.locator(reference.locator, isValidIn: document.rawContent) else {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        return [.authoritativeOwnerRead, .revisionMatched, .locatorResolved]
+    }
+
+    private func verifyMaterialReference(
+        _ reference: SourceReferenceEnvelope,
+        snapshot: ResearchFunctionSnapshot
+    ) async throws -> [ContextUseVerificationFact] {
+        guard let frozen = snapshot.sourceReference,
+              ResearchContextMaterialProjection.isCurrentReference(
+                reference,
+                source: frozen,
+                zoteroBibliographicContext:
+                    snapshot.zoteroBibliographicContext,
+                runID: snapshot.runID,
+                triptychID: services.manifest.id
+              ) else {
+            throw ResearchAgentResultContractError.invalidContextUse
+        }
+        let status = await services.researchSourceAccessStore.status(
+            analysisNoteID: snapshot.request.target.noteID
+        )
+        guard status.state == .available,
+              status.reference == frozen else {
             throw ResearchAgentResultContractError.invalidContextUse
         }
         return [.authoritativeOwnerRead, .revisionMatched, .locatorResolved]

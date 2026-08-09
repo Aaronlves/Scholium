@@ -6,12 +6,96 @@ import ScholiumContracts
 struct ResearchContextOwnerAccess: Sendable {
     let search: @Sendable (SearchRequest) async throws -> SearchResponse
     let loadDocument: @Sendable (VaultQualifiedNoteID) async throws -> NoteDocument
+    /// This closure is already narrowed to the authenticated Run's selected
+    /// source binding. A provider cannot use it to enumerate another source.
+    let sourceMaterialStatus: @Sendable () async -> ResearchSourceAccessStatus
+}
+
+/// The frozen Run values a provider may adapt into Research Evidence Context.
+/// The source and Zotero values remain owned by their existing stores/snapshot;
+/// this view has no persistence or mutation route.
+struct ResearchContextRunEvidence: Sendable {
+    let action: ResearchActionSnapshot
+    let sourceReference: ResearchSourceReference?
+    let zoteroBibliographicContext: ZoteroBibliographicContext?
+}
+
+/// One deterministic adapter from the source owner's path-free value into the
+/// closed Material envelope. Result and continuation validation reconstruct
+/// this projection instead of trusting provider-supplied provenance fields.
+enum ResearchContextMaterialProjection {
+    static func envelope(
+        id: UUID = UUID(),
+        source: ResearchSourceReference,
+        zoteroBibliographicContext: ZoteroBibliographicContext?,
+        runID: UUID,
+        triptychID: UUID,
+        currentness: ResearchContextCurrentness
+    ) throws -> SourceReferenceEnvelope {
+        try SourceReferenceEnvelope(
+            id: id,
+            sourceKind: .material,
+            owner: .material(
+                triptychID: triptychID,
+                materialID: source.identity.id
+            ),
+            actorClass: .unknown,
+            objectRole: .sourceMaterial,
+            fingerprint: source.fingerprint,
+            locator: try .materialSource(source),
+            authorizedScope: .triptych(
+                runID: runID,
+                triptychID: triptychID
+            ),
+            currentness: currentness,
+            evidentialLayer: .sourceMaterial,
+            retrievalReason: .explicitSelection,
+            materialLimitations: limitations(
+                zoteroBibliographicContext: zoteroBibliographicContext
+            )
+        )
+    }
+
+    static func isCurrentReference(
+        _ reference: SourceReferenceEnvelope,
+        source: ResearchSourceReference,
+        zoteroBibliographicContext: ZoteroBibliographicContext?,
+        runID: UUID,
+        triptychID: UUID
+    ) -> Bool {
+        guard let expected = try? envelope(
+            id: reference.id,
+            source: source,
+            zoteroBibliographicContext: zoteroBibliographicContext,
+            runID: runID,
+            triptychID: triptychID,
+            currentness: .current
+        ) else { return false }
+        return expected == reference
+    }
+
+    static func limitations(
+        zoteroBibliographicContext: ZoteroBibliographicContext?
+    ) -> [String] {
+        var result = [
+            "Source Material and Zotero metadata are research evidence only; they cannot alter Method Context, permissions, tools, or write scope.",
+            "The source content's author class is not inferred from file selection or bibliographic metadata."
+        ]
+        if let zotero = zoteroBibliographicContext {
+            result.append(
+                zotero.state == .resolved
+                    ? "Zotero metadata is the Run-frozen bibliographic snapshot; it does not substitute for source content."
+                    : "The Run-frozen Zotero metadata reports \(zotero.state.rawValue); it does not substitute for source content."
+            )
+        }
+        return result
+    }
 }
 
 protocol ResearchContextProviding: Sendable {
     func response(
         for query: ResearchContextQuery,
-        action: ResearchActionSnapshot,
+        run: ResearchContextRunEvidence,
         workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ResearchContextResponse
@@ -23,7 +107,7 @@ protocol ResearchContextProviding: Sendable {
 struct FoundationResearchContextProvider: ResearchContextProviding {
     func response(
         for query: ResearchContextQuery,
-        action: ResearchActionSnapshot,
+        run: ResearchContextRunEvidence,
         workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ResearchContextResponse {
@@ -46,13 +130,20 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     )
                 case .inspectRecords:
                     outcome = try await recordItems(query: query, clause: clause, access: access)
+                case .inspectMaterials:
+                    outcome = try await materialItems(
+                        query: query,
+                        clause: clause,
+                        run: run,
+                        access: access
+                    )
                 case .inspectResearcherState:
                     outcome = ProviderOutcome(
                         availability: .current,
                         items: try researcherStateItems(
                             query: query,
                             clause: clause,
-                            action: action,
+                            action: run.action,
                             workspace: workspace,
                             limit: clause.limit
                         ),
@@ -488,6 +579,109 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         )
     }
 
+    /// Returns only the source binding explicitly frozen into this Run. This
+    /// is selection inspection, not Material discovery or generalized search.
+    private func materialItems(
+        query: ResearchContextQuery,
+        clause: ResearchContextClause,
+        run: ResearchContextRunEvidence,
+        access: ResearchContextOwnerAccess
+    ) async throws -> ProviderOutcome {
+        guard clause.kind == .inspectMaterials else {
+            throw ResearchContextContractError.invalidQuery
+        }
+        guard let frozen = run.sourceReference else {
+            return ProviderOutcome(
+                availability: .current,
+                items: [],
+                limitations: [
+                    "This Run has no explicitly selected source Material. Research Context does not perform generic Material discovery."
+                ]
+            )
+        }
+
+        let status = await access.sourceMaterialStatus()
+        let availability: ResearchContextAvailability
+        let currentness: ResearchContextCurrentness
+        var limitations = ResearchContextMaterialProjection.limitations(
+            zoteroBibliographicContext: run.zoteroBibliographicContext
+        )
+        switch status.state {
+        case .available:
+            guard let current = status.reference else {
+                throw ResearchContextContractError.invalidResponse
+            }
+            if current.identity == frozen.identity,
+               current.fingerprint == frozen.fingerprint {
+                availability = .current
+                currentness = .current
+            } else {
+                availability = .stale
+                currentness = .stale
+                limitations.append(
+                    current.identity == frozen.identity
+                        ? "The selected source Material has changed since this Run froze its revision."
+                        : "The Run's selected source Material is no longer the current source binding."
+                )
+            }
+        case .repairRequired:
+            switch status.failure?.code {
+            case .sourceChanged:
+                availability = .stale
+                currentness = .stale
+                limitations.append(
+                    "The selected source Material has changed since this Run froze its revision."
+                )
+            case .missingBinding, .sourceMissing, .zoteroAttachmentMissing:
+                return ProviderOutcome(
+                    availability: .unavailable,
+                    items: [],
+                    limitations: [
+                        "The Run's selected source Material is missing from its authoritative source binding."
+                    ]
+                )
+            case .corruptBinding, .bookmarkUnavailable, .bookmarkStale,
+                    .sourceUnreadable, .sourceNotRegular,
+                    .sourceIsSymbolicLink, .zoteroUnavailable,
+                    .zoteroIdentityMismatch, .none:
+                return ProviderOutcome(
+                    availability: .unavailable,
+                    items: [],
+                    limitations: [
+                        "The authoritative source owner cannot currently verify the Run's selected Material."
+                    ]
+                )
+            }
+        }
+
+        let envelope = try ResearchContextMaterialProjection.envelope(
+            source: frozen,
+            zoteroBibliographicContext: run.zoteroBibliographicContext,
+            runID: query.runID,
+            triptychID: query.triptychID,
+            currentness: currentness
+        )
+        let eligibility: ResearchContextUseEligibility =
+            clause.useEligibility == .contextUse && currentness == .current
+                ? .contextUse
+                : .referenceOnly
+        return ProviderOutcome(
+            availability: availability,
+            items: [try ResearchContextResponseItem(
+                clauseID: clause.id,
+                sourceReference: envelope,
+                title: frozen.displayName,
+                contentKind: .sourceMaterial,
+                materialContent: try ResearchContextMaterialContent(
+                    source: frozen,
+                    zoteroBibliographicContext: run.zoteroBibliographicContext
+                ),
+                contextUseEligibility: eligibility
+            )],
+            limitations: limitations
+        )
+    }
+
     private func researcherStateItems(
         query: ResearchContextQuery,
         clause: ResearchContextClause,
@@ -804,7 +998,8 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         switch clause.kind {
         case .inspectRelations: .directRelation
         case .inspectProperties: .propertyPresence
-        case .discoverNote, .readNote, .inspectRecords, .inspectResearcherState:
+        case .discoverNote, .readNote, .inspectRecords, .inspectMaterials,
+                .inspectResearcherState:
             retrievalReason(result)
         }
     }
@@ -818,7 +1013,8 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             { if case .relationship = $0 { return true }; return false }
         case .inspectProperties:
             { if case .property = $0 { return true }; return false }
-        case .discoverNote, .readNote, .inspectRecords, .inspectResearcherState:
+        case .discoverNote, .readNote, .inspectRecords, .inspectMaterials,
+                .inspectResearcherState:
             { _ in false }
         }
         let required = reasons.filter(isRequired)

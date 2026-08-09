@@ -323,7 +323,12 @@ extension WorkspaceHandle {
         let snapshot = currentSnapshot
         let response = try await provider.response(
             for: query,
-            action: action,
+            run: ResearchContextRunEvidence(
+                action: action,
+                sourceReference: record.snapshot.sourceReference,
+                zoteroBibliographicContext:
+                    record.snapshot.zoteroBibliographicContext
+            ),
             workspace: snapshot,
             access: ResearchContextOwnerAccess(
                 search: { [weak self] request in
@@ -337,6 +342,14 @@ extension WorkspaceHandle {
                         throw ResearchAgentConnectionError.runUnavailable
                     }
                     return try await self.loadDocument(note)
+                },
+                sourceMaterialStatus: { [weak self] in
+                    guard let self else {
+                        return .repairRequired(.bookmarkUnavailable)
+                    }
+                    return await self.services.researchSourceAccessStore.status(
+                        analysisNoteID: record.snapshot.request.target.noteID
+                    )
                 }
             )
         )
@@ -468,6 +481,7 @@ extension WorkspaceHandle {
             case .readNote: operations.contains(.read)
             case .inspectRelations: operations.contains(.inspectRelations)
             case .inspectProperties: operations.contains(.inspectProperties)
+            case .inspectMaterials: operations.contains(.read)
             case .inspectRecords, .inspectResearcherState:
                 operations.contains(.queryRecords)
             }

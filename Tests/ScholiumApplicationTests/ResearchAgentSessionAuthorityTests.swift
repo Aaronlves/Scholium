@@ -439,7 +439,11 @@ struct ResearchAgentSessionAuthorityTests {
         )
         let researcherState = try await FoundationResearchContextProvider().response(
             for: stateQuery,
-            action: actionSnapshot,
+            run: ResearchContextRunEvidence(
+                action: actionSnapshot,
+                sourceReference: nil,
+                zoteroBibliographicContext: nil
+            ),
             workspace: researcherStateSnapshot,
             access: ResearchContextOwnerAccess(
                 search: { _ in
@@ -447,6 +451,9 @@ struct ResearchAgentSessionAuthorityTests {
                 },
                 loadDocument: { _ in
                     throw ResearchAgentSessionTestFailure.unexpectedOwnerAccess
+                },
+                sourceMaterialStatus: {
+                    .repairRequired(.missingBinding)
                 }
             )
         )
@@ -681,11 +688,11 @@ private enum ResearchAgentSessionTestFailure: Error {
 private struct EmptyResearchContextProvider: ResearchContextProviding {
     func response(
         for query: ResearchContextQuery,
-        action: ResearchActionSnapshot,
+        run: ResearchContextRunEvidence,
         workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ResearchContextResponse {
-        _ = action
+        _ = run
         _ = workspace
         _ = access
         return try ResearchContextResponse(

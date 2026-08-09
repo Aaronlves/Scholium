@@ -42,6 +42,23 @@ They do not replace physical keyboard, installed IME, Voice Control, Dictation,
 genuine VoiceOver, Dark/Increase Contrast, 200% interface text, or researcher
 visual acceptance.
 
+## Focused Agent-inheritance evidence
+
+The current-Run Material lineage cutover passed 57 focused tests across nine
+owning Contracts, Application, and architecture-boundary suites with Xcode 27
+beta and Swift 6.4. The tests cover the closed `inspect_materials` clause,
+path-free typed source and Zotero response data, canonical Material-envelope
+revalidation for Context Use including a source change between inspection and
+Result submission, current/changed/missing/unavailable continuation checks,
+schema cutovers and round trips through Continue Result, authenticated Run
+Context, bridge, and Local Execution, source-access containment, process-bound
+Session regressions, and module/import ownership.
+
+This proves the repository-level Material owner and lineage contract on
+disposable fixtures. It does not prove checkout-external App/CLI installation,
+production App Group behavior, human accessibility, sustained research use, or
+philosophical quality.
+
 ## Search case pack
 
 These cases are the current researcher-review set for deciding whether static

@@ -9,14 +9,14 @@ struct PhaseOneOwnershipContractsTests {
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchAuthenticatedRunContext.self,
-                from: Data("{\"schema_version\":2}".utf8)
+                from: Data("{\"schema_version\":3}".utf8)
             )
         }
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchAuthenticatedRunContext.self,
                 from: Data(
-                    "{\"schema_version\":3,\"blanket_write\":true}".utf8
+                    "{\"schema_version\":4,\"blanket_write\":true}".utf8
                 )
             )
         }

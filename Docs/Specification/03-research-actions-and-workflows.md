@@ -175,18 +175,23 @@ Local absolute paths are delivered only after authentication.
 The versioned, read-only **Research Context Query/Response** contract belongs
 to Application. A query contains one or more closed clauses: Note discovery,
 exact Note or section read, explicit direct-Relation inspection, canonical
-Property inspection, Record inspection, or researcher-state inspection. Each
-clause fixes Triptych scope, its legal query or section selector, an item limit,
-and whether the returned material may be proposed for Context Use. A query
-cannot choose a provider, source-kind/purpose cross-product, Run, Triptych, or
-authorization scope. Application binds current Run, Session, Triptych,
-authorized scope, and generation before provider execution. Initial Beta
-composes the one Search capability, exact Note/section read, explicit direct
-Relations, canonical Properties, Research Records, and only researcher-state
-facts whose existing owner proves actor, object, action meaning, revision/scope,
-and text. It creates no Agent-only parser, ranker, JSON scan, hidden index,
-persistent response, Research State store, researcher profile, vector store, or
-automatic synthesis.
+Property inspection, Record inspection, current-Run source-Material inspection,
+or researcher-state inspection. Material inspection has no free query: it can
+return only the path-free source binding explicitly selected and frozen for the
+authenticated Run, together with that Run's existing Zotero bibliographic
+snapshot when present. It is not Material discovery or generalized Zotero
+search. Each clause fixes Triptych scope, its legal query or section selector,
+an item limit, and whether the returned material may be proposed for Context
+Use. A query cannot choose a provider, source-kind/purpose cross-product, Run,
+Triptych, or authorization scope. Application binds current Run, Session,
+Triptych, authorized scope, and generation before provider execution. Initial
+Beta composes the one Search capability, exact Note/section read, explicit
+direct Relations, canonical Properties, Research Records, the current Run's
+selected source binding, and only researcher-state facts whose existing owner
+proves actor, object, action meaning, revision/scope, and text. It creates no
+Agent-only parser, ranker, JSON scan, hidden index, source cache, persistent
+response, Research State store, researcher profile, vector store, or automatic
+synthesis.
 
 Every returned item uses one closed **Source Reference Envelope** carrying:
 source kind, authoritative owner reference, stable object identity, actor
@@ -225,8 +230,12 @@ authority. Scholium retains no process registry of previously delivered
 references. Context Use and Continue Research submissions remain bound to an
 authenticated Run, must carry that Run's authorized scope, and recheck the
 current authoritative owner, revision, and locator before any reference is
-recorded or handed forward. These checks establish a current referent, not
-that delivery itself caused use; actual use remains explicit Agent testimony.
+recorded or handed forward. A Material reference is valid only when it matches
+the Run-frozen `ResearchSourceReference` and the existing source-access owner
+can reopen the same identity and fingerprint; bookmarks, absolute paths,
+source bytes, and provider-local metadata never enter the envelope. These checks
+establish a current referent, not that delivery itself caused use; actual use
+remains explicit Agent testimony.
 
 Researcher state is only an ephemeral typed read view over existing owners.
 The maximum meanings are narrow: exact-fingerprint Settle means that revision
@@ -438,9 +447,11 @@ resolves current Skill, Practices, Profile, policy, Result Contract, and
 write set. It inherits no old document handles, transaction state, method,
 permission decision, Research Context response, candidates, rank, cache,
 availability, or future Assembly. Handoff references are re-resolved against
-current owner, revision, scope, and generation. Changed, missing, revoked, or
-unavailable evidence is reported; a requery reduces stale-context inertia but
-does not guarantee completeness or truth.
+current owner, revision, scope, and generation. A selected source-Material
+reference reports current, changed, missing, or unavailable from the existing
+source-access owner. Changed, missing, revoked, or unavailable evidence is
+reported; a requery reduces stale-context inertia but does not guarantee
+completeness or truth.
 
 The next Record alone stores `continued from` after it safely forms; `continued
 as` is derived in reverse and never rewrites the prior Record. Rejection or

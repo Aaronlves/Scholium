@@ -66,16 +66,19 @@
   Code for the installed CLI. Pairing creates a process-bound local Connection
   Session; protected operations require that Session.
 - Research Context composes current Search, exact Note reads, direct Relations,
-  Properties, Records, source references, and explicitly proven researcher
-  state. Each returned item preserves owner, revision, locator, scope,
-  currentness, evidential layer, retrieval reason, and limitation.
+  Properties, Records, the current Run's explicitly selected path-free source
+  Material and frozen Zotero bibliographic snapshot, and explicitly proven
+  researcher state. It does not search Materials or copy source bytes. Each
+  returned item preserves owner, revision, locator, scope, currentness,
+  evidential layer, retrieval reason, and limitation.
 - A Run owns one bounded, expandable write set. Every mutation still requires a
   nonreusable operation capability and the exact repository transaction. One
   member's conflict does not widen authority or roll back confirmed siblings.
 - Result submission validates the frozen academic contract and Context Use;
   Application adds machine facts from actual transaction outcomes. Finalization
   is idempotent and waits for writes and recovery duties to converge. Continue
-  Research creates a separate Run.
+  Research creates a separate Run, rechecks selected source Materials as
+  current, changed, missing, or unavailable.
 - Closing an Action presentation leaves unfinished work active. Explicit End
   Action or End Discussion revokes new authority while retaining confirmed
   changes, conflicts, Records, and recovery duties.

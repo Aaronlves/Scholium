@@ -58,6 +58,29 @@ struct ResearchContextContractsTests {
                 useEligibility: .referenceOnly
             )
         }
+        let material = try ResearchContextClause(
+            kind: .inspectMaterials,
+            useEligibility: .contextUse
+        )
+        let materialBytes = try JSONEncoder().encode(material)
+        var retiredMaterial = try #require(
+            JSONSerialization.jsonObject(with: materialBytes) as? [String: Any]
+        )
+        #expect(retiredMaterial["schemaVersion"] as? Int == 2)
+        retiredMaterial["schemaVersion"] = 1
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchContextClause.self,
+                from: JSONSerialization.data(withJSONObject: retiredMaterial)
+            )
+        }
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try ResearchContextClause(
+                kind: .inspectMaterials,
+                query: "generic material search is forbidden",
+                useEligibility: .contextUse
+            )
+        }
         let clause = try ResearchContextClause(
             kind: .readNote,
             query: "path:Inheritance.md",
@@ -212,6 +235,88 @@ struct ResearchContextContractsTests {
         )
         #expect(response.availability == .invalidQuery)
         #expect(try roundTrip(response).availability == .invalidQuery)
+    }
+
+    @Test("Material content is path-free typed Run evidence and matches its source envelope")
+    func sourceMaterialContentRoundTrips() throws {
+        let fixture = Fixture()
+        let source = try ResearchSourceReference(
+            identity: .zoteroAttachment(
+                itemKey: "PARENT01",
+                attachmentKey: "ATTACH02"
+            ),
+            displayName: "Bound Source.pdf",
+            fingerprint: DocumentFingerprint(content: "source bytes")
+        )
+        let clause = try ResearchContextClause(
+            kind: .inspectMaterials,
+            useEligibility: .contextUse
+        )
+        let query = try ResearchContextQuery(
+            request: ResearchContextRequest(clauses: [clause]),
+            runID: fixture.runID,
+            triptychID: fixture.triptychID
+        )
+        let envelope = try SourceReferenceEnvelope(
+            sourceKind: .material,
+            owner: .material(
+                triptychID: fixture.triptychID,
+                materialID: source.identity.id
+            ),
+            actorClass: .unknown,
+            objectRole: .sourceMaterial,
+            fingerprint: source.fingerprint,
+            locator: .materialSource(source),
+            authorizedScope: .triptych(
+                runID: fixture.runID,
+                triptychID: fixture.triptychID
+            ),
+            currentness: .current,
+            evidentialLayer: .sourceMaterial,
+            retrievalReason: .explicitSelection,
+            materialLimitations: [
+                "Source Material is evidence and its content author is not inferred."
+            ]
+        )
+        let item = try ResearchContextResponseItem(
+            clauseID: clause.id,
+            sourceReference: envelope,
+            title: source.displayName,
+            contentKind: .sourceMaterial,
+            materialContent: try ResearchContextMaterialContent(source: source),
+            contextUseEligibility: .contextUse
+        )
+        let response = try ResearchContextResponse(
+            query: query,
+            outcomes: [try ResearchContextClauseOutcome(
+                clause: clause,
+                availability: .current,
+                items: [item]
+            )]
+        )
+
+        #expect(try roundTrip(response) == response)
+        let encoded = String(decoding: try JSONEncoder().encode(response), as: UTF8.self)
+        #expect(encoded.contains("PARENT01"))
+        #expect(encoded.contains("ATTACH02"))
+        #expect(!encoded.contains("file://"))
+        #expect(!encoded.contains("bookmark"))
+
+        let mismatched = try ResearchSourceReference(
+            identity: .localFile(),
+            displayName: "Different Source.pdf",
+            fingerprint: source.fingerprint
+        )
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try ResearchContextResponseItem(
+                clauseID: clause.id,
+                sourceReference: envelope,
+                title: mismatched.displayName,
+                contentKind: .sourceMaterial,
+                materialContent: try ResearchContextMaterialContent(source: mismatched),
+                contextUseEligibility: .contextUse
+            )
+        }
     }
 
     @Test("Wire responses reject clause and item overflows")
