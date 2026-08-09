@@ -247,6 +247,14 @@ spacing, native control geometry, scene/window dimensions, Document CSS units,
 and explicitly component-owned metrics remain separate classifications rather
 than being forced into the shared spacing family.
 
+`ScholiumMetrics.ResearchGuidance` owns the categorized Settings surface's
+native list-detail containment thresholds and the explanatory collection-row
+rhythm. `researchSettingsCollectionRow` applies that one content/action layout
+to Method, Academic Profile, and Philosophical Practice rows while each caller
+retains its domain values, operations, accessibility identifiers, and state.
+The shared presentation component performs no persistence, routing, or
+authorization work and does not style native controls themselves.
+
 `ScholiumCornerRole` is the closed responsibility vocabulary for custom corner
 geometry. `ScholiumShape` exposes the Native aliases and generates only the
 WebKit custom properties needed by the same or WebKit-specific constructs; it

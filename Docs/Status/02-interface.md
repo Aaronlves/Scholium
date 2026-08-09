@@ -286,6 +286,10 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   roles. Zero spacing, native geometry, window/component dimensions, Document
   CSS rhythm, and remaining component-specific cadence are not reclassified as
   shared spacing merely because their values are numeric.
+- Research Guidance now has one component-level layout owner for its category
+  Sidebar constraints and explanatory Method/Profile/Practice collection rows.
+  The shared row preserves the existing left-copy/right-action structure and
+  measurements without taking ownership of setting values or operations.
 - English and Simplified Chinese catalogs are reachable. Stable identifiers,
   paths, exact Markdown, researcher-authored titles and prose, and Skill names
   remain verbatim.

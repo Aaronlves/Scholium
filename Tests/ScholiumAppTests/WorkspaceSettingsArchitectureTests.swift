@@ -180,6 +180,65 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!rootSource.contains("private struct ResearchActionProfileEditorView"))
     }
 
+    @Test("Research Guidance collection rows share one presentation owner")
+    func researchGuidanceCollectionRowOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let rootSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchGuidanceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let methodsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchMethodsSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let profilesSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ProfilesPracticesSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(rootSource.contains("func researchSettingsCollectionRow<"))
+        #expect(
+            rootSource.contains(
+                "ScholiumMetrics.ResearchGuidance.collectionRowColumnSpacing"
+            )
+        )
+        #expect(
+            rootSource.contains(
+                "ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset"
+            )
+        )
+        #expect(
+            rootSource.contains(
+                "ScholiumMetrics.ResearchGuidance.categorySidebarMinimumWidth"
+            )
+        )
+        #expect(
+            methodsSource.components(
+                separatedBy: "researchSettingsCollectionRow {"
+            ).count == 2
+        )
+        #expect(
+            profilesSource.components(
+                separatedBy: "researchSettingsCollectionRow {"
+            ).count == 3
+        )
+        #expect(!methodsSource.contains("HStack(alignment: .top, spacing: 14)"))
+        #expect(!profilesSource.contains("HStack(alignment: .top, spacing: 14)"))
+        #expect(!methodsSource.contains(".padding(.vertical, 10)"))
+        #expect(!profilesSource.contains(".padding(.vertical, 10)"))
+        #expect(ScholiumMetrics.ResearchGuidance.collectionRowColumnSpacing == 14)
+        #expect(ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset == 10)
+    }
+
     @Test("Research Guidance exposes the current owner surfaces without package semantics")
     func researchGuidanceOwnsCurrentSkillConfiguration() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

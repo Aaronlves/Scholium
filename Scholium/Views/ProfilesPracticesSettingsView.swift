@@ -194,7 +194,7 @@ struct ProfilesPracticesSettingsView: View {
         _ profile: ResearchAcademicActionProfile,
         snapshot: ResearchAcademicProfileSnapshot
     ) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        researchSettingsCollectionRow {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(profile.displayName)
                     .font(ScholiumTypography.interface(.rowTitle))
@@ -214,7 +214,7 @@ struct ProfilesPracticesSettingsView: View {
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
             }
-            Spacer(minLength: 12)
+        } actions: {
             VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Toggle("Enabled", isOn: Binding(
                     get: { profile.isEnabled },
@@ -250,12 +250,11 @@ struct ProfilesPracticesSettingsView: View {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
     }
 
     private func practiceRow(_ practice: ResearchPracticeSnapshot) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        researchSettingsCollectionRow {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(practice.title)
                     .font(ScholiumTypography.interface(.rowTitle))
@@ -264,12 +263,11 @@ struct ProfilesPracticesSettingsView: View {
                     .scholiumForeground(.secondaryText)
                     .textSelection(.enabled)
             }
-            Spacer(minLength: 12)
+        } actions: {
             Button("Edit…") {
                 practiceEditor = ResearchPracticeEditorContext(practice: practice)
             }
         }
-        .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchGuidance.practice.\(practice.id)")
     }

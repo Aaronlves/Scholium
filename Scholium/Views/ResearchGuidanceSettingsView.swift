@@ -55,7 +55,11 @@ struct ResearchGuidanceSettingsView: View {
                     )
             }
             .listStyle(.sidebar)
-            .frame(minWidth: 190, idealWidth: 210, maxWidth: 240)
+            .frame(
+                minWidth: ScholiumMetrics.ResearchGuidance.categorySidebarMinimumWidth,
+                idealWidth: ScholiumMetrics.ResearchGuidance.categorySidebarIdealWidth,
+                maxWidth: ScholiumMetrics.ResearchGuidance.categorySidebarMaximumWidth
+            )
             .accessibilityIdentifier("scholium.researchGuidance.categoryList")
 
             Group {
@@ -72,7 +76,11 @@ struct ResearchGuidanceSettingsView: View {
                     ResearchRecoverySettingsView()
                 }
             }
-            .frame(minWidth: 430, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(
+                minWidth: ScholiumMetrics.ResearchGuidance.contentMinimumWidth,
+                maxWidth: .infinity,
+                maxHeight: .infinity
+            )
         }
         .onAppear {
             category = ResearchGuidanceCategory(rawValue: persistedCategory) ?? .methods
@@ -88,7 +96,10 @@ func settingsTitle(
     _ title: LocalizedStringResource,
     detail: LocalizedStringResource
 ) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(
+        alignment: .leading,
+        spacing: ScholiumMetrics.ResearchGuidance.titleDetailSpacing
+    ) {
         Text(title)
             .font(ScholiumTypography.interface(.primaryTitle))
             .accessibilityAddTraits(.isHeader)
@@ -112,6 +123,25 @@ func researchSettingsSection<Content: View>(
         content()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+}
+
+@MainActor
+func researchSettingsCollectionRow<Content: View, Actions: View>(
+    @ViewBuilder content: () -> Content,
+    @ViewBuilder actions: () -> Actions
+) -> some View {
+    HStack(
+        alignment: .top,
+        spacing: ScholiumMetrics.ResearchGuidance.collectionRowColumnSpacing
+    ) {
+        content()
+        Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
+        actions()
+    }
+    .padding(
+        .vertical,
+        ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset
+    )
 }
 
 func actionTitle(_ actionID: ResearchActionID) -> String {

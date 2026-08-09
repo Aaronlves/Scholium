@@ -507,6 +507,27 @@ the remaining component-specific cadences still require
 responsibility-by-responsibility classification. No isolated visual QA was
 required for this value-preserving cutover.
 
+#### Research Guidance component rhythm
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed all 13
+`WorkspaceSettingsArchitectureTests`, including the new
+`researchGuidanceCollectionRowOwnership` contract, and all 78
+`FrontendArchitectureTests`. The tests confirm one shared
+Method/Profile/Practice collection-row component, one Research Guidance
+Metrics owner for its 14pt content/action separation and 10pt vertical inset,
+and one owner for the category Sidebar's existing 190/210/240pt widths and
+430pt detail minimum. The migration preserves those measurements and all
+caller-owned actions and accessibility identifiers.
+
+**Boundary of the claim**
+
+This is deterministic source-ownership and compilation evidence for the
+Research Guidance collection structure. It does not normalize editor-sheet
+layouts elsewhere in those files, change native control geometry, or constitute
+visual and assistive-technology acceptance.
+
 ### Complete UI baseline
 
 **Current passing result**

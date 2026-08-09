@@ -140,7 +140,7 @@ struct ResearchMethodsSettingsView: View {
     @ViewBuilder
     private func methodRow(_ registration: ResearchSkillRegistration) -> some View {
         let method = methods[registration.actionID]
-        HStack(alignment: .top, spacing: 14) {
+        researchSettingsCollectionRow {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(registration.displayName)
                     .font(ScholiumTypography.interface(.rowTitle))
@@ -183,7 +183,7 @@ struct ResearchMethodsSettingsView: View {
                         .scholiumForeground(.attention)
                 }
             }
-            Spacer(minLength: 12)
+        } actions: {
             Menu("Manage") {
                 if let method {
                     Button("Edit Primary Markdown") {
@@ -219,7 +219,6 @@ struct ResearchMethodsSettingsView: View {
             }
             .menuStyle(.borderlessButton)
         }
-        .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             "scholium.researchGuidance.method.\(registration.actionID.rawValue)"

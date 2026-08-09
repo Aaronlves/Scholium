@@ -1355,6 +1355,15 @@ enum ScholiumGrid {
     enum ContentState {
         static let readableWidth = foundationUnit * 90
     }
+
+    /// Research Guidance owns one settings-specific collection-row rhythm.
+    /// Native Lists and controls retain their own geometry; these values apply
+    /// only to the explanatory content/action rows inside the guidance pages.
+    enum ResearchGuidance {
+        static let titleDetailGap = foundationUnit * 1.5
+        static let collectionRowColumnGap = foundationUnit * 3.5
+        static let collectionRowVerticalInset = foundationUnit * 2.5
+    }
 }
 
 enum ScholiumMetrics {
@@ -1380,6 +1389,18 @@ enum ScholiumMetrics {
         /// identity and Apparatus mode row. Document identity and commands
         /// belong to the native toolbar and do not create a second row.
         static let regionHeaderHeight = ScholiumGrid.Dimension.regionHeaderHeight
+    }
+
+    enum ResearchGuidance {
+        static let categorySidebarMinimumWidth: CGFloat = 190
+        static let categorySidebarIdealWidth: CGFloat = 210
+        static let categorySidebarMaximumWidth: CGFloat = 240
+        static let contentMinimumWidth: CGFloat = 430
+        static let titleDetailSpacing = ScholiumGrid.ResearchGuidance.titleDetailGap
+        static let collectionRowColumnSpacing =
+            ScholiumGrid.ResearchGuidance.collectionRowColumnGap
+        static let collectionRowVerticalInset =
+            ScholiumGrid.ResearchGuidance.collectionRowVerticalInset
     }
 
     enum Library {
