@@ -78,7 +78,7 @@ struct AttentionPresentationStateTests {
         #expect(grouped.count == AttentionQueueKind.allCases.count)
         #expect(Set(grouped) == Set(AttentionQueueKind.allCases))
         #expect(Set(AttentionIssueGroup.identityAndMetadata.kinds) == Set([
-            .changeAttributionNeeded, .malformedMetadata, .unresolvedIdentity,
+            .malformedMetadata, .unresolvedIdentity,
         ]))
         #expect(Set(AttentionIssueGroup.structureAndConnections.kinds) == Set([
             .possibleOrphan, .brokenConnection, .ambiguousConnection,

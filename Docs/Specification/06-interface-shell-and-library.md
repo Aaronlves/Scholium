@@ -303,11 +303,15 @@ Menus follow researcher tasks:
   machine-local dismissal ledger is unaffected. The Triptych entry opens the
   complete queue; Inspector entry adds the current Note. Switching workspace
   neither filters nor retargets an already open Triptych queue.
-- The Attention popover groups **Identity & Metadata** (Change Attribution
-  Needed, Malformed Metadata, Unresolved Identity), **Structure & Connections**
-  (Possible Orphan, Broken Connection, Ambiguous Connection), and **Revision &
-  Reliance** (Changed Since Settled, Material Changed Since Use). Each row shows
-  the issue, resolved Note title, locator, and only real available actions.
+- The Attention popover groups **Identity & Metadata** (Malformed Metadata,
+  Unresolved Identity), **Structure & Connections** (Possible Orphan, Broken
+  Connection, Ambiguous Connection), and **Revision & Reliance** (Changed Since
+  Settled, Material Changed Since Use). Each group shows its visible count.
+  Each row follows one issue-first order: a quiet semantic issue capsule, `/`,
+  one short observable reason, resolved Note title, exact relative path and
+  optional line, then only real available actions aligned to the logical
+  trailing edge. It does not repeat the issue name inside the reason or use a
+  middot as structural punctuation.
   Ordinary rows provide Inspect and timed Dismiss. Material Changed Since Use
   retains Inspect, Resynthesize, and Leave Unchanged. Inspect opens the Note in
   the exact owning Workspace without global window search or notification and

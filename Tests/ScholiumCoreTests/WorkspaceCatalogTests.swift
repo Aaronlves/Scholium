@@ -106,6 +106,38 @@ struct WorkspaceCatalogTests {
         #expect(Set(snapshot.attention.map(\.kind)).isSubset(of: Set(AttentionQueueKind.allCases)))
     }
 
+    @Test("A resolved neutral same-vault link prevents Possible Orphan")
+    func neutralConnectionPreventsPossibleOrphan() {
+        let topics = vault("Topics", .topicKnowledge)
+        let first = note("First.md", "See [[Second]].")
+        let second = note("Second.md", "A connected note.")
+
+        let snapshot = WorkspaceCatalogBuilder.build(
+            vaults: [topics],
+            documents: [topics.id: [first, second]]
+        )
+
+        #expect(!snapshot.attention.contains { $0.kind == .possibleOrphan })
+    }
+
+    @Test("An unresolved outgoing link does not count as an orphan-preventing connection")
+    func unresolvedConnectionDoesNotPreventPossibleOrphan() {
+        let topics = vault("Topics", .topicKnowledge)
+        let document = note("Unresolved.md", "See [[Missing]].")
+
+        let snapshot = WorkspaceCatalogBuilder.build(
+            vaults: [topics],
+            documents: [topics.id: [document]]
+        )
+
+        #expect(snapshot.attention.contains {
+            $0.kind == .possibleOrphan && $0.note.relativePath == document.relativePath
+        })
+        #expect(snapshot.attention.contains {
+            $0.kind == .brokenConnection && $0.note.relativePath == document.relativePath
+        })
+    }
+
     @Test("Ambiguous Connections remain unresolved and source anchored")
     func ambiguousConnectionAttention() {
         let analyses = vault("Analyses", .sourceCorpus)
@@ -123,7 +155,7 @@ struct WorkspaceCatalogTests {
         let item = snapshot.attention.first { $0.kind == .ambiguousConnection }
         #expect(item?.note.relativePath == "Draft.md")
         #expect(item?.locator?.line == 1)
-        #expect(item?.message.contains("did not choose") == true)
+        #expect(item?.message == "Multiple matching Notes")
     }
 
     @Test("Attention filtering and timed dismissal share one deterministic contract")
@@ -313,7 +345,7 @@ struct WorkspaceCatalogTests {
 
         let item = snapshot.attention.first { $0.kind == .unresolvedIdentity }
         #expect(item?.note.relativePath == document.relativePath)
-        #expect(item?.message.contains("Earlier Name.md") == true)
+        #expect(item?.message == "Multiple candidates")
         #expect(item?.severity == .warning)
     }
 

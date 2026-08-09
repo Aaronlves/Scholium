@@ -67,7 +67,6 @@ public enum AttentionQueueKind: String, Codable, CaseIterable, Sendable {
     case possibleOrphan = "possible_orphan"
     case changedSinceSettled = "changed_since_settled"
     case materialChangedSinceUse = "material_changed_since_use"
-    case changeAttributionNeeded = "change_attribution_needed"
     case malformedMetadata = "malformed_metadata"
     case brokenConnection = "broken_connection"
     case ambiguousConnection = "ambiguous_connection"
@@ -78,7 +77,6 @@ public enum AttentionQueueKind: String, Codable, CaseIterable, Sendable {
         case .possibleOrphan: "Possible Orphan"
         case .changedSinceSettled: "Changed Since Settled"
         case .materialChangedSinceUse: "Material Changed Since Use"
-        case .changeAttributionNeeded: "Change Attribution Needed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"
@@ -413,7 +411,7 @@ public enum WorkspaceCatalogBuilder {
                         kind: .malformedMetadata,
                         severity: .warning,
                         note: reference,
-                        message: document.validationWarnings.joined(separator: " "),
+                        message: "Invalid YAML",
                         locator: SourceLocator(file: document.relativePath, line: 1, column: 1)
                     ))
                 }
@@ -423,7 +421,7 @@ public enum WorkspaceCatalogBuilder {
                         kind: .changedSinceSettled,
                         severity: .warning,
                         note: reference,
-                        message: "The committed source has changed since this revision was settled."
+                        message: "Changed after this revision was settled"
                     ))
                 }
             }
@@ -459,43 +457,25 @@ public enum WorkspaceCatalogBuilder {
             )
         })
 
-        // Possible-orphan warnings are deliberately descriptive heuristics.
-        // They report only observable absence and never conclude that a note
-        // lacks scholarly value, evidence, or permission for use.
+        // Possible Orphan reports only complete observable disconnection. A
+        // neutral, same-vault, or otherwise non-vector link still integrates
+        // the Note and must not be promoted into a warning.
         for note in notes where isActiveResearchPath(note.reference.relativePath)
             && note.reference.vaultRole != .other {
             let noteID = VaultQualifiedNoteID(
                 vaultID: note.reference.vaultID,
                 relativePath: note.reference.relativePath
             )
-            let outgoing = relianceGraph.outgoing[noteID] ?? []
+            let outgoing = (relianceGraph.outgoing[noteID] ?? []).filter {
+                $0.destination != nil
+            }
             let incoming = relianceGraph.incoming[noteID] ?? []
-            var reasons: [String] = []
             if outgoing.isEmpty && incoming.isEmpty {
-                reasons.append("no incoming or outgoing links")
-            }
-            let hasExplicitRelation = (outgoing + incoming).contains { edge in
-                guard let kind = edge.occurrence.vectorKind else { return false }
-                return kind != .neutral
-            }
-            if !hasExplicitRelation {
-                reasons.append("no explicit support, opposition, or question relation")
-            }
-            let hasCrossVaultConnection = outgoing.contains { edge in
-                guard let destination = edge.destination?.note else { return false }
-                return destination.vaultID != noteID.vaultID
-            } || incoming.contains { edge in
-                edge.source.vaultID != noteID.vaultID
-            }
-            if !hasCrossVaultConnection {
-                reasons.append("no resolved cross-vault integration")
-            }
-            if !reasons.isEmpty {
                 attention.append(AttentionQueueItem(
                     kind: .possibleOrphan,
                     severity: .information,
                     note: note.reference,
-                    message: "Possible orphan: \(reasons.joined(separator: "; ")). This is a structural reminder, not a judgment of the note's scholarly value."
+                    message: "No incoming or outgoing links"
                 ))
             }
         }
@@ -506,14 +486,13 @@ public enum WorkspaceCatalogBuilder {
                 let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: ambiguity.relativePath)
                 guard let note = notesByQualifiedID[noteID],
                       isActiveResearchPath(note.reference.relativePath) else { continue }
-                let candidatePaths = ambiguity.candidates.map(\.relativePath).joined(separator: ", ")
                 attention.append(AttentionQueueItem(
                     kind: .unresolvedIdentity,
                     severity: .warning,
                     note: note.reference,
-                    message: candidatePaths.isEmpty
-                        ? "Scholium cannot confirm this note's stable identity after an external file change."
-                        : "Scholium cannot confirm this note's stable identity after an external file change. Possible previous locations: \(candidatePaths)."
+                    message: ambiguity.candidates.isEmpty
+                        ? "Identity not confirmed"
+                        : "Multiple candidates"
                 ))
             }
         }
@@ -536,7 +515,7 @@ public enum WorkspaceCatalogBuilder {
                     kind: queueKind,
                     severity: .warning,
                     note: note,
-                    message: diagnostic.message,
+                    message: attentionReason(for: diagnostic),
                     locator: SourceLocator(
                         file: note.relativePath,
                         line: diagnostic.span.start.line,
@@ -564,6 +543,25 @@ public enum WorkspaceCatalogBuilder {
 
     private static func isActiveResearchPath(_ relativePath: String) -> Bool {
         !relativePath.hasPrefix("Set Aside/") && !relativePath.hasPrefix("Trash/")
+    }
+
+    private static func attentionReason(for diagnostic: LinkGraphDiagnostic) -> String {
+        switch diagnostic.code {
+        case .ambiguous:
+            "Multiple matching Notes"
+        case .ambiguousHeading:
+            "Multiple matching headings"
+        case .broken:
+            "Missing Note"
+        case .missingHeading:
+            "Missing heading"
+        case .missingBlock:
+            "Missing block"
+        case .invalidRelationshipEndpoint:
+            "Invalid relationship endpoint"
+        case .duplicateRelationship:
+            diagnostic.message
+        }
     }
 
     private static func scholarlyRelianceDescription(

@@ -246,8 +246,12 @@ index, confidence score, or writable source.
 Attention is one Triptych-owned queue. Presentation may open the complete
 Triptych queue or add an exact current-Note subset; those views create no
 Vault-owned queue, diagnostic owner, or philosophical status. Attention may
-report possible-orphan conditions, Changed Since Settled, Broken Connections,
-malformed metadata, unresolved identity, or **Material Changed Since Use**.
+report a **Possible Orphan** only when a Note has no resolved incoming or
+outgoing connection. A neutral, same-vault, or cross-vault connection is
+sufficient to prevent that condition; Attention does not require an explicit
+Vector Link or cross-vault relation. It may also report Changed Since Settled,
+Broken Connections, malformed metadata, unresolved identity, or **Material
+Changed Since Use**.
 The latter requires one completed Synthesize record whose
 agent-reported actually used Analysis set and exact recorded revision were
 validated; selecting a Material is insufficient. If that Analysis later

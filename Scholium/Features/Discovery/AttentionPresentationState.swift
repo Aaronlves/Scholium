@@ -20,7 +20,7 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
     var kinds: [AttentionQueueKind] {
         switch self {
         case .identityAndMetadata:
-            [.changeAttributionNeeded, .malformedMetadata, .unresolvedIdentity]
+            [.malformedMetadata, .unresolvedIdentity]
         case .structureAndConnections:
             [.possibleOrphan, .brokenConnection, .ambiguousConnection]
         case .revisionAndReliance:

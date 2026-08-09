@@ -234,7 +234,7 @@ struct AttentionQueueView: View {
             ForEach(AttentionIssueGroup.allCases) { group in
                 let items = visibleItems.filter(group.contains)
                 if !items.isEmpty {
-                    Section(ScholiumL10n.dynamicString(group.title)) {
+                    Section {
                         ForEach(items) { item in
                             AttentionQueueRow(
                                 item: item,
@@ -248,6 +248,15 @@ struct AttentionQueueView: View {
                             )
                             .tag(item.id)
                         }
+                    } header: {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(ScholiumL10n.dynamicString(group.title))
+                            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                            Text(items.count.formatted())
+                                .monospacedDigit()
+                                .scholiumForeground(.mutedText)
+                        }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -420,8 +429,9 @@ struct AttentionQueueView: View {
     }
 }
 
-/// Shared production task row for the Attention popover. It keeps typography,
-/// action wrapping, title truncation, and locator density in one implementation.
+/// Issue-first task row for the Attention popover. It keeps the short derived
+/// condition ahead of Note context while preserving linear actions and source
+/// identity without promoting the row into a card.
 struct AttentionQueueRow: View {
     let item: AttentionQueueItem
     let noteTitle: String
@@ -433,25 +443,12 @@ struct AttentionQueueRow: View {
     let leaveUnchanged: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Image(systemName: symbol)
-                    .scholiumForeground(severityColorRole)
-                    .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
-                    Text(ScholiumL10n.dynamicString(item.kind.displayName))
-                        .font(ScholiumTypography.interface(.rowTitle))
-                    Text(item.message)
-                        .font(ScholiumTypography.interface(.body))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-            }
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            issueSummary
 
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
                 Text(noteTitle)
-                    .font(ScholiumTypography.interface(.body))
+                    .font(ScholiumTypography.interface(.rowTitle))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(locator)
@@ -460,18 +457,51 @@ struct AttentionQueueRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            .padding(.leading, ScholiumGrid.Dimension.iconTrackWidth + ScholiumGrid.Spacing.inlineControlGap)
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) { actions }
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) { actions }
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    Spacer(minLength: 0)
+                    actions
+                }
+                VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    actions
+                }
             }
             .controlSize(.small)
-            .padding(.leading, ScholiumGrid.Dimension.iconTrackWidth + ScholiumGrid.Spacing.inlineControlGap)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.attentionItem.\(item.id)")
+    }
+
+    private var issueSummary: some View {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Text(ScholiumL10n.dynamicString(item.kind.displayName))
+                .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                .scholiumForeground(severityColorRole)
+                .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+                .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+                .background(
+                    ScholiumColorRole.raisedSurfaceBackground.color,
+                    in: Capsule(style: .continuous)
+                )
+                .scholiumBoundary(
+                    .subtleBoundary,
+                    in: Capsule(style: .continuous)
+                )
+                .fixedSize(horizontal: true, vertical: false)
+
+            Text("/")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.mutedText)
+                .accessibilityHidden(true)
+
+            Text(item.message)
+                .font(ScholiumTypography.interface(.compact))
+                .scholiumForeground(.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     @ViewBuilder
@@ -499,18 +529,5 @@ struct AttentionQueueRow: View {
         item.severity == .warning
             ? .attention
             : .information
-    }
-
-    private var symbol: String {
-        switch item.kind {
-        case .possibleOrphan: "circle.dashed"
-        case .changedSinceSettled: "clock.arrow.circlepath"
-        case .materialChangedSinceUse: "arrow.trianglehead.2.clockwise.rotate.90"
-        case .changeAttributionNeeded: "person.crop.circle.badge.questionmark"
-        case .malformedMetadata: "exclamationmark.braces"
-        case .brokenConnection: "link.badge.plus"
-        case .ambiguousConnection: "questionmark.diamond"
-        case .unresolvedIdentity: "person.text.rectangle"
-        }
     }
 }

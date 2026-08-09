@@ -389,7 +389,6 @@ struct ResearchOverviewView: View {
         case .possibleOrphan: "Possible Orphan"
         case .changedSinceSettled: "Changed Since Settled"
         case .materialChangedSinceUse: "Material Changed Since Use"
-        case .changeAttributionNeeded: "Change Attribution Needed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"

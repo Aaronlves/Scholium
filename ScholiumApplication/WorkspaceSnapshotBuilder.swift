@@ -786,7 +786,7 @@ enum WorkspaceSnapshotBuilder {
                 kind: .materialChangedSinceUse,
                 severity: .warning,
                 note: topic.reference,
-                message: "The Analysis “\(use.material.title)” changed after this Topic's completed Synthesize record actually used it. Inspect the revisions or choose whether to resynthesize.",
+                message: "Used Analysis changed after Synthesize",
                 materialChangedSinceUse: context
             )
         }.sorted { $0.id < $1.id }

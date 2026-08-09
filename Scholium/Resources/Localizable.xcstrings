@@ -4870,22 +4870,6 @@
         }
       }
     },
-    "Change Attribution Needed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Change Attribution Needed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要确认修改归属"
-          }
-        }
-      }
-    },
     "Change the search or turn off Suggested Only." : {
       "localizations" : {
         "en" : {
