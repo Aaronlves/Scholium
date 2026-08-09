@@ -255,6 +255,16 @@ retains its domain values, operations, accessibility identifiers, and state.
 The shared presentation component performs no persistence, routing, or
 authorization work and does not style native controls themselves.
 
+`ScholiumGrid.ResearchSheet` owns the common editorial rhythm for research-
+facing sheet content: a 4pt title/detail gap, 16pt body-section cadence, 8pt
+footer-control gap, and a bounded status inset. `ScholiumMetrics.ResearchSheet`
+maps those roles plus the existing purpose-specific Action, Reading Lead note,
+and Record evaluation size constraints. The three views retain separate Run,
+note-save, evaluation-draft, dismissal, focus, and recovery owners; the shared
+metrics do not create a generic sheet lifecycle or move native sheet chrome out
+of AppKit. Each sheet presents a fixed title region, independently scrolling
+body, and fixed action region separated by structural rules.
+
 `ScholiumCornerRole` is the closed responsibility vocabulary for custom corner
 geometry. `ScholiumShape` exposes the Native aliases and generates only the
 WebKit custom properties needed by the same or WebKit-specific constructs; it

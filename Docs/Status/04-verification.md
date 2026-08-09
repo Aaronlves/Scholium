@@ -528,6 +528,33 @@ Research Guidance collection structure. It does not normalize editor-sheet
 layouts elsewhere in those files, change native control geometry, or constitute
 visual and assistive-technology acceptance.
 
+#### Research-facing sheet layout
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed all 79
+`FrontendArchitectureTests`, both `ResearchActionHandoffPresentationTests`,
+and the focused `sharedResearchEvaluationSurface` architecture test. The new
+`researchSheetLayoutOwnership` contract confirms that Action, Reading Lead
+note, and Record evaluation sheets consume one purpose-named metrics owner for
+their title/body/footer rhythm and retain separate purpose-specific dimensions.
+
+The isolated `testResearchSheetLayoutsRemainReachable` QA journey then passed
+in 63.273 seconds against a disposable Research Record fixture. It opened all
+three sheets through their production routes, verified their minimum frames,
+primary titles, core scroll content, trailing actions, and dismissal paths, and
+retained one screenshot for each. Direct screenshot inspection confirmed the
+fixed header and footer regions, continuous editorial planes, readable body
+measure, and unobstructed native controls in the default appearance.
+
+**Boundary of the claim**
+
+This is deterministic reachability and bounded visual inspection, not human or
+assistive-technology acceptance. Localization, 200% interface text, Dark,
+Increase Contrast, Reduce Transparency, genuine VoiceOver speech, unsaved-
+draft confirmation, save failure, and the complete UI suite remain outside
+this focused proof.
+
 ### Complete UI baseline
 
 **Current passing result**

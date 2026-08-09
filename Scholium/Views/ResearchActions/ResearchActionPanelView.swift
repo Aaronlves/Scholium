@@ -36,7 +36,10 @@ struct ResearchActionPanelView: View {
             header
             ScholiumStructuralRule()
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing
+                ) {
                     platformInputs
                     academicInputs
                     status
@@ -93,7 +96,7 @@ struct ResearchActionPanelView: View {
                         )
                     }
                 }
-                .padding(22)
+                .padding(ScholiumMetrics.ResearchSheet.contentInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityIdentifier("scholium.researchAction.scroll")
@@ -103,15 +106,23 @@ struct ResearchActionPanelView: View {
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.destructive)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, ScholiumMetrics.ResearchSheet.contentInset)
+                    .padding(
+                        .vertical,
+                        ScholiumMetrics.ResearchSheet.statusVerticalInset
+                    )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("scholium.researchAction.handoffError")
                 ScholiumStructuralRule()
             }
             footer
         }
-        .frame(minWidth: 520, idealWidth: 660, minHeight: 500, idealHeight: 680)
+        .frame(
+            minWidth: ScholiumMetrics.ResearchSheet.Action.minimumWidth,
+            idealWidth: ScholiumMetrics.ResearchSheet.Action.idealWidth,
+            minHeight: ScholiumMetrics.ResearchSheet.Action.minimumHeight,
+            idealHeight: ScholiumMetrics.ResearchSheet.Action.idealHeight
+        )
         .scholiumSurface(.denseEvidence)
         .accessibilityAddTraits(.isModal)
         .accessibilityElement(children: .contain)
@@ -172,7 +183,10 @@ struct ResearchActionPanelView: View {
             .scholiumSymbolStyle(.emphasizedProminent)
             .scholiumForeground(.secondaryText)
             .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing
+            ) {
                 Text(verbatim: actionTitle)
                     .font(ScholiumTypography.interface(.primaryTitle))
                     .accessibilityAddTraits(.isHeader)
@@ -191,7 +205,7 @@ struct ResearchActionPanelView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
+        .padding(ScholiumMetrics.ResearchSheet.contentInset)
     }
 
     @ViewBuilder
@@ -499,7 +513,10 @@ struct ResearchActionPanelView: View {
         }
         if let preparation = controller.preparation,
            controller.resultRecord == nil {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.nestedContentInset
+            ) {
                 Label("Handoff ready", systemImage: "doc.on.clipboard")
                     .font(ScholiumTypography.interface(.body))
                     .accessibilityIdentifier("scholium.researchAction.connection")
@@ -515,7 +532,10 @@ struct ResearchActionPanelView: View {
                 if let handoff = controller.agentHandoff,
                    controller.canCancelPreparedRun {
                     Divider()
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HStack(
+                        alignment: .firstTextBaseline,
+                        spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing
+                    ) {
                         Text("Expires \(handoff.expiresAt, style: .relative).")
                             .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.mutedText)
@@ -542,7 +562,7 @@ struct ResearchActionPanelView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
             Button(controller.preparation == nil ? "Cancel" : "Done") {
                 if evaluationHasUnsavedChanges {
                     confirmsDiscardEvaluation = true
@@ -576,7 +596,7 @@ struct ResearchActionPanelView: View {
                 .accessibilityIdentifier("scholium.researchAction.copyHandoff")
             }
         }
-        .padding(ScholiumGrid.Spacing.sectionSeparation)
+        .padding(ScholiumMetrics.ResearchSheet.contentInset)
     }
 
     @ViewBuilder

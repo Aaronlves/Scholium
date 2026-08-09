@@ -3617,6 +3617,68 @@ struct FrontendArchitectureTests {
         }
     }
 
+    @Test("Research-facing sheets share editorial zones and purpose-owned sizes")
+    func researchSheetLayoutOwnership() throws {
+        #expect(
+            ScholiumMetrics.ResearchSheet.contentInset
+                == ScholiumGrid.Spacing.regionContentInset
+        )
+        #expect(
+            ScholiumMetrics.ResearchSheet.headerDetailSpacing
+                == ScholiumGrid.Spacing.labelAccessoryGap
+        )
+        #expect(
+            ScholiumMetrics.ResearchSheet.bodySectionSpacing
+                == ScholiumGrid.Spacing.sectionSeparation
+        )
+        #expect(
+            ScholiumMetrics.ResearchSheet.footerControlSpacing
+                == ScholiumGrid.Spacing.inlineControlGap
+        )
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+
+        let action = try source(
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift"
+        )
+        let records = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+        )
+
+        for token in [
+            "ScholiumMetrics.ResearchSheet.Action.minimumWidth",
+            "ScholiumMetrics.ResearchSheet.bodySectionSpacing",
+            "ScholiumMetrics.ResearchSheet.footerControlSpacing",
+        ] {
+            #expect(action.contains(token))
+        }
+        for token in [
+            "ScholiumMetrics.ResearchSheet.ReadingLeadNote.minimumWidth",
+            "ScholiumMetrics.ResearchSheet.RecordEvaluation.minimumWidth",
+            "scholium.researchRecommendation.noteSheet",
+            "scholium.researchRecord.evaluationSheet",
+        ] {
+            #expect(records.contains(token))
+        }
+        #expect(
+            records.components(
+                separatedBy: ".font(ScholiumTypography.interface(.primaryTitle))"
+            ).count >= 3
+        )
+        #expect(!action.contains(".frame(minWidth: 520, idealWidth: 660"))
+        #expect(!records.contains(".frame(minWidth: 480, idealWidth: 560"))
+        #expect(!records.contains("minWidth: 440,"))
+    }
+
     @Test("Live Preview omits Source chrome and consumes shared document layout")
     func livePreviewPresentationContract() throws {
         let repository = URL(fileURLWithPath: #filePath)

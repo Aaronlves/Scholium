@@ -1074,7 +1074,7 @@ extension ScholiumUITests {
         recommendationRow.click()
 
         let editNote = recordsWindow.buttons[
-            "scholium.researchRecommendation.editNote"
+            "scholium.researchRecommendation.noteHeader"
         ]
         scrollUntilHittable(editNote, in: recommendationReading)
         editNote.click()
@@ -1128,6 +1128,133 @@ extension ScholiumUITests {
 
         recordsWindow.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !recordsWindow.exists })
+    }
+
+    @MainActor
+    func testResearchSheetLayoutsRemainReachable() throws {
+        app.terminate()
+        let fixture = try seedResearchRecordFixture()
+        let recommendationID = try XCTUnwrap(fixture.recommendationID)
+        let currentTriptychID = try triptychID(at: triptychDirectory)
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth)
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
+
+        selectResearchInspectorMode("actions")
+        let actionSheet = openDiscussFromActions()
+        XCTAssertGreaterThanOrEqual(actionSheet.frame.width, 519)
+        XCTAssertGreaterThanOrEqual(actionSheet.frame.height, 499)
+        XCTAssertTrue(actionSheet.staticTexts["Discuss"].exists)
+        XCTAssertTrue(actionSheet.buttons["Cancel"].isHittable)
+        XCTAssertTrue(actionSheet.buttons["Copy Handoff"].isHittable)
+        retainScreenshot(of: workspace, named: "Research Action sheet layout")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !actionSheet.exists })
+
+        let recordsButton = workspace.buttons["scholium.showResearchRecords"]
+        XCTAssertTrue(recordsButton.waitForExistence(timeout: 5))
+        recordsButton.click()
+        let recordsWindow = app.windows[
+            "scholium-research-records-\(currentTriptychID.uuidString.lowercased())"
+        ]
+        XCTAssertTrue(recordsWindow.waitForExistence(timeout: 8))
+
+        let readingLeads = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view.recommendations"
+        ]
+        XCTAssertTrue(readingLeads.waitForExistence(timeout: 5))
+        readingLeads.click()
+        let recommendationRow = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecommendation.row.\(recommendationID.uuidString)"
+        ]
+        XCTAssertTrue(recommendationRow.waitForExistence(timeout: 8))
+        recommendationRow.buttons.firstMatch.click()
+
+        let recommendationReading = recordsWindow.scrollViews.firstMatch
+        XCTAssertTrue(recommendationReading.waitForExistence(timeout: 5))
+        let editNote = recordsWindow.buttons[
+            "scholium.researchRecommendation.noteHeader"
+        ]
+        for _ in 0..<4 where !editNote.exists {
+            recommendationReading.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(editNote.waitForExistence(timeout: 5))
+        scrollUntilHittable(editNote, in: recommendationReading)
+        editNote.click()
+        let noteSheet = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecommendation.noteSheet"
+        ]
+        XCTAssertTrue(noteSheet.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(noteSheet.frame.width, 439)
+        XCTAssertGreaterThanOrEqual(noteSheet.frame.height, 319)
+        XCTAssertTrue(noteSheet.staticTexts["Researcher Note"].exists)
+        XCTAssertTrue(noteSheet.buttons["Cancel"].isHittable)
+        XCTAssertTrue(noteSheet.buttons["Save"].isHittable)
+        XCTAssertTrue(recordsWindow.textViews[
+            "scholium.researchRecommendation.noteEditor"
+        ].exists)
+        retainScreenshot(of: recordsWindow, named: "Reading Lead note sheet layout")
+        noteSheet.buttons["Cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !noteSheet.exists })
+
+        let back = recordsWindow.buttons["scholium.researchRecords.back"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.click()
+        let records = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecords.view.records"
+        ]
+        XCTAssertTrue(records.waitForExistence(timeout: 5))
+        records.click()
+        let recordRow = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
+        ]
+        XCTAssertTrue(recordRow.waitForExistence(timeout: 8))
+        recordRow.click()
+
+        let evidenceScroll = recordsWindow.scrollViews[
+            "scholium.researchRecord.evidence"
+        ]
+        XCTAssertTrue(evidenceScroll.waitForExistence(timeout: 5))
+        let evaluationEditor = recordsWindow.buttons[
+            "scholium.researchRecord.evaluationEditor"
+        ]
+        scrollUntilHittable(evaluationEditor, in: evidenceScroll)
+        evaluationEditor.click()
+        let evaluationSheet = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecord.evaluationSheet"
+        ]
+        XCTAssertTrue(evaluationSheet.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(evaluationSheet.frame.width, 479)
+        XCTAssertGreaterThanOrEqual(evaluationSheet.frame.height, 499)
+        XCTAssertTrue(evaluationSheet.staticTexts["Researcher Evaluation"].exists)
+        let done = recordsWindow.buttons[
+            "scholium.researchRecord.evaluationDismiss"
+        ]
+        XCTAssertTrue(done.isHittable)
+        retainScreenshot(of: recordsWindow, named: "Research Record evaluation sheet layout")
+        done.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !evaluationSheet.exists })
+
+        recordsWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recordsWindow.exists })
+    }
+
+    @MainActor
+    private func retainScreenshot(of element: XCUIElement, named name: String) {
+        let attachment = XCTAttachment(screenshot: element.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     @MainActor

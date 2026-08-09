@@ -239,6 +239,11 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   End Action, current result or recovery state, and explicit next steps. It
   does not expose implementation hashes, schema data, internal protocol prose,
   or a separate Pairing Code field.
+- The Action sheet and the Research Records Reading Lead note and Researcher
+  Evaluation sheets now share one editorial layout grammar: primary-title
+  header, independently scrolling content, structural rules, and a fixed
+  trailing action region. Purpose-owned size constraints and workflow state
+  remain separate; native sheet presentation and elevation remain AppKit-owned.
 - When the authenticated Agent chooses Continue Research, the completed child
   is shown beneath the parent Action in one read-only continuation section; the
   Action sheet exposes no Continue Research command or credential.

@@ -1810,20 +1810,31 @@ private struct ResearchLiteratureRecommendationNoteSheet: View {
     @State private var saveErrorMessage: String?
 
     var body: some View {
-        VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
+        VStack(spacing: 0) {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing
+            ) {
+                Text("Researcher Note")
+                    .font(ScholiumTypography.interface(.primaryTitle))
+                    .accessibilityHeading(.h1)
+                Text(
+                    "This note records how you handled the reading lead. Saving an empty note removes it without changing the handling status."
+                )
+                .font(ScholiumTypography.interface(.compact))
+                .scholiumForeground(.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(ScholiumMetrics.ResearchSheet.contentInset)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            ScholiumStructuralRule()
+
             ScrollView {
                 VStack(
                     alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                    spacing: ScholiumGrid.Spacing.inlineControlGap
                 ) {
-                    Text("Researcher Note")
-                        .font(ScholiumTypography.scholarly(.title))
-                        .accessibilityHeading(.h1)
-                    Text(
-                        "This note records how you handled the reading lead. Saving an empty note removes it without changing the handling status."
-                    )
-                    .font(ScholiumTypography.interface(.compact))
-                    .scholiumForeground(.secondaryText)
                     TextEditor(text: $draft)
                         .font(ScholiumTypography.scholarly(.body))
                         .scrollContentBackground(.hidden)
@@ -1857,9 +1868,13 @@ private struct ResearchLiteratureRecommendationNoteSheet: View {
                             )
                     }
                 }
+                .padding(ScholiumMetrics.ResearchSheet.contentInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            HStack {
+
+            ScholiumStructuralRule()
+
+            HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
                 Spacer()
                 if isSaving {
                     ProgressView()
@@ -1873,18 +1888,21 @@ private struct ResearchLiteratureRecommendationNoteSheet: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(isSaving)
             }
+            .padding(ScholiumMetrics.ResearchSheet.contentInset)
         }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
         .frame(
-            minWidth: 440,
-            idealWidth: 480,
-            maxWidth: 620,
-            minHeight: 320,
-            idealHeight: 400,
-            maxHeight: 640
+            minWidth: ScholiumMetrics.ResearchSheet.ReadingLeadNote.minimumWidth,
+            idealWidth: ScholiumMetrics.ResearchSheet.ReadingLeadNote.idealWidth,
+            maxWidth: ScholiumMetrics.ResearchSheet.ReadingLeadNote.maximumWidth,
+            minHeight: ScholiumMetrics.ResearchSheet.ReadingLeadNote.minimumHeight,
+            idealHeight: ScholiumMetrics.ResearchSheet.ReadingLeadNote.idealHeight,
+            maxHeight: ScholiumMetrics.ResearchSheet.ReadingLeadNote.maximumHeight
         )
         .scholiumSurface(.document)
         .tint(ScholiumColorRole.accent.color)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.researchRecommendation.noteSheet")
     }
 
     private func beginSave() {
@@ -3664,9 +3682,12 @@ private struct ResearchRecordEvaluationSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing
+            ) {
                 Text("Researcher Evaluation")
-                    .font(ScholiumTypography.interface(.sectionTitle))
+                    .font(ScholiumTypography.interface(.primaryTitle))
                     .accessibilityHeading(.h1)
                 Text(
                     "Review or record your judgment without changing the Agent's finalized result."
@@ -3675,7 +3696,7 @@ private struct ResearchRecordEvaluationSheet: View {
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
+            .padding(ScholiumMetrics.ResearchSheet.contentInset)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             ScholiumStructuralRule()
@@ -3689,20 +3710,25 @@ private struct ResearchRecordEvaluationSheet: View {
                     draftStateDidChange: { hasUnsavedChanges = $0 },
                     showsIntroduction: false
                 )
-                .padding(ScholiumGrid.Spacing.regionContentInset)
+                .padding(ScholiumMetrics.ResearchSheet.contentInset)
             }
 
             ScholiumStructuralRule()
 
             HStack {
+                Spacer(minLength: 0)
                 Button("Done", action: attemptDismiss)
                     .keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("scholium.researchRecord.evaluationDismiss")
-                Spacer(minLength: 0)
             }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
+            .padding(ScholiumMetrics.ResearchSheet.contentInset)
         }
-        .frame(minWidth: 480, idealWidth: 560, minHeight: 500, idealHeight: 620)
+        .frame(
+            minWidth: ScholiumMetrics.ResearchSheet.RecordEvaluation.minimumWidth,
+            idealWidth: ScholiumMetrics.ResearchSheet.RecordEvaluation.idealWidth,
+            minHeight: ScholiumMetrics.ResearchSheet.RecordEvaluation.minimumHeight,
+            idealHeight: ScholiumMetrics.ResearchSheet.RecordEvaluation.idealHeight
+        )
         .scholiumSurface(.document)
         .interactiveDismissDisabled(hasUnsavedChanges)
         .accessibilityAddTraits(.isModal)

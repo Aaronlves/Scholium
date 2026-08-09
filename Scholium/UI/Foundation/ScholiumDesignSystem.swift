@@ -1364,6 +1364,15 @@ enum ScholiumGrid {
         static let collectionRowColumnGap = foundationUnit * 3.5
         static let collectionRowVerticalInset = foundationUnit * 2.5
     }
+
+    /// Research-facing sheets share one continuous editorial frame while
+    /// their fields, operations, and lifecycle remain workflow-owned.
+    enum ResearchSheet {
+        static let headerDetailGap = Spacing.labelAccessoryGap
+        static let bodySectionGap = Spacing.sectionSeparation
+        static let footerControlGap = Spacing.inlineControlGap
+        static let statusVerticalInset = foundationUnit * 2.5
+    }
 }
 
 enum ScholiumMetrics {
@@ -1401,6 +1410,37 @@ enum ScholiumMetrics {
             ScholiumGrid.ResearchGuidance.collectionRowColumnGap
         static let collectionRowVerticalInset =
             ScholiumGrid.ResearchGuidance.collectionRowVerticalInset
+    }
+
+    enum ResearchSheet {
+        static let contentInset = ScholiumGrid.Spacing.regionContentInset
+        static let headerDetailSpacing = ScholiumGrid.ResearchSheet.headerDetailGap
+        static let bodySectionSpacing = ScholiumGrid.ResearchSheet.bodySectionGap
+        static let footerControlSpacing = ScholiumGrid.ResearchSheet.footerControlGap
+        static let statusVerticalInset = ScholiumGrid.ResearchSheet.statusVerticalInset
+
+        enum Action {
+            static let minimumWidth: CGFloat = 520
+            static let idealWidth: CGFloat = 660
+            static let minimumHeight: CGFloat = 500
+            static let idealHeight: CGFloat = 680
+        }
+
+        enum RecordEvaluation {
+            static let minimumWidth: CGFloat = 480
+            static let idealWidth: CGFloat = 560
+            static let minimumHeight: CGFloat = 500
+            static let idealHeight: CGFloat = 620
+        }
+
+        enum ReadingLeadNote {
+            static let minimumWidth: CGFloat = 440
+            static let idealWidth: CGFloat = 480
+            static let maximumWidth: CGFloat = 620
+            static let minimumHeight: CGFloat = 320
+            static let idealHeight: CGFloat = 400
+            static let maximumHeight: CGFloat = 640
+        }
     }
 
     enum Library {
