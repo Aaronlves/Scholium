@@ -141,6 +141,11 @@ researcher and authorized Agent changes; there is no summary writer, sidecar,
 approval copy, backfill task, or freshness database. Attribution remains an
 operation/Record fact rather than a second YAML value. Missing or source-shape-
 unsupported summary stays absent/readable and never triggers normalization.
+Research Context receives only the current Note revision, so its Note and
+`summary` envelopes use actor `unknown`. A prior authorized mutation or Record
+retains its own actor without becoming a per-field or current-revision writer
+registry. Authorization, most recent Run, path, vault, and local user are not
+writer evidence; no hidden history store fills that absence.
 
 Search constructs a separate read-only top-level YAML projection from each
 exact `NoteDocument`. It records literal key presence and the exact source

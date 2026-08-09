@@ -434,10 +434,13 @@ Scholium-owned records keep four authorship classes distinct:
 
 Authorization or confirmed Agent writing does not become researcher authorship
 or adoption. A canonical `summary` is a document declaration whose actual
-Scholium-mediated writer remains attributable; only another explicit owner can
-establish a researcher act. Agent discoveries remain attributed candidates
-until retained through the one Result/Record or an authorized exact-document
-write. Scholium creates no Discovery store.
+writer is reported only when an existing authoritative operation or Record
+owner proves that act. Research Context otherwise marks the current Note
+revision's actor unknown; it never infers writer from authorization, the last
+Run, file location, user identity, or vault ownership. Agent discoveries remain
+attributed candidates until retained through the one Result/Record or an
+authorized exact-document write. Scholium creates no Discovery or writer-history
+store.
 
 **Continue Research** begins another Action and therefore another Run. It is
 available only after the current Run has a determined completion or legitimate

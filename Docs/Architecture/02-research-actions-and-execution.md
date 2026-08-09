@@ -211,10 +211,17 @@ approved academic purpose and stripped Agent-authored handoff; these retain
 Agent attribution and become neither old state evidence nor researcher
 commitment.
 
-The test target supplies a pure replacement provider over fixed nonprivate
-values. Production and test providers must produce the same envelope,
-availability, failure, and replacement behavior without changing Run,
-permission, Record, or continuation contracts.
+The test target supplies a nonempty pure replacement provider over one fixed
+nonprivate summary candidate. Its mechanism bypasses production Search, checks
+the candidate against the authorized Workspace snapshot, and returns current,
+stale, unavailable, or invalid-query outcomes through the same response
+contract. Focused tests compare its provenance and currentness to production
+summary discovery, reject guessed
+writer attribution during Context Use, retain the verified reference in the
+Record, and re-resolve it through Continue Research. This fixture is test-only:
+it owns no runtime fallback, parser, ranker, index, or persistent state.
+Production and test providers cannot change Run, permission, Record, Context
+Use, or continuation contracts.
 
 ## Bounded multi-document mutation
 

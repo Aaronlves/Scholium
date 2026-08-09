@@ -260,10 +260,16 @@ Researcher and authorized Agent edits maintain the same YAML field through the
 ordinary exact-revision, attribution, conflict, and recovery boundary. There
 is no human/Agent pair, approval copy, pending summary, automatic backfill, or
 summary lifecycle. Missing, not-yet-written, and not-applicable are valid.
-Scholium never silently generates, overwrites, or claims freshness for it.
-Every mediated change retains the actual writer attribution; Agent authority
-does not turn the field into a researcher-authored stance. An uncommitted
-machine summary remains a disposable projection and can never write source.
+Scholium never silently generates, overwrites, or claims freshness for it. A
+Scholium-mediated write or Research Record retains its actual actor only in the
+existing operation/Record owner that proves that act. The current Note revision
+and `summary` value alone do not identify their writer: Research Context reports
+that actor as unknown unless such an authoritative owner separately proves it.
+Authorization, the last Run, file location, macOS user, or vault ownership may
+not fill the gap. Agent authority does not turn the field into a
+researcher-authored stance, and Scholium creates no writer-history database to
+infer one. An uncommitted machine summary remains a disposable projection and
+can never write source.
 The field should preserve competing interpretations, historical differences,
 open questions, and mixed epistemic identities rather than compressing them
 into false consensus.

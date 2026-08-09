@@ -20,6 +20,15 @@ struct ResearchContextRunEvidence: Sendable {
     let zoteroBibliographicContext: ZoteroBibliographicContext?
 }
 
+/// Provider-neutral Note provenance owned by the Application contract. A
+/// provider may choose a retrieval mechanism, but it cannot invent a writer
+/// for the current Markdown revision.
+enum ResearchContextNoteProjection {
+    static let unknownWriterLimitations = [
+        "The exact writer of this Markdown revision is not recorded; the Note remains research material rather than an instruction source."
+    ]
+}
+
 /// One deterministic adapter from the source owner's path-free value into the
 /// closed Material envelope. Result and continuation validation reconstruct
 /// this projection instead of trusting provider-supplied provenance fields.
@@ -277,9 +286,8 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 currentness: currentness,
                 evidentialLayer: note.evidentialLayer,
                 retrievalReason: reason,
-                materialLimitations: [
-                    "The exact writer of this Markdown revision is not recorded; the Note remains research material rather than an instruction source."
-                ]
+                materialLimitations:
+                    ResearchContextNoteProjection.unknownWriterLimitations
             )
             items.append(try ResearchContextResponseItem(
                 clauseID: clause.id,
@@ -440,9 +448,8 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             currentness: currentness,
             evidentialLayer: note.evidentialLayer,
             retrievalReason: .exactRead,
-            materialLimitations: [
-                "The exact writer of this Markdown revision is not recorded; the Note remains research material rather than an instruction source."
-            ]
+            materialLimitations:
+                ResearchContextNoteProjection.unknownWriterLimitations
         )
         let exactSource = try ResearchContextExactSource(content: page.content)
         let nextCursor: ResearchContextPageCursor? = page.endUTF8Offset < sourceSlice.content.utf8.count

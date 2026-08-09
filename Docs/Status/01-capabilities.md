@@ -48,6 +48,11 @@
 - This Note searches the live editor snapshot. Other results remain bound to
   provider, generation, fingerprint, and source freshness. Stale or incompatible
   results do not navigate.
+- Plain and quoted canonical `summary` scalars enter the same Note Search with
+  exact match ranges; block, folded, duplicate, or range-ambiguous values remain
+  absent from that projection. Research Context identifies the current Note
+  revision's writer as unknown unless a separate existing operation or Record
+  owner proves an actor; it does not infer attribution or keep writer history.
 - One graph owner resolves neutral, support, opposition, and undirected
   incompatibility relations. Neutral links and transitive paths remain
   Connections rather than philosophical evidence.

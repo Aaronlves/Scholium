@@ -467,15 +467,21 @@ struct SearchProtocolContractsTests {
 
     @Test("Summary projection fails closed when exact scalar provenance is unavailable")
     func summaryProjectionRequiresExactScalarProvenance() {
-        let block = NoteDocument(
-            relativePath: "Block.md",
-            rawContent: "---\nsummary: |\n  folded discovery text\n---\nBody\n"
-        )
-        let blockProperties = SearchPropertyProjection(document: block)
-        #expect(blockProperties.entry(forExactKey: "summary")?.valueKind == .string)
-        #expect(blockProperties.entry(forExactKey: "summary")?.stringMembers.isEmpty == true)
-        #expect(SearchDocumentProjection(document: block).summary == nil)
-        #expect(!SearchDocumentProjection(document: block).segments.contains { $0.field == .summary })
+        for (name, indicator) in [("Literal", "|"), ("Folded", ">")] {
+            let block = NoteDocument(
+                relativePath: "\(name).md",
+                rawContent: "---\nsummary: \(indicator)\n  block discovery text\n---\nBody\n"
+            )
+            let blockProperties = SearchPropertyProjection(document: block)
+            #expect(blockProperties.entry(forExactKey: "summary")?.valueKind
+                == .string)
+            #expect(blockProperties.entry(forExactKey: "summary")?.stringMembers
+                .isEmpty == true)
+            #expect(SearchDocumentProjection(document: block).summary == nil)
+            #expect(!SearchDocumentProjection(document: block).segments.contains {
+                $0.field == .summary
+            })
+        }
 
         let duplicate = NoteDocument(
             relativePath: "Duplicate.md",

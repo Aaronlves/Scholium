@@ -210,6 +210,248 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("A nonempty alternate provider preserves summary provenance through Context Use, Record, and Continue")
+    func alternateProviderUsesSharedSemantics() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let summary = "providerneutralfixture maps a bounded inheritance question"
+        let source = """
+        ---
+        title: Agency
+        summary: \(summary)
+        aliases:
+          - Freedom
+        ---
+        # Agency
+
+        See [[Nested Topic]].
+
+        """
+        try Data(source.utf8).write(
+            to: fixture.rootURL
+                .appendingPathComponent("Topics", isDirectory: true)
+                .appendingPathComponent("Agency.md"),
+            options: .atomic
+        )
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let matchedSummaryTerm = "providerneutralfixture"
+        let summaryStringRange = try #require(source.range(of: matchedSummaryTerm))
+        let lower = summaryStringRange.lowerBound.utf16Offset(in: source)
+        let upper = summaryStringRange.upperBound.utf16Offset(in: source)
+        let summaryRange = SearchSourceRange(
+            utf16LowerBound: lower,
+            utf16UpperBound: upper,
+            line: 3,
+            column: 10,
+            endLine: 3,
+            endColumn: 10 + matchedSummaryTerm.utf16.count
+        )
+        let prepared = try await preparedSynthesis(handle: handle, fixture: fixture)
+        let clause = try ResearchContextClause(
+            kind: .discoverNote,
+            query: "summary:providerneutralfixture",
+            useEligibility: .contextUse
+        )
+        let request = try ResearchContextRequest(clauses: [clause])
+        let fixedQuery = try #require(clause.query)
+
+        let production = try await handle.research.queryAgentResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: request
+        )
+        let productionItem = try #require(production.items.first {
+            $0.sourceReference.owner.relativePath == "Agency.md"
+        })
+        #expect(productionItem.sourceReference.retrievalReason
+            == .canonicalSummary)
+        #expect(productionItem.sourceReference.actorClass == .unknown)
+        #expect(productionItem.sourceReference.locator
+            == (try .sourceRange(summaryRange)))
+        #expect(productionItem.sourceReference.materialLimitations.contains {
+            $0.localizedCaseInsensitiveContains("writer")
+        })
+
+        func provider(
+            _ state: FixtureSummaryResearchContextProvider.State
+        ) -> FixtureSummaryResearchContextProvider {
+            FixtureSummaryResearchContextProvider(
+                state: state,
+                expectedQuery: fixedQuery,
+                noteID: target.noteID,
+                note: target.note,
+                role: target.role,
+                title: target.title,
+                summary: summary,
+                summaryRange: summaryRange,
+                fingerprint: target.fingerprint
+            )
+        }
+        let replacement = try await handle.authenticatedResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: request,
+            provider: provider(.current)
+        )
+        let replacementItem = try #require(replacement.items.first)
+        #expect(replacement.availability == .current)
+        #expect(replacementItem.contentKind == .searchSnippet)
+        #expect(replacementItem.semanticContent == summary)
+        #expect(replacementItem.noteMatchReasons == [.lexical])
+        #expect(replacementItem.contextUseEligibility == .contextUse)
+        #expect(replacementItem.sourceReference.sourceKind
+            == productionItem.sourceReference.sourceKind)
+        #expect(replacementItem.sourceReference.owner
+            == productionItem.sourceReference.owner)
+        #expect(replacementItem.sourceReference.actorClass
+            == productionItem.sourceReference.actorClass)
+        #expect(replacementItem.sourceReference.objectRole
+            == productionItem.sourceReference.objectRole)
+        #expect(replacementItem.sourceReference.vaultRole
+            == productionItem.sourceReference.vaultRole)
+        #expect(replacementItem.sourceReference.fingerprint
+            == productionItem.sourceReference.fingerprint)
+        #expect(replacementItem.sourceReference.locator
+            == productionItem.sourceReference.locator)
+        #expect(replacementItem.sourceReference.authorizedScope
+            == productionItem.sourceReference.authorizedScope)
+        #expect(replacementItem.sourceReference.currentness
+            == productionItem.sourceReference.currentness)
+        #expect(replacementItem.sourceReference.evidentialLayer
+            == productionItem.sourceReference.evidentialLayer)
+        #expect(replacementItem.sourceReference.retrievalReason
+            == productionItem.sourceReference.retrievalReason)
+        #expect(replacementItem.sourceReference.materialLimitations
+            == productionItem.sourceReference.materialLimitations)
+
+        let stale = try await handle.authenticatedResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: request,
+            provider: provider(.stale)
+        )
+        #expect(stale.availability == .stale)
+        #expect(stale.items.first?.sourceReference.currentness == .stale)
+        #expect(stale.items.first?.contextUseEligibility == .referenceOnly)
+        let unavailable = try await handle.authenticatedResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: request,
+            provider: provider(.unavailable)
+        )
+        #expect(unavailable.availability == .unavailable)
+        #expect(unavailable.items.isEmpty)
+        #expect(unavailable.outcomes.first?.limitations.contains {
+            $0.localizedCaseInsensitiveContains("unavailable")
+        } == true)
+        let invalid = try await handle.authenticatedResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: try ResearchContextRequest(
+                clauses: [try ResearchContextClause(
+                    kind: .discoverNote,
+                    query: "summary:a-different-fixed-query",
+                    useEligibility: .contextUse
+                )]
+            ),
+            provider: provider(.current)
+        )
+        #expect(invalid.availability == .invalidQuery)
+        #expect(invalid.items.isEmpty)
+
+        let forgedWriter = try SourceReferenceEnvelope(
+            id: replacementItem.sourceReference.id,
+            sourceKind: replacementItem.sourceReference.sourceKind,
+            owner: replacementItem.sourceReference.owner,
+            actorClass: .researcher,
+            objectRole: replacementItem.sourceReference.objectRole,
+            vaultRole: replacementItem.sourceReference.vaultRole,
+            fingerprint: replacementItem.sourceReference.fingerprint,
+            locator: replacementItem.sourceReference.locator,
+            authorizedScope: replacementItem.sourceReference.authorizedScope,
+            currentness: replacementItem.sourceReference.currentness,
+            evidentialLayer: replacementItem.sourceReference.evidentialLayer,
+            retrievalReason: replacementItem.sourceReference.retrievalReason,
+            materialLimitations: replacementItem.sourceReference.materialLimitations
+        )
+        await #expect(throws: ResearchAgentResultContractError.self) {
+            _ = try await handle.research.submitAgentResult(
+                credential: prepared.credential,
+                run: prepared.handoff.run,
+                submission: try submission(
+                    preparation: prepared.preparation,
+                    outcome: "A guessed summary writer must not enter the Record.",
+                    contextUseClaims: [try ResearchContextUseClaim(
+                        sourceReference: forgedWriter,
+                        testimony: "This false researcher attribution must fail."
+                    )]
+                )
+            )
+        }
+
+        let receipt = try await handle.research.submitAgentResult(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            submission: try submission(
+                preparation: prepared.preparation,
+                outcome: "The current summary led to the exact Topic revision.",
+                contextUseClaims: [try ResearchContextUseClaim(
+                    sourceReference: replacementItem.sourceReference,
+                    testimony: "The summary led was expanded into the current Topic before use."
+                )]
+            )
+        )
+        #expect(receipt.state == .finalized)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: prepared.preparation.runID
+        )
+        #expect(record.contextUseReport?.entries.first?.sourceReference
+            == replacementItem.sourceReference)
+        let recordText = String(
+            decoding: try JSONEncoder().encode(record),
+            as: UTF8.self
+        )
+        #expect(!recordText.contains("FixtureSummaryResearchContextProvider"))
+        #expect(!recordText.contains("summary:providerneutralfixture"))
+
+        var policy = try await handle.research.collaborationPolicy()
+        policy = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let continued = try await handle.research.continueAgentResearch(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: try ResearchContinuationRequest(
+                nextActionID: .synthesize,
+                targetRole: .topic,
+                targetRelativePath: "Agency.md",
+                academicPurpose: "Continue one bounded summary-discovered question.",
+                handoff: [try ResearchContinuationHandoffItem(
+                    content: "The summary exposed a question that needs current Note expansion.",
+                    epistemicStatus: .agentReconstruction,
+                    nextUse: "Reopen the exact current Topic before relying on the lead.",
+                    sourceReferences: [replacementItem.sourceReference]
+                )]
+            )
+        )
+        #expect(continued.state == .created)
+        #expect(continued.handoffContext?.referenceChecks.first?.status == .current)
+        #expect(continued.handoffContext?.referenceChecks.first?.sourceReference
+            == replacementItem.sourceReference)
+        #expect(continued.handoffContext?.requiresResearcherStateRequery == false)
+        await runtime.shutdown()
+    }
+
     @Test("Current Run source Material and Zotero metadata use one revalidated Context lineage")
     func verifiedSourceMaterialContextUse() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "META0001")

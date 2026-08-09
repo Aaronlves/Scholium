@@ -74,6 +74,27 @@ is correct, or that a future provider retrieves every relevant current owner.
 The Settle recovery pin remains outside this academic view and was not promoted
 into importance, stance, or adoption.
 
+The provider-replacement and summary-attribution alignment passed 44 focused
+tests across seven Search, Contracts, Application, bridge, and architecture
+suites with Xcode 27 beta and Swift 6.4. One nonempty disposable provider uses
+a fixed summary candidate rather than production Search, checks the authorized
+Workspace snapshot, and produces current, stale, and unavailable outcomes. A
+fixed-query mismatch remains an Invalid Query rather than returning an
+unrelated candidate. The current item matches production summary discovery on
+owner, unknown actor,
+role, fingerprint, exact match range, Run/Triptych scope, currentness,
+evidential layer, and retrieval reason; guessed researcher authorship fails
+Context Use, while the valid reference survives Record and Continue Research
+revalidation without persisting provider or query identity.
+
+This proves provider-neutral semantics for one deliberately different
+nontrivial fixture mechanism, not the quality of a second production retrieval
+strategy. It also confirms the current writer boundary: plain/quoted summary
+discovery is source-located, block/folded or range-ambiguous summary projection
+fails closed, and the current Note revision remains actor-unknown unless a
+separate existing operation or Record owner proves authorship. No block-scalar
+support, field-level writer history, or attribution database was added.
+
 ## Search case pack
 
 These cases are the current researcher-review set for deciding whether static
