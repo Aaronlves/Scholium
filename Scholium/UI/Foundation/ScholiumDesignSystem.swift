@@ -649,6 +649,7 @@ enum ScholiumWebDesignTokens {
           color-scheme: light dark;
           \(rootCSSDeclarations)
           \(elevationCSSDeclarations)
+          \(ScholiumContentInteractionSurface.webCSSDeclarations)
           \(fixedDocumentSyntaxCSSDeclarations)
           \(rhythmCSSDeclarations)
         }
@@ -974,28 +975,28 @@ enum ScholiumWebDesignTokens {
         }
         .scholium-selection-control:hover,
         .scholium-selection-menu-item:hover,
+        .scholium-selection-control:active,
+        .scholium-selection-menu-item:active {
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-content-hover-surface);
+        }
         .scholium-selection-control:focus,
         .scholium-selection-menu-item:focus,
         .scholium-selection-control.scholium-selection-keyboard-focus,
         .scholium-selection-menu-item.scholium-selection-keyboard-focus {
           color: var(--scholium-color-primary-text);
-          background: var(--scholium-color-raised-surface-background);
-        }
-        .scholium-selection-control:active,
-        .scholium-selection-menu-item:active {
-          color: var(--scholium-color-primary-text);
-          background: var(--scholium-color-raised-surface-background);
+          background: var(--scholium-content-keyboard-focus-surface);
         }
         .scholium-selection-control:focus-visible,
         .scholium-selection-menu-item:focus-visible {
           color: var(--scholium-color-primary-text);
-          background: var(--scholium-color-raised-surface-background);
-          outline: 2px solid var(--scholium-color-accent);
+          background: var(--scholium-content-keyboard-focus-surface);
+          outline: 2px solid var(--scholium-content-focus-ring);
           outline-offset: 1px;
         }
         .scholium-selection-control.scholium-selection-keyboard-focus,
         .scholium-selection-menu-item.scholium-selection-keyboard-focus {
-          outline: 2px solid var(--scholium-color-accent);
+          outline: 2px solid var(--scholium-content-focus-ring);
           outline-offset: 1px;
         }
         .scholium-selection-symbol {
@@ -1151,7 +1152,10 @@ enum ScholiumWebDesignTokens {
           background: transparent;
           white-space: nowrap;
         }
-        .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover,
+        .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover {
+          color: var(--scholium-color-primary-text);
+          background: var(--scholium-content-hover-surface);
+        }
         .cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li[aria-selected="true"] {
           color: var(--scholium-color-primary-text);
           background: var(--scholium-color-raised-surface-background);
@@ -1200,6 +1204,7 @@ enum ScholiumWebDesignTokens {
           :root {
             \(increasedContrastCSSDeclarations)
             \(increasedContrastElevationCSSDeclarations)
+            \(ScholiumContentInteractionSurface.increasedContrastWebCSSDeclarations)
           }
           .scholium-selection-actions,
           .scholium-selection-menu,
@@ -1601,13 +1606,19 @@ enum ScholiumShape {
 /// The shared shallow interaction surface for Scholium-owned controls inside
 /// content regions. Hover uses one translucent semantic-ink veil so its
 /// relative light/dark response follows the native toolbar on every underlying
-/// plane, while keyboard focus retains a stronger raised blend. Each SwiftUI
-/// or AppKit component keeps its own shape, geometry, focus, and lifecycle.
+/// plane, while keyboard focus retains a stronger raised blend. Native and
+/// WebKit consumers share these exact semantic mixes while each component keeps
+/// its own shape, geometry, focus, and lifecycle.
 enum ScholiumContentInteractionSurface {
     private static let hoverOpacity: CGFloat = 0.05
     private static let increasedContrastHoverOpacity: CGFloat = 0.075
     private static let keyboardFocusOpacity: CGFloat = 0.42
     private static let increasedContrastKeyboardFocusOpacity: CGFloat = 0.56
+
+    static let webCSSDeclarations = webCSSDeclarations(increasedContrast: false)
+    static let increasedContrastWebCSSDeclarations = webCSSDeclarations(
+        increasedContrast: true
+    )
 
     static func opacity(
         isHovering: Bool,
@@ -1652,6 +1663,7 @@ enum ScholiumContentInteractionSurface {
         isSelected: Bool,
         isHovering: Bool,
         isFocused: Bool,
+        isPressed: Bool = false,
         increasedContrast: Bool
     ) -> Color {
         if isSelected {
@@ -1661,6 +1673,7 @@ enum ScholiumContentInteractionSurface {
         return color(
             isHovering: isHovering,
             isFocused: isFocused,
+            isPressed: isPressed,
             increasedContrast: increasedContrast
         )
     }
@@ -1684,6 +1697,40 @@ enum ScholiumContentInteractionSurface {
 
     private static func surfaceRole(isFocused: Bool) -> ScholiumColorRole {
         isFocused ? .raisedSurfaceBackground : .primaryText
+    }
+
+    private static func webCSSDeclarations(increasedContrast: Bool) -> String {
+        let hoverPercentage = cssPercentage(opacity(
+            isHovering: true,
+            isFocused: false,
+            increasedContrast: increasedContrast
+        ))
+        let focusPercentage = cssPercentage(opacity(
+            isHovering: false,
+            isFocused: true,
+            increasedContrast: increasedContrast
+        ))
+        return """
+            --scholium-content-hover-surface: color-mix(
+              in srgb,
+              var(--scholium-color-primary-text) \(hoverPercentage)%,
+              transparent
+            );
+            --scholium-content-keyboard-focus-surface: color-mix(
+              in srgb,
+              var(--scholium-color-raised-surface-background) \(focusPercentage)%,
+              transparent
+            );
+            --scholium-content-focus-ring: var(--scholium-color-accent);
+            """
+    }
+
+    private static func cssPercentage(_ opacity: CGFloat) -> String {
+        String(
+            format: "%.4g",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(opacity * 100)
+        )
     }
 }
 
@@ -2077,6 +2124,7 @@ private struct ScholiumContentInteractionSurfaceModifier<S: Shape>: ViewModifier
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.scholiumIncreasedContrast) private var increasedContrast
 
+    let isSelected: Bool
     let isHovering: Bool
     let isFocused: Bool
     let isPressed: Bool
@@ -2084,7 +2132,8 @@ private struct ScholiumContentInteractionSurfaceModifier<S: Shape>: ViewModifier
 
     func body(content: Content) -> some View {
         content.background(
-            ScholiumContentInteractionSurface.color(
+            ScholiumContentInteractionSurface.selectionColor(
+                isSelected: isSelected,
                 isHovering: isEnabled && isHovering,
                 isFocused: isEnabled && isFocused,
                 isPressed: isEnabled && isPressed,
@@ -2103,6 +2152,86 @@ extension EnvironmentValues {
     var scholiumContentControlIsEmphasized: Bool {
         get { self[ScholiumContentControlIsEmphasizedKey.self] }
         set { self[ScholiumContentControlIsEmphasizedKey.self] = newValue }
+    }
+}
+
+private struct ScholiumContentControlInkModifier: ViewModifier {
+    @Environment(\.scholiumContentControlIsEmphasized) private var isEmphasized
+
+    let restingRole: ScholiumColorRole
+    let emphasizedRole: ScholiumColorRole
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(
+            (isEmphasized ? emphasizedRole : restingRole).color
+        )
+    }
+}
+
+/// The shared transient-state owner for custom SwiftUI Buttons. Native Menu
+/// labels use the AppKit tracking adapter below because SwiftUI does not
+/// reliably forward their pointer state; ordinary Buttons stay on SwiftUI's
+/// lightweight hover and ButtonStyle press path.
+private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovering = false
+
+    let isActive: Bool
+    let isSelected: Bool
+    let isFocused: Bool
+    let isPressed: Bool
+    let pressedOpacity: Double
+    let shape: S
+
+    func body(content: Content) -> some View {
+        let hasTransientEmphasis = isEnabled && (isHovering || isFocused || isPressed)
+        let isEmphasized = isActive || isSelected || hasTransientEmphasis
+
+        content
+            .environment(\.scholiumContentControlIsEmphasized, isEmphasized)
+            .scholiumContentInteractionSurface(
+                isSelected: isSelected,
+                isHovering: isHovering,
+                isFocused: isFocused,
+                isPressed: isPressed,
+                in: shape
+            )
+            .opacity(isEnabled && isPressed ? pressedOpacity : 1)
+            .onHover { isHovering = $0 }
+    }
+}
+
+struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
+    let isActive: Bool
+    let isSelected: Bool
+    let isFocused: Bool
+    let pressedOpacity: Double
+    let shape: S
+
+    init(
+        isActive: Bool = false,
+        isSelected: Bool = false,
+        isFocused: Bool = false,
+        pressedOpacity: Double = 0.78,
+        in shape: S
+    ) {
+        self.isActive = isActive
+        self.isSelected = isSelected
+        self.isFocused = isFocused
+        self.pressedOpacity = pressedOpacity
+        self.shape = shape
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scholiumContentControlButtonFeedback(
+                isActive: isActive,
+                isSelected: isSelected,
+                isFocused: isFocused,
+                isPressed: configuration.isPressed,
+                pressedOpacity: pressedOpacity,
+                in: shape
+            )
     }
 }
 
@@ -2332,7 +2461,6 @@ private struct ScholiumValueActivationFocusModifier<Value: Hashable>: ViewModifi
 struct ScholiumInkIconControl: View {
     @Environment(\.isEnabled) private var isEnabled
     @FocusState private var isFocused: Bool
-    @State private var isHovering = false
     let title: String
     let systemImage: String
     let identifier: String
@@ -2352,21 +2480,28 @@ struct ScholiumInkIconControl: View {
                     height: ScholiumMetrics.Accessibility.preferredCustomTarget
                 )
                 .contentShape(Rectangle())
-                .foregroundStyle(
-                    isActive || isHovering || hasFocus
-                        ? emphasizedColorRole.color
-                        : ScholiumColorRole.secondaryText.color
+                .scholiumContentControlInk(
+                    resting: .secondaryText,
+                    emphasized: emphasizedColorRole
                 )
                 .opacity(isEnabled ? 1 : 0.42)
         }
-        .buttonStyle(ScholiumInkIconButtonStyle())
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isActive: isActive,
+                isFocused: hasFocus,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+        )
         .modifier(
             ScholiumInkIconFocusModifier(
                 externalFocus: focus,
                 localFocus: $isFocused
             )
         )
-        .onHover { isHovering = $0 }
         .help(title)
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
@@ -2394,13 +2529,6 @@ private struct ScholiumInkIconFocusModifier: ViewModifier {
                 .focusEffectDisabled()
                 .focused(localFocus)
         }
-    }
-}
-
-private struct ScholiumInkIconButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 
@@ -2470,6 +2598,7 @@ extension View {
     /// Paints the shared shallow interaction surface inside content regions.
     /// The caller continues to own the purpose-specific shape and hit region.
     func scholiumContentInteractionSurface<S: Shape>(
+        isSelected: Bool = false,
         isHovering: Bool,
         isFocused: Bool = false,
         isPressed: Bool = false,
@@ -2477,11 +2606,46 @@ extension View {
     ) -> some View {
         modifier(
             ScholiumContentInteractionSurfaceModifier(
+                isSelected: isSelected,
                 isHovering: isHovering,
                 isFocused: isFocused,
                 isPressed: isPressed,
                 shape: shape
             ))
+    }
+
+    /// Applies the complete shared SwiftUI Button presentation while the
+    /// Button retains activation, keyboard focus, and accessibility semantics.
+    func scholiumContentControlButtonFeedback<S: Shape>(
+        isActive: Bool = false,
+        isSelected: Bool = false,
+        isFocused: Bool = false,
+        isPressed: Bool,
+        pressedOpacity: Double = 0.78,
+        in shape: S
+    ) -> some View {
+        modifier(
+            ScholiumContentControlButtonFeedbackModifier(
+                isActive: isActive,
+                isSelected: isSelected,
+                isFocused: isFocused,
+                isPressed: isPressed,
+                pressedOpacity: pressedOpacity,
+                shape: shape
+            )
+        )
+    }
+
+    func scholiumContentControlInk(
+        resting restingRole: ScholiumColorRole = .secondaryText,
+        emphasized emphasizedRole: ScholiumColorRole = .primaryText
+    ) -> some View {
+        modifier(
+            ScholiumContentControlInkModifier(
+                restingRole: restingRole,
+                emphasizedRole: emphasizedRole
+            )
+        )
     }
 
     /// Applies the complete shared pointer presentation to a matching custom

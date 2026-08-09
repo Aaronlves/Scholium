@@ -287,6 +287,19 @@ extension MarkdownEditorWebViewIntegrationTests {
               actionsBounds.left + actionsBounds.width / 2
                 - selectedBounds.left - selectedBounds.width / 2
             );
+            button.focus({preventScroll: true});
+            const focusedButtonBackground = getComputedStyle(button).backgroundColor;
+            const keyboardFocusSurfaceProbe = document.createElement('span');
+            keyboardFocusSurfaceProbe.style.backgroundColor =
+              'var(--scholium-content-keyboard-focus-surface)';
+            document.body.append(keyboardFocusSurfaceProbe);
+            const keyboardFocusSurfaceBackground = getComputedStyle(
+              keyboardFocusSurfaceProbe
+            ).backgroundColor;
+            keyboardFocusSurfaceProbe.remove();
+            const focusedButtonUsesSharedClass = button.classList.contains(
+              'scholium-selection-keyboard-focus'
+            );
             button.click();
             const commentText = document.getElementById('comment-text');
             const composer = document.getElementById('comment-composer');
@@ -350,6 +363,9 @@ extension MarkdownEditorWebViewIntegrationTests {
               viewportWidth: window.innerWidth,
               assignedLeft: actions.style.left,
               positionedAboveSelection: actionsBounds.bottom <= selectedBounds.top,
+              focusedButtonBackground,
+              keyboardFocusSurfaceBackground,
+              focusedButtonUsesSharedClass,
               composerOpened,
               composingRootWidth: composingActionsBounds.width,
               composerWidth: composerBounds.width,
@@ -397,6 +413,11 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(abs(actionLeft - expectedLeft) <= 1)
         #expect(actionCenter >= selectionCenter)
         #expect(result["positionedAboveSelection"] as? Bool == true)
+        #expect(result["focusedButtonUsesSharedClass"] as? Bool == true)
+        #expect(
+            result["focusedButtonBackground"] as? String
+                == result["keyboardFocusSurfaceBackground"] as? String
+        )
         #expect(result["composerOpened"] as? Bool == true)
         #expect((result["composingRootWidth"] as? Double).map { 234 ... 302 ~= $0 } == true)
         #expect((result["composerWidth"] as? Double).map { 220 ... 288 ~= $0 } == true)
@@ -1055,6 +1076,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(interaction.originID == "fnref-1-2")
         #expect(!interaction.previewHiddenAfterHover)
         #expect(interaction.previewHiddenAfterScroll)
+        #expect(!interaction.previewHiddenAfterFocus)
+        #expect(interaction.previewHiddenAfterFocusExit)
         #expect(!interaction.previewBackground.isEmpty)
         #expect(interaction.previewBackground != "rgba(0, 0, 0, 0)")
         #expect(!interaction.previewBorderColor.isEmpty)
@@ -1297,6 +1320,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         let originID: String
         let previewHiddenAfterHover: Bool
         let previewHiddenAfterScroll: Bool
+        let previewHiddenAfterFocus: Bool
+        let previewHiddenAfterFocusExit: Bool
         let previewBackground: String
         let previewBorderColor: String
         let previewBackdropFilter: String
@@ -2252,6 +2277,14 @@ extension MarkdownEditorWebViewIntegrationTests {
                 window.dispatchEvent(new Event('scroll'));
                 const previewHiddenAfterScroll = popover.hidden;
 
+                reference.focus({preventScroll: true});
+                const previewHiddenAfterFocus = popover.hidden;
+                reference.dispatchEvent(new FocusEvent('focusout', {
+                  bubbles: true,
+                  relatedTarget: document.body
+                }));
+                const previewHiddenAfterFocusExit = popover.hidden;
+
                 reference.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
                 const definitionFocused = document.activeElement === definition;
                 back.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
@@ -2261,6 +2294,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                   originID: origin.id,
                   previewHiddenAfterHover,
                   previewHiddenAfterScroll,
+                  previewHiddenAfterFocus,
+                  previewHiddenAfterFocusExit,
                   previewBackground,
                   previewBorderColor,
                   previewBackdropFilter,

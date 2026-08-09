@@ -18,7 +18,6 @@
   --scholium-callout-secondary-ink: var(--scholium-color-secondary-text, CanvasText);
   --scholium-callout-muted-ink: var(--scholium-color-muted-text, GrayText);
   --scholium-callout-rule: var(--scholium-color-separator, GrayText);
-  --scholium-callout-focus: var(--scholium-color-information, Highlight);
   --scholium-callout-surface: color-mix(
     in srgb,
     var(--scholium-color-primary-text, CanvasText) 4.5%,
@@ -28,11 +27,6 @@
     in srgb,
     var(--scholium-color-primary-text, CanvasText) 7%,
     var(--scholium-color-document-background, Canvas)
-  );
-  --scholium-callout-hover: color-mix(
-    in srgb,
-    var(--scholium-color-primary-text, CanvasText) 9%,
-    transparent
   );
   position: relative;
   display: block;
@@ -78,7 +72,7 @@
 
 .scholium-callout > summary:focus-visible {
   border-radius: 2px;
-  outline: 2px solid var(--scholium-callout-focus);
+  outline: 2px solid var(--scholium-content-focus-ring, Highlight);
   outline-offset: 4px;
 }
 
@@ -150,6 +144,8 @@
 
 /* A single functional mark communicates disclosure; it is not a role motif. */
 .scholium-callout-fold-mark {
+  --scholium-callout-fold-surface: transparent;
+  --scholium-callout-fold-surface-opacity: 0;
   position: relative;
   display: grid;
   place-items: center;
@@ -174,9 +170,13 @@
   position: absolute;
   z-index: 0;
   inset: -.18rem;
-  background: radial-gradient(circle, var(--scholium-callout-hover) 0%, transparent 72%);
+  background: radial-gradient(
+    circle,
+    var(--scholium-callout-fold-surface) 0%,
+    transparent 72%
+  );
   content: "";
-  opacity: 0;
+  opacity: var(--scholium-callout-fold-surface-opacity);
   pointer-events: none;
 }
 
@@ -189,14 +189,19 @@
   transform: rotate(45deg);
 }
 
-.scholium-callout > summary:hover .scholium-callout-fold-mark,
-.scholium-callout > summary:focus-visible .scholium-callout-fold-mark {
+.scholium-callout > summary:hover .scholium-callout-fold-mark {
   color: var(--scholium-callout-ink);
+  --scholium-callout-fold-surface: var(--scholium-content-hover-surface, transparent);
+  --scholium-callout-fold-surface-opacity: 1;
 }
 
-.scholium-callout > summary:hover .scholium-callout-fold-mark::after,
-.scholium-callout > summary:focus-visible .scholium-callout-fold-mark::after {
-  opacity: 1;
+.scholium-callout > summary:focus-visible .scholium-callout-fold-mark {
+  color: var(--scholium-callout-ink);
+  --scholium-callout-fold-surface: var(
+    --scholium-content-keyboard-focus-surface,
+    transparent
+  );
+  --scholium-callout-fold-surface-opacity: 1;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -464,11 +469,6 @@ aside.scholium-callout-quote .scholium-callout-body {
     --scholium-callout-rule: var(--scholium-color-primary-text, CanvasText);
     --scholium-callout-secondary-ink: var(--scholium-color-primary-text, CanvasText);
     --scholium-callout-muted-ink: var(--scholium-color-primary-text, CanvasText);
-    --scholium-callout-hover: color-mix(
-      in srgb,
-      var(--scholium-color-primary-text, CanvasText) 15%,
-      transparent
-    );
     --scholium-callout-surface: color-mix(
       in srgb,
       var(--scholium-color-primary-text, CanvasText) 9%,

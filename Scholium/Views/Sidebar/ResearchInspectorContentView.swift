@@ -110,9 +110,6 @@ struct ResearchOverviewView: View {
     let note: WindowDocumentLocation
     let context: ResearchInspectorContentContext
 
-    @State private var attentionIsHovering = false
-    @State private var zoteroIsHovering = false
-
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(
@@ -185,12 +182,10 @@ struct ResearchOverviewView: View {
             session: context.attentionPopoverSession
         )
         .buttonStyle(ScholiumQuietRowButtonStyle(
-            isHovering: attentionIsHovering,
             minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-        .onHover { attentionIsHovering = $0 }
         .accessibilityLabel("Needs Attention")
         .accessibilityValue("\(context.visibleAttentionItems.count) items")
         .accessibilityIdentifier("scholium.researchOverview.attention")
@@ -247,13 +242,11 @@ struct ResearchOverviewView: View {
                     )
                 }
                 .buttonStyle(ScholiumQuietRowButtonStyle(
-                    isHovering: zoteroIsHovering,
                     minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
                     verticalInset: 0
                 ))
                 .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
                 .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
-                .onHover { zoteroIsHovering = $0 }
                 .accessibilityIdentifier("scholium.researchOverview.openInZotero")
             }
         }

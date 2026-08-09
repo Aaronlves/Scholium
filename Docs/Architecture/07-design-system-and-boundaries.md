@@ -59,11 +59,11 @@ Repository ownership tests treat authored shadow syntax as a closed inventory.
 The two native renderers are the only `.shadow` owners; generated WebKit
 elevation consumes only the three purpose-named CSS variables. The remaining
 inset `box-shadow` declarations are classified as editor boundaries or focus
-rings rather than elevation. Adding a raw shadow, a direct SwiftUI hover site,
-a WebKit `:hover` site, or another AppKit pointer tracker fails the inventory
-until its semantic owner and exception class are made explicit. The bounded
-hover inventory may shrink during the current ownership cutover but must not
-grow.
+rings rather than elevation. Adding a raw shadow, a direct SwiftUI hover site
+outside the design-system owner, a WebKit `:hover` site, or another AppKit
+pointer tracker fails the inventory until its semantic owner and exception
+class are made explicit. The bounded WebKit hover inventory may shrink during
+later simplification but must not grow.
 
 `ScholiumLibraryLocationPicker` owns the borderless native Location menu and
 its single native indicator and shared interaction surface without owning
@@ -71,23 +71,39 @@ Location state or applying a persistent Accent tint. Its plain button
 presentation prevents the native Menu host from adding a second hover shape;
 the title resolves from Regular secondary ink to primary ink through the same
 hover/focus emphasis environment as adjacent commands.
-`ScholiumContentInteractionSurface` is the pure SwiftUI/AppKit mapping for
-content-control hover and keyboard-focus surface emphasis. Hover resolves to a
-low-opacity semantic `primaryText` veil, preserving the native toolbar's
-relative light/dark response over every content plane without copying its
-dynamic AppKit pixels; keyboard focus retains the stronger raised blend and
-selection remains with its owning component. The overloaded
+`ScholiumContentInteractionSurface` is the shared SwiftUI, AppKit, and WebKit
+mapping for content-control selection, hover, keyboard-focus, and press
+emphasis. Hover resolves to a low-opacity semantic `primaryText` veil,
+preserving the native toolbar's relative light/dark response over every content
+plane without copying its dynamic AppKit pixels; keyboard focus retains the
+stronger raised blend, while selection remains an explicit persistent input.
+Its generated CSS declarations transport those same mixes and the Accent focus
+ring into both retained document surfaces. The overloaded
 `scholiumActivationFocus` modifier keeps matching custom button-like controls
 in the complete keyboard chain, clears pointer-generated keyboard-only focus,
 and locally replaces the native focus effect with that shared surface without
 inspecting AppKit events or changing window-wide focus behavior.
-`scholiumContentControlPointerFeedback` is the single transient-presentation
-owner for matching content controls. A zero-hit-test AppKit tracking adapter observes the
-complete SwiftUI Button or Menu frame because the native Menu host does not
-reliably forward pointer state into its label. The adapter translates hover and
-press; the enclosing native control retains activation, focus, menu tracking,
-and accessibility, while the shared resolver consumes its focus state and owns
-semantic ink, one continuous surface, and immediate press dimming.
+`ScholiumContentControlButtonFeedbackModifier` is the single transient-state
+owner for custom SwiftUI Buttons. The generic
+`ScholiumContentControlButtonStyle` and geometry-owning quiet-row style both
+delegate to it. It owns one lightweight SwiftUI hover state, consumes
+`ButtonStyle.Configuration.isPressed`, and resolves semantic ink, one
+continuous surface, and immediate press dimming. Borderless native Menus
+instead use `scholiumContentControlPointerFeedback`: a zero-hit-test AppKit
+adapter observes the complete Menu frame because the host does not reliably
+forward pointer state into its label. The enclosing Button or Menu retains
+activation, focus, menu tracking, and accessibility; no leaf or compound
+wrapper adds another transient-state owner.
+WebKit selection controls use the quiet hover mix for pointer hover and press,
+the stronger mix for keyboard focus, and an Accent focus ring. CodeMirror
+suggestions keep their current listbox item on the persistent raised surface
+while pointer hover remains transient. The protected Callout stylesheet owns
+only its disclosure geometry and selectors; its fold mark consumes the shared
+hover/focus values instead of declaring another opacity or focus color.
+Review preview delegation resolves one footnote-or-link anchor for both pointer
+and focus entry, ignores movement inside that anchor, and closes on matching
+pointer or focus exit as well as scroll, resize, or window blur. It does not
+create another source, selection, or focus owner.
 `ScholiumTriptychWorkspaceNavigator` owns
 the three vertical workspace rows, neutral Note totals, selection/hover
 surfaces, focus, and Up/Down traversal without owning the selected workspace. Its continuous
@@ -136,8 +152,9 @@ the native toolbar background, and macOS 26+ toolbar content hides its automatic
 shared background, so Document color remains continuous without Liquid Glass or
 a painted masking layer.
 
-Every custom Records target routes hover, keyboard focus, and press through
-`ScholiumContentInteractionSurface`. The toolbar View index and Inspector
+Every custom Records Button routes hover, keyboard focus, and press through
+the shared Button feedback owner; Scope and Filters use the bounded Menu
+adapter and plain presentation. The toolbar View index and Inspector
 ModeIndex also resolve persistent selection through that same shallow surface,
 without an Accent underline or a filled segmented band. View items, menu labels, search clear,
 ordinary actions, evidence links, and continuity links use the editorial-

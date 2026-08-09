@@ -55,9 +55,12 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   filter: each destination restores its Location, filters, sort, disclosure,
   tabs, selected document, Document mode, and Inspector mode. Rapid input
   converges on the latest destination; a failed preparation retains the origin.
-  One shared SwiftUI/AppKit content-interaction resolver now supplies shallow
-  hover and keyboard-focus surfaces to the file tree, workspace rows,
-  Inspector modes and rows, Location controls, and Attention. Content hover
+  One shared native content-interaction resolver now supplies shallow hover,
+  press, selection, and keyboard-focus surfaces to workspace rows, Inspector
+  modes and rows, Location controls, Attention, and matching Records controls.
+  Ordinary SwiftUI Buttons use one shared transient-state owner through their
+  semantic styles; native Menu labels use one bounded AppKit tracking adapter.
+  Content hover
   uses one low-opacity semantic-ink veil that follows the native toolbar's
   relative light/dark feedback on each content plane; keyboard focus retains a
   stronger raised blend rather than collapsing hover, focus, and selection
@@ -77,8 +80,9 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   LocationPicker now uses Regular secondary ink at rest, promotes to primary
   ink on interaction, and suppresses the native Menu hover enclosure. Matching
   Filter, disclosure, and Add controls reuse one exact 28pt editorial-control
-  hover, focus, and press treatment across the complete native Button or Menu frame through one
-  nonintercepting AppKit tracking adapter. Icon-only Menu hosts suppress their
+  hover, focus, and press treatment across the complete native frame. Buttons
+  use the shared style; Menus alone use the nonintercepting tracking adapter.
+  Icon-only Menu hosts suppress their
   otherwise additional circular hover enclosure, leaving that shared rounded-
   rectangle surface as the sole feedback shape. Library, Set Aside, and Trash share the
   hierarchy and state presentation without mixing their lifecycle meanings.
@@ -112,7 +116,8 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 - The Research Records window opens as a full-width Records or Reading Leads
   collection with a native-toolbar shallow-surface View index, no underline,
   and one adaptive content header for continuous search and native Scope/filter
-  menus. The toolbar index is the visible identity and carries no count; search
+  menus with plain host presentation and one Menu-label feedback adapter. The
+  toolbar index is the visible identity and carries no count; search
   expands into the available width.
   Rule-separated compact 48pt rows use one continuous rounded hover/focus/press
   surface, omit duplicated long synopsis, resolve their bounded scroll range
@@ -193,11 +198,17 @@ behavior belongs to the Specification; outstanding acceptance belongs in
 - Selection bars and suggestion panels remain anchored to the selected range
   or caret while scrolling, clamp or flip within the viewport, dismiss on the
   correct focus/mode boundary, and retain a draft only when the researcher has
-  authored content that still needs a decision.
+  authored content that still needs a decision. Their WebKit hover, press,
+  keyboard-focus, and listbox-selection presentations now consume the same
+  semantic interaction resolver as matching native content controls rather
+  than a separate raised-surface recipe. Callout disclosure and document
+  control focus rings use the shared Accent role.
 - Review footnotes, previews, navigation, and return remain read-only. Edit
   preserves one source caret, exact markers on active structures, source-line
   pointer mapping, list/task geometry, and one Undo transaction per semantic
-  command.
+  command. Review preview delegation treats pointer and keyboard focus as
+  equivalent entry routes and closes when either leaves the originating link
+  or footnote.
 - Conflict comparison binds the displayed editor and disk revisions, defaults
   to Compare, and enables Reload only for the still-current displayed disk
   revision. Recovery candidates remain available through the dedicated sheet.

@@ -2527,7 +2527,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(more.rootBackground != more.raisedSurfaceBackground)
         #expect(more.focusedClassName.contains("scholium-selection-menu-item"))
         #expect(more.focusedMatchesFeedbackSelector)
-        #expect(more.focusedBackground == more.raisedSurfaceBackground)
+        #expect(more.focusedBackground == more.keyboardFocusSurfaceBackground)
+        #expect(more.focusedBackground != more.raisedSurfaceBackground)
         let lists = try await harness.session.testingSelectionToolbarSnapshot(
             opening: "More Formatting",
             submenu: "Lists"
@@ -2541,7 +2542,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         ])
         #expect(lists.focusedClassName.contains("scholium-selection-menu-item"))
         #expect(lists.focusedMatchesFeedbackSelector)
-        #expect(lists.focusedBackground == lists.raisedSurfaceBackground)
+        #expect(lists.focusedBackground == lists.keyboardFocusSurfaceBackground)
+        #expect(lists.focusedBackground != lists.raisedSurfaceBackground)
 
         harness.session.focus()
         try await harness.waitUntilFocused()
@@ -2552,7 +2554,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(keyboardFocused.focusedLabel == "Text Style")
         #expect(keyboardFocused.focusedClassName.contains("scholium-selection-control"))
         #expect(keyboardFocused.focusedMatchesFeedbackSelector)
-        #expect(keyboardFocused.focusedBackground == keyboardFocused.raisedSurfaceBackground)
+        #expect(
+            keyboardFocused.focusedBackground
+                == keyboardFocused.keyboardFocusSurfaceBackground
+        )
+        #expect(keyboardFocused.focusedBackground != keyboardFocused.raisedSurfaceBackground)
 
         harness.session.focus()
         try await harness.waitUntilFocused()

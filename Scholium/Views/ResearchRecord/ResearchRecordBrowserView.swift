@@ -288,6 +288,7 @@ private struct ResearchRecordsFilterMenu: View {
             )
         }
         .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
         .tint(ScholiumColorRole.secondaryText.color)
         .scholiumActivationFocus($isFocused)
         .scholiumContentControlPointerFeedback(
@@ -664,7 +665,6 @@ private struct ResearchRecordsSortableColumnHeader: View {
 }
 
 private struct ResearchRecordCollectionRow: View {
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     let entry: ResearchRecordIndexEntry
@@ -728,18 +728,17 @@ private struct ResearchRecordCollectionRow: View {
             .frame(height: ScholiumMetrics.ResearchRecords.collectionRowHeight)
             .contentShape(Rectangle())
         }
-        .buttonStyle(ResearchRecordCollectionRowMainButtonStyle())
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isFocused: isFocused,
+                in: shape
+            )
+        )
         .scholiumActivationFocus($isFocused)
         .accessibilityLabel(rowAccessibilityLabel)
         .accessibilityHint("Open this Research Record")
         .frame(height: ScholiumMetrics.ResearchRecords.collectionRowHeight)
         .contentShape(shape)
-        .scholiumContentInteractionSurface(
-            isHovering: isHovering,
-            isFocused: isFocused,
-            in: shape
-        )
-        .onHover { isHovering = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchRecord.row.\(entry.id.uuidString)")
     }
@@ -896,13 +895,6 @@ private struct ResearchRecordAttentionPresentation {
     let detail: String
 }
 
-private struct ResearchRecordCollectionRowMainButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.78 : 1)
-    }
-}
-
 private struct ResearchRecordsViewIndex: View {
     @Environment(\.layoutDirection) private var layoutDirection
     @FocusState private var focusedView: ResearchRecordsViewKind?
@@ -950,9 +942,6 @@ private struct ResearchRecordsViewIndex: View {
 }
 
 private struct ResearchRecordsViewIndexButton: View {
-    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
-    @State private var isHovering = false
-
     let viewKind: ResearchRecordsViewKind
     let isSelected: Bool
     let focusedView: FocusState<ResearchRecordsViewKind?>.Binding
@@ -973,21 +962,17 @@ private struct ResearchRecordsViewIndexButton: View {
                     maxWidth: .infinity,
                     minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
                 )
-                .background(selectionSurface, in: selectionShape)
-                .contentShape(
-                    RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    ))
+                .contentShape(selectionShape)
+                .scholiumContentControlInk()
         }
-        .buttonStyle(ResearchRecordsViewIndexButtonStyle())
-        .scholiumActivationFocus(focusedView, equals: viewKind)
-        .foregroundStyle(
-            isSelected || isHovering || isFocused
-                ? ScholiumColorRole.primaryText.color
-                : ScholiumColorRole.secondaryText.color
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isSelected: isSelected,
+                isFocused: isFocused,
+                in: selectionShape
+            )
         )
-        .onHover { isHovering = $0 }
+        .scholiumActivationFocus(focusedView, equals: viewKind)
         .onMoveCommand(perform: move)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityValue(isSelected ? "Selected" : "")
@@ -1015,46 +1000,9 @@ private struct ResearchRecordsViewIndexButton: View {
             style: .continuous
         )
     }
-
-    private var selectionSurface: Color {
-        ScholiumContentInteractionSurface.selectionColor(
-            isSelected: isSelected,
-            isHovering: isHovering,
-            isFocused: isFocused,
-            increasedContrast: increasedContrast
-        )
-    }
-}
-
-private struct ResearchRecordsViewIndexButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.78 : 1)
-    }
-}
-
-private struct ResearchRecordsEditorialButtonStyle: ButtonStyle {
-    let isHovering: Bool
-    let isFocused: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(
-            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-            style: .continuous
-        )
-        configuration.label
-            .scholiumContentInteractionSurface(
-                isHovering: isHovering,
-                isFocused: isFocused,
-                isPressed: configuration.isPressed,
-                in: shape
-            )
-            .opacity(configuration.isPressed ? 0.78 : 1)
-    }
 }
 
 private struct ResearchRecordsRoundedLinkButton<Label: View>: View {
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
     let action: () -> Void
     let label: Label
@@ -1077,13 +1025,15 @@ private struct ResearchRecordsRoundedLinkButton<Label: View>: View {
                     ))
         }
         .buttonStyle(
-            ResearchRecordsEditorialButtonStyle(
-                isHovering: isHovering,
-                isFocused: isFocused
+            ScholiumContentControlButtonStyle(
+                isFocused: isFocused,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
             )
         )
         .scholiumActivationFocus($isFocused)
-        .onHover { isHovering = $0 }
     }
 }
 
@@ -1128,6 +1078,7 @@ private struct ResearchRecordsScopeMenu: View {
             )
         }
         .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
         .scholiumActivationFocus($isFocused)
         .scholiumContentControlPointerFeedback(
             isFocused: isFocused,
@@ -1207,17 +1158,15 @@ private struct ResearchRecordsSearchField: View {
 }
 
 private struct ResearchRecordsClearSearchButton: View {
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(
-                    isHovering || isFocused
-                        ? ScholiumColorRole.primaryText.color
-                        : ScholiumColorRole.mutedText.color
+                .scholiumContentControlInk(
+                    resting: .mutedText,
+                    emphasized: .primaryText
                 )
                 .frame(
                     width: ScholiumMetrics.Accessibility.minimumCustomTarget,
@@ -1230,13 +1179,15 @@ private struct ResearchRecordsClearSearchButton: View {
                     ))
         }
         .buttonStyle(
-            ResearchRecordsEditorialButtonStyle(
-                isHovering: isHovering,
-                isFocused: isFocused
+            ScholiumContentControlButtonStyle(
+                isFocused: isFocused,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
             )
         )
         .scholiumActivationFocus($isFocused)
-        .onHover { isHovering = $0 }
         .accessibilityLabel("Clear Search")
     }
 }
@@ -1247,7 +1198,6 @@ private struct ResearchRecordsClearSearchButton: View {
 private struct ResearchRecordActionButton: View {
     @Environment(\.isEnabled) private var isEnabled
     @FocusState private var isFocused: Bool
-    @State private var isHovering = false
 
     let title: String
     let systemImage: String
@@ -1277,11 +1227,9 @@ private struct ResearchRecordActionButton: View {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Image(systemName: systemImage)
                     .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                    .foregroundStyle(actionColor)
                     .accessibilityHidden(true)
                 Text(title)
                     .font(ScholiumTypography.interface(.sectionTitle))
-                    .foregroundStyle(actionColor)
             }
             .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
             .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
@@ -1291,25 +1239,31 @@ private struct ResearchRecordActionButton: View {
                     style: .continuous
                 )
             )
+            .scholiumContentControlInk(
+                resting: actionRestingRole,
+                emphasized: actionEmphasizedRole
+            )
             .opacity(isEnabled ? 1 : 0.42)
         }
         .buttonStyle(
-            ResearchRecordsEditorialButtonStyle(
-                isHovering: isHovering,
-                isFocused: actionFocus.wrappedValue
+            ScholiumContentControlButtonStyle(
+                isFocused: actionFocus.wrappedValue,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
             )
         )
         .scholiumActivationFocus(actionFocus)
-        .onHover { isHovering = $0 }
         .accessibilityIdentifier(identifier)
     }
 
-    private var actionColor: Color {
-        role == .destructive
-            ? ScholiumColorRole.destructive.color
-            : isHovering || actionFocus.wrappedValue
-                ? ScholiumColorRole.primaryText.color
-                : ScholiumColorRole.secondaryText.color
+    private var actionRestingRole: ScholiumColorRole {
+        role == .destructive ? .destructive : .secondaryText
+    }
+
+    private var actionEmphasizedRole: ScholiumColorRole {
+        role == .destructive ? .destructive : .primaryText
     }
 
     private var actionFocus: FocusState<Bool>.Binding {
@@ -1349,7 +1303,6 @@ private struct ResearchLiteratureRecommendationEmptyResults: View {
 
 private struct ResearchLiteratureRecommendationListRow: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
     let occurrence: ResearchLiteratureRecommendationOccurrence
     let isHandled: Bool
@@ -1422,7 +1375,12 @@ private struct ResearchLiteratureRecommendationListRow: View {
             .frame(height: ScholiumMetrics.ResearchRecords.collectionRowHeight)
             .contentShape(Rectangle())
         }
-        .buttonStyle(ResearchRecordCollectionRowMainButtonStyle())
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isFocused: isFocused,
+                in: shape
+            )
+        )
         .scholiumActivationFocus($isFocused)
         .accessibilityHint("Open this Reading Lead")
         .overlay(alignment: .leading) {
@@ -1466,12 +1424,6 @@ private struct ResearchLiteratureRecommendationListRow: View {
         }
         .frame(height: ScholiumMetrics.ResearchRecords.collectionRowHeight)
         .contentShape(shape)
-        .scholiumContentInteractionSurface(
-            isHovering: isHovering,
-            isFocused: isFocused,
-            in: shape
-        )
-        .onHover { isHovering = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             "scholium.researchRecommendation.row.\(occurrence.recommendation.id.uuidString)"
@@ -1523,7 +1475,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
                 provenance
 
                 ScholiumStructuralRule()
-                ResearchRecommendationTechnicalDetails(occurrence: occurrence)
+                ResearchLiteratureRecommendationTechnicalDetails(occurrence: occurrence)
             }
             .padding(.horizontal, ScholiumMetrics.ResearchRecords.pageEdge)
             .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
@@ -2049,7 +2001,7 @@ private struct ResearchRecordsCollectionToolbar: ToolbarContent {
     }
 }
 
-private struct ResearchRecommendationDetailToolbar: ToolbarContent {
+private struct ResearchLiteratureRecommendationDetailToolbar: ToolbarContent {
     let model: ResearchRecordBrowserModel
 
     @ToolbarContentBuilder
@@ -2135,7 +2087,7 @@ private struct ResearchLiteratureRecommendationWorkspaceView: View {
         .scholiumSurface(.document)
         .accessibilityIdentifier("scholium.researchRecommendation.workspace")
         .toolbar {
-            ResearchRecommendationDetailToolbar(model: model)
+            ResearchLiteratureRecommendationDetailToolbar(model: model)
         }
     }
 }
@@ -2414,7 +2366,6 @@ private struct ResearchRecordContinuitySection: View {
 /// Those roles stay separate so a complete explanation never inherits the
 /// 10pt metadata treatment.
 private struct ResearchRecordEvidenceEntry: View {
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     let symbol: String
@@ -2479,16 +2430,18 @@ private struct ResearchRecordEvidenceEntry: View {
             if let action {
                 Button(action: action) { content }
                     .buttonStyle(
-                        ResearchRecordsEditorialButtonStyle(
-                            isHovering: isHovering,
-                            isFocused: usesContentFocusSurface && isFocused
+                        ScholiumContentControlButtonStyle(
+                            isFocused: usesContentFocusSurface && isFocused,
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
                         )
                     )
                     .scholiumActivationFocus(
                         $isFocused,
                         presentation: focusPresentation
                     )
-                    .onHover { isHovering = $0 }
                     .accessibilityHint(
                         Text(
                             accessibilityHint ?? "Open recorded evidence"
@@ -2505,10 +2458,9 @@ private struct ResearchRecordEvidenceEntry: View {
         HStack(alignment: .top, spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
             Image(systemName: symbol)
                 .font(ScholiumTypography.interface(.rowTitle))
-                .foregroundStyle(
-                    action != nil && (isHovering || (usesContentFocusSurface && isFocused))
-                        ? ScholiumColorRole.accent.color
-                        : ScholiumColorRole.secondaryText.color
+                .scholiumContentControlInk(
+                    resting: .secondaryText,
+                    emphasized: action == nil ? .secondaryText : .accent
                 )
                 .frame(
                     width: ScholiumMetrics.ResearchRecords.evidenceIconColumnWidth,
@@ -2591,7 +2543,6 @@ private struct ResearchRecordEvidenceEntry: View {
 /// rail. Overflow turns the heading itself into the one disclosure control so
 /// the evidence rows never acquire a second column of utility buttons.
 private struct ResearchRecordEvidenceSectionHeader: View {
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     let title: LocalizedStringKey
@@ -2624,13 +2575,15 @@ private struct ResearchRecordEvidenceSectionHeader: View {
                     framedHeaderContent
                 }
                 .buttonStyle(
-                    ResearchRecordsEditorialButtonStyle(
-                        isHovering: isHovering,
-                        isFocused: isFocused
+                    ScholiumContentControlButtonStyle(
+                        isFocused: isFocused,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
                     )
                 )
                 .scholiumActivationFocus($isFocused)
-                .onHover { isHovering = $0 }
                 .accessibilityLabel(Text(title))
                 .accessibilityHeading(.h2)
                 .accessibilityValue(accessibilityValue ?? "")
@@ -2660,10 +2613,9 @@ private struct ResearchRecordEvidenceSectionHeader: View {
             if action != nil {
                 Image(systemName: "chevron.right")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .foregroundStyle(
-                        isHovering || isFocused
-                            ? ScholiumColorRole.accent.color
-                            : ScholiumColorRole.mutedText.color
+                    .scholiumContentControlInk(
+                        resting: .mutedText,
+                        emphasized: .accent
                     )
                     .accessibilityHidden(true)
             }
@@ -3104,12 +3056,6 @@ private struct ResearchRecordDetailHeader: View {
                 ) {
                     confirmsPermanentDeletion = true
                 }
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
                 .accessibilityHint(
                     "Ask for confirmation before permanently deleting only this portable record"
                 )
@@ -3591,7 +3537,6 @@ private struct ResearchRecordResearcherEvaluationSection: View {
     let clear: ResearcherEvaluationView.Clear
     let didUpdateRecord: (PortableResearchRecord) -> Void
     @State private var isPresentingEditor = false
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -3605,10 +3550,9 @@ private struct ResearchRecordResearcherEvaluationSection: View {
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .foregroundStyle(
-                            isHovering || isFocused
-                                ? ScholiumColorRole.accent.color
-                                : ScholiumColorRole.mutedText.color
+                        .scholiumContentControlInk(
+                            resting: .mutedText,
+                            emphasized: .accent
                         )
                         .accessibilityHidden(true)
                 }
@@ -3625,13 +3569,15 @@ private struct ResearchRecordResearcherEvaluationSection: View {
                     ))
             }
             .buttonStyle(
-                ResearchRecordsEditorialButtonStyle(
-                    isHovering: isHovering,
-                    isFocused: isFocused
+                ScholiumContentControlButtonStyle(
+                    isFocused: isFocused,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
                 )
             )
             .scholiumActivationFocus($isFocused)
-            .onHover { isHovering = $0 }
             .accessibilityLabel("Researcher Evaluation")
             .accessibilityHeading(.h2)
             .accessibilityValue(
@@ -3880,7 +3826,7 @@ private struct ResearchRecordRevisionDetails: View {
     }
 }
 
-private struct ResearchRecommendationTechnicalDetails: View {
+private struct ResearchLiteratureRecommendationTechnicalDetails: View {
     let occurrence: ResearchLiteratureRecommendationOccurrence
 
     var body: some View {
@@ -3912,7 +3858,6 @@ private struct ResearchRecordsTechnicalDetailsDisclosure<Content: View>: View {
     let identifier: String
     let content: Content
     @State private var isExpanded = false
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     init(
@@ -3951,13 +3896,15 @@ private struct ResearchRecordsTechnicalDetailsDisclosure<Content: View>: View {
                     ))
             }
             .buttonStyle(
-                ResearchRecordsEditorialButtonStyle(
-                    isHovering: isHovering,
-                    isFocused: isFocused
+                ScholiumContentControlButtonStyle(
+                    isFocused: isFocused,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
                 )
             )
             .scholiumActivationFocus($isFocused)
-            .onHover { isHovering = $0 }
             .accessibilityLabel("Technical Details")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityIdentifier(identifier)

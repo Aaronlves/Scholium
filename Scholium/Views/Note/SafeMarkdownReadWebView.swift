@@ -1677,20 +1677,40 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   positionPopover(link);
                 }
 
+                function previewAnchorFor(target) {
+                  if (!(target instanceof Element)) return null;
+                  return target.closest('.footnote-reference, a.wiki-link');
+                }
+
+                function showPreviewFor(anchor) {
+                  if (anchor.matches('.footnote-reference')) {
+                    showFootnotePopover(anchor);
+                  } else if (anchor.matches('a.wiki-link')) {
+                    showLinkPopover(anchor);
+                  }
+                }
+
+                function remainsInsidePreviewAnchor(anchor, relatedTarget) {
+                  return relatedTarget instanceof Node && anchor.contains(relatedTarget);
+                }
+
                 document.addEventListener('pointerover', event => {
-                  const button = event.target.closest && event.target.closest('.footnote-reference');
-                  if (button) { showFootnotePopover(button); return; }
-                  const link = event.target.closest && event.target.closest('a.wiki-link');
-                  if (link) showLinkPopover(link);
+                  const anchor = previewAnchorFor(event.target);
+                  if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
+                  showPreviewFor(anchor);
                 });
                 document.addEventListener('focusin', event => {
-                  const button = event.target.closest && event.target.closest('.footnote-reference');
-                  if (button) { showFootnotePopover(button); return; }
-                  const link = event.target.closest && event.target.closest('a.wiki-link');
-                  if (link) showLinkPopover(link);
+                  const anchor = previewAnchorFor(event.target);
+                  if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
+                  showPreviewFor(anchor);
                 });
                 document.addEventListener('pointerout', event => {
-                  if (event.target.closest && event.target.closest('.footnote-reference, a.wiki-link')) hidePopover();
+                  const anchor = previewAnchorFor(event.target);
+                  if (anchor && !remainsInsidePreviewAnchor(anchor, event.relatedTarget)) hidePopover();
+                });
+                document.addEventListener('focusout', event => {
+                  const anchor = previewAnchorFor(event.target);
+                  if (anchor && !remainsInsidePreviewAnchor(anchor, event.relatedTarget)) hidePopover();
                 });
                 window.addEventListener('scroll', hidePopover, {passive: true});
                 window.addEventListener('resize', hidePopover);
@@ -2382,15 +2402,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         #comment-composer[hidden], #selection-toolbar[hidden] { display: none; }
         #comment-text { appearance: none; box-sizing: border-box; width: 100%; min-height: 64px; max-height: 132px; resize: none; overflow-y: auto; padding: 8px 9px; border: 0; border-radius: 5px; outline: 0; color: var(--scholium-color-primary-text); caret-color: var(--scholium-color-accent); background: var(--scholium-color-document-background); font: 13px/17px -apple-system, BlinkMacSystemFont, sans-serif; }
         #comment-text::placeholder { color: var(--scholium-color-muted-text); opacity: .72; }
-        #comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-color-accent); }
+        #comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-content-focus-ring); }
         #comment-text:read-only { opacity: .72; }
         #comment-help { padding-inline: 2px; color: var(--scholium-color-muted-text); font: 10px/13px -apple-system, BlinkMacSystemFont, sans-serif; white-space: nowrap; }
         #comment-composer[data-state="error"] #comment-help { color: var(--scholium-color-destructive); }
         #comment-composer[data-state="saving"] #comment-help { color: var(--scholium-color-secondary-text); }
         .scholium-qa-only-control { position: absolute; inset-inline-end: 0; inset-block-end: 0; box-sizing: border-box; inline-size: 20px; block-size: 20px; padding: 0; overflow: hidden; border: 0; color: transparent; background: transparent; font: 0/0 -apple-system, BlinkMacSystemFont, sans-serif; }
-        .scholium-qa-only-control:focus-visible { outline: 1px solid var(--scholium-color-accent); outline-offset: 0; }
+        .scholium-qa-only-control:focus-visible { outline: 1px solid var(--scholium-content-focus-ring); outline-offset: 0; }
         .raw-html, .raw-html-inline { color: GrayText; }
-        @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } #comment-text:focus-visible { box-shadow: inset 0 0 0 2px var(--scholium-color-accent); } }
+        @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } #comment-text:focus-visible { box-shadow: inset 0 0 0 2px var(--scholium-content-focus-ring); } }
         \(ScholiumWebDesignTokens.documentPresentationCSS)
         """
     }

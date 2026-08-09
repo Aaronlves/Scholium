@@ -431,7 +431,6 @@ private struct ResearchActionRowButton: View {
     let focusRequestToken: UUID?
     let action: (_ shouldRestoreKeyboardFocus: Bool) -> Void
 
-    @State private var isHovering = false
     @State private var focusRestorationTask: Task<Void, Never>?
     @FocusState private var hasKeyboardFocus: Bool
 
@@ -466,13 +465,11 @@ private struct ResearchActionRowButton: View {
             )
         }
         .buttonStyle(ScholiumQuietRowButtonStyle(
-            isHovering: isHovering,
             isFocused: hasKeyboardFocus,
             minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
         .scholiumActivationFocus($hasKeyboardFocus)
-        .onHover { isHovering = $0 }
         .onChange(of: focusRequestToken) { _, token in
             guard token != nil else { return }
             focusRestorationTask?.cancel()

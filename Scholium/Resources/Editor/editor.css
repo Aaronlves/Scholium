@@ -307,7 +307,7 @@ body,
   cursor: pointer;
 }
 .cm-live-task-checkbox:focus-visible {
-  outline: 2px solid var(--scholium-color-accent);
+  outline: 2px solid var(--scholium-content-focus-ring);
   outline-offset: 2px;
 }
 .cm-live-semantic-gap {

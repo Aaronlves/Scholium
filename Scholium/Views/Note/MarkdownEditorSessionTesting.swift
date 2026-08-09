@@ -207,6 +207,7 @@ extension MarkdownEditorSession {
         let focusedBackground: String
         let focusedClassName: String
         let focusedMatchesFeedbackSelector: Bool
+        let keyboardFocusSurfaceBackground: String
         let raisedSurfaceBackground: String
         let toolbarSystemSymbolNames: [String]
         let visibleMenuSystemSymbolNames: [String]
@@ -858,6 +859,14 @@ extension MarkdownEditorSession {
             document.body.append(raisedSurfaceProbe);
             const raisedSurfaceBackground = getComputedStyle(raisedSurfaceProbe).backgroundColor;
             raisedSurfaceProbe.remove();
+            const keyboardFocusSurfaceProbe = document.createElement('span');
+            keyboardFocusSurfaceProbe.style.backgroundColor =
+                'var(--scholium-content-keyboard-focus-surface)';
+            document.body.append(keyboardFocusSurfaceProbe);
+            const keyboardFocusSurfaceBackground = getComputedStyle(
+                keyboardFocusSurfaceProbe
+            ).backgroundColor;
+            keyboardFocusSurfaceProbe.remove();
             const documentContent = document.querySelector('.cm-content');
             const rootText = root?.textContent || '';
             const focusedElement = root?.contains(document.activeElement)
@@ -911,6 +920,7 @@ extension MarkdownEditorSession {
                     '.scholium-selection-control.scholium-selection-keyboard-focus, '
                         + '.scholium-selection-menu-item.scholium-selection-keyboard-focus'
                 ) || false,
+                keyboardFocusSurfaceBackground,
                 raisedSurfaceBackground,
                 toolbarSystemSymbolNames: toolbarSymbols.map(
                     symbol => symbol.dataset.scholiumSystemSymbol || ''

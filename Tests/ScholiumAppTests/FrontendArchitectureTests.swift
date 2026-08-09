@@ -441,6 +441,10 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let workspaceSplitStart = try #require(
+            splitSource.range(of: "struct ScholiumWorkspaceSplitView<")
+        )
+        let workspaceSplitSource = splitSource[workspaceSplitStart.lowerBound...]
         let toolbarSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
@@ -469,7 +473,7 @@ struct FrontendArchitectureTests {
             splitSource.contains(
                 "inspectorWithViewController: apparatusBackgroundController"
             ))
-        #expect(!splitSource.contains("preferredThicknessFraction"))
+        #expect(!workspaceSplitSource.contains("preferredThicknessFraction"))
         #expect(!splitSource.contains("libraryOpeningSize"))
         #expect(!splitSource.contains("libraryHost.sizingOptions = []"))
         #expect(!splitSource.contains("preferredContentSize"))
@@ -868,6 +872,11 @@ struct FrontendArchitectureTests {
             designSystemSource.contains(
                 "func scholiumContentControlPointerFeedback"
             ))
+        #expect(designSystemSource.contains("struct ScholiumContentControlButtonStyle"))
+        #expect(
+            designSystemSource.contains(
+                "ScholiumContentControlButtonFeedbackModifier"
+            ))
         #expect(designSystemSource.contains("ScholiumPointerInteractionReader"))
         #expect(designSystemSource.contains("ScholiumPointerTrackingView"))
         #expect(designSystemSource.contains("override func hitTest"))
@@ -904,6 +913,76 @@ struct FrontendArchitectureTests {
                 isFocused: false,
                 increasedContrast: false
             ) == 0)
+    }
+
+    @Test("WebKit hover, keyboard focus, and selection share the native semantic resolver")
+    func webContentInteractionPolicy() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let callouts = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Resources/Editor/callouts.css"
+            ),
+            encoding: .utf8
+        )
+        let footnotes = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Resources/Editor/footnotes.css"
+            ),
+            encoding: .utf8
+        )
+        let editor = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Resources/Editor/editor.css"
+            ),
+            encoding: .utf8
+        )
+        let read = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
+
+        #expect(
+            ScholiumContentInteractionSurface.webCSSDeclarations.contains(
+                "var(--scholium-color-primary-text) 5%"
+            ))
+        #expect(
+            ScholiumContentInteractionSurface.webCSSDeclarations.contains(
+                "var(--scholium-color-raised-surface-background) 42%"
+            ))
+        #expect(
+            ScholiumContentInteractionSurface.increasedContrastWebCSSDeclarations
+                .contains("var(--scholium-color-primary-text) 7.5%")
+        )
+        #expect(
+            ScholiumContentInteractionSurface.increasedContrastWebCSSDeclarations
+                .contains("var(--scholium-color-raised-surface-background) 56%")
+        )
+        #expect(sharedCSS.contains("background: var(--scholium-content-hover-surface)"))
+        #expect(
+            sharedCSS.contains(
+                "background: var(--scholium-content-keyboard-focus-surface)"
+            ))
+        #expect(
+            sharedCSS.contains(
+                #"li[aria-selected="true"] {"#
+            ))
+        #expect(sharedCSS.contains("background: var(--scholium-color-raised-surface-background)"))
+        #expect(callouts.contains("var(--scholium-content-hover-surface, transparent)"))
+        #expect(callouts.contains("--scholium-content-keyboard-focus-surface"))
+        #expect(callouts.contains("var(--scholium-content-focus-ring, Highlight)"))
+        #expect(!callouts.contains("--scholium-callout-hover"))
+        #expect(!callouts.contains("--scholium-callout-focus"))
+        #expect(footnotes.contains("outline: 2px solid var(--scholium-content-focus-ring)"))
+        #expect(editor.contains("outline: 2px solid var(--scholium-content-focus-ring)"))
+        #expect(read.contains("previewAnchorFor"))
+        #expect(read.contains("remainsInsidePreviewAnchor"))
+        #expect(read.contains("document.addEventListener('focusout'"))
     }
 
     @Test("Library hierarchy, Attention, and filters share one contract")
@@ -1069,15 +1148,15 @@ struct FrontendArchitectureTests {
         let workspaceButton = componentsSource[
             workspaceButtonStart.lowerBound..<workspaceButtonEnd.lowerBound
         ]
-        #expect(workspaceButton.contains(".onHover { isHovering = $0 }"))
+        #expect(!workspaceButton.contains(".onHover"))
         #expect(workspaceButton.contains("Button(action: select)"))
         #expect(
             workspaceButton.contains(
                 ".scholiumActivationFocus(focusedSlot, equals: slot)"
             ))
-        #expect(workspaceButton.contains("ScholiumContentInteractionSurface.color("))
+        #expect(workspaceButton.contains("ScholiumContentControlButtonStyle("))
+        #expect(workspaceButton.contains(".scholiumContentControlInk()"))
         #expect(!workspaceButton.contains("ScholiumControlActivation"))
-        #expect(workspaceButton.contains("ScholiumColorRole.primaryText.color"))
         #expect(workspaceButton.contains("ScholiumColorRole.mutedText.color"))
         #expect(
             workspaceButton.contains(
@@ -1099,8 +1178,8 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains("Circle().fill(controlSurface)"))
         #expect(componentsSource.contains("ScholiumColorRole.attention.color"))
         #expect(componentsSource.contains("scholiumAttentionPopoverIsPresented"))
-        #expect(componentsSource.contains("SidebarTriptychAttentionButtonStyle("))
-        #expect(componentsSource.contains(".scholiumContentInteractionSurface("))
+        #expect(!componentsSource.contains("SidebarTriptychAttentionButtonStyle"))
+        #expect(componentsSource.contains("ScholiumContentControlButtonStyle("))
         #expect(!componentsSource.contains("SidebarAttentionAlertSurface"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
@@ -1821,15 +1900,16 @@ struct FrontendArchitectureTests {
         ]
         #expect(!modeButton.contains("ScholiumColorRole.raisedSurfaceBackground"))
         #expect(modeButton.contains("ScholiumShape.editorialControlCornerRadius"))
-        #expect(modeButton.contains("ScholiumContentInteractionSurface.selectionColor("))
+        #expect(modeButton.contains("ScholiumContentControlButtonStyle("))
+        #expect(modeButton.contains(".scholiumContentControlInk()"))
         #expect(modeButton.contains("Button(action: select)"))
         #expect(
             modeButton.contains(
                 ".scholiumActivationFocus(focusedMode, equals: mode)"
             ))
         #expect(!modeButton.contains("ScholiumControlActivation"))
-        #expect(modeButton.contains(".onHover { isHovering = $0 }"))
-        #expect(modeButton.contains(".buttonStyle(.plain)"))
+        #expect(!modeButton.contains(".onHover"))
+        #expect(!modeButton.contains(".buttonStyle(.plain)"))
         #expect(!modeButton.contains("ScholiumEditorialIndexUnderline"))
         #expect(!modeButton.contains("ScholiumColorRole.accent"))
         #expect(!modeButton.contains("Capsule"))
@@ -2648,8 +2728,8 @@ struct FrontendArchitectureTests {
         #expect(browser.contains(".font(ScholiumTypography.interface(.body))"))
         #expect(browser.contains("ScholiumNativeToolbarButton("))
         #expect(browser.contains("focusPresentation: .native"))
-        #expect(browser.contains("ResearchRecordCollectionRowMainButtonStyle"))
-        #expect(browser.contains("configuration.isPressed ? 0.78 : 1"))
+        #expect(!browser.contains("ResearchRecordCollectionRowMainButtonStyle"))
+        #expect(browser.contains("ScholiumContentControlButtonStyle("))
         #expect(browser.contains("ScholiumMetrics.ResearchRecords.collectionRowCornerRadius"))
         #expect(browser.contains("ScholiumShape.editorialControlCornerRadius"))
         #expect(browser.contains(".scholiumContentControlPointerFeedback("))
@@ -3957,16 +4037,17 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(designSystemSource.contains("ScholiumInkIconButtonStyle"))
+        #expect(!designSystemSource.contains("ScholiumInkIconButtonStyle"))
         #expect(designSystemSource.contains("ScholiumContentInteractionSurface"))
-        #expect(componentsSource.contains(".scholiumContentInteractionSurface("))
-        #expect(componentsSource.contains("ScholiumTriptychWorkspaceButtonStyle"))
-        #expect(designSystemSource.contains("configuration.isPressed ? 0.78 : 1"))
-        #expect(designSystemSource.contains("isActive || isHovering || isFocused"))
+        #expect(designSystemSource.contains("ScholiumContentControlButtonStyle"))
+        #expect(!componentsSource.contains("ScholiumTriptychWorkspaceButtonStyle"))
+        #expect(designSystemSource.contains("isEnabled && isPressed ? pressedOpacity : 1"))
+        #expect(designSystemSource.contains("isActive || isSelected || hasTransientEmphasis"))
         #expect(critiqueSource.contains("ScholiumMotion.disclosure(reduceMotion: reduceMotion)"))
         #expect(bootstrapSource.contains("ScholiumMotion.disclosure(reduceMotion: reduceMotion)"))
-        #expect(recordSource.contains("ResearchRecordCollectionRowMainButtonStyle"))
-        #expect(recordSource.contains("configuration.isPressed ? 0.78 : 1"))
+        #expect(!recordSource.contains("ResearchRecordCollectionRowMainButtonStyle"))
+        #expect(!recordSource.contains("ResearchRecordsEditorialButtonStyle"))
+        #expect(recordSource.contains("ScholiumContentControlButtonStyle("))
         #expect(recordSource.contains("ScholiumMetrics.ResearchRecords.collectionRowCornerRadius"))
     }
 
@@ -4295,7 +4376,8 @@ struct FrontendArchitectureTests {
         #expect(calloutCSS.contains("aside.scholium-callout-illustrate {\n  display: grid;"))
         #expect(calloutCSS.contains("aside.scholium-callout-quote > header {\n  order: 2;"))
         #expect(calloutCSS.contains(".scholium-callout-quote .scholium-callout-quotation,"))
-        #expect(calloutCSS.contains("background: radial-gradient(circle,"))
+        #expect(calloutCSS.contains("background: radial-gradient("))
+        #expect(calloutCSS.contains("var(--scholium-callout-fold-surface) 0%"))
         #expect(!calloutCSS.contains("linear-gradient("))
         #expect(!calloutCSS.contains("clip-path: polygon("))
         #expect(!calloutCSS.contains("border-radius: 50%"))
@@ -4761,11 +4843,11 @@ struct FrontendArchitectureTests {
         #expect(readBridge.contains("Your Comment is still here"))
         #expect(
             readHTML.contains(
-                "#comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-color-accent); }"
+                "#comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-content-focus-ring); }"
             ))
         #expect(
             !readHTML.contains(
-                "#comment-text:focus-visible { outline: 2px solid var(--scholium-color-accent)"
+                "#comment-text:focus-visible { outline: 2px solid var(--scholium-content-focus-ring)"
             ))
         #expect(readBridge.contains("TextEncoder"))
         #expect(readBridge.contains("makeRequestID"))
@@ -4830,7 +4912,15 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover,"
+                ".cm-tooltip-autocomplete.scholium-editor-suggestions > ul > li:hover {"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "background: var(--scholium-content-hover-surface)"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "background: var(--scholium-content-keyboard-focus-surface)"
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(

@@ -409,10 +409,10 @@ Mermaid-protection inventory. Edit caches document, selection, and Text Style;
 equivalent updates write no DOM, while geometry changes still remeasure. One
 keyed CodeMirror measure replaces earlier requests; a 50 ms same-path watchdog
 covers throttled animation frames, and the bar stays hidden until positioned.
-Pure `floating-surface-geometry` maps anchor, surface, viewport, alignment, and
-side without owning DOM or lifecycle. The Edit bar and preview reuse it while
-remaining separate owners: the bar tracks and flips; the preview dismisses on
-scroll, resize, or blur.
+`floating-surface-geometry` maps anchor, surface, viewport, alignment, and
+side. The Edit bar and preview reuse it but remain separate owners: the bar
+tracks and flips; the preview resolves one pointer/focus anchor and dismisses
+on exit, scroll, resize, or blur.
 
 `NoteContentView` derives Review-surface activity from document mode.
 Deactivation hides, clears transient paint, and blurs. Empty composers cancel;

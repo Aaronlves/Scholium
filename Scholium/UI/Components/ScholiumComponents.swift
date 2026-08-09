@@ -110,7 +110,6 @@ enum SidebarTriptychAttentionState: Equatable {
 struct SidebarTriptychAttentionEntry: View {
     @Environment(\.locale) private var locale
     @Environment(\.scholiumAttentionPopoverIsPresented) private var isPresented
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     let state: SidebarTriptychAttentionState
@@ -131,7 +130,10 @@ struct SidebarTriptychAttentionEntry: View {
                 } else {
                     Text(Image(systemName: "exclamationmark.triangle"))
                         .font(ScholiumTypography.interface(.rowTitle))
-                        .foregroundStyle(symbolColor)
+                        .scholiumContentControlInk(
+                            resting: symbolRestingRole,
+                            emphasized: symbolEmphasizedRole
+                        )
                         .accessibilityHidden(true)
                 }
 
@@ -145,13 +147,19 @@ struct SidebarTriptychAttentionEntry: View {
             .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
             .contentShape(Rectangle())
         }
-        .buttonStyle(SidebarTriptychAttentionButtonStyle(
-            isHovering: isHovering || isPresented,
-            isFocused: isFocused
-        ))
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isSelected: isPresented,
+                isFocused: isFocused,
+                pressedOpacity: 0.76,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+        )
         .scholiumActivationFocus($isFocused)
         .fixedSize()
-        .onHover { isHovering = $0 }
         .help(actionLabel)
         .accessibilityLabel(actionLabel)
         .accessibilityValue(accessibilityValue)
@@ -184,34 +192,22 @@ struct SidebarTriptychAttentionEntry: View {
         }
     }
 
-    private var symbolColor: Color {
+    private var symbolRestingRole: ScholiumColorRole {
         switch state {
         case .active, .unavailable:
-            ScholiumColorRole.attention.color
+            .attention
         case .zero, .checking:
-            isHovering || isFocused || isPresented
-                ? ScholiumColorRole.primaryText.color
-                : ScholiumColorRole.secondaryText.color
+            .secondaryText
         }
     }
-}
 
-private struct SidebarTriptychAttentionButtonStyle: ButtonStyle {
-    let isHovering: Bool
-    let isFocused: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scholiumContentInteractionSurface(
-                isHovering: isHovering,
-                isFocused: isFocused,
-                isPressed: configuration.isPressed,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
-            .opacity(configuration.isPressed ? 0.76 : 1)
+    private var symbolEmphasizedRole: ScholiumColorRole {
+        switch state {
+        case .active, .unavailable:
+            .attention
+        case .zero, .checking:
+            .primaryText
+        }
     }
 }
 
@@ -219,20 +215,17 @@ private struct SidebarTriptychAttentionButtonStyle: ButtonStyle {
 /// rows. Callers retain their purpose-owned hit height and content insets; the
 /// component owns only the common raised hover/press feedback.
 struct ScholiumQuietRowButtonStyle: ButtonStyle {
-    let isHovering: Bool
     let isFocused: Bool
     let minimumHeight: CGFloat
     let horizontalInset: CGFloat
     let verticalInset: CGFloat
 
     init(
-        isHovering: Bool,
         isFocused: Bool = false,
         minimumHeight: CGFloat,
         horizontalInset: CGFloat = ScholiumGrid.Spacing.inlineControlGap,
         verticalInset: CGFloat
     ) {
-        self.isHovering = isHovering
         self.isFocused = isFocused
         self.minimumHeight = minimumHeight
         self.horizontalInset = horizontalInset
@@ -249,8 +242,7 @@ struct ScholiumQuietRowButtonStyle: ButtonStyle {
                 alignment: .leading
             )
             .contentShape(Rectangle())
-            .scholiumContentInteractionSurface(
-                isHovering: isHovering,
+            .scholiumContentControlButtonFeedback(
                 isFocused: isFocused,
                 isPressed: configuration.isPressed,
                 in: RoundedRectangle(
@@ -258,7 +250,6 @@ struct ScholiumQuietRowButtonStyle: ButtonStyle {
                     style: .continuous
                 )
             )
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 
@@ -401,8 +392,6 @@ struct ScholiumTriptychWorkspaceNavigator: View {
 
 private struct ScholiumTriptychWorkspaceButton: View {
     @Environment(\.locale) private var locale
-    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
-    @State private var isHovering = false
 
     let slot: WorkspaceVaultSlot
     let noteCount: Int?
@@ -432,15 +421,19 @@ private struct ScholiumTriptychWorkspaceButton: View {
                 minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
             )
             .contentShape(Rectangle())
+            .scholiumContentControlInk()
         }
-        .buttonStyle(ScholiumTriptychWorkspaceButtonStyle(surface: rowSurface))
-        .scholiumActivationFocus(focusedSlot, equals: slot)
-        .foregroundStyle(
-            isSelected || isHovering || isFocused
-                ? ScholiumColorRole.primaryText.color
-                : ScholiumColorRole.secondaryText.color
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isSelected: isSelected,
+                isFocused: isFocused,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.workspaceNavigationCornerRadius,
+                    style: .continuous
+                )
+            )
         )
-        .onHover { isHovering = $0 }
+        .scholiumActivationFocus(focusedSlot, equals: slot)
         .onMoveCommand(perform: move)
         .accessibilityLabel(ScholiumL10n.dynamicString(slot.displayName))
         .accessibilityValue(noteCountAccessibilityValue)
@@ -452,18 +445,6 @@ private struct ScholiumTriptychWorkspaceButton: View {
         focusedSlot.wrappedValue == slot
     }
 
-    private var rowSurface: Color {
-        if isSelected {
-            return ScholiumColorRole.raisedSurfaceBackground
-                .color(increasedContrast: increasedContrast)
-        }
-        return ScholiumContentInteractionSurface.color(
-            isHovering: isHovering,
-            isFocused: isFocused,
-            increasedContrast: increasedContrast
-        )
-    }
-
     private var noteCountAccessibilityValue: String {
         guard let noteCount else {
             return ScholiumL10n.string("Note count unavailable", locale: locale)
@@ -472,22 +453,6 @@ private struct ScholiumTriptychWorkspaceButton: View {
             ScholiumL10n.string("%lld notes", locale: locale),
             Int64(noteCount)
         )
-    }
-}
-
-private struct ScholiumTriptychWorkspaceButtonStyle: ButtonStyle {
-    let surface: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                surface,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.workspaceNavigationCornerRadius,
-                    style: .continuous
-                )
-            )
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 

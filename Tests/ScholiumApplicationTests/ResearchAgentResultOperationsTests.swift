@@ -322,7 +322,8 @@ struct ResearchAgentResultOperationsTests {
             run: first.handoff.run,
             submission: try submission(
                 preparation: first.preparation,
-                outcome: marker
+                outcome: marker,
+                recordTitle: "Prior instruction-shaped synthesis"
             )
         )
 
@@ -396,10 +397,11 @@ struct ResearchAgentResultOperationsTests {
     private func submission(
         preparation: ResearchActionPreparation,
         outcome: String,
+        recordTitle: String? = nil,
         contextUseClaims: [ResearchContextUseClaim] = []
     ) throws -> ResearchAgentResultSubmission {
         try ResearchAgentResultSubmission(
-            recordTitle: ResearchRecordTitle(String(outcome.prefix(80))),
+            recordTitle: ResearchRecordTitle(recordTitle ?? String(outcome.prefix(80))),
             academicResults: ResearchAcademicFieldValues(
                 rawValues: [
                     "synthesis-outcome": .freeText(outcome),

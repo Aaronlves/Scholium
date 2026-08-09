@@ -8,8 +8,8 @@ human, packaged, or release acceptance unless explicitly stated.
 
 ## Current verification evidence
 
-**Latest documentation-only check:** 2026-08-08
-**Latest complete repository gate:** 2026-08-08
+**Latest documentation-only check:** 2026-08-10
+**Latest complete repository gate:** 2026-08-10
 **Latest focused interface check:** 2026-08-10
 
 ### Documentation authority
@@ -280,29 +280,104 @@ causation or packaged GUI latency.
 
 ### Architecture-focused UI
 
-#### Shadow and hover ownership inventory
+#### Native shadow and interaction ownership
 
 **Current passing result**
 
-On 2026-08-10, Xcode 27 beta / Swift 6.4 passed four focused
-`InterfacePresentationOwnershipTests` plus the adjacent semantic-surface,
-custom-control, and Apparatus ModeIndex contracts. The source inventory admits
-only two native shadow renderers, four WebKit elevation consumers, four inset
-editor-boundary/focus declarations, the current bounded SwiftUI and WebKit
-hover sites, and two explicit AppKit tracking owners. It also identifies the
-Research Record permanent-delete control as the sole declared compound pointer
-owner pending cutover. Documentation authority, Swift formatting, and patch-
-whitespace validation passed.
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed all four focused
+`InterfacePresentationOwnershipTests` and five adjacent custom-control,
+Library, Apparatus, Research Records, and semantic-glyph architecture
+contracts. The native cutover leaves one shared SwiftUI Button hover owner in
+the design system,
+zero feature-local `.onHover` sites, zero compound pointer wrappers, and the
+same two explicit AppKit tracking owners. Ordinary custom Buttons now share
+one hover/focus/press/selection resolver; only the four borderless Menu hosts
+use the bounded tracking adapter. The closed inventory still admits only two
+native shadow renderers, four WebKit elevation consumers, and four inset
+editor-boundary/focus declarations.
+
+Two isolated QA journeys passed on Debug QA builds from the same source:
+pointer activation and keyboard focus across Inspector ModeIndex and Research Action rows
+(30.829 s), and right-to-left Records ViewIndex order, focus, and arrow
+traversal (39.174 s). A longer Records journey also reached and captured the
+collection-row and Evidence-link hover states, preserved popover/sheet paths,
+and completed both permanent-delete confirmation steps before its final
+empty-state identifier assertion.
 
 **Boundary of the claim**
 
-This is static ownership and focused recipe evidence; no runtime appearance or
-interaction behavior changed. The migration inventory prevents new owners but
-still admits current feature-local hover sites and the one compound deletion
-wrapper so that the following cutover can remove them explicitly. The complete
-Frontend Architecture suite is not claimed: its current broad split-source
-assertion still misclassifies the Records evidence-width
-`preferredThicknessFraction` as Workspace residue.
+This closes native ownership; the WebKit ownership cutover is recorded
+separately below. Human visual and assistive-technology acceptance remains
+open. The longer Records journey is not claimed as
+passing: after deletion the expected empty page was visible, but its AX group
+inherited `scholium.researchRecords.collection` instead of exposing
+`scholium.researchRecords.empty`. The unchanged `4c86dbd` baseline reproduced
+that same failure, so it is not a regression from this cutover. The final
+repository gate separately passed the complete App suite after the Workspace
+residue assertion was scoped to the actual Workspace split controller; that
+test correction does not repair or close the Records empty-state AX issue.
+
+#### WebKit interaction ownership
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed the four interface-presentation
+ownership tests, seven adjacent design-system, Callout, footnote, preview, and
+Comment architecture contracts, and three real WKWebView interaction tests.
+The WKWebView tests exercised Edit selection-toolbar keyboard focus, Review
+Comment keyboard focus, and Review footnote preview entry by pointer and
+keyboard plus dismissal on focus exit and scroll. The editor-resource gate
+also passed TypeScript type checking, all 185 tests in 33 files, and exact
+bundle reproduction.
+
+`ScholiumContentInteractionSurface` now generates WebKit's shared 5% hover and
+42% keyboard-focus mixes, raised to 7.5% and 56% under Increase Contrast, plus
+the Accent focus-ring role. Selection controls, menu rows, and Callout
+disclosure consume the shared surfaces and ring; task and footnote controls
+plus the Review Comment field consume the shared ring. CodeMirror suggestion hover
+remains transient while the current listbox item keeps the persistent raised
+surface. The WebKit `:hover` inventory shrank to
+three shared design-system selectors and one protected Callout selector; the
+shadow/elevation inventory did not grow. Review previews now use one delegated
+pointer/focus anchor lifecycle and close on matching exit.
+
+**Boundary of the claim**
+
+This is focused source-contract and attached-WKWebView evidence, not human
+visual or assistive-technology acceptance. JavaScript `focus()` does not
+activate WebKit's real `:focus-visible` heuristic, so physical-keyboard Callout
+focus, actual pointer appearance, Dark, Increase Contrast, and genuine
+VoiceOver remain open. The complete repository gate passed in the final
+integration stage; the complete UI suite and human acceptance were not run.
+
+#### Shadow and interaction final integration gate
+
+**Current passing result**
+
+On 2026-08-10, the complete repository gate passed under Xcode 27 beta,
+Swift 6.4, and the macOS 27.0 SDK. It passed documentation and shipped-resource
+guards; TypeScript checking, 185 Web editor tests in 33 files, and exact bundle
+reproduction; 450 Core tests plus three Search performance tests; 120 Contracts
+tests; 187 Application tests, nine bridge tests, and one architecture
+measurement; all 491 App tests; seven real executable-CLI lifecycle tests; the
+symbol-graph, signing, sandboxed AF_UNIX bridge, and release-build checks. The
+release build completed successfully.
+
+The gate also closed four pre-existing verification residues without changing
+the interaction design: two Literature Recommendation UI types now follow the
+guarded prefix; the Core Protocol test expects the current Record Title plus
+academic Result Contract wording; the instruction-shaped Record fixture keeps
+its Record Title distinct from Agent outcome evidence; and the Workspace split
+assertion no longer scans the independent Records detail controller.
+
+**Boundary of the claim**
+
+This closes the automated repository gate for the native and WebKit ownership
+cutover. It is not a packaged release, a complete UI-suite result, or human
+visual and assistive-technology acceptance. The two focused native QA journeys
+and three attached-WKWebView tests remain the direct interaction evidence; the
+physical-keyboard, pointer, adaptation, and Records empty-state AX work remains
+open in the owning status chapter.
 
 #### Content-control focus and hover normalization
 

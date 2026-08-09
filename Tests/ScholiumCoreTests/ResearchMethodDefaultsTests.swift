@@ -112,7 +112,7 @@ struct ResearchMethodDefaultsTests {
             "## Epistemic layers",
             "A readable object is not thereby writable",
             "## Run workflow",
-            "Return the frozen Result Contract",
+            "Return a concise one-line Record Title and the frozen academic Result Contract",
         ] {
             #expect(runtime.contains(requirement))
         }

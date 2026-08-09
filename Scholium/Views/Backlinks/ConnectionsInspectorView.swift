@@ -426,7 +426,6 @@ private struct CombinedConnectionRow: View {
     let item: InspectorRelationshipItem
     let openReference: (VaultNoteReference, Int?) -> Void
 
-    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     private var title: String {
@@ -473,24 +472,18 @@ private struct CombinedConnectionRow: View {
             relationLabel
         }
         .buttonStyle(ScholiumQuietRowButtonStyle(
-            isHovering: isHovering,
             isFocused: isFocused,
             minimumHeight: ScholiumMetrics.Apparatus.relationRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.relationRowVerticalInset
         ))
         .scholiumActivationFocus($isFocused)
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-        .onHover { isHovering = $0 }
     }
 
     private var relationLabel: some View {
         Text(title)
             .font(ScholiumTypography.interface(.body))
-            .foregroundStyle(
-                isHovering || isFocused
-                    ? ScholiumColorRole.primaryText.color
-                    : ScholiumColorRole.secondaryText.color
-            )
+            .scholiumContentControlInk()
             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)

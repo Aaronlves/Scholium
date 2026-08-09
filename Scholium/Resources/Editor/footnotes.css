@@ -22,7 +22,7 @@
 
 .footnote-reference:focus-visible,
 .footnote-return:focus-visible {
-  outline: 2px solid var(--scholium-color-accent);
+  outline: 2px solid var(--scholium-content-focus-ring);
   outline-offset: 2px;
 }
 

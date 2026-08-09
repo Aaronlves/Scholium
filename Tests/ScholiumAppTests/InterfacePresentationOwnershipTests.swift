@@ -56,7 +56,7 @@ struct InterfacePresentationOwnershipTests {
     #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: readWebView) == 2)
   }
 
-  @Test("Direct hover sites stay inside the bounded migration inventory")
+  @Test("SwiftUI Button hover has one shared presentation owner")
   func directHoverInventory() throws {
     let swiftUIHover = try occurrenceInventory(
       pattern: #"\.onHover\b"#,
@@ -64,13 +64,7 @@ struct InterfacePresentationOwnershipTests {
     )
     #expect(
       swiftUIHover == [
-        "Scholium/UI/Components/ScholiumApparatusComponents.swift": 2,
-        "Scholium/UI/Components/ScholiumComponents.swift": 2,
-        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
-        "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 1,
-        "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift": 1,
-        "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift": 10,
-        "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 2,
+        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1
       ],
       Comment(rawValue: diagnostic(for: swiftUIHover))
     )
@@ -81,19 +75,19 @@ struct InterfacePresentationOwnershipTests {
     )
     #expect(
       webHover == [
-        "Scholium/Resources/Editor/callouts.css": 2,
+        "Scholium/Resources/Editor/callouts.css": 1,
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 3,
       ],
       Comment(rawValue: diagnostic(for: webHover))
     )
 
     let webPointerEvents = try occurrenceInventory(
-      pattern: #"addEventListener\('(pointerover|focusin)'"#,
+      pattern: #"addEventListener\('(pointerover|pointerout|focusin|focusout)'"#,
       extensions: ["swift"]
     )
     #expect(
       webPointerEvents == [
-        "Scholium/Views/Note/SafeMarkdownReadWebView.swift": 3
+        "Scholium/Views/Note/SafeMarkdownReadWebView.swift": 6
       ],
       Comment(rawValue: diagnostic(for: webPointerEvents))
     )
@@ -125,7 +119,7 @@ struct InterfacePresentationOwnershipTests {
     )
   }
 
-  @Test("Compound pointer ownership is fenced to the declared migration debt")
+  @Test("Custom controls do not compound pointer feedback owners")
   func compoundPointerOwnershipInventory() throws {
     let compoundOwners = try pointerFeedbackWrappedCalls(
       to: [
@@ -135,10 +129,7 @@ struct InterfacePresentationOwnershipTests {
       ]
     )
     #expect(
-      compoundOwners == [
-        "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift:"
-          + "ScholiumInkIconControl:Delete Research Record…"
-      ],
+      compoundOwners.isEmpty,
       Comment(rawValue: compoundOwners.sorted().joined(separator: "\n"))
     )
   }

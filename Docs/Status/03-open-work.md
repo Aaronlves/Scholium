@@ -33,11 +33,15 @@ automated or visual evidence.
   and minimum width, its 64/36 reading/evidence hierarchy, rounded hover/press
   feedback, folded technical deletion, and Action/Discussion cancellation and
   recovery.
-- Complete the interface-presentation ownership cutover: remove feature-local
-  hover/press owners and the duplicate permanent-delete wrapper in Research
-  Records, confirm that native Menus add no second enclosure, and route matching
-  WebKit hover/focus states through the shared semantic interaction roles. The
-  executable shadow and pointer inventory may shrink but must not grow.
+- Complete direct physical-keyboard, pointer, Dark, Increase Contrast, and
+  assistive-technology acceptance for the normalized WebKit document controls,
+  including Callout `:focus-visible`, selection bars, suggestions, footnotes,
+  and link previews. Scripted focus cannot certify the browser's real
+  keyboard-focus heuristic.
+- Restore the distinct Research Records empty-state accessibility identifier.
+  The empty page is visible after permanent deletion, but the current outer
+  collection identifier overrides its descendant AX identifier and keeps the
+  deletion journey from closing.
 
 Synthetic accessibility trees, screenshots, and isolated QA controls remain
 bounded engineering evidence; they do not close human or assistive-technology
