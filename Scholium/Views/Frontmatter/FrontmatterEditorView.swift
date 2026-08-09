@@ -72,7 +72,7 @@ struct FrontmatterEditorView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
                     Text("Properties")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(note.title ?? note.displayName)
@@ -146,7 +146,7 @@ struct FrontmatterEditorView: View {
 
                     ForEach(groupedPresentFields, id: \.group) { group in
                         GroupBox(group.group.label) {
-                            VStack(alignment: .leading, spacing: 14) {
+                            VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.sectionSpacing) {
                                 ForEach(group.fields) { field in
                                     fieldEditor(for: field)
                                 }
@@ -260,7 +260,7 @@ struct FrontmatterEditorView: View {
     @ViewBuilder
     private var researchUnitEditor: some View {
         GroupBox("Research Unit") {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.groupSpacing) {
                 Text(researchUnitHelp)
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
@@ -277,7 +277,7 @@ struct FrontmatterEditorView: View {
                 }
 
                 if note.schemaProfile == .analysis {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.optionSpacing) {
                         Text("Completion")
                             .font(ScholiumTypography.interface(.rowTitle))
                         TextField("complete, incomplete, or 6/11", text: $researchUnitCompletion)
@@ -286,7 +286,7 @@ struct FrontmatterEditorView: View {
                             .accessibilityIdentifier("scholium.properties.researchUnitCompletion")
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.optionSpacing) {
                         Text(note.schemaProfile == .draftProject ? "Research Scope" : "Scope")
                             .font(ScholiumTypography.interface(.rowTitle))
                         TextField("Describe the boundary of this note's research", text: $researchUnitScope)
@@ -296,7 +296,7 @@ struct FrontmatterEditorView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.optionSpacing) {
                     Text("Limitations")
                         .font(ScholiumTypography.interface(.rowTitle))
                     Text("One material boundary per line.")
@@ -341,17 +341,17 @@ struct FrontmatterEditorView: View {
     private func fieldEditor(for field: PropertyEditorField) -> some View {
         let hasError = fieldErrors[field.key] != nil
 
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.fieldSpacing) {
             // Label
-            HStack(spacing: 5) {
+            HStack(spacing: ScholiumMetrics.Properties.labelSpacing) {
                 Text(field.label)
                     .font(ScholiumTypography.interface(.rowTitle))
                 if field.isReadOnly {
                     Text("Read only")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, ScholiumMetrics.Properties.badgeHorizontalInset)
+                        .padding(.vertical, ScholiumMetrics.Properties.badgeVerticalInset)
                         .background(
                             ScholiumColorRole.raisedSurfaceBackground.color,
                             in: Capsule()
@@ -498,9 +498,9 @@ struct FrontmatterEditorView: View {
             // Current tags
             let tags = parseArray(fieldValues[field.key])
             if !tags.isEmpty {
-                FlowLayout(spacing: 5) {
+                FlowLayout(spacing: ScholiumMetrics.Properties.optionSpacing) {
                     ForEach(tags, id: \.self) { tag in
-                        HStack(spacing: 3) {
+                        HStack(spacing: ScholiumMetrics.Properties.tagContentSpacing) {
                             Text(tag)
                                 .font(ScholiumTypography.interface(.small))
                             Button {
@@ -521,7 +521,7 @@ struct FrontmatterEditorView: View {
                             .accessibilityLabel("Remove tag \(tag)")
                         }
                         .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-                        .padding(.vertical, 3)
+                        .padding(.vertical, ScholiumMetrics.Properties.tagVerticalInset)
                         .background(
                             ScholiumColorRole.raisedSurfaceBackground.color,
                             in: Capsule()
@@ -538,7 +538,7 @@ struct FrontmatterEditorView: View {
             }
 
             // Add tag input
-            HStack(spacing: 6) {
+            HStack(spacing: ScholiumMetrics.Properties.fieldSpacing) {
                 TextField("Add tag...", text: $tagInput)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit {
@@ -569,11 +569,11 @@ struct FrontmatterEditorView: View {
 
     @ViewBuilder
     private func arrayEditor(for field: PropertyEditorField) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.fieldSpacing) {
             let items = parseArray(fieldValues[field.key])
 
             ForEach(items.indices, id: \.self) { idx in
-                HStack(spacing: 6) {
+                HStack(spacing: ScholiumMetrics.Properties.fieldSpacing) {
                     TextField("Item \(idx + 1)", text: Binding(
                         get: { items[idx] },
                         set: { newVal in

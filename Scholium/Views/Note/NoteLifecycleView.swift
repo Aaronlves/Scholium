@@ -18,7 +18,7 @@ struct NoteLifecycleView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.sectionSpacing) {
                 HStack(alignment: .firstTextBaseline) {
                     Label(sheetTitle, systemImage: symbol)
                         .font(ScholiumTypography.interface(.primaryTitle))
@@ -54,7 +54,7 @@ struct NoteLifecycleView: View {
                         .keyboardShortcut(.defaultAction)
                 }
             }
-            .padding(22)
+            .padding(ScholiumMetrics.DocumentWorkflow.sheetContentInset)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minWidth: 0, idealWidth: 540, minHeight: 0, idealHeight: 460)
@@ -80,7 +80,7 @@ struct NoteLifecycleView: View {
                 wide()
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.compactFieldSpacing) {
                 Text(title)
                     .font(ScholiumTypography.interface(.rowTitle))
                 compact()

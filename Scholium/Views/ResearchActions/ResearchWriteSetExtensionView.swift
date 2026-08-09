@@ -119,7 +119,7 @@ struct ResearchWriteSetExtensionView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(record.candidates) { candidate in
                         Toggle(isOn: selectionBinding(candidate.handle)) {
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
                                 Text(candidate.title).font(ScholiumTypography.interface(.sectionTitle))
                                 Text("\(roleTitle(candidate.role))  \(candidate.note.relativePath)")
                                     .font(ScholiumTypography.interface(.small))
@@ -266,7 +266,7 @@ private struct ResearchContinuationPermissionView: View {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     ForEach(Array(record.request.handoff.enumerated()), id: \.offset) {
                         index, item in
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldDetailSpacing) {
                             Text("\(index + 1). \(epistemicStatusTitle(item.epistemicStatus))")
                                 .font(ScholiumTypography.interface(.sectionTitle))
                             Text(item.content)
@@ -307,7 +307,7 @@ private struct ResearchContinuationPermissionView: View {
     }
 
     private func permissionValue(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldDetailSpacing) {
             Text(label)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .scholiumForeground(.secondaryText)

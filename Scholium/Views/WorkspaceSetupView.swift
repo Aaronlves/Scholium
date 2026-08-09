@@ -125,8 +125,8 @@ private struct BootstrapFlowView: View {
                             message: message,
                             isError: errorMessage != nil
                         )
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 62)
+                        .padding(.horizontal, ScholiumMetrics.Onboarding.statusHorizontalInset)
+                        .padding(.bottom, ScholiumMetrics.Onboarding.statusBottomInset)
                     }
 
                     BootstrapFooter(
@@ -590,8 +590,8 @@ private struct BootstrapFooter: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(primaryDisabled)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
+            .padding(.horizontal, ScholiumMetrics.Onboarding.footerHorizontalInset)
+            .padding(.vertical, ScholiumMetrics.Onboarding.footerVerticalInset)
         }
         .background(ScholiumColorRole.documentBackground.color)
     }
@@ -608,9 +608,9 @@ private struct BootstrapStepCanvas<Content: View>: View {
         content
             .frame(maxWidth: 420, maxHeight: .infinity, alignment: .top)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 32)
-            .padding(.top, 68)
-            .padding(.bottom, 88)
+            .padding(.horizontal, ScholiumMetrics.Onboarding.stepHorizontalInset)
+            .padding(.top, ScholiumMetrics.Onboarding.stepTopInset)
+            .padding(.bottom, ScholiumMetrics.Onboarding.stepBottomInset)
     }
 }
 
@@ -620,7 +620,7 @@ private struct BootstrapStepHeading: View {
     var alignment: HorizontalAlignment = .leading
 
     var body: some View {
-        VStack(alignment: alignment, spacing: 6) {
+        VStack(alignment: alignment, spacing: ScholiumMetrics.Onboarding.headingDetailSpacing) {
             Text(title)
                 .font(ScholiumTypography.Bootstrap.title)
                 .accessibilityAddTraits(.isHeader)
@@ -647,9 +647,9 @@ private struct BootstrapWelcomeStep: View {
                 Text("A local-first, document-authoritative research environment for philosophy and the humanities.")
                     .font(ScholiumTypography.Bootstrap.statement)
                     .tracking(-0.1)
-                    .lineSpacing(3)
+                    .lineSpacing(ScholiumMetrics.Onboarding.statementLineSpacing)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 18)
+                    .padding(.top, ScholiumMetrics.Onboarding.welcomeStatementTopSpacing)
 
                 Text("The research document—not a dashboard, task board, or Agent conversation—remains the primary interface.")
                     .font(ScholiumTypography.interface(.body))
@@ -660,7 +660,7 @@ private struct BootstrapWelcomeStep: View {
                 Rectangle()
                     .fill(ScholiumColorRole.separator.color)
                     .frame(height: 1)
-                    .padding(.vertical, 24)
+                    .padding(.vertical, ScholiumMetrics.Onboarding.welcomeRuleVerticalInset)
 
                 Text("A field of inquiry takes shape as a Triptych.")
                     .font(ScholiumTypography.interface(.sectionTitle))
@@ -685,7 +685,7 @@ private struct BootstrapWelcomeStep: View {
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 22)
+                    .padding(.top, ScholiumMetrics.Onboarding.welcomeClosingTopSpacing)
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }
@@ -756,7 +756,7 @@ private struct BootstrapSetupPathChoice: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: ScholiumMetrics.Onboarding.decisionRowSpacing) {
                 Image(systemName: symbol)
                     .scholiumSymbolStyle(.prominent)
                     .scholiumForeground(
@@ -766,7 +766,7 @@ private struct BootstrapSetupPathChoice: View {
                     )
                     .frame(width: 24)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.decisionDetailSpacing) {
                     Text(title)
                         .font(ScholiumTypography.interface(.sectionTitle))
                         .scholiumForeground(.primaryText)
@@ -775,7 +775,7 @@ private struct BootstrapSetupPathChoice: View {
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: ScholiumMetrics.Onboarding.decisionActionMinimumSpacing)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .scholiumForeground(
                         isSelected
@@ -864,7 +864,7 @@ private struct BootstrapExistingFolderStep: View {
 
     var body: some View {
         BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.formSectionSpacing) {
                 BootstrapStepHeading(title: title, subtitle: explanation)
                 BootstrapPathSelectionRow(
                     path: path,
@@ -888,8 +888,8 @@ private struct BootstrapPathSelectionRow: View {
     let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.formFieldSpacing) {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Onboarding.formTitleActionSpacing) {
                 Image(systemName: path == nil ? "folder" : "folder.fill")
                     .scholiumForeground(
                         path == nil
@@ -914,7 +914,7 @@ private struct BootstrapPathSelectionRow: View {
                 .textSelection(.enabled)
                 .lineLimit(3)
                 .truncationMode(.middle)
-                Spacer(minLength: 8)
+                Spacer(minLength: ScholiumMetrics.Onboarding.decisionActionMinimumSpacing)
             }
             Rectangle()
                 .fill(ScholiumColorRole.separator.color)
@@ -942,7 +942,7 @@ private struct BootstrapAuthorizeParentStep: View {
 
     var body: some View {
         BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.reviewSectionSpacing) {
                 BootstrapStepHeading(
                     title: "Authorize the Detected Folder",
                     subtitle: "Scholium needs access beside Works for the portable .scholium control folder."
@@ -1027,7 +1027,7 @@ private struct BootstrapReviewTriptychStep: View {
                 if setupPath == .createNew {
                     BootstrapStructurePreview(rootURL: rootURL)
                 } else {
-                    VStack(spacing: 10) {
+                    VStack(spacing: ScholiumMetrics.Onboarding.folderSummarySpacing) {
                         BootstrapFolderSummaryRow(title: "Analyses", path: analysesURL)
                         BootstrapFolderSummaryRow(title: "Topics", path: topicsURL)
                         BootstrapFolderSummaryRow(title: "Works", path: worksURL)
@@ -1089,7 +1089,7 @@ private struct BootstrapRoleSummary: View {
     let detail: LocalizedStringResource
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.statusTitleDetailSpacing) {
             Text(title)
                 .font(ScholiumTypography.interface(.sectionTitle))
             Text(detail)
@@ -1117,7 +1117,7 @@ private struct BootstrapFolderSummaryRow: View {
                 .truncationMode(.middle)
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, ScholiumMetrics.Onboarding.folderSummaryVerticalInset)
     }
 }
 
@@ -1128,7 +1128,7 @@ private struct BootstrapReadyStep: View {
 
     var body: some View {
         BootstrapStepCanvas {
-            VStack(spacing: 18) {
+            VStack(spacing: ScholiumMetrics.Onboarding.readySectionSpacing) {
                 BootstrapStepHeading(
                     title: "Your Triptych Is Ready",
                     subtitle: completionSubtitle,
@@ -1187,7 +1187,7 @@ private struct BootstrapCompletionStatusRow: View {
                 .scholiumForeground(.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.statusTitleDetailSpacing) {
                 Text(title)
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text(detail)
@@ -1198,7 +1198,7 @@ private struct BootstrapCompletionStatusRow: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 14)
+        .padding(.vertical, ScholiumMetrics.Onboarding.readyStatusVerticalInset)
     }
 }
 

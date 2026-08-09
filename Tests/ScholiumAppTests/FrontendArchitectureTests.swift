@@ -149,7 +149,11 @@ struct FrontendArchitectureTests {
         #expect(
             !noteSource.contains("Native save/conflict recovery owns focus while it is visible."))
         #expect(componentSource.contains("struct ScholiumDocumentStatusToast<Actions: View>"))
-        #expect(componentSource.contains("HStack(alignment: .center, spacing: 10)"))
+        #expect(
+            componentSource.contains(
+                "HStack(alignment: .center, spacing: ScholiumMetrics.Notice.contentSpacing)"
+            )
+        )
         #expect(
             componentSource.contains(
                 "HStack(alignment: .center, "
@@ -2107,7 +2111,8 @@ struct FrontendArchitectureTests {
                 "focusRestorationTask?.cancel()\n            hasKeyboardFocus = true\n            action()"
             ))
         #expect(!actionsSource.contains("ScholiumStructuralRule()"))
-        #expect(actionsSource.contains("ResearchActionHelpModifier(text: item.helpText)"))
+        #expect(!actionsSource.contains("ResearchActionHelpModifier"))
+        #expect(!actionsSource.contains("helpText"))
         #expect(!actionsSource.contains(".accessibilityHint(detailText"))
         #expect(researchSource.contains("visibleAttentionKinds.prefix(3)"))
         #expect(!researchSource.contains("Text(item.message)"))
@@ -3615,6 +3620,97 @@ struct FrontendArchitectureTests {
                 "Shared Grid spacing escaped its semantic owner: \(sourceURL.path)"
             )
         }
+    }
+
+    @Test("Component cadence, interface copy, and empty-state AX remain purpose-owned")
+    func componentCadenceCopyAndAccessibilityOwnership() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repository.appendingPathComponent("Scholium")
+        let enumerator = try #require(
+            FileManager.default.enumerator(
+                at: applicationRoot,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+        )
+        let rawComponentCadence = try NSRegularExpression(
+            pattern:
+                #"(?:spacing:\s*(?!0(?:\.0)?\b)\d+(?:\.\d+)?\b|\.padding\((?:\.[A-Za-z]+,\s*)?\d+(?:\.\d+)?\)|\.lineSpacing\(\d+(?:\.\d+)?\)|Spacer\(minLength:\s*(?!0(?:\.0)?\b)\d+(?:\.\d+)?\))"#
+        )
+        while let sourceURL = enumerator.nextObject() as? URL {
+            guard sourceURL.pathExtension == "swift",
+                  !sourceURL.path.contains("/UI/PreviewCatalog/"),
+                  sourceURL.lastPathComponent != "BootstrapStageArtworkView.swift",
+                  !sourceURL.lastPathComponent.hasSuffix("Testing.swift"),
+                  sourceURL.lastPathComponent != "ScholiumDesignSystem.swift" else {
+                continue
+            }
+            let source = try String(contentsOf: sourceURL, encoding: .utf8)
+            let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
+            #expect(
+                rawComponentCadence.firstMatch(in: source, range: sourceRange) == nil,
+                "A component cadence escaped its purpose-named owner: \(sourceURL.path)"
+            )
+        }
+
+        func source(_ path: String) throws -> String {
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+        let actions = try source(
+            "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift"
+        )
+        let actionSheet = try source(
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift"
+        )
+        let connections = try source(
+            "Scholium/Views/Backlinks/ConnectionsInspectorView.swift"
+        )
+        #expect(!actions.contains("ResearchActionHelpModifier"))
+        #expect(!actions.contains("helpText"))
+        #expect(!actionSheet.contains("interfaceSummary"))
+        #expect(!connections.contains(".help(item.section.title)"))
+
+        let localization = try source("Scholium/Resources/Localizable.xcstrings")
+        for retiredSummary in [
+            "Discuss this note or a selected passage without changing Markdown.",
+            "Analyze the bound source and update this Analysis when warranted.",
+            "Integrate Analyses, Sources, and reliable information into this Topic.",
+            "Write to this Work within its explicit boundary.",
+            "Produce bounded critical feedback before any separately authorized writing.",
+            "Check content fidelity without modifying the note.",
+            "Run the configured manuscript method within its declared boundary.",
+        ] {
+            #expect(!localization.contains(retiredSummary))
+        }
+
+        let records = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+        )
+        let collectionStart = try #require(
+            records.range(of: "private struct ResearchRecordsCollectionView")
+        )
+        let collectionEnd = try #require(
+            records.range(
+                of: "private struct ResearchRecordsCollectionSearch",
+                range: collectionStart.upperBound..<records.endIndex
+            )
+        )
+        let collectionRoot = records[collectionStart.lowerBound..<collectionEnd.lowerBound]
+        #expect(!collectionRoot.contains("scholium.researchRecords.collection"))
+        #expect(
+            records.components(separatedBy: "scholium.researchRecords.collection").count - 1
+                == 2
+        )
+        #expect(
+            records.components(separatedBy: "scholium.researchRecords.empty").count - 1
+                == 1
+        )
     }
 
     @Test("Research-facing sheets share editorial zones and purpose-owned sizes")

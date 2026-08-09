@@ -458,7 +458,6 @@ private struct CombinedConnectionRow: View {
                     )
             }
         }
-        .help(item.section.title)
         .accessibilityLabel("\(item.section.title): \(title)")
         .accessibilityHint(
             item.section.isUndirected

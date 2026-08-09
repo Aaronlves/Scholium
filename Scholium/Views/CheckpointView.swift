@@ -32,7 +32,7 @@ struct CreateCheckpointView: View {
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating)
             }
         }
-        .padding(22)
+        .padding(ScholiumMetrics.Checkpoint.createContentInset)
         .frame(width: 480)
     }
 
@@ -93,7 +93,7 @@ struct RestoreCheckpointView: View {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     .scholiumSymbolStyle(.large)
                     .scholiumForeground(.secondaryText)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Checkpoint.headerDetailSpacing) {
                     Text("Restore from Checkpoint")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text("Compare the current Triptych, then restore selected notes or the complete checkpoint.")
@@ -102,7 +102,7 @@ struct RestoreCheckpointView: View {
                 }
                 Spacer()
             }
-            .padding(18)
+            .padding(ScholiumMetrics.Checkpoint.headerContentInset)
             Divider()
 
             if isLoading {
@@ -129,7 +129,7 @@ struct RestoreCheckpointView: View {
                             .font(ScholiumTypography.interface(.body))
                             .scholiumForeground(.attention)
                             .textSelection(.enabled)
-                            .padding(10)
+                            .padding(ScholiumMetrics.Checkpoint.listingErrorInset)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Divider()
                     }
@@ -190,7 +190,7 @@ struct RestoreCheckpointView: View {
         VStack(spacing: 0) {
             if let selectedCheckpoint {
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.Checkpoint.rowDetailSpacing) {
                         Text(selectedCheckpoint.name).font(ScholiumTypography.interface(.sectionTitle))
                         Text(selectedCheckpoint.triptychFingerprint)
                             .font(ScholiumTypography.exact(.small))
@@ -199,7 +199,7 @@ struct RestoreCheckpointView: View {
                     }
                     Spacer()
                 }
-                .padding(14)
+                .padding(ScholiumMetrics.Checkpoint.selectedHeaderInset)
                 Divider()
             }
             List {
@@ -208,7 +208,7 @@ struct RestoreCheckpointView: View {
                     if !matching.isEmpty {
                         Section(kind.displayName) {
                             ForEach(Array(matching.enumerated()), id: \.offset) { _, change in
-                                HStack(alignment: .top, spacing: 10) {
+                                HStack(alignment: .top, spacing: ScholiumMetrics.Checkpoint.rowSpacing) {
                                     if let key = restorableKey(change) {
                                         Toggle(isOn: fileSelection(key)) { EmptyView() }
                                             .toggleStyle(.checkbox)
@@ -221,7 +221,7 @@ struct RestoreCheckpointView: View {
                                     Image(systemName: kind.symbol)
                                         .scholiumForeground(kind.colorRole)
                                         .frame(width: 18)
-                                    VStack(alignment: .leading, spacing: 2) {
+                                    VStack(alignment: .leading, spacing: ScholiumMetrics.Checkpoint.rowDetailSpacing) {
                                         Text(change.currentPath ?? change.checkpointPath ?? "Unknown file")
                                             .font(ScholiumTypography.exact(.small))
                                             .lineLimit(1)
@@ -257,7 +257,7 @@ struct RestoreCheckpointView: View {
 
     private var checkpointList: some View {
         List(checkpoints, selection: $selectedCheckpointID) { checkpoint in
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Checkpoint.checkpointDetailSpacing) {
                 Text(checkpoint.name)
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text("\(checkpoint.kind.displayName) — \(checkpoint.createdAt.formatted(date: .abbreviated, time: .shortened))")
@@ -269,7 +269,7 @@ struct RestoreCheckpointView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: ScholiumMetrics.Checkpoint.footerSpacing) {
             Button("Reveal Checkpoints in Finder", action: revealCheckpoints)
             Spacer()
             Button("Cancel") { dismiss() }

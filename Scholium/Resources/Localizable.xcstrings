@@ -3361,22 +3361,6 @@
         }
       }
     },
-    "Analyze the bound source and update this Analysis when warranted." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Analyze the bound source and update this Analysis when warranted."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分析已绑定的来源，并在理由充分时更新此分析。"
-          }
-        }
-      }
-    },
     "Analyze, 25 July 2026" : {
       "localizations" : {
         "en" : {
@@ -4998,22 +4982,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "核查忠实度"
-          }
-        }
-      }
-    },
-    "Check content fidelity without modifying the note." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Check content fidelity without modifying the note."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检查内容忠实度，但不修改笔记。"
           }
         }
       }
@@ -9266,22 +9234,6 @@
         }
       }
     },
-    "Discuss this note or a selected passage without changing Markdown." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Discuss this note or a selected passage without changing Markdown."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "讨论此笔记或所选段落，但不更改 Markdown。"
-          }
-        }
-      }
-    },
     "Discussion" : {
       "localizations" : {
         "en" : {
@@ -12730,22 +12682,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "说明"
-          }
-        }
-      }
-    },
-    "Integrate Analyses, Sources, and reliable information into this Topic." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Integrate Analyses, Sources, and reliable information into this Topic."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将分析、来源和可靠信息整合进此主题。"
           }
         }
       }
@@ -18785,22 +18721,6 @@
         }
       }
     },
-    "Produce bounded critical feedback before any separately authorized writing." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Produce bounded critical feedback before any separately authorized writing."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "先生成有边界的批判性反馈；任何后续写入都需要另行授权。"
-          }
-        }
-      }
-    },
     "Production state, not philosophical quality or acceptance probability." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -22460,22 +22380,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "运行状态"
-          }
-        }
-      }
-    },
-    "Run the configured manuscript method within its declared boundary." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Run the configured manuscript method within its declared boundary."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在声明的边界内运行已配置的稿件方法。"
           }
         }
       }
@@ -29445,22 +29349,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "针对此记录所用的方法撰写一条有界评论。只有当你明确进入独立的方法维护流程时，Scholium 才会更改方法。"
-          }
-        }
-      }
-    },
-    "Write to this Work within its explicit boundary." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Write to this Work within its explicit boundary."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在明确边界内写入此作品。"
           }
         }
       }

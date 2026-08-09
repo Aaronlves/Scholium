@@ -555,6 +555,42 @@ Increase Contrast, Reduce Transparency, genuine VoiceOver speech, unsaved-
 draft confirmation, save failure, and the complete UI suite remain outside
 this focused proof.
 
+#### Component cadence, interface copy, and AX closure
+
+**Current passing result**
+
+On 2026-08-10, Xcode 27 beta / Swift 6.4 passed all 80
+`FrontendArchitectureTests`, all 8 `ScholiumLocalizationTests`, both
+`ResearchActionHandoffPresentationTests`, and the focused
+`sharedResearchEvaluationSurface` test. The closed source inventory rejects raw
+nonzero stack spacing, padding, line spacing, and minimum-separation values in
+production interface leaves, while allowing structural zero, native geometry,
+Document CSS, the Debug component catalog, and coordinate-driven Bootstrap
+artwork to remain under their distinct owners. It also confirms removal of the
+default Action summary-tooltip path and repeated Connection section help, and
+keeps the retired localized Action summaries out of both catalogs.
+
+The isolated
+`testResearchRecordAcademicEvidenceAndConfirmedDeletion` QA journey then passed
+in 76.419 seconds against disposable fixtures. After permanently deleting the
+last Record, XCUITest found `scholium.researchRecords.empty` in the live
+accessibility tree; reopening the window also confirmed that the controller's
+republished state kept the deleted row absent.
+
+The complete repository gate subsequently passed, including 185 Web editor
+tests, 1,265 Core/Contracts/Application/App Swift tests, the focused performance
+and architecture measurements, 7 executable Research Action CLI lifecycle
+tests, the sandboxed bridge probe, static boundary guards, and Debug and Release
+builds. The Release build completed in 161.97 seconds.
+
+**Boundary of the claim**
+
+This is value-preserving ownership, catalog syntax/localization coverage, and
+one bounded live accessibility-tree journey. It is not the deferred complete UI
+suite, 200% interface-text review, Dark or Increase Contrast review, localization
+expansion, physical keyboard exercise, genuine VoiceOver speech, or researcher
+acceptance.
+
 ### Complete UI baseline
 
 **Current passing result**

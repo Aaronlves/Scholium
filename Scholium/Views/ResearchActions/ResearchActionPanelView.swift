@@ -190,7 +190,7 @@ struct ResearchActionPanelView: View {
                 Text(verbatim: actionTitle)
                     .font(ScholiumTypography.interface(.primaryTitle))
                     .accessibilityAddTraits(.isHeader)
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
                     Text("Target")
                         .font(ScholiumTypography.interface(.sectionTitle))
                     Text(verbatim: targetTitle)
@@ -212,7 +212,7 @@ struct ResearchActionPanelView: View {
     private var platformInputs: some View {
         let selectors = controller.platformSelectors
         if !selectors.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing) {
                 Text("RESEARCH CONTEXT")
                     .scholiumApparatusHeadingStyle()
                     .accessibilityAddTraits(.isHeader)
@@ -242,7 +242,7 @@ struct ResearchActionPanelView: View {
         if let fields = controller.profile?.academicInputFields.filter({
             $0.requirement != .excluded
         }), !fields.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing) {
                 Text("ACADEMIC INPUTS")
                     .scholiumApparatusHeadingStyle()
                     .accessibilityAddTraits(.isHeader)
@@ -258,7 +258,7 @@ struct ResearchActionPanelView: View {
     @ViewBuilder
     private func academicField(_ field: ResearchAcademicFieldDefinition) -> some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
                 Text(verbatim: field.label).font(ScholiumTypography.interface(.sectionTitle))
                 if field.requirement != .required {
                     Text("Optional")
@@ -295,7 +295,7 @@ struct ResearchActionPanelView: View {
         .font(ScholiumTypography.scholarly(.body))
         .frame(minHeight: 92, maxHeight: 150)
         .scrollContentBackground(.hidden)
-        .padding(6)
+        .padding(ScholiumMetrics.ResearchSheet.textEditorInset)
         .background(ScholiumColorRole.documentBackground.color)
         .overlay {
             RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius)
@@ -341,7 +341,7 @@ struct ResearchActionPanelView: View {
     private func academicMultipleChoice(
         _ field: ResearchAcademicFieldDefinition
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
             ForEach(field.choices, id: \.value) { choice in
                 Toggle(
                     isOn: Binding(
@@ -451,7 +451,7 @@ struct ResearchActionPanelView: View {
                     .toggleStyle(.checkbox)
                     .accessibilityValue("Passage available")
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
                     Label("No passage selected", systemImage: "selection.pin.in.out")
                         .font(ScholiumTypography.interface(.body))
                     Text("Select a passage in the document, then reopen this Action.")
@@ -492,7 +492,7 @@ struct ResearchActionPanelView: View {
     }
 
     private func selectorHeader(_ title: String, required: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
             Text(LocalizedStringKey(title)).font(ScholiumTypography.interface(.sectionTitle))
             if !required {
                 Text("Optional")
@@ -601,7 +601,7 @@ struct ResearchActionPanelView: View {
 
     @ViewBuilder
     private func handoffButtonLabel(title: String, isPending: Bool) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
             if isPending {
                 ProgressView().controlSize(.small)
             }
@@ -814,25 +814,6 @@ extension ResearchActionDefinition {
         case .critique: "text.magnifyingglass"
         case .checkFidelity: "checkmark.shield"
         case .manuscript: "doc.richtext"
-        }
-    }
-
-    var interfaceSummary: String {
-        switch executionKind {
-        case .discussion:
-            String(localized: "Discuss this note or a selected passage without changing Markdown.", table: "Localizable", bundle: .module)
-        case .analysis:
-            String(localized: "Analyze the bound source and update this Analysis when warranted.", table: "Localizable", bundle: .module)
-        case .synthesis:
-            String(localized: "Integrate Analyses, Sources, and reliable information into this Topic.", table: "Localizable", bundle: .module)
-        case .writing:
-            String(localized: "Write to this Work within its explicit boundary.", table: "Localizable", bundle: .module)
-        case .critique:
-            String(localized: "Produce bounded critical feedback before any separately authorized writing.", table: "Localizable", bundle: .module)
-        case .checkFidelity:
-            String(localized: "Check content fidelity without modifying the note.", table: "Localizable", bundle: .module)
-        case .manuscript:
-            String(localized: "Run the configured manuscript method within its declared boundary.", table: "Localizable", bundle: .module)
         }
     }
 

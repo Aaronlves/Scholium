@@ -43,7 +43,7 @@ struct BootstrapAgentPreparationView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.agentStatusSpacing) {
                         Text("Prepare an Agent")
                             .font(ScholiumTypography.interface(.primaryTitle))
                             .accessibilityAddTraits(.isHeader)
@@ -53,7 +53,7 @@ struct BootstrapAgentPreparationView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.agentDetailSpacing) {
                         Text("Project and workspace location")
                             .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             .scholiumForeground(.secondaryText)
@@ -70,7 +70,7 @@ struct BootstrapAgentPreparationView: View {
 
                     BootstrapAgentTaskRow(number: 1, title: "Install and verify Scholium CLI") {
                         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                            HStack(alignment: .center, spacing: 10) {
+                            HStack(alignment: .center, spacing: ScholiumMetrics.Onboarding.agentTaskSpacing) {
                                 if let status {
                                     Label(statusLabel(status), systemImage: statusSymbol(status))
                                         .font(ScholiumTypography.interface(.small))
@@ -81,7 +81,7 @@ struct BootstrapAgentPreparationView: View {
                                     ProgressView("Checking…")
                                         .controlSize(.small)
                                 }
-                                Spacer(minLength: 8)
+                                Spacer(minLength: ScholiumMetrics.Onboarding.decisionActionMinimumSpacing)
                                 if let actionTitle = cliActionTitle {
                                     Button(actionTitle) {
                                         Task { await performCLIAction() }
@@ -114,14 +114,14 @@ struct BootstrapAgentPreparationView: View {
                     Divider()
 
                     BootstrapAgentTaskRow(number: 2, title: "Copy setup instructions") {
-                        VStack(alignment: .leading, spacing: 9) {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.agentTaskContentSpacing) {
                             Text(promptCopied
                                 ? "Setup Prompt Copied"
                                 : "Ask the Agent to prepare its project and applicable instruction file.")
                                 .font(ScholiumTypography.interface(.small))
                                 .scholiumForeground(promptCopied ? .confirmed : .secondaryText)
 
-                            HStack(spacing: 10) {
+                            HStack(spacing: ScholiumMetrics.Onboarding.agentTaskSpacing) {
                                 Button("Preview…") { showsPrompt = true }
                                 Button {
                                     copySetupPrompt()
@@ -164,9 +164,9 @@ struct BootstrapAgentPreparationView: View {
                             .accessibilityLabel("Agent setup error: \(errorMessage)")
                     }
                 }
-                .padding(.top, 58)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 24)
+                .padding(.top, ScholiumMetrics.Onboarding.agentContentTopInset)
+                .padding(.horizontal, ScholiumMetrics.Onboarding.stepHorizontalInset)
+                .padding(.bottom, ScholiumMetrics.Onboarding.footerHorizontalInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -191,8 +191,8 @@ struct BootstrapAgentPreparationView: View {
                         .accessibilityLabel("Finishing Triptych setup")
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
+            .padding(.horizontal, ScholiumMetrics.Onboarding.footerHorizontalInset)
+            .padding(.vertical, ScholiumMetrics.Onboarding.footerVerticalInset)
         }
         .background(ScholiumColorRole.documentBackground.color)
     }
@@ -323,7 +323,7 @@ private struct BootstrapAgentTaskRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: ScholiumMetrics.Onboarding.decisionRowSpacing) {
             Text(number, format: .number)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .scholiumForeground(.accent)
@@ -357,7 +357,7 @@ private struct BootstrapAgentPromptSheet: View {
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
-            .padding(.horizontal, 22)
+            .padding(.horizontal, ScholiumMetrics.Onboarding.agentPromptHeaderHorizontalInset)
             .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
             .background(ScholiumColorRole.navigationSurfaceBackground.color)
 
@@ -368,7 +368,7 @@ private struct BootstrapAgentPromptSheet: View {
                     .font(ScholiumTypography.exact(.body))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(24)
+                    .padding(ScholiumMetrics.Onboarding.agentPromptBodyInset)
             }
             .background(ScholiumColorRole.documentBackground.color)
         }

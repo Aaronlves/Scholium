@@ -807,12 +807,12 @@ struct ScholiumDocumentStatusToast<Actions: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: ScholiumMetrics.Notice.contentSpacing) {
             HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Image(systemName: kind.symbol)
                     .scholiumForeground(kind.colorRole)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Notice.detailSpacing) {
                     Text(title)
                         .font(ScholiumTypography.interface(.sectionTitle))
                     Text(detail)
@@ -826,7 +826,7 @@ struct ScholiumDocumentStatusToast<Actions: View>: View {
             actions()
         }
         .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-        .padding(.vertical, 10)
+        .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
         .frame(maxWidth: 520, alignment: .leading)
         .scholiumEditorialSurface(
             .floatingControl,

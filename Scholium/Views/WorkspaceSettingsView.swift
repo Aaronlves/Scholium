@@ -226,7 +226,7 @@ private struct PropertiesSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
             Text("Vault-Wide Properties")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("Set the optional About fields, display order, and structured-editing allowlist for each Triptych vault. The role-specific Research Unit remains part of the default About profile; Source mode always exposes the exact YAML.")
@@ -239,7 +239,7 @@ private struct PropertiesSettingsView: View {
             }
             .pickerStyle(.segmented)
 
-            HStack(alignment: .top, spacing: 24) {
+            HStack(alignment: .top, spacing: ScholiumMetrics.Settings.columnSpacing) {
                 displayOrderColumn
                 editableFieldsColumn
             }
@@ -271,7 +271,7 @@ private struct PropertiesSettingsView: View {
                     .disabled(isSaving)
             }
         }
-        .padding(18)
+        .padding(ScholiumMetrics.Settings.editorContentInset)
         .task { configurations = settingsModel.triptychSettings.properties.isEmpty
             ? TriptychSettings.defaultProperties
             : settingsModel.triptychSettings.properties }
@@ -299,14 +299,14 @@ private struct PropertiesSettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 5) {
+                        LazyVStack(alignment: .leading, spacing: ScholiumMetrics.Settings.listRowSpacing) {
                             ForEach(Array(selectedConfiguration.visibleFields.enumerated()), id: \.element) { index, key in
-                                HStack(spacing: 6) {
+                                HStack(spacing: ScholiumMetrics.Settings.rowControlSpacing) {
                                     Text(displayName(for: key))
                                         .font(ScholiumTypography.interface(.body))
                                         .lineLimit(1)
                                         .help(key)
-                                    Spacer(minLength: 6)
+                                    Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
                                     Button {
                                         moveVisibleField(key, to: index - 1)
                                     } label: {
@@ -368,7 +368,7 @@ private struct PropertiesSettingsView: View {
     private var editableFieldsColumn: some View {
         GroupBox("Human-Editable Fields") {
             ScrollView {
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.explanationSpacing) {
                     ForEach(availableKeys, id: \.self) { key in
                         HStack {
                             Toggle(isOn: Binding(
@@ -594,7 +594,7 @@ struct ResearchCitationMethodSettingsView: View {
     var body: some View {
         GroupBox {
             HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.fieldSpacing) {
                     if let status {
                         if status.availableStyles.isEmpty {
                             Text("No citation styles are available in this build.")
@@ -799,8 +799,8 @@ struct WorkspaceSettingsView: View {
     @State private var selectedTriptychID: UUID?
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
+        VStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
+            HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
                 Picker("Triptych", selection: selectedTriptychBinding) {
                     ForEach(settingsModel.registeredTriptychs) { assignment in
                         Text(triptychLabel(assignment)).tag(Optional(assignment.id))
@@ -891,7 +891,7 @@ private struct AppearanceSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.listRowSpacing) {
                 Text("Appearance")
                     .font(ScholiumTypography.interface(.primaryTitle))
                 Text("Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source.")
@@ -1482,14 +1482,14 @@ private struct CSSSnippetRow: View {
     @State private var nameDraft = ""
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
             Toggle(
                 isOn: Binding(
                     get: { snippet.isEnabled },
                     set: { store.setEnabled($0, for: snippet.id) }
                 )
             ) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
                     Text(snippet.name)
                         .lineLimit(1)
                     if let error {
@@ -1506,7 +1506,7 @@ private struct CSSSnippetRow: View {
             }
             .toggleStyle(.checkbox)
 
-            Spacer(minLength: 4)
+            Spacer(minLength: ScholiumMetrics.Settings.rowActionMinimumSpacing)
 
             Button { store.move(snippet.id, by: -1) } label: {
                 Label("Move Earlier", systemImage: "chevron.up")
@@ -1536,7 +1536,7 @@ private struct CSSSnippetRow: View {
             .labelStyle(.iconOnly)
             .menuStyle(.borderlessButton)
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, ScholiumMetrics.Settings.rowVerticalInset)
         .alert("Rename CSS Snippet", isPresented: $showRename) {
             TextField("Snippet name", text: $nameDraft)
             Button("Cancel", role: .cancel) {}
@@ -1567,7 +1567,7 @@ private struct WorkspacePathEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.pathHeaderSpacing) {
                 Text(ScholiumL10n.dynamicString(title))
                     .font(ScholiumTypography.interface(.primaryTitle))
                 Text(ScholiumL10n.dynamicString(explanation))
@@ -1575,9 +1575,9 @@ private struct WorkspacePathEditor: View {
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 22)
-            .padding(.bottom, 18)
+            .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
+            .padding(.top, ScholiumMetrics.Settings.pathTopInset)
+            .padding(.bottom, ScholiumMetrics.Settings.pathBottomInset)
 
             Divider()
 
@@ -1637,14 +1637,14 @@ private struct WorkspacePathEditor: View {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.destructive)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityLabel("Workspace error: \(errorMessage)")
             } else if let recoveryMessage = settingsModel.workspaceRecoveryMessage {
                 Label(recoveryMessage, systemImage: "folder.badge.questionmark")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.attention)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityLabel("Workspace access: \(recoveryMessage)")
             }
@@ -1662,7 +1662,7 @@ private struct WorkspacePathEditor: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave || isSaving)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
             .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
         }
         .accessibilityIdentifier("scholium.triptychSetup")
@@ -1777,7 +1777,7 @@ struct PortableControlFolderRow: View {
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
                 Text("Folder Containing Works")
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text("Authorizes portable settings stored beside Works")
@@ -1792,7 +1792,7 @@ struct PortableControlFolderRow: View {
                     .truncationMode(.middle)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
 
             Button(containerURL == nil ? "Authorize…" : "Authorize Again…") {
                 authorizeFolder()
@@ -1838,7 +1838,7 @@ struct WorkspaceFolderRow: View {
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
                 Text(ScholiumL10n.dynamicString(title))
                     .font(ScholiumTypography.interface(.rowTitle))
                 Text(ScholiumL10n.dynamicString(subtitle))
@@ -1852,7 +1852,7 @@ struct WorkspaceFolderRow: View {
                     .help(url?.path(percentEncoded: false) ?? "Choose a folder")
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
 
             Button(url == nil ? "Choose…" : "Change…") {
                 chooseFolder()

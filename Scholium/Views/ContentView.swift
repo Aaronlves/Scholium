@@ -145,7 +145,7 @@ struct ContentView: View {
         )
         .overlay(alignment: .topTrailing) {
             if let status = appState.refreshStatusText {
-                HStack(spacing: 7) {
+                HStack(spacing: ScholiumMetrics.Workspace.refreshStatusSpacing) {
                     Label(
                         status,
                         systemImage: appState.hasDerivedRefreshFailure
@@ -161,8 +161,8 @@ struct ContentView: View {
                     }
                 }
                 .font(ScholiumTypography.interface(.small))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, ScholiumMetrics.Workspace.refreshStatusHorizontalInset)
+                .padding(.vertical, ScholiumMetrics.Workspace.refreshStatusVerticalInset)
                 .scholiumEditorialSurface(
                     .floatingControl,
                     in: RoundedRectangle(
@@ -170,7 +170,7 @@ struct ContentView: View {
                         style: .continuous
                     )
                 )
-                .padding(10)
+                .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("scholium.refreshStatus")
             }
@@ -1051,7 +1051,7 @@ private struct LoadingOverlay: View {
     var body: some View {
         ProgressView("Opening vault…")
             .controlSize(.large)
-            .padding(28)
+            .padding(ScholiumMetrics.Workspace.loadingOverlayInset)
             .scholiumEditorialSurface(
                 .floatingControl,
                 in: RoundedRectangle(
@@ -1091,8 +1091,8 @@ struct ToastView: View {
             Text(message)
                 .font(ScholiumTypography.interface(.rowTitle))
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
+        .padding(.horizontal, ScholiumMetrics.Workspace.toastHorizontalInset)
+        .padding(.vertical, ScholiumMetrics.Workspace.toastVerticalInset)
         .scholiumEditorialSurface(
             .floatingControl,
             in: RoundedRectangle(

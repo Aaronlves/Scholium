@@ -188,7 +188,6 @@ private struct ResearchRecordsCollectionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .scholiumSurface(.document)
-        .accessibilityIdentifier("scholium.researchRecords.collection")
         .toolbar {
             ResearchRecordsCollectionToolbar(model: model)
         }
@@ -386,6 +385,7 @@ private struct ResearchRecordCollectionIndex: View {
                 .accessibilityLabel("Research Records")
                 .accessibilityIdentifier("scholium.researchRecord.list")
             }
+            .accessibilityIdentifier("scholium.researchRecords.collection")
         }
     }
 }
@@ -503,6 +503,7 @@ private struct ResearchReadingLeadCollectionIndex: View {
                 .accessibilityLabel("Reading Leads")
                 .accessibilityIdentifier("scholium.researchRecommendations.list")
             }
+            .accessibilityIdentifier("scholium.researchRecords.collection")
         }
     }
 }
@@ -1479,7 +1480,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
             }
             .padding(.horizontal, ScholiumMetrics.ResearchRecords.pageEdge)
             .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-            .padding(.bottom, ScholiumGrid.Spacing.regionContentInset * 2)
+            .padding(.bottom, ScholiumMetrics.ResearchRecords.detailBottomInset)
             .frame(maxWidth: ResearchRecordLayout.readingMeasure, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
@@ -2195,7 +2196,7 @@ private struct ResearchRecordWorkspaceView: View {
                 }
                 .padding(.horizontal, ScholiumMetrics.ResearchRecords.pageEdge)
                 .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-                .padding(.bottom, ScholiumGrid.Spacing.regionContentInset * 2)
+                .padding(.bottom, ScholiumMetrics.ResearchRecords.detailBottomInset)
                 .frame(maxWidth: ResearchRecordLayout.readingMeasure, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
@@ -2279,7 +2280,7 @@ private struct ResearchRecordWorkspaceView: View {
             }
             .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
             .padding(.top, ScholiumGrid.Spacing.regionContentInset)
-            .padding(.bottom, ScholiumGrid.Spacing.regionContentInset * 2)
+            .padding(.bottom, ScholiumMetrics.ResearchRecords.detailBottomInset)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(Color.clear)

@@ -286,15 +286,25 @@ behavior belongs to the Specification; outstanding acceptance belongs in
   editorial-text-editor recipe. Increase Contrast
   strengthens boundaries and removes custom soft shadows; Reduce Motion removes
   custom animation.
-- The shared native spacing foundation is now explicit at every matching leaf
-  call site: 4/8/12/16/20pt gaps and insets consume the purpose-named Grid
-  roles. Zero spacing, native geometry, window/component dimensions, Document
-  CSS rhythm, and remaining component-specific cadence are not reclassified as
-  shared spacing merely because their values are numeric.
+- The shared native spacing foundation is explicit at every matching leaf call
+  site, and every other nonzero production interface cadence is now
+  purpose-owned through component Metrics. The closed inventory covers stack
+  gaps, content insets, line spacing, and nonzero minimum separation. Structural
+  zero, native geometry, window/component dimensions, Document CSS rhythm,
+  Debug proof surfaces, and coordinate-driven Bootstrap artwork remain separate
+  classifications.
 - Research Guidance now has one component-level layout owner for its category
   Sidebar constraints and explanatory Method/Profile/Practice collection rows.
   The shared row preserves the existing left-copy/right-action structure and
   measurements without taking ownership of setting values or operations.
+- Default Research Actions now present their stable title without redundant
+  summary tooltips, and Connection rows no longer repeat their visible section
+  title as hover help. Tooltips, hints, errors, and recovery instructions remain
+  where they add otherwise missing action, exact-value, disabled-state,
+  consequence, or repair context.
+- Populated Records and Reading Leads ledgers own the collection accessibility
+  identifier, while the Records empty-content leaf owns its distinct empty
+  identifier; the common ancestor no longer overrides either state identity.
 - English and Simplified Chinese catalogs are reachable. Stable identifiers,
   paths, exact Markdown, researcher-authored titles and prose, and Skill names
   remain verbatim.

@@ -313,7 +313,7 @@ private struct InterruptedSaveRecoveryRow: View {
     @State private var actionMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.recoverySectionSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Label(sourceStateTitle, systemImage: sourceStateSymbol)
                     .font(ScholiumTypography.interface(.sectionTitle))
@@ -363,7 +363,7 @@ private struct InterruptedSaveRecoveryRow: View {
                     Spacer()
                     timestamp
                 }
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.recoveryCompactSpacing) {
                     timestamp
                     revealButton
                     restoreButton
@@ -376,7 +376,7 @@ private struct InterruptedSaveRecoveryRow: View {
                     .textSelection(.enabled)
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, ScholiumMetrics.DocumentWorkflow.recoveryRowVerticalInset)
         .accessibilityElement(children: .contain)
     }
 
@@ -575,7 +575,7 @@ private struct RecoveryFileRow: View {
     let vaultName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.recoveryFileSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Label(stateName, systemImage: stateSymbol)
                     .font(ScholiumTypography.interface(.sectionTitle))
@@ -606,7 +606,7 @@ private struct RecoveryFileRow: View {
                     .textSelection(.enabled)
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, ScholiumMetrics.DocumentWorkflow.recoveryRowVerticalInset)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(stateName), \(roleName), \(vaultName), \(file.path)")
     }

@@ -137,9 +137,6 @@ struct ResearchActionItemPresentation: Identifiable {
         return canPresent ? nil : disabledReason
     }
 
-    var helpText: String? {
-        detail == nil ? availability.definition.interfaceSummary : nil
-    }
 }
 
 /// Presentation-only grouping for Scholium's closed Platform Action matrix.
@@ -168,19 +165,6 @@ private struct ResearchActionVisualSection: Identifiable {
     let id: ID
     let title: LocalizedStringResource
     let items: [ResearchActionItemPresentation]
-}
-
-private struct ResearchActionHelpModifier: ViewModifier {
-    let text: String?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let text, !text.isEmpty {
-            content.help(text)
-        } else {
-            content
-        }
-    }
 }
 
 struct ResearchActionsInspectorView: View {
@@ -272,7 +256,6 @@ struct ResearchActionsInspectorView: View {
             select(item.id)
         }
         .disabled(!item.canPresent)
-        .modifier(ResearchActionHelpModifier(text: item.helpText))
         .accessibilityIdentifier("scholium.researchAction.\(item.id.rawValue)")
     }
 
@@ -354,7 +337,7 @@ struct ResearchActionsInspectorView: View {
     }
 
     private var settlementPopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionContentSpacing) {
             Text(presentation.latestSettlement == nil ? "Settle" : "Settle Again")
                 .font(ScholiumTypography.interface(.sectionTitle))
             Text("Record this saved revision as sufficiently stable for current research.")

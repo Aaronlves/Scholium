@@ -72,7 +72,7 @@ struct CritiqueProvenanceView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Critique.sectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Label(
                     metadata.isAgentAttributed ? "Agent-authored Critique" : "Agent attribution missing",
@@ -88,7 +88,7 @@ struct CritiqueProvenanceView: View {
                         : "Agent attribution missing"
                 )
 
-                Spacer(minLength: 12)
+                Spacer(minLength: ScholiumMetrics.Critique.destinationMinimumSpacing)
 
                 if let scope = metadata.scope {
                     Text(scope.rawValue)
@@ -97,7 +97,7 @@ struct CritiqueProvenanceView: View {
                 }
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Critique.headerSpacing) {
                 Text("Target")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
@@ -123,7 +123,7 @@ struct CritiqueProvenanceView: View {
                         .textSelection(.enabled)
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: ScholiumMetrics.Critique.actionMinimumSpacing)
 
                 if isStale {
                     Label("Earlier Work version", systemImage: "clock.badge.exclamationmark")
@@ -156,7 +156,7 @@ struct CritiqueProvenanceView: View {
                 Button {
                     findingsAreExpanded.toggle()
                 } label: {
-                    HStack(spacing: 7) {
+                    HStack(spacing: ScholiumMetrics.Critique.headerSpacing) {
                         Image(systemName: "chevron.right")
                             .font(ScholiumTypography.interface(.small, emphasis: .strong))
                             .scholiumForeground(.mutedText)
@@ -169,7 +169,7 @@ struct CritiqueProvenanceView: View {
                             .accessibilityHidden(true)
                         Text("Specific Findings")
                             .font(ScholiumTypography.interface(.sectionTitle))
-                        Spacer(minLength: 8)
+                        Spacer(minLength: ScholiumMetrics.Critique.actionMinimumSpacing)
                         Text(findings.count.formatted())
                             .font(ScholiumTypography.interface(.small, tabularDigits: true))
                             .scholiumForeground(.secondaryText)
@@ -190,17 +190,17 @@ struct CritiqueProvenanceView: View {
                 .accessibilityIdentifier("scholium.critiqueFindings")
 
                 if findingsAreExpanded {
-                    VStack(alignment: .leading, spacing: 7) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.Critique.findingsSpacing) {
                         ForEach(findings) { finding in
                             findingButton(finding)
                         }
                     }
-                    .padding(.top, 7)
+                    .padding(.top, ScholiumMetrics.Critique.findingsSpacing)
                 }
             }
         }
         .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-        .padding(.vertical, 11)
+        .padding(.vertical, ScholiumMetrics.Critique.panelVerticalInset)
         .frame(maxWidth: .infinity, alignment: .leading)
         .scholiumSurface(.boundedPanel)
         .overlay(alignment: .bottom) { Divider() }
@@ -234,7 +234,7 @@ struct CritiqueProvenanceView: View {
                 Image(systemName: stale ? "clock.badge.exclamationmark" : "arrow.right.circle")
                     .scholiumForeground(stale ? .attention : .secondaryText)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Critique.detailSpacing) {
                     Text("\(finding.judgment.rawValue): \(finding.title)")
                         .scholiumForeground(.primaryText)
                     Text(findingDestination(

@@ -89,7 +89,7 @@ struct ProfilesPracticesSettingsView: View {
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.summarySpacing) {
                         HStack {
                             Text("Methods opt into Practices only through exact Wikilinks.")
                                 .font(ScholiumTypography.interface(.body))
@@ -224,7 +224,7 @@ struct ProfilesPracticesSettingsView: View {
                 .accessibilityIdentifier(
                     "scholium.researchGuidance.profile.\(profile.actionID.rawValue).enabled"
                 )
-                HStack(spacing: 6) {
+                HStack(spacing: ScholiumMetrics.ResearchGuidance.controlSpacing) {
                     Button {
                         moveProfile(profile, by: -1, snapshot: snapshot)
                     } label: {
@@ -432,7 +432,7 @@ private struct ResearchAcademicProfileEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     Text("Edit Academic Profile")
@@ -452,7 +452,7 @@ private struct ResearchAcademicProfileEditor: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorMajorSectionSpacing) {
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Text("PROFILE")
                             .font(ScholiumTypography.interface(.small, emphasis: .strong))
@@ -504,7 +504,7 @@ private struct ResearchAcademicProfileEditor: View {
                     .disabled(isSaving)
             }
         }
-        .padding(18)
+        .padding(ScholiumMetrics.ResearchGuidance.editorContentInset)
         .frame(minWidth: 760, idealWidth: 820, minHeight: 620, idealHeight: 720)
         .disabled(isSaving)
     }
@@ -555,7 +555,7 @@ private struct ResearchAcademicFieldsEditor: View {
     @Binding var fields: [ResearchAcademicFieldDraft]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.summarySpacing) {
             HStack {
                 Text(title)
                     .font(ScholiumTypography.interface(.sectionTitle))
@@ -609,7 +609,7 @@ private struct ResearchAcademicFieldDraftEditor: View {
             HStack {
                 TextField("Field Name", text: $field.label)
                     .font(ScholiumTypography.interface(.rowTitle))
-                Spacer(minLength: 12)
+                Spacer(minLength: ScholiumMetrics.ResearchGuidance.trailingControlMinimumSpacing)
                 Button(action: moveEarlier) {
                     Image(systemName: "arrow.up")
                 }
@@ -649,7 +649,7 @@ private struct ResearchAcademicFieldDraftEditor: View {
             }
             TextField("Help Text (Optional)", text: $field.helpText)
             if field.kind != .freeText {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.controlSpacing) {
                     Text("Closed Options")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .scholiumForeground(.secondaryText)
@@ -673,7 +673,7 @@ private struct ResearchAcademicFieldDraftEditor: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, ScholiumMetrics.ResearchGuidance.controlSpacing)
         .onChange(of: field.kind) { _, kind in
             if kind != .freeText {
                 while field.choices.count < 2 {
@@ -832,7 +832,7 @@ private struct ResearchPracticeSourceEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
             Text("Edit \(context.practice.title)")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("This is exact Markdown. Saving replaces only this Practice; one previous edit remains recoverable.")
@@ -883,7 +883,7 @@ private struct NewResearchPracticeEditor: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
             Text("New Philosophical Practice")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("Scholium creates one ordinary Markdown document. Link its title exactly from a primary Method to include it in Research Context.")

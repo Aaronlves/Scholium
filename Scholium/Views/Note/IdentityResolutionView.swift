@@ -19,7 +19,7 @@ struct IdentityResolutionView: View {
     @State private var choice: Choice?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.sectionSpacing) {
             HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 Image(systemName: "questionmark.folder")
                     .scholiumSymbolStyle(.large)
@@ -91,7 +91,7 @@ struct IdentityResolutionView: View {
                 .disabled(choice == nil || isResolving)
             }
         }
-        .padding(24)
+        .padding(ScholiumMetrics.DocumentWorkflow.identityContentInset)
         .frame(minWidth: 520, idealWidth: 580, maxWidth: 660)
         .disabled(isResolving)
         .overlay {

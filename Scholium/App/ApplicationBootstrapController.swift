@@ -218,7 +218,7 @@ private struct ApplicationRegistryRecoveryView: View {
     @State private var showsDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.rootSectionSpacing) {
             Text("Triptych Registry Needs Repair")
                 .font(ScholiumTypography.interface(.primaryTitle))
                 .accessibilityAddTraits(.isHeader)
@@ -229,7 +229,7 @@ private struct ApplicationRegistryRecoveryView: View {
             Button {
                 showsDetails.toggle()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: ScholiumMetrics.Onboarding.rootDisclosureSpacing) {
                     Image(systemName: "chevron.right")
                         .imageScale(.small)
                         .rotationEffect(.degrees(showsDetails ? 90 : 0))
@@ -269,7 +269,7 @@ private struct ApplicationRegistryRecoveryView: View {
                 }
             }
         }
-        .padding(28)
+        .padding(ScholiumMetrics.Onboarding.rootContentInset)
         .frame(width: 520, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .background {
@@ -291,7 +291,7 @@ private struct ApplicationStorageUnavailableView: View {
     @State private var showsDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.rootSectionSpacing) {
             Text("Storage Unavailable")
                 .font(ScholiumTypography.interface(.primaryTitle))
                 .accessibilityAddTraits(.isHeader)
@@ -302,7 +302,7 @@ private struct ApplicationStorageUnavailableView: View {
             Button {
                 showsDetails.toggle()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: ScholiumMetrics.Onboarding.rootDisclosureSpacing) {
                     Image(systemName: "chevron.right")
                         .imageScale(.small)
                         .rotationEffect(.degrees(showsDetails ? 90 : 0))
@@ -334,7 +334,7 @@ private struct ApplicationStorageUnavailableView: View {
                     .accessibilityHint("Attempts to establish Application Support storage again.")
             }
         }
-        .padding(28)
+        .padding(ScholiumMetrics.Onboarding.rootContentInset)
         .frame(width: 520, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .background {

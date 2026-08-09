@@ -39,14 +39,14 @@ struct ResearchRecoverySettingsView: View {
                     bundle: .module
                 )) {
                     HStack(alignment: .firstTextBaseline) {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowStatusSpacing) {
                             Text("Keep per Note")
                             Text("Settle preserves the exact saved revision of that Note. Temporary Action recovery is managed separately.")
                                 .font(ScholiumTypography.interface(.small))
                                 .scholiumForeground(.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        Spacer(minLength: 24)
+                        Spacer(minLength: ScholiumMetrics.Settings.columnSpacing)
                         Picker(
                             "Keep per Note",
                             selection: Binding(

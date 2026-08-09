@@ -18,7 +18,7 @@ struct FolderLifecycleView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.sectionSpacing) {
             Label(title, systemImage: symbol)
                 .font(ScholiumTypography.interface(.primaryTitle))
 
@@ -60,7 +60,7 @@ struct FolderLifecycleView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(22)
+        .padding(ScholiumMetrics.DocumentWorkflow.sheetContentInset)
         .frame(minWidth: 0, idealWidth: 520, minHeight: 0, idealHeight: 260)
         .onAppear { configureDefaults() }
         .alert("Could Not \(actionTitle) Folder", isPresented: Binding(

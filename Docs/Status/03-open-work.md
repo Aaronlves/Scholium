@@ -38,10 +38,6 @@ automated or visual evidence.
   including Callout `:focus-visible`, selection bars, suggestions, footnotes,
   and link previews. Scripted focus cannot certify the browser's real
   keyboard-focus heuristic.
-- Restore the distinct Research Records empty-state accessibility identifier.
-  The empty page is visible after permanent deletion, but the current outer
-  collection identifier overrides its descendant AX identifier and keeps the
-  deletion journey from closing.
 
 Synthetic accessibility trees, screenshots, and isolated QA controls remain
 bounded engineering evidence; they do not close human or assistive-technology
@@ -203,20 +199,6 @@ retention are reachable and fail closed on invalid configuration.
   and repair evidence without introducing a legacy reset or compatibility UI.
 - Complete direct acceptance of Zotero attachment selection and built-in versus
   MCP boundary explanations.
-
-## Interface writing
-
-**Current boundary**
-
-Research-facing sheets and Settings have removed most implementation hashes,
-schema labels, duplicated global prompts, and repeated authority explanations.
-
-**Next evidence or work**
-
-Audit remaining default Action summaries, hover help, accessibility hints,
-errors, and recovery instructions by responsibility. Keep routine explanation
-at its one owning surface, then verify localization, 200% reflow, keyboard use,
-and genuine VoiceOver.
 
 ## Distribution and release
 

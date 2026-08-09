@@ -241,11 +241,14 @@ mirror exists.
 The shared foundation values are closed at their call sites: 4pt
 label/accessory, 8pt inline-control, 12pt nested-content, 16pt section, and
 20pt region spacing are always expressed through `ScholiumGrid.Spacing` rather
-than repeated by leaf Views. The architecture inventory rejects those raw
-`spacing` and `padding` literals across production Swift. Structural zero
-spacing, native control geometry, scene/window dimensions, Document CSS units,
-and explicitly component-owned metrics remain separate classifications rather
-than being forced into the shared spacing family.
+than repeated by leaf Views. Every other nonzero user-interface cadence is
+purpose-owned through `ScholiumMetrics`, including stack gaps, content insets,
+line spacing, and nonzero minimum separation. The architecture inventory
+rejects raw forms of those calls across production Swift. Structural zero
+spacing, native control geometry, scene/window dimensions, and Document CSS
+units remain separate classifications. The Debug component catalog is a proof
+surface, and the coordinate-driven Bootstrap narrative artwork is an art
+composition; neither is treated as production interface cadence.
 
 `ScholiumMetrics.ResearchGuidance` owns the categorized Settings surface's
 native list-detail containment thresholds and the explanatory collection-row
@@ -264,6 +267,19 @@ note-save, evaluation-draft, dismissal, focus, and recovery owners; the shared
 metrics do not create a generic sheet lifecycle or move native sheet chrome out
 of AppKit. Each sheet presents a fixed title region, independently scrolling
 body, and fixed action region separated by structural rules.
+
+Default Research Actions present their stable title without repeating an
+ordinary summary in hover help. Help and accessibility hints remain only when
+they supply otherwise missing action, exact value, disabled-state, consequence,
+or recovery context; errors and recovery instructions stay visible at their
+owning surface. Relationship rows likewise do not repeat their already visible
+section title as tooltip text.
+
+The populated Records and Reading Leads ledgers own
+`scholium.researchRecords.collection`; the Records empty-content leaf owns
+`scholium.researchRecords.empty`. Their common outer container owns neither, so
+an ancestor cannot replace the state-specific identity in the accessibility
+tree.
 
 `ScholiumCornerRole` is the closed responsibility vocabulary for custom corner
 geometry. `ScholiumShape` exposes the Native aliases and generates only the

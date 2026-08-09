@@ -483,7 +483,7 @@ private struct DiscussionPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionHeaderDetailSpacing) {
                     Text("Discussion")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(noteTitle)
@@ -503,7 +503,7 @@ private struct DiscussionPanel: View {
                     .keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("scholium.discussion.close")
             }
-            .padding(18)
+            .padding(ScholiumMetrics.DocumentWorkflow.discussionHeaderInset)
 
             Divider()
 
@@ -592,7 +592,7 @@ private struct DiscussionPanel: View {
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 16)
+                Spacer(minLength: ScholiumMetrics.DocumentWorkflow.discussionActionMinimumSpacing)
                 Button("Finish", action: finishExchange)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
@@ -609,7 +609,7 @@ private struct DiscussionPanel: View {
                 .tracking(0.7)
                 .scholiumForeground(.secondaryText)
             ForEach(discussion.statements) { statement in
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionTurnDetailSpacing) {
                     Text(statement.attribution)
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .scholiumForeground(.secondaryText)
@@ -624,7 +624,7 @@ private struct DiscussionPanel: View {
                         .scholiumForeground(.secondaryText)
                         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
                     } else if let passage = statement.passage {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionTurnDetailSpacing) {
                             Text(
                                 passage.line == passage.endLine
                                     ? "PASSAGE AT LINE \(passage.line)"
@@ -649,10 +649,10 @@ private struct DiscussionPanel: View {
                     }
                     Text(statement.text)
                         .font(ScholiumTypography.scholarly(.body))
-                        .lineSpacing(2)
+                        .lineSpacing(ScholiumMetrics.DocumentWorkflow.discussionTurnLineSpacing)
                         .textSelection(.enabled)
                 }
-                .padding(.vertical, 3)
+                .padding(.vertical, ScholiumMetrics.DocumentWorkflow.discussionTurnVerticalInset)
                 if statement.id != discussion.statements.last?.id {
                     Divider()
                 }
@@ -692,7 +692,7 @@ private struct DiscussionPanel: View {
     }
 
     private var agentHandoffControls: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionControlSpacing) {
             Button("Copy Handoff") {
                 prepareAgentHandoff()
             }
@@ -1761,7 +1761,7 @@ private struct ConflictComparisonSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.conflictHeaderDetailSpacing) {
                     Text("Compare Changes")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(conflict.relativePath)
@@ -1770,11 +1770,11 @@ private struct ConflictComparisonSheet: View {
                 }
                 Spacer()
             }
-            .padding(18)
+            .padding(ScholiumMetrics.DocumentWorkflow.conflictHeaderInset)
 
             Divider()
 
-            HStack(alignment: .top, spacing: 24) {
+            HStack(alignment: .top, spacing: ScholiumMetrics.DocumentWorkflow.conflictRevisionSpacing) {
                 revisionLabel(
                     title: "Current Editor",
                     fingerprint: conflict.editorRevision,
@@ -1787,7 +1787,7 @@ private struct ConflictComparisonSheet: View {
                 )
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, ScholiumMetrics.DocumentWorkflow.conflictRevisionHorizontalInset)
             .padding(.vertical, ScholiumGrid.Spacing.nestedContentInset)
 
             Divider()
@@ -1815,7 +1815,7 @@ private struct ConflictComparisonSheet: View {
                                     .textSelection(.enabled)
                             }
                             .padding(.horizontal, DiffLayout.horizontalPadding)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, ScholiumMetrics.DocumentWorkflow.conflictDiffRowVerticalInset)
                             .frame(width: max(viewport.size.width, 1), alignment: .leading)
                             .background(
                                 line.kind == .unchanged
@@ -1853,7 +1853,7 @@ private struct ConflictComparisonSheet: View {
         fingerprint: DocumentFingerprint,
         detail: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.conflictDetailSpacing) {
             Text(title)
                 .font(ScholiumTypography.interface(.sectionTitle))
             Text(short(fingerprint))
@@ -1957,16 +1957,16 @@ private struct CritiqueFindingDispositionRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.conflictDispositionSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.conflictDispositionDetailSpacing) {
                     Text(finding.title)
                         .font(ScholiumTypography.interface(.sectionTitle))
                     Text(finding.judgment.rawValue)
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                 }
-                Spacer(minLength: 12)
+                Spacer(minLength: ScholiumMetrics.DocumentWorkflow.conflictActionMinimumSpacing)
                 Picker("Disposition", selection: $decision) {
                     Text("Accept").tag(CritiqueFindingDispositionDecision.accept)
                     Text("Reject").tag(CritiqueFindingDispositionDecision.reject)
@@ -2021,7 +2021,7 @@ private struct CritiqueFindingDispositionRow: View {
                 )
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, ScholiumMetrics.DocumentWorkflow.conflictRowVerticalInset)
         .accessibilityElement(children: .contain)
     }
 

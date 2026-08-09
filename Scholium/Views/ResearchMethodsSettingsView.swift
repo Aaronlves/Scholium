@@ -434,7 +434,7 @@ private struct ResearchMethodSourceEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
             Text("Edit \(context.method.registration.displayName)")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("This edits the current primary Markdown only. Linked Practices and optional folder files keep their own exact bytes.")
@@ -494,7 +494,7 @@ private struct NewResearchMethodEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
             Text("Create Research Skill")
                 .font(ScholiumTypography.interface(.primaryTitle))
             Text("Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest.")

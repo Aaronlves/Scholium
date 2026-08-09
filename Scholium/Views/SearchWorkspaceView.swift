@@ -259,7 +259,7 @@ struct SpotlightSearchPanelView: View {
                     .scholiumForeground(.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, ScholiumMetrics.Search.explanationBottomInset)
                     .accessibilityLabel("Explain Query: \(explanationText)")
             }
 
@@ -452,7 +452,7 @@ struct SpotlightSearchPanelView: View {
                 scopePicker
                     .frame(width: ScholiumMetrics.Search.scopeWidth)
 
-                Spacer(minLength: 12)
+                Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
 
                 searchSummary
             }
@@ -465,7 +465,7 @@ struct SpotlightSearchPanelView: View {
             }
         }
         .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-        .padding(.vertical, 6)
+        .padding(.vertical, ScholiumMetrics.Search.scopeBarVerticalInset)
     }
 
     private var visibleCompletions: [SearchCompletion] {
@@ -482,7 +482,7 @@ struct SpotlightSearchPanelView: View {
                 Button {
                     apply(completion)
                 } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Search.resultContentSpacing) {
                         Text(completion.displayText)
                             .font(ScholiumTypography.exact(.body))
                         Text(completion.detail)
@@ -546,7 +546,7 @@ struct SpotlightSearchPanelView: View {
             .scholiumForeground(.destructive)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-            .padding(.bottom, 7)
+            .padding(.bottom, ScholiumMetrics.Search.diagnosticBottomInset)
             .accessibilityLabel(String(localized: "Invalid search query: \(message)"))
     }
 
@@ -586,7 +586,7 @@ struct SpotlightSearchPanelView: View {
         _ presentation: SearchStateBannerPresentation
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Search.availabilityDetailSpacing) {
                 Label(presentation.title, systemImage: presentation.systemImage)
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .scholiumForeground(presentation.meaning.colorRole)
@@ -603,7 +603,7 @@ struct SpotlightSearchPanelView: View {
             }
         }
         .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
-        .padding(.vertical, 9)
+        .padding(.vertical, ScholiumMetrics.Search.availabilityVerticalInset)
         .background(
             ScholiumColorRole.raisedSurfaceBackground.color(
                 increasedContrast: increasedContrast
@@ -1161,7 +1161,7 @@ private struct NoteSearchResultRow: View {
     let scope: SearchPresentationScope
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Search.savedSearchFieldSpacing) {
             HStack {
                 Text(note.title)
                     .font(ScholiumTypography.interface(.rowTitle))
@@ -1255,7 +1255,7 @@ private struct RecordSearchResultRow: View {
     let record: RecordSearchResult
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Search.savedSearchFieldSpacing) {
             HStack {
                 Text(record.context)
                     .font(ScholiumTypography.interface(.rowTitle))

@@ -210,14 +210,14 @@ struct ResearcherEvaluationView: View {
                     .frame(minHeight: 20)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
                 Text("Evaluation Note")
                     .font(ScholiumTypography.interface(.sectionTitle))
                 TextEditor(text: $note)
                     .font(ScholiumTypography.scholarly(.body))
                     .frame(minHeight: 104, idealHeight: 128)
                     .scrollContentBackground(.hidden)
-                    .padding(6)
+                    .padding(ScholiumMetrics.ResearchSheet.textEditorInset)
                     .background(ScholiumColorRole.documentBackground.color)
                     .overlay {
                         RoundedRectangle(
@@ -551,7 +551,7 @@ struct ResearchMethodFeedbackView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldDetailSpacing) {
                     Text("METHOD FEEDBACK")
                         .scholiumApparatusHeadingStyle()
                         .accessibilityAddTraits(.isHeader)
@@ -641,7 +641,7 @@ struct ResearchMethodFeedbackView: View {
                     .font(ScholiumTypography.scholarly(.body))
                     .frame(minHeight: 88, idealHeight: 112)
                     .scrollContentBackground(.hidden)
-                    .padding(6)
+                    .padding(ScholiumMetrics.ResearchSheet.textEditorInset)
                     .background(ScholiumColorRole.documentBackground.color)
                     .overlay {
                         RoundedRectangle(
