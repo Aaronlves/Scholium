@@ -1,7 +1,7 @@
 # Architecture: Research Guidance
 
-Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
-This chapter owns Method and Practice registration, academic Profiles,
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Method and
+Practice registration, academic Profiles,
 collaboration and citation configuration, Settings composition, and
 configuration recovery. [Research Actions and Execution](02-research-actions-and-execution.md)
 alone owns preparation, pairing, Sessions, Run context, Bounded Write Sets,

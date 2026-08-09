@@ -1,8 +1,7 @@
 # Architecture: Research Actions and Execution
 
-Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
-This chapter owns Action preparation, Run execution, Research Context,
-records, continuation, and recovery; sibling chapters do not restate it.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Action preparation,
+execution, Research Context, Records, continuation, and recovery.
 
 ## Public Action and Run boundary
 

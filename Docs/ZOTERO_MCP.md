@@ -1,11 +1,8 @@
 # Operational Guide: First-party Zotero MCP
 
-This is a non-normative operator guide for the currently installed Scholium
-CLI. [Specification §15](Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)
-owns product behavior and research boundaries; [Implementation Architecture](IMPLEMENTATION_ARCHITECTURE.md)
-owns code structure; `scholium help zotero` owns exact syntax for the installed
-version. If this guide and installed help differ, follow installed help and
-correct this guide.
+This non-normative operator guide covers the installed Scholium CLI.
+[Specification §15](Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)
+owns product and research boundaries; `scholium help zotero` owns exact syntax.
 
 Scholium's built-in Zotero reader and external-agent MCP transport are separate.
 The app reader remains bounded and read-only. The MCP service is
@@ -88,12 +85,7 @@ readiness.
   collection, without enumerating the complete tree; and
 - `zotero_import_bibtex` and `zotero_import_ris`: guarded Connector imports.
 
-Retrieval uses Zotero Desktop's localhost interfaces and never the live
-`zotero.sqlite` database. A real import requires an explicit request for the
-exact record and destination, an unchanged successful dry run, its unexpired
-one-shot token, explicit confirmation, and readback. Ambiguity, target change,
-content change, replay, or unverifiable completion fails explicitly.
-
-Metadata establishes bibliographic identity only. It is not evidence for a
-quotation, locator, claim, concept, argument, or interpretation. Source
-analysis and citation formatting remain separately requested scholarly work.
+Retrieval uses Zotero Desktop's localhost interfaces, never its live database.
+Imports follow §15's exact-request, dry-run, confirmation, unchanged-destination,
+and readback boundary. Metadata establishes bibliographic identity only; source
+analysis and citation formatting remain separate scholarly work.

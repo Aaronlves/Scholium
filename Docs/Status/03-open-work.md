@@ -1,226 +1,82 @@
 # Implementation Status: Open Work
 
-Part of the dated status set rooted at [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md).
-This chapter contains only implementation, acceptance, performance, and
-release work that remains open. It does not preserve completed stage plans,
-superseded owners, or migration ledgers.
+[IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) · Work and acceptance still open.
 
-## Cross-cutting interface acceptance
-
-**Current boundary**
-
-The native shell, Library hierarchy, Document modes, Inspector, Action sheets,
-Attention popover, Research Records window, semantic appearance system,
-Simplified Chinese catalog, keyboard routes, accessibility labels, and
-Reduce-Motion/Increase-Contrast branches are implemented and have bounded
-automated or visual evidence.
-
-**Next evidence or work**
+## Interface and accessibility acceptance
 
 - Complete researcher visual acceptance for representative populated, empty,
   loading, unavailable, error, conflict, and recovery states at ordinary and
   minimum widths in Light and Dark.
-- Exercise genuine VoiceOver speech, physical Full Keyboard Access, Voice
-  Control, Dictation, installed CJK and RTL input methods, 200% interface text,
-  Increase Contrast, Reduce Transparency, Reduce Motion, inactive windows,
-  localization expansion, and deterministic RTL navigation.
-- Recheck fullscreen, Sidebar/Inspector automatic-collapse recovery, restored
-  scenes, Dock/New Window behavior, final tab replacement, and focus after
-  lifecycle and auxiliary-window operations.
-- Complete direct acceptance for long Connect clusters, Attention zero/one/
-  several states, folder drag in both directions, Folder-to-root movement,
-  Library shortcuts, the collection-first Research Records window at ordinary
-  and minimum width, its 64/36 reading/evidence hierarchy, rounded hover/press
-  feedback, folded technical deletion, and Action/Discussion cancellation and
-  recovery.
-- Complete direct physical-keyboard, pointer, Dark, Increase Contrast, and
-  assistive-technology acceptance for the normalized WebKit document controls,
-  including Callout `:focus-visible`, selection bars, suggestions, footnotes,
-  and link previews. Scripted focus cannot certify the browser's real
-  keyboard-focus heuristic.
+- Exercise genuine VoiceOver, physical Full Keyboard Access, Voice Control,
+  Dictation, installed CJK and RTL input methods, 200% interface text, Increase
+  Contrast, Reduce Transparency, Reduce Motion, inactive windows, localization
+  expansion, and deterministic RTL navigation.
+- Recheck fullscreen, native Sidebar/Inspector collapse and restoration,
+  scenes, Dock/New Window behavior, last-tab closure, auxiliary windows, and
+  focus restoration after lifecycle and recovery operations.
+- Complete direct acceptance for long Connect clusters, Attention queue sizes,
+  folder dragging, Library shortcuts, Research Records at regular/minimum width,
+  and Action/Discussion cancellation and recovery.
 
-Synthetic accessibility trees, screenshots, and isolated QA controls remain
-bounded engineering evidence; they do not close human or assistive-technology
-acceptance.
+## Agent collaboration and research quality
 
-## Agent collaboration and academic workflow
-
-**Current boundary**
-
-Copy-only handoff, one-time Pairing Code delivery, process-bound Sessions,
-authenticated Core Protocol, typed Research Context, Run-owned Bounded Write
-Sets, exact multi-document transactions, one Result, Continue Research,
-portable Records, Researcher Evaluation, and one-target Method improvement are
-reachable through the app and installed CLI.
-
-**Next evidence or work**
-
-- Exercise a version-matched App and CLI installed outside the checkout through
-  the production App Group, including pairing, restart invalidation, exact
-  writes, conflict resolution, Result, Continue Research, Method improvement,
-  End Action, and credential cleanup.
+- Exercise a version-matched installed App and CLI through the production App
+  Group: pairing, restart invalidation, re-pairing, Research Context, bounded
+  writes, conflict/recovery, Result, Continue Research, Method improvement, End,
+  and credential cleanup.
 - Conduct sustained real research use and an independent source-fidelity and
-  philosophical-quality review. Automated contract conformance does not show
-  that bundled Methods are academically adequate.
-- Complete genuine VoiceOver, Full Keyboard Access, 200% mixed-script,
-  localization, and researcher experiential acceptance for handoff, extension,
-  results, evaluation, and recovery.
+  philosophical-quality review of bundled Methods. Contract conformance does
+  not establish academic adequacy.
+- Complete human accessibility and enlarged mixed-script acceptance for
+  handoff, permission, results, evaluation, continuation, and recovery.
 
-## Physical editor input
+## Editor input and semantics
 
-**Current boundary**
+- Recheck physical English, installed Chinese IME, and RTL input across Review,
+  Edit, and Source, including composition, bidi cursor/selection, selection
+  replacement, Undo, autosave, mode switching, window inactivity, conflict, and
+  recovery.
+- Exercise pointer and keyboard behavior for construct-scoped syntax, completed-
+  selection toolbar timing, context menus, Callouts, footnotes, lists, tables,
+  suggestions, previews, and source-return navigation.
+- Measure retained editor memory and visible latency during sustained input and
+  repeated Note/mode switching. Extend shared source-range fixtures before
+  changing parser or syntax rules.
 
-The exact-source buffer applies checked UTF-16 deltas in place; autosave uses a
-single movable deadline; complete source crosses into Document state only at a
-save, conflict, recovery, or reconstruction boundary. Structural and real-
-WKWebView tests cover exact edits and mode convergence.
+## Search and performance
 
-**Next evidence or work**
+- Review the [Search Case Pack](04-verification.md#search-case-pack) with the
+  researcher before deciding whether dynamic Property-key or Note-identity
+  completion is needed. Keep Explain Query compact only if its complete fields
+  remain keyboard and VoiceOver reachable.
+- Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
+  Dictation, visual, and research-use acceptance for Note and Record Search.
+- Approve packaged performance thresholds, freeze the exact source/artifact and
+  fixture, then run the complete warm-up/sample protocol for Search, large
+  Library, cold start, editor latency, and retained memory.
 
-- Recheck physical English, installed Chinese IME, and RTL input in isolated QA.
-- Verify selection replacement, composition ending, Undo, autosave, mode
-  switching, window inactivity, and conflict/recovery without visible latency
-  or source drift.
-- Record retained-memory behavior across sustained input and repeated note/mode
-  switches.
+## Source coordination, recovery, and external locators
 
-## Editor semantics and components
-
-**Current boundary**
-
-Contracts and the locked TypeScript dialect share source-located semantic
-roles; CodeMirror state owns block geometry; Review and Edit share document
-semantics; Source remains exact and projection-free. Automated fixtures cover
-Callouts, tables, footnotes, mathematics, lists, tasks, Wiki/Vector Links,
-selection, suggestions, bidi mapping, and large CJK/CRLF source.
-
-**Next evidence or work**
-
-- Obtain researcher reacceptance of corrected Arabic/Hebrew Review, Edit, and
-  Source behavior.
-- Exercise physical pointer and keyboard behavior for bidi cursor/selection,
-  completed-selection toolbar timing, context menus, construct-scoped syntax,
-  footnote definitions, compact lists, H1 separators, suggestions, and retained
-  mode handoff.
-- Exercise speech, text services, installed CJK/RTL composition and recovery,
-  inactive Edit, and long-session memory behavior.
-- Extend shared source-range fixtures before changing syntax or parser rules.
-
-## Search
-
-**Current boundary**
-
-The shared Search owner supplies typed parsing, Note and Record providers,
-lexical, Property and direct-relation clauses, CJK handling, exact identities,
-rank reasons, This Note occurrences, provider freshness, Saved Search state,
-CLI parity, completion, and a typed explanation response.
-
-**Current implementation**
-
-The window projection retains the Application-provided explanation and the
-Search view renders its provider, authorized scope, typed clauses and relation
-direction, normalization, ordering, and limitations without reparsing visible
-query text. CLI text and JSONL consume the same response fields, and the typed
-contract is covered by focused Contracts, Core, CLI-schema, and frontend
-architecture tests.
-Saved Search execution now consults an explicit compatible-version declaration;
-only the current contract is declared compatible, while unrecognized versions
-remain byte-unchanged, nonexecuting, and require editing.
-
-**Next implementation**
-
-Add dynamic Property-key and Note-identity completion only if representative
-use shows the static capability description is insufficient. Keep Explain
-presentation compact or on-demand only when the complete fields remain
-keyboard and VoiceOver reachable.
-
-**Next evidence**
-
-Review the minimal [Search Case Pack](04-verification.md#search-case-pack)
-with Imna and record a conclusion for dynamic Property-key and Note-identity
-completion. Use the reviewed cases to compare compact or on-demand Explain
-presentation in complete window context. Complete the GUI first-paint
-performance protocol and human pointer, VoiceOver, Voice Control, Dictation,
-CJK IME, visual, ranking, and research-use acceptance. Keep the direct-relation
-XCTest host issue as infrastructure work, not a second product implementation.
-
-## Performance
-
-**Current boundary**
-
-Privacy-safe instrumentation, exact process attribution, deterministic RDF-1,
-incremental source and semantic indexes, bounded selection extraction,
-coalesced bridge reports, and focused Search/editor/sidebar diagnostics exist.
-Current samples are regression diagnostics, not release thresholds.
-
-**Next evidence or work**
-
-- Complete the retained-memory scenario and add user-visible Editor latency
-  actions.
-- Approve thresholds, freeze and identify the exact source/artifact, then run
-  the required warm-up and sample protocol on the release candidate.
-- Repeat Search, large-Library, cold-start, editor, and memory measurements in
-  the packaged build and retain raw outputs outside every research vault.
-
-## Source coordination and recovery
-
-**Current boundary**
-
-Descriptor-relative exact-source operations, coordinated replacement,
-candidate recovery, stable identity, source-ahead publication, checkpoints,
-Before Agent Work versions, and upgrade byte-preservation checks are reachable
-with disposable fixtures.
-
-**Next evidence or work**
-
-- Exercise a real File Provider domain, dataless materialization and eviction,
-  concurrent external edits, provider-side replacement, sync rename, and
-  packaged-process termination.
-- Recheck recovery with genuine Finder metadata, ACL/xattr behavior, conflict
-  focus, selective/full checkpoint restore, retained candidates, and
-  assistive technology.
-- Rerun distinct-build byte-preservation against the exact release candidate;
-  current QA evidence is not private-vault or installed-app evidence.
-
-## Research Guidance and external locators
-
-**Current boundary**
-
-Methods, Practices, academic Profiles, collaboration policy, citation style,
-one previous edit, external file/folder registration, and settled-Note
-retention are reachable and fail closed on invalid configuration.
-
-**Next evidence or work**
-
-- Verify packaged-sandbox reopen after an external Method, Practice, folder, or
-  Analyze source moves, is evicted, loses security scope, or is restored by a
-  cloud provider.
-- Retain process-interruption, late-write, one-previous-edit, locator-corruption,
-  and repair evidence without introducing a legacy reset or compatibility UI.
-- Complete direct acceptance of Zotero attachment selection and built-in versus
-  MCP boundary explanations.
+- Exercise a real File Provider domain, dataless materialization/eviction,
+  provider-side replacement, sync rename, concurrent external edits, and
+  packaged-process interruption.
+- Recheck Finder metadata, ACL/xattr behavior, conflict focus, selective/full
+  checkpoint restore, retained candidates, and recovery with assistive
+  technology.
+- Verify packaged-sandbox reopen after an external Method, Practice, Skill
+  folder, or Analyze source moves, loses scope, is evicted, or is restored.
+- Complete direct acceptance of Zotero attachment selection and the built-in
+  reader versus MCP boundary.
 
 ## Distribution and release
 
-**Current boundary**
-
-Source-first assembly, resource and signature-structure checks, version-matched
-CLI execution, ZIP creation, checksum generation, and the canonical app icon
-are implemented with disposable outputs.
-
-**Next evidence or work**
-
-- Freeze a reviewed exact tag and clean commit; audit source and history for
-  private material; run the complete repository and release gates from that
-  checkout.
+- Freeze a reviewed exact tag and clean commit; audit source/history for private
+  material; run the repository and release gates from that checkout.
 - Exercise the exact expanded artifact in a clean external account through
   setup, read/edit/autosave/restart, Search, conflict/recovery, Inspector,
   Agent Action, CLI, unavailable integrations, and restoration.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Publish source, artifact, checksum, license, architecture, and signing
-  provenance without overstating ad-hoc signing. Developer ID and notarization
-  remain outside the current source-first Beta gate unless the selected
-  distribution channel adopts them.
-- Close G7 packaged sampling, G9 provenance, G10 field trials, and final
-  researcher release acceptance.
+  provenance; close packaged performance, distribution-integrity, Agent field
+  trials, and final researcher release acceptance.

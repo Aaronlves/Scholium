@@ -1,7 +1,6 @@
 # Specification: Foundation and Triptych
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 1–4: terminology, product authority, Triptych structure, and Works organization; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 1–4.
 
 ## 1. Canonical terminology
 

@@ -1,7 +1,6 @@
 # Specification: Connect, Search, and Recovery
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 12–14: Connections, Search, Attention, checkpoints, versions, and recovery; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 12–14.
 
 ## 12. Connect and Connection syntax
 
@@ -81,15 +80,11 @@ Application authorizes the visible scope before routing the parsed query. Scope
 is never changed by query text, and adapters do not strip clauses or implement
 a second parser.
 
-The Note provider uses one deterministic local SQLite FTS5 corpus for the
-active Triptych. **This Vault** is a predicate over that corpus and
-**Triptych** uses it without a vault predicate, so BM25 statistics remain
-comparable across Analyses, Topics, and Works. **This Note** instead searches
-the current editor's exact in-memory revision and returns one row per
-non-overlapping occurrence after the complete query is satisfied; invoking
-Search never saves or indexes that buffer. Vault and Triptych results remain
-one row per active Note. Set Aside and Trash are excluded from the persisted
-corpus but remain searchable while they are the open **This Note**.
+The Note provider has one deterministic active-Triptych corpus. **This Vault**
+restricts that corpus to the selected role; **Triptych** does not. **This Note**
+instead searches the current editor revision and returns each non-overlapping
+occurrence without saving it. Vault and Triptych return one row per active Note.
+Set Aside and Trash are excluded except when one is the open This Note.
 
 The shared finite grammar is space-as-AND, escaped exact phrases, trailing
 prefix `*`, clause exclusion, Note lexical fields `title`, `alias`, `heading`,
@@ -124,20 +119,13 @@ The Note provider adds only these structured clauses:
   uses the ordinary stable identity/title/alias/path rules and reports
   ambiguity rather than guessing. Relation queries do not expand transitively.
 
-Property and relation clauses apply only to the Note provider in **This
-Vault** or **Triptych**. A complete query that includes a relation clause is an
-AND query over the direct-neighbor set and any lexical clauses. If Graph is
-unavailable, stale, or manifest-incompatible, that whole structured query
-fails closed; its lexical clauses are not returned as a broader substitute.
-An ordinary lexical query remains available from its last complete compatible
-Note generation. Relation presence remains only a retrieval reason: it does
-not certify evidence, successful support or opposition, truth, importance, or
-researcher acceptance.
-
-Search has no separately loaded direct-connection region. Researchers query
-direct resolved Connections through the explicit relation clauses above, so
-Graph compatibility, direction, explanation, failure, and App/CLI parity remain
-part of one versioned Search contract rather than a parallel retrieval path.
+Property and relation clauses apply only to the Note provider in **This Vault**
+or **Triptych**. A relation clause is ANDed with any lexical clauses over the
+direct-neighbor set. If the current Graph cannot answer it, the complete query
+fails closed rather than returning a broader lexical substitute. Relation
+presence remains a retrieval reason, never evidence, truth, importance, or
+researcher acceptance. Direct Connections use these clauses rather than a
+second Search region or parser.
 
 The Record provider accepts unfielded lexical clauses plus `note`, `action`,
 `skill`, `participant:researcher|agent`, and
@@ -163,22 +151,18 @@ or statement. A Note hit retains vault-qualified identity, matched field,
 reason, exact source range, and Note fingerprint. Neither provider may present
 itself as the other.
 
-Search indexes only visible semantic text and derived identity/filter fields,
-never raw Markdown source or link destinations. Title, alias, heading, author,
-year, tag, path, canonical `summary`, callout, footnote, and residual body text are
-separate projections; the same heading, callout, or footnote content is not
-also weighted as body. Links contribute displayed text and images contribute
-alt text. Source mappings preserve exact UTF-16 ranges through Unicode
-normalization. Production CJK retrieval uses the same deterministic
-character-and-overlapping-bigram projection at index and query time, followed
-by contiguous-substring verification; Apple language tokenization is not a
-persisted Search contract.
+Search projects visible semantic text and identity/filter fields, never raw
+Markdown source or link destinations. Title, alias, heading, author, year, tag,
+path, `summary`, Callout, footnote, and residual body remain distinguishable;
+links contribute displayed text and images contribute alt text. Source mappings
+retain exact ranges. CJK uses the same deterministic projection and contiguous-
+substring verification at index and query time.
 
-Complete normalized title, alias, filename stem, and relative-path identity
-precede one-corpus BM25, then normalized title, fixed Analyses/Topics/Works
-order, and normalized path break ties. Exact identity candidates come directly
-from ordinary tables and cannot be lost to a lexical candidate cutoff. Public
-results explain matched field and rank reason without exposing raw BM25.
+Complete title, alias, filename, and path identity precede lexical ranking;
+normalized title, fixed Analyses/Topics/Works order, and normalized path break
+ties. Exact identity candidates cannot be lost to a lexical cutoff. Public
+results explain the matched field and rank reason without exposing internal
+scores.
 Ordinary cross-provider Search caps at 100 rows and reports only `N Results` or
 `N+ Results`; it does not perform an expensive exact total count. The dedicated
 Research Records collection is a bounded exception within the same parser and
@@ -188,15 +172,12 @@ ordering before slicing. Reading Leads applies the same 100-row presentation
 slices to its already-complete derived occurrence set. Neither collection
 creates a second query language, parser, or retrieval owner.
 
-Each response binds a versioned query contract, Triptych generation, sorted
-source-manifest hash, provider-specific source fingerprints, and freshness.
-Note and Record generations remain distinct and never mix in one response. A
-stale result must refresh rather than navigate. Building, refreshing, stale,
-failed, provider-mismatch, ambiguous, not-applicable, and query-invalid are
-distinct states; cancellation is not a failure. A failed routine refresh may
-serve only its last complete compatible generation. One generation publishes
-atomically or not at all, and no disposable index stores writable research
-authority.
+Each response binds the query contract, authorized scope, provider-specific
+source identity, and freshness. Note and Record generations never mix. A stale
+result refreshes rather than navigating. Building, refreshing, stale, failed,
+provider-mismatch, ambiguous, not-applicable, query-invalid, and cancellation
+remain distinct. A failed refresh may retain only its last complete compatible
+generation; no disposable index stores writable research authority.
 
 The parser exposes one typed capability description shared by field
 completion, **Explain Query**, and CLI help. Baseline completion exposes only
@@ -255,29 +236,12 @@ automatic relation extraction, multi-hop expansion, context assembly, and
 chat-style Search remain deferred. **Vector-Link** means only the explicit
 researcher-visible relation markers in §12.
 
-Research Context is one versioned, read-only Application capability over this
-same Search owner, exact Note/section reading, explicit direct Relations,
-canonical Properties, Research Records, and narrow researcher-state views
-defined in Section 8. It authorizes Run and Triptych scope before provider
-execution and returns only closed Source Reference Envelopes with owner,
-identity, actor or unknown, role, exact revision, locator, authorized scope,
-currentness, evidential layer, retrieval reason, and material limitation.
-Current, Partial, Stale, Unavailable, and Invalid Query remain distinct.
-The versioned Research Context response carries each Note result's typed
-Foundation match reasons as well: a direct relation retains predicate, direction, anchor,
-target, and exact Markdown occurrences, while a Property match retains its
-key/value source ranges. These are Search-owner facts, not Agent-generated
-explanations or a second Graph/Property interpretation.
-
-Research Context creates no second parser, ranker, Property or relation
-resolver, JSON scanner, persistent response, hidden Agent index, Researcher
-State store, confidence score, or writable source. Record queries call the
-same Application Record provider and preserve Record identity; Notes and
-Records are not co-ranked. A Run may report which verified references actually
-affected its result, but query, candidate, rank, provider ID, response, prompt,
-and interaction telemetry never become a Research Record. A next Run resolves
-and queries current owners again rather than inheriting an old response or
-cache.
+Research Context reuses this Search owner under the scope and provenance rules
+in [§8.2](03-research-actions-and-workflows.md#82-local-pairing-layered-delivery-and-research-context).
+It retains Search's typed Property ranges and direct-relation predicate,
+direction, anchor, target, and Markdown occurrences. It creates no second
+parser, ranker, Property/Relation resolver, persistent response, hidden Agent
+index, confidence score, or writable source.
 
 Attention is one Triptych-owned queue. Presentation may open the complete
 Triptych queue or add an exact current-Note subset; those views create no
@@ -335,30 +299,15 @@ available for inspection and copying. If the candidate is already canonical,
 Recovery verifies that fact and removes only the completed machine-local
 record.
 
-The completed source may still have a cleanup-only staging task when the swap
-and readback succeeded but removal of the displaced preimage was unavailable.
-That condition remains a committed save with a visible cleanup warning, not a
-retryable source failure. On vault reopen, Scholium retries only after the
-candidate is still canonical and the recorded staging name resolves to the
-same regular-file device/inode and exact bytes. Cleanup first isolates that
-exact entry inside a restricted same-parent directory and never deletes the
-original spelling after isolation. An absent staging and isolated entry marks
-the task complete; a substituted, changed, unsafe, or inaccessible path is
-retained with a health diagnostic rather than treated as the recorded
-preimage.
-If a pre-swap authorization or atomic replacement fails, the same durable task
-authorizes cleanup of only the unchanged staged candidate and remains available
-for recovery when that cleanup cannot complete. A staging name that reappears
-after isolation is likewise retained with the cleanup task and a health
-diagnostic.
+If source replacement and readback succeed but cleanup of the displaced exact
+copy does not, the save remains committed and shows a cleanup warning rather
+than inviting another write. Reopen retries only the recorded unchanged copy;
+a missing, substituted, changed, unsafe, or inaccessible candidate remains a
+diagnostic and is never deleted by guesswork. Pre-commit cleanup follows the
+same exact task boundary.
 
-Settle may pin an exact entry as a researcher-selected settled
-version without turning it into a truth claim. Temporary write recovery and
-settled-version retention remain separate references over verified immutable
-bytes. Invalid recovery metadata must not cause unrelated recoverable bytes to
-be deleted or silently attributed to a note. Durable settled-pin
-manifests, not the derived SQLite row, own pin identity and ordering; a missing
-or field-mismatched row is rebuilt only from a fully validated manifest. Pin
-order allocation is coordinated across local processes. If a validated
-manifest cannot be projected unambiguously, its exact bytes remain protected
-and automatic cleanup stops until the recovery authority is repaired.
+Settle may pin one exact researcher-selected revision without turning it into a
+truth claim. Temporary write recovery and settled retention remain separate.
+Invalid or ambiguous recovery metadata protects the associated exact bytes and
+stops automatic cleanup rather than deleting or reattributing them. Storage and
+projection mechanics belong to [Source Storage and Read Models](../Architecture/05-source-storage-and-read-models.md).

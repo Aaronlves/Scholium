@@ -1,7 +1,7 @@
 # Architecture: Documents and Editor
 
-Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
-This chapter owns document sessions, CodeMirror/WebKit, rendering, exact source, and editor performance; sibling chapters do not restate it.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Document sessions,
+CodeMirror/WebKit, exact source, rendering, and editor performance.
 
 ## Documents and CodeMirror
 
@@ -211,21 +211,6 @@ or lock text; Edit and Source continue to route pointer, keyboard, selection,
 composition, insertion, deletion, and Undo through the same CodeMirror state.
 Raw HTML remains escaped or an
 inert literal projection and cannot become a parallel rendering authority.
-
-Review/Edit presentation comparison is a test-owned projection over the same
-tracked three-mode fixture, not a second renderer or source authority. Each
-catalog probe names its expected `MarkdownSemanticDocument` role; the harness
-resolves the visible Review and inactive-Edit elements back to that exact UTF-16
-semantic source span before measuring them. A fixed 900-point workspace and a
-tall test viewport materialize the complete catalog despite CodeMirror's normal
-viewport virtualization. The report records computed presentation properties,
-line rectangles, block bounds, total content height, and the independent visual
-block order of each surface. Inter-block gaps are compared only when both
-surfaces identify the same visual predecessor, so mode-specific exact-source
-objects cannot create a false source-order delta. The
-generated baseline remains ignored evidence under `.build/`; the fixture and
-measurement contract are tracked, while production code cannot read or depend
-on either.
 
 The bridge type itself is editor-only: `MarkdownEditorMode` contains Edit and
 Source, while the researcher-facing `NotePresentationMode` additionally owns
@@ -728,15 +713,8 @@ generation, request, and target identity; stale or ambiguous responses are
 discarded. A Review footnote preview contains one referenced definition, never
 the whole footnote section.
 
-The boundary requires pure TypeScript coverage for protocol validation, exact
-transformations, projection, clipboard conversion, composition, and
-accessibility structure; Swift coverage for Contracts parity, protocol
-encoding, controller convergence, and a real WKWebView lifecycle; and isolated
-QA coverage for native commands, commit-before-navigation, recovery, conflict,
-and exact-buffer preservation. Real assistive technologies, text services, and
-installed IMEs remain manual acceptance where synthetic events cannot prove
-operating-system behavior. Current evidence belongs only in
-[IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md).
+Boundary verification and remaining human acceptance belong to
+[Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 The editor does not introduce Milkdown, ProseMirror, a hidden rich-text model,
 HTML-to-Markdown persistence, normalization or repair, a permanent formatting

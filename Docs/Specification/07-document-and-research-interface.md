@@ -1,9 +1,7 @@
 # Specification: Document and Research Interface
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 18.4–18.7: Document modes, research interface,
-Document-owned state and action meanings, and terminology; shared
-cross-functional state language belongs to [Scholium Design](../../Design.md#199-cross-functional-state-language).
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 18.4–18.7. Shared
+state presentation belongs to [Scholium Design](../../Design.md#199-cross-functional-state-language).
 
 ## 18.4 Document modes, context, and Properties
 
@@ -35,7 +33,7 @@ erasing the current visible selection.
 When the selected note's exact Markdown source is zero bytes, Review presents
 one centered read-only group: decorative document symbol, **Empty Note**, and
 **This note has no content.** This is a completed source state, not Loading,
-and it starts no empty WebKit render. Whitespace, an unavailable File Provider
+and it starts no empty renderer. Whitespace, an unavailable File Provider
 source, an unresolved read, and a rendering failure are not empty notes and
 retain their distinct states.
 
@@ -66,7 +64,7 @@ syntax examples, and no submenu nests beyond the single Lists level.
 
 Edit's Wikilink and slash-command suggestions use one caret-anchored bounded
 panel rather than a window, sheet, toolbar, or second text field. It follows the
-CodeMirror caret as the document scrolls and flips above only when space below
+editor caret as the document scrolls and flips above only when space below
 is insufficient. The neutral boundary, opaque Document-adjacent surface,
 **bounded panel** Elevation role, 12 CSS px interface labels, direct 14 CSS px
 monochrome SF Symbols, 28 CSS px minimum rows, and Accent-free resting boundary
@@ -99,12 +97,12 @@ character and directionally isolates the block from adjacent content. Edit
 applies the same automatic direction to semantic lines and projected fragment
 components; Source applies automatic direction independently to each visible
 exact source line. Code, mathematics, and inert raw-HTML source remain
-left-to-right isolated technical regions. CodeMirror's visual cursor and
+left-to-right isolated technical regions. The editor's visual cursor and
 selection model must consume the same per-line direction and syntactic bidi
 isolates that produce the visible order. Automatic direction never replaces,
 locks, or reconstructs text: pointer, keyboard, selection, deletion, insertion,
 Undo, and installed input methods edit RTL content through the same exact
-CodeMirror source in Edit and Source. Interface language never forces the
+source in Edit and Source. Interface language never forces the
 direction of document prose, all Scholium-owned spacing and boundaries use
 logical start/end edges, and user-authored raw HTML remains inert rather than
 becoming an alternate direction-control or rendering path.
@@ -173,10 +171,10 @@ quiet, and `zotero_item_key` and Analysis title are never selectable there.
 Apparatus contains Research Inspector only; active Discussion, Research Records,
 and checkpoint recovery keep distinct ownership. Active Discussion opens as an
 Action sheet. Research Records is an independent, nonrestored native auxiliary
-window keyed to one Triptych. It reads that Triptych directly instead of
-following focused `WindowModel`, defaults to **760 × 680pt**, and is resizable
-down to **700 × 520pt**. It has no Workspace Sidebar control or alternate
-primary-interface mode and never appears inside Inspector.
+window keyed to one Triptych. It reads that Triptych rather than following
+unrelated window focus, defaults to **760 × 680pt**, and is resizable down to
+**700 × 520pt**. It has no Workspace Sidebar control or alternate primary-
+interface mode and never appears inside Inspector.
 
 The ordinary entry is a full-window collection on one continuous semantic
 Document surface. The native toolbar owns the restrained **Records / Reading
@@ -192,14 +190,10 @@ every custom target retains the minimum accessible hit region. The titlebar,
 toolbar, collection header, and content resolve the same Document background
 and use adaptive 1pt rules rather than contrasting bars, materials, or shadows.
 Native traffic lights, dragging, resizing, full screen, key-window appearance,
-and the window menu remain system-owned. The collection and Reading Lead routes
-do not use a full-size content view: AppKit's `contentLayoutRect` ends scrolling
-content below the titlebar while the hidden toolbar background lets the
-window's Document color remain continuous without Liquid Glass or a masking
-overlay. Record detail alone uses a full-height native split so the reading and
-evidence plane backgrounds, tracking separator, and semantic depth continue
-behind the toolbar; each hosted scroll view remains constrained to AppKit's
-safe area and cannot pass through the titlebar.
+and the window menu remain system-owned. Collection and Reading Lead content
+stay below system chrome while Record detail's reading/evidence boundary remains
+visually continuous through the toolbar band. No scroll owner may pass through
+the titlebar.
 
 Records form one flat rule-separated ledger, not cards or date groups. One
 compact 48pt Triptych row owns an unlabeled 28pt Attention gutter, a two-line

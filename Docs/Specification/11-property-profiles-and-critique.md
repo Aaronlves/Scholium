@@ -1,7 +1,6 @@
 # Specification: Property Profiles and Critique
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Appendices A–B: default property profiles and bundled Critique requirements; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Appendices A–B.
 
 ## Appendix A. Default property profiles
 

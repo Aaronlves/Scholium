@@ -1,7 +1,6 @@
 # Specification: Research Actions and Workflows
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 8–11: Actions and the Analysis, Topic, and Work workflows; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 8–11.
 
 ## 8. Research Actions, Skills, and direct agent work
 
@@ -129,15 +128,9 @@ handoff contains no research text, complete method, local path, internal
 fingerprint, permission payload, result schema, Session secret, or reusable
 bearer authority.
 
-Pairing exchanges the one-time code for a hidden **Connection Session**. The
-Pairing Code and Session secret are independently generated from an Apple
-Security cryptographic random source whose success is checked. A code is
-single-use and invalid attempts are bounded. The server stores only the digest
-and binding needed to validate a Session. Raw codes and credentials are not
-general Codable or printable domain values; the typed handoff presentation
-explicitly unwraps the one-use code for researcher-directed copy, while the
-protected bridge and CLI credential store use private wire/storage adapters.
-The Pairing Code
+Pairing exchanges the one-time code for a hidden **Connection Session**. Codes
+and Session credentials are independently generated, bounded, nonpredictable,
+and never stored in recoverable plain text. The Pairing Code
 may enter only the researcher-selected Agent conversation and pairing standard
 input. It never enters the research vault, command argument, URL, file,
 ordinary output, log, later prompt, Result, or Record. The reusable Session
@@ -154,15 +147,13 @@ invalidates every old Session. Re-pairing an unfinished Run changes connection
 authority only; it does not rebuild the Run or discard confirmed writes,
 Records, conflicts, or recovery duties. Keychain does not restore Sessions.
 
-The supported packaged App and signed CLI communicate through the existing
-per-user Unix domain socket located with minimal rendezvous state in one App
-Group container. The App Group owns no Triptych, Run, Session semantics,
-research content, Record, checkpoint, or recovery bytes. Existing same-user,
-owner/mode, bounded-frame, timeout, contract-version, and schema checks remain
-mandatory. Beta adds no XPC service, LaunchAgent, helper application,
-Network.framework listener, relay, or public network endpoint. Direct pairing
-is promised only for an Agent environment that can reach the local CLI/bridge;
-manual copy collaboration with a cloud Agent is not described as a Session.
+The supported packaged App and version-matched CLI communicate through one
+per-user local bridge with same-user containment, bounded messages, timeouts,
+and contract-version checks. It owns no Triptych, Run, Session semantics,
+research content, Record, checkpoint, or recovery bytes and exposes no relay or
+public network endpoint. Direct pairing is promised only where the Agent can
+reach that local CLI/bridge; manual cloud-Agent copy is not a Session. Transport
+mechanics belong to [Research Actions and Execution](../Architecture/02-research-actions-and-execution.md#pairing-and-delivery).
 
 Delivery is progressive:
 
@@ -409,138 +400,12 @@ bookmarks, absolute paths, method/folder snapshots, prompts, token counts,
 transport logs, window state, and diff hunks. Markdown remains authoritative
 research content; Records never reconstruct writable source.
 
-**Research Records** remains one nonmodal, resizable auxiliary window per
-Triptych. It defaults to **760 x 680pt**, has a **700 x 520pt** minimum, and does
-not restore. Ordinary opening presents a full-window **Records / Reading
-Leads** collection; the native toolbar owns its shallow-surface View index with
-equal destinations and no underline or filled segmented band, while one adaptive
-content header owns search and the borderless Scope and filter menus. The
-toolbar index is the visible collection identity; it never appends a result or
-unprocessed count. At wide widths the content header is one scanning row and
-the search field receives available width; only the
-compact layout stacks it. The document toolbar opens **This Note Records** and
-the Research menu opens **Triptych Records**. Scope, View, search, and filters
-remain window-local and never follow unrelated focus. Selecting one collection
-row replaces the collection with that one Record or Reading Lead. The native
-toolbar then owns Back, the restrained route title, and route-level controls;
-Back returns to the retained collection state instead of reconstructing its
-controls.
-
-Record collection is one flat, rule-separated editorial ledger rather than a
-stack of cards or date groups. Every compact 48pt Triptych row aligns an
-unlabelled 28pt **Attention** gutter, one two-line **Record** cell, **Action**,
-and **Date** on one continuous destination. Record is the frozen one-line Record
-Title in 12pt regular Serif; its second line is the focal Note title in 10pt
-muted Sans. This Note omits that redundant second line and vertically centers
-the Record Title. Method, source, and complete results remain in detail.
-Completed is implicit. Attention, Action, and Date align to the complete
-two-line Record cell rather than its first line.
-Attention stays empty normally and uses one icon-only exception mark for
-Blocked or limited, unavailable, or missing Analyze Reliability/Coverage; Help
-and accessibility preserve exact values. Action is a centered, text-only,
-neutral capsule, carries no category color or symbol, and is not a separate
-control. Date is the locale-formatted finished date rather than a grouping
-projection. Records default to `finishedAt` descending with stable Record
-identity as the tie-breaker; Record, Action, and Date headers provide
-provider-owned sorting before pagination. The collection shows no visible page
-title, explanatory subtitle, Pin, Research Result synopsis, source line, or
-note count.
-The complete row is the detail destination and uses no redundant trailing
-navigation glyph. Reading Leads use the same compact row, column-header, separator, and
-interaction grammar. Their visible header begins with Title: the leading 32pt
-checkbox track retains the accessible Handled label and sits 8pt from Title,
-followed by Author(s), Year, and Publication. Every row cell uses regular 12pt
-type: academic values use Serif, unavailable-field interface state uses Sans,
-and capsules use 10pt Sans. The checkbox remains independently operable; the
-other four columns form one detail destination and use no trailing navigation
-glyph. Unavailable bibliographic fields state **Not recorded**. Recommendation
-reason, uncertainty, discovery locators, researcher note, and parent context
-appear only after opening the occurrence, never as collection synopsis.
-
-Both collections page in exact 100-row provider-owned slices. Their first
-content-column header presents the exact filtered total as a 10pt muted tabular
-count beside **Record** or **Title**, without parentheses or “results”. Reaching
-the current slice requests the next slice while preserving search, Scope,
-filter, and sort state. A later-page failure retains every loaded row and offers
-Retry at the collection boundary; it never converts the exact total into the
-loaded-row count.
-
-One Record detail uses a dominant scrolling reading plane and one narrower
-**Evidence & Judgment** rail separated by a 1pt adaptive rule. Both remain on
-the same semantic Document surface; color, material, card elevation, or a
-second background does not establish the boundary. The working width is
-approximately **64/36**, constrained so additional width accrues to reading
-first and both panes remain usable at the window minimum. Evidence is expanded
-by default. One native trailing-toolbar control hides or shows the complete
-rail; while hidden the reading plane receives the available width, and showing
-it restores the same Record route without changing content, selection, or
-scholarly state.
-
-The detail header states Action, finished time, and scholarly title once, then
-only nonduplicative role, Method, or source context. Ordinary completion is not
-repeated there; a blocked result remains explicit. **Research Result** remains
-present when its Result Contract has no academic fields and states that exact
-condition. Every reading-plane section uses the same heading grammar.
-Each attributed statement presents its authorship once and does not repeat
-generic labels such as Agent Feedback or Researcher Response.
-
-Participants and verified Context Used are bounded academic previews rather
-than exhaustive ledgers in the rail. Each shows at most three rows; the focal
-Note, then other current or safely actionable Notes, precede deleted or
-unresolved provenance. When more exist, the section title exposes the exact
-total and a right chevron, then opens one native transient popover containing
-the complete set. Effects remains complete in the rail.
-The saved Researcher Evaluation summary also remains readable there, while its
-right-chevron section title opens one native editing sheet with explicit draft
-protection.
-
-One Reading Lead detail is a single centered reading flow, not a split Record
-workspace. Its header places one independently operable disposition button
-beside the scholarly title. Unprocessed presents the accented verb action
-**Mark as handled** with a clock; the immediate optimistic state becomes a
-neutral bordered **Handled** button with a checkmark and remains reversible.
-Its accessible action label, current value, Help, and hint preserve that
-Handled means processed only, never read, accepted, cited, verified, or
-endorsed. The selectable exact full citation follows in muted 12pt Scholarly
-body above the Bibliography/Discovery band. Bibliography keeps authors, year,
-publication, DOI, and Zotero item key together. At regular reading widths Bibliography and Discovery
-Locators form one information band, with the wider Bibliography group on the
-left and the bounded locator group on the right; genuinely narrow widths stack
-the same complete groups without reordering them. Recommendation reason,
-uncertainty, researcher note, source and parent destinations, then closed
-technical identity follow. Dense Bibliography, Record identity, and Technical
-Details fields reuse the Inspector About label/value grid; scholarly values use
-12pt Serif, exact citation coordinates and identifiers use 12pt exact type,
-and labels and Note names remain Sans. Missing bibliographic or discovery facts
-remain explicit rather than disappearing.
-
-Global Search may open a This Vault Record directly in the exact Record detail
-under Triptych scope and locate the matched statement. Record query semantics
-remain the shared Application Search capability, never a window-owned parser
-or flattened store.
-
-One Record row represents one finished Discussion or Action. Records preserve
-attributed prose and collapse machine detail. Routine Record detail exposes no
-revision-comparison command; starting and ending fingerprints remain exact and
-selectable in its closed Technical Details group. Conflict and recovery
-comparison remain owned by their source-authority workflows. Confirmed
-permanent deletion is the single `trash` icon in the Record detail header; it
-is never a collection-row action or part of Technical Details. It
-requires the named confirmation and removes that Record, its Evaluation, and
-its projections without editing Markdown or unrelated recovery. A durable
-minimal deletion tombstone prevents retry from recreating it. There is no
-Record Trash or Restore.
-
-Literature Recommendations remain Analyze output owned only by the parent
-Record. One occurrence has Unprocessed/Handled plus optional researcher note;
-Handled means only processed as a reading lead. Exact nonconflicting DOI or
-Zotero identity may group presentation but creates no shared disposition or
-second store. Optional authors, year, and publication metadata support academic
-scanning without parsing or reconstructing the exact raw citation. Writes reread
-and replace only the chosen occurrence under the
-Record lock, commit atomically, and read back. Record deletion removes its
-occurrences. **Reading Leads** is only the collection label for those
-occurrences; it creates no second durable kind or source relation.
+Research Records presentation, collection behavior, Reading Leads, evidence,
+evaluation, and deletion are owned by [§18.5](07-document-and-research-interface.md#185-contextual-research-and-actions).
+Those routes never change the portable ownership above. Analyze-only Literature
+Recommendations remain occurrences inside their parent Record under
+[§15.3](05-integrations-onboarding-and-boundaries.md#153-literature-recommendations-and-the-zotero-boundary);
+**Reading Leads** is only their collection projection, not another durable kind.
 
 ### 8.5 Attribution, continuity, method improvement, and failure
 

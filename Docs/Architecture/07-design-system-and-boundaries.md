@@ -1,7 +1,7 @@
 # Architecture: Design System and Boundary Enforcement
 
-Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
-This chapter owns design-system implementation, component boundaries, and executable enforcement; sibling chapters do not restate it.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Design-system
+implementation, component boundaries, and executable enforcement.
 
 ## Design-system implementation
 

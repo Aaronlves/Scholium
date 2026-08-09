@@ -1,7 +1,6 @@
 # Specification: Interface Shell and Library
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 18.1–18.3: global interface principles, workspace shell, Library, and Search; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 18.1–18.3.
 
 ## 18. Canonical interface contract
 

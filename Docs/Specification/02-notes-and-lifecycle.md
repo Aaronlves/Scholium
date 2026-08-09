@@ -1,7 +1,6 @@
 # Specification: Notes and Lifecycle
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 5–7: note behavior, lifecycle locations, settlement, annotation, and Discussion; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 5–7.
 
 ## 5. Common note capabilities
 
@@ -48,7 +47,7 @@ current font and is a character-width unit, not an exact characters-per-line
 promise.
 
 Edit activation remains construct-scoped. A plain pointer click on projected
-inline syntax or projected block content places one collapsed CodeMirror caret
+inline syntax or projected block content places one collapsed editor caret
 at its mapped source position during pointer-down; it never first paints a
 caret at the projected range boundary or constructs a text range as a side
 effect of revealing syntax. Pointer-drag selection updates the authoritative
@@ -88,7 +87,7 @@ offers only Date, Inline Math, and Footnote. Date inserts the local calendar dat
 as `YYYY-MM-DD`; Callout continues into the canonical role chooser. These lists
 never run during marked-text composition or inside frontmatter, code, raw HTML,
 comments, mathematics, or another protected construct. Source owns neither
-input list. Each accepted suggestion is one CodeMirror transaction and one
+input list. Each accepted suggestion is one editor transaction and one
 Undo event; it never creates another buffer, selection, focus owner, or
 writable projection.
 
@@ -115,7 +114,7 @@ continues its current indentation, list kind, task form, and ordered-list
 sequence inside the Callout. Return on an empty quoted list item removes only
 its list prefix and leaves the empty quoted line; Return on that line containing
 only `>` plus optional spacing then removes the quote prefix and exits the
-Callout. Each operation is one CodeMirror transaction and one Undo event.
+Callout. Each operation is one editor transaction and one Undo event.
 Source remains ordinary exact text and applies neither continuation rule nor
 Edit projection.
 
@@ -437,10 +436,6 @@ an agent response or Fidelity warning. Repeating Settle for the current
 fingerprint may update the rationale, date, or researcher judgment and may
 backfill a missing machine-local pin; it does not create a second pin for
 identical bytes.
-If portable-state replacement fails, Scholium may remove a newly created pin
-only when the storage boundary proves failure occurred before rename. Any
-post-rename or commit-uncertain outcome retains the pin even if a later concurrent
-Settle has already replaced the portable current state.
 Save failure, dirty conflict, unknown stable identity, or a revision mismatch
 blocks Settle. A later saved fingerprint keeps the prior statement, offers
 **Settle Again**, and may produce **Changed Since Settled** in Attention. Settle
@@ -448,14 +443,12 @@ is neither a Research Record list row nor an activity-history node. Repeating
 Settle for the same fingerprint updates the portable judgment without creating
 another recovery version. Settled versions are separate from temporary Action
 recovery and are retained per stable Note identity according to the
-machine-local Triptych policy: latest 10, 30, 50, or no automatic deletion.
-Latest is determined by a durable per-Note monotonic Settle order rather than
-the adjustable wall clock; the default is 30. Lowering a limit requires a
-preview and explicit confirmation
-before the enumerated older versions are removed. Once confirmed, those exact
-snapshot identities remain in a machine-local pending journal until idempotent
-removal finishes; a later Settle version never joins that approved removal set.
-Restore does not Settle the restored revision.
+machine-local Triptych policy: latest 10, 30, 50, or no automatic deletion; the
+default is 30. Lowering a limit requires a preview and explicit confirmation of
+the exact older versions to remove. Commit uncertainty keeps recovery bytes
+rather than deleting them. Restore does not Settle the restored revision;
+storage and pruning mechanics belong to
+[Source Storage and Read Models](../Architecture/05-source-storage-and-read-models.md).
 
 ### 7.2 Discussion, Comment, and written annotation
 
@@ -466,7 +459,7 @@ for that exact selection. A pointer-created Comment or formatting bar remains
 hidden throughout selection and appears only after the primary-button gesture
 finishes; a completed keyboard selection may reveal it immediately. The Format
 menu and keyboard retain equivalent formatting routes. The editor's
-secondary-click menu consumes that same finalized CodeMirror selection and
+secondary-click menu consumes that same finalized editor selection and
 starts with **Cut**, **Copy**, **Paste**, and **Select All**; it then adds only
 operations whose meaning depends on one collapsed clicked construct. It does
 not duplicate common formatting, inherit generic Autofill or Services

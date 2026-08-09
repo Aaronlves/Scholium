@@ -1,7 +1,7 @@
 # Architecture: Source Layout and Presentation
 
-Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
-This chapter owns source layout, native presentation, interface ownership, and localization; sibling chapters do not restate it.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Source layout,
+native presentation, interface composition, and localization.
 
 ## Source layout
 
@@ -106,9 +106,8 @@ fixed footer; narrow windows move the field above the task. Triptych folder
 selection and bounded authorization remain the registration owner's native
 controls behind the approved prototype's path cards and review pages. An
 Application-owned structure preparer exclusively creates a confirmed new root
-and its four fixed children; it refuses an existing destination. The old
-progress header, centered-symbol pages, and illustration tuner are absent. The
-setup view presents Agent while Application registration continues, returns a
+and its four fixed children; it refuses an existing destination. The setup view
+presents Agent while Application registration continues, returns a
 registration failure to the retained Triptych review, and keeps workspace
 routing closed until both registration and Agent confirmation or deferral are
 complete. Ready explicitly opens the configured workspace.
@@ -254,8 +253,7 @@ defaulting each new presentation to Outgoing. Its native segmented `Picker`
 projects the same immutable direct graph into Incoming or Outgoing rows;
 Neutral and Incompatible edges enter both projections with their original
 source occurrence. Relationship subheadings and Note rows use system Sans,
-existing secondary and muted text roles, and one flat scan hierarchy rather
-than the retired glyph-only geometry rail. Direction changes retain major-group
+existing secondary and muted text roles, and one flat scan hierarchy. Direction changes retain major-group
 disclosure and return the sole Connect scroll owner to its beginning.
 
 The public Action panel uses one typed `researchAction` sheet route carrying

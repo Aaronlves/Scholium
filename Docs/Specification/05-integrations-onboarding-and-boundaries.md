@@ -1,7 +1,6 @@
 # Specification: Integrations, Onboarding, and Boundaries
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 15–17: Zotero, onboarding, permanent boundaries, and deferred capabilities; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 15–17.
 
 ## 15. Zotero integration
 
@@ -72,9 +71,10 @@ disposition, recommendation ID, index, or product read path. The portable
 recommendation therefore does not copy a second source status, target match,
 verification score, refresh lifecycle, or category taxonomy. Researcher
 handling state belongs to that one occurrence and has only Unprocessed or
-Handled plus an optional note, as defined in §8.2.
+Handled plus an optional note, presented under
+[§18.5](07-document-and-research-interface.md#185-contextual-research-and-actions).
 
-The Triptych Recommendations view may group occurrences by an exactly
+The Reading Leads collection may group occurrences by an exactly
 normalized DOI or Zotero item key when no other supplied identifier conflicts.
 It never queries Zotero to infer a match, never writes Zotero, and never treats
 a grouped result as a matched Analysis or evidence. DOI and Zotero identity are

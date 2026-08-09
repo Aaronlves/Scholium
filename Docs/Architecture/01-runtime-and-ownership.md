@@ -1,7 +1,7 @@
 # Architecture: Runtime and Ownership
 
-Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
-This chapter owns runtime composition, module dependencies, state ownership, and window composition; sibling chapters do not restate it.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Runtime,
+dependencies, state ownership, and windows.
 
 ## Architectural stance
 
@@ -538,7 +538,7 @@ defaults each to Review, and carries that selection across Note and tab changes.
 `WindowSessionSnapshot` stores the selected workspace plus three
 `WindowWorkspaceSessionSnapshot` values containing role-partitioned tab order,
 selection, Location, scroll positions, Document mode, and Inspector mode.
-Unsupported former session bytes fail closed rather than entering a compatibility
+Unsupported session bytes fail closed rather than entering a compatibility
 decoder.
 
 Each configured scene constructs one `ScholiumWorkspaceSplitView`: one

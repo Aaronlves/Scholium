@@ -1,19 +1,15 @@
 # Scholium Implementation Status
 
-- **Audited:** 2026-08-09
+- **Audited:** 2026-08-10
 - **Target authority:** [SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md)
 - **Scope:** current reachability, open implementation and acceptance work,
   and dated verification evidence.
 
-This file is the sole entry point and closed manifest for dated implementation
-status. Its chapters cannot redefine the target specification or architecture.
-Completed sequencing, superseded decisions, and per-change transcripts remain
-in Git history rather than as parallel current-state documentation.
-
-This set is a snapshot, not a roadmap archive. A reachable claim describes the
-current build; an open item names work or acceptance still required; a
-verification claim names its date, environment, and boundary. Once a migration
-or decision no longer changes the current state, it is removed from this set.
+This is the sole entry point and closed manifest for the current implementation
+snapshot. Reachable chapters describe the build, Open Work lists only remaining
+work or acceptance, and Verification records the latest dated evidence and its
+boundary. This set does not redefine target or architecture and retains no
+completed sequence or per-change transcript.
 
 ## Status chapters
 

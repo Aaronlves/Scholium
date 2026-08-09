@@ -3,28 +3,14 @@
 - **Status:** Canonical product, interface, and release specification
 - **Applies to:** Scholium for macOS and its agent-facing CLI
 
-This file is the sole entry point and closed manifest for Scholium's target
-authority. The chapters listed below are normative parts of this one
-specification set; a file not listed here cannot define product, interface,
-action-language, Scholarly Editorialism, accessibility, release, or stable
-decision requirements.
-
-[IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md) describes
-structure. [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md), README, live
-construction, tests, and scripts establish reachability and evidence.
-Implementation divergence is tracked outside the specification and never
-defines an alternative target.
-
-In this specification:
-
-- **Target** is required behavior, whether implemented or not.
-- **Reachable** means exposed by the current build, not accepted for release.
-- **Verified** means directly exercised by the stated evidence.
-- **Deferred** is intentionally outside the stated release boundary.
-- **Unresolved** means a decision or acceptance judgment remains open.
-
-Apple HIG and the selected SDK own platform/API behavior; this specification
-owns the Triptych, scholarly semantics, evidence, and research governance.
+This is the sole entry point and closed manifest for target product,
+interface, accessibility, release, and stable-decision authority. Only the
+chapters listed below are normative. Structure belongs to
+[IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md); reachability,
+open work, and evidence belong to
+[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md). Apple HIG and the selected
+SDK own platform behavior; this set owns Scholium's research semantics and
+governance.
 
 ## Set contract
 
@@ -36,15 +22,7 @@ The three document sets have distinct jobs:
 | Implementation Architecture | Current module, runtime, dependency, state-owner, persistence, and delivery structure | Alternative product rules, superseded designs, migration plans, acceptance results, or release claims |
 | Implementation Status | Dated reachability, open work, verification evidence, and acceptance boundaries | New target rules, structural design authority, completed migration narratives, or decision chronology |
 
-Operational guides may explain how to use a current tool, but they are not a
-fourth authority and must route every behavioral claim back to one of these
-sets or to installed command help.
-
-Scholium uses direct agent edits. Unsupported application state fails closed
-and remains unparsed and
-untouched; unsupported data never authorizes behavior. Scholium never deletes
-or normalizes researcher Markdown, custom YAML, or unrecognized Triptych files
-merely because it does not interpret them.
+Operational guides may explain current tools but create no fourth authority.
 
 ## Canonical chapters
 
@@ -72,15 +50,9 @@ copying the same rule into a new summary.
   relevant storage, interface, or accessibility chapter only when affected.
 - A Research Action task starts with Research Actions and Workflows and adds
   the exact role workflow, interface, or release chapter it changes.
-- A Sidebar or file-tree task reads Interface Shell and Library plus
-  Accessibility and Adaptation; add Scholium Design for visual language,
-  component, material, typography, color, motion, or shared state-presentation
-  decisions.
-- A Document/editor task reads Notes and Lifecycle, Document and Research
-  Interface, and Accessibility and Adaptation; add Scholium Design for visual
-  language, component, material, typography, color, motion, or shared
-  state-presentation decisions. Parser or implementation detail remains in
-  Implementation Architecture.
+- Sidebar, file-tree, Document, and editor tasks add the owning interface and
+  Accessibility chapters; visual-language changes also add Scholium Design.
+  Parser and implementation detail stays in Implementation Architecture.
 - Release work reads Release and Open Decisions plus the current verification
   chapter rooted at [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 

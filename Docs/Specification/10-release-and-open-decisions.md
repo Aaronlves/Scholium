@@ -1,22 +1,16 @@
 # Specification: Release and Open Decisions
 
-Part of the canonical document set rooted at [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md).
-This chapter owns Sections 21–22: release requirements, acceptance, and unresolved target decisions; sibling chapters do not restate it.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 21–22.
 
 ## 21. Release requirements and acceptance
 
 ### 21.1 Evidence hierarchy
 
-Evidence order is live source/construction; executable tests; isolated QA on
-disposable fixtures; dated status; this target; then history/memory as context.
-Target prose, previews, and compilation prove no workflow, accessibility,
-package, signing, or performance result.
-
-Search handoffs and acceptance reports navigate the canonical Specification,
-Implementation Architecture, Implementation Status, and verification evidence.
-They do not create a parallel Evidence Pack that copies contract versions,
-test counts, performance measurements, or current gaps; Git and the status set
-remain the respective history and evidence authorities.
+Evidence order is live source and construction, executable tests, isolated QA
+on disposable fixtures, and dated status. Target prose, previews, and
+compilation alone prove no workflow, accessibility, package, signing, or
+performance result. Acceptance reports link to the owning Specification,
+Architecture, Status, and evidence rather than copying them into another pack.
 
 ### 21.2 Primary acceptance journeys
 
@@ -55,7 +49,7 @@ locator, one-use Pairing Code, and Agent-owned CLI steps; pairing-code input
 through stdin; single-use secure pairing; authenticated local Session;
 app-process restart invalidation and same-Run re-pairing; no Pairing Code in an
 argument, URL, vault, file, later prompt, Result, Record, or log; no Session
-secret in any prompt or copied handoff; App Group socket packaging; current-Run
+secret in any prompt or copied handoff; packaged local-bridge integrity; current-Run
 scope; reload; Research Context; explicit End Action; bounded multi-document
 write and recovery; keyboard/VoiceOver; and an unavailable fallback. It does
 not require an embedded or provider-specific Agent runtime.
@@ -117,17 +111,13 @@ Continuous scrolling must add no uninterrupted Editor task longer than one
 display refresh interval, and neither native nor Web UI work may add an
 uninterrupted task over 100 ms.
 
-`Tools/Scripts/generate-rdf1.py` owns the deterministic no-RNG RDF-1 fixture.
-Its verified manifest fixes exactly 800 synthetic Markdown notes, complete
-path/size/SHA-256 inventory and tree hash, role and malformed-frontmatter
-counts, link/folder coverage, one 5,000-word Work, one 100,000-CJK-character
-Work, fixed navigation targets, and fixed English/CJK Search queries with
-expected identities. RDF-1 is disposable test data, never a research source.
-Strict current-schema Research Record provider fixtures remain separate
-generated, disposable test inputs with attributed researcher/agent statements, Note
-participants, actually-used Materials, local-calendar boundaries, and exact
-source fingerprints; they do not alter RDF-1's frozen Note corpus or become a
-second Record authority.
+RDF-1 is the frozen deterministic 800-Note fixture for Library, Search, Review,
+Edit, large CJK source, folders, links, and malformed-frontmatter coverage.
+Research Record provider fixtures remain separate generated inputs with strict
+current-schema attribution, participants, actually-used Materials, calendar
+boundaries, and exact fingerprints. All are disposable test data, never
+research source or product authority. Their generator, manifest, and runner
+ownership belong to [Documents and Editor](../Architecture/06-documents-and-editor.md#documents-and-codemirror).
 
 The gate must use the exact app produced by the release packager from one clean,
 reviewed, exactly tagged commit. App provenance, tag, commit, source-clean

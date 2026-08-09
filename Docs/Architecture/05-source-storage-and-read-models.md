@@ -1,7 +1,7 @@
 # Architecture: Source Storage and Read Models
 
-Part of the canonical document set rooted at [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md).
-This chapter owns descriptor-relative writes, recovery, immutable read models, and metadata; sibling chapters do not restate it.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Source writes,
+recovery, immutable read models, and metadata.
 
 ## Vault write and prewrite-recovery boundary
 
@@ -69,38 +69,23 @@ not provide descriptor-bound unlink; the final checked-name removal is bounded
 by the random restricted directory rather than claimed as protection against
 an adversarial same-UID process racing the last system call.
 
-The public `VaultRepository` constructor always installs no mutation hooks. An
-internal-only constructor supplies deterministic phase hooks to the Core test
-target without changing the production transaction. A registered
-`NSFilePresenter` fixture can therefore replace a disposable source before the
-coordinated writer accessor is granted, proving that Scholium reports conflict,
-preserves provider bytes, and retains both expected and candidate recovery
-material. Swift Testing exit subprocesses send `SIGKILL` at the staged and
-post-swap boundaries, then reopen the same repository and verify the one
-canonical revision, exact prewrite recovery, hidden staging exclusion from the
-Library inventory, pre-swap candidate-journal retention or post-swap journal
-completion, and a subsequent save.
-These are local coordination and real process-interruption proofs; they do not
-claim a configured File Provider domain, dataless-item materialization or
-eviction, sync-server behavior, or packaged-App termination acceptance. The
-retained pre-swap candidate contributes a workspace health issue and a
+The retained pre-swap candidate contributes a workspace health issue and a
 vault-qualified entry in the existing Recovery sheet. Core no-follow reads
 revalidate its manifest plus expected/candidate bytes; read-only source, Copy,
 and Finder reveal grant no write authority. Restore carries the displayed
 vault, path, revisions, creation identity, and retained reason back to Core,
 flushes all Triptych editors, and uses the ordinary revision-checked repository
-save only while canonical source remains at the expected revision. Focused
-fixtures prove this route; direct human recovery and assistive-technology
-acceptance remain open.
+save only while canonical source remains at the expected revision. Current
+evidence and remaining acceptance belong to
+[Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 `PrewriteRecoveryLedger` is Core-only machine state under
 `Vaults/<vault-id>/recovery-v2/`. Immutable fingerprinted objects are indexed by
 SQLite WAL with full synchronization, bounded to ten entries per path, and
 protected by remap journals and permanent-delete tombstones. A damaged database
-is quarantined and rebuilt from verified objects. Legacy `versions/` bytes stay
-unchanged during all-or-nothing v1 migration and become read-only after the
-completion marker. It exposes no general delivery-facing versions or history
-API. Its one bounded `InterruptedSaveRecovery` projection includes only exact
+is quarantined and rebuilt from verified objects. Unsupported version bytes
+remain unchanged and nonauthorizing. It exposes no general delivery-facing
+versions or history API. Its one bounded `InterruptedSaveRecovery` projection includes only exact
 startup-retained candidates and remains distinct from Checkpoints and settled
 versions. `DocumentOperations` vault-qualifies listing, read-only content,
 Finder location, and restore; `ResearchController` owns that listing beside the

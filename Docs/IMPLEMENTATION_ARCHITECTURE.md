@@ -3,21 +3,13 @@
 - **Scope:** module, runtime, state-ownership, and delivery boundaries
 - **Target authority:** [SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md)
 
-This file is the sole entry point and closed manifest for Scholium's
-subordinate implementation architecture. The chapters listed below describe
-how current code is divided and how mutable state flows through it. They do not
-redefine product workflows, interface labels, visual decisions, vault formats,
-or research-governance rules.
-
-Architecture records the current structural model only. It may name modules,
-types, stores, actors, dependencies, and runtime transactions when those names
-clarify ownership. It does not retain superseded alternatives, completed
-migration plans, decision chronology, test counts, timings, acceptance
-results, or release evidence. Git owns structural history.
-
-[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) owns dated conformance and
-verification evidence; the package graph, live code, tests, and scripts remain
-the final implementation evidence.
+This is the sole entry point and closed manifest for current module, runtime,
+dependency, state-owner, persistence, and delivery structure. Architecture may
+name concrete implementation owners when that clarifies responsibility, but it
+does not redefine product behavior or retain alternatives, migration narrative,
+test results, or release evidence. Target authority is
+[SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md); dated conformance belongs to
+[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 ## Architecture chapters
 
