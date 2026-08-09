@@ -222,6 +222,185 @@ struct ResearchContinuationOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Researcher State is re-queried in the child Run and never inherited as an old envelope")
+    func researcherStateRequiresChildRequery() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parent = try await finalizedResearcherStateParent(
+            handle: handle,
+            fixture: fixture
+        )
+
+        let target = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        _ = try await handle.research.settle(
+            target.note,
+            expectedRevision: target.fingerprint,
+            rationale: "A later researcher judgment replaced the parent Run state."
+        )
+        let staleParentState = try SourceReferenceEnvelope(
+            id: parent.researcherStateReference.id,
+            sourceKind: parent.researcherStateReference.sourceKind,
+            owner: parent.researcherStateReference.owner,
+            actorClass: parent.researcherStateReference.actorClass,
+            objectRole: parent.researcherStateReference.objectRole,
+            vaultRole: parent.researcherStateReference.vaultRole,
+            fingerprint: parent.researcherStateReference.fingerprint,
+            locator: parent.researcherStateReference.locator,
+            authorizedScope: parent.researcherStateReference.authorizedScope,
+            currentness: .stale,
+            evidentialLayer: parent.researcherStateReference.evidentialLayer,
+            retrievalReason: parent.researcherStateReference.retrievalReason,
+            materialLimitations:
+                parent.researcherStateReference.materialLimitations
+        )
+        #expect(staleParentState.currentness == .stale)
+        var policy = try await handle.research.collaborationPolicy()
+        policy = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+
+        let request = try continuationRequest(
+            actionID: .synthesize,
+            role: .topic,
+            path: "Agency.md",
+            purpose: "Continue from the current researcher-owned state, not a copied view.",
+            sourceReferences: [staleParentState]
+        )
+        let result = try await handle.research.continueAgentResearch(
+            credential: parent.credential,
+            run: parent.handoff.run,
+            request: request
+        )
+        #expect(result.state == .created)
+        #expect(result.handoffContext?.requiresResearcherStateRequery == true)
+        #expect(result.handoffContext?.handoff.flatMap(\.sourceReferences).isEmpty
+            == true)
+        #expect(result.handoffContext?.referenceChecks.isEmpty == true)
+        #expect(result.message.contains("inspect_researcher_state"))
+        #expect(throws: ResearchContinuationContractError.self) {
+            _ = try ResearchContinuationHandoffContext(
+                parentRecordID: parent.preparation.runID,
+                initiator: .agent,
+                academicPurpose: request.academicPurpose,
+                handoff: request.handoff,
+                referenceChecks: [],
+                requiresResearcherStateRequery: true
+            )
+        }
+
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        #expect(try decoder.decode(
+            ResearchContinuationResult.self,
+            from: encoder.encode(result)
+        ).handoffContext?.requiresResearcherStateRequery == true)
+        let wire = try LocalAgentBridgeResponse(
+            correlationID: UUID(),
+            continuationResult: result
+        )
+        #expect(try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(wire)
+        ).continuationResult?.handoffContext?.requiresResearcherStateRequery
+            == true)
+
+        let childRun = try #require(result.nextRun)
+        let context = try await handle.research.authenticatedAgentContext(
+            credential: parent.credential,
+            run: childRun
+        )
+        #expect(context.continuationHandoff == result.handoffContext)
+        #expect(try decoder.decode(
+            ResearchAuthenticatedRunContext.self,
+            from: encoder.encode(context)
+        ).continuationHandoff?.requiresResearcherStateRequery == true)
+        #expect(context.continuationHandoff?.handoff.flatMap(\.sourceReferences)
+            .contains(where: { $0.sourceKind == .researcherState }) == false)
+
+        let currentState = try await handle.research.queryAgentResearchContext(
+            credential: parent.credential,
+            run: childRun,
+            request: try ResearchContextRequest(
+                clauses: [try ResearchContextClause(
+                    kind: .inspectResearcherState,
+                    useEligibility: .contextUse
+                )]
+            )
+        )
+        let settlement = try #require(currentState.items.first {
+            $0.sourceReference.owner.stableObjectIdentity.hasPrefix("settlement:")
+        })
+        #expect(settlement.semanticContent?.contains("later researcher judgment")
+            == true)
+        #expect(settlement.sourceReference.authorizedScope.runID
+            != parent.researcherStateReference.authorizedScope.runID)
+        #expect(settlement.sourceReference.owner
+            != parent.researcherStateReference.owner)
+        #expect(settlement.semanticContent?.localizedCaseInsensitiveContains("pin")
+            == false)
+        #expect(settlement.sourceReference.materialLimitations.contains {
+            $0.contains("does not establish truth")
+        })
+
+        let replay = try await handle.research.continueAgentResearch(
+            credential: parent.credential,
+            run: parent.handoff.run,
+            request: request
+        )
+        #expect(replay == result)
+
+        let parentExecution = try await handle.services
+            .localResearchExecutionStore.record(id: parent.preparation.runID)
+        let childID = try #require(parentExecution.continuationRequests.first {
+            $0.request == request
+        }?.childRunID)
+        let localExecutionStore = await handle.services
+            .localResearchExecutionStore
+        let childURL = localExecutionStore.storageURL
+            .appendingPathComponent(
+                childID.uuidString.lowercased() + ".json"
+            )
+        var childObject = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: childURL))
+                as? [String: Any]
+        )
+        var snapshotObject = try #require(
+            childObject["snapshot"] as? [String: Any]
+        )
+        var handoffObject = try #require(
+            snapshotObject["continuationHandoff"] as? [String: Any]
+        )
+        handoffObject["requires_researcher_state_requery"] = false
+        snapshotObject["continuationHandoff"] = handoffObject
+        childObject["snapshot"] = snapshotObject
+        try JSONSerialization.data(
+            withJSONObject: childObject,
+            options: [.sortedKeys]
+        ).write(to: childURL, options: .atomic)
+
+        do {
+            _ = try await handle.research.continueAgentResearch(
+                credential: parent.credential,
+                run: parent.handoff.run,
+                request: request
+            )
+            Issue.record("Expected a tampered child requery flag to fail closed.")
+        } catch let error as ResearchContinuationContractError {
+            #expect(error == .invalidRecord)
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Material handoff rechecks current, changed, missing, and unavailable source-owner states")
     func materialReferenceCurrentness() async throws {
         let fixture = try await ResearchFixture.make()
@@ -300,8 +479,8 @@ struct ResearchContinuationOperationsTests {
         var retiredResult = try #require(
             JSONSerialization.jsonObject(with: resultBytes) as? [String: Any]
         )
-        #expect(retiredResult["schema_version"] as? Int == 2)
-        retiredResult["schema_version"] = 1
+        #expect(retiredResult["schema_version"] as? Int == 3)
+        retiredResult["schema_version"] = 2
         #expect(throws: ResearchContinuationContractError.self) {
             _ = try decoder.decode(
                 ResearchContinuationResult.self,
@@ -318,7 +497,7 @@ struct ResearchContinuationOperationsTests {
         let child = try await handle.services.localResearchExecutionStore.record(
             id: childID
         )
-        #expect(child.schemaVersion == 9)
+        #expect(child.schemaVersion == 10)
         #expect(child.snapshot.continuationHandoff?.referenceChecks.first?.status
             == .unavailable)
 
@@ -334,8 +513,8 @@ struct ResearchContinuationOperationsTests {
         var retiredContext = try #require(
             JSONSerialization.jsonObject(with: contextBytes) as? [String: Any]
         )
-        #expect(retiredContext["schema_version"] as? Int == 4)
-        retiredContext["schema_version"] = 3
+        #expect(retiredContext["schema_version"] as? Int == 5)
+        retiredContext["schema_version"] = 4
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try decoder.decode(
                 ResearchAuthenticatedRunContext.self,
@@ -494,6 +673,78 @@ struct ResearchContinuationOperationsTests {
         )
         #expect(receipt.state == .finalized)
         return (preparation, handoff, credential, materialReference)
+    }
+
+    private func finalizedResearcherStateParent(
+        handle: WorkspaceHandle,
+        fixture: ResearchFixture
+    ) async throws -> (
+        preparation: ResearchActionPreparation,
+        handoff: ResearchAgentHandoff,
+        credential: ResearchConnectionCredential,
+        researcherStateReference: SourceReferenceEnvelope
+    ) {
+        let target = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        _ = try await handle.research.settle(
+            target.note,
+            expectedRevision: target.fingerprint,
+            rationale: "The parent Run saw this earlier researcher judgment."
+        )
+        let helpers = ResearchFunctionOperationsTests()
+        let preparation = try await handle.research.prepareAction(
+            try await helpers.actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: helpers.actionNote(target)
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+        let context = try await handle.research.queryAgentResearchContext(
+            credential: credential,
+            run: handoff.run,
+            request: try ResearchContextRequest(
+                clauses: [try ResearchContextClause(
+                    kind: .inspectResearcherState,
+                    useEligibility: .contextUse
+                )]
+            )
+        )
+        let reference = try #require(context.items.first {
+            $0.sourceReference.owner.stableObjectIdentity.hasPrefix("settlement:")
+        }?.sourceReference)
+        let values = try ResearchAcademicFieldValues(
+            rawValues: [
+                "synthesis-outcome": .freeText(
+                    "The current evidence supports one qualified synthesis."
+                ),
+                "contribution": .multipleChoice(["qualifies"]),
+            ],
+            definitions: preparation.snapshot.resultContract.academicFields
+        )
+        let receipt = try await handle.research.submitAgentResult(
+            credential: credential,
+            run: handoff.run,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: try ResearchRecordTitle("Researcher State continuation fixture"),
+                academicResults: values,
+                contextUseClaims: [try ResearchContextUseClaim(
+                    sourceReference: reference,
+                    testimony: "The earlier exact Settlement constrained the parent synthesis."
+                )]
+            )
+        )
+        #expect(receipt.state == .finalized)
+        return (preparation, handoff, credential, reference)
     }
 
     private func continuationRequest(

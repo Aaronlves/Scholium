@@ -59,6 +59,21 @@ disposable fixtures. It does not prove checkout-external App/CLI installation,
 production App Group behavior, human accessibility, sustained research use, or
 philosophical quality.
 
+The subsequent Researcher State continuation cutover passed 44 focused tests
+across eight owning Contracts, Application, Core-store, bridge, and architecture suites
+with the same toolchain. The tests prove that a parent-Run state reference is
+removed from child handoff items and reference checks, a typed requery
+requirement survives Result, bridge, authenticated Context, and Local Execution
+round trips, and the child query receives its own Run scope and the current
+replacement Settlement. They also retain the source-family continuation and
+Context Use regressions and reject retired outer schemas.
+
+This establishes requery rather than state handoff for the current target-Note
+view. It does not prove that the view is complete, that a researcher judgment
+is correct, or that a future provider retrieves every relevant current owner.
+The Settle recovery pin remains outside this academic view and was not promoted
+into importance, stance, or adoption.
+
 ## Search case pack
 
 These cases are the current researcher-review set for deciding whether static

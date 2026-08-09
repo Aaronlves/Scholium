@@ -1960,7 +1960,7 @@ private struct StrictResearchRecordFingerprint: Decodable {
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 9
+    public static let currentSchemaVersion = 10
 
     public let schemaVersion: Int
     public let triptychID: UUID

@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 6 and Local Execution schema 9")
+@Suite("Portable Research Record storage v1/schema 6 and Local Execution schema 10")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -938,14 +938,14 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Local Execution schema 9 round-trips and rejects retired schema 8")
+    @Test("Local Execution schema 10 round-trips and rejects retired schema 9")
     func localExecutionSchemaCutover() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
         let stored = try await store.create(record)
-        #expect(stored.schemaVersion == 9)
+        #expect(stored.schemaVersion == 10)
 
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
@@ -957,8 +957,8 @@ struct ResearchRecordV1StoresTests {
         var object = try #require(
             JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 9)
-        object["schema_version"] = 8
+        #expect(object["schema_version"] as? Int == 10)
+        object["schema_version"] = 9
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()

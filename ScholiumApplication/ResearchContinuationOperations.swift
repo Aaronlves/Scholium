@@ -178,6 +178,30 @@ extension WorkspaceHandle {
         }) else {
             throw ResearchContinuationContractError.invalidHandoff
         }
+        let researcherStateReferences = continuationReferences.filter {
+            $0.sourceKind == .researcherState
+        }
+        guard researcherStateReferences.allSatisfy(
+            Self.isResearcherStateReferenceForRequery
+        ) else {
+            throw ResearchContinuationContractError.invalidHandoff
+        }
+        let inheritedReferences = continuationReferences.filter {
+            $0.sourceKind != .researcherState
+        }
+        let expectedInheritedReferences = Self.uniqueReferences(
+            inheritedReferences
+        )
+        let inheritedHandoff = try request.handoff.map { item in
+            try ResearchContinuationHandoffItem(
+                content: item.content,
+                epistemicStatus: item.epistemicStatus,
+                nextUse: item.nextUse,
+                sourceReferences: item.sourceReferences.filter {
+                    $0.sourceKind != .researcherState
+                }
+            )
+        }
 
         let requestFingerprint = try request.contentFingerprint()
         let requestID = Self.stableContinuationID(
@@ -297,6 +321,15 @@ extension WorkspaceHandle {
             guard let existingHandoff = existing.snapshot.continuationHandoff else {
                 throw ResearchContinuationContractError.invalidRecord
             }
+            guard existingHandoff.initiator == .agent,
+                  existingHandoff.academicPurpose == request.academicPurpose,
+                  existingHandoff.handoff == inheritedHandoff,
+                  existingHandoff.requiresResearcherStateRequery
+                    == !researcherStateReferences.isEmpty,
+                  existingHandoff.referenceChecks.map(\.sourceReference)
+                    == expectedInheritedReferences else {
+                throw ResearchContinuationContractError.invalidRecord
+            }
             handoffContext = existingHandoff
         } else {
             let target = try continuationTarget(request)
@@ -309,15 +342,17 @@ extension WorkspaceHandle {
                 targetRole: request.targetRole
             )
             let checks = try await continuationReferenceChecks(
-                continuationReferences,
+                inheritedReferences,
                 parentSnapshot: parentExecution.snapshot
             )
             handoffContext = try ResearchContinuationHandoffContext(
                 parentRecordID: authenticated.runID,
                 initiator: .agent,
                 academicPurpose: request.academicPurpose,
-                handoff: request.handoff,
-                referenceChecks: checks
+                handoff: inheritedHandoff,
+                referenceChecks: checks,
+                requiresResearcherStateRequery:
+                    !researcherStateReferences.isEmpty
             )
             let functionTarget = ResearchFunctionTarget(
                 noteID: target.noteID,
@@ -399,7 +434,9 @@ extension WorkspaceHandle {
             state: .created,
             nextRun: locator,
             handoffContext: handoffContext,
-            message: "A new independent Action Run was created with current Method, Profile, permissions, and no inherited Context response or write state."
+            message: handoffContext.requiresResearcherStateRequery
+                ? "A new independent Action Run was created without inherited Researcher State; query inspect_researcher_state in that Run to read current researcher-owned facts."
+                : "A new independent Action Run was created with current Method, Profile, permissions, and no inherited Context response or write state."
         )
     }
 
@@ -727,8 +764,30 @@ extension WorkspaceHandle {
                 }
             }
         case .researcherState:
-            return (.unsupported, "This owner kind must be queried again through its current Application-owned channel.")
+            throw ResearchContinuationContractError.invalidHandoff
         }
+    }
+
+    private static func isResearcherStateReferenceForRequery(
+        _ reference: SourceReferenceEnvelope
+    ) -> Bool {
+        reference.owner.kind == .researcherState
+            && reference.actorClass == .researcher
+            && reference.objectRole == .researcherState
+            && reference.vaultRole == nil
+            && reference.fingerprint != nil
+            && reference.locator.kind == .wholeObject
+            && (reference.currentness == .current
+                || reference.currentness == .stale)
+            && reference.evidentialLayer == .researcherState
+            && reference.retrievalReason == .researcherState
+    }
+
+    private static func uniqueReferences(
+        _ references: [SourceReferenceEnvelope]
+    ) -> [SourceReferenceEnvelope] {
+        var seen: Set<UUID> = []
+        return references.filter { seen.insert($0.id).inserted }
     }
 
     private static func stableContinuationID(

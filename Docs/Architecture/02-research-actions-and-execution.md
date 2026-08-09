@@ -141,6 +141,10 @@ already-authorized closure asks `ResearchSourceAccessStore` only for the
 current status of that Run's selected binding. It never imports `ScholiumCore`
 types across the Application boundary, reaches private JSON/index files
 directly, or copies source bytes, bookmarks, or paths into Research Context.
+Researcher State is separately rebuilt on demand for the Action target Note
+from current Settlement, Researcher Evaluation, Critique disposition, and
+attributed active-Discussion owners. It is neither stored by the provider nor
+expanded from the machine-local recovery pin underlying Settle.
 
 Search remains the only parser/ranker and keeps Note and Record identities
 discriminated. Direct Relations remain same-manifest explicit Markdown
@@ -177,12 +181,12 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 2 and authenticated Run Context schema 4 carry the
+Continue Result schema 3 and authenticated Run Context schema 5 carry the
 closed Material reference states `current`, `changed`, `missing`, and
-`unavailable`. Local Execution schema 9 persists the same typed handoff inside
-the child Run. Retired Result schema 1, authenticated Context schema 3, and
-Local Execution schema 8 fail closed instead of interpreting the expanded
-state set under an old version.
+`unavailable` plus the typed Researcher State requery requirement. Local
+Execution schema 10 persists the same child handoff. All prior Result,
+authenticated Context, and Local Execution schemas fail closed instead of
+interpreting expanded continuation semantics under an old version.
 
 Opaque reference resolution rechecks Session, Run, scope, current owner, and
 revision. Ending/re-pairing/revocation, Triptych change, deletion, or source
@@ -194,6 +198,18 @@ correlation value. Context Use and Continue Research instead authenticate the
 submitting Run, require its authorized scope, and re-read the current owner to
 validate identity, revision, locator, and owner-specific provenance fields
 before persistence or handoff.
+
+Continue never calls the Researcher State provider as a handoff owner and never
+copies a parent-Run Researcher State envelope into the child. Application
+validates the old reference's closed nonauthorizing shape, removes it from the
+child handoff and reference checks, and persists only
+`requires_researcher_state_requery`. A subsequent child query receives the
+child Run scope and reads the then-current underlying owners. The original
+full request audit, including old Researcher State references, remains in the
+parent Run's local continuation request record. The child carries only the
+approved academic purpose and stripped Agent-authored handoff; these retain
+Agent attribution and become neither old state evidence nor researcher
+commitment.
 
 The test target supplies a pure replacement provider over fixed nonprivate
 values. Production and test providers must produce the same envelope,
@@ -325,7 +341,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-9
+the one current `methodImprovementRun` in its parent Local Execution schema-10
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every

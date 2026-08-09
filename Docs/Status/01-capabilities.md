@@ -78,7 +78,9 @@
   Application adds machine facts from actual transaction outcomes. Finalization
   is idempotent and waits for writes and recovery duties to converge. Continue
   Research creates a separate Run, rechecks selected source Materials as
-  current, changed, missing, or unavailable.
+  current, changed, missing, or unavailable. Parent-Run Researcher State
+  references are stripped from the child handoff; a typed flag requires the
+  child to query current researcher-owned facts in its own Run scope.
 - Closing an Action presentation leaves unfinished work active. Explicit End
   Action or End Discussion revokes new authority while retaining confirmed
   changes, conflicts, Records, and recovery duties.

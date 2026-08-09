@@ -163,7 +163,6 @@ public enum ResearchContinuationReferenceStatus: String, Codable, Hashable, Send
     case changed
     case missing
     case unavailable
-    case unsupported
 }
 
 public struct ResearchContinuationReferenceCheck: Codable, Hashable, Sendable {
@@ -219,6 +218,10 @@ public struct ResearchContinuationHandoffContext: Codable, Hashable, Sendable {
     public let academicPurpose: String
     public let handoff: [ResearchContinuationHandoffItem]
     public let referenceChecks: [ResearchContinuationReferenceCheck]
+    /// True when parent-Run Researcher State references were deliberately
+    /// omitted. The child must issue a fresh inspect_researcher_state query;
+    /// no old state envelope or response crosses the Run boundary.
+    public let requiresResearcherStateRequery: Bool
     public let createdAt: Date
 
     public init(
@@ -227,12 +230,20 @@ public struct ResearchContinuationHandoffContext: Codable, Hashable, Sendable {
         academicPurpose: String,
         handoff: [ResearchContinuationHandoffItem],
         referenceChecks: [ResearchContinuationReferenceCheck],
+        requiresResearcherStateRequery: Bool = false,
         createdAt: Date = Date()
     ) throws {
+        let inheritedReferences = handoff.flatMap(\.sourceReferences)
         guard initiator == .agent || initiator == .researcher,
               !handoff.isEmpty,
               handoff.count <= 16,
               referenceChecks.count <= 32,
+              inheritedReferences.allSatisfy({
+                  $0.sourceKind != .researcherState
+              }),
+              referenceChecks.allSatisfy({
+                  $0.sourceReference.sourceKind != .researcherState
+              }),
               Set(referenceChecks.map(\.sourceReference.id)).count
                 == referenceChecks.count,
               createdAt.timeIntervalSinceReferenceDate.isFinite else {
@@ -246,6 +257,7 @@ public struct ResearchContinuationHandoffContext: Codable, Hashable, Sendable {
         )
         self.handoff = handoff
         self.referenceChecks = referenceChecks
+        self.requiresResearcherStateRequery = requiresResearcherStateRequery
         self.createdAt = createdAt
     }
 
@@ -255,6 +267,7 @@ public struct ResearchContinuationHandoffContext: Codable, Hashable, Sendable {
         case academicPurpose = "academic_purpose"
         case handoff
         case referenceChecks = "reference_checks"
+        case requiresResearcherStateRequery = "requires_researcher_state_requery"
         case createdAt = "created_at"
     }
 
@@ -282,6 +295,10 @@ public struct ResearchContinuationHandoffContext: Codable, Hashable, Sendable {
             referenceChecks: container.decode(
                 [ResearchContinuationReferenceCheck].self,
                 forKey: .referenceChecks
+            ),
+            requiresResearcherStateRequery: container.decode(
+                Bool.self,
+                forKey: .requiresResearcherStateRequery
             ),
             createdAt: container.decode(Date.self, forKey: .createdAt)
         )
@@ -452,7 +469,7 @@ public enum ResearchContinuationResultState: String, Codable, Hashable, Sendable
 }
 
 public struct ResearchContinuationResult: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let state: ResearchContinuationResultState

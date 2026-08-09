@@ -246,6 +246,11 @@ submitted evaluation of that exact Record. Opened, selected, searched, dwell,
 pin, autosave, authorization, Agent output, and silence never imply reading,
 importance, support, commitment, acceptance, or belief. Missing proof returns
 absent or unknown rather than an inferred psychological state.
+The machine-local exact-revision pin created as part of Settle is recovery
+protection, not a second researcher-state fact. Research Context reads the
+portable Settlement judgment and its exact fingerprint; it never promotes that
+recovery pin into importance, stance, adoption, or a separately retrievable
+state item.
 
 ### 8.3 Collaboration policy, Bounded Write Set, and exact writes
 
@@ -452,6 +457,16 @@ reference reports current, changed, missing, or unavailable from the existing
 source-access owner. Changed, missing, revoked, or unavailable evidence is
 reported; a requery reduces stale-context inertia but does not guarantee
 completeness or truth.
+
+Researcher State has a different continuation boundary because it is a
+Run-scoped view rather than a transferable owner object. If a parent handoff
+mentions one of its references, Scholium removes every old Researcher State
+envelope from the child handoff and reference checks, marks that the child must
+issue `inspect_researcher_state`, and rebuilds the view only when that new Run
+queries current Application-owned objects. The parent request remains
+attributed Agent input in the parent Local Execution record; its old state
+response, content, fingerprint, availability, and provider state do not cross
+the Run boundary. Requery proves neither completeness nor correctness.
 
 The next Record alone stores `continued from` after it safely forms; `continued
 as` is derived in reverse and never rewrites the prior Record. Rejection or
