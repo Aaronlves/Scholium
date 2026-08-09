@@ -1406,6 +1406,22 @@ extension ScholiumUITests {
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchRecord.tombstone.\(fixture.tombstoneNoteID.uuidString).all"
         ].exists)
+        let firstParticipantPopoverRow = app.buttons[
+            "scholium.researchRecord.note.\(fixture.analysisNoteID.uuidString).all"
+        ]
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        XCTAssertTrue(firstParticipantPopoverRow.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            keyboardFocus.evaluate(with: firstParticipantPopoverRow),
+            "Pointer opening must not paint keyboard focus on the first Participant row."
+        )
+        app.typeKey(.tab, modifierFlags: [])
+        XCTAssertTrue(
+            waitUntil(timeout: 2) {
+                keyboardFocus.evaluate(with: firstParticipantPopoverRow)
+            },
+            "Tab must move visible keyboard focus from the popover scroll owner to its first row."
+        )
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { !participantPopover.exists })
 
@@ -1417,6 +1433,14 @@ extension ScholiumUITests {
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchRecord.material.\(overflowWorkID.uuidString).all"
         ].exists)
+        let firstContextPopoverRow = app.buttons[
+            "scholium.researchRecord.material.\(fixture.analysisNoteID.uuidString).all"
+        ]
+        XCTAssertTrue(firstContextPopoverRow.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            keyboardFocus.evaluate(with: firstContextPopoverRow),
+            "Pointer opening must not paint keyboard focus on the first Context Used row."
+        )
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { !contextPopover.exists })
 

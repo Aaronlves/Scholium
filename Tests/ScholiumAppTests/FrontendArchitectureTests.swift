@@ -2841,6 +2841,25 @@ struct FrontendArchitectureTests {
         #expect(browser.contains(".font(ScholiumTypography.interface(.body))"))
         #expect(browser.contains("ScholiumNativeToolbarButton("))
         #expect(browser.contains("focusPresentation: .native"))
+        let evidencePopoverStart = try #require(
+            browser.range(
+                of: "private struct ResearchRecordEvidenceCollectionPopover<Content: View>: View {"
+            )
+        )
+        let evidencePopoverEnd = try #require(
+            browser.range(
+                of: "private struct ResearchRecordContextUseSection: View {",
+                range: evidencePopoverStart.upperBound..<browser.endIndex
+            )
+        )
+        let evidencePopover = browser[
+            evidencePopoverStart.lowerBound..<evidencePopoverEnd.lowerBound
+        ]
+        #expect(evidencePopover.contains("@FocusState private var isScrollFocused: Bool"))
+        #expect(evidencePopover.contains(".focusable()"))
+        #expect(evidencePopover.contains(".focusEffectDisabled()"))
+        #expect(evidencePopover.contains(".focused($isScrollFocused)"))
+        #expect(evidencePopover.contains(".defaultFocus($isScrollFocused, true)"))
         #expect(!browser.contains("ResearchRecordCollectionRowMainButtonStyle"))
         #expect(browser.contains("ScholiumContentControlButtonStyle("))
         #expect(browser.contains("ScholiumShape.researchRecordCollectionRowCornerRadius"))
@@ -3258,6 +3277,29 @@ struct FrontendArchitectureTests {
             )
         )
         #expect(!readingLeadRow.contains("ScholiumTypography.scholarly"))
+        let evidenceEntryStart = try #require(
+            browser.range(of: "private struct ResearchRecordEvidenceEntry: View {")
+        )
+        let evidenceEntryEnd = try #require(
+            browser.range(
+                of: "private struct ResearchRecordEvidenceSectionHeader: View {",
+                range: evidenceEntryStart.upperBound..<browser.endIndex
+            )
+        )
+        let evidenceEntry = browser[evidenceEntryStart.lowerBound..<evidenceEntryEnd.lowerBound]
+        #expect(
+            evidenceEntry.contains(
+                "Text(title)\n                    .font(ScholiumTypography.interface(.rowTitle))"
+            )
+        )
+        #expect(
+            evidenceEntry.contains(
+                "private var metadataView: some View"
+            )
+        )
+        #expect(evidenceEntry.contains(".font(ScholiumTypography.interface(.small))"))
+        #expect(!evidenceEntry.contains("ScholiumTypography.interface(.sectionTitle)"))
+        #expect(!evidenceEntry.contains(".small, emphasis:"))
         #expect(browser.contains(".font(ScholiumTypography.scholarly(.body))"))
         #expect(browser.contains(".font(ScholiumTypography.interface(.small, emphasis: .medium))"))
         #expect(browser.contains("private var metadataView: some View"))

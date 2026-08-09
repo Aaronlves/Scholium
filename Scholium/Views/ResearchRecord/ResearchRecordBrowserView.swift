@@ -2381,9 +2381,9 @@ private struct ResearchRecordContinuitySection: View {
 }
 
 /// The production counterpart of the original prototype's evidence row. One
-/// symbol and one title lead either 12pt body copy or compact provenance.
-/// Those roles stay separate so a complete explanation never inherits the
-/// 10pt metadata treatment.
+/// symbol and one 12pt Medium row identity lead either compact explanation or
+/// provenance. Those roles stay separate so a complete explanation never
+/// inherits the quiet 10pt metadata treatment.
 private struct ResearchRecordEvidenceEntry: View {
     @FocusState private var isFocused: Bool
 
@@ -2491,7 +2491,7 @@ private struct ResearchRecordEvidenceEntry: View {
                 spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
             ) {
                 Text(title)
-                    .font(ScholiumTypography.interface(.sectionTitle))
+                    .font(ScholiumTypography.interface(.rowTitle))
                     .scholiumForeground(.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if !metadata.isEmpty {
@@ -2541,7 +2541,7 @@ private struct ResearchRecordEvidenceEntry: View {
                 metadataLabels
             }
         }
-        .font(ScholiumTypography.interface(.small, emphasis: .medium))
+        .font(ScholiumTypography.interface(.small))
         .scholiumForeground(.mutedText)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -2658,6 +2658,8 @@ private struct ResearchRecordEvidenceSectionHeader: View {
 }
 
 private struct ResearchRecordEvidenceCollectionPopover<Content: View>: View {
+    @FocusState private var isScrollFocused: Bool
+
     let title: LocalizedStringKey
     let count: Int
     let identifier: String
@@ -2702,6 +2704,10 @@ private struct ResearchRecordEvidenceCollectionPopover<Content: View>: View {
                 .padding(ScholiumGrid.Spacing.regionContentInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .focusable()
+            .focusEffectDisabled()
+            .focused($isScrollFocused)
+            .defaultFocus($isScrollFocused, true)
         }
         .frame(
             width: ScholiumMetrics.ResearchRecords.evidenceCollectionPopoverWidth,

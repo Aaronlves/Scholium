@@ -302,10 +302,11 @@ Evidence & Judgment prioritizes scholarly legibility in this order:
 **Participants**, **Context Used**, **Effects**, then **Researcher Evaluation**.
 Every section title shares one height, inset, baseline, and Apparatus heading
 style. Each fact uses one aligned monochrome symbol, title, and short provenance
-text. Note and Record names, roles, dates, state, and provenance use Sans, with
-minor facts in `mutedText`; attributed testimony and academic result prose use
-Serif. Context Used uses a quotation symbol distinct from every Participant
-document symbol.
+text. A fact title uses the 12pt Medium interface Row Title role, never the
+Semibold Section Title role; its provenance uses un-emphasized 10pt Small Sans
+in `mutedText`. Note and Record names, roles, dates, state, and provenance use
+Sans; attributed testimony and academic result prose use Serif. Context Used
+uses a quotation symbol distinct from every Participant document symbol.
 A Participants or Context Used preview contains at most three rows; the focal
 Note and other safely actionable entries lead, while deleted or unresolved
 provenance remains available. When the complete set exceeds three, the title is
@@ -313,9 +314,11 @@ one rounded, keyboard-operable disclosure showing the total and a right
 chevron, then opens a native transient popover with every entry. The popover
 closes through native outside-click,
 Escape, or source navigation and introduces no custom close button, material,
-shadow, or persistent state. Its automatic first-responder assignment uses the
-native focus effect and never appears as a pre-hovered evidence row; the shared
-rounded hover surface appears only under an actual pointer or press.
+shadow, or persistent state. Its initial focus belongs to the effect-free scroll
+owner rather than the first evidence row, so pointer opening paints neither a
+keyboard focus frame nor a false hover surface. Tab advances to a row and then
+uses its visible native focus effect; the shared rounded hover surface appears
+only under an actual pointer or press.
 A safely resolved Note or Record destination makes the complete rounded row
 interactive without adding an **Open** glyph or button. An unresolved source
 retains its exact locator and testimony as selectable, copyable,

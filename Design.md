@@ -137,8 +137,11 @@ repeated; empty sections state status. Reading shares Apparatus headings. Fixed
 authorship/Serif tracks label Researcher Accent/`person`
 and Agent `agentAuthorship`/`sparkle`.
 
-Evidence headings align. Sans owns names/provenance, Alegreya testimony/judgment,
-`mutedText` minor facts; Context alone uses `text.quote`.
+Evidence section headings align through the Apparatus heading role. Each
+evidence item identity uses the 12pt Medium interface Row Title role rather than
+the Semibold Section Title role; its provenance uses un-emphasized 10pt Small
+Sans in `mutedText`. Sans owns names/provenance, Alegreya testimony/judgment;
+Context alone uses `text.quote`.
 Participants/Context preview three; chevrons show all. Effects/judgment remain;
 Technical Details closes; `trash` deletes. Dense facts use Inspector About's
 label/value grid. Metadata omits middots.
@@ -323,9 +326,11 @@ adaptation continue to follow §20.
   fall below **20pt**, and remain in the keyboard focus chain. Pointer press
   clears keyboard-only focus before activation; matching controls use the shared
   content-focus surface without sampling events or suppressing app/window focus.
-  Evidence rows inside transient popovers retain the native focus effect: the
-  popover's automatic first-responder assignment never paints a pointer-hover
-  surface, while actual hover and press still use the shared content feedback.
+  A transient evidence popover gives default focus to its effect-free scroll
+  owner rather than its first row. Pointer opening therefore paints neither a
+  keyboard focus frame nor a false hover surface; Tab advances to a row, whose
+  native focus effect remains visible, while actual hover and press still use
+  the shared content feedback.
 - Toolbar symbols retain one native small-control recipe, system body symbol
   geometry, and platform hover, press, focus, and disabled feedback across the
   main Workspace and auxiliary windows, without Scholium underline or custom
