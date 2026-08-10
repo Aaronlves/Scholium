@@ -159,12 +159,13 @@ or restores the rail. One adaptive divider and the full-height
 `readingEvidenceBoundary`, never color or shadow alone, distinguish the visible
 planes; Increase Contrast removes the depth cue while retaining the divider and
 surface relationship.
-The Records scene uses a standard content view rather than
-`fullSizeContentView`; AppKit's content-layout rectangle is therefore the one
-titlebar boundary for every collection and detail scroll owner. The root hides
-the native toolbar background, and macOS 26+ toolbar content hides its automatic
-shared background, so Document color remains continuous without Liquid Glass or
-a painted masking layer.
+The Records scene applies `fullSizeContentView` once for the complete window
+lifetime. AppKit's safe area remains the content boundary for collection and
+detail scroll owners, while the selected Record's Document and Apparatus plane
+backgrounds and their structural boundary continue behind the transparent
+toolbar. The root hides the native toolbar background, and macOS 26+ toolbar
+content hides its automatic shared background, so those semantic planes remain
+continuous without Liquid Glass or a painted masking layer.
 
 Every custom Records Button routes hover, keyboard focus, and press through
 the shared Button feedback owner; Scope and Filters use the bounded Menu

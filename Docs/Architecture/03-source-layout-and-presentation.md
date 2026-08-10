@@ -126,9 +126,11 @@ presentation filters, and one collection/detail route.
 It owns no Record parser, flattened Record corpus, ranking, or freshness rule.
 The native resizable window has a 760 × 680 default frame and 700 × 520
 minimum. Its hidden-title style retains native traffic lights, toolbar, and
-dragging, but deliberately removes `fullSizeContentView`; AppKit's content-layout
-rectangle keeps every scroll owner below system chrome while toolbar, collection
-header, and content resolve to one Document background. Opening presents a full-window
+dragging while applying `fullSizeContentView` once for the complete window
+lifetime. Collection content remains below the native toolbar safe area, while
+a Record detail's split-plane backgrounds continue behind the transparent
+toolbar and its hosted reading and Evidence content stays within AppKit's safe
+area. Opening presents a full-window
 Records or Reading Leads collection with the View index in the toolbar and an
 adaptive identity/search/Scope/filter/count header. Fixed-rhythm,
 rule-separated scan rows consume lightweight index entries rather than full

@@ -580,6 +580,35 @@ struct WindowLifecycleTests {
         window.close()
     }
 
+    @Test("Research Records navigation preserves the native window frame")
+    func researchRecordsNavigationPreservesWindowFrame() {
+        let triptychID = UUID()
+        let window = testWindow()
+        window.setFrame(
+            NSRect(x: 180, y: 180, width: 760, height: 680),
+            display: false
+        )
+        window.toolbar = NSToolbar(identifier: "research-records-frame-regression")
+        window.toolbarStyle = .unified
+        defer {
+            window.toolbar = nil
+            window.close()
+        }
+
+        let attachment = ResearchRecordsWindowAttachment(triptychID: triptychID)
+        attachment.configure(window)
+        let collectionFrame = window.frame
+
+        attachment.configure(window)
+        let detailFrame = window.frame
+
+        attachment.configure(window)
+        let returnedCollectionFrame = window.frame
+
+        #expect(detailFrame == collectionFrame)
+        #expect(returnedCollectionFrame == collectionFrame)
+    }
+
     @Test("Document tab updates preserve page hosts and selector identities")
     func documentTabAdapterUpdatesIncrementally() {
         let firstID = UUID()

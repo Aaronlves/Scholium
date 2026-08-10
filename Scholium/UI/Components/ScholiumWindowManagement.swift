@@ -1128,7 +1128,6 @@ struct WorkspaceWindowAttachment: NSViewRepresentable {
 
 struct ResearchRecordsWindowAttachment: NSViewRepresentable {
     let triptychID: UUID
-    let usesFullHeightContent: Bool
 
     func makeNSView(context: Context) -> WindowAttachmentView {
         let view = WindowAttachmentView()
@@ -1140,15 +1139,11 @@ struct ResearchRecordsWindowAttachment: NSViewRepresentable {
         if let window = nsView.window { configure(window) }
     }
 
-    private func configure(_ window: NSWindow) {
+    func configure(_ window: NSWindow) {
         window.identifier = NSUserInterfaceItemIdentifier(
             "scholium-research-records-\(triptychID.uuidString.lowercased())"
         )
-        if usesFullHeightContent {
-            window.styleMask.insert(.fullSizeContentView)
-        } else {
-            window.styleMask.remove(.fullSizeContentView)
-        }
+        window.styleMask.insert(.fullSizeContentView)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none

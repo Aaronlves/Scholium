@@ -251,8 +251,7 @@ private struct ScholiumResearchRecordsRoot: View {
         )
         .environment(\.layoutDirection, recordsLayoutDirection)
         .background(ResearchRecordsWindowAttachment(
-            triptychID: triptychID,
-            usesFullHeightContent: browserModel.route.recordID != nil
+            triptychID: triptychID
         ))
         .task(id: triptychID) { await loadCapabilities() }
         .onAppear { registerRecordsEndpoint() }

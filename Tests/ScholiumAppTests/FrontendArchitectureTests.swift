@@ -2885,10 +2885,9 @@ struct FrontendArchitectureTests {
         #expect(!browser.contains("ResearchRecordsToolbar"))
         #expect(!browser.contains("ToolbarItemGroup(placement: .principal)"))
         #expect(windowManagement.contains("window.titleVisibility = .hidden"))
-        #expect(windowManagement.contains("if usesFullHeightContent"))
+        #expect(!windowManagement.contains("if usesFullHeightContent"))
         #expect(windowManagement.contains("window.styleMask.insert(.fullSizeContentView)"))
-        #expect(windowManagement.contains("window.styleMask.remove(.fullSizeContentView)"))
-        #expect(app.contains("usesFullHeightContent: browserModel.route.recordID != nil"))
+        #expect(!app.contains("usesFullHeightContent: browserModel.route.recordID != nil"))
         #expect(windowManagement.contains("window.titlebarAppearsTransparent = true"))
         #expect(windowManagement.contains("window.titlebarSeparatorStyle = .none"))
         #expect(
