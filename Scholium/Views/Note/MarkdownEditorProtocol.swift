@@ -121,6 +121,7 @@ struct MarkdownEditorLinkPreview: Codable, Hashable, Sendable {
     let from: Int
     let to: Int
     let title: String
+    let isEmbedded: Bool
     let relationship: VectorLinkKind?
     let fragment: String?
     let htmlBody: String

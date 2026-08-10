@@ -195,20 +195,16 @@ body,
 .cm-live-wikilink,
 .cm-live-vector-link {
   color: var(--scholium-color-accent);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
-  text-underline-offset: 0.15em;
+  text-decoration: none;
 }
 
 .cm-live-vector-link {
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, currentColor 46%, transparent);
-  text-underline-offset: 0.15em;
+  color: var(--scholium-color-accent);
 }
-.cm-live-vector-neutral { color: var(--scholium-color-connection-neutral); }
-.cm-live-vector-supports { color: var(--scholium-color-connection-support); }
-.cm-live-vector-opposes { color: var(--scholium-color-connection-incompatible); }
-.cm-live-vector-incompatible { color: var(--scholium-color-connection-incompatible); }
+.cm-live-vector-neutral,
+.cm-live-vector-supports,
+.cm-live-vector-opposes,
+.cm-live-vector-incompatible { color: var(--scholium-color-accent); }
 
 .scholium-system-symbol {
   display: inline-block;
@@ -226,22 +222,25 @@ body,
 
 .cm-live-vector-icon {
   display: inline-block;
-  inline-size: .92em;
-  block-size: .92em;
-  margin-inline-end: .24em;
-  vertical-align: -.08em;
+  inline-size: .52em;
+  block-size: .52em;
+  margin-inline-start: .08em;
+  vertical-align: .58em;
 }
-.cm-live-vector-icon-neutral { color: var(--scholium-color-connection-neutral); }
-.cm-live-vector-icon-supports { color: var(--scholium-color-connection-support); }
-.cm-live-vector-icon-opposes { color: var(--scholium-color-connection-incompatible); }
-.cm-live-vector-icon-incompatible { color: var(--scholium-color-connection-incompatible); }
+.cm-live-vector-icon-neutral,
+.cm-live-vector-icon-supports,
+.cm-live-vector-icon-opposes,
+.cm-live-vector-icon-incompatible { color: var(--scholium-color-accent); }
 
 .cm-live-embed {
+  display: block;
+  box-sizing: border-box;
+  margin-block: var(--scholium-rhythm-semantic-block-gap);
   color: var(--scholium-color-accent);
   font-weight: 650;
-  padding: 0.08em 0.3em;
-  border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
-  border-radius: var(--scholium-corner-document-inline-embed);
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--scholium-color-separator);
+  border-radius: var(--scholium-corner-document-embedded-note);
 }
 
 .cm-line.cm-live-list {
@@ -375,11 +374,5 @@ body,
   .cm-activeLineGutter,
   .cm-live-code {
     background: var(--scholium-color-document-background);
-  }
-}
-
-@media (prefers-contrast: more) {
-  .cm-live-vector-link {
-    text-decoration-thickness: 2px;
   }
 }

@@ -5,6 +5,7 @@ public struct DocumentLinkPreview: Codable, Hashable, Sendable {
     public let target: VaultQualifiedNoteID
     public let targetFingerprint: DocumentFingerprint
     public let title: String
+    public let syntax: LinkSyntax
     public let relationship: VectorLinkKind?
     public let fragment: String?
     public let htmlBody: String
@@ -14,6 +15,7 @@ public struct DocumentLinkPreview: Codable, Hashable, Sendable {
         target: VaultQualifiedNoteID,
         targetFingerprint: DocumentFingerprint,
         title: String,
+        syntax: LinkSyntax,
         relationship: VectorLinkKind?,
         fragment: String?,
         htmlBody: String
@@ -22,6 +24,7 @@ public struct DocumentLinkPreview: Codable, Hashable, Sendable {
         self.target = target
         self.targetFingerprint = targetFingerprint
         self.title = title
+        self.syntax = syntax
         self.relationship = relationship
         self.fragment = fragment
         self.htmlBody = htmlBody
@@ -29,7 +32,7 @@ public struct DocumentLinkPreview: Codable, Hashable, Sendable {
 }
 
 public struct DocumentPreviewCatalog: Codable, Hashable, Sendable {
-    public static let currentContractVersion = 1
+    public static let currentContractVersion = 2
 
     public let contractVersion: Int
     public let graphGeneration: Int
@@ -82,11 +85,17 @@ public enum DocumentPreviewCatalogBuilder {
             .compactMap { edge -> DocumentLinkPreview? in
                 guard let destination = edge.destination,
                       let target = documents[destination.note] else { return nil }
-                let excerpt = excerptSource(for: destination, in: target)
-                guard !excerpt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                let sourceForPresentation = presentedSource(
+                    for: edge.occurrence,
+                    destination: destination,
+                    in: target
+                )
+                guard !sourceForPresentation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return nil
+                }
                 let fragment = NoteDocument(
                     relativePath: target.relativePath,
-                    rawContent: excerpt
+                    rawContent: sourceForPresentation
                 )
                 let rendered = SafeMarkdownRenderer.render(fragment).htmlBody
                 let title = ResearchNoteTitleResolver.resolve(
@@ -98,6 +107,7 @@ public enum DocumentPreviewCatalogBuilder {
                     target: destination.note,
                     targetFingerprint: target.fingerprint,
                     title: title,
+                    syntax: edge.occurrence.syntax,
                     relationship: edge.occurrence.vectorKind,
                     fragment: destination.fragment,
                     htmlBody: rendered
@@ -111,10 +121,14 @@ public enum DocumentPreviewCatalogBuilder {
         )
     }
 
-    private static func excerptSource(
-        for destination: LinkDestination,
+    private static func presentedSource(
+        for occurrence: LinkOccurrence,
+        destination: LinkDestination,
         in document: NoteDocument
     ) -> String {
+        if occurrence.syntax == .embed {
+            return document.body
+        }
         if let span = destination.span {
             let source = document.rawContent as NSString
             let start = max(0, min(span.utf16LowerBound, source.length))

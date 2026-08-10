@@ -9,9 +9,19 @@ describe("preview projections", () => {
       {from: 6, to: 8, title: "", htmlBody: "<p>No</p>"},
       {from: 6, to: 8, title: "Bad relationship", relationship: "invented", htmlBody: "<p>Body</p>"},
     ], 12)).toEqual([
-      {from: 0, to: 5, title: "Target", relationship: "supports", fragment: "Heading", htmlBody: "<p>Body</p>"},
-      {from: 6, to: 8, title: "Bad relationship", relationship: undefined, fragment: undefined, htmlBody: "<p>Body</p>"},
+      {from: 0, to: 5, title: "Target", isEmbedded: false, relationship: "supports", fragment: "Heading", htmlBody: "<p>Body</p>"},
+      {from: 6, to: 8, title: "Bad relationship", isEmbedded: false, relationship: undefined, fragment: undefined, htmlBody: "<p>Body</p>"},
     ]);
+  });
+
+  it("keeps complete embedded-note HTML while ordinary previews remain bounded", () => {
+    const longBody = `<p>${"complete ".repeat(4_000)}</p>`;
+    const [embedded, ordinary] = validatedLinkPreviews([
+      {from: 0, to: 5, title: "Embedded", isEmbedded: true, htmlBody: longBody},
+      {from: 6, to: 11, title: "Ordinary", htmlBody: longBody},
+    ], 12);
+    expect(embedded.htmlBody).toBe(longBody);
+    expect(ordinary.htmlBody.length).toBe(24_000);
   });
 
   it("returns one referenced footnote definition with bounded continuations", () => {

@@ -3,16 +3,40 @@ import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
 import {floatingSurfacePosition} from "./floating-surface-geometry";
 import {recordEditorMetric} from "./performance";
-import type {LinkPreview, VectorLinkKind} from "./previews";
+import type {LinkPreview} from "./previews";
 
 type PreviewAnchorRect = Pick<DOMRect, "left" | "right" | "top" | "bottom">;
 
-const relationshipLabels: Record<VectorLinkKind, string> = {
-  neutral: "Related note",
-  supports: "Supports",
-  opposes: "Opposes",
-  incompatible: "Incompatible",
-};
+function normalizedTitle(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+/** Installs inert rendered content while retaining the shared Document CSS owner. */
+export function populatePreviewDocument(body: HTMLElement, preview: LinkPreview) {
+  body.innerHTML = preview.htmlBody;
+  body.querySelectorAll("script, style, iframe, object, embed, form, input, button")
+    .forEach((node) => node.remove());
+  body.querySelectorAll<HTMLElement>("*").forEach((node) => {
+    for (const attribute of Array.from(node.attributes)) {
+      if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
+      if (attribute.name.toLowerCase().startsWith("data-source-")) {
+        node.removeAttribute(attribute.name);
+      }
+    }
+    node.removeAttribute("href");
+    node.removeAttribute("contenteditable");
+    node.removeAttribute("id");
+    node.removeAttribute("for");
+    node.removeAttribute("aria-describedby");
+    node.removeAttribute("aria-labelledby");
+    node.removeAttribute("aria-owns");
+    node.tabIndex = -1;
+  });
+  const firstHeading = body.querySelector<HTMLElement>(":scope > h1:first-child");
+  if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
+    firstHeading.remove();
+  }
+}
 
 export interface PreviewPopoverController {
   readonly extension: Extension;
@@ -32,12 +56,15 @@ export function createPreviewPopoverController(
   let title: HTMLElement | null = null;
   let metadata: HTMLElement | null = null;
   let body: HTMLElement | null = null;
-  let timer: number | undefined;
+  let showTimer: number | undefined;
+  let hideTimer: number | undefined;
   let pendingAnchor: HTMLElement | null = null;
 
   function hide() {
-    window.clearTimeout(timer);
-    timer = undefined;
+    window.clearTimeout(showTimer);
+    window.clearTimeout(hideTimer);
+    showTimer = undefined;
+    hideTimer = undefined;
     pendingAnchor = null;
     if (root) {
       root.hidden = true;
@@ -46,6 +73,16 @@ export function createPreviewPopoverController(
     if (title) title.textContent = "";
     if (metadata) metadata.textContent = "";
     body?.replaceChildren();
+  }
+
+  function cancelHide() {
+    window.clearTimeout(hideTimer);
+    hideTimer = undefined;
+  }
+
+  function scheduleHide() {
+    window.clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(hide, 180);
   }
 
   function position(anchor: PreviewAnchorRect, startedAt: number) {
@@ -83,27 +120,12 @@ export function createPreviewPopoverController(
     });
   }
 
-  function removeInteractiveContent() {
-    if (!body) return;
-    body.querySelectorAll("script, style, iframe, object, embed, form, input, button")
-      .forEach((node) => node.remove());
-    body.querySelectorAll<HTMLElement>("*").forEach((node) => {
-      for (const attribute of Array.from(node.attributes)) {
-        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-      }
-      node.removeAttribute("href");
-      node.removeAttribute("contenteditable");
-      node.tabIndex = -1;
-    });
-  }
-
   function show(preview: LinkPreview, anchor: PreviewAnchorRect, startedAt: number) {
     if (!editor || !root || !title || !metadata || !body) return;
     title.textContent = preview.title;
-    const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
-    metadata.textContent = preview.fragment ? `${relationship}\n${preview.fragment}` : relationship;
-    body.innerHTML = preview.htmlBody;
-    removeInteractiveContent();
+    metadata.textContent = preview.fragment ?? "";
+    metadata.hidden = !preview.fragment;
+    populatePreviewDocument(body, preview);
     recordEditorMetric("cached-preview-work", startedAt, {
       documentLength: editor.state.doc.length,
     });
@@ -147,15 +169,21 @@ export function createPreviewPopoverController(
   }
 
   const handlePointerMove = (event: PointerEvent) => {
-    const anchor = anchorAtEvent(event);
-    if (!anchor) {
-      if (pendingAnchor || (root && !root.hidden)) hide();
+    if (root && event.target instanceof Node && root.contains(event.target)) {
+      cancelHide();
       return;
     }
+    const anchor = anchorAtEvent(event);
+    if (!anchor) {
+      if (pendingAnchor || (root && !root.hidden)) scheduleHide();
+      return;
+    }
+    cancelHide();
     if (anchor === pendingAnchor) return;
-    hide();
+    window.clearTimeout(showTimer);
+    showTimer = undefined;
     pendingAnchor = anchor;
-    timer = window.setTimeout(() => {
+    showTimer = window.setTimeout(() => {
       if (pendingAnchor !== anchor) return;
       const previewIndex = Number(anchor.dataset.linkPreviewIndex);
       const preview = options.previews()[previewIndex];
@@ -164,6 +192,8 @@ export function createPreviewPopoverController(
       }
     }, 300);
   };
+  const handlePreviewPointerEnter = () => cancelHide();
+  const handlePreviewPointerLeave = () => scheduleHide();
   const handleKeyUp = (event: KeyboardEvent) => {
     if (event.key === "Meta") hide();
   };
@@ -187,12 +217,15 @@ export function createPreviewPopoverController(
     title.className = "scholium-preview-title";
     metadata = document.createElement("p");
     metadata.className = "scholium-preview-metadata";
+    metadata.hidden = true;
     body = document.createElement("div");
-    body.className = "scholium-preview-body";
+    body.className = "scholium-preview-body scholium-document";
     body.setAttribute("role", "group");
     body.setAttribute("aria-label", "Preview content");
     root.append(title, metadata, body);
     document.body.append(root);
+    root.addEventListener("pointerenter", handlePreviewPointerEnter);
+    root.addEventListener("pointerleave", handlePreviewPointerLeave);
     document.addEventListener("pointermove", handlePointerMove, {passive: true});
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("keydown", handleKeyDown);
@@ -208,6 +241,8 @@ export function createPreviewPopoverController(
     document.removeEventListener("keyup", handleKeyUp);
     document.removeEventListener("keydown", handleKeyDown);
     view.scrollDOM.removeEventListener("scroll", handleViewportExit);
+    root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
+    root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
     window.removeEventListener("resize", handleViewportExit);
     window.removeEventListener("blur", handleViewportExit);
     root?.remove();

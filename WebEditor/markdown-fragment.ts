@@ -26,9 +26,9 @@ export const vectorLinkSemantics: Record<
   {label: string; symbol: WebSystemSymbolKey}
 > = {
   neutral: {label: "Related note", symbol: "link"},
-  supports: {label: "Supports", symbol: "plus-circle"},
-  opposes: {label: "Opposes", symbol: "minus-circle"},
-  incompatible: {label: "Incompatible", symbol: "xmark-circle"},
+  supports: {label: "Supports", symbol: "plus"},
+  opposes: {label: "Opposes", symbol: "minus"},
+  incompatible: {label: "Incompatible", symbol: "xmark"},
 };
 
 interface MarkdownTreeCursor {
@@ -149,12 +149,12 @@ function appendInlineMarkdownNode(
         document,
       );
       icon.title = semantics.label;
-      icon.removeAttribute("aria-hidden");
-      icon.setAttribute("role", "img");
-      icon.setAttribute("aria-label", semantics.label);
+      span.setAttribute("aria-label", `${semantics.label} ${alias || target}`);
+      span.append(document.createTextNode(alias || target));
       span.append(icon);
+    } else {
+      span.append(document.createTextNode(alias || target));
     }
-    span.append(document.createTextNode(alias || target));
     // A rendered Wikilink behaves as one projected object on first entry.
     // Its exact half-open source end is the stable insertion point after `]]`;
     // one subsequent backward move can then reveal and enter the syntax.

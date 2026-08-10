@@ -1078,7 +1078,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactive.renderedLinkTexts == ["support", "linked note"])
         #expect(inactive.renderedLinkTargets == ["analysis-001", "work-031"])
         #expect(inactive.renderedLinkCaretOffsets == [vectorLinkTo, linkTo])
-        #expect(inactive.renderedLinkIconNames == ["plus-circle", "link"])
+        #expect(inactive.renderedLinkIconNames == ["plus", "link"])
         #expect(inactive.renderedLinkIconMaskCount == 2)
 
         do {
@@ -2342,7 +2342,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("Edit Vector Links use only the shared SF Symbol masks")
     func editVectorLinksUseSystemSymbols() async throws {
-        let source = "Intro.\n\n+[[Support]] -[[Oppose]] ?[[Conflict]] [[Related]]\n"
+        let source = "Intro.\n\n+[[Support]] -[[Oppose]] ?[[Conflict]] [[Related]] [External](https://example.com)\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -2363,7 +2363,15 @@ struct MarkdownEditorWebViewIntegrationTests {
                     );
                   }).length,
                   svgCount: icons.reduce((count, icon) => count + icon.querySelectorAll('svg').length, 0),
-                  visibleText: icons.map(icon => icon.textContent || '').join('')
+                  visibleText: icons.map(icon => icon.textContent || '').join(''),
+                  sizes: icons.map(icon => {
+                    const rect = icon.getBoundingClientRect();
+                    return `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`;
+                  }),
+                  wikiColor: getComputedStyle(document.querySelector('.cm-live-vector-neutral')).color,
+                  externalColor: getComputedStyle(document.querySelector('.cm-live-link')).color,
+                  wikiDecoration: getComputedStyle(document.querySelector('.cm-live-vector-neutral')).textDecorationLine,
+                  externalDecoration: getComputedStyle(document.querySelector('.cm-live-link')).textDecorationLine
                 };
                 """
             ) as? [String: Any])
@@ -2376,14 +2384,107 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         #expect(snapshot["names"] as? [String] == [
-            "plus-circle",
-            "minus-circle",
-            "xmark-circle",
+            "plus",
+            "minus",
+            "xmark",
             "link",
         ])
         #expect(snapshot["maskCount"] as? Int == 4)
         #expect(snapshot["svgCount"] as? Int == 0)
         #expect(snapshot["visibleText"] as? String == "")
+        #expect(Set(snapshot["sizes"] as? [String] ?? []).count == 1)
+        #expect((snapshot["wikiColor"] as? String) == (snapshot["externalColor"] as? String))
+        #expect(snapshot["wikiDecoration"] as? String == "none")
+        #expect((snapshot["externalDecoration"] as? String)?.contains("underline") == true)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit renders an inactive embed as one complete bounded Note")
+    func editEmbeddedNotePresentation() async throws {
+        let source = "Intro.\n\n![[Embedded]]\n\nAfter embedded note.\n"
+        let embedOffset = try #require(source.range(of: "![[Embedded]]")?.lowerBound)
+            .utf16Offset(in: source)
+        let embedLength = "![[Embedded]]".utf16.count
+        let preview = DocumentLinkPreview(
+            sourceSpan: SourceSpan(
+                utf8LowerBound: embedOffset,
+                utf8UpperBound: embedOffset + embedLength,
+                utf16LowerBound: embedOffset,
+                utf16UpperBound: embedOffset + embedLength,
+                start: SourcePosition(line: 3, utf8Column: 1, utf16Column: 1),
+                end: SourcePosition(
+                    line: 3,
+                    utf8Column: embedLength + 1,
+                    utf16Column: embedLength + 1
+                )
+            ),
+            target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Embedded.md"),
+            targetFingerprint: DocumentFingerprint(content: "Embedded target"),
+            title: "Embedded note",
+            syntax: .embed,
+            relationship: nil,
+            fragment: nil,
+            htmlBody: "<h1>Embedded note</h1>" + String(
+                repeating: "<p>Complete projected paragraph.</p>",
+                count: 90
+            ) + "<p>Complete editor embedded tail</p>"
+        )
+        let harness = EditorHarness(
+            source: source,
+            linkPreviews: [preview],
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        var snapshot: [String: Any] = [:]
+        while true {
+            snapshot = try #require(try await harness.callPageJavaScript(
+                """
+                const shell = document.querySelector('.cm-live-embedded-note-widget');
+                const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
+                const body = shell?.querySelector('.scholium-embedded-note-body');
+                const open = shell?.querySelector('.scholium-embedded-note-open');
+                if (!shell || !viewport || !body || !open) {
+                  return {
+                    ready: false,
+                    contentText: document.querySelector('.cm-content')?.textContent || '',
+                    embedFallbacks: document.querySelectorAll('.cm-live-embed').length,
+                    replacementWidgets: document.querySelectorAll('.cm-widgetBuffer').length
+                  };
+                }
+                viewport.scrollTop = 160;
+                return {
+                  ready: true,
+                  bodyOwnsDocumentStyle: body.classList.contains('scholium-document'),
+                  duplicateTitleCount: [...body.querySelectorAll('h1')]
+                    .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
+                  hasTail: (body.textContent || '').includes('Complete editor embedded tail'),
+                  scrolls: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
+                  openBadgeCount: open.querySelectorAll('.cm-live-vector-icon').length,
+                  viewportTabIndex: viewport.tabIndex,
+                  sourceLocatorCount: body.querySelectorAll('[data-source-utf16-start]').length
+                };
+                """
+            ) as? [String: Any])
+            if snapshot["ready"] as? Bool == true { break }
+            if clock.now >= deadline {
+                Issue.record("Edit did not install the finite embedded Note widget: \(snapshot).")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        #expect(snapshot["bodyOwnsDocumentStyle"] as? Bool == true)
+        #expect(snapshot["duplicateTitleCount"] as? Int == 0)
+        #expect(snapshot["hasTail"] as? Bool == true)
+        #expect(snapshot["scrolls"] as? Bool == true)
+        #expect(snapshot["openBadgeCount"] as? Int == 0)
+        #expect(snapshot["viewportTabIndex"] as? Int == 0)
+        #expect(snapshot["sourceLocatorCount"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 
@@ -3365,6 +3466,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
             targetFingerprint: DocumentFingerprint(content: "Target body"),
             title: "Target note",
+            syntax: .wikilink,
             relationship: .neutral,
             fragment: nil,
             htmlBody: "<p>Target body</p>"

@@ -30595,23 +30595,47 @@ ${fence}
   }
 
   // preview-popover.ts
-  var relationshipLabels = {
-    neutral: "Related note",
-    supports: "Supports",
-    opposes: "Opposes",
-    incompatible: "Incompatible"
-  };
+  function normalizedTitle(value) {
+    return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  }
+  function populatePreviewDocument(body, preview) {
+    body.innerHTML = preview.htmlBody;
+    body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
+    body.querySelectorAll("*").forEach((node) => {
+      for (const attribute of Array.from(node.attributes)) {
+        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
+        if (attribute.name.toLowerCase().startsWith("data-source-")) {
+          node.removeAttribute(attribute.name);
+        }
+      }
+      node.removeAttribute("href");
+      node.removeAttribute("contenteditable");
+      node.removeAttribute("id");
+      node.removeAttribute("for");
+      node.removeAttribute("aria-describedby");
+      node.removeAttribute("aria-labelledby");
+      node.removeAttribute("aria-owns");
+      node.tabIndex = -1;
+    });
+    const firstHeading = body.querySelector(":scope > h1:first-child");
+    if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
+      firstHeading.remove();
+    }
+  }
   function createPreviewPopoverController(options) {
     let editor2 = null;
     let root = null;
     let title = null;
     let metadata = null;
     let body = null;
-    let timer;
+    let showTimer;
+    let hideTimer;
     let pendingAnchor = null;
     function hide() {
-      window.clearTimeout(timer);
-      timer = void 0;
+      window.clearTimeout(showTimer);
+      window.clearTimeout(hideTimer);
+      showTimer = void 0;
+      hideTimer = void 0;
       pendingAnchor = null;
       if (root) {
         root.hidden = true;
@@ -30620,6 +30644,14 @@ ${fence}
       if (title) title.textContent = "";
       if (metadata) metadata.textContent = "";
       body?.replaceChildren();
+    }
+    function cancelHide() {
+      window.clearTimeout(hideTimer);
+      hideTimer = void 0;
+    }
+    function scheduleHide() {
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(hide, 180);
     }
     function position(anchor, startedAt) {
       if (!editor2 || !root) return;
@@ -30655,26 +30687,12 @@ ${fence}
         }
       });
     }
-    function removeInteractiveContent() {
-      if (!body) return;
-      body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
-      body.querySelectorAll("*").forEach((node) => {
-        for (const attribute of Array.from(node.attributes)) {
-          if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-        }
-        node.removeAttribute("href");
-        node.removeAttribute("contenteditable");
-        node.tabIndex = -1;
-      });
-    }
     function show(preview, anchor, startedAt) {
       if (!editor2 || !root || !title || !metadata || !body) return;
       title.textContent = preview.title;
-      const relationship = preview.relationship ? relationshipLabels[preview.relationship] : "Related note";
-      metadata.textContent = preview.fragment ? `${relationship}
-${preview.fragment}` : relationship;
-      body.innerHTML = preview.htmlBody;
-      removeInteractiveContent();
+      metadata.textContent = preview.fragment ?? "";
+      metadata.hidden = !preview.fragment;
+      populatePreviewDocument(body, preview);
       recordEditorMetric("cached-preview-work", startedAt, {
         documentLength: editor2.state.doc.length
       });
@@ -30714,15 +30732,21 @@ ${preview.fragment}` : relationship;
       return event.target.closest("[data-link-preview-index]");
     }
     const handlePointerMove = (event) => {
-      const anchor = anchorAtEvent(event);
-      if (!anchor) {
-        if (pendingAnchor || root && !root.hidden) hide();
+      if (root && event.target instanceof Node && root.contains(event.target)) {
+        cancelHide();
         return;
       }
+      const anchor = anchorAtEvent(event);
+      if (!anchor) {
+        if (pendingAnchor || root && !root.hidden) scheduleHide();
+        return;
+      }
+      cancelHide();
       if (anchor === pendingAnchor) return;
-      hide();
+      window.clearTimeout(showTimer);
+      showTimer = void 0;
       pendingAnchor = anchor;
-      timer = window.setTimeout(() => {
+      showTimer = window.setTimeout(() => {
         if (pendingAnchor !== anchor) return;
         const previewIndex = Number(anchor.dataset.linkPreviewIndex);
         const preview = options.previews()[previewIndex];
@@ -30731,6 +30755,8 @@ ${preview.fragment}` : relationship;
         }
       }, 300);
     };
+    const handlePreviewPointerEnter = () => cancelHide();
+    const handlePreviewPointerLeave = () => scheduleHide();
     const handleKeyUp = (event) => {
       if (event.key === "Meta") hide();
     };
@@ -30752,12 +30778,15 @@ ${preview.fragment}` : relationship;
       title.className = "scholium-preview-title";
       metadata = document.createElement("p");
       metadata.className = "scholium-preview-metadata";
+      metadata.hidden = true;
       body = document.createElement("div");
-      body.className = "scholium-preview-body";
+      body.className = "scholium-preview-body scholium-document";
       body.setAttribute("role", "group");
       body.setAttribute("aria-label", "Preview content");
       root.append(title, metadata, body);
       document.body.append(root);
+      root.addEventListener("pointerenter", handlePreviewPointerEnter);
+      root.addEventListener("pointerleave", handlePreviewPointerLeave);
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
       document.addEventListener("keyup", handleKeyUp);
       document.addEventListener("keydown", handleKeyDown);
@@ -30772,6 +30801,8 @@ ${preview.fragment}` : relationship;
       document.removeEventListener("keyup", handleKeyUp);
       document.removeEventListener("keydown", handleKeyDown);
       view.scrollDOM.removeEventListener("scroll", handleViewportExit);
+      root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
+      root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
       window.removeEventListener("resize", handleViewportExit);
       window.removeEventListener("blur", handleViewportExit);
       root?.remove();
@@ -32040,9 +32071,9 @@ ${preview.fragment}` : relationship;
   // markdown-fragment.ts
   var vectorLinkSemantics = {
     neutral: { label: "Related note", symbol: "link" },
-    supports: { label: "Supports", symbol: "plus-circle" },
-    opposes: { label: "Opposes", symbol: "minus-circle" },
-    incompatible: { label: "Incompatible", symbol: "xmark-circle" }
+    supports: { label: "Supports", symbol: "plus" },
+    opposes: { label: "Opposes", symbol: "minus" },
+    incompatible: { label: "Incompatible", symbol: "xmark" }
   };
   var inlineMarkerNodes = /* @__PURE__ */ new Set([
     "EmphasisMark",
@@ -32134,12 +32165,12 @@ ${preview.fragment}` : relationship;
           document2
         );
         icon.title = semantics.label;
-        icon.removeAttribute("aria-hidden");
-        icon.setAttribute("role", "img");
-        icon.setAttribute("aria-label", semantics.label);
+        span.setAttribute("aria-label", `${semantics.label} ${alias || target}`);
+        span.append(document2.createTextNode(alias || target));
         span.append(icon);
+      } else {
+        span.append(document2.createTextNode(alias || target));
       }
-      span.append(document2.createTextNode(alias || target));
       identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
       parent.append(span);
       return;
@@ -32520,11 +32551,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const from = Number.isInteger(record.from) ? Number(record.from) : -1;
       const to = Number.isInteger(record.to) ? Number(record.to) : -1;
       const title = typeof record.title === "string" ? record.title.slice(0, 240).trim() : "";
-      const htmlBody = typeof record.htmlBody === "string" ? record.htmlBody.slice(0, 24e3) : "";
+      const isEmbedded = record.isEmbedded === true;
+      const htmlBody = typeof record.htmlBody === "string" ? isEmbedded ? record.htmlBody : record.htmlBody.slice(0, 24e3) : "";
       const relationship = typeof record.relationship === "string" && vectorKinds.has(record.relationship) ? record.relationship : void 0;
       const fragment = typeof record.fragment === "string" ? record.fragment.slice(0, 240).trim() || void 0 : void 0;
       if (from < 0 || to <= from || to > documentLength || !title || !htmlBody) return [];
-      return [{ from, to, title, relationship, fragment, htmlBody }];
+      return [{ from, to, title, isEmbedded, relationship, fragment, htmlBody }];
     });
   }
 
@@ -33271,15 +33303,60 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`
       );
       span.title = semantics.label;
-      span.removeAttribute("aria-hidden");
-      span.setAttribute("role", "img");
-      span.setAttribute("aria-label", semantics.label);
       return span;
     }
     // Let CodeMirror place the caret at this replacement when it is clicked so
     // the exact source marker becomes available for editing immediately.
     ignoreEvent() {
       return false;
+    }
+  };
+  var EmbeddedNoteWidget = class extends WidgetType {
+    preview;
+    target;
+    sourceCaret;
+    constructor(preview, target, sourceCaret) {
+      super();
+      this.preview = preview;
+      this.target = target;
+      this.sourceCaret = sourceCaret;
+    }
+    eq(other) {
+      return other.target === this.target && other.sourceCaret === this.sourceCaret && other.preview.title === this.preview.title && other.preview.htmlBody === this.preview.htmlBody;
+    }
+    toDOM() {
+      const shell = document.createElement("section");
+      shell.className = "scholium-embedded-note cm-live-embedded-note-widget";
+      shell.dataset.scholiumProtected = "embedded-note";
+      shell.dataset.scholiumSourceCaret = String(this.sourceCaret);
+      shell.setAttribute("role", "group");
+      shell.setAttribute("aria-label", `Embedded note ${this.preview.title}`);
+      const header = document.createElement("header");
+      header.className = "scholium-embedded-note-header";
+      const open = document.createElement("span");
+      open.className = "cm-live-vector-link cm-live-vector-neutral scholium-embedded-note-open";
+      open.dir = "auto";
+      open.dataset.scholiumLinkTarget = this.target;
+      open.dataset.scholiumSourceCaret = String(this.sourceCaret);
+      open.setAttribute("aria-label", `Open embedded note ${this.preview.title}`);
+      open.append(document.createTextNode(this.preview.title));
+      header.append(open);
+      const viewport = document.createElement("div");
+      viewport.className = "scholium-embedded-note-viewport";
+      viewport.tabIndex = 0;
+      viewport.setAttribute("role", "region");
+      viewport.setAttribute("aria-label", `Embedded note content for ${this.preview.title}`);
+      const body = document.createElement("div");
+      body.className = "scholium-embedded-note-body scholium-document";
+      populatePreviewDocument(body, this.preview);
+      viewport.append(body);
+      shell.append(header, viewport);
+      return shell;
+    }
+    ignoreEvent(event) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".scholium-embedded-note-viewport")) return true;
+      return event.type !== "mousedown";
     }
   };
   var MathWidget = class extends WidgetType {
@@ -34694,22 +34771,28 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               construct.aliasRange?.from ?? null,
               alias
             );
-            if (embed) {
-              addHidden(construct.from, targetRange.from);
-            } else {
+            const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
+            const preview = previewIndex === void 0 ? void 0 : linkPreviews[previewIndex];
+            if (embed && preview?.isEmbedded) {
               addAtomicReplacement(
-                Decoration.replace({ widget: new VectorLinkIconWidget(kind) }),
+                Decoration.replace({
+                  widget: new EmbeddedNoteWidget(preview, target, construct.to)
+                }),
                 construct.from,
-                targetRange.from
+                construct.to
               );
+              continue;
             }
+            addHidden(construct.from, targetRange.from);
             const linkClass = embed ? "cm-live-embed" : presentation.isLegacyRelationship && kind === "neutral" ? "cm-live-vector-link cm-live-vector-neutral cm-live-vector-legacy" : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
             const projectedLinkAttributes = {
               "data-scholium-link-target": target,
-              "data-scholium-source-caret": String(construct.to)
+              "data-scholium-source-caret": String(construct.to),
+              ...embed ? {} : {
+                "aria-label": `${vectorLinkSemantics[kind].label} ${alias || target}`
+              }
             };
             addHidden(targetRange.from, presentation.displayStart);
-            const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
             if (previewIndex === void 0) {
               decorations2.push(Decoration.mark({
                 class: linkClass,
@@ -34723,6 +34806,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
                 previewIndex,
                 projectedLinkAttributes
               );
+            }
+            if (!embed) {
+              decorations2.push(Decoration.widget({
+                widget: new VectorLinkIconWidget(kind),
+                side: -1
+              }).range(presentation.displayEnd));
             }
             addHidden(presentation.displayEnd, construct.to);
           }

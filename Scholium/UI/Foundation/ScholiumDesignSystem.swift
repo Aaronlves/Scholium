@@ -862,16 +862,20 @@ enum ScholiumWebDesignTokens {
           font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
           font-size: 0.82em;
         }
-        .scholium-document a:not(.scholium-vector-link),
+        .scholium-document a:not(.wiki-link),
         .scholium-live-mode .cm-live-link {
           color: var(--scholium-color-accent);
           text-decoration: underline;
           text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
           text-underline-offset: 0.15em;
         }
+        .scholium-document .wiki-link,
         .scholium-document .scholium-vector-link,
+        .scholium-live-mode .cm-live-wikilink,
         .scholium-live-mode .cm-live-vector-link {
+          color: var(--scholium-color-accent);
           line-height: 1.2;
+          text-decoration: none;
         }
         .scholium-document h1,
         .scholium-document h2,
@@ -918,15 +922,13 @@ enum ScholiumWebDesignTokens {
           font-size: var(--scholium-document-h4-size);
           padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
         }
-        .scholium-document h1 a,
-        .scholium-document h2 a,
-        .scholium-document h3 a,
-        .scholium-document h4 a,
-        .scholium-document h5 a,
-        .scholium-document h6 a,
-        .scholium-live-mode .cm-live-heading .cm-live-link,
-        .scholium-live-mode .cm-live-heading .cm-live-wikilink,
-        .scholium-live-mode .cm-live-heading .cm-live-vector-link {
+        .scholium-document h1 a:not(.wiki-link),
+        .scholium-document h2 a:not(.wiki-link),
+        .scholium-document h3 a:not(.wiki-link),
+        .scholium-document h4 a:not(.wiki-link),
+        .scholium-document h5 a:not(.wiki-link),
+        .scholium-document h6 a:not(.wiki-link),
+        .scholium-live-mode .cm-live-heading .cm-live-link {
           text-decoration: underline;
         }
         .scholium-document > h1:first-child,
@@ -952,11 +954,14 @@ enum ScholiumWebDesignTokens {
           pointer-events: none;
         }
         .scholium-document .scholium-embed {
+          display: block;
+          box-sizing: border-box;
+          margin-block: var(--scholium-rhythm-semantic-block-gap);
           color: var(--scholium-color-accent);
           font-weight: 650;
-          padding: 0.08em 0.3em;
-          border: 1px solid color-mix(in srgb, var(--scholium-color-accent) 28%, transparent);
-          border-radius: var(--scholium-corner-document-inline-embed);
+          padding: 0.75rem 0.9rem;
+          border: 1px solid var(--scholium-color-separator);
+          border-radius: var(--scholium-corner-document-embedded-note);
           text-decoration: none;
         }
         .scholium-selection-actions {
@@ -1857,9 +1862,10 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     case researchRecordCollectionRow
     case boundedPanel
     case documentCodeBlock
+    case documentCalloutSurface
     case documentMarkHighlight
     case documentInlineCode
-    case documentInlineEmbed
+    case documentEmbeddedNote
     case floatingSelectionControl
     case documentControl
     case selectionSplitControl
@@ -1868,24 +1874,23 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     var radius: CGFloat {
         switch self {
         case .inlineStatus, .editorialControl, .workspaceNavigation,
-             .researchRecordCollectionRow, .boundedPanel:
+             .researchRecordCollectionRow, .boundedPanel,
+             .documentCalloutSurface, .documentEmbeddedNote:
             8
         case .editorialPanel, .loadingSurface, .documentCodeBlock:
             10
         case .editorialTextEditor:
             6
-        case .documentMarkHighlight, .selectionSplitControl:
+        case .documentMarkHighlight, .calloutDisclosureFocus:
+            2
+        case .documentInlineCode, .selectionSplitControl:
             3
-        case .documentInlineCode:
-            4
-        case .documentInlineEmbed, .documentControl:
+        case .documentControl:
             5
         case .floatingSelectionControl:
             9
         case .searchOverlay:
             12
-        case .calloutDisclosureFocus:
-            2
         }
     }
 
@@ -1899,12 +1904,14 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
             "--scholium-corner-bounded-panel"
         case .documentCodeBlock:
             "--scholium-corner-document-code-block"
+        case .documentCalloutSurface:
+            "--scholium-corner-document-callout-surface"
         case .documentMarkHighlight:
             "--scholium-corner-document-mark-highlight"
         case .documentInlineCode:
             "--scholium-corner-document-inline-code"
-        case .documentInlineEmbed:
-            "--scholium-corner-document-inline-embed"
+        case .documentEmbeddedNote:
+            "--scholium-corner-document-embedded-note"
         case .floatingSelectionControl:
             "--scholium-corner-floating-selection-control"
         case .documentControl:

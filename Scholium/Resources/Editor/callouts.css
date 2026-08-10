@@ -133,13 +133,19 @@
   margin-bottom: 0;
 }
 
-.scholium-callout a {
-  color: inherit;
+.scholium-callout a:not(.wiki-link) {
+  color: var(--scholium-color-accent);
   font-weight: 620;
   text-decoration-line: underline;
   text-decoration-color: var(--scholium-callout-rule);
   text-decoration-thickness: 1px;
   text-underline-offset: .15em;
+}
+
+.scholium-callout a.wiki-link {
+  color: var(--scholium-color-accent);
+  font-weight: 620;
+  text-decoration: none;
 }
 
 /* A single functional mark communicates disclosure; it is not a role motif. */
@@ -245,7 +251,18 @@
 .scholium-callout-cite,
 .scholium-callout-flag {
   padding-block: .72rem .8rem;
+  border-radius: var(--scholium-corner-document-callout-surface);
   background: var(--scholium-callout-surface);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-start {
+  border-start-start-radius: var(--scholium-corner-document-callout-surface);
+  border-start-end-radius: var(--scholium-corner-document-callout-surface);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-end {
+  border-end-start-radius: var(--scholium-corner-document-callout-surface);
+  border-end-end-radius: var(--scholium-corner-document-callout-surface);
 }
 
 .scholium-callout-cite .scholium-callout-role,
@@ -481,7 +498,7 @@ aside.scholium-callout-quote .scholium-callout-body {
     );
   }
 
-  .scholium-callout a {
+  .scholium-callout a:not(.wiki-link) {
     text-decoration-color: currentColor;
     text-decoration-thickness: 2px;
   }

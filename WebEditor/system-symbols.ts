@@ -15,6 +15,7 @@ export const webSystemSymbolKeys = [
   "list-number",
   "checklist",
   "text-quote",
+  "plus",
   "plus-circle",
   "minus-circle",
   "xmark-circle",
@@ -25,6 +26,7 @@ export const webSystemSymbolKeys = [
   "tablecells",
   "textformat-superscript",
   "minus",
+  "xmark",
 ] as const;
 
 export type WebSystemSymbolKey = typeof webSystemSymbolKeys[number];

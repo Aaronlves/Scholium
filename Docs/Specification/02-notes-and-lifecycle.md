@@ -172,16 +172,29 @@ surrounding Review prose. In Edit, activating the block preserves ordinary
 UTF-16 source selection over the exact fence and body rather than selecting the
 generated SVG or a whole-block surrogate.
 
-Review and Edit treat Obsidian-compatible `![[Target]]` embeds, including
-aliases and heading or block fragments, as source-located neutral links.
-Inactive embeds share protected presentation, navigation, and diagnostics; the
-active construct reveals its exact syntax. Scholium neither reads nor
-transcludes target content through an embed and creates no philosophical
-relationship edge from one. Transclusion remains outside the current product
-boundary.
+Review and inactive Edit render an Obsidian-compatible `![[Target]]` embed as
+one finite-height embedded Note rather than as inline link text. The embedded
+surface presents the target Note's complete committed body through the same
+fingerprint-bound, read-only Markdown projection, document typography,
+semantic components, Appearance, and accessibility rules as its containing
+Document. Its bounded viewport scrolls independently, exposes a named route to
+open the target Note, and never becomes editable, writable source or another
+rendering owner. A heading or block fragment may identify the target but does
+not truncate the embedded Note; an alias affects only its visible identity.
+The active Edit construct and Source expose the exact embed syntax. Missing,
+ambiguous, stale, or unavailable targets remain source-located and visibly
+diagnosed rather than displaying invented content. An embed creates no
+philosophical relationship edge and never recursively transcludes embeds found
+inside its projected target.
 
 Internal links and Vector Links provide bounded previews without becoming
-evidence or another source authority. Review additionally previews footnote
+evidence or another source authority. A Note preview presents its title once,
+omits the link type, and renders target content through the same protected
+Document styles as Review and inactive Edit. Its content may scroll inside the
+bounded preview; moving the pointer from the link into that preview keeps it
+available, and a brief exit grace prevents the gap between them from dismissing
+it before the pointer arrives. Escape, viewport exit, and explicit navigation
+remain immediate dismissal routes. Review additionally previews footnote
 references on ordinary hover; a footnote preview contains only the referenced
 definition. Footnote preview and return controls belong to Review, with
 keyboard and accessibility-equivalent routes. Edit projects an inactive

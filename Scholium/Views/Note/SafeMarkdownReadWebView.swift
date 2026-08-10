@@ -191,9 +191,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private static let consumedScrollRestoreHistoryLimit = 64
         private static let vectorSymbolDataURIs: [String: String] = [
             "neutral": ScholiumWebSymbolAssets.dataURI(for: .link),
-            "supports": ScholiumWebSymbolAssets.dataURI(for: .plusCircle),
-            "opposes": ScholiumWebSymbolAssets.dataURI(for: .minusCircle),
-            "incompatible": ScholiumWebSymbolAssets.dataURI(for: .xmarkCircle),
+            "supports": ScholiumWebSymbolAssets.dataURI(for: .plus),
+            "opposes": ScholiumWebSymbolAssets.dataURI(for: .minus),
+            "incompatible": ScholiumWebSymbolAssets.dataURI(for: .xmark),
         ]
 
         private var documentID: String
@@ -1281,8 +1281,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <main id="scholium-document" class="scholium-document">\(body)</main>
               <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="tooltip" aria-live="polite" hidden>
                 <h2 class="scholium-preview-title"></h2>
-                <p class="scholium-preview-metadata"></p>
-                <div class="scholium-preview-body"></div>
+                <p class="scholium-preview-metadata" hidden></p>
+                <div class="scholium-preview-body scholium-document"></div>
               </aside>
               <div id="selection-actions" class="scholium-selection-actions" hidden>
                 <div id="selection-toolbar" class="scholium-selection-toolbar" role="toolbar" aria-label="Selection actions">
@@ -1346,9 +1346,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     utf16LowerBound: $0.sourceSpan.utf16LowerBound,
                     utf16UpperBound: $0.sourceSpan.utf16UpperBound,
                     title: String($0.title.prefix(240)),
+                    isEmbedded: $0.syntax == .embed,
                     relationship: $0.relationship?.rawValue,
                     fragment: $0.fragment.map { String($0.prefix(240)) },
-                    htmlBody: String($0.htmlBody.prefix(24_000))
+                    htmlBody: $0.syntax == .embed
+                        ? $0.htmlBody
+                        : String($0.htmlBody.prefix(24_000))
                 )
             })
             return """
@@ -1480,9 +1483,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const origins = new Map();
                 const vectorSemantics = {
                   neutral: {label: 'Related note', symbolName: 'link', symbol: \(jsonLiteral(vectorSymbolDataURIs["neutral"] ?? ""))},
-                  supports: {label: 'Supports', symbolName: 'plus-circle', symbol: \(jsonLiteral(vectorSymbolDataURIs["supports"] ?? ""))},
-                  opposes: {label: 'Opposes', symbolName: 'minus-circle', symbol: \(jsonLiteral(vectorSymbolDataURIs["opposes"] ?? ""))},
-                  incompatible: {label: 'Incompatible', symbolName: 'xmark-circle', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
+                  supports: {label: 'Supports', symbolName: 'plus', symbol: \(jsonLiteral(vectorSymbolDataURIs["supports"] ?? ""))},
+                  opposes: {label: 'Opposes', symbolName: 'minus', symbol: \(jsonLiteral(vectorSymbolDataURIs["opposes"] ?? ""))},
+                  incompatible: {label: 'Incompatible', symbolName: 'xmark', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
                 };
 
                 function renderMathNodes() {
@@ -1647,14 +1650,149 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   icon.dataset.scholiumSystemSymbol = semantics.symbolName;
                   icon.style.webkitMaskImage = `url("${semantics.symbol}")`;
                   icon.style.maskImage = `url("${semantics.symbol}")`;
-                  link.prepend(icon);
+                  link.append(icon);
                 });
 
+                let popoverHideTimer;
                 function hidePopover() {
+                  clearTimeout(popoverHideTimer);
+                  popoverHideTimer = undefined;
                   popover.hidden = true;
                   previewTitle.textContent = '';
                   previewMetadata.textContent = '';
+                  previewMetadata.hidden = true;
                   previewBody.replaceChildren();
+                }
+
+                function cancelPopoverHide() {
+                  clearTimeout(popoverHideTimer);
+                  popoverHideTimer = undefined;
+                }
+
+                function schedulePopoverHide() {
+                  clearTimeout(popoverHideTimer);
+                  popoverHideTimer = setTimeout(hidePopover, 180);
+                }
+
+                function normalizedPreviewTitle(value) {
+                  return String(value || '').trim().replace(/\\s+/g, ' ').toLocaleLowerCase();
+                }
+
+                function sanitizeInertContent(container) {
+                  container.querySelectorAll('script, style, iframe, object, embed, form, input, button').forEach(node => node.remove());
+                  container.querySelectorAll('*').forEach(node => {
+                    Array.from(node.attributes).forEach(attribute => {
+                      if (attribute.name.toLowerCase().startsWith('on')) node.removeAttribute(attribute.name);
+                      if (attribute.name.toLowerCase().startsWith('data-source-')) {
+                        node.removeAttribute(attribute.name);
+                      }
+                    });
+                    node.removeAttribute('href');
+                    node.removeAttribute('contenteditable');
+                    node.removeAttribute('id');
+                    node.removeAttribute('for');
+                    node.removeAttribute('aria-describedby');
+                    node.removeAttribute('aria-labelledby');
+                    node.removeAttribute('aria-owns');
+                    node.tabIndex = -1;
+                  });
+                }
+
+                function installInertDocumentContent(container, preview) {
+                  container.innerHTML = preview.htmlBody;
+                  sanitizeInertContent(container);
+                  const firstHeading = container.querySelector(':scope > h1:first-child');
+                  if (firstHeading
+                      && normalizedPreviewTitle(firstHeading.textContent) === normalizedPreviewTitle(preview.title)) {
+                    firstHeading.remove();
+                  }
+                }
+
+                function embeddedNoteFor(anchor, preview, key) {
+                  const shell = document.createElement('section');
+                  shell.className = 'scholium-embedded-note';
+                  shell.dataset.scholiumProtected = 'embedded-note';
+                  shell.dataset.previewRange = key;
+                  shell.dataset.embedHref = anchor.getAttribute('href') || '';
+                  shell.dataset.embedLabel = (anchor.textContent || preview.title).trim();
+                  shell.setAttribute('role', 'group');
+                  shell.setAttribute('aria-label', 'Embedded note ' + preview.title);
+                  for (const name of [
+                    'data-source-utf16-start', 'data-source-utf16-end',
+                    'data-source-start-line', 'data-source-end-line', 'data-source-line'
+                  ]) {
+                    if (anchor.hasAttribute(name)) shell.setAttribute(name, anchor.getAttribute(name));
+                  }
+
+                  const header = document.createElement('header');
+                  header.className = 'scholium-embedded-note-header';
+                  const open = document.createElement('a');
+                  open.className = 'wiki-link scholium-vector-link scholium-vector-neutral scholium-embedded-note-open';
+                  open.dir = 'auto';
+                  open.href = shell.dataset.embedHref;
+                  open.append(document.createTextNode(preview.title));
+                  open.setAttribute('aria-label', 'Open embedded note ' + preview.title);
+                  open.title = 'Open embedded note ' + preview.title;
+                  header.append(open);
+
+                  const viewport = document.createElement('div');
+                  viewport.className = 'scholium-embedded-note-viewport';
+                  viewport.tabIndex = 0;
+                  viewport.setAttribute('role', 'region');
+                  viewport.setAttribute('aria-label', 'Embedded note content for ' + preview.title);
+                  const body = document.createElement('div');
+                  body.className = 'scholium-embedded-note-body scholium-document';
+                  installInertDocumentContent(body, preview);
+                  viewport.append(body);
+                  shell.append(header, viewport);
+                  return shell;
+                }
+
+                function restoreEmbeddedNoteFallback(shell) {
+                  const fallback = document.createElement('a');
+                  fallback.className = 'wiki-link scholium-embed';
+                  fallback.dir = 'auto';
+                  fallback.href = shell.dataset.embedHref || '';
+                  fallback.textContent = shell.dataset.embedLabel || 'Embedded note';
+                  fallback.dataset.scholiumProtected = 'embed';
+                  for (const name of [
+                    'data-source-utf16-start', 'data-source-utf16-end',
+                    'data-source-start-line', 'data-source-end-line', 'data-source-line'
+                  ]) {
+                    if (shell.hasAttribute(name)) fallback.setAttribute(name, shell.getAttribute(name));
+                  }
+                  shell.replaceWith(fallback);
+                }
+
+                function renderEmbeddedNotes() {
+                  const documentRoot = document.getElementById('scholium-document');
+                  if (!documentRoot) return;
+                  for (const shell of [...documentRoot.querySelectorAll('.scholium-embedded-note[data-preview-range]')]) {
+                    if (shell.parentElement?.closest('.scholium-embedded-note')) continue;
+                    const preview = previewByRange.get(shell.dataset.previewRange);
+                    if (!preview || !preview.isEmbedded) {
+                      restoreEmbeddedNoteFallback(shell);
+                      continue;
+                    }
+                    const body = shell.querySelector('.scholium-embedded-note-body');
+                    const open = shell.querySelector('.scholium-embedded-note-open');
+                    if (body) installInertDocumentContent(body, preview);
+                    if (open) {
+                      const label = open.firstChild;
+                      if (label) label.textContent = preview.title;
+                      open.setAttribute('aria-label', 'Open embedded note ' + preview.title);
+                      open.title = 'Open embedded note ' + preview.title;
+                    }
+                    shell.setAttribute('aria-label', 'Embedded note ' + preview.title);
+                  }
+                  const anchors = [...documentRoot.querySelectorAll('a.scholium-embed')]
+                    .filter(anchor => !anchor.parentElement?.closest('.scholium-embedded-note'));
+                  for (const anchor of anchors) {
+                    const key = anchor.dataset.sourceUtf16Start + ':' + anchor.dataset.sourceUtf16End;
+                    const preview = previewByRange.get(key);
+                    if (!preview || !preview.isEmbedded) continue;
+                    anchor.replaceWith(embeddedNoteFor(anchor, preview, key));
+                  }
                 }
 
                 window.scholiumSetLinkPreviews = previews => {
@@ -1664,6 +1802,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     preview
                   ]));
                   hidePopover();
+                  renderEmbeddedNotes();
                   return true;
                 };
 
@@ -1680,18 +1819,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   popover.style.top = top + 'px';
                 }
 
-                function removeInteractivePreviewContent() {
-                  previewBody.querySelectorAll('script, style, iframe, object, embed, form, input, button').forEach(node => node.remove());
-                  previewBody.querySelectorAll('*').forEach(node => {
-                    Array.from(node.attributes).forEach(attribute => {
-                      if (attribute.name.toLowerCase().startsWith('on')) node.removeAttribute(attribute.name);
-                    });
-                    node.removeAttribute('href');
-                    node.removeAttribute('contenteditable');
-                    node.tabIndex = -1;
-                  });
-                }
-
                 function showFootnotePopover(button) {
                   const ordinal = button.dataset.footnote;
                   const definition = document.getElementById('fn-' + ordinal);
@@ -1699,8 +1826,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   if (!content) return;
                   previewTitle.textContent = 'Footnote ' + ordinal;
                   previewMetadata.textContent = 'Referenced footnote';
+                  previewMetadata.hidden = false;
                   previewBody.replaceChildren(content.cloneNode(true));
-                  removeInteractivePreviewContent();
+                  sanitizeInertContent(previewBody);
                   positionPopover(button);
                 }
 
@@ -1708,17 +1836,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   const key = link.dataset.sourceUtf16Start + ':' + link.dataset.sourceUtf16End;
                   const preview = previewByRange.get(key);
                   if (!preview) return;
-                  const relationship = vectorSemantics[preview.relationship || 'neutral'];
                   previewTitle.textContent = preview.title;
-                  previewMetadata.textContent = (relationship ? relationship.label : 'Related note')
-                    + (preview.fragment ? ', ' + preview.fragment : '');
-                  previewBody.innerHTML = preview.htmlBody;
-                  removeInteractivePreviewContent();
+                  previewMetadata.textContent = preview.fragment || '';
+                  previewMetadata.hidden = !preview.fragment;
+                  installInertDocumentContent(previewBody, preview);
                   positionPopover(link);
                 }
 
                 function previewAnchorFor(target) {
                   if (!(target instanceof Element)) return null;
+                  if (target.closest('.scholium-embedded-note')) return null;
                   return target.closest('.footnote-reference, a.wiki-link');
                 }
 
@@ -1737,24 +1864,34 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 document.addEventListener('pointerover', event => {
                   const anchor = previewAnchorFor(event.target);
                   if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
+                  cancelPopoverHide();
                   showPreviewFor(anchor);
                 });
                 document.addEventListener('focusin', event => {
                   const anchor = previewAnchorFor(event.target);
                   if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
+                  cancelPopoverHide();
                   showPreviewFor(anchor);
                 });
                 document.addEventListener('pointerout', event => {
                   const anchor = previewAnchorFor(event.target);
-                  if (anchor && !remainsInsidePreviewAnchor(anchor, event.relatedTarget)) hidePopover();
+                  if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
+                  if (event.relatedTarget instanceof Node && popover.contains(event.relatedTarget)) {
+                    cancelPopoverHide();
+                  } else {
+                    schedulePopoverHide();
+                  }
                 });
                 document.addEventListener('focusout', event => {
                   const anchor = previewAnchorFor(event.target);
-                  if (anchor && !remainsInsidePreviewAnchor(anchor, event.relatedTarget)) hidePopover();
+                  if (anchor && !remainsInsidePreviewAnchor(anchor, event.relatedTarget)) schedulePopoverHide();
                 });
+                popover.addEventListener('pointerenter', cancelPopoverHide);
+                popover.addEventListener('pointerleave', schedulePopoverHide);
                 window.addEventListener('scroll', hidePopover, {passive: true});
                 window.addEventListener('resize', hidePopover);
                 window.addEventListener('blur', hidePopover);
+                renderEmbeddedNotes();
 
                 document.addEventListener('click', event => {
                   const reference = event.target.closest && event.target.closest('.footnote-reference');
@@ -2398,6 +2535,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let utf16LowerBound: Int
             let utf16UpperBound: Int
             let title: String
+            let isEmbedded: Bool
             let relationship: String?
             let fragment: String?
             let htmlBody: String
@@ -2411,9 +2549,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     "utf16LowerBound": preview.sourceSpan.utf16LowerBound,
                     "utf16UpperBound": preview.sourceSpan.utf16UpperBound,
                     "title": String(preview.title.prefix(240)),
+                    "isEmbedded": preview.syntax == .embed,
                     "relationship": preview.relationship?.rawValue ?? NSNull(),
                     "fragment": preview.fragment.map { String($0.prefix(240)) } ?? NSNull(),
-                    "htmlBody": String(preview.htmlBody.prefix(24_000)),
+                    "htmlBody": preview.syntax == .embed
+                        ? preview.htmlBody
+                        : String(preview.htmlBody.prefix(24_000)),
                 ]
             }
         }
@@ -2429,12 +2570,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
         \(ReviewSelectionPresentation.css)
         #selection-actions { position: absolute; }
-        .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; font-size: max(.8rem, 1em); line-height: 1.2; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 46%, transparent); text-underline-offset: .15em; }
-        .scholium-document .scholium-vector-neutral { color: var(--scholium-color-connection-neutral); }
-        .scholium-document .scholium-vector-supports { color: var(--scholium-color-connection-support); }
-        .scholium-document .scholium-vector-opposes { color: var(--scholium-color-connection-incompatible); }
-        .scholium-document .scholium-vector-incompatible { color: var(--scholium-color-connection-incompatible); }
-        .scholium-vector-icon { display: inline-block; width: .92em; height: .92em; margin-right: .24em; vertical-align: -.08em; background-color: currentColor; -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+        .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; color: var(--scholium-color-accent); line-height: inherit; text-decoration: none; }
+        .scholium-document .scholium-vector-neutral,
+        .scholium-document .scholium-vector-supports,
+        .scholium-document .scholium-vector-opposes,
+        .scholium-document .scholium-vector-incompatible { color: var(--scholium-color-accent); }
+        .scholium-vector-icon { display: inline-block; width: .52em; height: .52em; margin-inline-start: .08em; vertical-align: .58em; background-color: currentColor; -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
         code { font-family: "Victor Mono", ui-monospace, monospace; }
         img, video, svg { max-width: 100%; height: auto; }
         \(ScholiumCalloutStyles.css)
@@ -2451,7 +2592,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         .scholium-qa-only-control { position: absolute; inset-inline-end: 0; inset-block-end: 0; box-sizing: border-box; inline-size: 20px; block-size: 20px; padding: 0; overflow: hidden; border: 0; color: transparent; background: transparent; font: 0/0 -apple-system, BlinkMacSystemFont, sans-serif; }
         .scholium-qa-only-control:focus-visible { outline: 1px solid var(--scholium-content-focus-ring); outline-offset: 0; }
         .raw-html, .raw-html-inline { color: GrayText; }
-        @media (prefers-contrast: more) { .scholium-document .scholium-vector-link { text-decoration-thickness: 2px; } #comment-text:focus-visible { box-shadow: inset 0 0 0 2px var(--scholium-content-focus-ring); } }
+        @media (prefers-contrast: more) { #comment-text:focus-visible { box-shadow: inset 0 0 0 2px var(--scholium-content-focus-ring); } }
         \(ScholiumWebDesignTokens.documentPresentationCSS)
         """
     }

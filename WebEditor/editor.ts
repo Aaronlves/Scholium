@@ -114,7 +114,7 @@ import {
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
 import {createMarkdownEditor} from "./bootstrap";
 import {editorPerformanceSamples, recordEditorMetric, sampleEditorMemory} from "./performance";
-import {createPreviewPopoverController} from "./preview-popover";
+import {createPreviewPopoverController, populatePreviewDocument} from "./preview-popover";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
 import {createEditorInputSuggestions} from "./input-suggestions";
@@ -431,14 +431,69 @@ class VectorLinkIconWidget extends WidgetType {
       `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`,
     );
     span.title = semantics.label;
-    span.removeAttribute("aria-hidden");
-    span.setAttribute("role", "img");
-    span.setAttribute("aria-label", semantics.label);
     return span;
   }
   // Let CodeMirror place the caret at this replacement when it is clicked so
   // the exact source marker becomes available for editing immediately.
   ignoreEvent() { return false; }
+}
+
+class EmbeddedNoteWidget extends WidgetType {
+  readonly preview: LinkPreview;
+  readonly target: string;
+  readonly sourceCaret: number;
+
+  constructor(preview: LinkPreview, target: string, sourceCaret: number) {
+    super();
+    this.preview = preview;
+    this.target = target;
+    this.sourceCaret = sourceCaret;
+  }
+
+  eq(other: EmbeddedNoteWidget) {
+    return other.target === this.target
+      && other.sourceCaret === this.sourceCaret
+      && other.preview.title === this.preview.title
+      && other.preview.htmlBody === this.preview.htmlBody;
+  }
+
+  toDOM() {
+    const shell = document.createElement("section");
+    shell.className = "scholium-embedded-note cm-live-embedded-note-widget";
+    shell.dataset.scholiumProtected = "embedded-note";
+    shell.dataset.scholiumSourceCaret = String(this.sourceCaret);
+    shell.setAttribute("role", "group");
+    shell.setAttribute("aria-label", `Embedded note ${this.preview.title}`);
+
+    const header = document.createElement("header");
+    header.className = "scholium-embedded-note-header";
+    const open = document.createElement("span");
+    open.className = "cm-live-vector-link cm-live-vector-neutral scholium-embedded-note-open";
+    open.dir = "auto";
+    open.dataset.scholiumLinkTarget = this.target;
+    open.dataset.scholiumSourceCaret = String(this.sourceCaret);
+    open.setAttribute("aria-label", `Open embedded note ${this.preview.title}`);
+    open.append(document.createTextNode(this.preview.title));
+    header.append(open);
+
+    const viewport = document.createElement("div");
+    viewport.className = "scholium-embedded-note-viewport";
+    viewport.tabIndex = 0;
+    viewport.setAttribute("role", "region");
+    viewport.setAttribute("aria-label", `Embedded note content for ${this.preview.title}`);
+    const body = document.createElement("div");
+    body.className = "scholium-embedded-note-body scholium-document";
+    populatePreviewDocument(body, this.preview);
+    viewport.append(body);
+    shell.append(header, viewport);
+    return shell;
+  }
+
+  ignoreEvent(event: Event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".scholium-embedded-note-viewport")) return true;
+    return event.type !== "mousedown";
+  }
 }
 
 class MathWidget extends WidgetType {
@@ -2196,15 +2251,19 @@ function buildLiveDecorations(
             construct.aliasRange?.from ?? null,
             alias,
           );
-          if (embed) {
-            addHidden(construct.from, targetRange.from);
-          } else {
+          const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
+          const preview = previewIndex === undefined ? undefined : linkPreviews[previewIndex];
+          if (embed && preview?.isEmbedded) {
             addAtomicReplacement(
-              Decoration.replace({widget: new VectorLinkIconWidget(kind)}),
+              Decoration.replace({
+                widget: new EmbeddedNoteWidget(preview, target, construct.to),
+              }),
               construct.from,
-              targetRange.from,
+              construct.to,
             );
+            continue;
           }
+          addHidden(construct.from, targetRange.from);
 
           const linkClass = embed
             ? "cm-live-embed"
@@ -2214,9 +2273,11 @@ function buildLiveDecorations(
           const projectedLinkAttributes = {
             "data-scholium-link-target": target,
             "data-scholium-source-caret": String(construct.to),
+            ...(embed ? {} : {
+              "aria-label": `${vectorLinkSemantics[kind].label} ${alias || target}`,
+            }),
           };
           addHidden(targetRange.from, presentation.displayStart);
-          const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
           if (previewIndex === undefined) {
             decorations.push(Decoration.mark({
               class: linkClass,
@@ -2230,6 +2291,12 @@ function buildLiveDecorations(
               previewIndex,
               projectedLinkAttributes,
             );
+          }
+          if (!embed) {
+            decorations.push(Decoration.widget({
+              widget: new VectorLinkIconWidget(kind),
+              side: -1,
+            }).range(presentation.displayEnd));
           }
           addHidden(presentation.displayEnd, construct.to);
         }

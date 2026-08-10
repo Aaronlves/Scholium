@@ -94,9 +94,12 @@ describe("appendMarkdownBlocks", () => {
       ),
     );
     expect(calloutLinkIcons.map((icon) => icon.dataset.scholiumSystemSymbol))
-      .toEqual(["link", "plus-circle"]);
+      .toEqual(["link", "plus"]);
     expect(calloutLinkIcons.map((icon) => icon.getAttribute("aria-label")))
-      .toEqual(["Related note", "Supports"]);
+      .toEqual([null, null]);
+    expect(calloutLinkIcons.map((icon) => icon.getAttribute("aria-hidden")))
+      .toEqual(["true", "true"]);
+    expect(calloutLink?.getAttribute("aria-label")).toBe("Related note a linked note");
     expect(calloutLinkIcons.every((icon) => icon.querySelector("svg") === null)).toBe(true);
     expect(root.querySelectorAll("table.scholium-table th")).toHaveLength(2);
     expect([...root.querySelectorAll("table.scholium-table th, table.scholium-table td")]

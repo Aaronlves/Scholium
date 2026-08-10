@@ -3532,9 +3532,10 @@ struct FrontendArchitectureTests {
                     .researchRecordCollectionRow,
                     .boundedPanel,
                     .documentCodeBlock,
+                    .documentCalloutSurface,
                     .documentMarkHighlight,
                     .documentInlineCode,
-                    .documentInlineEmbed,
+                    .documentEmbeddedNote,
                     .floatingSelectionControl,
                     .documentControl,
                     .selectionSplitControl,
@@ -5538,6 +5539,7 @@ struct FrontendArchitectureTests {
             target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
             targetFingerprint: DocumentFingerprint(content: "Target body"),
             title: "Target note",
+            syntax: .vectorWikilink,
             relationship: .supports,
             fragment: "Claim",
             htmlBody: "<p>Target body</p>"
@@ -5560,7 +5562,11 @@ struct FrontendArchitectureTests {
         #expect(readBridge.contains("previewByRange"))
         #expect(readBridge.contains("showLinkPopover"))
         #expect(readBridge.contains("showFootnotePopover"))
+        #expect(readBridge.contains("renderEmbeddedNotes"))
+        #expect(readBridge.contains("scholium-embedded-note-viewport"))
         #expect(previewControllerSource.contains("ViewPlugin.define"))
+        #expect(previewControllerSource.contains("populatePreviewDocument"))
+        #expect(previewControllerSource.contains("scheduleHide"))
         #expect(previewControllerSource.contains("document.removeEventListener"))
         #expect(previewControllerSource.contains("floatingSurfacePosition"))
         #expect(previewControllerSource.contains(#"addEventListener("scroll", handleViewportExit"#))

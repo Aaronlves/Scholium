@@ -555,9 +555,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 from: from,
                 to: to,
                 title: String(preview.title.prefix(240)),
+                isEmbedded: preview.syntax == .embed,
                 relationship: preview.relationship,
                 fragment: preview.fragment.map { String($0.prefix(240)) },
-                htmlBody: String(preview.htmlBody.prefix(24_000))
+                htmlBody: preview.syntax == .embed
+                    ? preview.htmlBody
+                    : String(preview.htmlBody.prefix(24_000))
             )
         }
         guard isReady, isLoaded, let webView else { return }

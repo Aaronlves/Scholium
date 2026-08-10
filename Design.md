@@ -160,6 +160,24 @@ because they repeat entries.
   background `#FF9A00` with contrast-safe dark ink in Review and Edit. It is a
   syntax role, not Accent, status, authorship, Connection meaning, or a third
   researcher-configurable color input.
+- Standard Markdown hyperlinks use Accent with an underline. Wikilinks and
+  Vector Links use that same Accent without an underline and place one small,
+  optically equal trailing upper-corner SF Symbol badge after the linked text:
+  `link`, `plus`, `minus`, or `xmark` for Related, Supports, Opposes, or
+  Incompatible respectively. No relationship symbol precedes linked text, no
+  relationship receives a separate hue, and the visible text plus accessible
+  name retains the complete meaning. Review and inactive Edit use the same
+  recipe and visual dimensions. An embedded Note's header title is the named
+  route to open that Note and carries no corner badge.
+- Callout surfaces, Markup highlight, inline code, and embedded Notes consume
+  their purpose-owned Document corner recipes. The large bounded content
+  surfaces remain visibly softer than the compact inline marks; feature CSS
+  names no raw radius and Review/Edit share each semantic recipe. An embedded
+  Note is a finite-height Document-within-Document surface, not an inline chip,
+  card collection, writable projection, or second renderer. A link preview
+  likewise reuses protected Document typography and components, displays its
+  title once, omits relationship type copy, and adds only the bounded panel's
+  structural scrolling and presentation chrome.
 - Provide intentional CJK serif fallback and test mixed Chinese/Latin lines.
 - Color exposes exactly two approved sRGB inputs: **Accent** `#A94C22` and
   **Paper** `#FEF8ED`. In Light appearance Paper is the illuminated Document

@@ -1171,6 +1171,146 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review shares link, preview, and finite embedded Note presentation")
+    func reviewLinkAndEmbeddedNotePresentation() async throws {
+        let source = "[[Target]] and [External](https://example.com)\n\n![[Embedded]]\n"
+        let document = NoteDocument(relativePath: "LinkedDocument.md", rawContent: source)
+        let rendered = SafeMarkdownRenderer.render(document)
+        let targetLink = try #require(rendered.semanticDocument.links.first {
+            $0.syntax == .wikilink
+        })
+        let embeddedLink = try #require(rendered.semanticDocument.links.first {
+            $0.syntax == .embed
+        })
+        let previewBody = "<h1>Target note</h1>" + String(
+            repeating: "<p>Scrollable preview content.</p>",
+            count: 60
+        )
+        let embeddedTail = "Complete embedded tail"
+        let embeddedBody = "<h1>Embedded note</h1>" + String(
+            repeating: "<p>Complete embedded content.</p>",
+            count: 90
+        ) + "<p>\(embeddedTail)</p>"
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: rendered.htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.updateLinkPreviews([
+            Self.linkPreview(
+                at: targetLink.span,
+                title: "Target note",
+                relationship: .neutral,
+                htmlBody: previewBody
+            ),
+            Self.linkPreview(
+                at: embeddedLink.span,
+                title: "Embedded note",
+                syntax: .embed,
+                relationship: nil,
+                htmlBody: embeddedBody
+            ),
+        ], revision: "complete-embedded-note-1")
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while true {
+            let count = try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-embedded-note').length"
+            ) as? Int ?? 0
+            if count == 1 { break }
+            if clock.now >= deadline {
+                Issue.record("Review did not install the finite embedded Note projection.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        let snapshot = try #require(try await harness.callPageJavaScript(
+            """
+            const wiki = document.querySelector('a.wiki-link:not(.scholium-embedded-note-open)');
+            const external = document.querySelector('a[href="https://example.com"]');
+            const shell = document.querySelector('.scholium-embedded-note');
+            const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
+            const embeddedBody = shell?.querySelector('.scholium-embedded-note-body');
+            const open = shell?.querySelector('.scholium-embedded-note-open');
+            const icon = wiki?.querySelector('.scholium-vector-icon');
+            const popover = document.getElementById('scholium-preview-popover');
+            if (!wiki || !external || !shell || !viewport || !embeddedBody || !open || !icon || !popover) {
+              return null;
+            }
+            wiki.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
+            await new Promise(resolve => setTimeout(resolve, 25));
+            const previewBody = popover.querySelector('.scholium-preview-body');
+            const metadata = popover.querySelector('.scholium-preview-metadata');
+            const previewDuplicateTitleCount = [...previewBody.querySelectorAll('h1')]
+              .filter(heading => (heading.textContent || '').trim() === 'Target note').length;
+            popover.scrollTop = 120;
+            const previewScrollTop = popover.scrollTop;
+            wiki.dispatchEvent(new PointerEvent('pointerout', {
+              bubbles: true,
+              relatedTarget: document.body
+            }));
+            await new Promise(resolve => setTimeout(resolve, 60));
+            popover.dispatchEvent(new PointerEvent('pointerenter', {bubbles: false}));
+            await new Promise(resolve => setTimeout(resolve, 220));
+            const remainedVisibleInside = !popover.hidden;
+            popover.dispatchEvent(new PointerEvent('pointerleave', {bubbles: false}));
+            await new Promise(resolve => setTimeout(resolve, 220));
+            const hiddenAfterGrace = popover.hidden;
+            viewport.scrollTop = 160;
+            const wikiStyle = getComputedStyle(wiki);
+            const externalStyle = getComputedStyle(external);
+            return {
+              sameAccent: wikiStyle.color === externalStyle.color,
+              wikiDecoration: wikiStyle.textDecorationLine,
+              externalDecoration: externalStyle.textDecorationLine,
+              trailingBadge: wiki.lastElementChild === icon && icon.previousSibling !== null,
+              badgeName: icon.dataset.scholiumSystemSymbol || '',
+              metadataHidden: metadata.hidden,
+              previewUsesDocumentOwner: previewBody.classList.contains('scholium-document'),
+              previewDuplicateTitleCount,
+              previewScrollTop,
+              remainedVisibleInside,
+              hiddenAfterGrace,
+              inlineEmbedCount: document.querySelectorAll('a.scholium-embed').length,
+              embeddedUsesDocumentOwner: embeddedBody.classList.contains('scholium-document'),
+              embeddedDuplicateTitleCount: [...embeddedBody.querySelectorAll('h1')]
+                .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
+              embeddedHasTail: (embeddedBody.textContent || '').includes('Complete embedded tail'),
+              embeddedScrollable: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
+              embeddedSourceLocators: embeddedBody.querySelectorAll('[data-source-utf16-start]').length,
+              openBadgeCount: open.querySelectorAll('.scholium-vector-icon').length,
+              viewportTabIndex: viewport.tabIndex
+            };
+            """
+        ) as? [String: Any])
+        #expect(snapshot["sameAccent"] as? Bool == true)
+        #expect(snapshot["wikiDecoration"] as? String == "none")
+        #expect((snapshot["externalDecoration"] as? String)?.contains("underline") == true)
+        #expect(snapshot["trailingBadge"] as? Bool == true)
+        #expect(snapshot["badgeName"] as? String == "link")
+        #expect(snapshot["metadataHidden"] as? Bool == true)
+        #expect(snapshot["previewUsesDocumentOwner"] as? Bool == true)
+        #expect(snapshot["previewDuplicateTitleCount"] as? Int == 0)
+        #expect((snapshot["previewScrollTop"] as? Double ?? 0) > 0)
+        #expect(snapshot["remainedVisibleInside"] as? Bool == true)
+        #expect(snapshot["hiddenAfterGrace"] as? Bool == true)
+        #expect(snapshot["inlineEmbedCount"] as? Int == 0)
+        #expect(snapshot["embeddedUsesDocumentOwner"] as? Bool == true)
+        #expect(snapshot["embeddedDuplicateTitleCount"] as? Int == 0)
+        #expect(snapshot["embeddedHasTail"] as? Bool == true)
+        #expect(snapshot["embeddedScrollable"] as? Bool == true)
+        #expect(snapshot["embeddedSourceLocators"] as? Int == 0)
+        #expect(snapshot["openBadgeCount"] as? Int == 0)
+        #expect(snapshot["viewportTabIndex"] as? Int == 0)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review link previews open inside callouts")
     func reviewCalloutLinkPreviews() async throws {
         let source = """
@@ -1253,18 +1393,23 @@ extension MarkdownEditorWebViewIntegrationTests {
                   value => Boolean(value) && value !== 'none'
                 );
               }).length,
-              svgCount: icons.reduce((count, icon) => count + icon.querySelectorAll('svg').length, 0)
+              svgCount: icons.reduce((count, icon) => count + icon.querySelectorAll('svg').length, 0),
+              sizes: icons.map(icon => {
+                const rect = icon.getBoundingClientRect();
+                return `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`;
+              })
             };
             """
         ) as? [String: Any])
         #expect(snapshot["names"] as? [String] == [
-            "plus-circle",
-            "minus-circle",
-            "xmark-circle",
+            "plus",
+            "minus",
+            "xmark",
             "link",
         ])
         #expect(snapshot["maskCount"] as? Int == 4)
         #expect(snapshot["svgCount"] as? Int == 0)
+        #expect(Set(snapshot["sizes"] as? [String] ?? []).count == 1)
         await harness.closeAndDrain()
     }
 
@@ -1697,16 +1842,19 @@ extension MarkdownEditorWebViewIntegrationTests {
     private static func linkPreview(
         at span: SourceSpan,
         title: String,
-        relationship: VectorLinkKind
+        syntax: LinkSyntax = .wikilink,
+        relationship: VectorLinkKind?,
+        htmlBody: String = "<p>Target body</p>"
     ) -> DocumentLinkPreview {
         DocumentLinkPreview(
             sourceSpan: span,
             target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
             targetFingerprint: DocumentFingerprint(content: "Target body"),
             title: title,
+            syntax: syntax,
             relationship: relationship,
             fragment: nil,
-            htmlBody: "<p>Target body</p>"
+            htmlBody: htmlBody
         )
     }
 
