@@ -125,7 +125,6 @@ struct DocumentFeatureState {
     let identityMigrationFailureMessage: String?
     let isResolvingIdentity: Bool
     let noteReviewState: WorkspaceNoteReviewState?
-    let isNoteReviewTaskPresented: Bool
     let researchRecordSourceManifestHash: String
     let researchRecordProjectionIsComplete: Bool
 }
@@ -175,7 +174,6 @@ struct DocumentFeatureActions {
     ) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let viewAgentChanges: @MainActor () -> Void
-    let dismissNoteReviewTask: @MainActor () -> Void
     let reloadNoteReviewState: @MainActor () async throws -> Void
     let markCurrentNoteReviewed: @MainActor (
         UUID,
@@ -969,7 +967,9 @@ struct NoteContentView: View {
                 .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
 
-            if state.isNoteReviewTaskPresented,
+            if documentSession.noteReviewTaskPresentation.isPresented(
+                for: state.noteReviewState?.noteID
+            ),
                state.noteReviewState?.status == .needsReview {
                 noteReviewTaskBar
             }
@@ -1095,6 +1095,9 @@ struct NoteContentView: View {
         }
         .onAppear {
             controller.observe(documentSession)
+            documentSession.reconcileNoteReviewTask(
+                with: state.noteReviewState
+            )
             applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
             openRequestedDiscussion(state.requestedDiscussionID)
@@ -1121,6 +1124,15 @@ struct NoteContentView: View {
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
             consumePendingSourceLocation()
+        }
+        .onChange(of: state.noteReviewState) { _, reviewState in
+            documentSession.reconcileNoteReviewTask(with: reviewState)
+        }
+        .task(id: noteReviewTaskAnnouncementIdentity) {
+            guard noteReviewTaskAnnouncementIdentity != nil else { return }
+            AccessibilityNotification.Announcement(
+                String(localized: "Review Current Note")
+            ).post()
         }
         .task(id: readProjectionTaskIdentity) {
             failedReadFingerprint = nil
@@ -1173,7 +1185,9 @@ struct NoteContentView: View {
                     .font(ScholiumTypography.interface(.sectionTitle))
                 Spacer(minLength: 0)
                 Button {
-                    actions.dismissNoteReviewTask()
+                    documentSession.dismissNoteReviewTask(
+                        for: state.noteReviewState
+                    )
                 } label: {
                     Image(systemName: "xmark")
                 }
@@ -1215,9 +1229,20 @@ struct NoteContentView: View {
         }
         .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
         .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-        .scholiumSurface(.denseEvidence)
+        .background(ScholiumColorRole.raisedSurfaceBackground.color)
+        .overlay(alignment: .bottom) {
+            ScholiumStructuralRule()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.noteReview.task")
+    }
+
+    private var noteReviewTaskAnnouncementIdentity: String? {
+        guard documentSession.noteReviewTaskPresentation.isPresented(
+            for: state.noteReviewState?.noteID
+        ) else { return nil }
+        return documentSession.noteReviewTaskPresentation.presentedIdentity?
+            .activityIDs.joined(separator: ":")
     }
 
     @ViewBuilder
@@ -1291,6 +1316,7 @@ struct NoteContentView: View {
                     revision,
                     state.researchRecordSourceManifestHash
                 )
+                documentSession.completeNoteReviewTask()
                 AccessibilityNotification.Announcement(
                     String(localized: "Current Note marked reviewed")
                 ).post()
@@ -2219,7 +2245,6 @@ private extension CritiqueFindingDispositionDecision {
         identityMigrationFailureMessage: nil,
         isResolvingIdentity: false,
         noteReviewState: nil,
-        isNoteReviewTaskPresented: false,
         researchRecordSourceManifestHash: "",
         researchRecordProjectionIsComplete: false
     )
@@ -2251,7 +2276,6 @@ private extension CritiqueFindingDispositionDecision {
         openResearchAction: { _, _ in },
         setResearchInspectorVisible: { _ in },
         viewAgentChanges: {},
-        dismissNoteReviewTask: {},
         reloadNoteReviewState: {},
         markCurrentNoteReviewed: { _, _, _ in },
         notify: { _, _ in }

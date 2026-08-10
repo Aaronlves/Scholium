@@ -178,15 +178,14 @@ interface mode and never appears inside Inspector.
 
 The ordinary entry is a full-window collection on one continuous semantic
 Document surface. The native toolbar owns the restrained **Records / Reading
-Leads** editorial index. It uses the same shallow editorial-selection surface
-as ModeIndex, with equal destinations and no underline or filled segmented
-band. Below it, one adaptive header places search and the borderless native
+Leads** index as an equal-width native capsule segmented control. It uses the
+Scholium raised selection surface, hides shared Liquid Glass, and adds no
+underline or custom ModeIndex skin. Below it, one adaptive header places search and the borderless native
 Scope and filter menus on one scanning row at wide widths and stacks them only
 when space requires it. The toolbar index is the visible collection identity
-and never appends a count; the search field receives the available header width.
-Ready, empty, filtered-empty, partial-load, unavailable, and error states retain
-that stable hierarchy. Controls and rows use compact native macOS density while
-every custom target retains the minimum accessible hit region. The titlebar,
+without a count; search fills the header. Ready, empty, filtered-empty,
+partial-load, unavailable, and error states retain this compact hierarchy and
+accessible custom targets. The titlebar,
 toolbar, collection header, and content resolve the same Document background
 and use adaptive 1pt rules rather than contrasting bars, materials, or shadows.
 Native traffic lights, dragging, resizing, full screen, key-window appearance,
@@ -230,8 +229,9 @@ requests the next slice while preserving collection state. Later-page failure
 retains loaded rows and exposes Retry at that boundary.
 
 Selecting a row enters one route-owned detail and removes the collection from
-the active accessibility tree. The native toolbar owns Back and the restrained
-route title; Back returns to the retained collection state.
+the active accessibility tree. The native toolbar owns Back, omits the generic
+Record title, and retains only meaningful destination titles. Back restores the
+collection state.
 A Record detail contains one dominant reading plane and one narrower
 **Evidence** rail at an approximately **64/36** working proportion;
 additional width accrues to reading first. The panes use the Document and
@@ -295,7 +295,8 @@ than as another peer row in the ordinary Records collection.
 The reading plane owns **Researcher Response**: empty offers **Add Response...**;
 saved content offers **Edit Response...**. Evaluation comes first; absent Method
 Feedback stays behind **+ Add Method Feedback...**. Saved feedback reveals
-**Improve Current Method...**. **Save Response** atomically writes both.
+**Improve Current Method...**. **Save Response** atomically writes both. Its
+heading uses the reading baseline, never the Evidence inset.
 
 The fixed Evidence rail presents **Changes**, **Effects**, **Context Used**,
 **Participants**, and **Technical Details**. It owns no Review or Response.
@@ -322,9 +323,9 @@ A safely resolved Note or Record destination makes the complete rounded row
 interactive without adding an **Open** glyph or button. An unresolved source
 retains its exact locator and testimony as selectable, copyable,
 noninteractive text. Agent-reported Material use is a fallback only when a
-verified Context Use report is absent. Effects state confirmed source changes,
-Record completion, applicable Fidelity, and discrepancies without badges,
-scores, or color-only meaning.
+verified Context Use report is absent. **Changes** alone owns source-change
+state, comparison, and recovery. **Effects** states completion, Fidelity, and
+discrepancies without repeating Changes, scores, badges, or color-only meaning.
 
 The current researcher judgment remains directly readable in the reading
 plane. Its Add/Edit control opens the combined native
@@ -387,22 +388,23 @@ Overview presents only compact current-note projections, in this order:
    to that exact Note. It has no nested **Show All** row. At zero it retains the
    heading and `0` but no reassurance sentence or decorative verdict.
 2. **Review:** distinct from Attention. It states **No Agent changes to review**,
-   **Needs Review · N Agent activities** with **Review Current Note...**, or
+   **Needs Review · N Agent activities** as one full-row route, or
    **No Agent changes awaiting Review** with **Last reviewed [date]**.
-3. **About:** only non-empty role-specific fields in Appendix A. Scope and each
-   Limitation use reading blocks. The complete About heading row is the direct
-   **Edit Properties** button; the values and reading blocks remain static and
-   selectable rather than becoming button content. There is no bottom Edit
-   row and About has no Customize route. A current Analysis with a valid
-   protected Zotero item key appends one quiet full-row **Open in Zotero**
-   action inside About; it exposes neither the key nor fetched metadata and is
-   absent for every other target. There is no Research Status, Key Properties,
-   Provenance, Derived State, or separate Zotero section.
+3. **About:** non-empty Appendix A fields only; Scope and Limitations use
+   reading blocks. Its heading is **Edit Properties**, while values remain
+   static and selectable; no bottom Edit or Customize exists. A current
+   Analysis with a valid protected Zotero key adds quiet **Open in Zotero**
+   without exposing the key or metadata. Research Status, Key Properties,
+   Provenance, Derived State, and a Zotero section remain absent.
 
-**Review Current Note...** opens a temporary Document task bar separating
-read-only **View Changes** from **Mark Current Note Reviewed**. Commit requires
-clean, available, conflict-free exact Note and Record revisions; every mismatch
-fails closed. No toolbar, Record/change action, or notification substitutes.
+A pending activity set automatically presents a once-announced, focus-neutral
+Document task bar with **View Changes** and **Mark Current Note Reviewed**. Its
+raised surface and bottom rule never form a floating card or shadow. Close
+suppresses that exact set only in the retained session; Overview reopens it,
+and a new Agent set presents again, unlike researcher-only revision changes.
+Commit requires clean, available, conflict-free exact Note and Record revisions;
+every mismatch fails closed. No toolbar, Record/change action, or result
+notification substitutes.
 
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and

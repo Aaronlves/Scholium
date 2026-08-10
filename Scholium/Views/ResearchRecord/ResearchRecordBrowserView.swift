@@ -1,3 +1,4 @@
+import AppKit
 import ScholiumContracts
 import ScholiumResearchRecordsFeature
 import SwiftUI
@@ -905,110 +906,85 @@ private struct ResearchRecordAttentionPresentation {
     let detail: String
 }
 
-private struct ResearchRecordsViewIndex: View {
-    @Environment(\.layoutDirection) private var layoutDirection
-    @FocusState private var focusedView: ResearchRecordsViewKind?
+@MainActor
+struct ResearchRecordsViewIndex: NSViewRepresentable {
+    @Bindable var model: ResearchRecordBrowserModel
 
-    let model: ResearchRecordBrowserModel
-
-    var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            ForEach(ResearchRecordsViewKind.allCases, id: \.self) { viewKind in
-                ResearchRecordsViewIndexButton(
-                    viewKind: viewKind,
-                    isSelected: model.viewKind == viewKind,
-                    focusedView: $focusedView,
-                    select: { model.viewKind = viewKind },
-                    move: { moveFocus(from: viewKind, direction: $0) }
-                )
-                .frame(minWidth: 0, maxWidth: .infinity)
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("View")
-        .accessibilityIdentifier("scholium.researchRecords.view")
+    func makeCoordinator() -> Coordinator {
+        Coordinator(model: model)
     }
 
-    private func moveFocus(
-        from viewKind: ResearchRecordsViewKind,
-        direction: MoveCommandDirection
-    ) {
-        let views = ResearchRecordsViewKind.allCases
-        guard let index = views.firstIndex(of: viewKind) else { return }
-        let visualStep: Int
-        switch direction {
-        case .left:
-            visualStep = layoutDirection == .leftToRight ? -1 : 1
-        case .right:
-            visualStep = layoutDirection == .leftToRight ? 1 : -1
-        default:
-            return
-        }
-        let nextIndex = (index + visualStep + views.count) % views.count
-        let nextView = views[nextIndex]
-        model.viewKind = nextView
-        focusedView = nextView
-    }
-}
-
-private struct ResearchRecordsViewIndexButton: View {
-    let viewKind: ResearchRecordsViewKind
-    let isSelected: Bool
-    let focusedView: FocusState<ResearchRecordsViewKind?>.Binding
-    let select: () -> Void
-    let move: (MoveCommandDirection) -> Void
-
-    var body: some View {
-        Button(action: select) {
-            Text(title)
-                .font(
-                    isSelected
-                        ? ScholiumTypography.interface(.compact, emphasis: .strong)
-                        : ScholiumTypography.interface(.compact, emphasis: .medium)
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
-                )
-                .contentShape(selectionShape)
-                .scholiumContentControlInk()
-        }
-        .buttonStyle(
-            ScholiumContentControlButtonStyle(
-                isSelected: isSelected,
-                isFocused: isFocused,
-                in: selectionShape
-            )
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl(
+            labels: Self.viewKinds.map(Self.title),
+            trackingMode: .selectOne,
+            target: context.coordinator,
+            action: #selector(Coordinator.selectionChanged(_:))
         )
-        .scholiumActivationFocus(focusedView, equals: viewKind)
-        .onMoveCommand(perform: move)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityValue(isSelected ? "Selected" : "")
-        .accessibilityIdentifier(
-            "scholium.researchRecords.view.\(viewKind.rawValue)"
+        control.segmentStyle = .capsule
+        control.segmentDistribution = .fillEqually
+        control.controlSize = .small
+        control.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        control.borderShape = .capsule
+        control.selectedSegmentBezelColor =
+            ScholiumColorRole.raisedSurfaceBackground.nsColor
+        if #available(macOS 27.0, *) {
+            control.role = .tabs
+        }
+        control.identifier = NSUserInterfaceItemIdentifier(
+            "scholium.researchRecords.view"
         )
+        control.setAccessibilityLabel(String(localized: "View"))
+        for (index, viewKind) in Self.viewKinds.enumerated() {
+            control.setTag(index, forSegment: index)
+            control.setToolTip(Self.title(viewKind), forSegment: index)
+        }
+        update(control)
+        return control
     }
 
-    private var title: String {
+    func updateNSView(_ nsView: NSSegmentedControl, context: Context) {
+        context.coordinator.model = model
+        update(nsView)
+    }
+
+    private func update(_ control: NSSegmentedControl) {
+        let selectedIndex = Self.viewKinds.firstIndex(of: model.viewKind) ?? 0
+        if control.selectedSegment != selectedIndex {
+            control.selectedSegment = selectedIndex
+        }
+        control.setAccessibilityValue(Self.title(model.viewKind))
+    }
+
+    private static let viewKinds = ResearchRecordsViewKind.allCases
+
+    private static func title(_ viewKind: ResearchRecordsViewKind) -> String {
         switch viewKind {
         case .records:
-            "Records"
+            String(localized: "Records")
         case .recommendations:
-            "Reading Leads"
+            String(localized: "Reading Leads")
         }
     }
 
-    private var isFocused: Bool {
-        focusedView.wrappedValue == viewKind
-    }
+    @MainActor
+    final class Coordinator: NSObject {
+        var model: ResearchRecordBrowserModel
 
-    private var selectionShape: RoundedRectangle {
-        RoundedRectangle(
-            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-            style: .continuous
-        )
+        init(model: ResearchRecordBrowserModel) {
+            self.model = model
+        }
+
+        @objc func selectionChanged(_ sender: NSSegmentedControl) {
+            guard Self.validSegment(sender.selectedSegment) else { return }
+            model.viewKind = ResearchRecordsViewIndex.viewKinds[
+                sender.selectedSegment
+            ]
+        }
+
+        private static func validSegment(_ segment: Int) -> Bool {
+            ResearchRecordsViewIndex.viewKinds.indices.contains(segment)
+        }
     }
 }
 
@@ -2064,11 +2040,9 @@ private struct ResearchRecordDetailToolbar: ToolbarContent {
     var body: some ToolbarContent {
         if #available(macOS 26.0, *) {
             backItem.sharedBackgroundVisibility(.hidden)
-            titleItem.sharedBackgroundVisibility(.hidden)
             evidenceItem.sharedBackgroundVisibility(.hidden)
         } else {
             backItem
-            titleItem
             evidenceItem
         }
     }
@@ -2076,12 +2050,6 @@ private struct ResearchRecordDetailToolbar: ToolbarContent {
     private var backItem: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             ResearchRecordsBackToolbarButton(action: model.backToCollection)
-        }
-    }
-
-    private var titleItem: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            ResearchRecordsRouteToolbarTitle(title: "Record")
         }
     }
 
@@ -2126,7 +2094,6 @@ private struct ResearchRecordWorkspaceView: View {
     let context: ResearchRecordBrowserContext
     @State private var confirmsPermanentDeletion = false
     @State private var isEvidencePresented = true
-    @FocusState private var isDeletionControlFocused: Bool
 
     var body: some View {
         ScholiumRecordDetailSplitView(
@@ -2160,13 +2127,6 @@ private struct ResearchRecordWorkspaceView: View {
                 "This removes the portable record from every derived Note view. It does not delete source Markdown, checkpoints, exact-note recovery, or unrelated records. This action cannot be undone."
             )
         }
-        .onChange(of: confirmsPermanentDeletion) { wasPresented, isPresented in
-            guard wasPresented && !isPresented else { return }
-            Task { @MainActor in
-                await Task.yield()
-                isDeletionControlFocused = true
-            }
-        }
     }
 
     private var readingPlane: some View {
@@ -2176,7 +2136,6 @@ private struct ResearchRecordWorkspaceView: View {
                     ResearchRecordDetailHeader(
                         record: record,
                         model: model,
-                        deleteFocus: $isDeletionControlFocused,
                         confirmsPermanentDeletion: $confirmsPermanentDeletion
                     )
                     ScholiumStructuralRule()
@@ -2259,7 +2218,6 @@ private struct ResearchRecordWorkspaceView: View {
                 ResearchRecordEvidenceSection(
                     resultDisposition: record.resultDisposition,
                     fidelityCompletion: record.fidelityCompletion,
-                    changes: record.confirmedChanges,
                     discrepancies: record.discrepancies,
                     participants: record.participatingNotes
                 )
@@ -3054,7 +3012,6 @@ private struct ResearchRecordLiteratureRecommendationsSection: View {
 private struct ResearchRecordDetailHeader: View {
     let record: PortableResearchRecord
     let model: ResearchRecordBrowserModel
-    let deleteFocus: FocusState<Bool>.Binding
     @Binding var confirmsPermanentDeletion: Bool
 
     var body: some View {
@@ -3081,8 +3038,7 @@ private struct ResearchRecordDetailHeader: View {
                     systemImage: "trash",
                     identifier: "scholium.researchRecord.deletePermanently",
                     role: .destructive,
-                    emphasizedColorRole: .destructive,
-                    focus: deleteFocus
+                    emphasizedColorRole: .destructive
                 ) {
                     confirmsPermanentDeletion = true
                 }
@@ -3469,7 +3425,6 @@ private struct ResearchRecordStatementView: View {
 private struct ResearchRecordEvidenceSection: View {
     let resultDisposition: ResearchAgentResultDisposition
     let fidelityCompletion: PortableResearchFidelityCompletion
-    let changes: [PortableResearchConfirmedChange]
     let discrepancies: [PortableResearchDiscrepancy]
     let participants: [PortableResearchNoteRevision]
 
@@ -3480,14 +3435,6 @@ private struct ResearchRecordEvidenceSection: View {
                 identifier: "scholium.researchRecord.effectsHeader"
             )
 
-            ResearchRecordEvidenceEntry(
-                symbol: changes.isEmpty ? "lock.open" : "doc.badge.arrow.up",
-                title: changes.isEmpty
-                    ? "No source changes"
-                    : "\(changes.count) confirmed source changes",
-                body: changeDetail,
-                identifier: "scholium.researchRecord.effects.changes"
-            )
             ResearchRecordEvidenceEntry(
                 symbol: resultDisposition == .completed
                     ? "checkmark.seal"
@@ -3521,21 +3468,6 @@ private struct ResearchRecordEvidenceSection: View {
                 )
             }
         }
-    }
-
-    private var changeDetail: String {
-        guard !changes.isEmpty else {
-            return String(localized: "Research sources remain unchanged.")
-        }
-        let titles = changes.compactMap { change in
-            participants.first { $0.noteID == change.noteID }?.title
-        }
-        guard !titles.isEmpty else {
-            return String(localized: "Scholium confirmed the recorded revision changes.")
-        }
-        return String(
-            localized: "Scholium confirmed changes to \(titles.joined(separator: ", "))."
-        )
     }
 
     private var fidelityTitle: String {

@@ -59,14 +59,17 @@
     "Needs Review · %lld Agent activities" : {
       "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要审阅 · %lld 项 Agent 活动" } } }
     },
+    "Needs Review, %arg Agent activities" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要审阅，%arg 项 Agent 活动" } } }
+    },
     "No Agent changes awaiting Review" : {
       "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有等待审阅的 Agent 更改" } } }
     },
     "No Agent changes to review" : {
       "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有可供审阅的 Agent 更改" } } }
     },
-    "Opens a document task for viewing changes and explicitly marking the current saved Note reviewed" : {
-      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开文档任务，以查看更改并明确标记当前已保存文档为已审阅" } } }
+    "Reopens the Document task for viewing changes and explicitly marking the current saved Note reviewed" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重新打开文档任务，以查看更改并明确标记当前已保存文档为已审阅" } } }
     },
     "Opens this Note's Research Records without changing Review state" : {
       "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开这篇文档的研究记录，但不更改审阅状态" } } }
@@ -100,9 +103,6 @@
     },
     "Review Current Note" : {
       "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "审阅当前文档" } } }
-    },
-    "Review Current Note…" : {
-      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "审阅当前文档…" } } }
     },
     "Save the current editor changes before marking this Note reviewed." : {
       "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先保存当前编辑更改，再将这篇文档标记为已审阅。" } } }

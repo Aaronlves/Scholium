@@ -248,7 +248,10 @@ content controls use secondary ink; hover or focus promotes primary ink and
 adds the purpose-owned surface only when needed. Keyboard focus remains stronger
 than hover, persistent selection remains stronger than both, and pointer
 activation does not leave a keyboard-only focus effect. Matching controls use
-one recipe without copying toolbar pixels or adding geometry animation.
+one recipe without copying toolbar pixels or adding geometry animation. Native
+Buttons, sheets, and segmented controls do not receive feature-local focus
+state or unconditional focus restoration; the shared activation-focus recipe
+is reserved for genuinely custom keyboard owners.
 
 Toolbar controls retain native small-control geometry and feedback without a
 Scholium underline or enclosure. Location-header icons share one **28 × 28pt**
@@ -438,7 +441,7 @@ the required meaning.
 | --- | --- | --- | --- |
 | `Sidebar / Document / Apparatus` | Keep Document primary across three opaque planes; one full-height Sidebar-edge cue advances the Document/Apparatus work field without replacing the native divider. | Cards, a floating Inspector, a parallel divider, or a dashboard. | §18.2 |
 | `Triptych Workspace Navigator` | Presents Analyses, Topics, and Works as full-width destinations with one persistent Navigation selection and quiet, exact Note totals. | A Scope filter, pipeline, project selector, segmented band, or Attention counter. | §§3.2, 18.2–18.3 |
-| `ModeIndex` | Selects one local Inspector mode or auxiliary-window view through a shallow editorial-control surface while retaining focus, pointer, keyboard, and RTL behavior without an Accent underline. | A workspace navigator, filled segmented band, or Document tab strip. | §18.5 |
+| `ModeIndex` | Selects one Inspector mode through the shallow editorial surface. Toolbar views instead use a native capsule segmented control with hidden shared glass and Scholium selection color. | A workspace navigator, toolbar skin, or Document tab strip. | §18.5 |
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §§12, 18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
@@ -469,6 +472,7 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | `Research Action` | Prepare, run, inspect, settle, and optionally write a bounded Agent result. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §§12–14, 18.4–18.6 |
 | `Research Records` | Review portable records without reconstructing writable research Markdown. | Collection-first navigation into one reading-first Record or Reading Lead detail, with source and derived evidence distinct. | §14, §18.5 |
+| `Note Review` | Inspects pending Agent activity for a saved Note and marks exact observed state reviewed. | Task bar auto-presents; close suppresses the set for the session, Overview reopens, and a new set presents. Raised surface and rule, never a floating card or focus transfer. | §§14, 18.5 |
 | `Bootstrap Agent Preparation` | Installs the CLI, copies one prompt, and accepts confirmation without granting research access. | An Agent launcher, provider picker, readiness manager, Session, or Run handoff. | §16 |
 
 Patterns may reference multiple components, but they must not introduce a

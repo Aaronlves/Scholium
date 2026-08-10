@@ -33,6 +33,18 @@ exercise, source-fidelity review of private research, or researcher acceptance.
   Search and editor floating controls, Callout focus, footnote/link preview,
   selection completion, semantic color, corner, typography, spacing, and
   component-cadence ownership.
+- The 2026-08-10 Records/Review correction passed 3 focused App tests across 3
+  owning suites. The bounded Note Review/Compare UI journey passed in 119.354
+  seconds and proved automatic task presentation, same-set dismissal, Overview
+  reopening, new-set reopening, stable Records frame, and no pointer-generated
+  Compare focus. The complementary Response journey passed in 57.615 seconds,
+  retaining progressive Method Feedback, stale draft recovery, and no
+  pointer-generated Edit Response focus.
+- One final isolated Debug QA read exactly 100 current-schema synthetic Records
+  through ordinary **QA Topic → This Note Records**. Its accessibility tree
+  exposed the native Records/Reading Leads tab group, `Record, 100 results`, and
+  the ordinary product window; exploratory inspection additionally covered the
+  aligned Response heading, nonduplicated Effects, and title-free Record detail.
 - The latest complete serial UI profile, run 2026-07-28, covered the 74 journeys
   then present. It predates later interface batches; affected boundaries have
   focused engineering evidence, but the complete suite and genuine VoiceOver

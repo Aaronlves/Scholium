@@ -2358,6 +2358,9 @@ struct WindowControllerArchitectureTests {
         let researchOperations = try source(
             "ScholiumApplication/ResearchWorkspaceOperations.swift"
         )
+        let reviewPresentation = try source(
+            "Scholium/Features/Document/NoteReviewTaskPresentationState.swift"
+        )
 
         for removedActionSurface in [
             "ResearchFinalizedResultView(",
@@ -2394,9 +2397,15 @@ struct WindowControllerArchitectureTests {
             $0.0 < $0.1
         })
         #expect(inspector.contains("Needs Review · \\(count) Agent activities"))
-        #expect(inspector.contains("Button(\"Review Current Note…\""))
+        #expect(inspector.contains("Button(action: context.openNoteReview)"))
+        #expect(!inspector.contains("Button(\"Review Current Note…\""))
+        #expect(inspector.contains("Reopens the Document task"))
         #expect(inspector.contains("No Agent changes to review"))
         #expect(inspector.contains("No Agent changes awaiting Review"))
+        #expect(!recordBrowser.contains("scholium.researchRecord.effects.changes"))
+        #expect(processing.contains("Text(\"RESEARCHER RESPONSE\")"))
+        #expect(!processing.contains("restoreEditorFocus"))
+        #expect(!processing.contains("restoreComparisonFocus"))
 
         for atomicResponseBoundary in [
             "Text(\"Researcher Response\")",
@@ -2448,6 +2457,10 @@ struct WindowControllerArchitectureTests {
             "scholium.noteReview.task",
             "Button(\"View Changes…\")",
             "Button(\"Mark Current Note Reviewed\")",
+            "reconcileNoteReviewTask",
+            "AccessibilityNotification.Announcement",
+            "ScholiumColorRole.raisedSurfaceBackground.color",
+            "ScholiumStructuralRule()",
             "noteReviewBlockingReason",
             "documentSession.hasUnsavedChanges",
             "conflict != nil",
@@ -2455,6 +2468,8 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(noteContent.contains(noteReviewBoundary))
         }
+        #expect(reviewPresentation.contains("dismissedIdentity == identity"))
+        #expect(reviewPresentation.contains("activityIDs = reviewState.pendingActivities"))
         for sharedComparisonBoundary in [
             "ExactSourceComparisonSheetLayout",
             "ExactSourceComparisonView",

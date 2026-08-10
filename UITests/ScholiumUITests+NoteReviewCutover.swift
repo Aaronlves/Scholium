@@ -28,12 +28,30 @@ extension ScholiumUITests {
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
         let initialInspector = selectResearchInspectorMode("overview")
+        let initialReviewRow = app.buttons["scholium.researchOverview.review.open"]
         XCTAssertTrue(
-            app.staticTexts["Needs Review · 2 Agent activities"]
-                .waitForExistence(timeout: 20),
+            initialReviewRow.waitForExistence(timeout: 20),
             "The live workspace projection must ingest both newly arrived portable Records."
         )
+        XCTAssertEqual(
+            initialReviewRow.value as? String,
+            "Needs Review, 2 Agent activities"
+        )
         XCTAssertTrue(initialInspector.exists)
+        let autoReviewTask = workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ]
+        XCTAssertTrue(
+            autoReviewTask.waitForExistence(timeout: 5),
+            "The first pending activity set must present the attached Document task."
+        )
+        autoReviewTask.buttons["Close Note Review"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !autoReviewTask.exists })
+        scrollUntilHittable(initialReviewRow, in: initialInspector)
+        initialReviewRow.click()
+        XCTAssertTrue(autoReviewTask.waitForExistence(timeout: 5))
+        autoReviewTask.buttons["Close Note Review"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !autoReviewTask.exists })
 
         selectVault(
             "scholium.vault.paper_analysis",
@@ -83,6 +101,12 @@ extension ScholiumUITests {
         XCTAssertTrue(recordsWindow.staticTexts["Multi-Note Agent revision"].exists)
         returnToRecord.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !returnToRecord.exists })
+        XCTAssertFalse(
+            NSPredicate(format: "hasKeyboardFocus == true").evaluate(
+                with: comparison
+            ),
+            "Pointer return from comparison must not synthesize keyboard focus."
+        )
         assertStableRecordsFrame(recordsWindow.frame, equals: listFrame)
 
         let back = recordsWindow.buttons["scholium.researchRecords.back"]
@@ -95,8 +119,12 @@ extension ScholiumUITests {
 
         focusWorkspaceWindow(workspace)
         let inspector = selectResearchInspectorMode("overview")
-        let pendingTwo = app.staticTexts["Needs Review · 2 Agent activities"]
+        let pendingTwo = app.buttons["scholium.researchOverview.review.open"]
         XCTAssertTrue(pendingTwo.waitForExistence(timeout: 12))
+        XCTAssertEqual(
+            pendingTwo.value as? String,
+            "Needs Review, 2 Agent activities"
+        )
         let openReview = app.buttons["scholium.researchOverview.review.open"]
         scrollUntilHittable(openReview, in: inspector)
         openReview.click()
@@ -126,9 +154,12 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Work.md"
         )
         openNote("QA Work.md", expectedTitle: "QA Work", in: workspace)
-        XCTAssertTrue(app.staticTexts[
-            "Needs Review · 1 Agent activities"
-        ].waitForExistence(timeout: 12))
+        let workReview = app.buttons["scholium.researchOverview.review.open"]
+        XCTAssertTrue(workReview.waitForExistence(timeout: 12))
+        XCTAssertEqual(
+            workReview.value as? String,
+            "Needs Review, 1 Agent activities"
+        )
 
         selectVault(
             "scholium.vault.topic_knowledge",
@@ -149,10 +180,18 @@ extension ScholiumUITests {
             ),
         ])
         try triggerWorkspaceRefreshForPortableFixture("later note review")
+        let laterReview = app.buttons["scholium.researchOverview.review.open"]
         XCTAssertTrue(
-            app.staticTexts["Needs Review · 1 Agent activities"]
-                .waitForExistence(timeout: 20),
+            laterReview.waitForExistence(timeout: 20),
             "A later confirmed Agent activity must reopen Review for this Note."
+        )
+        XCTAssertEqual(
+            laterReview.value as? String,
+            "Needs Review, 1 Agent activities"
+        )
+        XCTAssertTrue(
+            reviewTask.waitForExistence(timeout: 5),
+            "A new pending activity set must present the attached task again."
         )
     }
 
@@ -279,6 +318,12 @@ extension ScholiumUITests {
         ].waitForExistence(timeout: 5))
         recordsWindow.buttons["action-button-1"].click()
         XCTAssertTrue(waitUntil(timeout: 8) { !sheet.exists })
+        XCTAssertFalse(
+            NSPredicate(format: "hasKeyboardFocus == true").evaluate(
+                with: edit
+            ),
+            "Pointer dismissal must not synthesize keyboard focus on Edit Response."
+        )
     }
 
     @MainActor

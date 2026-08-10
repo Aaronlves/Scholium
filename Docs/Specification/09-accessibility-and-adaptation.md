@@ -32,10 +32,14 @@
 - Every core task has keyboard, menu or toolbar, pointer, focus, accessibility,
   cancellation, and recovery coverage appropriate to the platform control.
   Drag and secondary click remain redundant routes.
-- Focus is visible and predictable. Dismissing sheets, alerts, Search,
-  popovers, conflict comparison, Actions, and Research Records returns focus to
-  the initiating control or the next valid semantic target. Removal follows a
-  stable next, previous, then owning-container sequence.
+- Focus is visible and predictable. Native macOS controls and presentations let
+  AppKit preserve the initiating modality: keyboard dismissal returns to the
+  initiating control or the next valid semantic target, while pointer dismissal
+  does not synthesize a keyboard-only focus ring. Feature call sites do not add
+  unconditional `FocusState` restoration around native Buttons, sheets, or
+  segmented controls. The shared activation-focus adapter remains limited to
+  custom controls whose keyboard owner cannot be expressed natively. Removal
+  follows a stable next, previous, then owning-container sequence.
 - Custom controls expose current names, roles, values, selected state,
   availability, errors, consequences, and recovery actions. Decoration and
   duplicate symbols stay out of the accessibility tree. Help and hints add
@@ -153,6 +157,9 @@
   disclosure state, selected complete documents, changed rows, folded unchanged
   counts, and per-document undo outcomes; focus returns to the Result or
   Conflict owner selected by its footer action.
+- A newly pending Note Review activity set announces its attached Document task
+  once without moving focus. Closing the task removes it from the active tree;
+  the Overview Review row remains the named route that can present it again.
 - Reading Lead detail retains one order from disposition and full citation
   through bibliography, discovery, reason, uncertainty, note, source, parent,
   and technical identity. Narrow or enlarged presentation stacks complete

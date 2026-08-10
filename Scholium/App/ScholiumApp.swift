@@ -1610,9 +1610,6 @@ final class WindowModel: ObservableObject {
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
-    /// Per-window, document-owned Review task context. Durable review truth
-    /// remains in the portable Note Review store.
-    @Published var noteReviewTaskNoteID: UUID? = nil
     @Published var registeredVaults: [RegisteredVault] = []
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()

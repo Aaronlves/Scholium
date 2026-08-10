@@ -12,15 +12,15 @@ struct ResearchRecordResearcherResponseSection: View {
     @State private var isStartingImprovement = false
     @State private var improvementHandoff: ResearchAgentHandoff?
     @State private var improvementError: String?
-    @FocusState private var isEditorButtonFocused: Bool
-    @FocusState private var isImprovementButtonFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            ResearchRecordEvidenceSectionHeader(
-                title: "RESEARCHER RESPONSE",
-                identifier: "scholium.researchRecord.responseHeader"
-            )
+            Text("RESEARCHER RESPONSE")
+                .scholiumApparatusHeadingStyle()
+                .accessibilityHeading(.h2)
+                .accessibilityIdentifier(
+                    "scholium.researchRecord.responseHeader"
+                )
             if hasSavedResponse {
                 savedResponseContent
                 ViewThatFits(in: .horizontal) {
@@ -41,10 +41,6 @@ struct ResearchRecordResearcherResponseSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Add Response…") { isPresentingEditor = true }
                     .buttonStyle(.bordered)
-                    .scholiumActivationFocus(
-                        $isEditorButtonFocused,
-                        presentation: .native
-                    )
                     .accessibilityIdentifier(
                         "scholium.researchRecord.response.add"
                     )
@@ -60,7 +56,7 @@ struct ResearchRecordResearcherResponseSection: View {
                     )
             }
         }
-        .sheet(isPresented: $isPresentingEditor, onDismiss: restoreEditorFocus) {
+        .sheet(isPresented: $isPresentingEditor) {
             ResearcherResponseEditorSheet(
                 record: record,
                 save: { draft, evaluationRevision, feedbackRevision, fingerprint in
@@ -80,8 +76,7 @@ struct ResearchRecordResearcherResponseSection: View {
             isPresented: Binding(
                 get: { improvementHandoff != nil },
                 set: { if !$0 { improvementHandoff = nil } }
-            ),
-            onDismiss: restoreImprovementFocus
+            )
         ) {
             if let improvementHandoff {
                 ResearchMethodImprovementHandoffSheet(handoff: improvementHandoff)
@@ -149,10 +144,6 @@ struct ResearchRecordResearcherResponseSection: View {
     private var responseControls: some View {
         Button("Edit Response…") { isPresentingEditor = true }
             .buttonStyle(.bordered)
-            .scholiumActivationFocus(
-                $isEditorButtonFocused,
-                presentation: .native
-            )
             .accessibilityHint(
                 "Edits Researcher Evaluation and Method Feedback together"
             )
@@ -161,10 +152,6 @@ struct ResearchRecordResearcherResponseSection: View {
         if record.methodFeedbackComment != nil {
             Button("Improve Current Method…") { startMethodImprovement() }
                 .disabled(isStartingImprovement)
-                .scholiumActivationFocus(
-                    $isImprovementButtonFocused,
-                    presentation: .native
-                )
                 .accessibilityHint(
                     "Starts a separate paired Method improvement Run from the saved feedback"
                 )
@@ -193,19 +180,6 @@ struct ResearchRecordResearcherResponseSection: View {
         }
     }
 
-    private func restoreEditorFocus() {
-        Task { @MainActor in
-            await Task.yield()
-            isEditorButtonFocused = true
-        }
-    }
-
-    private func restoreImprovementFocus() {
-        Task { @MainActor in
-            await Task.yield()
-            isImprovementButtonFocused = true
-        }
-    }
 }
 
 private struct ResearcherResponseContent: Equatable {
@@ -872,7 +846,6 @@ struct ResearchRecordChangesSection: View {
     @State private var isReloadRequired = false
     @State private var errorMessage: String?
     @State private var isPresentingComparison = false
-    @FocusState private var isComparisonButtonFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -930,8 +903,7 @@ struct ResearchRecordChangesSection: View {
         }
         .task(id: record.id) { await loadChangeState() }
         .sheet(
-            isPresented: $isPresentingComparison,
-            onDismiss: restoreComparisonFocus
+            isPresented: $isPresentingComparison
         ) {
             if let changeState {
                 ResearchRecordComparisonSheet(
@@ -953,20 +925,9 @@ struct ResearchRecordChangesSection: View {
                 changeState == nil || isReloading
                     || isReloadRequired
             )
-            .scholiumActivationFocus(
-                $isComparisonButtonFocused,
-                presentation: .native
-            )
             .accessibilityIdentifier(
                 "scholium.researchRecord.changes.compare"
             )
-    }
-
-    private func restoreComparisonFocus() {
-        Task { @MainActor in
-            await Task.yield()
-            isComparisonButtonFocused = true
-        }
     }
 
     private func loadChangeState() async {

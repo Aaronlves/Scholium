@@ -45,7 +45,10 @@
 - Inspector presents Overview, Connect, and Actions as one mutually exclusive
   index. Overview shows Needs Attention, Review, then About; Connect switches Incoming
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
-  Settle.
+  Settle. A pending Review is one full-row route. Its exact pending activity set
+  auto-presents the retained Document session's attached Review task once;
+  closing suppresses that set without changing Review truth, and a later Agent
+  activity presents again.
 - Action sheets expose academic inputs, target and mutation consequence,
   handoff, active Run state, continuation, cancellation, and recovery without
   exposing credentials, registration keys, protocol internals, or
@@ -56,7 +59,9 @@
   workflow state and dimensions.
 - Record reading detail shows progressive Researcher Response; its Evidence
   rail shows Changes, Effects, Context Used, Participants, and Technical
-  Details. One combined editor atomically saves Evaluation and optional Method
+  Details without repeating the Changes count under Effects. The Response
+  heading shares the reading plane's content baseline. One combined editor
+  atomically saves Evaluation and optional Method
   Feedback. The shared folding exact comparison remains read-only until an
   explicitly granted whole-document recovery. Notification clicks produce the
   validated exact result route and its Records-window-lifetime direct-Undo
@@ -83,15 +88,20 @@
   Inspect, Resynthesize, Leave Unchanged, dismiss, and Retry routes.
 - Research Records opens to Records or Reading Leads with toolbar View,
   window-local Scope, search, filters, sorting, exact total, and incremental
-  loading. Selecting a row replaces the collection with one retained detail
-  route; Back restores the collection state.
+  loading. View is an AppKit capsule segmented control with Scholium semantic
+  selection color and no shared Liquid Glass background. Selecting a row
+  replaces the collection with one retained detail route; Back restores the
+  collection state. Record detail omits the generic toolbar title.
 - Record detail uses a dominant reading plane and optional Evidence
   rail. Reading Lead detail uses one reading flow with independent handled
   state, complete citation, bibliographic and discovery facts, reason,
   uncertainty, researcher note, source, parent, and technical identity.
 - Record deletion, Response editing, folding comparison,
   evidence popovers, unresolved provenance, and recommendation handling retain
-  named keyboard and accessibility routes.
+  named keyboard and accessibility routes. Native Response and comparison
+  presentation no longer installs unconditional feature-local focus return, so
+  pointer dismissal does not paint a keyboard-only focus ring while AppKit
+  retains keyboard focus behavior.
 
 ## Appearance, adaptation, and localization
 

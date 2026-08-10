@@ -341,9 +341,11 @@ struct ContentView: View {
                 )
             },
             openNoteReview: {
-                guard let noteID = currentNoteStableID,
-                      currentNoteReviewState?.status == .needsReview else { return }
-                appState.noteReviewTaskNoteID = noteID
+                guard let reviewState = currentNoteReviewState,
+                      reviewState.status == .needsReview else { return }
+                currentNoteDocumentSession?.presentNoteReviewTask(
+                    for: reviewState
+                )
             },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
@@ -363,6 +365,17 @@ struct ContentView: View {
         return researchController.records?.noteReviewStates.first {
             $0.noteID == noteID
         }
+    }
+
+    private var currentNoteDocumentSession: DocumentSessionModel? {
+        if let descriptor = appState.currentDocumentDescriptor {
+            return appState.documentController.session(for: descriptor.sessionKey)
+        }
+        guard let vaultID = appState.currentDocumentVaultID,
+              let noteID = currentNoteStableID else { return nil }
+        return appState.documentController.session(
+            for: DocumentSessionKey(vaultID: vaultID, noteID: noteID)
+        )
     }
 
     private var currentAnalysisZoteroItemKey: String? {
@@ -451,8 +464,6 @@ struct ContentView: View {
             identityMigrationFailureMessage: appState.currentDocumentIdentityMigrationFailure?.message,
             isResolvingIdentity: appState.isResolvingIdentity,
             noteReviewState: currentNoteReviewState,
-            isNoteReviewTaskPresented: appState.noteReviewTaskNoteID
-                == currentNoteStableID,
             researchRecordSourceManifestHash: researchController.records?
                 .finishedResearchRecordSourceManifestHash ?? "",
             researchRecordProjectionIsComplete: researchController.records?
@@ -571,9 +582,6 @@ struct ContentView: View {
             viewAgentChanges: {
                 windowCoordinator.actions.showNoteResearchRecords()
             },
-            dismissNoteReviewTask: {
-                appState.noteReviewTaskNoteID = nil
-            },
             reloadNoteReviewState: {
                 try await appState.researchController.refreshResearchProjection()
             },
@@ -583,7 +591,6 @@ struct ContentView: View {
                     expectedRevision: revision,
                     expectedRecordSourceManifestHash: manifest
                 )
-                appState.noteReviewTaskNoteID = nil
             },
             notify: { message, kind in
                 switch kind {
@@ -944,11 +951,6 @@ struct ContentView: View {
                 }
             }
             detailContent
-        }
-        .onChange(of: currentNoteStableID) { previous, current in
-            guard previous != current,
-                  appState.noteReviewTaskNoteID != current else { return }
-            appState.noteReviewTaskNoteID = nil
         }
     }
 

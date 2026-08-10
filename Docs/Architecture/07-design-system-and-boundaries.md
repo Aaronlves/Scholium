@@ -97,6 +97,11 @@ ring into both retained document surfaces. The overloaded
 in the complete keyboard chain, clears pointer-generated keyboard-only focus,
 and locally replaces the native focus effect with that shared surface without
 inspecting AppKit events or changing window-wide focus behavior.
+Native Buttons, sheets, alerts, and segmented controls do not consume this
+adapter: AppKit owns their modality-sensitive focus return. Feature views do
+not add unconditional `FocusState` assignments after native presentation
+dismissal, which prevents pointer interactions from manufacturing keyboard
+focus rings while retaining native keyboard traversal and return behavior.
 `ScholiumContentControlButtonFeedbackModifier` is the single transient-state
 owner for custom SwiftUI Buttons. The generic
 `ScholiumContentControlButtonStyle` and geometry-owning quiet-row style both
@@ -139,7 +144,8 @@ Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
 Workspace toolbar hosts bridge live window observations into native AppKit
-toolbar-bezel buttons and pull-downs. `NSButton` and `NSPopUpButton` own their
+toolbar-bezel buttons and pull-downs. `NSButton`, `NSPopUpButton`, and
+`NSSegmentedControl` own their
 small control-size geometry, hover, press, focus, menu tracking, and disabled
 rendering. The same semantic recipe pairs that geometry with the system body
 font and body-medium SF Symbol scale that the original SwiftUI toolbar used;
@@ -148,9 +154,12 @@ toolbar interaction surface or persistent active state.
 
 Research Records uses one continuous semantic Document surface, collection-
 first routing, native TextField/Menu/Toggle/sheet behavior, structural rules,
-and two independent detail scroll owners. Its View index uses the shared
-shallow interaction surface without an underline; Scope and Filters remain
-borderless native Menus. The View index and detail navigation are native-
+and two independent detail scroll owners. Its View index is an AppKit
+`NSSegmentedControl` with explicit capsule segment and border shape, small
+control size, equal distribution, and the Scholium raised-surface color for the
+selected segment. The toolbar item hides macOS shared background material so
+the control receives no automatic Liquid Glass enclosure. Scope and Filters
+remain borderless native Menus. The View index and detail navigation are native-
 toolbar content; the adaptive
 collection header owns identity, search, Scope, Filters, and count. The selected
 Record allocates the remaining width to reading while its default-visible
@@ -169,9 +178,10 @@ continuous without Liquid Glass or a painted masking layer.
 
 Every custom Records Button routes hover, keyboard focus, and press through
 the shared Button feedback owner; Scope and Filters use the bounded Menu
-adapter and plain presentation. The toolbar View index and Inspector
-ModeIndex also resolve persistent selection through that same shallow surface,
-without an Accent underline or a filled segmented band. View items, menu labels, search clear,
+adapter and plain presentation. The Inspector ModeIndex resolves persistent
+selection through the shared shallow surface. The native toolbar View index
+instead lets AppKit own segment focus and selection while using only Scholium's
+semantic selected color; neither index adds an Accent underline. View items, menu labels, search clear,
 ordinary actions, evidence links, and continuity links use the editorial-
 control continuous shape; native toolbar Back and Evidence controls retain
 system interaction geometry. Collection destinations and their leading Handled

@@ -7,6 +7,54 @@ import Combine
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
+    @Test("Note Review task auto-presents once per retained pending set")
+    func noteReviewTaskPresentationLifecycle() {
+        let session = DocumentSessionModel(key: nil)
+        let noteID = UUID()
+        let firstRecordID = UUID()
+        let secondRecordID = UUID()
+        let firstPending = reviewState(
+            noteID: noteID,
+            recordIDs: [firstRecordID],
+            source: "saved source"
+        )
+
+        session.reconcileNoteReviewTask(with: firstPending)
+        #expect(session.noteReviewTaskPresentation.isPresented(for: noteID))
+
+        session.dismissNoteReviewTask(for: firstPending)
+        #expect(!session.noteReviewTaskPresentation.isPresented)
+
+        let researcherEdited = reviewState(
+            noteID: noteID,
+            recordIDs: [firstRecordID],
+            source: "later researcher edit"
+        )
+        session.reconcileNoteReviewTask(with: researcherEdited)
+        #expect(!session.noteReviewTaskPresentation.isPresented)
+
+        session.presentNoteReviewTask(for: researcherEdited)
+        #expect(session.noteReviewTaskPresentation.isPresented(for: noteID))
+        session.dismissNoteReviewTask(for: researcherEdited)
+
+        let newAgentActivity = reviewState(
+            noteID: noteID,
+            recordIDs: [firstRecordID, secondRecordID],
+            source: "later researcher edit"
+        )
+        session.reconcileNoteReviewTask(with: newAgentActivity)
+        #expect(session.noteReviewTaskPresentation.isPresented(for: noteID))
+
+        session.reconcileNoteReviewTask(
+            with: WorkspaceNoteReviewState(
+                noteID: noteID,
+                currentRevision: newAgentActivity.currentRevision,
+                status: .noAgentChangesAwaitingReview
+            )
+        )
+        #expect(!session.noteReviewTaskPresentation.isPresented)
+    }
+
     @Test("Document presentation commits only valid lifecycle states")
     func documentPresentationStateMachine() {
         let session = DocumentSessionModel(key: nil)
@@ -42,6 +90,24 @@ struct DocumentSessionLifecycleTests {
 
         #expect(publications.count == 4)
         _ = observation
+    }
+
+    private func reviewState(
+        noteID: UUID,
+        recordIDs: [UUID],
+        source: String
+    ) -> WorkspaceNoteReviewState {
+        WorkspaceNoteReviewState(
+            noteID: noteID,
+            currentRevision: DocumentFingerprint(content: source),
+            status: .needsReview,
+            pendingActivities: recordIDs.map {
+                PortableResearchNoteActivityReference(
+                    recordID: $0,
+                    noteID: noteID
+                )
+            }
+        )
     }
 
     @Test("Lease reconciliation acquires the destination before reaping the source")

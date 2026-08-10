@@ -153,17 +153,42 @@ struct ResearchOverviewView: View {
                     .scholiumForeground(.secondaryText)
             case .needsReview:
                 let count = context.noteReviewState?.pendingActivities.count ?? 0
-                Text("Needs Review · \(count) Agent activities")
-                    .font(ScholiumTypography.scholarly(.emphasis))
-                    .scholiumForeground(.primaryText)
-                Button("Review Current Note…", action: context.openNoteReview)
-                    .buttonStyle(.bordered)
-                    .accessibilityHint(
-                        "Opens a document task for viewing changes and explicitly marking the current saved Note reviewed"
-                    )
-                    .accessibilityIdentifier(
-                        "scholium.researchOverview.review.open"
-                    )
+                Button(action: context.openNoteReview) {
+                    HStack(
+                        alignment: .firstTextBaseline,
+                        spacing: ScholiumMetrics.Apparatus.iconToTextSpacing
+                    ) {
+                        Text("Needs Review · \(count) Agent activities")
+                            .font(ScholiumTypography.scholarly(.emphasis))
+                            .scholiumForeground(.primaryText)
+                        Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
+                        Image(systemName: "chevron.forward")
+                            .font(
+                                ScholiumTypography.interface(
+                                    .small,
+                                    emphasis: .strong
+                                )
+                            )
+                            .scholiumForeground(.mutedText)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(ScholiumQuietRowButtonStyle(
+                    minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    verticalInset: 0
+                ))
+                .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+                .accessibilityLabel("Review")
+                .accessibilityValue(
+                    "Needs Review, \(count) Agent activities"
+                )
+                .accessibilityHint(
+                    "Reopens the Document task for viewing changes and explicitly marking the current saved Note reviewed"
+                )
+                .accessibilityIdentifier(
+                    "scholium.researchOverview.review.open"
+                )
             case .noAgentChangesAwaitingReview:
                 Text("No Agent changes awaiting Review")
                     .font(ScholiumTypography.scholarly(.emphasis))

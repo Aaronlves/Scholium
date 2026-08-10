@@ -79,6 +79,8 @@ final class DocumentSessionModel: ObservableObject {
     @Published var conflict: DocumentConflictSnapshot?
     @Published var canRetrySave = false
     @Published var showConflictComparison = false
+    @Published private(set) var noteReviewTaskPresentation =
+        NoteReviewTaskPresentationState()
 
     var autosaveTask: Task<Void, Never>?
     var autosaveDeadline: ContinuousClock.Instant?
@@ -121,6 +123,22 @@ final class DocumentSessionModel: ObservableObject {
         updatePresentation { $0.reset() }
     }
 
+    func reconcileNoteReviewTask(with reviewState: WorkspaceNoteReviewState?) {
+        updateNoteReviewTaskPresentation { $0.reconcile(reviewState) }
+    }
+
+    func presentNoteReviewTask(for reviewState: WorkspaceNoteReviewState?) {
+        updateNoteReviewTaskPresentation { $0.present(reviewState) }
+    }
+
+    func dismissNoteReviewTask(for reviewState: WorkspaceNoteReviewState?) {
+        updateNoteReviewTaskPresentation { $0.dismiss(reviewState) }
+    }
+
+    func completeNoteReviewTask() {
+        updateNoteReviewTaskPresentation { $0.complete() }
+    }
+
     private func updatePresentation(
         _ update: (inout DocumentPresentationState) -> Void
     ) {
@@ -128,6 +146,15 @@ final class DocumentSessionModel: ObservableObject {
         update(&next)
         guard next != presentation else { return }
         presentation = next
+    }
+
+    private func updateNoteReviewTaskPresentation(
+        _ update: (inout NoteReviewTaskPresentationState) -> Void
+    ) {
+        var next = noteReviewTaskPresentation
+        update(&next)
+        guard next != noteReviewTaskPresentation else { return }
+        noteReviewTaskPresentation = next
     }
 
     func cancelScheduledWork() {
