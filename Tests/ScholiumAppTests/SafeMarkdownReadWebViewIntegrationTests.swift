@@ -983,6 +983,45 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review suppresses only overlay scroll bars during viewport reflow")
+    func reviewSuppressesOverlayScrollBarDuringViewportReflow() async throws {
+        let fixture = Self.longDocumentFixture()
+        let harness = ReadHarness(
+            source: fixture.source,
+            htmlBody: fixture.htmlBody,
+            fingerprint: DocumentFingerprint(content: fixture.source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.scroll(toFraction: 0.4)
+        try await Task.sleep(for: .milliseconds(250))
+
+        let before = try await harness.viewportScrollBarSnapshot()
+        #expect(!before.isSuppressed)
+        #expect(before.scrollBarWidth == "auto")
+
+        harness.resize(width: 470, height: 420, duration: 0.6)
+        try await Task.sleep(for: .milliseconds(120))
+        let during = try await harness.viewportScrollBarSnapshot()
+        #expect(during.usesOverlayScrollBar)
+        #expect(during.isSuppressed)
+        #expect(during.scrollBarWidth == "none")
+
+        try await harness.waitUntilViewportScrollBarRestored()
+        let after = try await harness.viewportScrollBarSnapshot()
+        #expect(!after.isSuppressed)
+        #expect(after.scrollBarWidth == "auto")
+
+        try await harness.scroll(toFraction: 0.65)
+        try await Task.sleep(for: .milliseconds(250))
+        let scrolled = try await harness.viewportScrollBarSnapshot()
+        #expect(abs(scrolled.scrollY - after.scrollY) > 1)
+        #expect(!scrolled.isSuppressed)
+        await harness.closeAndDrain()
+    }
+
     @Test("Read caller restoration can be cancelled without cancelling rebuild restoration")
     func readCallerRestorationCancellationIsScoped() async throws {
         let fixture = Self.longDocumentFixture()
@@ -1961,8 +2000,59 @@ extension MarkdownEditorWebViewIntegrationTests {
             }
         }
 
-        func resize(width: CGFloat, height: CGFloat) {
-            window.setContentSize(NSSize(width: width, height: height))
+        func resize(width: CGFloat, height: CGFloat, duration: TimeInterval = 0) {
+            guard duration > 0 else {
+                window.setContentSize(NSSize(width: width, height: height))
+                return
+            }
+            let targetContentRect = NSRect(origin: .zero, size: NSSize(width: width, height: height))
+            let targetFrameSize = window.frameRect(forContentRect: targetContentRect).size
+            var targetFrame = window.frame
+            targetFrame.size = targetFrameSize
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                context.allowsImplicitAnimation = true
+                window.animator().setFrame(targetFrame, display: true)
+            }
+        }
+
+        func viewportScrollBarSnapshot() async throws -> ViewportScrollBarSnapshot {
+            guard let snapshot = try await callBridgeJavaScript(
+                """
+                const root = document.documentElement;
+                return {
+                  usesOverlayScrollBar: Math.abs(window.innerWidth - root.clientWidth) < 1,
+                  isSuppressed: root.classList.contains(
+                    'scholium-viewport-resize-suppresses-overlay-scrollbar'
+                  ),
+                  scrollBarWidth: getComputedStyle(root).scrollbarWidth,
+                  scrollY: window.scrollY
+                };
+                """
+            ) as? [String: Any] else {
+                throw ReadHarnessError.invalidSnapshot
+            }
+            return ViewportScrollBarSnapshot(
+                usesOverlayScrollBar: snapshot["usesOverlayScrollBar"] as? Bool ?? false,
+                isSuppressed: snapshot["isSuppressed"] as? Bool ?? false,
+                scrollBarWidth: snapshot["scrollBarWidth"] as? String ?? "",
+                scrollY: snapshot["scrollY"] as? Double ?? 0
+            )
+        }
+
+        func waitUntilViewportScrollBarRestored() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while try await viewportScrollBarSnapshot().isSuppressed {
+                if clock.now >= deadline {
+                    let snapshot = try await viewportScrollBarSnapshot()
+                    Issue.record(
+                        "Review scroll-bar suppression did not settle: \(snapshot); window content width: \(window.contentView?.bounds.width ?? 0)."
+                    )
+                    throw ReadHarnessError.timedOut
+                }
+                try await Task.sleep(for: .milliseconds(25))
+            }
         }
 
         func callPageJavaScript(
@@ -2680,6 +2770,13 @@ extension MarkdownEditorWebViewIntegrationTests {
             case timedOut
             case webViewUnavailable
             case invalidSnapshot
+        }
+
+        struct ViewportScrollBarSnapshot {
+            let usesOverlayScrollBar: Bool
+            let isSuppressed: Bool
+            let scrollBarWidth: String
+            let scrollY: Double
         }
 
         private func findWebView(in view: NSView) -> WKWebView? {

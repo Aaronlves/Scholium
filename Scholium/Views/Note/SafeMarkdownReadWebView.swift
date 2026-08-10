@@ -1383,6 +1383,46 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const commentHelp = document.getElementById('comment-help');
                 const qaCommentSubmit = document.getElementById('qa-submit-comment');
                 const defaultCommentHelpText = 'Return saves · Shift-Return adds a line · Escape cancels';
+                const viewportRoot = document.documentElement;
+                const viewportResizeScrollBarClass = 'scholium-viewport-resize-suppresses-overlay-scrollbar';
+                const viewportResizeSettleDelay = 80;
+                // A fixed viewport-unit probe distinguishes a real WKWebView
+                // resize from the resize that WebKit reports when scrollbar
+                // presentation changes. Animation frames are not a reliable
+                // settling signal while an offscreen WebView is suspended.
+                const viewportGeometryProbe = document.createElement('span');
+                viewportGeometryProbe.setAttribute('aria-hidden', 'true');
+                viewportGeometryProbe.style.cssText = 'position:fixed;inline-size:100vw;block-size:100vh;visibility:hidden;pointer-events:none';
+                document.body.append(viewportGeometryProbe);
+                const viewportGeometry = () => viewportGeometryProbe.getBoundingClientRect();
+                let viewportResizeGeneration = 0;
+                let viewportResizeTimer;
+                let viewportBounds = viewportGeometry();
+                const viewportDidResize = () => {
+                  const nextBounds = viewportGeometry();
+                  if (Math.abs(nextBounds.width - viewportBounds.width) < 0.5
+                      && Math.abs(nextBounds.height - viewportBounds.height) < 0.5) return;
+                  viewportBounds = nextBounds;
+                  const overlayScrollBar = Math.abs(window.innerWidth - viewportRoot.clientWidth) < 1;
+                  if (!overlayScrollBar) {
+                    viewportRoot.classList.remove(viewportResizeScrollBarClass);
+                    return;
+                  }
+                  const generation = ++viewportResizeGeneration;
+                  viewportRoot.classList.add(viewportResizeScrollBarClass);
+                  clearTimeout(viewportResizeTimer);
+                  viewportResizeTimer = setTimeout(() => {
+                    if (generation === viewportResizeGeneration) {
+                      window.removeEventListener('resize', viewportDidResize);
+                      viewportRoot.classList.remove(viewportResizeScrollBarClass);
+                      setTimeout(() => {
+                        viewportBounds = viewportGeometry();
+                        window.addEventListener('resize', viewportDidResize);
+                      }, 0);
+                    }
+                  }, viewportResizeSettleDelay);
+                };
+                window.addEventListener('resize', viewportDidResize);
                 const synchronizeSelectionKeyboardFocus = target => {
                   commentButton.classList.toggle(
                     'scholium-selection-keyboard-focus',
@@ -2385,6 +2425,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
         static let baseCSS = """
         html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
+        html.scholium-viewport-resize-suppresses-overlay-scrollbar { scrollbar-width: none; }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
         \(ReviewSelectionPresentation.css)
         #selection-actions { position: absolute; }
