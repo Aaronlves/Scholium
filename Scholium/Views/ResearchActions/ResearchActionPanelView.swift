@@ -3,7 +3,7 @@ import ScholiumContracts
 import SwiftUI
 
 struct ResearchActionPanelContext {
-    let chooseLocalSource: () -> URL?
+    let chooseLocalSource: @MainActor () async throws -> URL?
     let copyInstructions: (String) throws -> Void
     let didCopyHandoff: (UUID) -> Void
     let retryRefresh: () -> Void
@@ -36,6 +36,7 @@ struct ResearchActionPanelView: View {
     @State private var focalNoteQuery = ""
     @State private var pendingHandoff: PendingHandoff?
     @State private var handoffErrorMessage: String?
+    @State private var sourceSelectionErrorMessage: String?
     @State private var confirmsEndAction = false
 
     init(
@@ -564,15 +565,35 @@ struct ResearchActionPanelView: View {
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.attention)
                 Button(controller.isBindingSource ? "Binding Source…" : "Choose Source…") {
-                    guard let url = context.chooseLocalSource() else { return }
-                    controller.bindLocalSource(url)
+                    chooseLocalSource()
                 }
                 .disabled(controller.isBindingSource)
                 .accessibilityIdentifier("scholium.researchAction.source.choose")
+                if let sourceSelectionErrorMessage {
+                    Text(sourceSelectionErrorMessage)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.destructive)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
                 Text("Scholium retains permission and the fingerprint locally; the Research Record stores neither the path nor source bytes.")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func chooseLocalSource() {
+        Task { @MainActor in
+            do {
+                guard let url = try await context.chooseLocalSource() else { return }
+                sourceSelectionErrorMessage = nil
+                controller.bindLocalSource(url)
+            } catch is CancellationError {
+                return
+            } catch {
+                sourceSelectionErrorMessage = error.localizedDescription
             }
         }
     }

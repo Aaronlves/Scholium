@@ -494,6 +494,7 @@ private struct ScholiumBootstrapRoot: View {
     private let route: BootstrapWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     @StateObject private var model: ScholiumBootstrapModel
+    @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var isResolvingWorkspace = true
     @State private var didRouteToWorkspace = false
     @State private var destinationWindowID: UUID?
@@ -521,11 +522,17 @@ private struct ScholiumBootstrapRoot: View {
             }
         }
         .tint(ScholiumColorRole.accent.color)
+        .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
         .ignoresSafeArea(.container, edges: .top)
         .background(
             BootstrapWindowAttachment(
                 windowID: route.windowID,
                 lifecycleRegistry: lifecycleRegistry
+            )
+        )
+        .background(
+            ScholiumFileSelectionWindowAttachment(
+                presenter: fileSelectionPresenter
             )
         )
         .task {
@@ -815,6 +822,7 @@ private struct ScholiumWindowObservedRoot: View {
     private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
     private let researchResultNotificationCoordinator:
         ResearchResultNotificationCoordinator
+    @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var destinationBootstrapWindowID: UUID?
 
     init(
@@ -856,8 +864,14 @@ private struct ScholiumWindowObservedRoot: View {
             .focusedSceneObject(appState)
             .focusedSceneObject(appState.commandObservation)
             .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
+            .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
             .background(
                 WorkspaceWindowAttachment(coordinator: windowCoordinator)
+            )
+            .background(
+                ScholiumFileSelectionWindowAttachment(
+                    presenter: fileSelectionPresenter
+                )
             )
             .fileImporter(
                 isPresented: Binding(
@@ -1017,6 +1031,7 @@ private struct ScholiumWindowObservedRoot: View {
 private struct ScholiumSettingsRoot: View {
     @ObservedObject private var workspaceStore: WorkspaceStore
     @StateObject private var settingsModel: WorkspaceSettingsModel
+    @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
 
     init(workspaceStore: WorkspaceStore) {
         self.workspaceStore = workspaceStore
@@ -1031,7 +1046,13 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
+            .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
             .frame(width: 700, height: 560)
+            .background(
+                ScholiumFileSelectionWindowAttachment(
+                    presenter: fileSelectionPresenter
+                )
+            )
             .task(id: workspaceStore.latestWorkspaceActivation?.runtimeIdentity.activationID) {
                 await settingsModel.restorePreferredWorkspaceIfNeeded(
                     activeTriptychID: workspaceStore.latestWorkspaceActivation?.workspaceID

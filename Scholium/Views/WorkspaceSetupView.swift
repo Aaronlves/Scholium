@@ -1,4 +1,3 @@
-import AppKit
 import ScholiumContracts
 import SwiftUI
 
@@ -69,6 +68,7 @@ private enum BootstrapAgentOutcome: Equatable {
 
 private struct BootstrapFlowView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
 
     let context: WorkspaceSetupContext
 
@@ -306,7 +306,9 @@ private struct BootstrapFlowView: View {
                 explanation: "Reusable analyses of papers and other sources.",
                 path: paperAnalysisURL,
                 chooseAction: {
-                    paperAnalysisURL = chooseDirectory(title: "Choose Analyses Folder")
+                    chooseDirectory(title: "Choose Analyses Folder") {
+                        paperAnalysisURL = $0
+                    }
                 }
             )
         case .existingTopics:
@@ -315,7 +317,9 @@ private struct BootstrapFlowView: View {
                 explanation: "Concepts, distinctions, debates, objections, and syntheses.",
                 path: topicKnowledgeURL,
                 chooseAction: {
-                    topicKnowledgeURL = chooseDirectory(title: "Choose Topics Folder")
+                    chooseDirectory(title: "Choose Topics Folder") {
+                        topicKnowledgeURL = $0
+                    }
                 }
             )
         case .existingWorks:
@@ -324,7 +328,9 @@ private struct BootstrapFlowView: View {
                 explanation: "Researcher-governed plans, arguments, drafts, papers, and chapters.",
                 path: outputURL,
                 chooseAction: {
-                    outputURL = chooseDirectory(title: "Choose Works Folder")
+                    chooseDirectory(title: "Choose Works Folder") {
+                        outputURL = $0
+                    }
                 }
             )
         case .authorizeParent:
@@ -411,51 +417,68 @@ private struct BootstrapFlowView: View {
     }
 
     private func chooseParentLocation() {
-        baseLocationURL = chooseDirectory(
+        chooseDirectory(
             title: "Choose a Parent Location",
             prompt: "Choose Location"
-        )
+        ) { baseLocationURL = $0 }
     }
 
     private func chooseDirectory(
         title: LocalizedStringResource,
-        prompt: LocalizedStringResource = "Choose Folder"
-    ) -> URL? {
-        let panel = NSOpenPanel()
-        panel.title = String(localized: title)
-        panel.prompt = String(localized: prompt)
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
-        return panel.runModal() == .OK ? panel.url : nil
+        prompt: LocalizedStringResource = "Choose Folder",
+        receive: @escaping @MainActor (URL) -> Void
+    ) {
+        let request = ScholiumFileSelectionRequest(
+            title: String(localized: title),
+            prompt: String(localized: prompt),
+            kind: .directory(canCreateDirectories: true)
+        )
+        Task { @MainActor in
+            do {
+                guard let url = try await fileSelectionPresenter
+                    .requiredForFileSelection()
+                    .selectURL(request) else { return }
+                errorMessage = nil
+                receive(url)
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func authorizeDetectedParent() {
         guard let expected = detectedParentURL else { return }
-        let panel = NSOpenPanel()
-        panel.title = String(localized: "Authorize the Detected Folder")
-        panel.message = String(
-            localized: "Confirm this folder so Scholium can use the portable .scholium control folder beside Works."
-        )
-        panel.prompt = String(localized: "Authorize")
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.directoryURL = expected
-
-        guard panel.runModal() == .OK, let selected = panel.url else { return }
-        let canonical = selected.resolvingSymlinksInPath().standardizedFileURL
-        guard canonical.path == expected.path else {
-            errorMessage = String(
-                localized: "Authorize the detected folder itself; no other folder can contain this Triptych's portable control data."
+        let request = ScholiumFileSelectionRequest(
+            title: String(localized: "Authorize the Detected Folder"),
+            message: String(
+                localized: "Confirm this folder so Scholium can use the portable .scholium control folder beside Works."
+            ),
+            prompt: String(localized: "Authorize"),
+            initialDirectoryURL: expected,
+            kind: .directory(canCreateDirectories: false),
+            constraint: .exactCanonicalDirectory(
+                expected,
+                rejectionMessage: String(
+                    localized: "Authorize the detected folder itself; no other folder can contain this Triptych's portable control data."
+                )
             )
-            return
+        )
+        Task { @MainActor in
+            do {
+                guard let selected = try await fileSelectionPresenter
+                    .requiredForFileSelection()
+                    .selectURL(request) else { return }
+                errorMessage = nil
+                portableContainerURL = selected
+                move(to: .reviewTriptych)
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
-        errorMessage = nil
-        portableContainerURL = canonical
-        move(to: .reviewTriptych)
     }
 
     private func save() {

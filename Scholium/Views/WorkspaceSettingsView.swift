@@ -882,6 +882,7 @@ struct WorkspaceSettingsView: View {
 }
 
 private struct AppearanceSettingsView: View {
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject var store: CSSSnippetStore
     @State private var draft: DocumentAppearanceProfile?
     @State private var importError: String?
@@ -1074,22 +1075,26 @@ private struct AppearanceSettingsView: View {
     }
 
     private func importSnippet() {
-        let panel = NSOpenPanel()
-        panel.title = ScholiumL10n.string("Import CSS Snippet")
-        panel.prompt = "Import"
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        if let cssType = UTType(filenameExtension: "css") {
-            panel.allowedContentTypes = [cssType]
-        }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task {
-            let secured = url.startAccessingSecurityScopedResource()
-            defer { if secured { url.stopAccessingSecurityScopedResource() } }
+        let request = ScholiumFileSelectionRequest(
+            title: ScholiumL10n.string("Import CSS Snippet"),
+            prompt: ScholiumL10n.string("Import"),
+            kind: .files(
+                allowedContentTypes: [
+                    UTType(filenameExtension: "css") ?? .plainText
+                ]
+            )
+        )
+        Task { @MainActor in
             do {
+                guard let url = try await fileSelectionPresenter
+                    .requiredForFileSelection()
+                    .selectURL(request) else { return }
+                let secured = url.startAccessingSecurityScopedResource()
+                defer { if secured { url.stopAccessingSecurityScopedResource() } }
                 try await store.importSnippet(from: url)
                 importError = nil
+            } catch is CancellationError {
+                return
             } catch {
                 importError = error.localizedDescription
             }
@@ -1766,39 +1771,50 @@ private struct WorkspacePathEditor: View {
 }
 
 struct PortableControlFolderRow: View {
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     let worksURL: URL?
     @Binding var containerURL: URL?
+    @State private var selectionError: String?
 
     var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            Image(systemName: "folder.badge.gearshape")
-                .scholiumSymbolStyle(.prominent)
-                .scholiumForeground(.accent)
-                .frame(width: 24)
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
+            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
+                Image(systemName: "folder.badge.gearshape")
+                    .scholiumSymbolStyle(.prominent)
+                    .scholiumForeground(.accent)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
-                Text("Folder Containing Works")
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text("Authorizes portable settings stored beside Works")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                Text(containerURL?.path(percentEncoded: false) ?? "Authorization required")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(
-                        containerURL == nil ? .secondaryText : .primaryText
-                    )
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
+                    Text("Folder Containing Works")
+                        .font(ScholiumTypography.interface(.rowTitle))
+                    Text("Authorizes portable settings stored beside Works")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                    Text(containerURL?.path(percentEncoded: false) ?? "Authorization required")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(
+                            containerURL == nil ? .secondaryText : .primaryText
+                        )
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
+
+                Button(containerURL == nil ? "Authorize…" : "Authorize Again…") {
+                    authorizeFolder()
+                }
+                .disabled(worksURL == nil)
+                .accessibilityLabel("Authorize folder containing Works")
             }
-
-            Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
-
-            Button(containerURL == nil ? "Authorize…" : "Authorize Again…") {
-                authorizeFolder()
+            if let selectionError {
+                Text(selectionError)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
             }
-            .disabled(worksURL == nil)
-            .accessibilityLabel("Authorize folder containing Works")
         }
         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
         .accessibilityIdentifier("scholium.portableControlAccess")
@@ -1809,83 +1825,123 @@ struct PortableControlFolderRow: View {
             .deletingLastPathComponent()
             .resolvingSymlinksInPath()
             .standardizedFileURL else { return }
-        let panel = NSOpenPanel()
-        panel.title = ScholiumL10n.string("Authorize the Folder Containing Works")
-        panel.message = "Choose '\(expected.lastPathComponent)' so Scholium can use the portable .scholium folder beside Works."
-        panel.prompt = "Authorize"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.directoryURL = expected.deletingLastPathComponent()
-        if panel.runModal() == .OK {
-            containerURL = panel.url
+        let request = ScholiumFileSelectionRequest(
+            title: ScholiumL10n.string("Authorize the Folder Containing Works"),
+            message: String(
+                format: ScholiumL10n.string(
+                    "Choose '%@' so Scholium can use the portable .scholium folder beside Works."
+                ),
+                locale: Locale.current,
+                expected.lastPathComponent
+            ),
+            prompt: ScholiumL10n.string("Authorize"),
+            initialDirectoryURL: expected.deletingLastPathComponent(),
+            kind: .directory(canCreateDirectories: false),
+            constraint: .exactCanonicalDirectory(
+                expected,
+                rejectionMessage: ScholiumL10n.string(
+                    "Choose the folder containing Works shown above."
+                )
+            )
+        )
+        Task { @MainActor in
+            do {
+                guard let selected = try await fileSelectionPresenter
+                    .requiredForFileSelection()
+                    .selectURL(request) else { return }
+                selectionError = nil
+                containerURL = selected
+            } catch is CancellationError {
+                return
+            } catch {
+                selectionError = error.localizedDescription
+            }
         }
     }
 }
 
 struct WorkspaceFolderRow: View {
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     let title: String
     let subtitle: String
     let symbol: String
     @Binding var url: URL?
+    @State private var selectionError: String?
 
     var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            Image(systemName: symbol)
-                .scholiumSymbolStyle(.prominent)
-                .scholiumForeground(.accent)
-                .frame(width: 24)
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
+            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
+                Image(systemName: symbol)
+                    .scholiumSymbolStyle(.prominent)
+                    .scholiumForeground(.accent)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
-                Text(ScholiumL10n.dynamicString(title))
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text(ScholiumL10n.dynamicString(subtitle))
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                Text(url?.path(percentEncoded: false) ?? "No folder selected")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(url == nil ? .secondaryText : .primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(url?.path(percentEncoded: false) ?? "Choose a folder")
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
+                    Text(ScholiumL10n.dynamicString(title))
+                        .font(ScholiumTypography.interface(.rowTitle))
+                    Text(ScholiumL10n.dynamicString(subtitle))
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                    Text(url?.path(percentEncoded: false) ?? "No folder selected")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(url == nil ? .secondaryText : .primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(url?.path(percentEncoded: false) ?? "Choose a folder")
+                }
+
+                Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
+
+                Button(url == nil ? "Choose…" : "Change…") {
+                    chooseFolder()
+                }
+                .accessibilityLabel("Choose \(title) folder")
             }
-
-            Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
-
-            Button(url == nil ? "Choose…" : "Change…") {
-                chooseFolder()
+            if let selectionError {
+                Text(selectionError)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
             }
-            .accessibilityLabel("Choose \(title) folder")
         }
         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
     }
 
     private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.title = String(
-            format: ScholiumL10n.string("Choose %@ Folder"),
-            locale: Locale.current,
-            title
-        )
-        panel.prompt = "Choose"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
-        panel.directoryURL = url?.deletingLastPathComponent()
+        var initialDirectoryURL = url?.deletingLastPathComponent()
 #if DEBUG
-        if panel.directoryURL == nil,
+        if initialDirectoryURL == nil,
            let testDirectory = ProcessInfo.processInfo.environment[
                "SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"
            ],
            !testDirectory.isEmpty {
-            panel.directoryURL = URL(fileURLWithPath: testDirectory, isDirectory: true)
+            initialDirectoryURL = URL(fileURLWithPath: testDirectory, isDirectory: true)
         }
 #endif
-        if panel.runModal() == .OK {
-            url = panel.url
+        let request = ScholiumFileSelectionRequest(
+            title: String(
+                format: ScholiumL10n.string("Choose %@ Folder"),
+                locale: Locale.current,
+                title
+            ),
+            prompt: ScholiumL10n.string("Choose"),
+            initialDirectoryURL: initialDirectoryURL,
+            kind: .directory(canCreateDirectories: true)
+        )
+        Task { @MainActor in
+            do {
+                guard let selected = try await fileSelectionPresenter
+                    .requiredForFileSelection()
+                    .selectURL(request) else { return }
+                selectionError = nil
+                url = selected
+            } catch is CancellationError {
+                return
+            } catch {
+                selectionError = error.localizedDescription
+            }
         }
     }
 }

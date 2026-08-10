@@ -1,4 +1,3 @@
-import AppKit
 import ScholiumContracts
 import SwiftUI
 import UniformTypeIdentifiers
@@ -19,6 +18,7 @@ private struct NewResearchMethodContext: Identifiable {
 
 struct ResearchMethodsSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @State private var loadedTriptychID: UUID?
     @State private var registrations: ResearchSkillRegistrationSnapshot?
     @State private var methods: [ResearchActionID: ResearchMethodSnapshot] = [:]
@@ -347,35 +347,51 @@ struct ResearchMethodsSettingsView: View {
     private func registerExternalMarkdown(
         for registration: ResearchSkillRegistration
     ) {
-        guard let registrations,
-              let fileURL = Self.chooseMarkdown(
-                message: "Choose the primary Markdown for this Research Skill."
-              ) else { return }
-        registerExternal(
-            registration: registration,
-            name: fileURL.deletingPathExtension().lastPathComponent,
-            primaryURL: fileURL,
-            folderURL: nil,
-            expectedRevision: registrations.revision
-        )
+        guard let registrations else { return }
+        Task { @MainActor in
+            do {
+                guard let fileURL = try await chooseMarkdown(
+                    message: "Choose the primary Markdown for this Research Skill."
+                ) else { return }
+                registerExternal(
+                    registration: registration,
+                    name: fileURL.deletingPathExtension().lastPathComponent,
+                    primaryURL: fileURL,
+                    folderURL: nil,
+                    expectedRevision: registrations.revision
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func registerExternalFolder(
         for registration: ResearchSkillRegistration
     ) {
-        guard let registrations,
-              let folderURL = Self.chooseFolder(),
-              let primaryURL = Self.chooseMarkdown(
-                message: "Choose the primary Markdown inside the selected Skill folder.",
-                directoryURL: folderURL
-              ) else { return }
-        registerExternal(
-            registration: registration,
-            name: folderURL.lastPathComponent,
-            primaryURL: primaryURL,
-            folderURL: folderURL,
-            expectedRevision: registrations.revision
-        )
+        guard let registrations else { return }
+        Task { @MainActor in
+            do {
+                guard let folderURL = try await chooseFolder(),
+                      let primaryURL = try await chooseMarkdown(
+                        message: "Choose the primary Markdown inside the selected Skill folder.",
+                        directoryURL: folderURL
+                      ) else { return }
+                registerExternal(
+                    registration: registration,
+                    name: folderURL.lastPathComponent,
+                    primaryURL: primaryURL,
+                    folderURL: folderURL,
+                    expectedRevision: registrations.revision
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func registerExternal(
@@ -403,26 +419,33 @@ struct ResearchMethodsSettingsView: View {
         }
     }
 
-    private static func chooseMarkdown(
-        message: String,
+    private func chooseMarkdown(
+        message: LocalizedStringResource,
         directoryURL: URL? = nil
-    ) -> URL? {
-        let panel = NSOpenPanel()
-        panel.message = message
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
-        panel.directoryURL = directoryURL
-        return panel.runModal() == .OK ? panel.url : nil
+    ) async throws -> URL? {
+        try await fileSelectionPresenter
+            .requiredForFileSelection()
+            .selectURL(ScholiumFileSelectionRequest(
+                message: String(localized: message),
+                initialDirectoryURL: directoryURL,
+                kind: .files(
+                    allowedContentTypes: [
+                        UTType(filenameExtension: "md") ?? .plainText
+                    ]
+                )
+            ))
     }
 
-    private static func chooseFolder() -> URL? {
-        let panel = NSOpenPanel()
-        panel.message = "Choose an ordinary local Skill folder. Scholium records its path but does not inspect its other contents."
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        return panel.runModal() == .OK ? panel.url : nil
+    private func chooseFolder() async throws -> URL? {
+        try await fileSelectionPresenter
+            .requiredForFileSelection()
+            .selectURL(ScholiumFileSelectionRequest(
+                message: String(
+                    localized: "Choose an ordinary local Skill folder. Scholium records its path but does not inspect its other contents.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                kind: .directory(canCreateDirectories: false)
+            ))
     }
 }

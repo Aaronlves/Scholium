@@ -100,6 +100,16 @@ installs toolbar/delegate state, and registers readiness/flushing. No singleton,
 window search, notification, polling, delayed correction, or width calculation
 participates.
 
+Bootstrap, configured Workspace, and Settings scene roots each own one
+`ScholiumFileSelectionPresenter`. A bounded native attachment supplies that
+presenter with the exact scene window; it serializes one `NSOpenPanel` sheet at
+a time and never searches application windows or presents app-modal UI. Feature
+views provide typed file-or-directory intent and retain all workflow policy,
+error presentation, bookmarks, imports, registration, and writes. The shared
+request configures the native panel and validates its returned item kind; an
+exact-directory constraint also canonicalizes aliases and rejects every sibling
+path before the feature may treat access as renewed or authorized.
+
 The Bootstrap root uses a transparent hidden-title titlebar over one full-size
 content view. Its Welcome, Triptych, optional Agent, and Ready stages share one
 adaptive full-bleed illustration field beside a linear native task pane and

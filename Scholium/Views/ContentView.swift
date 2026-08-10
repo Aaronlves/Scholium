@@ -1,4 +1,3 @@
-import AppKit
 import ScholiumContracts
 import SwiftUI
 
@@ -13,6 +12,7 @@ enum DiscussionPresentationError: LocalizedError {
 // MARK: - Content View
 
 struct ContentView: View {
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject var appState: WindowModel
     @ObservedObject private var presentationRouter: WindowPresentationRouter
     @ObservedObject private var discoveryController: DiscoveryController
@@ -760,22 +760,24 @@ struct ContentView: View {
                     controller: researchActionController,
                     context: ResearchActionPanelContext(
                         chooseLocalSource: {
-                            let panel = NSOpenPanel()
-                            panel.title = String(
-                                localized: "Choose Source",
-                                table: "Localizable",
-                                bundle: .module
-                            )
-                            panel.prompt = String(
-                                localized: "Choose",
-                                table: "Localizable",
-                                bundle: .module
-                            )
-                            panel.canChooseFiles = true
-                            panel.canChooseDirectories = false
-                            panel.allowsMultipleSelection = false
-                            panel.resolvesAliases = false
-                            return panel.runModal() == .OK ? panel.url : nil
+                            try await fileSelectionPresenter
+                                .requiredForFileSelection()
+                                .selectURL(ScholiumFileSelectionRequest(
+                                    title: String(
+                                        localized: "Choose Source",
+                                        table: "Localizable",
+                                        bundle: .module
+                                    ),
+                                    prompt: String(
+                                        localized: "Choose",
+                                        table: "Localizable",
+                                        bundle: .module
+                                    ),
+                                    kind: .files(
+                                        allowedContentTypes: [.item],
+                                        resolvesAliases: false
+                                    )
+                                ))
                         },
                         copyInstructions: { instructions in
                             try appState.copyTextToClipboard(instructions)

@@ -5798,6 +5798,22 @@
         }
       }
     },
+    "Choose an ordinary local Skill folder. Scholium records its path but does not inspect its other contents." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose an ordinary local Skill folder. Scholium records its path but does not inspect its other contents."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个普通的本地技能文件夹。Scholium 会记录其路径，但不会检查其中的其他内容。"
+          }
+        }
+      }
+    },
     "Choose a reading lead from an Analyze Research Record." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5876,6 +5892,22 @@
         }
       }
     },
+    "Choose the folder containing Works shown above." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose the folder containing Works shown above."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择上方所示的“写作”所在文件夹。"
+          }
+        }
+      }
+    },
     "Choose the folder containing Works again so Scholium can renew access to the adjacent portable .scholium folder. Other Triptych locations remain unchanged." : {
       "localizations" : {
         "en" : {
@@ -5920,6 +5952,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请再次选择同一个已注册的研究库文件夹，让 macOS 续期 Scholium 的访问权限。脉络中的其他位置不会改变。"
+          }
+        }
+      }
+    },
+    "Choose the same registered folder shown above." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose the same registered folder shown above."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择上方所示的同一个已注册文件夹。"
+          }
+        }
+      }
+    },
+    "Choose the requested kind of file or folder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose the requested kind of file or folder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择所要求类型的文件或文件夹。"
+          }
+        }
+      }
+    },
+    "Choose '%@' so Scholium can use the portable .scholium folder beside Works." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose '%@' so Scholium can use the portable .scholium folder beside Works."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择“%@”，让 Scholium 可以使用“写作”旁的便携式 .scholium 文件夹。"
           }
         }
       }
@@ -11489,6 +11569,22 @@
         }
       }
     },
+    "File selection is unavailable in this window." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "File selection is unavailable in this window."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此窗口当前无法选择文件。"
+          }
+        }
+      }
+    },
     "Fingerprint %@…%@" : {
       "localizations" : {
         "en" : {
@@ -11534,6 +11630,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完成"
+          }
+        }
+      }
+    },
+    "Finish the current file selection before choosing another file or folder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Finish the current file selection before choosing another file or folder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先完成当前文件选择，再选择其他文件或文件夹。"
           }
         }
       }
@@ -27881,6 +27993,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "现有 Research Unit 不符合此笔记角色。Source 模式会保留其原始 YAML；修改这些字段会以有效声明替换它。"
+          }
+        }
+      }
+    },
+    "The file panel did not return a usable selection." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The file panel did not return a usable selection."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件面板未返回可用的选择。"
           }
         }
       }

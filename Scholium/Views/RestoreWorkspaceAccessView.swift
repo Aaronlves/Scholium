@@ -1,9 +1,10 @@
-import AppKit
 import SwiftUI
 
 /// One authorization repair for an already configured Triptych. It never
 /// exposes Welcome, Triptych creation, or the other configured locations.
 struct RestoreWorkspaceAccessView: View {
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
+
     let recovery: WorkspaceAccessRecovery
     let restore: (URL) async throws -> Void
     let closeWindow: () -> Void
@@ -67,27 +68,38 @@ struct RestoreWorkspaceAccessView: View {
     }
 
     private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.prompt = String(
-            localized: "Restore Access",
-            table: "Localizable",
-            bundle: .module
-        )
-        panel.directoryURL = URL(
+        let expectedURL = URL(
             fileURLWithPath: recovery.expectedPath,
             isDirectory: true
-        ).deletingLastPathComponent()
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        isRestoring = true
-        errorMessage = nil
-        Task {
+        )
+        let request = ScholiumFileSelectionRequest(
+            prompt: String(
+                localized: "Restore Access",
+                table: "Localizable",
+                bundle: .module
+            ),
+            initialDirectoryURL: expectedURL.deletingLastPathComponent(),
+            kind: .directory(canCreateDirectories: false),
+            constraint: .exactCanonicalDirectory(
+                expectedURL,
+                rejectionMessage: String(
+                    localized: "Choose the same registered folder shown above.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            )
+        )
+        Task { @MainActor in
             do {
+                guard let url = try await fileSelectionPresenter
+                    .requiredForFileSelection()
+                    .selectURL(request) else { return }
+                isRestoring = true
+                errorMessage = nil
                 try await restore(url)
                 isRestoring = false
+            } catch is CancellationError {
+                return
             } catch {
                 errorMessage = error.localizedDescription
                 isRestoring = false
