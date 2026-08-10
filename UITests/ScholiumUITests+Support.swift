@@ -530,7 +530,7 @@ extension ScholiumUITests {
         XCTAssertTrue(openPanelButton.waitForExistence(timeout: 5))
         openPanelButton.click()
 
-        let panel = app.dialogs["open-panel"]
+        let panel = app.descendants(matching: .any)["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         let folderEntry = panel.descendants(matching: .any).matching(
             NSPredicate(format: "value == %@", folder.lastPathComponent)
@@ -550,13 +550,23 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func authorizePortableFolder(_ folder: URL) {
+    func authorizePortableFolder(_ folder: URL, in owner: XCUIElement? = nil) {
         let authorizeButton = app.buttons["Authorize folder containing Works"]
         XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
         authorizeButton.click()
 
-        let panel = app.dialogs["open-panel"]
+        let panel = app.descendants(matching: .any)["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        if let owner {
+            XCTAssertTrue(owner.exists)
+            XCTAssertFalse(authorizeButton.isHittable)
+            XCTAssertEqual(
+                app.descendants(matching: .any)
+                    .matching(identifier: "open-panel").count,
+                1,
+                "The originating window must present one standard Open panel."
+            )
+        }
         let folderEntry = panel.descendants(matching: .any).matching(
             NSPredicate(format: "value == %@", folder.lastPathComponent)
         ).firstMatch

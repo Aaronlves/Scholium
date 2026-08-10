@@ -775,6 +775,45 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testPortableFolderPanelRejectsWrongExactFolderAndRecovers() throws {
+        let wrongFolder = testDirectory.appendingPathComponent(
+            "Wrong Portable Folder",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: wrongFolder,
+            withIntermediateDirectories: true
+        )
+
+        let appMenu = app.menuBars.menuBarItems["Scholium QA"]
+        XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
+        appMenu.click()
+        let settings = app.menuItems["Settings…"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 3))
+        settings.click()
+
+        let vaultsPane = app.descendants(matching: .any)["Vaults"].firstMatch
+        XCTAssertTrue(vaultsPane.waitForExistence(timeout: 10))
+        vaultsPane.click()
+        let settingsWindow = app.windows.matching(
+            identifier: "com_apple_SwiftUI_Settings_window"
+        ).firstMatch
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+        XCTAssertTrue(settingsWindow.descendants(matching: .any)[
+            "scholium.portableControlAccess"
+        ].waitForExistence(timeout: 5))
+
+        authorizePortableFolder(wrongFolder, in: settingsWindow)
+        let selectionError = settingsWindow.staticTexts[
+            "Choose the folder containing Works shown above."
+        ]
+        XCTAssertTrue(selectionError.waitForExistence(timeout: 5))
+
+        authorizePortableFolder(triptychDirectory, in: settingsWindow)
+        XCTAssertTrue(waitUntil(timeout: 5) { !selectionError.exists })
+    }
+
+    @MainActor
     func testCleanAccountConfiguresAndRestoresACompleteTriptych() throws {
         app.terminate()
 
@@ -1027,6 +1066,60 @@ extension ScholiumUITests {
         XCTAssertFalse(app.buttons["Reveal Legacy Data"].exists)
     }
 
+    @MainActor
+    func testResearchGuidanceMarkdownCreationKeyboardAndDirtyClose() throws {
+        openResearchGuidance()
+
+        let settingsWindow = app.windows["Research Guidance"]
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+        let newPractice = settingsWindow.buttons["New Practice…"]
+        XCTAssertTrue(newPractice.waitForExistence(timeout: 5))
+        newPractice.click()
+
+        let creationSheet = settingsWindow.descendants(matching: .any)[
+            "scholium.researchGuidance.markdownCreationSheet"
+        ]
+        XCTAssertTrue(creationSheet.waitForExistence(timeout: 5))
+        let practiceTitle = creationSheet.textFields["Practice title"]
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        XCTAssertTrue(practiceTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: practiceTitle) },
+            "A new Practice must begin at its title field."
+        )
+
+        try paste("QA Closure Practice", into: practiceTitle)
+        let practiceSource = creationSheet.textViews[
+            "Philosophical Practice Markdown"
+        ]
+        XCTAssertTrue(practiceSource.waitForExistence(timeout: 5))
+        try paste(
+            "# QA Closure Practice\n\nState the philosophical practice here.\n",
+            into: practiceSource
+        )
+        practiceTitle.click()
+        app.typeKey(.escape, modifierFlags: [])
+        let keepEditing = settingsWindow.buttons["Keep Editing"]
+        XCTAssertTrue(keepEditing.waitForExistence(timeout: 5))
+        XCTAssertTrue(settingsWindow.buttons["Discard Draft and Close"].exists)
+        keepEditing.click()
+        XCTAssertTrue(creationSheet.exists)
+        XCTAssertEqual(practiceTitle.value as? String, "QA Closure Practice")
+        XCTAssertTrue(
+            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: practiceTitle) },
+            "Keeping a dirty Practice draft must restore focus to the title field."
+        )
+
+        practiceTitle.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { !creationSheet.exists },
+            "Return in the title field must invoke the enabled default Create action."
+        )
+        XCTAssertTrue(settingsWindow.staticTexts[
+            "QA Closure Practice"
+        ].waitForExistence(timeout: 8))
+    }
+
 
     @MainActor
     func testAcademicProfilePersistsAcrossSettingsReopen() throws {
@@ -1091,6 +1184,21 @@ extension ScholiumUITests {
                 || (status.value as? String) == "Installed and discoverable"
         })
         XCTAssertFalse(install.exists)
+
+        let copyPathSetup = app.descendants(matching: .any)[
+            "scholium.agentCLI.pathSetup"
+        ]
+        XCTAssertTrue(copyPathSetup.waitForExistence(timeout: 5))
+        try setPasteboardText("Scholium QA clipboard sentinel")
+        copyPathSetup.click()
+        let expectedSetup = "export PATH=\"$HOME/.local/bin:$PATH\""
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { (try? self.pasteboardText()) == expectedSetup },
+            "The shared pasteboard writer must copy the exact PATH setup command."
+        )
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "PATH setup copied"
+        ].waitForExistence(timeout: 3))
     }
 
 

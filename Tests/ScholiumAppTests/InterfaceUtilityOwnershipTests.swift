@@ -66,10 +66,12 @@ struct InterfaceUtilityOwnershipTests {
         )
 
         #expect(shared.contains("@State private var isShowingAll = false"))
+        #expect(shared.contains("@FocusState private var isHeaderFocused: Bool"))
         #expect(shared.contains("ScholiumMetrics.ResearchRecords.evidencePreviewLimit"))
         #expect(shared.contains("ResearchRecordEvidenceSectionHeader("))
         #expect(shared.contains(".popover("))
         #expect(shared.contains("completeContent { isShowingAll = false }"))
+        #expect(shared.contains("if wasShowingAll && !isShowingAll"))
 
         for consumer in [contextUse, participants] {
             #expect(consumer.contains("ResearchRecordPreviewedEvidenceSection("))

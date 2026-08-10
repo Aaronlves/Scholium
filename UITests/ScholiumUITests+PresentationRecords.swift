@@ -1258,6 +1258,115 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testResearchRecordEvidencePreviewPopoverKeyboardAndDismissal() throws {
+        app.terminate()
+        let fixture = try seedResearchRecordFixture(hasEvidenceOverflow: true)
+        sessionID = UUID()
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth)
+        )
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForDocumentSurface()
+
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
+        let recordButton = workspace.buttons["scholium.showResearchRecords"]
+        XCTAssertTrue(recordButton.waitForExistence(timeout: 5))
+        recordButton.click()
+
+        let recordWindow = app.windows["Research Records"].firstMatch
+        XCTAssertTrue(recordWindow.waitForExistence(timeout: 8))
+        let recordRow = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.\(fixture.recordID.uuidString)"
+        ]
+        XCTAssertTrue(recordRow.waitForExistence(timeout: 8))
+        recordRow.click()
+
+        let detailScroll = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.detail"
+        ]
+        let evidenceScroll = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.evidence"
+        ]
+        XCTAssertTrue(detailScroll.waitForExistence(timeout: 5))
+        XCTAssertTrue(evidenceScroll.waitForExistence(timeout: 5))
+        let participantsHeader = recordWindow.buttons[
+            "scholium.researchRecord.participantsHeader"
+        ]
+        let contextUseHeader = recordWindow.buttons[
+            "scholium.researchRecord.contextUseHeader"
+        ]
+        scrollUntilHittable(participantsHeader, in: evidenceScroll)
+
+        let overflowWorkID = try XCTUnwrap(fixture.overflowParticipantNoteIDs.last)
+        XCTAssertFalse(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.note.\(overflowWorkID.uuidString)"
+        ].exists)
+        XCTAssertFalse(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.tombstone.\(fixture.tombstoneNoteID.uuidString)"
+        ].exists)
+
+        participantsHeader.click()
+        let participantPopover = app.descendants(matching: .any)[
+            "scholium.researchRecord.participantsPopover"
+        ]
+        XCTAssertTrue(participantPopover.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchRecord.note.\(overflowWorkID.uuidString).all"
+        ].exists)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchRecord.tombstone.\(fixture.tombstoneNoteID.uuidString).all"
+        ].exists)
+        let firstParticipantRow = app.buttons[
+            "scholium.researchRecord.note.\(fixture.analysisNoteID.uuidString).all"
+        ]
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        XCTAssertTrue(firstParticipantRow.waitForExistence(timeout: 5))
+        XCTAssertFalse(keyboardFocus.evaluate(with: firstParticipantRow))
+        app.typeKey(.tab, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 2) {
+            keyboardFocus.evaluate(with: firstParticipantRow)
+        })
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !participantPopover.exists })
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            keyboardFocus.evaluate(with: participantsHeader)
+        })
+
+        participantsHeader.typeKey(.space, modifierFlags: [])
+        XCTAssertTrue(participantPopover.waitForExistence(timeout: 5))
+        detailScroll.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { !participantPopover.exists },
+            "A native outside click must dismiss the Participant popover."
+        )
+
+        scrollUntilHittable(contextUseHeader, in: evidenceScroll)
+        contextUseHeader.click()
+        let contextPopover = app.descendants(matching: .any)[
+            "scholium.researchRecord.contextUsePopover"
+        ]
+        XCTAssertTrue(contextPopover.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchRecord.material.\(overflowWorkID.uuidString).all"
+        ].exists)
+        let firstContextRow = app.buttons[
+            "scholium.researchRecord.material.\(fixture.analysisNoteID.uuidString).all"
+        ]
+        XCTAssertTrue(firstContextRow.waitForExistence(timeout: 5))
+        XCTAssertFalse(keyboardFocus.evaluate(with: firstContextRow))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !contextPopover.exists })
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            keyboardFocus.evaluate(with: contextUseHeader)
+        })
+    }
+
+    @MainActor
     func testResearchRecordAcademicEvidenceAndConfirmedDeletion() throws {
         app.terminate()
         let fixture = try seedResearchRecordFixture(

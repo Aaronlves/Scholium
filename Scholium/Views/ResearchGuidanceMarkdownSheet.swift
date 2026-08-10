@@ -219,6 +219,7 @@ struct ResearchGuidanceMarkdownCreationSheet: View {
                         .scholiumForeground(.secondaryText)
                     TextField(nameLabel, text: $draft.name)
                         .focused($focusedField, equals: .name)
+                        .onSubmit(createDraft)
                     TextEditor(text: $draft.source)
                         .font(ScholiumTypography.exact(.body))
                         .focused($focusedField, equals: .source)
@@ -253,7 +254,7 @@ struct ResearchGuidanceMarkdownCreationSheet: View {
     }
 
     private func createDraft() {
-        guard !isCreating else { return }
+        guard canCreate, !isCreating else { return }
         isCreating = true
         errorMessage = nil
         Task { @MainActor in

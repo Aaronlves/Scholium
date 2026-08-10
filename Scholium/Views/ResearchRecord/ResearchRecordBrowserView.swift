@@ -2541,6 +2541,7 @@ struct ResearchRecordEvidenceSectionHeader: View {
     let identifier: String
     let accessibilityValue: String?
     let accessibilityHint: LocalizedStringResource?
+    let externalFocus: FocusState<Bool>.Binding?
     let action: (() -> Void)?
 
     init(
@@ -2549,6 +2550,7 @@ struct ResearchRecordEvidenceSectionHeader: View {
         identifier: String,
         accessibilityValue: String? = nil,
         accessibilityHint: LocalizedStringResource? = nil,
+        focus: FocusState<Bool>.Binding? = nil,
         action: (() -> Void)? = nil
     ) {
         self.title = title
@@ -2556,6 +2558,7 @@ struct ResearchRecordEvidenceSectionHeader: View {
         self.identifier = identifier
         self.accessibilityValue = accessibilityValue
         self.accessibilityHint = accessibilityHint
+        externalFocus = focus
         self.action = action
     }
 
@@ -2567,14 +2570,18 @@ struct ResearchRecordEvidenceSectionHeader: View {
                 }
                 .buttonStyle(
                     ScholiumContentControlButtonStyle(
-                        isFocused: isFocused,
+                        isFocused: actionFocus.wrappedValue,
                         in: RoundedRectangle(
                             cornerRadius: ScholiumShape.editorialControlCornerRadius,
                             style: .continuous
                         )
                     )
                 )
-                .scholiumActivationFocus($isFocused)
+                .scholiumActivationFocus(actionFocus)
+                .onKeyPress(.space) {
+                    action()
+                    return .handled
+                }
                 .accessibilityLabel(Text(title))
                 .accessibilityHeading(.h2)
                 .accessibilityValue(accessibilityValue ?? "")
@@ -2587,6 +2594,10 @@ struct ResearchRecordEvidenceSectionHeader: View {
                     .accessibilityIdentifier(identifier)
             }
         }
+    }
+
+    private var actionFocus: FocusState<Bool>.Binding {
+        externalFocus ?? $isFocused
     }
 
     private var headerContent: some View {
@@ -2698,6 +2709,7 @@ private struct ResearchRecordPreviewedEvidenceSection<
     CompleteContent: View
 >: View {
     @State private var isShowingAll = false
+    @FocusState private var isHeaderFocused: Bool
 
     let title: LocalizedStringKey
     let count: Int
@@ -2738,6 +2750,7 @@ private struct ResearchRecordPreviewedEvidenceSection<
                     ? "\(count) items, showing the first \(previewLimit)"
                     : "\(count) items",
                 accessibilityHint: accessibilityHint,
+                focus: $isHeaderFocused,
                 action: hasMore ? { isShowingAll = true } : nil
             )
             .popover(
@@ -2755,6 +2768,11 @@ private struct ResearchRecordPreviewedEvidenceSection<
             }
 
             previewContent(previewLimit)
+        }
+        .onChange(of: isShowingAll) { wasShowingAll, isShowingAll in
+            if wasShowingAll && !isShowingAll {
+                isHeaderFocused = true
+            }
         }
         .accessibilityElement(children: .contain)
     }
