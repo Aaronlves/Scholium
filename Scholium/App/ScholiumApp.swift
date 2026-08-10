@@ -2817,6 +2817,47 @@ final class WindowModel: ObservableObject {
         )
     }
 
+    private func enqueueCurrencyAwareDocumentTransition(
+        preservingCurrentEditorState: Bool = true,
+        _ operation: @escaping @MainActor (
+            DocumentTransitionCoordinator.Currency
+        ) async throws -> Void,
+        didFail customFailure: (@MainActor (Error) -> Void)? = nil,
+        didSucceed: (@MainActor () -> Void)? = nil,
+        didFinish: (@MainActor () -> Void)? = nil
+    ) {
+        documentTransitionCoordinator.enqueueCurrencyAware(
+            prepare: { [weak self] in
+                guard let self else { throw CancellationError() }
+                try await self.flushRegisteredEditorIfNeeded(
+                    capturingEditorState: preservingCurrentEditorState
+                )
+            },
+            operation: operation,
+            didFail: { [weak self] error in
+                guard let self else { return }
+                if let customFailure {
+                    customFailure(error)
+                    return
+                }
+                if let navigationError = error as? WindowNavigationError {
+                    self.showToast(
+                        navigationError.localizedDescription,
+                        kind: .warning
+                    )
+                } else {
+                    self.lastSaveError = error.localizedDescription
+                    self.showToast(
+                        "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
+                        kind: .error
+                    )
+                }
+            },
+            didSucceed: { didSucceed?() },
+            didFinish: { didFinish?() }
+        )
+    }
+
     #if DEBUG
     func waitForPendingDocumentTransitionsForTesting() async {
         await documentTransitionCoordinator.waitForIdle()
@@ -2897,13 +2938,7 @@ final class WindowModel: ObservableObject {
                 relativePath: note.relativePath,
                 stableNoteID: note.stableNoteID
             )
-            let isCurrentDocument = currentDocumentDescriptor?.reference.vaultID == note.vaultID
-                && currentDocumentDescriptor?.reference.relativePath == note.relativePath
-            if isCurrentDocument {
-                pendingSourceRange = note.sourceRange
-                pendingSourceLine = note.sourceRange?.line ?? note.sourceLine
-                requestPresentationMode = .source
-            } else if disposition == .newTab {
+            if disposition == .newTab {
                 requestOpenNote(reference, disposition: .newTab)
             } else {
                 openWorkspaceReference(
@@ -5057,56 +5092,66 @@ final class WindowModel: ObservableObject {
     func requestUntitledNoteCreation(in folderRelativePath: String?) {
         guard !isCreatingNote else { return }
         isCreatingNote = true
-        enqueueDocumentTransition(preservingCurrentEditorState: false, { [weak self] in
-            guard let self else { return }
-            guard noteLocationScope == .workspace,
-                  let vault = currentRegisteredVault else {
-                throw WorkspaceRegistryError.incompleteWorkspace
-            }
-            let outcome = try await documentController.createUntitledNote(
-                inVault: vault.id,
-                folderRelativePath: folderRelativePath
-            )
-            let commit = outcome.committedValue
-            let document = commit.document
-            do {
-                let sourceAheadSnapshot = commit.sourceAheadSnapshot
-                guard workspaceProjectionController.recordCommittedNote(
-                    sourceAheadSnapshot,
-                    visibleVaultID: currentRegisteredVault?.id,
-                    visibleLocationScope: noteLocationScope
-                ) != nil else {
+        enqueueCurrencyAwareDocumentTransition(
+            preservingCurrentEditorState: false,
+            { [weak self] isCurrent in
+                guard let self else { return }
+                guard noteLocationScope == .workspace,
+                      let vault = currentRegisteredVault else {
                     throw WorkspaceRegistryError.incompleteWorkspace
                 }
-                if let noteID = sourceAheadSnapshot.stableIdentity.resolvedID {
-                    try await activateWorkspaceReference(
-                        VaultNoteReference(
-                            vaultID: vault.id,
-                            vaultName: vault.name,
-                            vaultRole: vault.role,
-                            relativePath: document.relativePath,
-                            stableNoteID: noteID.uuidString.lowercased()
-                        ),
-                        tabActivation: .place(.replaceSelected)
-                    )
-                } else {
-                    PerformanceProbe.shared.beginReadActivation(
-                        documentID: document.relativePath
-                    )
-                    documentController.selectUnavailableDocument(
-                        vaultID: vault.id,
-                        relativePath: document.relativePath
-                    )
-                    synchronizeDocumentTabs(after: .place(.replaceSelected))
-                }
-                revealCreatedNoteInLibrary(document.relativePath, vaultID: vault.id)
-                reportCommittedMutationWarnings(outcome)
-            } catch {
-                reportCommittedMutationWarnings(
-                    outcome,
-                    presentationWarning: error.localizedDescription
+                let outcome = try await documentController.createUntitledNote(
+                    inVault: vault.id,
+                    folderRelativePath: folderRelativePath
                 )
-            }
+                let commit = outcome.committedValue
+                let document = commit.document
+                do {
+                    let sourceAheadSnapshot = commit.sourceAheadSnapshot
+                    guard workspaceProjectionController.recordCommittedNote(
+                        sourceAheadSnapshot,
+                        visibleVaultID: currentRegisteredVault?.id,
+                        visibleLocationScope: noteLocationScope
+                    ) != nil else {
+                        throw WorkspaceRegistryError.incompleteWorkspace
+                    }
+                    guard isCurrent() else {
+                        reportCommittedMutationWarnings(outcome)
+                        return
+                    }
+                    if let noteID = sourceAheadSnapshot.stableIdentity.resolvedID {
+                        try await activateWorkspaceReference(
+                            VaultNoteReference(
+                                vaultID: vault.id,
+                                vaultName: vault.name,
+                                vaultRole: vault.role,
+                                relativePath: document.relativePath,
+                                stableNoteID: noteID.uuidString.lowercased()
+                            ),
+                            tabActivation: .place(.replaceSelected),
+                            managedCreationBodyStartUTF16: document.bodyUTF16Offset
+                        )
+                    } else {
+                        PerformanceProbe.shared.beginReadActivation(
+                            documentID: document.relativePath
+                        )
+                        documentController.selectUnavailableDocument(
+                            vaultID: vault.id,
+                            relativePath: document.relativePath
+                        )
+                        synchronizeDocumentTabs(after: .place(.replaceSelected))
+                    }
+                    revealCreatedNoteInLibrary(
+                        document.relativePath,
+                        vaultID: vault.id
+                    )
+                    reportCommittedMutationWarnings(outcome)
+                } catch {
+                    reportCommittedMutationWarnings(
+                        outcome,
+                        presentationWarning: error.localizedDescription
+                    )
+                }
         }, didFail: { [weak self] error in
             guard let self else { return }
             showToast(
@@ -6113,7 +6158,8 @@ final class WindowModel: ObservableObject {
     private func activateWorkspaceReference(
         _ reference: VaultNoteReference,
         tabActivation: DocumentTabActivation,
-        recordsNavigationHistory: Bool = true
+        recordsNavigationHistory: Bool = true,
+        managedCreationBodyStartUTF16: Int? = nil
     ) async throws {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == reference.vaultID
@@ -6148,14 +6194,16 @@ final class WindowModel: ObservableObject {
         try activateWorkspaceReferenceInSelectedWorkspace(
             reference,
             tabActivation: tabActivation,
-            recordsNavigationHistory: recordsNavigationHistory
+            recordsNavigationHistory: recordsNavigationHistory,
+            managedCreationBodyStartUTF16: managedCreationBodyStartUTF16
         )
     }
 
     private func activateWorkspaceReferenceInSelectedWorkspace(
         _ reference: VaultNoteReference,
         tabActivation: DocumentTabActivation,
-        recordsNavigationHistory: Bool = true
+        recordsNavigationHistory: Bool = true,
+        managedCreationBodyStartUTF16: Int? = nil
     ) throws {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == reference.vaultID
@@ -6170,12 +6218,17 @@ final class WindowModel: ObservableObject {
         ) else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
-        PerformanceProbe.shared.beginReadActivation(documentID: snapshot.id.relativePath)
+        if managedCreationBodyStartUTF16 == nil {
+            PerformanceProbe.shared.beginReadActivation(
+                documentID: snapshot.id.relativePath
+            )
+        }
         if snapshot.stableIdentity.resolvedID != nil {
             documentController.installOpenedDocument(
                 snapshot,
                 vaultName: vault.name,
-                vaultRole: vault.role
+                vaultRole: vault.role,
+                managedCreationBodyStartUTF16: managedCreationBodyStartUTF16
             )
         } else {
             documentController.selectUnavailableDocument(

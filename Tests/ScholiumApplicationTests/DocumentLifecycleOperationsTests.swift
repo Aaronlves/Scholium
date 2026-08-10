@@ -312,6 +312,171 @@ struct DocumentLifecycleOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Managed creation copies exactly one role seed and leaves the body empty")
+    func managedCreationUsesExactRoleSeed() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+
+        let saved = try await handle.research.settings()
+        var settings = saved.settings
+        settings.properties[.paperAnalysis]?.newNoteYAML =
+            "tags: [draft]\ncustom: |+\n  exact\n  ---\n  after\n\n"
+        settings.properties[.topicKnowledge]?.newNoteYAML = "summary: Map\n"
+        settings.properties[.output]?.newNoteYAML = "work_type: chapter\n"
+        _ = try await handle.research.saveSettings(
+            settings,
+            expectedRevision: saved.revision
+        )
+
+        let cases: [(WorkspaceVaultSlot, String)] = [
+            (
+                .paperAnalysis,
+                "---\ntags: [draft]\ncustom: |+\n  exact\n  ---\n  after\n\n---\n"
+            ),
+            (.topicKnowledge, "---\nsummary: Map\n---\n"),
+            (.output, "---\nwork_type: chapter\n---\n"),
+        ]
+        for (slot, expectedSource) in cases {
+            let registeredVault = try #require(fixture.assignment.vault(for: slot))
+            let vaultID = registeredVault.id
+            let created = try await handle.documents.createUntitledNote(
+                inVault: vaultID,
+                folderRelativePath: nil
+            ).committedValue
+            #expect(created.document.rawContent == expectedSource)
+            #expect(created.document.hasExactEmptyBody)
+            #expect(
+                created.document.bodyUTF16Offset
+                    == expectedSource.utf16.count
+            )
+            #expect(
+                try Data(
+                    contentsOf: URL(fileURLWithPath: registeredVault.canonicalPath)
+                        .appendingPathComponent(created.id.relativePath)
+                ) == Data(expectedSource.utf8)
+            )
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("First YAML insertion is explicit and bound to the current source revision")
+    func firstYAMLInsertionUsesExpectedRevision() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let vaultID = fixture.targetID.vaultID
+        let id = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "YAML-free.md"
+        )
+        let plain = try await handle.documents.create(
+            id,
+            content: "# Existing body\n\nExact prose.\n"
+        ).committedValue
+
+        await #expect(throws: VaultRepositoryError.self) {
+            _ = try await handle.documents.save(
+                id,
+                changeSet: .insertFrontmatter([
+                    "tags": .array(["explicit"])
+                ]),
+                expectedRevision: DocumentFingerprint(content: "stale")
+            )
+        }
+        #expect(try await handle.documents.load(id).rawContent == plain.rawContent)
+
+        let inserted = try await handle.documents.save(
+            id,
+            changeSet: .insertFrontmatter([
+                "tags": .array(["explicit"])
+            ]),
+            expectedRevision: plain.fingerprint
+        ).committedValue.document
+        #expect(
+            inserted.rawContent
+                == "---\ntags:\n  - explicit\n---\n# Existing body\n\nExact prose.\n"
+        )
+        #expect(inserted.body == plain.rawContent)
+        await runtime.shutdown()
+    }
+
+    @Test("First YAML insertion refuses malformed opening boundaries without changing bytes")
+    func firstYAMLInsertionPreservesMalformedSource() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let vaultID = fixture.targetID.vaultID
+
+        for (index, source) in [
+            "---\nkey: value\n",
+            "\u{FEFF}---\r\nkey: value\r\n",
+        ].enumerated() {
+            let id = VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Malformed-\(index).md"
+            )
+            let created = try await handle.documents.create(
+                id,
+                content: source
+            ).committedValue
+            await #expect(throws: VaultRepositoryError.self) {
+                _ = try await handle.documents.save(
+                    id,
+                    changeSet: .insertFrontmatter([
+                        "summary": .string("Do not insert")
+                    ]),
+                    expectedRevision: created.fingerprint
+                )
+            }
+            let loaded = try await handle.documents.load(id)
+            #expect(loaded.rawContent == source)
+            #expect(loaded.sourceBytes == Data(source.utf8))
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("Managed creation refuses settings that need review before claiming source")
+    func managedCreationFailsBeforeWriteForInvalidSettings() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let works = try #require(fixture.assignment.vault(for: .output))
+        let settingsURL = URL(fileURLWithPath: works.canonicalPath)
+            .deletingLastPathComponent()
+            .appendingPathComponent(".scholium/settings.json")
+        var invalidSettings = try await handle.research.settings().settings
+        invalidSettings.properties[.paperAnalysis]?.newNoteYAML =
+            "title: forbidden\n"
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(invalidSettings).write(
+            to: settingsURL,
+            options: .atomic
+        )
+
+        let analysesVault = try #require(
+            fixture.assignment.vault(for: .paperAnalysis)
+        )
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.documents.createUntitledNote(
+                inVault: analysesVault.id,
+                folderRelativePath: nil
+            )
+        }
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: URL(fileURLWithPath: analysesVault.canonicalPath)
+                    .appendingPathComponent("Untitled.md").path
+            )
+        )
+        await runtime.shutdown()
+    }
+
     @Test("A source-ahead Note follows two immediate Folder classifications")
     func sourceAheadNoteAuthorizesConsecutiveFolderMoves() async throws {
         let fixture = try await LifecycleFixture.make()

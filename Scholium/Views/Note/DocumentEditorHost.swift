@@ -18,6 +18,29 @@ struct DocumentEditorPresentationGate: Equatable {
     func showsEditor(presentsEditor: Bool, editorIsReady: Bool) -> Bool {
         presentsEditor && (hasPresentedEditor || editorIsReady)
     }
+
+    func allowsReadHitTesting(
+        presentsEditor: Bool,
+        editorIsReady: Bool,
+        allowsPendingRecovery: Bool
+    ) -> Bool {
+        !showsEditor(
+            presentsEditor: presentsEditor,
+            editorIsReady: editorIsReady
+        ) && (!presentsEditor || allowsPendingRecovery)
+    }
+
+    func allowsEditorFocus(
+        isEditing: Bool,
+        isReturningToReview: Bool,
+        editorIsReady: Bool,
+        presentedModeMatchesIntent: Bool
+    ) -> Bool {
+        isEditing
+            && !isReturningToReview
+            && editorIsReady
+            && presentedModeMatchesIntent
+    }
 }
 
 /// Owns the presentation boundary between the committed Read projection and
@@ -28,6 +51,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     let presentsEditor: Bool
     let retainsEditor: Bool
     let editorIsReady: Bool
+    let allowsPendingReadRecovery: Bool
     private let readSurface: ReadSurface
     private let editorSurface: EditorSurface
     @State private var presentationGate = DocumentEditorPresentationGate()
@@ -36,12 +60,14 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         presentsEditor: Bool,
         retainsEditor: Bool,
         editorIsReady: Bool,
+        allowsPendingReadRecovery: Bool = false,
         @ViewBuilder read: () -> ReadSurface,
         @ViewBuilder editor: () -> EditorSurface
     ) {
         self.presentsEditor = presentsEditor
         self.retainsEditor = retainsEditor
         self.editorIsReady = editorIsReady
+        self.allowsPendingReadRecovery = allowsPendingReadRecovery
         readSurface = read()
         editorSurface = editor()
     }
@@ -57,7 +83,11 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         ZStack {
             readSurface
                 .opacity(showsEditor ? 0 : 1)
-                .allowsHitTesting(!presentsEditor)
+                .allowsHitTesting(presentationGate.allowsReadHitTesting(
+                    presentsEditor: presentsEditor,
+                    editorIsReady: editorIsReady,
+                    allowsPendingRecovery: allowsPendingReadRecovery
+                ))
                 .accessibilityHidden(showsEditor)
                 .zIndex(showsEditor ? 0 : 1)
 

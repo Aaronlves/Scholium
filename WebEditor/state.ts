@@ -157,15 +157,18 @@ export function applyNormalizedChangesToExactSource(
 }
 
 function isFrontmatterOpening(text: string) {
-  return text.replace(/^\uFEFF/, "").trim() === "---";
+  return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
 }
 
 export function frontmatterBoundary(doc: Text) {
-  if (doc.lines < 2 || !isFrontmatterOpening(doc.line(1).text)) {
+  if (!isFrontmatterOpening(doc.line(1).text)) {
     return {endLine: 0, unclosed: false};
   }
+  if (doc.lines < 2) return {endLine: 0, unclosed: true};
   for (let number = 2; number <= doc.lines; number += 1) {
-    if (doc.line(number).text.trim() === "---") return {endLine: number, unclosed: false};
+    if (/^---[ \t]*$/.test(doc.line(number).text)) {
+      return {endLine: number, unclosed: false};
+    }
   }
   return {endLine: 0, unclosed: true};
 }

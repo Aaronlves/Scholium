@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 9;
+export const EDITOR_PROTOCOL_VERSION = 10;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -78,7 +78,13 @@ export interface EditorPerformanceSample {
   observed: Record<string, number>;
 }
 export type EditorOperation =
-  | {type: "initialize"; text: string; mode: EditorMode; dialect: MarkdownEditingDialect}
+  | {
+    type: "initialize";
+    text: string;
+    mode: EditorMode;
+    dialect: MarkdownEditingDialect;
+    initialSelection?: SelectionRange;
+  }
   | {type: "setMode"; mode: EditorMode}
   | {type: "setPresentationCSS"; value: string}
   | {type: "setUserCSS"; value: string}
@@ -141,6 +147,17 @@ const commandTypes = new Set<MarkdownEditorCommand>([
 ]);
 function validMode(value: unknown): value is EditorMode {
   return value === "livePreview" || value === "source";
+}
+function validInitialSelection(value: unknown, normalizedLength: number) {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object") return false;
+  const selection = value as Partial<SelectionRange>;
+  return Number.isSafeInteger(selection.anchor)
+    && Number(selection.anchor) >= 0
+    && Number(selection.anchor) <= normalizedLength
+    && Number.isSafeInteger(selection.head)
+    && Number(selection.head) >= 0
+    && Number(selection.head) <= normalizedLength;
 }
 function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
   if (!value || typeof value !== "object") return false;
@@ -207,7 +224,11 @@ function validOperation(operation: Record<string, unknown>) {
   switch (operation.type) {
   case "initialize":
     return typeof operation.text === "string" && validMode(operation.mode)
-      && validDialect(operation.dialect);
+      && validDialect(operation.dialect)
+      && validInitialSelection(
+        operation.initialSelection,
+        operation.text.replaceAll("\r\n", "\n").length,
+      );
   case "setMode": return validMode(operation.mode);
   case "setPresentationCSS":
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;

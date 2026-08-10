@@ -276,6 +276,70 @@ struct TriptychControlTests {
         #expect(try Data(contentsOf: fixture.root.appendingPathComponent(".scholium/settings.json")) == external)
     }
 
+    @Test("An identity final-window replacement is preserved instead of publishing a false record")
+    func identityFinalWindowConflict() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let external = Data("external identity replacement".utf8)
+        let store = TriptychControlStore(
+            worksVaultURL: fixture.works,
+            controlWriteHook: { url in
+                guard url.lastPathComponent == "identities.json" else { return }
+                try external.write(to: url, options: .atomic)
+            }
+        )
+        _ = try await store.bootstrap(vaultIDs: Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        ))
+
+        await #expect(throws: TriptychControlError.self) {
+            _ = try await store.identity(
+                forVaultID: UUID(),
+                relativePath: "Untitled.md",
+                fingerprint: DocumentFingerprint(content: "")
+            )
+        }
+        #expect(
+            try Data(
+                contentsOf: fixture.root.appendingPathComponent(
+                    ".scholium/identities.json"
+                )
+            ) == external
+        )
+    }
+
+    @Test("Bootstrap never replaces an identity file claimed by another process")
+    func bootstrapIdentityClaimIsNoReplace() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let vaultIDs = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        )
+        let seedStore = TriptychControlStore(worksVaultURL: fixture.works)
+        _ = try await seedStore.bootstrap(vaultIDs: vaultIDs)
+        let analysisVaultID = try #require(vaultIDs[.paperAnalysis])
+        let expected = try #require(await seedStore.identity(
+            forVaultID: analysisVaultID,
+            relativePath: "Concurrent.md",
+            fingerprint: DocumentFingerprint(content: "Concurrent")
+        ))
+        let controlURL = fixture.root.appendingPathComponent(".scholium")
+        let identitiesURL = controlURL.appendingPathComponent("identities.json")
+        let externallyClaimed = try Data(contentsOf: identitiesURL)
+        try FileManager.default.removeItem(at: controlURL)
+
+        let store = TriptychControlStore(
+            worksVaultURL: fixture.works,
+            controlWriteHook: { _ in },
+            controlCreateHook: { url in
+                guard url.lastPathComponent == "identities.json" else { return }
+                try externallyClaimed.write(to: url, options: .withoutOverwriting)
+            }
+        )
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+
+        #expect(try Data(contentsOf: identitiesURL) == externallyClaimed)
+        #expect(try await store.identityRecord(id: expected.id) == expected)
+    }
+
     @Test("Zotero binding is portable, typed, revision-checked, and independent of YAML")
     func portableZoteroBinding() async throws {
         let fixture = try Fixture()

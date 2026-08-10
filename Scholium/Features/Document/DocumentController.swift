@@ -667,7 +667,8 @@ final class DocumentController: ObservableObject {
     func installOpenedDocument(
         _ snapshot: WorkspaceNoteSnapshot,
         vaultName: String,
-        vaultRole: VaultRole
+        vaultRole: VaultRole,
+        managedCreationBodyStartUTF16: Int? = nil
     ) {
         guard let stableID = snapshot.stableIdentity.resolvedID else { return }
         let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: stableID)
@@ -681,9 +682,39 @@ final class DocumentController: ObservableObject {
                 stableNoteID: stableID.uuidString
             )
         )
-        installOpenedDocument(descriptor)
-        snapshots[key] = snapshot
-        reconcile(session: session(for: key), with: snapshot)
+        if let bodyStart = managedCreationBodyStartUTF16 {
+            // Publish the new identity, exact source, Edit selection, and
+            // writable session as one MainActor transaction. SwiftUI therefore
+            // never mounts an intermediate Review state for managed creation.
+            requestedPresentationMode = nil
+            pendingSourceRange = nil
+            pendingSourceLine = nil
+            snapshots[key] = snapshot
+            retainedReferences[key] = descriptor.reference
+            let selectedSession = session(for: key)
+            reconcile(session: selectedSession, with: snapshot)
+            presentationModesByWorkspace[activeWorkspace] = .livePreview
+            currentPresentationMode = .livePreview
+            selectedSession.beginManagedCreationEntry(
+                bodyStartUTF16: bodyStart
+            )
+            selectedSession.editorSession.revealSourceRange(
+                fromUTF16: bodyStart,
+                toUTF16: bodyStart
+            )
+            beginEditing(
+                session: selectedSession,
+                target: .workspace(key),
+                source: snapshot.document.rawContent,
+                revision: snapshot.fingerprint,
+                mode: .livePreview
+            )
+            installOpenedDocument(descriptor)
+        } else {
+            installOpenedDocument(descriptor)
+            snapshots[key] = snapshot
+            reconcile(session: session(for: key), with: snapshot)
+        }
     }
 
     /// Publishes an authoritative commit into an already retained document
@@ -1134,6 +1165,7 @@ final class DocumentController: ObservableObject {
         session.originalEditingSource = source
         session.editingSource = source
         session.editingRevision = revision
+        session.editorSession.authorizeAutomaticFocus()
         session.beginEditing(in: mode)
         editingDocumentPath = relativePath(for: target)
         Task { @MainActor [weak session] in
@@ -1742,15 +1774,22 @@ final class DocumentController: ObservableObject {
         session.conflict = nil
         session.editError = nil
         session.canRetrySave = false
+        let managedBodyStart = session.isEnteringManagedCreation
+            ? snapshot.document.bodyUTF16Offset
+            : nil
+        if let managedBodyStart {
+            session.beginManagedCreationEntry(bodyStartUTF16: managedBodyStart)
+        }
         if editingDocumentPath == snapshot.id.relativePath {
             editingDocumentPath = nil
         }
         session.suppressAutosave = false
-        if session.editorSession.isLoaded {
+        if session.isEditing || session.editorSession.hasAttachedWebView {
             session.editorSession.loadDocument(
                 diskSource,
                 documentID: session.editorSession.bridgeDocumentID,
-                mode: session.retainedEditorMode
+                mode: session.retainedEditorMode,
+                initialSourceRange: managedBodyStart.map { $0..<$0 }
             )
         }
     }

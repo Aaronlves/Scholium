@@ -14,7 +14,8 @@ public protocol DocumentUseCases: Sendable {
     func create(
         _ request: DocumentCreationRequest
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
-    /// Creates an empty note at the first unoccupied default path in `folderRelativePath`.
+    /// Creates one managed note from the role's exact Settings seed at the
+    /// first unoccupied default path in `folderRelativePath`.
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?

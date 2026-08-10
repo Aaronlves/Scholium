@@ -123,6 +123,118 @@ struct NoteDocumentTests {
         #expect(result == "# Changed\n")
     }
 
+    @Test("Exact empty-body and body-start semantics are independent of source byte count")
+    func exactBodyBoundary() {
+        let headerOnly = NoteDocument(
+            relativePath: "papers/header.md",
+            rawContent: "---\ntags: [draft]\n---\n"
+        )
+        #expect(headerOnly.hasExactEmptyBody)
+        #expect(headerOnly.bodyUTF16Offset == headerOnly.rawContent.utf16.count)
+
+        let whitespaceBody = NoteDocument(
+            relativePath: "papers/space.md",
+            rawContent: "---\ntags: [draft]\n---\n \n"
+        )
+        #expect(!whitespaceBody.hasExactEmptyBody)
+
+        let blockScalarDelimiter = NoteDocument(
+            relativePath: "papers/block-scalar.md",
+            rawContent: "---\ncustom: |+\n  before\n  ---\n  after\n---\n"
+        )
+        #expect(blockScalarDelimiter.validationWarnings.isEmpty)
+        #expect(blockScalarDelimiter.hasExactEmptyBody)
+        #expect(blockScalarDelimiter.rawFrontmatter?.contains("  ---\n") == true)
+        #expect(
+            blockScalarDelimiter.bodyUTF16Offset
+                == blockScalarDelimiter.rawContent.utf16.count
+        )
+
+        let nonbreakingSpaceOpening = NoteDocument(
+            relativePath: "papers/not-frontmatter.md",
+            rawContent: "---\u{00A0}\nkey: value\n---\n"
+        )
+        #expect(nonbreakingSpaceOpening.rawFrontmatter == nil)
+        #expect(nonbreakingSpaceOpening.body == nonbreakingSpaceOpening.rawContent)
+
+        let malformedEnvelope = NoteDocument(
+            relativePath: "papers/malformed.md",
+            rawContent: "---\ntags: [draft]\n"
+        )
+        #expect(malformedEnvelope.rawFrontmatter == nil)
+        #expect(!malformedEnvelope.hasExactEmptyBody)
+        #expect(malformedEnvelope.bodyUTF16Offset == 0)
+
+        for malformed in [
+            "---\ntags: [\n---\n",
+            "---\n- sequence root\n---\n",
+            "---\nscalar root\n---\n",
+        ] {
+            let document = NoteDocument(
+                relativePath: "papers/closed-malformed.md",
+                rawContent: malformed
+            )
+            #expect(document.body.isEmpty)
+            #expect(!document.validationWarnings.isEmpty)
+            #expect(!document.hasExactEmptyBody)
+        }
+    }
+
+    @Test("Explicit first YAML insertion preserves BOM, newline style, body, and final newline")
+    func explicitFirstFrontmatterInsertion() throws {
+        let source = "\u{FEFF}# Existing body\r\n\r\nExact tail"
+        let document = NoteDocument(
+            relativePath: "topics/plain.md",
+            rawContent: source
+        )
+        let result = try document.applying(
+            .insertFrontmatter([
+                "summary": .string("First: property")
+            ]),
+            timestampKey: nil
+        )
+        #expect(
+            result
+                == "\u{FEFF}---\r\nsummary: \"First: property\"\r\n---\r\n# Existing body\r\n\r\nExact tail"
+        )
+        let inserted = NoteDocument(
+            relativePath: "topics/plain.md",
+            rawContent: result
+        )
+        #expect(inserted.body == "# Existing body\r\n\r\nExact tail")
+        #expect(inserted.validationWarnings.isEmpty)
+
+        #expect(throws: VaultRepositoryError.self) {
+            try document.applying(
+                .insertFrontmatter(["summary": .remove]),
+                timestampKey: nil
+            )
+        }
+        #expect(throws: VaultRepositoryError.self) {
+            try inserted.applying(
+                .insertFrontmatter(["tags": .array(["later"])]),
+                timestampKey: nil
+            )
+        }
+
+        for malformed in [
+            "---\nkey: value\n",
+            "\u{FEFF}---\r\nkey: value\r\n",
+        ] {
+            let malformedDocument = NoteDocument(
+                relativePath: "topics/malformed.md",
+                rawContent: malformed
+            )
+            #expect(throws: VaultRepositoryError.self) {
+                try malformedDocument.applying(
+                    .insertFrontmatter(["summary": .string("Do not insert")]),
+                    timestampKey: nil
+                )
+            }
+            #expect(malformedDocument.rawContent == malformed)
+        }
+    }
+
     @Test("Source mode edits the complete document and targets only the save timestamp")
     func completeSourceEdit() throws {
         let original = "\u{FEFF}---\r\n# keep\r\ntitle: Old\r\ncustom: \"a: b\"\r\nmodified: 2025-01-01\r\n---\r\n# Original\r\n"

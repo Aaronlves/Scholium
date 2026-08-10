@@ -545,6 +545,8 @@ public enum TriptychControlError: LocalizedError, Sendable {
     case settingsRevisionConflict
     case invalidZoteroBindings
     case zoteroBindingsRevisionConflict
+    case invalidIdentities
+    case identitiesRevisionConflict
     case invalidIdentityCandidate(UUID)
     case identityPathAlreadyAssigned(String)
     case identityRebindingNotFound(UUID)
@@ -570,6 +572,10 @@ public enum TriptychControlError: LocalizedError, Sendable {
             return "The portable Zotero bindings are missing, damaged, or use an unsupported schema."
         case .zoteroBindingsRevisionConflict:
             return "The Zotero bindings changed after they were loaded. Reload them before trying again."
+        case .invalidIdentities:
+            return "The portable Note identities are missing or damaged. Their exact bytes were preserved for recovery."
+        case .identitiesRevisionConflict:
+            return "The portable Note identities changed while Scholium was updating them. Reload the workspace before trying again."
         case .invalidIdentityCandidate(let id):
             return "The selected note identity is no longer a valid candidate: \(id.uuidString)"
         case .identityPathAlreadyAssigned(let path):

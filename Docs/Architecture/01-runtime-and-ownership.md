@@ -213,6 +213,11 @@ exact rollback failure is observed rather than discarded. A proven retained
 source becomes the committed outcome with an identity warning; unreadable
 source presence becomes an explicit uncertain error that forbids blind
 recreation.
+Portable control bootstrap claims each missing file with a no-replace create;
+another process's winning bytes are loaded and validated rather than replaced.
+Every `identities.json` mutation carries the exact read preimage through one
+coordinated swap and decoded readback proof, so a stale move, reconciliation,
+or creation writer cannot erase a newer portable Note identity.
 Direct relation queries are publishable only when the Graph and Note Search
 manifest hashes agree. A relation clause is part of one structured AND query;
 Graph absence, staleness, or mismatch fails that complete query closed rather
@@ -410,7 +415,10 @@ or graph construction and without creating a second source authority. The
 managed creator snapshots the current Settings revision and prepared role
 source before committing; GUI, researcher CLI, and Agent adapters never compose
 their own headers. The window selects Edit and requests the exact body offset
-only after the durable source commit and editor mode acknowledgement. Only
+after the durable source commit. Bridge initialization applies the mapped
+collapsed selection without focus and returns the exact selection with its mode
+acknowledgement; native code verifies both, converges presentation, then
+publishes readiness only after a final focus acknowledgement. Only
 after activation, `DiscoveryController` clears excluding Library filters,
 unions the destination's folder ancestors into window-local disclosure, and
 publishes one generation- and scope-bound reveal request. `SidebarView` consumes

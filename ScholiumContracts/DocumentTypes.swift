@@ -77,6 +77,10 @@ public indirect enum FrontmatterEditValue: Hashable, Sendable {
 public enum NoteChangeSet: Sendable {
     case body(String)
     case frontmatter([String: FrontmatterEditValue])
+    /// Explicitly creates the first YAML envelope around an existing
+    /// frontmatter-free Note. Ordinary Property edits never select this case
+    /// implicitly, and an empty envelope is refused.
+    case insertFrontmatter([String: FrontmatterEditValue])
     case composite(body: String?, frontmatter: [String: FrontmatterEditValue])
     /// Replace the user-editable Markdown source. Creation and modification
     /// time are app-owned History data, not injected frontmatter properties.
@@ -99,6 +103,25 @@ public struct NoteDocument: Sendable {
     public let newlineStyle: NewlineStyle
     public let fingerprint: DocumentFingerprint
     public let validationWarnings: [String]
+
+    /// Exact CodeMirror UTF-16 position at which authored body content begins.
+    /// A valid frontmatter envelope may therefore have an empty body even when
+    /// the complete source is nonempty.
+    public var bodyUTF16Offset: Int {
+        let byteOffset = bodyByteRange.lowerBound
+        guard byteOffset <= rawContent.utf8.count else { return 0 }
+        let utf8Index = rawContent.utf8.index(
+            rawContent.utf8.startIndex,
+            offsetBy: byteOffset
+        )
+        guard let index = String.Index(utf8Index, within: rawContent) else { return 0 }
+        return index.utf16Offset(in: rawContent)
+    }
+
+    /// Empty Note presentation is body-aware, not a raw-file byte-count test.
+    public var hasExactEmptyBody: Bool {
+        body.isEmpty && validationWarnings.isEmpty
+    }
 
     private let prefix: String
     private let closingDelimiter: String
@@ -184,6 +207,13 @@ public struct NoteDocument: Sendable {
             return try rebuild(body: newBody, edits: timestampEdit(timestampKey, timestamp))
         case .frontmatter(let edits):
             return try rebuild(body: body, edits: edits.merging(timestampEdit(timestampKey, timestamp)) { current, _ in current })
+        case .insertFrontmatter(let edits):
+            guard timestampKey == nil else {
+                throw VaultRepositoryError.invalidFrontmatter(
+                    "The first YAML envelope cannot be combined with an implicit timestamp."
+                )
+            }
+            return try insertingFirstFrontmatter(edits)
         case .composite(let newBody, let edits):
             return try rebuild(body: newBody ?? body, edits: edits.merging(timestampEdit(timestampKey, timestamp)) { current, _ in current })
         }
@@ -232,6 +262,86 @@ public struct NoteDocument: Sendable {
         return prefix + patched + closingDelimiter + newBody
     }
 
+    private func insertingFirstFrontmatter(
+        _ edits: [String: FrontmatterEditValue]
+    ) throws -> String {
+        guard rawFrontmatter == nil else {
+            throw VaultRepositoryError.invalidFrontmatter(
+                "This note already has YAML frontmatter."
+            )
+        }
+        guard !Self.hasFrontmatterOpeningDelimiter(rawContent) else {
+            throw VaultRepositoryError.invalidFrontmatter(
+                "The existing YAML frontmatter is incomplete or malformed."
+            )
+        }
+        let insertions = edits.filter { _, value in
+            if case .remove = value { return false }
+            return true
+        }
+        guard !insertions.isEmpty else {
+            throw VaultRepositoryError.invalidFrontmatter(
+                "Add at least one Property before creating YAML frontmatter."
+            )
+        }
+
+        let planned: FrontmatterPatchPlan
+        do {
+            planned = try FrontmatterPatchPlanner.plan(
+                frontmatter: "",
+                edits: insertions,
+                newline: newlineStyle.sequence
+            )
+        } catch let refusal as FrontmatterPatchRefusal {
+            throw VaultRepositoryError.invalidFrontmatter(
+                refusal.localizedDescription
+            )
+        }
+        guard !planned.patchedFrontmatter
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw VaultRepositoryError.invalidFrontmatter(
+                "Add at least one Property before creating YAML frontmatter."
+            )
+        }
+
+        var existingBody = rawContent
+        let bom: String
+        if existingBody.unicodeScalars.first?.value == 0xFEFF {
+            bom = "\u{FEFF}"
+            existingBody.removeFirst()
+        } else {
+            bom = ""
+        }
+        let newline = newlineStyle.sequence
+        let candidate = bom
+            + "---" + newline
+            + planned.patchedFrontmatter
+            + "---" + newline
+            + existingBody
+        let validated = NoteDocument(relativePath: relativePath, rawContent: candidate)
+        guard validated.rawFrontmatter != nil,
+              validated.validationWarnings.isEmpty else {
+            throw VaultRepositoryError.invalidFrontmatter(
+                validated.validationWarnings.first
+                    ?? "The first YAML envelope could not be validated."
+            )
+        }
+        return candidate
+    }
+
+    private static func hasFrontmatterOpeningDelimiter(_ content: String) -> Bool {
+        var working = content
+        if working.unicodeScalars.first?.value == 0xFEFF {
+            working.removeFirst()
+        }
+        guard working.hasPrefix("---") else { return false }
+        let start = working.startIndex
+        let firstLineEnd = lineEnd(in: working, from: start)
+        return isColumnZeroFrontmatterDelimiter(
+            working[start..<firstLineEnd.contentEnd]
+        )
+    }
+
     private static func split(_ content: String) -> (prefix: String, frontmatter: String?, closing: String, body: String) {
         var working = content
         let bom: String
@@ -245,14 +355,17 @@ public struct NoteDocument: Sendable {
         guard working.hasPrefix("---") else { return ("", nil, "", content) }
 
         let firstLineEnd = lineEnd(in: working, from: start)
-        let firstLine = working[start..<firstLineEnd.contentEnd].trimmingCharacters(in: .whitespaces)
-        guard firstLine == "---", firstLineEnd.nextStart < working.endIndex else { return ("", nil, "", content) }
+        let firstLine = working[start..<firstLineEnd.contentEnd]
+        guard isColumnZeroFrontmatterDelimiter(firstLine),
+              firstLineEnd.nextStart < working.endIndex else {
+            return ("", nil, "", content)
+        }
 
         var cursor = firstLineEnd.nextStart
         while cursor <= working.endIndex {
             let end = lineEnd(in: working, from: cursor)
-            let line = working[cursor..<end.contentEnd].trimmingCharacters(in: .whitespaces)
-            if line == "---" {
+            let line = working[cursor..<end.contentEnd]
+            if isColumnZeroFrontmatterDelimiter(line) {
                 let prefix = bom + String(working[..<firstLineEnd.nextStart])
                 let frontmatter = String(working[firstLineEnd.nextStart..<cursor])
                 let closing = String(working[cursor..<end.nextStart])
@@ -263,6 +376,13 @@ public struct NoteDocument: Sendable {
             cursor = end.nextStart
         }
         return ("", nil, "", content)
+    }
+
+    private static func isColumnZeroFrontmatterDelimiter(
+        _ line: Substring
+    ) -> Bool {
+        line.hasPrefix("---")
+            && line.dropFirst(3).allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     private static func lineEnd(in text: String, from start: String.Index) -> (contentEnd: String.Index, nextStart: String.Index) {

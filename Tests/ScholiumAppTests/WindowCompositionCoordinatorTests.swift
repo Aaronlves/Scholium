@@ -74,6 +74,39 @@ struct WindowCompositionCoordinatorTests {
         #expect(events == ["prepare", "operation", "failure", "finish"])
     }
 
+    @Test("A committed old transition cannot present after a newer request")
+    func newerRequestSuppressesOldPresentation() async throws {
+        let coordinator = DocumentTransitionCoordinator()
+        var resumeOld: CheckedContinuation<Void, Never>?
+        var events: [String] = []
+
+        coordinator.enqueueCurrencyAware(
+            prepare: {},
+            operation: { isCurrent in
+                events.append("old commit")
+                await withCheckedContinuation { resumeOld = $0 }
+                if isCurrent() { events.append("old presentation") }
+            },
+            didFail: { error in
+                Issue.record("Unexpected old transition failure: \(error)")
+            }
+        )
+        for _ in 0..<100 where resumeOld == nil { await Task.yield() }
+        let continuation = try #require(resumeOld)
+
+        coordinator.enqueue(
+            prepare: {},
+            operation: { events.append("new presentation") },
+            didFail: { error in
+                Issue.record("Unexpected new transition failure: \(error)")
+            }
+        )
+        continuation.resume()
+        await coordinator.waitForIdle()
+
+        #expect(events == ["old commit", "new presentation"])
+    }
+
     @Test("A superseding presentation save cancels the older completion")
     func presentationSaveReplacement() async {
         let store = WindowSessionPersistenceStoreProbe()

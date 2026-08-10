@@ -30,7 +30,7 @@ struct FrontendArchitectureTests {
 
         #expect(hostSource.contains("if retainsEditor"))
         #expect(!hostSource.contains("if presentsEditor"))
-        #expect(hostSource.contains(".allowsHitTesting(!presentsEditor)"))
+        #expect(hostSource.contains("allowsPendingReadRecovery"))
         #expect(hostSource.contains("presentsEditor && (hasPresentedEditor || editorIsReady)"))
         #expect(hostSource.contains(".accessibilityHidden(!showsEditor)"))
         #expect(
@@ -46,9 +46,13 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("renderedReadReadyFingerprint"))
         #expect(noteSource.contains("private var readProjectionTaskIdentity: String"))
         #expect(noteSource.contains("noteFingerprint.sha256"))
-        #expect(noteSource.contains("if source.isEmpty"))
+        #expect(noteSource.contains("if note.document.hasExactEmptyBody"))
         #expect(noteSource.contains("scholium.emptyNoteReview"))
-        #expect(noteSource.contains("This note has no content."))
+        #expect(noteSource.contains("This note has no body content."))
+        #expect(noteSource.contains("documentSession.isEnteringManagedCreation"))
+        #expect(noteSource.contains("Retry Edit"))
+        #expect(noteSource.contains("managedCreationBodyStartUTF16"))
+        #expect(noteSource.contains(".id(editorSession.viewReconstructionID)"))
         #expect(noteSource.contains("note.relativePath):"))
         #expect(!noteSource.contains("guard presentationMode == .read else { return }"))
 
@@ -101,9 +105,24 @@ struct FrontendArchitectureTests {
 
         gate.reconcile(presentsEditor: true, editorIsReady: false)
         #expect(!gate.showsEditor(presentsEditor: true, editorIsReady: false))
+        #expect(!gate.allowsReadHitTesting(
+            presentsEditor: true,
+            editorIsReady: false,
+            allowsPendingRecovery: false
+        ))
+        #expect(gate.allowsReadHitTesting(
+            presentsEditor: true,
+            editorIsReady: false,
+            allowsPendingRecovery: true
+        ))
 
         gate.reconcile(presentsEditor: true, editorIsReady: true)
         #expect(gate.showsEditor(presentsEditor: true, editorIsReady: true))
+        #expect(!gate.allowsReadHitTesting(
+            presentsEditor: true,
+            editorIsReady: true,
+            allowsPendingRecovery: true
+        ))
 
         // A bridge-confirmed editor remains the visible surface while the
         // retained CodeMirror state atomically changes Edit <-> Source.
@@ -112,6 +131,31 @@ struct FrontendArchitectureTests {
 
         gate.reconcile(presentsEditor: false, editorIsReady: false)
         #expect(!gate.showsEditor(presentsEditor: false, editorIsReady: false))
+
+        #expect(gate.allowsEditorFocus(
+            isEditing: true,
+            isReturningToReview: false,
+            editorIsReady: true,
+            presentedModeMatchesIntent: true
+        ))
+        #expect(!gate.allowsEditorFocus(
+            isEditing: true,
+            isReturningToReview: true,
+            editorIsReady: true,
+            presentedModeMatchesIntent: true
+        ))
+        #expect(!gate.allowsEditorFocus(
+            isEditing: true,
+            isReturningToReview: false,
+            editorIsReady: false,
+            presentedModeMatchesIntent: true
+        ))
+        #expect(!gate.allowsEditorFocus(
+            isEditing: true,
+            isReturningToReview: false,
+            editorIsReady: true,
+            presentedModeMatchesIntent: false
+        ))
     }
 
     @Test("Autosave failure and conflict stay in the Document surface")

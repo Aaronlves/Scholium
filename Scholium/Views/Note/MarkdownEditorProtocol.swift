@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 9
+let markdownEditorProtocolVersion = 10
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -185,7 +185,12 @@ struct MarkdownEditorPerformanceSample: Codable, Hashable, Sendable {
 }
 
 enum MarkdownEditorOperation: Codable, Hashable, Sendable {
-    case initialize(text: String, mode: MarkdownEditorMode, dialect: MarkdownEditingDialect)
+    case initialize(
+        text: String,
+        mode: MarkdownEditorMode,
+        dialect: MarkdownEditingDialect,
+        initialSelection: MarkdownEditorSelectionRange?
+    )
     case setMode(MarkdownEditorMode)
     case setPresentationCSS(String)
     case setUserCSS(String)
@@ -216,7 +221,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, text, mode, dialect, value, line, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
+        case type, text, mode, dialect, initialSelection, value, line, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
@@ -232,7 +237,11 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             self = try .initialize(
                 text: container.decode(String.self, forKey: .text),
                 mode: container.decode(MarkdownEditorMode.self, forKey: .mode),
-                dialect: container.decode(MarkdownEditingDialect.self, forKey: .dialect)
+                dialect: container.decode(MarkdownEditingDialect.self, forKey: .dialect),
+                initialSelection: container.decodeIfPresent(
+                    MarkdownEditorSelectionRange.self,
+                    forKey: .initialSelection
+                )
             )
         case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
         case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
@@ -280,11 +289,15 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case let .initialize(text, mode, dialect):
+        case let .initialize(text, mode, dialect, initialSelection):
             try container.encode(Kind.initialize, forKey: .type)
             try container.encode(text, forKey: .text)
             try container.encode(mode, forKey: .mode)
             try container.encode(dialect, forKey: .dialect)
+            try container.encodeIfPresent(
+                initialSelection,
+                forKey: .initialSelection
+            )
         case let .setMode(mode): try pair(.setMode, mode, .mode, into: &container)
         case let .setPresentationCSS(value): try pair(.setPresentationCSS, value, .value, into: &container)
         case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)

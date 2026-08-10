@@ -7,6 +7,97 @@ import Testing
 @Suite("Document controller convergence")
 @MainActor
 struct DocumentControllerConvergenceTests {
+    @Test("Managed creation installs exact source directly into one Edit session")
+    func managedCreationStartsInEdit() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let source = "---\ntags: [draft]\n---\n"
+        let created = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Untitled.md",
+            source: source
+        )
+        let controller = DocumentController()
+        controller.requestedPresentationMode = .source
+        controller.pendingSourceLine = 99
+
+        controller.installOpenedDocument(
+            created,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            managedCreationBodyStartUTF16: created.document.bodyUTF16Offset
+        )
+
+        let session = try #require(controller.retainedSession(for: .init(
+            vaultID: vaultID,
+            noteID: noteID
+        )))
+        #expect(controller.currentPresentationMode == .livePreview)
+        #expect(controller.requestedPresentationMode == nil)
+        #expect(controller.pendingSourceLine == nil)
+        #expect(session.presentationMode == .livePreview)
+        #expect(session.activeEditorMode == .livePreview)
+        #expect(session.retainsEditorSurface)
+        #expect(session.editingSource == source)
+        #expect(session.originalEditingSource == source)
+        #expect(session.editingRevision == created.fingerprint)
+        #expect(
+            session.managedCreationBodyStartUTF16
+                == source.utf16.count
+        )
+    }
+
+    @Test("External source replaces a clean managed buffer before editor readiness")
+    func managedCreationConvergesBeforeEditorReadiness() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let initialSource = "---\ntags: [draft]\n---\n"
+        let externalSource = "---\ntags: [external]\n---\nExternal body\n"
+        let controller = DocumentController()
+        let created = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Untitled.md",
+            source: initialSource
+        )
+        controller.installOpenedDocument(
+            created,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            managedCreationBodyStartUTF16: created.document.bodyUTF16Offset
+        )
+        let session = try #require(controller.retainedSession(for: .init(
+            vaultID: vaultID,
+            noteID: noteID
+        )))
+        session.editorSession.loadDocument(
+            initialSource,
+            documentID: session.editorSession.bridgeDocumentID,
+            mode: .livePreview
+        )
+        #expect(!session.editorSession.isLoaded)
+        #expect(session.editorSession.checkedSource == initialSource)
+
+        let external = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Untitled.md",
+            source: externalSource
+        )
+        controller.installOpenedDocument(
+            external,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus
+        )
+
+        #expect(session.editingSource == externalSource)
+        #expect(session.originalEditingSource == externalSource)
+        #expect(session.editingRevision == external.fingerprint)
+        #expect(session.editorSession.checkedSource == externalSource)
+        #expect(session.managedCreationBodyStartUTF16 == external.document.bodyUTF16Offset)
+    }
+
     @Test("Clean peer converges while dirty peer keeps exact editor bytes")
     func cleanAndDirtyPeers() throws {
         let vaultID = UUID()

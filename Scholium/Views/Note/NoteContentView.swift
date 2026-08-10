@@ -1124,6 +1124,7 @@ struct NoteContentView: View {
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
             consumePendingSourceLocation()
+            focusEditorIfPresented()
         }
         .onChange(of: state.noteReviewState) { _, reviewState in
             documentSession.reconcileNoteReviewTask(with: reviewState)
@@ -1147,10 +1148,10 @@ struct NoteContentView: View {
                     reason: .documentLoad
                 )
             }
-            if source.isEmpty {
-                // Exact empty Markdown is already a complete Review state. Do
-                // not start WebKit merely to render an empty body or imply that
-                // source loading is still in progress.
+            if note.document.hasExactEmptyBody {
+                // A header-only Note is already a complete Review state. Do
+                // not start WebKit merely to render an exact empty body or
+                // imply that source loading is still in progress.
                 renderedReadHTML = ""
                 renderedReadFingerprint = fingerprint.sha256
                 documentSession.renderedReadReadyFingerprint = fingerprint.sha256
@@ -1496,6 +1497,7 @@ struct NoteContentView: View {
             },
             onScrollAnchorChange: { documentSession.observeScrollAnchor($0) }
         )
+        .id(editorSession.viewReconstructionID)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1))
     }
@@ -1506,7 +1508,9 @@ struct NoteContentView: View {
             presentsEditor: isEditing,
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
-                && editorSession.presentedMode == documentSession.activeEditorMode
+                && editorSession.presentedMode == documentSession.activeEditorMode,
+            allowsPendingReadRecovery: documentSession.isEnteringManagedCreation
+                && editorSession.errorMessage != nil
         ) {
             readSurface
         } editor: {
@@ -1517,7 +1521,16 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private var readSurface: some View {
-        if note.rawContent.isEmpty {
+        if documentSession.isEnteringManagedCreation {
+            if let error = editorSession.errorMessage {
+                managedCreationEditorFailure(error)
+            } else {
+                // Managed creation never flashes Review or Empty Note while
+                // the exact editor waits for its typed mode acknowledgement.
+                Color.clear
+                    .accessibilityHidden(true)
+            }
+        } else if note.document.hasExactEmptyBody {
             emptyReviewState
         } else {
             let hasWebProjection = renderedReadFingerprint == noteFingerprint.sha256
@@ -1546,11 +1559,30 @@ struct NoteContentView: View {
     private var emptyReviewState: some View {
         ScholiumContentStateView(
             "Empty Note",
-            detail: Text("This note has no content."),
+            detail: Text("This note has no body content."),
             indicator: .symbol("doc")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("scholium.emptyNoteReview")
+    }
+
+    private func managedCreationEditorFailure(_ error: String) -> some View {
+        ScholiumContentStateView(
+            "Edit Unavailable",
+            detail: Text("The note was created and its exact source is saved. \(error)"),
+            indicator: .symbol("exclamationmark.triangle", role: .attention)
+        ) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Button("Retry Edit") {
+                    retryManagedCreationEditor(in: .livePreview)
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Source") {
+                    retryManagedCreationEditor(in: .source)
+                }
+            }
+        }
+        .accessibilityIdentifier("scholium.managedNewNote.editorFailure")
     }
 
     @ViewBuilder
@@ -1734,7 +1766,9 @@ struct NoteContentView: View {
                         // committed Note and its hidden projection catches up.
                         documentSession.renderedReadReadyFingerprint = ""
                     }
-                    editorSession.resignFocus()
+                    guard returnToReadAfterSave else { return }
+                    await editorSession.resignFocusAndWait()
+                    guard returnToReadAfterSave else { return }
                     finishEditing()
                 } catch { /* Controller published the recoverable error state. */ }
             }
@@ -1746,6 +1780,8 @@ struct NoteContentView: View {
             return
         }
         guard let editorMode = mode.editorMode else { return }
+        returnToReadAfterSave = false
+        editorSession.authorizeAutomaticFocus()
         if isEditing {
             documentSession.switchEditorMode(to: editorMode)
         } else {
@@ -1797,10 +1833,39 @@ struct NoteContentView: View {
     /// retained Source surface from receiving focus during Review -> Edit and
     /// prevents rapid Edit/Source requests from racing the bridge handshake.
     private func focusEditorIfPresented() {
-        guard isEditing,
-              editorSession.isLoaded,
-              editorSession.presentedMode == documentSession.activeEditorMode else { return }
+        guard DocumentEditorPresentationGate().allowsEditorFocus(
+            isEditing: isEditing,
+            isReturningToReview: returnToReadAfterSave,
+            editorIsReady: editorSession.isLoaded,
+            presentedModeMatchesIntent:
+                editorSession.presentedMode == documentSession.activeEditorMode
+        ) else { return }
+        if documentSession.managedCreationBodyStartUTF16 != nil {
+            documentSession.completeManagedCreationEntry()
+            AccessibilityNotification.Announcement(
+                documentSession.activeEditorMode == .source
+                    ? String(localized: "New note created. Source is ready.")
+                    : String(localized: "New note created. Edit is ready.")
+            ).post()
+            return
+        }
         editorSession.focus()
+    }
+
+    private func retryManagedCreationEditor(in mode: MarkdownEditorMode) {
+        guard editingIsAvailable else {
+            actions.notify("This note is read-only in Scholium.", .information)
+            return
+        }
+        if let bodyStart = documentSession.managedCreationBodyStartUTF16 {
+            editorSession.revealSourceRange(
+                fromUTF16: bodyStart,
+                toUTF16: bodyStart
+            )
+        }
+        documentSession.switchEditorMode(to: mode)
+        actions.rememberPresentationMode(mode.presentationMode)
+        editorSession.retryUnavailablePresentation()
     }
 
     private func finishEditing() {

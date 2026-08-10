@@ -1656,14 +1656,55 @@ struct WindowControllerArchitectureTests {
             range: install.upperBound..<creationSource.endIndex
         ))
         _ = try #require(creationSource.range(
-            of: "revealCreatedNoteInLibrary(document.relativePath, vaultID: vault.id)",
+            of: "revealCreatedNoteInLibrary(",
             range: activate.upperBound..<creationSource.endIndex
         ))
+        #expect(creationSource.contains("document.relativePath,"))
+        #expect(creationSource.contains("vaultID: vault.id"))
         #expect(creationSource.contains("let commit = outcome.committedValue"))
+        #expect(creationSource.contains(
+            "enqueueCurrencyAwareDocumentTransition("
+        ))
+        #expect(creationSource.contains("guard isCurrent() else"))
         #expect(creationSource.contains("let document = commit.document"))
+        #expect(creationSource.contains(
+            "managedCreationBodyStartUTF16: document.bodyUTF16Offset"
+        ))
+        #expect(!creationSource.contains("requestPresentationMode"))
         #expect(!creationSource.contains("refreshCachedWorkspaceVaultSnapshot"))
         #expect(!creationSource.contains("browseRegisteredVault"))
         #expect(creationSource.contains("reportCommittedMutationWarnings(outcome)"))
+
+        let searchSelectionStart = try #require(windowModelSource.range(
+            of: "private func openSearchSelection("
+        ))
+        let searchSelectionEnd = try #require(windowModelSource.range(
+            of: "func requestOpenNote(\n        _ path: String,",
+            range: searchSelectionStart.upperBound..<windowModelSource.endIndex
+        ))
+        let searchSelectionSource = windowModelSource[
+            searchSelectionStart.lowerBound..<searchSelectionEnd.lowerBound
+        ]
+        #expect(searchSelectionSource.contains("openWorkspaceReference("))
+        #expect(!searchSelectionSource.contains("isCurrentDocument"))
+        #expect(!searchSelectionSource.contains("requestPresentationMode = .source"))
+
+        let selectedActivationStart = try #require(windowModelSource.range(
+            of: "private func activateWorkspaceReferenceInSelectedWorkspace("
+        ))
+        let selectedActivationEnd = try #require(windowModelSource.range(
+            of: "private func synchronizeDocumentTabs(",
+            range: selectedActivationStart.upperBound..<windowModelSource.endIndex
+        ))
+        let selectedActivationSource = windowModelSource[
+            selectedActivationStart.lowerBound..<selectedActivationEnd.lowerBound
+        ]
+        #expect(selectedActivationSource.contains(
+            "if managedCreationBodyStartUTF16 == nil"
+        ))
+        #expect(selectedActivationSource.contains(
+            "PerformanceProbe.shared.beginReadActivation("
+        ))
         let folderCreationStart = try #require(windowModelSource.range(
             of: "func requestUntitledFolderCreation(in parentRelativePath: String?)"
         ))

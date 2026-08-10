@@ -92,6 +92,45 @@ struct DocumentSessionLifecycleTests {
         _ = observation
     }
 
+    @Test("A failed managed editor retry replaces only its retained WebView request")
+    func managedCreationEditorRetry() {
+        let session = DocumentSessionModel(key: nil)
+        session.beginManagedCreationEntry(bodyStartUTF16: 24)
+        session.beginEditing(in: .livePreview)
+        session.editorSession.reportError("Editor failed")
+        let priorReconstruction = session.editorSession.viewReconstructionID
+
+        #expect(session.isEnteringManagedCreation)
+        #expect(session.editorSession.errorMessage == "Editor failed")
+        session.editorSession.retryUnavailablePresentation()
+        #expect(
+            session.editorSession.viewReconstructionID
+                != priorReconstruction
+        )
+        #expect(session.editorSession.errorMessage == nil)
+
+        session.completeManagedCreationEntry()
+        #expect(!session.isEnteringManagedCreation)
+    }
+
+    @Test("Managed creation intent is discarded only by explicit presentation teardown")
+    func managedCreationIntentTeardown() {
+        let session = DocumentSessionModel(key: nil)
+
+        session.beginManagedCreationEntry(bodyStartUTF16: 24)
+        session.beginEditing(in: .livePreview)
+        session.finishEditing()
+        #expect(!session.isEnteringManagedCreation)
+
+        session.beginManagedCreationEntry(bodyStartUTF16: 24)
+        session.resetPresentation()
+        #expect(!session.isEnteringManagedCreation)
+
+        session.beginManagedCreationEntry(bodyStartUTF16: 24)
+        session.shutdown()
+        #expect(!session.isEnteringManagedCreation)
+    }
+
     private func reviewState(
         noteID: UUID,
         recordIDs: [UUID],

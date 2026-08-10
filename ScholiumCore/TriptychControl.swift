@@ -48,6 +48,11 @@ public actor TriptychControlStore {
         }
     }
 
+    private struct IdentityFileSnapshot {
+        var payload: IdentityFile
+        var data: Data
+    }
+
     private struct AnalysisZoteroBindingFile: Codable {
         static let currentSchemaVersion = 1
 
@@ -93,6 +98,7 @@ public actor TriptychControlStore {
     private let analysisZoteroBindingsURL: URL
     private let fileManager: FileManager
     private let controlWriteHook: (@Sendable (URL) throws -> Void)?
+    private let controlCreateHook: (@Sendable (URL) throws -> Void)?
 
     public init(worksVaultURL: URL, fileManager: FileManager = .default) {
         controlURL = worksVaultURL.standardizedFileURL
@@ -104,12 +110,14 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         self.fileManager = fileManager
         controlWriteHook = nil
+        controlCreateHook = nil
     }
 
     init(
         worksVaultURL: URL,
         fileManager: FileManager = .default,
-        controlWriteHook: @escaping @Sendable (URL) throws -> Void
+        controlWriteHook: @escaping @Sendable (URL) throws -> Void,
+        controlCreateHook: (@Sendable (URL) throws -> Void)? = nil
     ) {
         controlURL = worksVaultURL.standardizedFileURL
             .deletingLastPathComponent()
@@ -120,6 +128,7 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
+        self.controlCreateHook = controlCreateHook
     }
 
     @discardableResult
@@ -133,30 +142,57 @@ public actor TriptychControlStore {
         try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
 
         let now = Date()
-        let manifest: TriptychManifest
-        if var existing: TriptychManifest = try decodeIfPresent(TriptychManifest.self, from: manifestURL) {
-            existing.vaultIDs = vaultIDs
-            existing.updatedAt = now
-            manifest = existing
-        } else {
-            manifest = TriptychManifest(
+        try createEncodedFileIfMissing(
+            TriptychManifest(
                 id: preferredTriptychID ?? UUID(),
                 vaultIDs: vaultIDs,
                 createdAt: now,
                 updatedAt: now
-            )
-        }
-        try encode(manifest, to: manifestURL)
+            ),
+            at: manifestURL
+        )
+        try createEncodedFileIfMissing(TriptychSettings(), at: settingsURL)
+        try createEncodedFileIfMissing(
+            IdentityFile(records: []),
+            at: identitiesURL
+        )
+        try createEncodedFileIfMissing(
+            AnalysisZoteroBindingFile(bindings: []),
+            at: analysisZoteroBindingsURL
+        )
 
-        if !fileManager.fileExists(atPath: settingsURL.path) {
-            try encode(TriptychSettings(), to: settingsURL)
+        let manifestData = try Data(
+            contentsOf: manifestURL,
+            options: [.mappedIfSafe]
+        )
+        guard var manifest = try? decoder().decode(
+            TriptychManifest.self,
+            from: manifestData
+        ) else {
+            throw TriptychControlError.invalidManifest
         }
-        if !fileManager.fileExists(atPath: identitiesURL.path) {
-            try encode(IdentityFile(records: []), to: identitiesURL)
+        if manifest.vaultIDs != vaultIDs {
+            manifest.vaultIDs = vaultIDs
+            manifest.updatedAt = now
+            let candidate = try encodedData(manifest)
+            let readback = try replaceExactFile(
+                at: manifestURL,
+                expected: manifestData,
+                candidate: candidate,
+                conflict: TriptychControlError.invalidManifest
+            )
+            guard readback == candidate,
+                  let decoded = try? decoder().decode(
+                      TriptychManifest.self,
+                      from: readback
+                  ), decoded.vaultIDs == vaultIDs else {
+                throw TriptychControlError.invalidManifest
+            }
+            manifest = decoded
         }
-        if !fileManager.fileExists(atPath: analysisZoteroBindingsURL.path) {
-            try encode(AnalysisZoteroBindingFile(bindings: []), to: analysisZoteroBindingsURL)
-        }
+        _ = try settings()
+        _ = try identitySnapshot()
+        _ = try zoteroBindings()
         return manifest
     }
 
@@ -256,27 +292,48 @@ public actor TriptychControlStore {
         fingerprint: DocumentFingerprint,
         createIfMissing: Bool = true
     ) throws -> NoteIdentityRecord? {
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
+        let expectedRecordID: UUID
         if let index = payload.records.firstIndex(where: {
             $0.vaultID == vaultID && $0.relativePath == relativePath
         }) {
-            if payload.records[index].fingerprint != fingerprint {
-                payload.records[index].fingerprint = fingerprint
-                payload.records[index].updatedAt = Date()
-                try encode(payload, to: identitiesURL)
+            guard payload.records[index].fingerprint != fingerprint else {
+                return payload.records[index]
             }
-            return payload.records[index]
+            payload.records[index].fingerprint = fingerprint
+            payload.records[index].updatedAt = Date()
+            expectedRecordID = payload.records[index].id
+        } else {
+            guard createIfMissing else { return nil }
+            let record = NoteIdentityRecord(
+                vaultID: vaultID,
+                relativePath: relativePath,
+                fingerprint: fingerprint
+            )
+            expectedRecordID = record.id
+            payload.records.append(record)
         }
-        guard createIfMissing else { return nil }
-        let record = NoteIdentityRecord(
-            vaultID: vaultID,
-            relativePath: relativePath,
-            fingerprint: fingerprint
-        )
-        payload.records.append(record)
         try ensureControlDirectory()
-        try encode(payload, to: identitiesURL)
+        try commitIdentityPayload(payload, replacing: &snapshot)
+        guard let record = snapshot.payload.records.first(where: {
+                  $0.id == expectedRecordID
+                      && $0.vaultID == vaultID
+                      && $0.relativePath == relativePath
+                      && $0.fingerprint == fingerprint
+              }) else {
+            throw TriptychControlError.invalidIdentities
+        }
         return record
+    }
+
+    private static func hasUniqueIdentityRecords(
+        _ records: [NoteIdentityRecord]
+    ) -> Bool {
+        Set(records.map(\.id)).count == records.count
+            && Set(records.map {
+                "\($0.vaultID.uuidString.lowercased())\u{0}\($0.relativePath)"
+            }).count == records.count
     }
 
     public func identityRecord(vaultID: UUID, relativePath: String) throws -> NoteIdentityRecord? {
@@ -297,7 +354,8 @@ public actor TriptychControlStore {
         to relativePath: String,
         fingerprint: DocumentFingerprint
     ) throws -> NoteIdentityRecord {
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
         guard let index = payload.records.firstIndex(where: { $0.id == id }) else {
             throw CocoaError(.fileNoSuchFile)
         }
@@ -324,8 +382,8 @@ public actor TriptychControlStore {
                 in: &payload.pendingRebindings
             )
         }
-        try encode(payload, to: identitiesURL)
-        return payload.records[index]
+        try commitIdentityPayload(payload, replacing: &snapshot)
+        return snapshot.payload.records[index]
     }
 
     /// Commits a lifecycle move against the portable identity inventory.
@@ -343,7 +401,8 @@ public actor TriptychControlStore {
         to relativePath: String,
         fingerprint: DocumentFingerprint
     ) throws -> NoteIdentityRecord {
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
 
         let index: Int
         if let byID = payload.records.firstIndex(where: { $0.id == id }) {
@@ -366,8 +425,8 @@ public actor TriptychControlStore {
                 existing.fingerprint = fingerprint
                 existing.updatedAt = Date()
                 payload.records[byDestination] = existing
-                try encode(payload, to: identitiesURL)
-                return existing
+                try commitIdentityPayload(payload, replacing: &snapshot)
+                return snapshot.payload.records[byDestination]
             } else {
                 throw CocoaError(.fileNoSuchFile)
             }
@@ -382,8 +441,8 @@ public actor TriptychControlStore {
             existing.fingerprint = fingerprint
             existing.updatedAt = Date()
             payload.records[byDestination] = existing
-            try encode(payload, to: identitiesURL)
-            return existing
+            try commitIdentityPayload(payload, replacing: &snapshot)
+            return snapshot.payload.records[byDestination]
         } else {
             let recovered = NoteIdentityRecord(
                 id: id,
@@ -392,8 +451,13 @@ public actor TriptychControlStore {
                 fingerprint: fingerprint
             )
             payload.records.append(recovered)
-            try encode(payload, to: identitiesURL)
-            return recovered
+            try commitIdentityPayload(payload, replacing: &snapshot)
+            guard let committed = snapshot.payload.records.first(where: {
+                $0.id == recovered.id
+            }) else {
+                throw TriptychControlError.invalidIdentities
+            }
+            return committed
         }
 
         guard !payload.records.contains(where: {
@@ -420,8 +484,12 @@ public actor TriptychControlStore {
                 in: &payload.pendingRebindings
             )
         }
-        try encode(payload, to: identitiesURL)
-        return payload.records[index]
+        let movedID = payload.records[index].id
+        try commitIdentityPayload(payload, replacing: &snapshot)
+        guard let moved = snapshot.payload.records.first(where: { $0.id == movedID }) else {
+            throw TriptychControlError.invalidIdentities
+        }
+        return moved
     }
 
     /// Rebinds every note moved by one directory rename in one portable-state
@@ -443,7 +511,8 @@ public actor TriptychControlStore {
             throw TriptychControlError.invalidManifest
         }
 
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
         let movingIDs = Set(ids)
         for move in moves {
             guard let record = payload.records.first(where: {
@@ -491,8 +560,11 @@ public actor TriptychControlStore {
             }
             updated.append(payload.records[index])
         }
-        try encode(payload, to: identitiesURL)
-        return updated.sorted { $0.relativePath < $1.relativePath }
+        try commitIdentityPayload(payload, replacing: &snapshot)
+        let updatedIDs = Set(updated.map(\.id))
+        return snapshot.payload.records
+            .filter { updatedIDs.contains($0.id) }
+            .sorted { $0.relativePath < $1.relativePath }
     }
 
     public func duplicateIdentity(
@@ -500,9 +572,10 @@ public actor TriptychControlStore {
         to relativePath: String,
         fingerprint: DocumentFingerprint
     ) throws -> NoteIdentityRecord {
-        let source = try identityPayload().records.first(where: { $0.id == sourceID })
+        var snapshot = try identitySnapshot()
+        let source = snapshot.payload.records.first(where: { $0.id == sourceID })
         guard let source else { throw CocoaError(.fileNoSuchFile) }
-        var payload = try identityPayload()
+        var payload = snapshot.payload
         let duplicate = NoteIdentityRecord(
             vaultID: source.vaultID,
             relativePath: relativePath,
@@ -510,7 +583,7 @@ public actor TriptychControlStore {
             duplicatedFrom: sourceID
         )
         payload.records.append(duplicate)
-        try encode(payload, to: identitiesURL)
+        try commitIdentityPayload(payload, replacing: &snapshot)
         if let sourceBinding = try zoteroBindings().binding(for: sourceID) {
             do {
                 let duplicateBinding = try AnalysisZoteroBinding(
@@ -524,8 +597,12 @@ public actor TriptychControlStore {
                     expectedRevision: bindingSnapshot.revision
                 )
             } catch {
-                payload.records.removeAll { $0.id == duplicate.id }
-                try? encode(payload, to: identitiesURL)
+                var rollbackPayload = snapshot.payload
+                rollbackPayload.records.removeAll { $0.id == duplicate.id }
+                try? commitIdentityPayload(
+                    rollbackPayload,
+                    replacing: &snapshot
+                )
                 throw error
             }
         }
@@ -542,7 +619,8 @@ public actor TriptychControlStore {
         vaultID: UUID,
         relativePath: String
     ) throws -> NoteIdentityRecord? {
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
         guard let record = payload.records.first(where: { $0.id == id }) else { return nil }
         guard record.vaultID == vaultID, record.relativePath == relativePath else {
             throw TriptychControlError.invalidIdentityCandidate(id)
@@ -554,7 +632,7 @@ public actor TriptychControlStore {
             ambiguity.candidateIDs.removeAll { $0 == id }
             return ambiguity.candidateIDs.isEmpty ? nil : ambiguity
         }
-        try encode(payload, to: identitiesURL)
+        try commitIdentityPayload(payload, replacing: &snapshot)
         let bindingSnapshot = try zoteroBindings()
         if bindingSnapshot.binding(for: id) != nil {
             _ = try clearZoteroBinding(
@@ -594,7 +672,8 @@ public actor TriptychControlStore {
 
     func restorePurgedIdentity(_ backup: PermanentDeletionIdentityBackup?) throws {
         guard let backup else { return }
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
         if let existing = payload.records.first(where: { $0.id == backup.record.id }) {
             guard try persistentlyEquivalent(existing, backup.record) else {
                 throw TriptychControlError.invalidIdentityCandidate(backup.record.id)
@@ -631,7 +710,7 @@ public actor TriptychControlStore {
                 payload.unresolvedAmbiguities.append(restored)
             }
         }
-        try encode(payload, to: identitiesURL)
+        try commitIdentityPayload(payload, replacing: &snapshot)
         if let binding = backup.zoteroBinding {
             let snapshot = try zoteroBindings()
             if let existing = snapshot.binding(for: backup.record.id) {
@@ -655,7 +734,8 @@ public actor TriptychControlStore {
         vaultID: UUID,
         documents: [(relativePath: String, fingerprint: DocumentFingerprint)]
     ) throws -> NoteIdentityReconciliation {
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
         var result: [String: NoteIdentityRecord] = [:]
         var rebound: [NoteIdentityRebinding] = []
         var ambiguities: [NoteIdentityAmbiguity] = []
@@ -770,7 +850,8 @@ public actor TriptychControlStore {
         }
         if changed {
             try ensureControlDirectory()
-            try encode(payload, to: identitiesURL)
+            try commitIdentityPayload(payload, replacing: &snapshot)
+            payload = snapshot.payload
         }
         return NoteIdentityReconciliation(
             identities: result,
@@ -790,7 +871,8 @@ public actor TriptychControlStore {
         fingerprint: DocumentFingerprint,
         candidateID: UUID?
     ) throws -> NoteIdentityRecord {
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
         guard !payload.records.contains(where: {
             $0.vaultID == vaultID && $0.relativePath == relativePath
         }) else {
@@ -833,8 +915,13 @@ public actor TriptychControlStore {
             $0.vaultID == vaultID && $0.relativePath == relativePath
         }
         try ensureControlDirectory()
-        try encode(payload, to: identitiesURL)
-        return record
+        try commitIdentityPayload(payload, replacing: &snapshot)
+        guard let committed = snapshot.payload.records.first(where: {
+            $0.id == record.id
+        }) else {
+            throw TriptychControlError.invalidIdentities
+        }
+        return committed
     }
 
     public func pendingIdentityRebindings(
@@ -855,7 +942,8 @@ public actor TriptychControlStore {
     /// has been migrated. Calling this method again is harmless, which makes a
     /// recovery retry safe after an interruption.
     public func completeIdentityRebinding(_ rebinding: NoteIdentityPendingRebinding) throws {
-        var payload = try identityPayload()
+        var snapshot = try identitySnapshot()
+        var payload = snapshot.payload
         guard let record = payload.records.first(where: {
             $0.id == rebinding.noteID
                 && $0.vaultID == rebinding.vaultID
@@ -870,7 +958,7 @@ public actor TriptychControlStore {
                 && pending.previousRelativePath == rebinding.previousRelativePath
                 && pending.relativePath == rebinding.relativePath
         }
-        try encode(payload, to: identitiesURL)
+        try commitIdentityPayload(payload, replacing: &snapshot)
     }
 
     private static func enqueuePendingRebinding(
@@ -884,7 +972,38 @@ public actor TriptychControlStore {
     }
 
     private func identityPayload() throws -> IdentityFile {
-        try decodeIfPresent(IdentityFile.self, from: identitiesURL) ?? IdentityFile(records: [])
+        try identitySnapshot().payload
+    }
+
+    private func identitySnapshot() throws -> IdentityFileSnapshot {
+        guard fileManager.fileExists(atPath: identitiesURL.path) else {
+            throw TriptychControlError.invalidIdentities
+        }
+        let data = try Data(contentsOf: identitiesURL, options: [.mappedIfSafe])
+        guard let payload = try? decoder().decode(IdentityFile.self, from: data),
+              Self.hasUniqueIdentityRecords(payload.records) else {
+            throw TriptychControlError.invalidIdentities
+        }
+        return IdentityFileSnapshot(payload: payload, data: data)
+    }
+
+    private func commitIdentityPayload(
+        _ payload: IdentityFile,
+        replacing snapshot: inout IdentityFileSnapshot
+    ) throws {
+        let candidate = try encodedData(payload)
+        let readback = try replaceExactFile(
+            at: identitiesURL,
+            expected: snapshot.data,
+            candidate: candidate,
+            conflict: TriptychControlError.identitiesRevisionConflict
+        )
+        guard readback == candidate,
+              let decoded = try? decoder().decode(IdentityFile.self, from: readback),
+              Self.hasUniqueIdentityRecords(decoded.records) else {
+            throw TriptychControlError.invalidIdentities
+        }
+        snapshot = IdentityFileSnapshot(payload: decoded, data: readback)
     }
 
     private func ensureControlDirectory() throws {
@@ -896,9 +1015,19 @@ public actor TriptychControlStore {
         return try decoder().decode(type, from: Data(contentsOf: url))
     }
 
-    private func encode<T: Encodable>(_ value: T, to url: URL) throws {
-        try ensureControlDirectory()
-        try encodedData(value).write(to: url, options: .atomic)
+    private func createEncodedFileIfMissing<T: Encodable>(
+        _ value: T,
+        at url: URL
+    ) throws {
+        guard !fileManager.fileExists(atPath: url.path) else { return }
+        let candidate = try encodedData(value)
+        try controlCreateHook?(url)
+        do {
+            try candidate.write(to: url, options: .withoutOverwriting)
+        } catch let error as CocoaError where error.code == .fileWriteFileExists {
+            // Another process won the no-replace claim. Its bytes are the
+            // portable authority and are validated by the caller.
+        }
     }
 
     private func decoder() -> JSONDecoder {

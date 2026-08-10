@@ -33,7 +33,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(9);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(10);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -75,8 +75,18 @@ describe("editor protocol", () => {
     })).toBe(true);
   });
   it("accepts only the complete immutable editing dialect", () => {
-    const initialize = {type: "initialize", text: "Body", mode: "livePreview", dialect};
+    const initialize = {
+      type: "initialize",
+      text: "Body",
+      mode: "livePreview",
+      dialect,
+      initialSelection: {anchor: 4, head: 4},
+    };
     expect(isEditorRequest({...request, operation: initialize})).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {...initialize, initialSelection: {anchor: 5, head: 5}},
+    })).toBe(false);
     expect(isEditorRequest({
       ...request,
       operation: {

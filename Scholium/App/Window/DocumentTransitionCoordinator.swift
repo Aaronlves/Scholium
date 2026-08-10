@@ -5,12 +5,29 @@ import Foundation
 /// before the selected operation can replace the visible target.
 @MainActor
 final class DocumentTransitionCoordinator {
+    typealias Currency = @MainActor () -> Bool
     private var generation: UInt64 = 0
     private var tail: Task<Void, Never>?
 
     func enqueue(
         prepare: @escaping @MainActor () async throws -> Void,
         operation: @escaping @MainActor () async throws -> Void,
+        didFail: @escaping @MainActor (Error) -> Void,
+        didSucceed: @escaping @MainActor () -> Void = {},
+        didFinish: @escaping @MainActor () -> Void = {}
+    ) {
+        enqueueCurrencyAware(
+            prepare: prepare,
+            operation: { _ in try await operation() },
+            didFail: didFail,
+            didSucceed: didSucceed,
+            didFinish: didFinish
+        )
+    }
+
+    func enqueueCurrencyAware(
+        prepare: @escaping @MainActor () async throws -> Void,
+        operation: @escaping @MainActor (Currency) async throws -> Void,
         didFail: @escaping @MainActor (Error) -> Void,
         didSucceed: @escaping @MainActor () -> Void = {},
         didFinish: @escaping @MainActor () -> Void = {}
@@ -25,7 +42,10 @@ final class DocumentTransitionCoordinator {
             do {
                 try await prepare()
                 guard requestedGeneration == generation else { return }
-                try await operation()
+                let isCurrent: Currency = { [weak self] in
+                    self?.generation == requestedGeneration
+                }
+                try await operation(isCurrent)
                 guard requestedGeneration == generation else { return }
                 didSucceed()
             } catch is CancellationError {

@@ -9,6 +9,172 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Initial body selection is acknowledged before editor readiness")
+    func initialBodySelectionGatesReadiness() async throws {
+        let source = "---\r\ncustom: |+\r\n  before\r\n  ---\r\n  after\r\n---\r\nBody\r\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let sourceBodyUTF16Index = source.utf16.index(
+            source.utf16.startIndex,
+            offsetBy: bodyStart
+        )
+        let sourceBodyIndex = try #require(
+            String.Index(sourceBodyUTF16Index, within: source)
+        )
+        let editorBodyStart = String(source[..<sourceBodyIndex])
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .utf16.count
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: dispatcher,
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        try await dispatcher.waitUntilSuspended()
+        #expect(!harness.session.isLoaded)
+        #expect(harness.session.presentedMode == nil)
+        #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
+
+        dispatcher.resume()
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(
+            head: editorBodyStart,
+            stage: "acknowledged managed body boundary"
+        )
+        #expect(harness.session.presentedMode == .livePreview)
+        #expect(try await harness.session.testingAccessibilitySnapshot().isFocused)
+    }
+
+    @Test("Review handoff revokes focus from a pending editor initialization")
+    func reviewHandoffRevokesPendingInitialFocus() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: dispatcher,
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        try await dispatcher.waitUntilSuspended()
+        let handoff = Task { @MainActor in
+            await harness.session.resignFocusAndWait()
+        }
+        await Task.yield()
+        dispatcher.resume()
+        await handoff.value
+        try await harness.waitUntilReady()
+
+        #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
+    }
+
+    @Test("A newer Source request supersedes a pending Review handoff")
+    func sourceRequestSupersedesPendingReviewHandoff() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: dispatcher,
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        try await dispatcher.waitUntilSuspended()
+        let obsoleteReviewHandoff = Task { @MainActor in
+            await harness.session.resignFocusAndWait()
+        }
+        await Task.yield()
+        harness.session.authorizeAutomaticFocus()
+        harness.session.setMode(.source)
+        dispatcher.resume()
+        await obsoleteReviewHandoff.value
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(.source)
+        try await harness.waitUntilSelection(
+            head: bodyStart,
+            stage: "newest Source request body boundary"
+        )
+
+        #expect(harness.session.presentedMode == .source)
+        #expect(try await harness.session.testingAccessibilitySnapshot().isFocused)
+    }
+
+    @Test("A failed bridge blur cannot block the native Review handoff")
+    func failedBlurDoesNotBlockReviewHandoff() async throws {
+        let dispatcher = FailingBlurBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "Body\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        await harness.session.resignFocusAndWait()
+
+        #expect(dispatcher.didAttemptBlur)
+        #expect(harness.session.isLoaded)
+    }
+
+    @Test("A false initial selection acknowledgement fails editor readiness")
+    func falseInitialSelectionAcknowledgementFailsClosed() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: WrongInitialSelectionBridgeDispatcher(),
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while harness.session.errorMessage == nil, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.errorMessage != nil)
+        #expect(!harness.session.isLoaded)
+        #expect(harness.session.presentedMode == nil)
+    }
+
+    @Test("Post-initialize failure leaves the hidden editor unfocused")
+    func postInitializeFailureLeavesEditorUnfocused() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: FailingPostInitializeBridgeDispatcher(),
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while harness.session.errorMessage == nil, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.errorMessage != nil)
+        #expect(!harness.session.isLoaded)
+        #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
+    }
+
     @Test("Edit renders Mermaid only after the caret leaves its exact fenced source")
     func mermaidRendersAtFencedBlockExit() async throws {
         let source = """
@@ -1704,7 +1870,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.liveH2Count == 1
         }
 
-        try await harness.session.resignFocusAndWait()
+        await harness.session.resignFocusAndWait()
         let blurred = try await harness.waitUntilPresentation(stage: "unfocused heading projection") {
             !$0.isFocused
                 && $0.liveTitleCount == 1
@@ -2913,7 +3079,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Table")) == nil)
     }
 
-    @Test("Bridge v9 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
+    @Test("Bridge v10 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
         // Let their short native-window journeys finish before this suite owns
@@ -3494,6 +3660,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
             initialMode: MarkdownEditorMode = .livePreview,
             initialPresentationCSS: String = "",
+            initialSourceRange: Range<Int>? = nil,
             initialWindowSize: NSSize = NSSize(width: 720, height: 520),
             fixedLayoutSize: NSSize? = nil,
             laysOutForPointerTesting: Bool = false
@@ -3505,6 +3672,13 @@ struct MarkdownEditorWebViewIntegrationTests {
                     lifecyclePolicy: lifecyclePolicy
                 )
             } ?? MarkdownEditorSession()
+            session.authorizeAutomaticFocus()
+            if let initialSourceRange {
+                session.revealSourceRange(
+                    fromUTF16: initialSourceRange.lowerBound,
+                    toUTF16: initialSourceRange.upperBound
+                )
+            }
             self.documentID = documentID
             sourceBox = SourceBox(source, mode: initialMode)
             sourceBox.presentationCSS = initialPresentationCSS
@@ -3766,6 +3940,138 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
             #expect(!session.hasAttachedWebView)
             try? await Task.sleep(for: .milliseconds(300))
+        }
+    }
+
+    @MainActor
+    private final class SuspendingInitialSelectionBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var didSuspend = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            let result = try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+            if !didSuspend,
+               case .initialize(_, _, _, .some) = request.operation {
+                didSuspend = true
+                await withCheckedContinuation { continuation = $0 }
+            }
+            return result
+        }
+
+        func waitUntilSuspended() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while continuation == nil {
+                if clock.now >= deadline {
+                    Issue.record("The initial selection did not reach its acknowledgement boundary.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func resume() {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    @MainActor
+    private final class WrongInitialSelectionBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            let result = try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+            guard case .initialize(_, _, _, .some) = request.operation,
+                  var object = result as? [String: Any] else {
+                return result
+            }
+            object["selections"] = [["anchor": 0, "head": 0]]
+            if var context = object["context"] as? [String: Any] {
+                context["selections"] = object["selections"]
+                object["context"] = context
+            }
+            return object
+        }
+    }
+
+    @MainActor
+    private final class FailingPostInitializeBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private enum ProbeError: Error { case postInitializeFailure }
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var initialized = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if initialized, case .setScrollFraction = request.operation {
+                throw ProbeError.postInitializeFailure
+            }
+            let result = try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+            if case .initialize = request.operation { initialized = true }
+            return result
+        }
+    }
+
+    @MainActor
+    private final class FailingBlurBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private enum ProbeError: Error { case blurFailure }
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private(set) var didAttemptBlur = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if case .blur = request.operation {
+                didAttemptBlur = true
+                throw ProbeError.blurFailure
+            }
+            return try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
         }
     }
 

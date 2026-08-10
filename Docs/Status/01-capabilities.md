@@ -19,6 +19,9 @@
   a failed mutation.
 - Frontmatter edits are bounded to a uniquely proven range and preserve all
   unrelated bytes. Unsupported source shapes remain editable in Source.
+- Managed New Note copies the selected role's exact validated Settings seed in
+  the same source claim. YAML-free first-Property insertion is a separate
+  explicit expected-revision transaction and never writes empty delimiters.
 
 ## Notes, documents, and lifecycle
 

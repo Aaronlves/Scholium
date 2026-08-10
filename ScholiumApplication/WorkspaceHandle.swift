@@ -888,14 +888,24 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return try await createDocument(request.id, content: content)
     }
 
-    /// Claims the first available default note name through the repository's
-    /// atomic no-replace create. A collision can race any earlier inventory, so
-    /// only the authoritative create result decides whether to advance.
+    /// The Application-owned managed creator snapshots one validated Settings
+    /// revision, composes the complete role source once, then claims the first
+    /// available default name through the repository's atomic no-replace
+    /// create. A collision can race any earlier inventory, so only the
+    /// authoritative create result decides whether to advance.
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?
     ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit> {
         try requireActive()
+        guard let slot = services.manifest.vaultIDs.first(where: {
+            $0.value == vaultID
+        })?.key else {
+            throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
+        }
+        let settingsSnapshot = try await services.controlStore.settings()
+        let seed = settingsSnapshot.settings.properties[slot]?.newNoteYAML
+        let initialSource = seed.map { "---\n" + $0 + "---\n" } ?? ""
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
@@ -937,7 +947,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             do {
                 let document = try await repository.create(
                     relativePath: relativePath,
-                    content: ""
+                    content: initialSource
                 )
                 var committedDocument = document
                 var stableIdentity = WorkspaceNoteIdentityState.unresolved

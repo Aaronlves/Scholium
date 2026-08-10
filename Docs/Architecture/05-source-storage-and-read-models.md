@@ -136,6 +136,13 @@ to Source. Refusal leaves every Markdown byte unchanged; successful patches
 preserve BOM, newline/final-newline style, comments, unknown YAML, formatting,
 and all bytes outside the proven range.
 
+YAML-free Notes have a distinct explicit `insertFrontmatter` change set. It
+requires at least one concrete Property edit, preserves a leading BOM and the
+existing body/final-newline bytes, uses the observed newline style for the new
+envelope, and remains expected-revision bound through the ordinary repository
+transaction. Ordinary `frontmatter` edits still refuse a YAML-free Note, so a
+Properties caller cannot create empty delimiters or silently opt into YAML.
+
 `summary` is one optional string contract in the Analysis, Topic, and Work
 profiles. The same `FrontmatterPatchPlanner` and repository transaction own
 researcher and authorized Agent changes; there is no summary writer, sidecar,

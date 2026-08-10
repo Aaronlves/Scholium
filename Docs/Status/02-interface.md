@@ -29,14 +29,17 @@
   and accessibility routes converge on the same source mutations.
 - New Note and New Folder are immediate. Successful source mutations publish
   their exact selected destination before disposable derived views finish
-  refreshing; failures preserve the prior presentation.
+  refreshing; failures preserve the prior presentation. New Note installs one
+  Edit session directly, focuses its exact body start after editor
+  acknowledgement, and retains committed source behind Retry Edit / Source if
+  startup fails.
 - Triptych Attention has one stable Sidebar entry. Zero is quiet, nonzero shows
   the exact aggregate count, and unavailable first load never claims zero.
 
 ## Document and Research Inspector
 
 - Document presents the selected role's tabs and one live Review, Edit, or
-  Source mode. No selection, empty source, loading, unavailable source,
+  Source mode. No selection, exact empty body, loading, unavailable source,
   rendering failure, save failure, conflict, and recovery remain distinct.
 - Review owns reading, navigation, previews, and passage Comment. Edit owns
   source-preserving semantic projection, formatting, suggestions, and task

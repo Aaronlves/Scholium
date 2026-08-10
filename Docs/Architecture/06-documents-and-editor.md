@@ -68,6 +68,16 @@ surface has been presented for the current editing run, Edit/Source
 reconfiguration keeps the same CodeMirror surface visible while the bridge
 converges instead of routing through Review. Native focus follows the
 acknowledged mode, never an unconfirmed request.
+Managed New Note skips Review-first presentation. `DocumentController`
+installs its snapshot, exact source, active Edit phase, and body-start offset in
+one MainActor transaction. Until typed acknowledgement, the host exposes
+neither Review nor Empty Note. Bridge v10 initialization maps one collapsed
+body-boundary selection into CodeMirror UTF-16 and returns it with the mode.
+Native code verifies that range, converges style and scroll, awaits focus, then
+publishes readiness, announces once, and consumes the intent. A clean external
+publication first replaces the pending buffer and body boundary together.
+Failure blurs the hidden editor and retains committed source behind **Retry
+Edit** and **Source**; retry replaces only that WebView from the checked mirror.
 Pending editor intent is not an active mode. An Edit or Source intent supplied
 to a newly selected session remains inside the Review phase until
 `DocumentController` begins the editing lifecycle; only that atomic transition
@@ -246,8 +256,9 @@ without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge v9 sends source deltas immediately in generation order and includes a
-nonmutating exact UTF-16 source-range reveal operation. Identity remains
+Bridge v10 sends source deltas immediately in generation order, includes a
+nonmutating exact UTF-16 source-range reveal operation, and carries an optional
+initial selection in the same typed initialization transaction. Identity remains
 strict while snapshot queries may observe a later generation than the caller
 knew. A save acknowledges one immutable committed snapshot: if input advanced
 during the repository write, the newer buffer remains dirty and schedules the

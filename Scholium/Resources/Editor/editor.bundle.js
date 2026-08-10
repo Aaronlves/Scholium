@@ -20856,7 +20856,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 9;
+  var EDITOR_PROTOCOL_VERSION = 10;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -20936,6 +20936,12 @@
   function validMode(value) {
     return value === "livePreview" || value === "source";
   }
+  function validInitialSelection(value, normalizedLength) {
+    if (value === void 0) return true;
+    if (!value || typeof value !== "object") return false;
+    const selection = value;
+    return Number.isSafeInteger(selection.anchor) && Number(selection.anchor) >= 0 && Number(selection.anchor) <= normalizedLength && Number.isSafeInteger(selection.head) && Number(selection.head) >= 0 && Number(selection.head) <= normalizedLength;
+  }
   function validRecoverySnapshot(value) {
     if (!value || typeof value !== "object") return false;
     const snapshot = value;
@@ -20958,7 +20964,10 @@
   function validOperation(operation) {
     switch (operation.type) {
       case "initialize":
-        return typeof operation.text === "string" && validMode(operation.mode) && validDialect(operation.dialect);
+        return typeof operation.text === "string" && validMode(operation.mode) && validDialect(operation.dialect) && validInitialSelection(
+          operation.initialSelection,
+          operation.text.replaceAll("\r\n", "\n").length
+        );
       case "setMode":
         return validMode(operation.mode);
       case "setPresentationCSS":
@@ -30409,14 +30418,17 @@ ${fence}
     }
   };
   function isFrontmatterOpening(text) {
-    return text.replace(/^\uFEFF/, "").trim() === "---";
+    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
   }
   function frontmatterBoundary(doc2) {
-    if (doc2.lines < 2 || !isFrontmatterOpening(doc2.line(1).text)) {
+    if (!isFrontmatterOpening(doc2.line(1).text)) {
       return { endLine: 0, unclosed: false };
     }
+    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
     for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
-      if (doc2.line(number2).text.trim() === "---") return { endLine: number2, unclosed: false };
+      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
+        return { endLine: number2, unclosed: false };
+      }
     }
     return { endLine: 0, unclosed: true };
   }
@@ -35619,6 +35631,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         request.startingFingerprint
       );
       await editorOperations.setMode(operation.mode);
+      if (operation.initialSelection) {
+        editorOperations.revealSourceRange(
+          operation.initialSelection.anchor,
+          operation.initialSelection.head,
+          false
+        );
+      }
       recordEditorMetric("document-load", loadStartedAt, { documentLength: editor.state.doc.length });
       sampleEditorMemory(editor.state.doc.length);
       return successfulResult(request.requestID);
@@ -36033,16 +36052,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       editor.focus();
     },
     /** Selects an exact source range without changing Markdown or undo history. */
-    revealSourceRange(requestedFromUTF16, requestedToUTF16) {
+    revealSourceRange(requestedFromUTF16, requestedToUTF16, focusesEditor = true) {
       const documentLength = editor.state.doc.length;
       const from = Math.max(0, Math.min(Math.trunc(requestedFromUTF16), documentLength));
       const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));
+      hiddenFrontmatterSourceSelection = null;
       editor.dispatch({
         selection: EditorSelection.single(from, to),
         effects: EditorView.scrollIntoView(EditorSelection.range(from, to), { y: "center" }),
         annotations: Transaction.addToHistory.of(false)
       });
-      editor.focus();
+      if (focusesEditor) editor.focus();
     },
     setScrollFraction(requestedFraction) {
       scrollCoordinator.setFraction(requestedFraction);

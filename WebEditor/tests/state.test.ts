@@ -36,7 +36,22 @@ describe("frontmatter boundary", () => {
     expect(frontmatterBoundary(documentText("Paragraph.\n\n---\n")))
       .toEqual({endLine: 0, unclosed: false});
     expect(frontmatterBoundary(documentText("---")))
+      .toEqual({endLine: 0, unclosed: true});
+  });
+
+  it("recognizes only column-zero boundaries and preserves indented block content", () => {
+    const blockScalar = documentText(
+      "---\ncustom: |+\n  before\n  ---\n  after\n---\n",
+    );
+    expect(frontmatterBoundary(blockScalar)).toEqual({endLine: 6, unclosed: false});
+    expect(frontmatterBodyOffset(blockScalar)).toBe(blockScalar.length);
+
+    expect(frontmatterBoundary(documentText("  ---\nkey: value\n---\n")))
       .toEqual({endLine: 0, unclosed: false});
+    expect(frontmatterBoundary(documentText("---\u00A0\nkey: value\n---\n")))
+      .toEqual({endLine: 0, unclosed: false});
+    expect(frontmatterBoundary(documentText("\uFEFF---\nkey: value\n  ---\n")))
+      .toEqual({endLine: 0, unclosed: true});
   });
 
   it("owns the closing-delimiter newline and handles YAML-only source", () => {

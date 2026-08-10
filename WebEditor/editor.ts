@@ -3219,6 +3219,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       operation.text, request.sessionID, request.documentID, request.startingFingerprint,
     );
     await editorOperations.setMode(operation.mode);
+    if (operation.initialSelection) {
+      editorOperations.revealSourceRange(
+        operation.initialSelection.anchor,
+        operation.initialSelection.head,
+        false,
+      );
+    }
     recordEditorMetric("document-load", loadStartedAt, {documentLength: editor.state.doc.length});
     sampleEditorMemory(editor.state.doc.length);
     return successfulResult(request.requestID);
@@ -3643,16 +3650,24 @@ const editorOperations = {
   },
 
   /** Selects an exact source range without changing Markdown or undo history. */
-  revealSourceRange(requestedFromUTF16: number, requestedToUTF16: number) {
+  revealSourceRange(
+    requestedFromUTF16: number,
+    requestedToUTF16: number,
+    focusesEditor = true,
+  ) {
     const documentLength = editor.state.doc.length;
     const from = Math.max(0, Math.min(Math.trunc(requestedFromUTF16), documentLength));
     const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));
+    // An explicit native locator supersedes any pre-clamp Source selection
+    // retained while entering Live Preview. Restoring that older selection on
+    // a later Source request would move managed New Note back into its YAML.
+    hiddenFrontmatterSourceSelection = null;
     editor.dispatch({
       selection: EditorSelection.single(from, to),
       effects: EditorView.scrollIntoView(EditorSelection.range(from, to), {y: "center"}),
       annotations: Transaction.addToHistory.of(false),
     });
-    editor.focus();
+    if (focusesEditor) editor.focus();
   },
 
   setScrollFraction(requestedFraction: number) {

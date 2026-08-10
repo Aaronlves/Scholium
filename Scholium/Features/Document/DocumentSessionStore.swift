@@ -79,6 +79,10 @@ final class DocumentSessionModel: ObservableObject {
     @Published var conflict: DocumentConflictSnapshot?
     @Published var canRetrySave = false
     @Published var showConflictComparison = false
+    /// Present only until a managed New Note's acknowledged editor has placed
+    /// the insertion point at the exact body boundary. This is session-bound
+    /// so another navigation can never consume the creation focus intent.
+    @Published private(set) var managedCreationBodyStartUTF16: Int? = nil
     @Published private(set) var noteReviewTaskPresentation =
         NoteReviewTaskPresentationState()
 
@@ -102,6 +106,17 @@ final class DocumentSessionModel: ObservableObject {
     var activeEditorMode: MarkdownEditorMode? { presentation.activeEditorMode }
     var pendingEditorMode: MarkdownEditorMode? { presentation.pendingEditorMode }
     var retainsEditorSurface: Bool { presentation.retainsEditorSurface }
+    var isEnteringManagedCreation: Bool {
+        managedCreationBodyStartUTF16 != nil
+    }
+
+    func beginManagedCreationEntry(bodyStartUTF16: Int) {
+        managedCreationBodyStartUTF16 = max(0, bodyStartUTF16)
+    }
+
+    func completeManagedCreationEntry() {
+        managedCreationBodyStartUTF16 = nil
+    }
 
     func preparePresentationMode(_ mode: NotePresentationMode) {
         updatePresentation { $0.prepare(mode) }
@@ -116,10 +131,12 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func finishEditing() {
+        completeManagedCreationEntry()
         updatePresentation { $0.finishEditing() }
     }
 
     func resetPresentation() {
+        completeManagedCreationEntry()
         updatePresentation { $0.reset() }
     }
 
@@ -191,6 +208,7 @@ final class DocumentSessionModel: ObservableObject {
         conflict = nil
         editError = nil
         canRetrySave = false
+        managedCreationBodyStartUTF16 = nil
     }
 
     /// A dirty decision must include both the Swift mirror and CodeMirror's

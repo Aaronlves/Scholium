@@ -107,6 +107,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     @Published private(set) var presentation = MarkdownEditorPresentationState()
     @Published private(set) var isDirty = false
+    /// A bounded retry replaces only this retained session's failed WebView.
+    /// `sourceForViewAttachment` restores the checked exact-source mirror.
+    @Published private(set) var viewReconstructionID = UUID()
     private(set) var line = 1
     private(set) var column = 1
     private(set) var lineCount = 1
@@ -135,6 +138,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     var pendingScrollAnchor: EditorScrollAnchor?
     private var reconstructionScrollAnchor: EditorScrollAnchor?
     private var startupTask: Task<Void, Never>?
+    private var documentLoadTask: Task<Void, Never>?
+    private var focusHandoffTask: Task<Void, Never>?
+    private var automaticFocusIsAuthorized = false
     private var sourceMutationBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
     private var requestEpoch: UInt64 = 0
@@ -220,6 +226,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         updatePresentation { $0.reset() }
         installQATerminationObserverIfEnabled()
         startupTask?.cancel()
+        documentLoadTask?.cancel()
+        focusHandoffTask?.cancel()
         startupTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, let self, !self.isReady else { return }
@@ -232,6 +240,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         invalidateRequestQueue()
         cancelModeTransition()
         startupTask?.cancel()
+        documentLoadTask?.cancel()
+        focusHandoffTask?.cancel()
         cancelScheduledRecoveryCapture()
         self.webView = nil
         updatePresentation { $0.reset() }
@@ -246,6 +256,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         invalidateRequestQueue()
         startupTask?.cancel()
         startupTask = nil
+        documentLoadTask?.cancel()
+        documentLoadTask = nil
+        focusHandoffTask?.cancel()
+        focusHandoffTask = nil
+        automaticFocusIsAuthorized = false
         cancelScheduledRecoveryCapture()
         committedTextSynchronizer = nil
         sourceChangeHandler = nil
@@ -320,10 +335,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         updatePresentation { $0.fail(message) }
     }
 
+    func retryUnavailablePresentation() {
+        guard !isLoaded else { return }
+        updatePresentation { $0.beginLoading() }
+        viewReconstructionID = UUID()
+    }
+
     func loadDocument(
         _ source: String,
         documentID: String,
-        mode: MarkdownEditorMode
+        mode: MarkdownEditorMode,
+        initialSourceRange: Range<Int>? = nil
     ) {
         let publishesLoadingState = isReady
         invalidateRequestQueue()
@@ -352,6 +374,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
         pendingMode = mode
+        if let initialSourceRange {
+            let lowerBound = max(0, initialSourceRange.lowerBound)
+            pendingSourceRange = lowerBound..<max(
+                lowerBound,
+                initialSourceRange.upperBound
+            )
+        }
         committedTextSynchronizer?(source, startingFingerprint)
         cancelModeTransition()
         if publishesLoadingState {
@@ -854,12 +883,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func focus() {
+        automaticFocusIsAuthorized = true
+        let precedingHandoff = focusHandoffTask
         Task {
+            await precedingHandoff?.value
             try? await focusAndWait()
         }
     }
 
+    func authorizeAutomaticFocus() {
+        automaticFocusIsAuthorized = true
+    }
+
     func focusAndWait() async throws {
+        automaticFocusIsAuthorized = true
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
         _ = try await send(.focus, in: webView)
     }
@@ -868,19 +905,28 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// The WebView remains attached so selection, undo, and CodeMirror state
     /// survive, but it must not continue accepting invisible input.
     func resignFocus() {
-        Task {
-            try? await resignFocusAndWait()
+        let task = Task {
+            await resignFocusAndWait()
         }
+        focusHandoffTask = task
     }
 
-    func resignFocusAndWait() async throws {
-        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+    func resignFocusAndWait() async {
+        automaticFocusIsAuthorized = false
+        await documentLoadTask?.value
+        // A newer Edit/Source request supersedes this pending Review handoff.
+        // Its renewed focus lease must not be revoked by the older task.
+        guard !automaticFocusIsAuthorized else { return }
+        guard isReady, let webView else { return }
         if let window = webView.window,
            let firstResponder = window.firstResponder as? NSView,
            firstResponder === webView || firstResponder.isDescendant(of: webView) {
             window.makeFirstResponder(nil)
         }
-        _ = try await send(.blur, in: webView)
+        // Native focus ownership is authoritative for the retained, hidden
+        // WebView. A failed best-effort bridge blur must never trap the
+        // researcher in Edit after the source save has already succeeded.
+        _ = try? await send(.blur, in: webView)
     }
 
     func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
@@ -997,7 +1043,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let mode = pendingMode
         let documentID = pendingDocumentID
         let intendedRequestEpoch = requestEpoch
-        Task {
+        documentLoadTask = Task {
             do {
                 guard intendedRequestEpoch == requestEpoch,
                       self.documentID == documentID,
@@ -1018,11 +1064,38 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 sourceOffsetMap = EditorSourceOffsetMap(source: source)
                 checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
                 generation = 0
-                _ = try await send(
-                    .initialize(text: source, mode: mode, dialect: .current),
+                let requestedInitialRange = pendingSourceRange
+                let initialSelection = try requestedInitialRange.map { range in
+                    guard let anchor = sourceOffsetMap.editorUTF16Offset(
+                        forSourceUTF16Offset: range.lowerBound
+                    ), let head = sourceOffsetMap.editorUTF16Offset(
+                        forSourceUTF16Offset: range.upperBound
+                    ) else {
+                        throw SessionError.invalidResult
+                    }
+                    return MarkdownEditorSelectionRange(
+                        anchor: anchor,
+                        head: head
+                    )
+                }
+                let initialized = try await send(
+                    .initialize(
+                        text: source,
+                        mode: mode,
+                        dialect: .current,
+                        initialSelection: initialSelection
+                    ),
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
                 )
+                if let initialSelection {
+                    guard initialized.selections == [initialSelection] else {
+                        throw SessionError.invalidResult
+                    }
+                    if pendingSourceRange == requestedInitialRange {
+                        pendingSourceRange = nil
+                    }
+                }
                 if let snapshot = matchingRecovery,
                    snapshot.fingerprint == startingFingerprint,
                    snapshot.source == checkedSource {
@@ -1102,18 +1175,35 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     )
                     appliedMode = requestedMode
                 }
+                if automaticFocusIsAuthorized {
+                    _ = try await send(
+                        .focus,
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                    if !automaticFocusIsAuthorized {
+                        _ = try? await send(
+                            .blur,
+                            in: webView,
+                            requiringRequestEpoch: intendedRequestEpoch
+                        )
+                    }
+                }
                 updatePresentation { $0.complete(appliedMode) }
                 PerformanceProbe.shared.markEditorModeReady(
                     documentID: documentID,
                     mode: appliedMode
                 )
                 flushPendingLine()
-                flushPendingSourceRange()
-                focus()
             } catch {
                 guard intendedRequestEpoch == requestEpoch,
                       self.documentID == documentID,
                       self.webView === webView else { return }
+                _ = try? await send(
+                    .blur,
+                    in: webView,
+                    requiringRequestEpoch: intendedRequestEpoch
+                )
                 updatePresentation { $0.fail(error.localizedDescription) }
             }
         }
