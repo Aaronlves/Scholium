@@ -405,14 +405,22 @@ draft. Clearing either saved partition is an explicit confirmed edit inside the
 same Response editor. A deleted or unavailable Record cannot receive or
 redirect the draft.
 
-An Action Record also has one researcher-owned **Review Disposition** separate
-from Evaluation, Method Feedback, and the immutable finalized result. A
-no-source-change result becomes complete only through **Finish Review**. For a
-Record with confirmed Agent changes, every change must have exactly one current
-outcome: **kept Agent revision**, **restored starting revision**, **superseded
-by later revision**, or **unavailable**. Partial decisions remain pending and
-keep the Action at **Result Ready**. These factual outcomes do not mean
-philosophical acceptance, truth, adoption, or source fidelity.
+Review is a researcher-owned milestone for one Note's current saved state, not
+a Record, change, or hunk disposition. Reading Records or Changes, restoring
+source, and closing windows never reviews. **Mark Current Note Reviewed** stores
+stable Note ID, exact observed saved revision, time, and the system-derived set
+of pending `(Record ID, Note ID)` Agent-change activities. A later Record is
+uncovered; a later confirmed Agent change reopens **Needs Review**. Researcher
+edits do not resurrect covered activities, and the retained revision prevents
+calling newer source reviewed. Review means neither acceptance, truth,
+adoption, Settle, nor fidelity.
+
+Only confirmed Agent changes create Review work. The origin always participates
+in its one Record; other Notes require Action target, confirmed change, verified
+Context Use or actual Material use, or Discussion participation. Each Note
+projects the same one-Run/one-Record identity. Origin-only or used-only links do
+not need Review. A no-change Action finalizes, ends, and emits one deduplicated
+Result-arrived notice without another decision.
 
 Agent edits are already authoritative source when the Result arrives. A
 confirmed change begins at the expected revision of that document's first
@@ -424,27 +432,26 @@ pairs and never labels Discussion, researcher, or external changes as Agent
 work. A Manuscript coordination Record does not copy a selected child Run's
 change; the child Action Record remains that write and checkpoint's owner.
 
-Direct undo is a recovery action, not delayed authorization. Application alone
+Direct undo is a recovery action, not Review or delayed authorization. Application alone
 resolves the first committed write's **Before Agent Work** checkpoint, current
 stable Note identity and path, exact ending revision, and exact checkpoint
 bytes. It restores only a complete selected document, creates **Before
-Restore**, replaces atomically, reads back, and records each document's factual
-outcome; a multi-document request is a sequence of independent transactions,
-not an atomic batch. Before the first source write it advances the caller's
-exact Review revision and invalidates selected outcomes; stale claims fail
-without touching source, while a later Record failure cannot leave an old Keep
-decision authoritative. A rename follows stable identity. A later edit, missing
-Note, failed readback, or uncertain commit remains explicit and never triggers
-an approximate or hunk-level restore.
+Restore**, replaces atomically, and reads back; a multi-document request is a
+sequence of independent transactions, not an atomic batch. A rename follows
+stable identity. A later edit, missing Note, failed readback, or uncertain
+commit remains explicit and never triggers an approximate or hunk-level
+restore. Restore facts stay with the recovery boundary and never become Review
+judgments.
 
 Portable Records remain one strict closed schema under
-`.scholium/research-records/v1/`; unknown schema/fields fail closed. A Record
+`.scholium/research-records/v1/`; unknown schema/fields fail closed. The same
+portable owner stores one current cumulative Note Review fact per Note,
+separate from Record bytes and excluded from finalized-result identity. A Record
 retains its frozen Record Title, attributed researcher and Agent statements, participating exact Note
 revisions, Action, minimal method provenance, Context Use Report, confirmed
 changes, discrepancies, Fidelity completion, Analyze-only Literature
-Recommendations, current Researcher Response, and current Review Disposition.
-The researcher-owned partitions are excluded from the finalized-result
-fingerprint. It excludes raw secrets,
+Recommendations, and current Researcher Response. Researcher Response is
+excluded from the finalized-result fingerprint. It excludes raw secrets,
 bookmarks, absolute paths, method/folder snapshots, prompts, token counts,
 transport logs, window state, and diff hunks. Markdown remains authoritative
 research content; Records never reconstruct writable source.

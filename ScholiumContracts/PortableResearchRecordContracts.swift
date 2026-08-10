@@ -508,121 +508,6 @@ public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, 
     }
 }
 
-/// The researcher's factual disposition of one Agent-confirmed source change.
-/// It is not a philosophical endorsement of the result or of the source text.
-public enum PortableResearcherReviewOutcome: String, Codable, Hashable, Sendable {
-    case keptAgentRevision = "kept_agent_revision"
-    case restoredStartingRevision = "restored_starting_revision"
-    case supersededByLaterRevision = "superseded_by_later_revision"
-    case unavailable
-}
-
-public struct PortableResearcherReviewedChange: Codable, Hashable, Identifiable, Sendable {
-    public let noteID: UUID
-    public let outcome: PortableResearcherReviewOutcome
-    public let observedRevision: DocumentFingerprint?
-
-    public var id: UUID { noteID }
-
-    public init(
-        noteID: UUID,
-        outcome: PortableResearcherReviewOutcome,
-        observedRevision: DocumentFingerprint?
-    ) throws {
-        let requiresObservedRevision = outcome != .unavailable
-        guard (observedRevision != nil) == requiresObservedRevision,
-              observedRevision.map(PortableResearchRecordValidation.isValidFingerprint)
-                ?? true else {
-            throw PortableResearchRecordError.invalidResearcherReviewDisposition
-        }
-        self.noteID = noteID
-        self.outcome = outcome
-        self.observedRevision = observedRevision
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case noteID = "note_id"
-        case outcome
-        case observedRevision = "observed_revision"
-    }
-
-    public init(from decoder: Decoder) throws {
-        try PortableResearchRecordValidation.rejectUnknownFields(
-            in: decoder,
-            allowed: CodingKeys.allCases.map(\.stringValue)
-        )
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            noteID: container.decode(UUID.self, forKey: .noteID),
-            outcome: container.decode(
-                PortableResearcherReviewOutcome.self,
-                forKey: .outcome
-            ),
-            observedRevision: container.decodeIfPresent(
-                PortableResearchStrictFingerprint.self,
-                forKey: .observedRevision
-            )?.value
-        )
-    }
-}
-
-/// The single current researcher-owned review partition. Partial document
-/// decisions are durable, but a Record remains pending until every confirmed
-/// change has one outcome or a no-change result is explicitly finished.
-public struct PortableResearcherReviewDisposition: Codable, Hashable, Sendable {
-    public let revision: UUID
-    public let decidedAt: Date
-    public let completedWithoutSourceChanges: Bool
-    public let reviewedChanges: [PortableResearcherReviewedChange]
-
-    public init(
-        revision: UUID = UUID(),
-        decidedAt: Date = Date(),
-        completedWithoutSourceChanges: Bool = false,
-        reviewedChanges: [PortableResearcherReviewedChange] = []
-    ) throws {
-        guard decidedAt.timeIntervalSinceReferenceDate.isFinite,
-              reviewedChanges.count <= 256,
-              Set(reviewedChanges.map(\.noteID)).count == reviewedChanges.count,
-              !completedWithoutSourceChanges || reviewedChanges.isEmpty else {
-            throw PortableResearchRecordError.invalidResearcherReviewDisposition
-        }
-        self.revision = revision
-        self.decidedAt = decidedAt
-        self.completedWithoutSourceChanges = completedWithoutSourceChanges
-        self.reviewedChanges = reviewedChanges.sorted {
-            $0.noteID.uuidString < $1.noteID.uuidString
-        }
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case revision
-        case decidedAt = "decided_at"
-        case completedWithoutSourceChanges = "completed_without_source_changes"
-        case reviewedChanges = "reviewed_changes"
-    }
-
-    public init(from decoder: Decoder) throws {
-        try PortableResearchRecordValidation.rejectUnknownFields(
-            in: decoder,
-            allowed: CodingKeys.allCases.map(\.stringValue)
-        )
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            revision: container.decode(UUID.self, forKey: .revision),
-            decidedAt: container.decode(Date.self, forKey: .decidedAt),
-            completedWithoutSourceChanges: container.decode(
-                Bool.self,
-                forKey: .completedWithoutSourceChanges
-            ),
-            reviewedChanges: container.decode(
-                [PortableResearcherReviewedChange].self,
-                forKey: .reviewedChanges
-            )
-        )
-    }
-}
-
 public enum PortableResearchDiscrepancyKind: String, Codable, Hashable, Sendable {
     case changedButNotReported = "changed_but_not_reported"
     case reportedButUnmodified = "reported_but_unmodified"
@@ -698,7 +583,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 7
+    public static let currentSchemaVersion = 8
 
     public let schemaVersion: Int
     public let id: UUID
@@ -724,7 +609,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let finishedAt: Date
     public let researcherEvaluation: PortableResearcherEvaluation?
     public let methodFeedbackComment: PortableResearchMethodFeedbackComment?
-    public let researcherReviewDisposition: PortableResearcherReviewDisposition?
 
     public init(
         id: UUID = UUID(),
@@ -749,8 +633,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         startedAt: Date,
         finishedAt: Date,
         researcherEvaluation: PortableResearcherEvaluation? = nil,
-        methodFeedbackComment: PortableResearchMethodFeedbackComment? = nil,
-        researcherReviewDisposition: PortableResearcherReviewDisposition? = nil
+        methodFeedbackComment: PortableResearchMethodFeedbackComment? = nil
     ) throws {
         let participatingByID = Dictionary(
             participatingNotes.map { ($0.noteID, $0) },
@@ -803,31 +686,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   return participant.isTombstone
                       || participant.endingRevision == change.endingRevision
               }),
-              researcherReviewDisposition.map({ disposition in
-                  let changesByID = Dictionary(
-                      uniqueKeysWithValues: confirmedChanges.map { ($0.noteID, $0) }
-                  )
-                  if confirmedChanges.isEmpty {
-                      return disposition.completedWithoutSourceChanges
-                          && disposition.reviewedChanges.isEmpty
-                  }
-                  guard !disposition.completedWithoutSourceChanges else { return false }
-                  return disposition.reviewedChanges.allSatisfy { reviewed in
-                      guard let change = changesByID[reviewed.noteID] else { return false }
-                      switch reviewed.outcome {
-                      case .keptAgentRevision:
-                          return reviewed.observedRevision == change.endingRevision
-                      case .restoredStartingRevision:
-                          return reviewed.observedRevision == change.startingRevision
-                      case .supersededByLaterRevision:
-                          return reviewed.observedRevision != nil
-                              && reviewed.observedRevision != change.startingRevision
-                              && reviewed.observedRevision != change.endingRevision
-                      case .unavailable:
-                          return reviewed.observedRevision == nil
-                      }
-                  }
-              }) ?? true,
               discrepancies.allSatisfy({ discrepancy in
                   participatingByID[discrepancy.noteID] != nil
               }),
@@ -862,7 +720,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   confirmedChanges.isEmpty,
                   researcherEvaluation == nil,
                   methodFeedbackComment == nil,
-                  researcherReviewDisposition == nil,
                   discrepancies.isEmpty,
                   literatureRecommendations.isEmpty else {
                 throw PortableResearchRecordError.invalidRecord
@@ -901,7 +758,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.finishedAt = finishedAt
         self.researcherEvaluation = researcherEvaluation
         self.methodFeedbackComment = methodFeedbackComment
-        self.researcherReviewDisposition = researcherReviewDisposition
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -927,7 +783,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case finishedAt = "finished_at"
         case researcherEvaluation = "researcher_evaluation"
         case methodFeedbackComment = "method_feedback_comment"
-        case researcherReviewDisposition = "researcher_review_disposition"
     }
 
     public init(from decoder: Decoder) throws {
@@ -1012,10 +867,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             methodFeedbackComment: container.decodeIfPresent(
                 PortableResearchMethodFeedbackComment.self,
                 forKey: .methodFeedbackComment
-            ),
-            researcherReviewDisposition: container.decodeIfPresent(
-                PortableResearcherReviewDisposition.self,
-                forKey: .researcherReviewDisposition
             )
         )
     }
@@ -1029,7 +880,6 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
     case invalidMethodReference
     case invalidMaterialUse
     case invalidConfirmedChange
-    case invalidResearcherReviewDisposition
     case invalidRecordTitle
     case invalidRecord
 
@@ -1049,24 +899,11 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
             "The portable Research Record contains an invalid actually-used Material."
         case .invalidConfirmedChange:
             "The portable Research Record contains an invalid confirmed change."
-        case .invalidResearcherReviewDisposition:
-            "The portable Research Record contains an invalid researcher review disposition."
         case .invalidRecordTitle:
             "The portable Research Record title must be one concise line."
         case .invalidRecord:
             "The portable Research Record violates its bounded schema."
         }
-    }
-}
-
-public extension PortableResearchRecord {
-    var researcherReviewIsComplete: Bool {
-        guard let disposition = researcherReviewDisposition else { return false }
-        if confirmedChanges.isEmpty {
-            return disposition.completedWithoutSourceChanges
-        }
-        return Set(disposition.reviewedChanges.map(\.noteID))
-            == Set(confirmedChanges.map(\.noteID))
     }
 }
 

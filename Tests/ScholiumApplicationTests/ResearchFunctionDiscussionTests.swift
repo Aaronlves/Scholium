@@ -280,7 +280,7 @@ extension ResearchFunctionOperationsTests {
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
         let recordBytes = try Data(contentsOf: portableURL)
 
-        await #expect(throws: ResearchRecordChangeReviewError.self) {
+        await #expect(throws: ResearchRecordChangeRecoveryOperationError.self) {
             _ = try await handle.research.researchRecordComparison(
                 recordID: record.id,
                 noteID: target.noteID
@@ -318,7 +318,7 @@ extension ResearchFunctionOperationsTests {
             researcherMessage: "Do not approximate unavailable bytes."
         )
         let record = try await handle.research.finishDiscussion(discussionID: discussion.id)
-        await #expect(throws: ResearchRecordChangeReviewError.self) {
+        await #expect(throws: ResearchRecordChangeRecoveryOperationError.self) {
             _ = try await handle.research.researchRecordComparison(
                 recordID: record.id,
                 noteID: target.noteID

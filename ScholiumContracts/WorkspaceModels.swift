@@ -329,7 +329,6 @@ public enum WorkspaceResearchActivityState: String, Hashable, Sendable {
     case waitingForAgent
     case running
     case needsAttention
-    case resultReady
 }
 
 public enum WorkspaceResearchActivityRepairReason: String, Hashable, Sendable {
@@ -337,6 +336,66 @@ public enum WorkspaceResearchActivityRepairReason: String, Hashable, Sendable {
     case sourceChanged
     case recoveryRequired
     case recordUnavailable
+}
+
+public enum WorkspaceNoteReviewStatus: String, Hashable, Sendable {
+    case noAgentChangesToReview
+    case needsReview
+    case noAgentChangesAwaitingReview
+}
+
+public struct WorkspaceNoteReviewState: Hashable, Identifiable, Sendable {
+    public let noteID: UUID
+    public let currentRevision: DocumentFingerprint?
+    public let status: WorkspaceNoteReviewStatus
+    public let pendingActivities: [PortableResearchNoteActivityReference]
+    public let lastReviewedAt: Date?
+    public let lastReviewedRevision: DocumentFingerprint?
+
+    public var id: UUID { noteID }
+
+    public init(
+        noteID: UUID,
+        currentRevision: DocumentFingerprint?,
+        status: WorkspaceNoteReviewStatus,
+        pendingActivities: [PortableResearchNoteActivityReference] = [],
+        lastReviewedAt: Date? = nil,
+        lastReviewedRevision: DocumentFingerprint? = nil
+    ) {
+        self.noteID = noteID
+        self.currentRevision = currentRevision
+        self.status = status
+        self.pendingActivities = pendingActivities
+        self.lastReviewedAt = lastReviewedAt
+        self.lastReviewedRevision = lastReviewedRevision
+    }
+}
+
+public struct WorkspaceResearchResultArrival: Hashable, Identifiable, Sendable {
+    public let runID: UUID
+    public let recordID: UUID
+    public let actionID: ResearchActionID
+    public let originNoteID: UUID
+    public let recordFingerprint: DocumentFingerprint
+    public let finishedAt: Date
+
+    public var id: UUID { recordID }
+
+    public init(
+        runID: UUID,
+        recordID: UUID,
+        actionID: ResearchActionID,
+        originNoteID: UUID,
+        recordFingerprint: DocumentFingerprint,
+        finishedAt: Date
+    ) {
+        self.runID = runID
+        self.recordID = recordID
+        self.actionID = actionID
+        self.originNoteID = originNoteID
+        self.recordFingerprint = recordFingerprint
+        self.finishedAt = finishedAt
+    }
 }
 
 /// A privacy-bounded projection over machine-local execution and portable
@@ -391,6 +450,9 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let checkpointListing: TriptychCheckpointListing
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
     public let activities: [WorkspaceResearchActivity]
+    public let noteReviews: [PortableResearchNoteReview]
+    public let noteReviewStates: [WorkspaceNoteReviewState]
+    public let resultArrivals: [WorkspaceResearchResultArrival]
     public let healthIssues: [String]
 
     public init(
@@ -404,6 +466,9 @@ public struct WorkspaceResearchSnapshot: Sendable {
         checkpointListing: TriptychCheckpointListing,
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         activities: [WorkspaceResearchActivity] = [],
+        noteReviews: [PortableResearchNoteReview] = [],
+        noteReviewStates: [WorkspaceNoteReviewState] = [],
+        resultArrivals: [WorkspaceResearchResultArrival] = [],
         healthIssues: [String]
     ) {
         self.settlements = settlements
@@ -417,6 +482,9 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.checkpointListing = checkpointListing
         self.recoveryRecords = recoveryRecords
         self.activities = activities
+        self.noteReviews = noteReviews
+        self.noteReviewStates = noteReviewStates
+        self.resultArrivals = resultArrivals
         self.healthIssues = healthIssues
     }
 }

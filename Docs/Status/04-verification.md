@@ -96,84 +96,22 @@ fails closed, and the current Note revision remains actor-unknown unless a
 separate existing operation or Record owner proves authorship. No block-scalar
 support, field-level writer history, or attribution database was added.
 
-The Agent Result Review foundation passed 243 focused tests across eleven
-Contracts, Core, Application, and App suites with the Xcode 27 toolchain. The
-evidence covers schema-7 round trip and retired-schema rejection; mutable
-Response/Review exclusion from finalized-result identity; one atomic
-Evaluation/Method Feedback CAS; partial Review Disposition; BOM, line endings,
-no-final-newline, large-input fallback, cancellation, and Conflict reuse of the
-single exact diff; Waiting/Running/Needs Attention/Result Ready projection;
-confirmed-change-only comparison; and Method-improvement plus existing
-Action/Record adapter regressions.
+The bounded Records-window repair passed its one owning frame test. One
+disposable ordinary-product QA with 100 portable Records then preserved the
+same `X=355 Y=110 W=760 H=680` frame through list, detail, and returned list;
+the proof shell was not used.
 
-The recovery fixture makes an external edit after Run preparation, causes an
-Agent conflict, refreshes authority, commits the Agent write, finalizes the
-Record, renames the Note, keeps the Agent revision, then directly undoes it.
-It proves that the first successful committed write supplies the change
-baseline, the external edit survives restoration, stable identity targets the
-renamed path, Keep does not prevent later direct Undo in the same review
-lifetime, disposition post-rename uncertainty reconciles exact readback, and a
-repeated request reconciles the already-restored revision. Contract regressions
-also reject researcher-attributed confirmed writes, Discussion Response state,
-and a superseded outcome that is actually the starting revision; Manuscript
-keeps child writes on the child Record.
-The same conflict-refresh-commit fixture confirms that immutable historical
-conflict evidence does not mask Result Ready or create a false repair action.
-Documentation authority, interface localization, diff checks, and a product
-build passed.
-
-The Stage 2 interface cutover then passed 198 focused tests across nine
-Application and App suites in isolated owning batches. Those tests cover live
-change-state projection, exact review-result routing, window-lifetime direct
-Undo through Keep, combined Response lifecycle classification, unified
-unchanged-range folding, the existing Conflict presentation reuse, Action-sheet
-result removal, and interface/controller ownership. Documentation authority,
-interface localization, diff checks, and the Xcode 27 Debug product build also
-passed.
-
-Computer Use on one disposable Debug QA bundle exercised the production Record
-detail through a Debug-only injected `.reviewResult` request with a synthetic
-mixed-script two-document Result. It confirmed the
-fixed processing order, simultaneous first-view visibility of Evaluation and
-Method Feedback, dirty-draft close confirmation, single-column changed-line
-markers, whole-document and unchanged-range folding, document selection, and
-focus return to the exact Edit Response and Compare Changes launchers. The QA
-bundle, fixture copy, and isolated home were moved to Trash afterward.
-
-The Stage 3 lifecycle and notification cutover passed 136 focused tests across
-nine App suites. Thirty-five Action/controller/handoff/notification tests cover
-clipboard success and failure ordering, compact Run reload and failure retry,
-state priority, multiple and Profile-unavailable Results, source-window-only
-foreground delivery, one-flight permission authorization and prompt cleanup,
-private background copy, exact deduplication, disposition cleanup during a
-suspended delivery, stale-click rejection, and system-click routing after the
-last main window closes. One hundred one window, lifecycle, localization,
-Records-route, and architecture tests cover scene identity, Triptych-rebinding
-notice cleanup, window isolation, the production exact `.reviewResult`
-request, accessibility announcement ownership, and module ownership. An
-earlier batch exposed one stale Stage 2 leaf import; removing it closed the
-boundary, and the final owning batches passed on the resulting tree.
-Documentation authority, interface localization, diff checks, and the Xcode 27
-Debug product build also passed.
-
-Computer Use on a disposable Debug QA instance exercised the production
-handoff and compact-status path. It confirmed that a successful copy closes the
-Action sheet, returns to a Waiting for Agent row with direct End access, offers
-notification permission without blocking the Action, and opens the compact
-status surface without restoring the academic inputs. That pass exposed a
-banner overlap with the document heading and a false related-Result message;
-the bounded fixes moved the banner into document layout flow and require an
-actual distinct related Run. The QA instance and isolated fixture state were
-removed after inspection. This remains developer inspection rather than human
-visual or accessibility acceptance.
-
-The first final-integration gate attempt stopped in the App suite because the
-Research Guidance vocabulary proof scanned the entire Preview catalog and
-mistook authored Result fixture text containing `Revised` for the retired
-`Revise` control. The test was narrowed to the Research Guidance section it
-claims to govern; its five owning tests and an independent review passed. The
-complete gate was then rerun on the resulting tree and passed continuously with
-the totals recorded above.
+The Note-level Review foundation passed 89 focused tests across four Contracts,
+Core, and Application suites with the Xcode 27 toolchain. Evidence covers
+schema-8 Record round trip and schema-7 rejection; strict schema-1 Note Review;
+one-Run/one-Record participant facts; cumulative coverage; Review A isolation
+from Note B; a late Record reopening pending work; no-change Action completion;
+first-committed Agent baselines; Review-independent direct Undo; exact source
+and Record-manifest rejection; post-commit reconciliation; and researcher edits
+not resurrecting covered activities. Documentation authority, diff checks, and
+the Debug product build passed for this stage. Interface owning tests, bounded
+UI journeys, localization validation, and the one current-tree final gate are
+recorded only after their later stages complete.
 
 This remains bounded development evidence, not an installed App/CLI journey or
 human acceptance. Genuine VoiceOver, physical

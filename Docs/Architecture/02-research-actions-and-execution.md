@@ -42,7 +42,7 @@ transactions.
 Per-window `ResearchActionController` owns only selected Action/Profile,
 researcher Action-input drafts, presentation identity, progress/cancellation,
 errors, and the current Run projection. It owns no source, method, Session,
-result, Record, researcher Response, Review Disposition, provider, or permission
+result, Record, researcher Response, Note Review, provider, or permission
 authority.
 
 ## Availability and preparation
@@ -281,21 +281,22 @@ closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
 
-`PortableResearchRecordStore` owns strict schema-7 Records, including the
-frozen Record Title, exact source-byte fingerprints, researcher-owned Response,
-and researcher-owned Review Disposition. Analyze recommendation mutation,
-atomic Response replacement, and Review Disposition replacement all use one
-revision-safe replacement primitive under portable coordination and lock,
-distinguish pre-commit refusal from post-commit uncertainty, and read back
-before success. Schema 6 has no decoder or mutation route; its bytes remain
+`PortableResearchRecordStore` owns strict schema-8 Records, including the
+frozen Record Title, exact source-byte fingerprints, and researcher-owned
+Response. The same store owns schema-1 `PortableResearchNoteReview` files as
+the single cumulative portable Note Review boundary. Analyze recommendation
+mutation and atomic Response replacement use one revision-safe replacement
+primitive under portable coordination and lock, distinguish pre-commit refusal
+from post-commit uncertainty, and read back before success. Schema 7 Records
+have no decoder or mutation route; their bytes remain
 untouched and nonauthorizing when encountered.
 
 `saveResearcherResponse` uses exact Record ID, expected Evaluation revision,
 expected Method Feedback revision, and finalized-result fingerprint. It
 validates all tokens under the same lock and replaces both Response partitions
 in one Record write; a stale token rejects the whole candidate. Review
-Disposition has its own revision CAS and is excluded, together with Response
-and recommendation disposition, from finalized-result identity. Record
+Response and recommendation disposition remain excluded from finalized-result
+identity. Record
 deletion removes those partitions and writes the existing minimal machine-local
 tombstone; no other operation can recreate or reparent them.
 
@@ -307,48 +308,55 @@ selected child Action's change. `ExactSourceComparisonBuilder` is the single exa
 byte-diff owner for both Record confirmed-change pairs and Document conflict
 inputs; the projections remain disposable and non-Codable.
 
-Application owns `keepResearchRecordChanges`, current-state completion, and
-`undoResearchRecordChanges`. Direct undo preflights every selected confirmed
+Application owns `markCurrentNoteReviewed` and
+`undoResearchRecordChanges`. Note Review first verifies the controlled Note's
+exact saved revision, then asks the portable store to derive every currently
+pending `(Record ID, Note ID)` activity under the Record listing lock and
+expected source-manifest hash. The cumulative covered set, observed revision,
+and review time are the only durable Review facts.
+
+Direct undo preflights every selected confirmed
 change against its Local Execution entry, first committed write, exact
 research-continuation checkpoint metadata and bytes, current controlled stable
 identity/path/role, and Agent ending revision. Core's dedicated
 `restoreResearchActionNoteFile` alone permits a verified research-continuation
 source to restore a renamed destination, while the ordinary checkpoint API
 retains its stricter same-path rule. Core still creates Before Restore, replaces
-one document atomically, and reads back. Application merges only observed
-per-document facts into Review Disposition; multi-document requests are not a
-durable transaction. Before source mutation, undo performs a non-elidable CAS
-claim on the caller's exact Review revision and removes selected outcomes. The
-claim resolves commit uncertainty by exact disposition-revision readback;
-post-source reconciliation preserves concurrent unselected outcomes, and every
-attempted source replacement triggers refresh even if the final Record write
-fails.
+one document atomically, and reads back. Application returns observed
+per-document recovery facts; multi-document requests are not a durable
+transaction. Undo does not read or write Note Review, and every attempted
+source replacement triggers refresh even when readback is uncertain.
 
-`WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`
-from schema-10 Local Execution plus exact portable Record reads. The projection
+`WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
+`noteReviewStates`, and `resultArrivals` from schema-10 Local Execution, exact
+schema-8 Record reads, and schema-1 Note Reviews. The projections
 contains only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, checkpoint IDs, source bytes, prompts,
 and tool traces. Needs Attention follows the current bounded-entry/recovery
-state, not an immutable historical conflict record. Local Execution and Record remain the durable owners; the
-projection cannot authorize a write or survive independently.
+state, not an immutable historical conflict record. A formed Record ends its
+Action activity immediately; only confirmed Agent changes create per-Note
+pending Review, while every Action Record can create a deduplicated one-shot
+Result arrival. Local Execution, Record, and Note Review remain the durable
+owners; projections cannot authorize a write or survive independently.
 
 The Action sheet stops at preparation, handoff, active-Run status,
 continuation, cancellation, and recovery. It contains no finalized Result,
 Evaluation, or Method Feedback subtree. The Records detail is the sole current
-result-processing surface: its fixed rail begins with the combined Researcher
-Response editor, then Change Decision, and its shared exact-comparison sheet
-supports whole-document direct Undo only when the feature model holds the
+result-reading surface: its reading plane owns the progressive combined
+Researcher Response editor, while its Evidence rail owns Changes, Effects,
+Context Used, Participants, and Technical Details. Its shared exact-comparison
+sheet supports whole-document direct Undo only when the feature model holds the
 validated window-lifetime grant. The Document conflict route supplies different
 inputs and operations to the same pure folding-diff presentation without
 sharing source or conflict state ownership.
-The Action row and notification click are the production `.reviewResult`
-producers. Both submit the exact Record identifier and finalized-result
-fingerprint; ordinary Records browsing cannot manufacture this grant. Copy
+The notification click is the production `.reviewResult` producer and submits
+the exact Record identifier and finalized-result fingerprint; ordinary Records
+browsing cannot manufacture this grant. Copy
 Handoff success records process-local source-window affinity and dismisses the
 preparation sheet, while failure leaves its inputs intact. The Action row
-derives Waiting, Running, Needs Attention, Result Ready, pending-result count,
-and its first repair only from the privacy-bounded activity projection. A
+derives Waiting, Running, Needs Attention, and its first repair only from the
+privacy-bounded activity projection. A
 compact status sheet reloads the exact Run for recopy, ending, or recovery and
 does not reconstruct the former academic-input/result surface.
 Confirmed reload rereads the exact Record ID through the existing Record use

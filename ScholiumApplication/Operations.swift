@@ -618,50 +618,35 @@ public actor ResearchOperations:
         )
     }
 
-    public func researchRecordChangeReviewState(
+    public func researchRecordChangeState(
         recordID: UUID
-    ) async throws -> ResearchRecordChangeReviewState {
+    ) async throws -> ResearchRecordChangeState {
         let handle = try await reference.requireHandle()
-        return try await handle.researchRecordChangeReviewState(recordID: recordID)
+        return try await handle.researchRecordChangeState(recordID: recordID)
     }
 
-    public func keepResearchRecordChanges(
-        recordID: UUID,
-        expectedReviewRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
+    public func markCurrentNoteReviewed(
+        noteID: UUID,
+        expectedRevision: DocumentFingerprint,
+        expectedRecordSourceManifestHash: String
+    ) async throws -> PortableResearchNoteReview {
         let handle = try await reference.requireHandle()
-        return try await handle.keepResearchRecordChanges(
-            recordID: recordID,
-            expectedReviewRevision: expectedReviewRevision,
-            expectedResultFingerprint: expectedResultFingerprint
-        )
-    }
-
-    public func finishResearchRecordReviewWithCurrentState(
-        recordID: UUID,
-        expectedReviewRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.finishResearchRecordReviewWithCurrentState(
-            recordID: recordID,
-            expectedReviewRevision: expectedReviewRevision,
-            expectedResultFingerprint: expectedResultFingerprint
+        return try await handle.markCurrentNoteReviewed(
+            noteID: noteID,
+            expectedRevision: expectedRevision,
+            expectedRecordSourceManifestHash: expectedRecordSourceManifestHash
         )
     }
 
     public func undoResearchRecordChanges(
         recordID: UUID,
         selectedNoteIDs: Set<UUID>,
-        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> ResearchRecordChangesUndoResult {
         let handle = try await reference.requireHandle()
         return try await handle.undoResearchRecordChanges(
             recordID: recordID,
             selectedNoteIDs: selectedNoteIDs,
-            expectedReviewRevision: expectedReviewRevision,
             expectedResultFingerprint: expectedResultFingerprint
         )
     }

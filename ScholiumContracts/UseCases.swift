@@ -170,23 +170,17 @@ public protocol ResearchRecordUseCases: Sendable {
         expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord
-    func researchRecordChangeReviewState(
+    func researchRecordChangeState(
         recordID: UUID
-    ) async throws -> ResearchRecordChangeReviewState
-    func keepResearchRecordChanges(
-        recordID: UUID,
-        expectedReviewRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord
-    func finishResearchRecordReviewWithCurrentState(
-        recordID: UUID,
-        expectedReviewRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord
+    ) async throws -> ResearchRecordChangeState
+    func markCurrentNoteReviewed(
+        noteID: UUID,
+        expectedRevision: DocumentFingerprint,
+        expectedRecordSourceManifestHash: String
+    ) async throws -> PortableResearchNoteReview
     func undoResearchRecordChanges(
         recordID: UUID,
         selectedNoteIDs: Set<UUID>,
-        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> ResearchRecordChangesUndoResult
     func issueMethodImprovementHandoff(

@@ -240,8 +240,8 @@ canonical `PropertyContract`: it can report key/value source ranges without
 granting an unknown key semantic or judgment authority. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-7 objects and
-their source-byte fingerprints; Application owns the rebuildable Record query
+matcher. The portable Record store supplies exact decoded schema-8 Records,
+schema-1 Note Reviews, and their source-byte fingerprints; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or
 Agent route owns another parser, resolver, Record corpus, or ranking rule.
@@ -323,7 +323,7 @@ remain blocked until save or authoritative reload resolves. The comparison
 sheet separately owns only its current document-fold, equal-range-fold,
 selection, loading, and per-document operation presentation. These transient
 values are keyed to one Record and current sheet lifetime; none owns durable
-authorization, source bytes, Record, Response, or Review Disposition state.
+authorization, source bytes, Record, Response, or Note Review state.
 `WindowSearchController` owns Search/temporary Find execution and
 cancellation, provider-aware exact result-freshness validation, generation or
 Record-manifest reruns, and serialized Saved Search loading and persistence. It

@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 7 and Local Execution schema 10")
+@Suite("Portable Research Record storage v1/schema 8 and Local Execution schema 10")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -1232,35 +1232,146 @@ struct ResearchRecordV1StoresTests {
         #expect(try reconciled.finalizedResultFingerprint() == resultFingerprint)
     }
 
-    @Test("Researcher review disposition is mutable without changing finalized result identity")
-    func researcherReviewDispositionCAS() async throws {
+    @Test("Note Review derives and cumulatively covers confirmed Record activities")
+    func noteReviewCoverage() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.portableStore()
-        let original = try makePortableRecord()
-        _ = try await store.createFinishedRecord(original)
-        let resultFingerprint = try original.finalizedResultFingerprint()
-        let decided = try await store.saveResearcherReviewDisposition(
-            PortableResearcherReviewDisposition(
-                completedWithoutSourceChanges: true
+        let base = try makePortableRecord()
+        let participant = try #require(base.participatingNotes.first)
+        let ending = DocumentFingerprint(content: "agent ending")
+        let secondNoteID = UUID(
+            uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE"
+        )!
+        let secondStarting = DocumentFingerprint(content: "second starting")
+        let secondEnding = DocumentFingerprint(content: "second agent ending")
+        let secondParticipant = try PortableResearchNoteRevision(
+            noteID: secondNoteID,
+            note: VaultQualifiedNoteID(
+                vaultID: participant.note.vaultID,
+                relativePath: "Second.md"
             ),
-            recordID: original.id,
-            expectedReviewRevision: nil,
-            expectedResultFingerprint: resultFingerprint
+            role: .work,
+            title: "Second",
+            startingRevision: secondStarting,
+            endingRevision: secondEnding
         )
-        #expect(decided.researcherReviewIsComplete)
-        #expect(try decided.finalizedResultFingerprint() == resultFingerprint)
-
-        await #expect(throws: PortableResearcherReviewMutationError.staleReviewRevision) {
-            _ = try await store.saveResearcherReviewDisposition(
-                PortableResearcherReviewDisposition(
-                    completedWithoutSourceChanges: true
+        let changed = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            title: base.title,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            primaryNoteID: base.primaryNoteID,
+            participatingNotes: [
+                try PortableResearchNoteRevision(
+                    noteID: participant.noteID,
+                    note: participant.note,
+                    role: participant.role,
+                    title: participant.title,
+                    startingRevision: participant.startingRevision,
+                    endingRevision: ending
                 ),
-                recordID: original.id,
-                expectedReviewRevision: nil,
-                expectedResultFingerprint: resultFingerprint
+                secondParticipant,
+            ],
+            statements: base.statements,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: [
+                try PortableResearchConfirmedChange(
+                    noteID: participant.noteID,
+                    actor: .agent,
+                    startingRevision: participant.startingRevision,
+                    endingRevision: ending
+                ),
+                try PortableResearchConfirmedChange(
+                    noteID: secondNoteID,
+                    actor: .agent,
+                    startingRevision: secondStarting,
+                    endingRevision: secondEnding
+                ),
+            ],
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt
+        )
+        _ = try await store.createFinishedRecord(changed)
+        let manifest = try await store.listing().sourceManifestHash
+        let review = try await store.markCurrentNoteReviewed(
+            noteID: participant.noteID,
+            observedRevision: ending,
+            expectedRecordSourceManifestHash: manifest,
+            reviewedAt: Date(timeIntervalSince1970: 50)
+        )
+        #expect(review.coveredActivities == [PortableResearchNoteActivityReference(
+            recordID: changed.id,
+            noteID: participant.noteID
+        )])
+        #expect(try await store.noteReviewListing().reviews == [review])
+
+        #expect(try await store.noteReviewListing().reviews.allSatisfy {
+            $0.noteID != secondNoteID
+        })
+
+        await #expect(throws: PortableResearchNoteReviewMutationError.noPendingAgentChanges) {
+            _ = try await store.markCurrentNoteReviewed(
+                noteID: participant.noteID,
+                observedRevision: ending,
+                expectedRecordSourceManifestHash: manifest
             )
         }
+
+        let lateBase = try makePortableRecord(
+            id: UUID(uuidString: "ABABABAB-ABAB-ABAB-ABAB-ABABABABABAB")!
+        )
+        let lateParticipant = try #require(lateBase.participatingNotes.first)
+        let laterEnding = DocumentFingerprint(content: "later agent ending")
+        let lateRecord = try PortableResearchRecord(
+            id: lateBase.id,
+            triptychID: lateBase.triptychID,
+            title: lateBase.title,
+            kind: lateBase.kind,
+            action: lateBase.action,
+            method: lateBase.method,
+            primaryNoteID: lateBase.primaryNoteID,
+            participatingNotes: [try PortableResearchNoteRevision(
+                noteID: lateParticipant.noteID,
+                note: lateParticipant.note,
+                role: lateParticipant.role,
+                title: lateParticipant.title,
+                startingRevision: lateParticipant.startingRevision,
+                endingRevision: laterEnding
+            )],
+            statements: lateBase.statements,
+            fidelityCompletion: lateBase.fidelityCompletion,
+            confirmedChanges: [try PortableResearchConfirmedChange(
+                noteID: lateParticipant.noteID,
+                actor: .agent,
+                startingRevision: lateParticipant.startingRevision,
+                endingRevision: laterEnding
+            )],
+            startedAt: lateBase.startedAt,
+            finishedAt: lateBase.finishedAt
+        )
+        _ = try await store.createFinishedRecord(lateRecord)
+        #expect(try await store.noteReviewListing().reviews.first?
+            .coveredActivities.count == 1)
+        let updatedManifest = try await store.listing().sourceManifestHash
+        let updated = try await store.markCurrentNoteReviewed(
+            noteID: participant.noteID,
+            observedRevision: laterEnding,
+            expectedRecordSourceManifestHash: updatedManifest,
+            reviewedAt: Date(timeIntervalSince1970: 60)
+        )
+        #expect(Set(updated.coveredActivities) == [
+            PortableResearchNoteActivityReference(
+                recordID: changed.id,
+                noteID: participant.noteID
+            ),
+            PortableResearchNoteActivityReference(
+                recordID: lateRecord.id,
+                noteID: participant.noteID
+            ),
+        ])
     }
 
     private func makePortableRecord(

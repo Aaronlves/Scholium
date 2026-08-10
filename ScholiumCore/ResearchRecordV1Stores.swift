@@ -104,6 +104,21 @@ public struct PortableResearchDiscussionListing: Sendable {
     }
 }
 
+public struct PortableResearchNoteReviewListing: Sendable {
+    public let reviews: [PortableResearchNoteReview]
+    public let issues: [PortableResearchRecordStoreIssue]
+
+    public init(
+        reviews: [PortableResearchNoteReview],
+        issues: [PortableResearchRecordStoreIssue]
+    ) {
+        self.reviews = reviews.sorted {
+            $0.noteID.uuidString < $1.noteID.uuidString
+        }
+        self.issues = issues.sorted { $0.id < $1.id }
+    }
+}
+
 public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
     case unsafeStore(String)
     case replacementNotCommitted(String)
@@ -184,6 +199,7 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
 public actor PortableResearchRecordStore {
     private static let maximumRecordByteCount = 8 * 1024 * 1024
     private static let recordsDirectory = "records"
+    private static let noteReviewsDirectory = "note-reviews"
 
     public nonisolated let storageURL: URL
     private let triptychID: UUID
@@ -254,7 +270,12 @@ public actor PortableResearchRecordStore {
             try deletionMarkers.removeAbandonedStagingFiles(in: [nil])
             try initialRecordDeletionMarkers.removeAbandonedStagingFiles(in: [nil])
             try Self.coordinateWrite(at: controlURL) {
-                let directories = ["active", Self.recordsDirectory, "settlements"]
+                let directories = [
+                    "active",
+                    Self.recordsDirectory,
+                    Self.noteReviewsDirectory,
+                    "settlements",
+                ]
                 try initialStorage.ensureDirectories(directories)
                 try initialStorage.removeAbandonedStagingFiles(
                     in: directories.map(Optional.some)
@@ -439,41 +460,98 @@ public actor PortableResearchRecordStore {
     public func listing() throws -> PortableResearchRecordListing {
         try lock.withSharedLock {
             try Self.coordinateRead(at: storageURL) {
-                var revisions: [PortableResearchRecordRevision] = []
-                var issues: [PortableResearchRecordStoreIssue] = []
-                let files = try storage.fileNames(in: Self.recordsDirectory)
-                for fileName in files where fileName.hasSuffix(".json") {
-                    do {
-                        let data = try storage.read(
-                            directory: Self.recordsDirectory,
+                try recordListingWithoutLock()
+            }
+        }
+    }
+
+    public func noteReviewListing() throws -> PortableResearchNoteReviewListing {
+        try lock.withSharedLock {
+            try Self.coordinateRead(at: storageURL) {
+                try noteReviewListingWithoutLock()
+            }
+        }
+    }
+
+    /// Records one explicit review of the Note's exact saved source. The
+    /// caller cannot choose covered Records: they are derived from the exact
+    /// portable Record source set revalidated under the store lock.
+    @discardableResult
+    public func markCurrentNoteReviewed(
+        noteID: UUID,
+        observedRevision: DocumentFingerprint,
+        expectedRecordSourceManifestHash: String,
+        reviewedAt: Date = Date()
+    ) throws -> PortableResearchNoteReview {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                let records = try recordListingWithoutLock()
+                guard records.issues.isEmpty,
+                      records.sourceManifestHash == expectedRecordSourceManifestHash else {
+                    throw PortableResearchNoteReviewMutationError.recordProjectionChanged
+                }
+                let current = try readNoteReviewIfPresentWithoutLock(noteID: noteID)
+                let covered = Set(current?.coveredActivities ?? [])
+                let observed = records.records.compactMap { record ->
+                    PortableResearchNoteActivityReference? in
+                    guard record.confirmedChanges.contains(where: {
+                        $0.noteID == noteID
+                    }) else { return nil }
+                    return PortableResearchNoteActivityReference(
+                        recordID: record.id,
+                        noteID: noteID
+                    )
+                }
+                let pending = observed.filter { !covered.contains($0) }
+                guard !pending.isEmpty else {
+                    throw PortableResearchNoteReviewMutationError.noPendingAgentChanges
+                }
+                let review = try PortableResearchNoteReview(
+                    noteID: noteID,
+                    observedRevision: observedRevision,
+                    reviewedAt: reviewedAt,
+                    coveredActivities: Array(covered.union(observed))
+                )
+                let (canonical, data) = try Self.canonicalized(review)
+                let fileName = Self.fileName(noteID)
+                let readback: Data
+                do {
+                    if try storage.readIfPresent(
+                        directory: Self.noteReviewsDirectory,
+                        fileName: fileName
+                    ) != nil {
+                        readback = try storage.replace(
+                            data,
+                            directory: Self.noteReviewsDirectory,
                             fileName: fileName
                         )
-                        let record = try Self.decode(
-                            PortableResearchRecord.self,
-                            from: data
+                    } else {
+                        readback = try storage.createExclusive(
+                            data,
+                            directory: Self.noteReviewsDirectory,
+                            fileName: fileName
                         )
-                        guard fileName == Self.fileName(record.id),
-                              record.triptychID == triptychID else {
-                            throw ResearchRecordStoreV1Error.recordIdentityMismatch(
-                                record.id
-                            )
-                        }
-                        revisions.append(PortableResearchRecordRevision(
-                            record: record,
-                            fingerprint: DocumentFingerprint(data: data)
-                        ))
-                    } catch {
-                        issues.append(PortableResearchRecordStoreIssue(
-                            location: Self.recordsDirectory,
-                            fileName: fileName,
-                            reason: error.localizedDescription
-                        ))
+                    }
+                } catch let error as SecureRecordDirectoryError {
+                    switch error {
+                    case .replacementNotCommitted(let reason):
+                        throw ResearchRecordStoreV1Error
+                            .replacementNotCommitted(reason)
+                    case .replacementCommitUncertain(let reason):
+                        throw ResearchRecordStoreV1Error
+                            .replacementCommitUncertain(reason)
+                    default:
+                        throw Self.map(error)
                     }
                 }
-                return PortableResearchRecordListing(
-                    revisions: revisions,
-                    issues: issues.sorted { $0.id < $1.id }
+                let stored = try Self.decode(
+                    PortableResearchNoteReview.self,
+                    from: readback
                 )
+                guard stored == canonical else {
+                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(noteID)
+                }
+                return stored
             }
         }
     }
@@ -548,35 +626,9 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    /// Replaces the one researcher-owned review partition. Application owns
-    /// deriving factual outcomes; the store owns only aggregate validation and
-    /// the finalized-result/review-revision CAS.
-    @discardableResult
-    public func saveResearcherReviewDisposition(
-        _ disposition: PortableResearcherReviewDisposition,
-        recordID: UUID,
-        expectedReviewRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) throws -> PortableResearchRecord {
-        try replaceFinishedRecord(id: recordID) { current in
-            guard try current.finalizedResultFingerprint()
-                    == expectedResultFingerprint else {
-                throw PortableResearcherReviewMutationError.finalizedResultChanged
-            }
-            guard current.researcherReviewDisposition?.revision
-                    == expectedReviewRevision else {
-                throw PortableResearcherReviewMutationError.staleReviewRevision
-            }
-            return try Self.replacingResearcherReviewDisposition(
-                in: current,
-                disposition: disposition
-            )
-        }
-    }
-
     /// Replaces only one occurrence's researcher-owned handled state. The
     /// current record is reread under the portable-record lock so concurrent
-    /// disposition, tombstone, and other record content are preserved by the
+    /// response, tombstone, and other record content are preserved by the
     /// single atomic replacement.
     @discardableResult
     public func setRecommendationDisposition(
@@ -1595,8 +1647,7 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment,
-            researcherReviewDisposition: record.researcherReviewDisposition
+            methodFeedbackComment: record.methodFeedbackComment
         )
     }
 
@@ -1627,8 +1678,7 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment,
-            researcherReviewDisposition: record.researcherReviewDisposition
+            methodFeedbackComment: record.methodFeedbackComment
         )
     }
 
@@ -1660,8 +1710,7 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             researcherEvaluation: evaluation,
-            methodFeedbackComment: methodFeedbackComment,
-            researcherReviewDisposition: record.researcherReviewDisposition
+            methodFeedbackComment: methodFeedbackComment
         )
     }
 
@@ -1675,36 +1724,82 @@ public actor PortableResearchRecordStore {
             && evaluation.note == draft.note
     }
 
-    private static func replacingResearcherReviewDisposition(
-        in record: PortableResearchRecord,
-        disposition: PortableResearcherReviewDisposition
-    ) throws -> PortableResearchRecord {
-        try PortableResearchRecord(
-            id: record.id,
-            triptychID: record.triptychID,
-            title: record.title,
-            kind: record.kind,
-            action: record.action,
-            method: record.method,
-            sourceReference: record.sourceReference,
-            continuationLineage: record.continuationLineage,
-            primaryNoteID: record.primaryNoteID,
-            participatingNotes: record.participatingNotes,
-            statements: record.statements,
-            resultDisposition: record.resultDisposition,
-            academicResults: record.academicResults,
-            contextUseReport: record.contextUseReport,
-            actuallyUsedMaterials: record.actuallyUsedMaterials,
-            fidelityCompletion: record.fidelityCompletion,
-            confirmedChanges: record.confirmedChanges,
-            discrepancies: record.discrepancies,
-            literatureRecommendations: record.literatureRecommendations,
-            startedAt: record.startedAt,
-            finishedAt: record.finishedAt,
-            researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment,
-            researcherReviewDisposition: disposition
-        )
+    private func recordListingWithoutLock() throws -> PortableResearchRecordListing {
+        var revisions: [PortableResearchRecordRevision] = []
+        var issues: [PortableResearchRecordStoreIssue] = []
+        for fileName in try storage.fileNames(in: Self.recordsDirectory)
+            where fileName.hasSuffix(".json") {
+            do {
+                let data = try storage.read(
+                    directory: Self.recordsDirectory,
+                    fileName: fileName
+                )
+                let record = try Self.decode(PortableResearchRecord.self, from: data)
+                guard fileName == Self.fileName(record.id),
+                      record.triptychID == triptychID else {
+                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(record.id)
+                }
+                revisions.append(PortableResearchRecordRevision(
+                    record: record,
+                    fingerprint: DocumentFingerprint(data: data)
+                ))
+            } catch {
+                issues.append(PortableResearchRecordStoreIssue(
+                    location: Self.recordsDirectory,
+                    fileName: fileName,
+                    reason: error.localizedDescription
+                ))
+            }
+        }
+        return PortableResearchRecordListing(revisions: revisions, issues: issues)
+    }
+
+    private func noteReviewListingWithoutLock() throws
+        -> PortableResearchNoteReviewListing {
+        var reviews: [PortableResearchNoteReview] = []
+        var issues: [PortableResearchRecordStoreIssue] = []
+        for fileName in try storage.fileNames(in: Self.noteReviewsDirectory)
+            where fileName.hasSuffix(".json") {
+            do {
+                let data = try storage.read(
+                    directory: Self.noteReviewsDirectory,
+                    fileName: fileName
+                )
+                let review = try Self.decode(
+                    PortableResearchNoteReview.self,
+                    from: data
+                )
+                guard fileName == Self.fileName(review.noteID) else {
+                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(review.noteID)
+                }
+                reviews.append(review)
+            } catch {
+                issues.append(PortableResearchRecordStoreIssue(
+                    location: Self.noteReviewsDirectory,
+                    fileName: fileName,
+                    reason: error.localizedDescription
+                ))
+            }
+        }
+        return PortableResearchNoteReviewListing(reviews: reviews, issues: issues)
+    }
+
+    private func readNoteReviewIfPresentWithoutLock(
+        noteID: UUID
+    ) throws -> PortableResearchNoteReview? {
+        do {
+            guard let data = try storage.readIfPresent(
+                directory: Self.noteReviewsDirectory,
+                fileName: Self.fileName(noteID)
+            ) else { return nil }
+            let review = try Self.decode(PortableResearchNoteReview.self, from: data)
+            guard review.noteID == noteID else {
+                throw ResearchRecordStoreV1Error.recordIdentityMismatch(noteID)
+            }
+            return review
+        } catch let error as SecureRecordDirectoryError {
+            throw Self.map(error)
+        }
     }
 
     private func readRecord(id: UUID) throws -> PortableResearchRecord {

@@ -144,6 +144,7 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(try await handle.snapshot().research.activities.contains {
             $0.runID == connection.preparation.runID && $0.state == .running
         })
+
         await runtime.shutdown()
     }
 
@@ -418,13 +419,13 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(participant.startingRevision == initial.fingerprint)
         #expect(change.startingRevision == externalRevision)
         #expect(change.endingRevision == DocumentFingerprint(content: agentSource))
-        let readyActivity = try #require(
-            try await handle.snapshot().research.activities.first(where: {
-                $0.runID == record.id
-            })
-        )
-        #expect(readyActivity.state == .resultReady)
-        #expect(readyActivity.repairReason == nil)
+        let completedSnapshot = try await handle.snapshot()
+        #expect(completedSnapshot.research.activities.allSatisfy {
+            $0.runID != record.id
+        })
+        #expect(completedSnapshot.research.resultArrivals.contains {
+            $0.recordID == record.id
+        })
 
         let comparison = try await handle.research.researchRecordComparison(
             recordID: record.id,
@@ -445,76 +446,100 @@ struct ResearchBoundedWriteOperationsTests {
             throw error
         }
         let currentState = try await handle.research
-            .researchRecordChangeReviewState(recordID: record.id)
+            .researchRecordChangeState(recordID: record.id)
         #expect(currentState.recordID == record.id)
-        #expect(currentState.reviewRevision == nil)
         #expect(currentState.finalizedResultFingerprint
             == (try record.finalizedResultFingerprint()))
         #expect(currentState.documents.map(\.status) == [.agentEndingRevision])
         #expect(currentState.documents.first?.currentRelativePath
             == "Renamed Analysis.md")
         #expect(currentState.documents.first?.observedRevision == change.endingRevision)
-        let kept = try await handle.research.keepResearchRecordChanges(
-            recordID: record.id,
-            expectedReviewRevision: nil,
-            expectedResultFingerprint: try record.finalizedResultFingerprint()
-        )
-        #expect(kept.researcherReviewDisposition?.reviewedChanges.first?.outcome
-            == .keptAgentRevision)
-        #expect(try await handle.snapshot().research.activities.allSatisfy {
-            $0.runID != record.id
-        })
-        enum InjectedDispositionReadbackFault: Error { case afterRename }
-        await handle.services.portableResearchRecordStore.setPostCommitFaultForTesting { _ in
-            throw InjectedDispositionReadbackFault.afterRename
-        }
         let undo: ResearchRecordChangesUndoResult
         do {
             undo = try await handle.research.undoResearchRecordChanges(
                 recordID: record.id,
                 selectedNoteIDs: [change.noteID],
-                expectedReviewRevision: kept.researcherReviewDisposition?.revision,
                 expectedResultFingerprint: try record.finalizedResultFingerprint()
             )
         } catch {
-            await handle.services.portableResearchRecordStore
-                .setPostCommitFaultForTesting(nil)
             Issue.record("Direct undo failed after rename: \(error)")
             throw error
         }
-        await handle.services.portableResearchRecordStore.setPostCommitFaultForTesting(nil)
         #expect(undo.documents.map(\.status) == [.restored])
-        #expect(undo.record.researcherReviewIsComplete)
-        #expect(undo.record.researcherReviewDisposition?.reviewedChanges.first?.outcome
-            == .restoredStartingRevision)
         #expect(try await handle.documents.load(moved.destination).sourceBytes
             == Data(externalSource.utf8))
         let restoredState = try await handle.research
-            .researchRecordChangeReviewState(recordID: record.id)
+            .researchRecordChangeState(recordID: record.id)
         #expect(restoredState.documents.map(\.status) == [.startingRevision])
         #expect(restoredState.documents.first?.observedRevision == change.startingRevision)
-        #expect(restoredState.isComplete)
         let reconciled = try await handle.research.undoResearchRecordChanges(
             recordID: record.id,
             selectedNoteIDs: [change.noteID],
-            expectedReviewRevision: undo.record.researcherReviewDisposition?.revision,
             expectedResultFingerprint: try record.finalizedResultFingerprint()
         )
         #expect(reconciled.documents.map(\.status) == [.alreadyAtStartingRevision])
-        await #expect(throws: PortableResearcherReviewMutationError.staleReviewRevision) {
-            _ = try await handle.research.undoResearchRecordChanges(
-                recordID: record.id,
-                selectedNoteIDs: [change.noteID],
-                expectedReviewRevision: nil,
-                expectedResultFingerprint: try record.finalizedResultFingerprint()
+
+        var noteReviewSnapshot = try await handle.snapshot()
+        #expect(noteReviewSnapshot.research.noteReviewStates.first {
+            $0.noteID == change.noteID
+        }?.status == .needsReview)
+        await #expect(throws: PortableResearchNoteReviewMutationError.sourceChanged) {
+            _ = try await handle.research.markCurrentNoteReviewed(
+                noteID: change.noteID,
+                expectedRevision: change.endingRevision,
+                expectedRecordSourceManifestHash: noteReviewSnapshot.research
+                    .finishedResearchRecordSourceManifestHash
             )
         }
+        await #expect(
+            throws: PortableResearchNoteReviewMutationError.recordProjectionChanged
+        ) {
+            _ = try await handle.research.markCurrentNoteReviewed(
+                noteID: change.noteID,
+                expectedRevision: change.startingRevision,
+                expectedRecordSourceManifestHash: "stale-record-projection"
+            )
+        }
+        enum InjectedNoteReviewReadbackFault: Error { case afterRename }
+        await handle.services.portableResearchRecordStore.setPostCommitFaultForTesting { _ in
+            throw InjectedNoteReviewReadbackFault.afterRename
+        }
+        _ = try await handle.research.markCurrentNoteReviewed(
+            noteID: change.noteID,
+            expectedRevision: change.startingRevision,
+            expectedRecordSourceManifestHash: noteReviewSnapshot.research
+                .finishedResearchRecordSourceManifestHash
+        )
+        await handle.services.portableResearchRecordStore
+            .setPostCommitFaultForTesting(nil)
+        noteReviewSnapshot = try await handle.snapshot()
+        #expect(noteReviewSnapshot.research.noteReviewStates.first {
+            $0.noteID == change.noteID
+        }?.status == .noAgentChangesAwaitingReview)
+
+        let researcherSource = externalSource + "\nResearcher later edit.\n"
+        let researcherRevision = DocumentFingerprint(content: researcherSource)
+        try Data(researcherSource.utf8).write(
+            to: fixture.analysesURL.appendingPathComponent(
+                moved.destination.relativePath
+            ),
+            options: .atomic
+        )
+        noteReviewSnapshot = try await handle.refresh()
+        let afterResearcherEdit = try #require(
+            noteReviewSnapshot.research.noteReviewStates.first {
+                $0.noteID == change.noteID
+            }
+        )
+        #expect(afterResearcherEdit.status == .noAgentChangesAwaitingReview)
+        #expect(afterResearcherEdit.currentRevision == researcherRevision)
+        #expect(afterResearcherEdit.lastReviewedRevision == change.startingRevision)
         _ = try await handle.documents.moveToTrash(
             moved.destination,
-            expectedRevision: change.startingRevision
+            expectedRevision: researcherRevision
         )
         let unavailableState = try await handle.research
-            .researchRecordChangeReviewState(recordID: record.id)
+            .researchRecordChangeState(recordID: record.id)
         #expect(unavailableState.documents.map(\.status) == [.unavailable])
         #expect(unavailableState.documents.first?.observedRevision == nil)
         await runtime.shutdown()

@@ -94,18 +94,19 @@
 
 - Comments, attributed Discussion turns, completed Action results, Context Use,
   confirmed effects, discrepancies, Fidelity outcome, Literature
-  Recommendations, atomic Researcher Response, and researcher Review
-  Disposition persist through their declared portable Record owners.
-  Schema-7 Records reject schema 6 rather than migrating it. Credentials,
+  Recommendations, and atomic Researcher Response persist through strict
+  schema-8 Records. One cumulative schema-1 portable Note Review per Note owns
+  exact observed revision, time, and covered `(Record ID, Note ID)` activities.
+  Schema-8 Records reject schema 7 rather than migrating it. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
-  Document conflict input. Application can keep current Agent revisions, finish
-  a no-change/current-state review, or safely undo complete selected documents
-  from the first committed Agent baseline, including after a stable-identity
-  rename. Undo claims and invalidates the selected Review outcomes before source
-  mutation; each restore remains an independent checkpointed source transaction.
-- Workspace research snapshots derive Waiting, Running, Needs Attention, and
-  Result Ready activities without persisting a second workflow owner or
+  Document conflict input. Application safely undoes complete selected
+  documents from the first committed Agent baseline, including after a stable-
+  identity rename. Undo is independent of Note Review; each restore remains an
+  independent checkpointed source transaction.
+- Workspace research snapshots derive Waiting, Running, and Needs Attention
+  activities plus Note Review state and one-shot Result arrivals without
+  persisting a second workflow owner or
   projecting credentials, checkpoint IDs, source bytes, or tool traces.
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation

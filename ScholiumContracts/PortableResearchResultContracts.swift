@@ -360,20 +360,17 @@ public enum PortableResearcherResponseMutationError: LocalizedError,
     }
 }
 
-public enum PortableResearcherReviewMutationError: LocalizedError,
+public enum ResearchRecordChangeRecoveryError: LocalizedError,
     Hashable, Sendable {
-    case staleReviewRevision
     case finalizedResultChanged
     case recordUnavailable
 
     public var errorDescription: String? {
         switch self {
-        case .staleReviewRevision:
-            "The source-change decision changed elsewhere; reload before continuing."
         case .finalizedResultChanged:
-            "The finalized Research Result no longer matches this source-change decision."
+            "The finalized Research Result no longer matches this recovery request."
         case .recordUnavailable:
-            "The Research Record is no longer available for source-change review."
+            "The Research Record is no longer available for source recovery."
         }
     }
 }
@@ -416,25 +413,19 @@ public struct ResearchRecordChangeCurrentState: Hashable, Identifiable, Sendable
     }
 }
 
-public struct ResearchRecordChangeReviewState: Sendable {
+public struct ResearchRecordChangeState: Sendable {
     public let recordID: UUID
-    public let reviewRevision: UUID?
     public let finalizedResultFingerprint: DocumentFingerprint
     public let documents: [ResearchRecordChangeCurrentState]
-    public let isComplete: Bool
 
     public init(
         recordID: UUID,
-        reviewRevision: UUID?,
         finalizedResultFingerprint: DocumentFingerprint,
-        documents: [ResearchRecordChangeCurrentState],
-        isComplete: Bool
+        documents: [ResearchRecordChangeCurrentState]
     ) {
         self.recordID = recordID
-        self.reviewRevision = reviewRevision
         self.finalizedResultFingerprint = finalizedResultFingerprint
         self.documents = documents
-        self.isComplete = isComplete
     }
 }
 
@@ -469,7 +460,7 @@ public struct ResearchRecordChangesUndoResult: Sendable {
     }
 }
 
-public enum ResearchRecordChangeReviewError: LocalizedError, Hashable, Sendable {
+public enum ResearchRecordChangeRecoveryOperationError: LocalizedError, Hashable, Sendable {
     case confirmedChangeNotFound(UUID)
     case invalidSelection
     case executionUnavailable
@@ -491,8 +482,8 @@ public enum ResearchRecordChangeReviewError: LocalizedError, Hashable, Sendable 
 
 public extension PortableResearchRecord {
     /// Fingerprint of the finalized Agent/Scholium result partition. Mutable
-    /// researcher-owned recommendation disposition, response, and review-
-    /// disposition fields are excluded by construction.
+    /// researcher-owned recommendation disposition and response fields are
+    /// excluded by construction. Note Review is a separate portable object.
     func finalizedResultFingerprint() throws -> DocumentFingerprint {
         let partition = PortableResearchFinalizedResultPartition(
             schemaVersion: schemaVersion,

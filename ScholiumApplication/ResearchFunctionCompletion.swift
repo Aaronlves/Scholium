@@ -808,17 +808,6 @@ extension ResearchFunctionCoordinator {
         for (noteID, fingerprint) in confirmedWrite?.observedFingerprints ?? [:] {
             endingRevisions[noteID] = fingerprint
         }
-        let participatingNotes = try noteSnapshots.values.map { note in
-            try PortableResearchNoteRevision(
-                noteID: note.noteID,
-                note: note.note,
-                role: note.role,
-                title: note.title,
-                startingRevision: note.fingerprint,
-                endingRevision: endingRevisions[note.noteID] ?? note.fingerprint
-            )
-        }
-
         var changes: [PortableResearchConfirmedChange] = []
         if let confirmedWrite {
             for note in confirmedWrite.confirmedModifiedNotes {
@@ -880,6 +869,38 @@ extension ResearchFunctionCoordinator {
                     revision: material.fingerprint
                 )
             }
+        var participantIDs: Set<UUID> = [actionSnapshot.target.noteID]
+        participantIDs.formUnion(changes.map(\.noteID))
+        participantIDs.formUnion(actuallyUsedMaterials.map(\.noteID))
+        for entry in resultPayload.contextUseReport?.entries ?? []
+            where entry.sourceReference.owner.kind == .note {
+            let owner = entry.sourceReference.owner
+            guard owner.triptychID == workspaceID,
+                  let stableID = UUID(uuidString: owner.stableObjectIdentity),
+                  let note = noteSnapshots[stableID],
+                  note.note.vaultID == owner.vaultID,
+                  note.note.relativePath == owner.relativePath else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "An actually-used Note reference is outside the frozen Action authority."
+                )
+            }
+            participantIDs.insert(note.noteID)
+        }
+        let participatingNotes = try participantIDs.map { noteID in
+            guard let note = noteSnapshots[noteID] else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "A factual Research Record participant is outside the frozen Action authority."
+                )
+            }
+            return try PortableResearchNoteRevision(
+                noteID: note.noteID,
+                note: note.note,
+                role: note.role,
+                title: note.title,
+                startingRevision: note.fingerprint,
+                endingRevision: endingRevisions[note.noteID] ?? note.fingerprint
+            )
+        }
         let recommendationSubmissions: [ResearchLiteratureRecommendationSubmission]
         if actionSnapshot.actionID == .analyze {
             guard let submitted = completion.literatureRecommendations,

@@ -271,6 +271,8 @@ enum WorkspaceSnapshotBuilder {
             .listing()
         let finishedResearchRecordListing = try await services
             .portableResearchRecordStore.listing()
+        let noteReviewListing = try await services.portableResearchRecordStore
+            .noteReviewListing()
         var activeDiscussionListing = try await services
             .portableResearchRecordStore.activeDiscussions()
         var activeDiscussionReconciliationIssues: [String] = []
@@ -539,6 +541,9 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: localExecutionListing.issues.map {
             "Local Research Execution \($0.fileName): \($0.reason)"
         })
+        healthIssues.append(contentsOf: noteReviewListing.issues.map {
+            "Note Review \($0.fileName): \($0.reason)"
+        })
         let critiqueAssociations = critiquesByID.values.sorted {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
@@ -547,6 +552,31 @@ enum WorkspaceSnapshotBuilder {
             executions: localExecutionListing.records,
             records: finishedResearchRecordListing.records
         )
+        let noteReviewStates = noteReviewStates(
+            records: finishedResearchRecordListing.records,
+            reviews: noteReviewListing.reviews,
+            loadedVaults: loadedVaults
+        )
+        let resultArrivals = finishedResearchRecordListing.records.compactMap {
+            record -> WorkspaceResearchResultArrival? in
+            guard record.kind == .action,
+                  let action = record.action,
+                  let originNoteID = record.primaryNoteID,
+                  let fingerprint = try? record.finalizedResultFingerprint() else {
+                return nil
+            }
+            return WorkspaceResearchResultArrival(
+                runID: record.id,
+                recordID: record.id,
+                actionID: action.actionID,
+                originNoteID: originNoteID,
+                recordFingerprint: fingerprint,
+                finishedAt: record.finishedAt
+            )
+        }.sorted {
+            if $0.finishedAt != $1.finishedAt { return $0.finishedAt > $1.finishedAt }
+            return $0.recordID.uuidString < $1.recordID.uuidString
+        }
         let research = WorkspaceResearchSnapshot(
             settlements: settlements,
             activeDiscussions: activeDiscussionListing.issues.isEmpty
@@ -566,6 +596,9 @@ enum WorkspaceSnapshotBuilder {
             checkpointListing: await services.checkpointStore.listing(),
             recoveryRecords: recoveryRecords,
             activities: activities,
+            noteReviews: noteReviewListing.reviews,
+            noteReviewStates: noteReviewStates,
+            resultArrivals: resultArrivals,
             healthIssues: Array(Set(healthIssues)).sorted()
         )
         let snapshot = WorkspaceSnapshot(
@@ -739,9 +772,7 @@ enum WorkspaceSnapshotBuilder {
             guard let action = execution.snapshot.actionSnapshot,
                   action.actionID != .discuss else { return nil }
             let record = recordsByID[execution.id]
-            let recordFingerprint = record.flatMap {
-                try? $0.finalizedResultFingerprint()
-            }
+            if record != nil { return nil }
             let entryStates = execution.boundedWriteSet.entries.map(\.state)
             let state: WorkspaceResearchActivityState
             let repairReason: WorkspaceResearchActivityRepairReason?
@@ -756,11 +787,6 @@ enum WorkspaceSnapshotBuilder {
                 || execution.completion?.state == .stale {
                 state = .needsAttention
                 repairReason = .sourceChanged
-            } else if let record, !record.researcherReviewIsComplete {
-                state = .resultReady
-                repairReason = nil
-            } else if record != nil {
-                return nil
             } else if execution.completion.map({
                 [.complete, .unverified].contains($0.state)
             }) == true {
@@ -788,8 +814,6 @@ enum WorkspaceSnapshotBuilder {
                 actionID: action.actionID,
                 targetNoteID: action.target.noteID,
                 state: state,
-                recordID: record?.id,
-                recordFingerprint: recordFingerprint,
                 repairReason: repairReason,
                 updatedAt: max(updatedAt, execution.completion?.completedAt ?? updatedAt)
             )
@@ -797,6 +821,62 @@ enum WorkspaceSnapshotBuilder {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.runID.uuidString < $1.runID.uuidString
         }
+    }
+
+    private static func noteReviewStates(
+        records: [PortableResearchRecord],
+        reviews: [PortableResearchNoteReview],
+        loadedVaults: [LoadedVault]
+    ) -> [WorkspaceNoteReviewState] {
+        var currentRevisions: [UUID: DocumentFingerprint] = [:]
+        for loaded in loadedVaults {
+            for document in loaded.activeDocuments {
+                guard case .resolved(let noteID) = loaded.identityStates[
+                    document.relativePath
+                ] else { continue }
+                currentRevisions[noteID] = document.fingerprint
+            }
+        }
+        let reviewByNoteID = Dictionary(
+            uniqueKeysWithValues: reviews.map { ($0.noteID, $0) }
+        )
+        var activitiesByNoteID: [UUID: [PortableResearchNoteActivityReference]] = [:]
+        for record in records {
+            for change in record.confirmedChanges {
+                activitiesByNoteID[change.noteID, default: []].append(
+                    PortableResearchNoteActivityReference(
+                        recordID: record.id,
+                        noteID: change.noteID
+                    )
+                )
+            }
+        }
+        let noteIDs = Set(currentRevisions.keys)
+            .union(activitiesByNoteID.keys)
+            .union(reviewByNoteID.keys)
+        return noteIDs.map { noteID in
+            let review = reviewByNoteID[noteID]
+            let covered = Set(review?.coveredActivities ?? [])
+            let pending = (activitiesByNoteID[noteID] ?? [])
+                .filter { !covered.contains($0) }
+                .sorted { $0.recordID.uuidString < $1.recordID.uuidString }
+            let status: WorkspaceNoteReviewStatus
+            if !pending.isEmpty {
+                status = .needsReview
+            } else if review != nil {
+                status = .noAgentChangesAwaitingReview
+            } else {
+                status = .noAgentChangesToReview
+            }
+            return WorkspaceNoteReviewState(
+                noteID: noteID,
+                currentRevision: currentRevisions[noteID],
+                status: status,
+                pendingActivities: pending,
+                lastReviewedAt: review?.reviewedAt,
+                lastReviewedRevision: review?.observedRevision
+            )
+        }.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
     }
 
     /// Rebuilds the latest completed Synthesize use relationship for each

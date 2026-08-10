@@ -395,6 +395,10 @@ extension ResearchFunctionOperationsTests {
         #expect(portable.action?.actionID == .synthesize)
         #expect(portable.fidelityCompletion == .notRequired)
         #expect(portable.primaryNoteID == topic.noteID)
+        #expect(Set(portable.participatingNotes.map(\.noteID)) == [
+            topic.noteID,
+            analysis.noteID,
+        ])
         #expect(portable.actuallyUsedMaterials == [try PortableResearchMaterialUse(
             noteID: analysis.noteID,
             note: analysis.note,
@@ -834,21 +838,16 @@ extension ResearchFunctionOperationsTests {
         #expect(!portable.academicResults.isEmpty)
         #expect(portable.confirmedChanges.isEmpty)
         #expect(portable.fidelityCompletion == .notRequired)
-        #expect(try await handle.snapshot().research.activities.contains {
-            $0.runID == action.runID
-                && $0.state == .resultReady
-                && $0.recordID == portable.id
-        })
-        let finished = try await handle.research
-            .finishResearchRecordReviewWithCurrentState(
-                recordID: portable.id,
-                expectedReviewRevision: nil,
-                expectedResultFingerprint: try portable.finalizedResultFingerprint()
-            )
-        #expect(finished.researcherReviewIsComplete)
-        #expect(try await handle.snapshot().research.activities.allSatisfy {
+        let completedSnapshot = try await handle.snapshot()
+        #expect(completedSnapshot.research.activities.allSatisfy {
             $0.runID != action.runID
         })
+        #expect(completedSnapshot.research.resultArrivals.contains {
+            $0.recordID == portable.id
+        })
+        #expect(completedSnapshot.research.noteReviewStates.first {
+            $0.noteID == work.noteID
+        }?.status == .noAgentChangesToReview)
         #expect(try await handle.snapshot().research.critiques.allSatisfy { critique in
             !critique.rounds.contains { $0.id == action.runID }
         })
