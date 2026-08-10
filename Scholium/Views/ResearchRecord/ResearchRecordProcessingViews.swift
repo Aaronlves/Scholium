@@ -1,4 +1,3 @@
-import AppKit
 import ScholiumContracts
 import ScholiumResearchRecordsFeature
 import SwiftUI
@@ -1497,8 +1496,7 @@ private struct ResearchMethodImprovementHandoffSheet: View {
     }
 
     private func copyHandoff() {
-        NSPasteboard.general.clearContents()
-        let copied = NSPasteboard.general.setString(instructions, forType: .string)
+        let copied = ScholiumPasteboardWriter.general.writeText(instructions)
         copyMessage = copied
             ? String(localized: "Copied the complete Method improvement handoff.")
             : String(localized: "The Method improvement handoff could not be copied.")

@@ -1,5 +1,4 @@
 import ScholiumContracts
-import AppKit
 import SwiftUI
 
 /// Persistent, nonmodal indication that a multi-file move or classification
@@ -426,13 +425,18 @@ private struct InterruptedSaveRecoveryRow: View {
     }
 
     private func copy(_ exactSource: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(exactSource, forType: .string)
-        actionMessage = String(
-            localized: "Candidate copied.",
-            table: "Localizable",
-            bundle: .module
-        )
+        let copied = ScholiumPasteboardWriter.general.writeText(exactSource)
+        actionMessage = copied
+            ? String(
+                localized: "Candidate copied.",
+                table: "Localizable",
+                bundle: .module
+            )
+            : String(
+                localized: "The interrupted-save candidate could not be copied.",
+                table: "Localizable",
+                bundle: .module
+            )
     }
 
     private var revealButton: some View {

@@ -1,4 +1,3 @@
-import AppKit
 import ScholiumContracts
 import SwiftUI
 
@@ -244,10 +243,12 @@ struct BootstrapAgentPreparationView: View {
     }
 
     private func copySetupPrompt() {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard pasteboard.setString(setupPrompt, forType: .string) else {
-            errorMessage = "Scholium could not copy the Agent setup instructions."
+        guard ScholiumPasteboardWriter.general.writeText(setupPrompt) else {
+            errorMessage = String(
+                localized: "Scholium could not copy the Agent setup instructions.",
+                table: "Localizable",
+                bundle: .module
+            )
             return
         }
         errorMessage = nil

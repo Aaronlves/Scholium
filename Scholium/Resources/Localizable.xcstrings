@@ -18933,6 +18933,22 @@
         }
       }
     },
+    "PATH setup could not be copied." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PATH setup could not be copied."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法复制 PATH 设置。"
+          }
+        }
+      }
+    },
     "PATH setup copied" : {
       "localizations" : {
         "en" : {
@@ -24585,6 +24601,22 @@
         }
       }
     },
+    "Scholium could not copy the Agent setup instructions." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium could not copy the Agent setup instructions."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法复制 Agent 设置说明。"
+          }
+        }
+      }
+    },
     "Scholium could not copy the handoff. %@" : {
       "localizations" : {
         "en" : {
@@ -28183,6 +28215,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "中断时的候选内容现已成为当前源文本。"
+          }
+        }
+      }
+    },
+    "The interrupted-save candidate could not be copied." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The interrupted-save candidate could not be copied."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法复制中断保存候选内容。"
           }
         }
       }

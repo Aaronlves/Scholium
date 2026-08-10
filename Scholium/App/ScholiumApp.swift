@@ -4545,8 +4545,7 @@ final class WindowModel: ObservableObject {
     }
 
     func copyTextToClipboard(_ text: String, recovery: String? = nil) throws {
-        NSPasteboard.general.clearContents()
-        guard NSPasteboard.general.setString(text, forType: .string) else {
+        guard ScholiumPasteboardWriter.general.writeText(text) else {
             throw ClipboardWorkflowError.copyFailed(recovery: recovery)
         }
     }

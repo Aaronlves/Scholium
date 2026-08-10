@@ -2683,24 +2683,53 @@ private struct ResearchRecordEvidenceCollectionPopover<Content: View>: View {
     }
 }
 
-private struct ResearchRecordContextUseSection: View {
-    let entries: [ContextUseEntry]
-    let materials: [PortableResearchMaterialUse]
-    let primaryNoteID: UUID?
-    let model: ResearchRecordBrowserModel
-    let context: ResearchRecordBrowserContext
+/// Context Used and Participants share one bounded progressive-disclosure
+/// lifecycle while retaining their own ordering, rows, and navigation.
+private struct ResearchRecordPreviewedEvidenceSection<
+    PreviewContent: View,
+    CompleteContent: View
+>: View {
     @State private var isShowingAll = false
+
+    let title: LocalizedStringKey
+    let count: Int
+    let headerIdentifier: String
+    let accessibilityHint: LocalizedStringResource
+    let popoverTitle: LocalizedStringKey
+    let popoverIdentifier: String
+    let previewContent: (Int) -> PreviewContent
+    let completeContent: (@escaping () -> Void) -> CompleteContent
+
+    init(
+        title: LocalizedStringKey,
+        count: Int,
+        headerIdentifier: String,
+        accessibilityHint: LocalizedStringResource,
+        popoverTitle: LocalizedStringKey,
+        popoverIdentifier: String,
+        @ViewBuilder previewContent: @escaping (Int) -> PreviewContent,
+        @ViewBuilder completeContent: @escaping (@escaping () -> Void) -> CompleteContent
+    ) {
+        self.title = title
+        self.count = count
+        self.headerIdentifier = headerIdentifier
+        self.accessibilityHint = accessibilityHint
+        self.popoverTitle = popoverTitle
+        self.popoverIdentifier = popoverIdentifier
+        self.previewContent = previewContent
+        self.completeContent = completeContent
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             ResearchRecordEvidenceSectionHeader(
-                title: "CONTEXT USED",
-                count: itemCount,
-                identifier: "scholium.researchRecord.contextUseHeader",
+                title: title,
+                count: count,
+                identifier: headerIdentifier,
                 accessibilityValue: hasMore
-                    ? "\(itemCount) items, showing the first \(previewLimit)"
-                    : "\(itemCount) items",
-                accessibilityHint: "Show every recorded Context item",
+                    ? "\(count) items, showing the first \(previewLimit)"
+                    : "\(count) items",
+                accessibilityHint: accessibilityHint,
                 action: hasMore ? { isShowingAll = true } : nil
             )
             .popover(
@@ -2709,14 +2738,44 @@ private struct ResearchRecordContextUseSection: View {
                 arrowEdge: .trailing
             ) {
                 ResearchRecordEvidenceCollectionPopover(
-                    title: "Context Used",
-                    count: itemCount,
-                    identifier: "scholium.researchRecord.contextUsePopover"
+                    title: popoverTitle,
+                    count: count,
+                    identifier: popoverIdentifier
                 ) {
-                    allItems
+                    completeContent { isShowingAll = false }
                 }
             }
 
+            previewContent(previewLimit)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var previewLimit: Int {
+        ScholiumMetrics.ResearchRecords.evidencePreviewLimit
+    }
+
+    private var hasMore: Bool {
+        count > previewLimit
+    }
+}
+
+private struct ResearchRecordContextUseSection: View {
+    let entries: [ContextUseEntry]
+    let materials: [PortableResearchMaterialUse]
+    let primaryNoteID: UUID?
+    let model: ResearchRecordBrowserModel
+    let context: ResearchRecordBrowserContext
+
+    var body: some View {
+        ResearchRecordPreviewedEvidenceSection(
+            title: "CONTEXT USED",
+            count: itemCount,
+            headerIdentifier: "scholium.researchRecord.contextUseHeader",
+            accessibilityHint: "Show every recorded Context item",
+            popoverTitle: "Context Used",
+            popoverIdentifier: "scholium.researchRecord.contextUsePopover"
+        ) { previewLimit in
             if entries.isEmpty && materials.isEmpty {
                 ResearchRecordEvidenceEntry(
                     symbol: "text.quote",
@@ -2733,41 +2792,31 @@ private struct ResearchRecordContextUseSection: View {
                     materialView(material, identifierSuffix: nil)
                 }
             }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    @ViewBuilder
-    private var allItems: some View {
-        if !entries.isEmpty {
-            ForEach(orderedEntries) { entry in
-                entryView(
-                    entry,
-                    identifierSuffix: ".all",
-                    focusPresentation: .native
-                )
-            }
-        } else {
-            ForEach(orderedMaterials) { material in
-                materialView(
-                    material,
-                    identifierSuffix: ".all",
-                    focusPresentation: .native
-                )
+        } completeContent: { dismissPopover in
+            if !entries.isEmpty {
+                ForEach(orderedEntries) { entry in
+                    entryView(
+                        entry,
+                        identifierSuffix: ".all",
+                        focusPresentation: .native,
+                        dismissPopover: dismissPopover
+                    )
+                }
+            } else {
+                ForEach(orderedMaterials) { material in
+                    materialView(
+                        material,
+                        identifierSuffix: ".all",
+                        focusPresentation: .native,
+                        dismissPopover: dismissPopover
+                    )
+                }
             }
         }
     }
 
     private var itemCount: Int {
         entries.isEmpty ? materials.count : entries.count
-    }
-
-    private var hasMore: Bool {
-        itemCount > previewLimit
-    }
-
-    private var previewLimit: Int {
-        ScholiumMetrics.ResearchRecords.evidencePreviewLimit
     }
 
     /// The Action's focal Note leads, followed by other actionable scholarly
@@ -2817,21 +2866,26 @@ private struct ResearchRecordContextUseSection: View {
     private func entryView(
         _ entry: ContextUseEntry,
         identifierSuffix: String?,
-        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface
+        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface,
+        dismissPopover: (() -> Void)? = nil
     ) -> some View {
         ResearchRecordContextUseEntryView(
             entry: entry,
             destination: destination(for: entry),
             identifierSuffix: identifierSuffix,
             focusPresentation: focusPresentation,
-            open: open
+            open: { destination in
+                dismissPopover?()
+                open(destination)
+            }
         )
     }
 
     private func materialView(
         _ material: PortableResearchMaterialUse,
         identifierSuffix: String?,
-        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface
+        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface,
+        dismissPopover: (() -> Void)? = nil
     ) -> some View {
         ResearchRecordEvidenceEntry(
             symbol: "text.quote",
@@ -2842,14 +2896,13 @@ private struct ResearchRecordContextUseSection: View {
                 "scholium.researchRecord.material.\(material.noteID.uuidString)\(identifierSuffix ?? "")",
             accessibilityHint: "Open this reported research material",
             action: {
-                isShowingAll = false
+                dismissPopover?()
                 context.openNote(material.noteID, material.note, nil)
             }
         )
     }
 
     private func open(_ destination: ResearchContextUseDestination) {
-        isShowingAll = false
         switch destination {
         case .note(let noteID, let note, let line):
             context.openNote(noteID, note, line)
@@ -3150,53 +3203,29 @@ private struct ResearchRecordParticipantSection: View {
     let participants: [PortableResearchNoteRevision]
     let primaryNoteID: UUID?
     let context: ResearchRecordBrowserContext
-    @State private var isShowingAll = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            ResearchRecordEvidenceSectionHeader(
-                title: "PARTICIPANTS",
-                count: participants.count,
-                identifier: "scholium.researchRecord.participantsHeader",
-                accessibilityValue: hasMore
-                    ? "\(participants.count) items, showing the first \(previewLimit)"
-                    : "\(participants.count) items",
-                accessibilityHint: "Show every participating Note",
-                action: hasMore ? { isShowingAll = true } : nil
-            )
-            .popover(
-                isPresented: $isShowingAll,
-                attachmentAnchor: .rect(.bounds),
-                arrowEdge: .trailing
-            ) {
-                ResearchRecordEvidenceCollectionPopover(
-                    title: "Participants",
-                    count: participants.count,
-                    identifier: "scholium.researchRecord.participantsPopover"
-                ) {
-                    ForEach(orderedParticipants) { participant in
-                        participantView(
-                            participant,
-                            identifierSuffix: ".all",
-                            focusPresentation: .native
-                        )
-                    }
-                }
-            }
-
+        ResearchRecordPreviewedEvidenceSection(
+            title: "PARTICIPANTS",
+            count: participants.count,
+            headerIdentifier: "scholium.researchRecord.participantsHeader",
+            accessibilityHint: "Show every participating Note",
+            popoverTitle: "Participants",
+            popoverIdentifier: "scholium.researchRecord.participantsPopover"
+        ) { previewLimit in
             ForEach(Array(orderedParticipants.prefix(previewLimit))) { participant in
                 participantView(participant, identifierSuffix: nil)
             }
+        } completeContent: { dismissPopover in
+            ForEach(orderedParticipants) { participant in
+                participantView(
+                    participant,
+                    identifierSuffix: ".all",
+                    focusPresentation: .native,
+                    dismissPopover: dismissPopover
+                )
+            }
         }
-        .accessibilityElement(children: .contain)
-    }
-
-    private var hasMore: Bool {
-        participants.count > previewLimit
-    }
-
-    private var previewLimit: Int {
-        ScholiumMetrics.ResearchRecords.evidencePreviewLimit
     }
 
     /// The Action's focal Note leads the current scholarly routes. Tombstones
@@ -3230,7 +3259,8 @@ private struct ResearchRecordParticipantSection: View {
     private func participantView(
         _ participant: PortableResearchNoteRevision,
         identifierSuffix: String?,
-        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface
+        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface,
+        dismissPopover: (() -> Void)? = nil
     ) -> some View {
         if participant.isTombstone {
             ResearchRecordEvidenceEntry(
@@ -3251,7 +3281,7 @@ private struct ResearchRecordParticipantSection: View {
                     "scholium.researchRecord.note.\(participant.noteID.uuidString)\(identifierSuffix ?? "")",
                 accessibilityHint: "Open this participating Note in the focused workspace",
                 action: {
-                    isShowingAll = false
+                    dismissPopover?()
                     context.openNote(participant.noteID, participant.note, nil)
                 }
             )

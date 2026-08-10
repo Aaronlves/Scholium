@@ -520,12 +520,21 @@ struct AgentCLISettingsView: View {
                         if !status.isOnCurrentPATH
                             && (status.state == .installed || status.state == .updateAvailable) {
                             Button("Copy PATH Setup") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(
-                                    "export PATH=\"$HOME/.local/bin:$PATH\"",
-                                    forType: .string
+                                let copied = ScholiumPasteboardWriter.general.writeText(
+                                    "export PATH=\"$HOME/.local/bin:$PATH\""
                                 )
-                                settingsModel.showToast(String(localized: "PATH setup copied", table: "Localizable", bundle: .module))
+                                let message = copied
+                                    ? String(
+                                        localized: "PATH setup copied",
+                                        table: "Localizable",
+                                        bundle: .module
+                                    )
+                                    : String(
+                                        localized: "PATH setup could not be copied.",
+                                        table: "Localizable",
+                                        bundle: .module
+                                    )
+                                settingsModel.showToast(message)
                             }
                             .accessibilityHint(
                                 "Copies a shell command; run it in your shell profile and start a new agent task"
