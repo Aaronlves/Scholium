@@ -703,7 +703,9 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("window.toolbarStyle = .unified"))
         #expect(!toolbarSource.contains("unifiedCompact"))
         #expect(toolbarSource.contains("ScholiumWorkspaceDocumentIdentityToolbarView"))
-        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentActionsToolbarView"))
+        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentModeToolbarView"))
+        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
+        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentNavigationToolbarView"))
         #expect(!contentSource.contains("private func documentIdentityHeader"))
         #expect(!contentSource.contains("documentIdentityHeader(for:"))
         #expect(toolbarSource.contains("static let inspector = NSToolbarItem.Identifier"))
@@ -825,26 +827,40 @@ struct FrontendArchitectureTests {
         typealias Item = ScholiumWorkspaceToolbarController.Item
 
         let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers
-        let leadingFlexibleSpaceIndex = try #require(
+        let documentFlexibleSpaceIndex = try #require(
             identifiers.firstIndex(of: .flexibleSpace)
+        )
+        let apparatusFlexibleSpaceIndex = try #require(
+            identifiers.lastIndex(of: .flexibleSpace)
         )
         let libraryDividerIndex = try #require(
             identifiers.firstIndex(of: Item.libraryDivider)
         )
         let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
+        let navigationIndex = try #require(
+            identifiers.firstIndex(of: Item.documentNavigationHistory)
+        )
         let documentIndex = try #require(
             identifiers.firstIndex(of: Item.documentIdentity)
+        )
+        let commandsIndex = try #require(
+            identifiers.firstIndex(of: Item.documentCommands)
         )
         let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
         let apparatusDividerIndex = try #require(
             identifiers.firstIndex(of: Item.apparatusDivider)
         )
-        #expect(leadingFlexibleSpaceIndex < sidebarIndex)
-        #expect(sidebarIndex < libraryDividerIndex)
+        #expect(sidebarIndex < navigationIndex)
+        #expect(navigationIndex < libraryDividerIndex)
         #expect(libraryDividerIndex < documentIndex)
-        #expect(documentIndex < inspectorIndex)
-        #expect(inspectorIndex < apparatusDividerIndex)
+        #expect(documentIndex < documentFlexibleSpaceIndex)
+        #expect(documentFlexibleSpaceIndex < commandsIndex)
+        #expect(commandsIndex < apparatusDividerIndex)
+        #expect(apparatusDividerIndex < apparatusFlexibleSpaceIndex)
+        #expect(apparatusFlexibleSpaceIndex < inspectorIndex)
+        #expect(identifiers.filter { $0 == .flexibleSpace }.count == 2)
         #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
+        #expect(identifiers.filter { $0 == Item.documentNavigationHistory }.count == 1)
         #expect(identifiers.filter { $0 == Item.inspector }.count == 1)
 
         let toolbarSource = try String(
@@ -2331,7 +2347,10 @@ struct FrontendArchitectureTests {
         #expect(!toolbar.contains("clock.arrow.circlepath"))
         #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
         #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
-        #expect(toolbar.contains("static let researchRecords"))
+        #expect(toolbar.contains("static let documentCommands"))
+        #expect(toolbar.contains("HStack(spacing: ScholiumGrid.Spacing.inlineControlGap)"))
+        #expect(toolbar.contains("systemImage: \"arrow.left\""))
+        #expect(toolbar.contains("systemImage: \"arrow.right\""))
         #expect(toolbar.contains("documentController.selectedDocument != nil"))
         #expect(toolbar.contains("isEnabled: isAvailable"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))

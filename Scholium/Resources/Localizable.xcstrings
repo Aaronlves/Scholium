@@ -9946,18 +9946,18 @@
         }
       }
     },
-    "Document Actions" : {
+    "Document History" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Document Actions"
+            "value" : "Document History"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "文档操作"
+            "value" : "文档历史"
           }
         }
       }
@@ -11850,6 +11850,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "后续交流"
+          }
+        }
+      }
+    },
+    "Forward" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Forward"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前进"
           }
         }
       }

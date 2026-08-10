@@ -15,6 +15,7 @@ final class WindowCommandObservation: ObservableObject {
         workspaceController: WindowWorkspaceController,
         discoveryController: DiscoveryController,
         documentController: DocumentController,
+        documentNavigationHistoryController: DocumentNavigationHistoryController,
         workspaceProjectionController: WindowWorkspaceProjectionController,
         researchActionController: ResearchActionController
     ) {
@@ -28,6 +29,9 @@ final class WindowCommandObservation: ObservableObject {
         }
 
         let discoveryChanges = discoveryController.objectWillChange
+            .map { _ in () }
+            .eraseToAnyPublisher()
+        let documentNavigationChanges = documentNavigationHistoryController.objectWillChange
             .map { _ in () }
             .eraseToAnyPublisher()
         let commandChanges: [AnyPublisher<Void, Never>] = [
@@ -45,6 +49,7 @@ final class WindowCommandObservation: ObservableObject {
                 .map { _ in () }
                 .eraseToAnyPublisher(),
             discoveryChanges,
+            documentNavigationChanges,
             changes(documentController.$selectedDocument),
             changes(documentController.$snapshots),
             changes(documentController.$editingDocumentPath),

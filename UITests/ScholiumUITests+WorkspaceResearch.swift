@@ -764,8 +764,8 @@ extension ScholiumUITests {
     @MainActor
     func testRetiredNavigationMenuIsAbsent() {
         XCTAssertFalse(app.menuBars.menuBarItems["Navigate"].exists)
-        XCTAssertFalse(app.menuItems["Back"].exists)
-        XCTAssertFalse(app.menuItems["Forward"].exists)
+        XCTAssertTrue(app.menuItems["Back"].exists)
+        XCTAssertTrue(app.menuItems["Forward"].exists)
         XCTAssertFalse(app.menuItems["Recent Notes"].exists)
     }
 

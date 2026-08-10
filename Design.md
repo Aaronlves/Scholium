@@ -261,6 +261,11 @@ continuous Navigation selection; local mode indexes use editorial-control
 selection. Standard actions and Vector Link relationships use direct SF
 Symbols with text as the primary meaning.
 
+The window-local Back/Forward pair uses direct borderless `arrow.left` and
+`arrow.right` SF Symbols with native disabled, hover, press, and focus behavior.
+It adds no enclosing capsule, Scholium color, custom animation, or persistent
+history surface.
+
 Document Mode is one native borderless toolbar button, not a segmented control.
 Its direct monochrome SF Symbol reports the current Review, Edit, or Source
 state; concise pointer help names that state and the accessible value agrees.

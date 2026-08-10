@@ -146,19 +146,29 @@ extension ScholiumUITests {
         }
 
         let sidebarToggle = loadedToolbar.buttons["Hide Sidebar"].firstMatch
+        let back = app.descendants(matching: .any)["scholium.documentHistoryBack"]
+        let forward = app.descendants(matching: .any)["scholium.documentHistoryForward"]
         let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         let search = app.descendants(matching: .any)["scholium.documentSearch"]
         let history = app.descendants(matching: .any)["scholium.showResearchRecords"]
         let inspectorToggle = loadedToolbar.buttons["Show Research Inspector"].firstMatch
         XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 5))
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        XCTAssertTrue(forward.waitForExistence(timeout: 5))
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         XCTAssertTrue(history.waitForExistence(timeout: 5))
         XCTAssertTrue(inspectorToggle.waitForExistence(timeout: 5))
 
-        XCTAssertLessThan(sidebarToggle.frame.midX, window.frame.midX)
-        XCTAssertGreaterThan(search.frame.midX, mode.frame.midX)
-        XCTAssertGreaterThan(history.frame.midX, search.frame.midX)
+        XCTAssertLessThan(sidebarToggle.frame.midX, back.frame.midX)
+        XCTAssertLessThan(back.frame.midX, forward.frame.midX)
+        XCTAssertGreaterThan(mode.frame.midX, search.frame.midX)
+        XCTAssertGreaterThan(history.frame.midX, mode.frame.midX)
+        // The HStack owns an 8pt layout gap. XCUI reports each native toolbar
+        // button's accessibility frame one point beyond its layout frame on
+        // both adjacent edges, so the observable frame gap is 6pt.
+        XCTAssertEqual(mode.frame.minX - search.frame.maxX, 6, accuracy: 1)
+        XCTAssertEqual(history.frame.minX - mode.frame.maxX, 6, accuracy: 1)
         XCTAssertGreaterThan(inspectorToggle.frame.midX, window.frame.midX)
 
         let library = app.descendants(matching: .any)["scholium.librarySurface"]
@@ -166,6 +176,8 @@ extension ScholiumUITests {
         XCTAssertEqual(sidebarToggle.label, "Hide Sidebar")
         XCTAssertTrue(sidebarToggle.isHittable)
         XCTAssertEqual(sidebarToggle.frame.midY, close.frame.midY, accuracy: 12)
+        let stableSidebarMidX = sidebarToggle.frame.midX
+        let stableInspectorMidX = inspectorToggle.frame.midX
 
         sidebarToggle.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !library.exists })
@@ -173,6 +185,8 @@ extension ScholiumUITests {
         XCTAssertTrue(sidebarReveal.waitForExistence(timeout: 5))
         XCTAssertEqual(sidebarReveal.label, "Show Sidebar")
         XCTAssertEqual(sidebarReveal.frame.midY, close.frame.midY, accuracy: 12)
+        XCTAssertEqual(sidebarReveal.frame.midX, stableSidebarMidX, accuracy: 2)
+        XCTAssertEqual(inspectorToggle.frame.midX, stableInspectorMidX, accuracy: 2)
         XCTAssertEqual(
             app.descendants(matching: .any).matching(
                 identifier: "scholium.toggleSidebar"
@@ -183,6 +197,16 @@ extension ScholiumUITests {
             app.descendants(matching: .any)["scholium.toolbar.attention"].exists,
             "Collapsing Sidebar must not transfer Attention into the Document toolbar."
         )
+        XCTAssertLessThan(sidebarReveal.frame.midX, back.frame.midX)
+        XCTAssertLessThan(back.frame.midX, forward.frame.midX)
+        XCTAssertLessThan(forward.frame.midX, search.frame.midX)
+        XCTAssertLessThan(search.frame.midX, mode.frame.midX)
+        XCTAssertLessThan(mode.frame.midX, history.frame.midX)
+        XCTAssertLessThan(history.frame.midX, inspectorToggle.frame.midX)
+        let collapsedToolbarScreenshot = XCTAttachment(screenshot: window.screenshot())
+        collapsedToolbarScreenshot.name = "Native toolbar — both peripheral panes collapsed"
+        collapsedToolbarScreenshot.lifetime = .keepAlways
+        add(collapsedToolbarScreenshot)
         sidebarReveal.click()
         XCTAssertTrue(library.waitForExistence(timeout: 5))
         let sidebarHide = loadedToolbar.buttons["Hide Sidebar"].firstMatch
@@ -197,16 +221,9 @@ extension ScholiumUITests {
         let documentIdentity = app.descendants(matching: .any)[
             "scholium.documentToolbarIdentity"
         ]
-        let documentActions = app.descendants(matching: .any)[
-            "scholium.documentToolbarActions"
-        ]
         XCTAssertTrue(documentIdentity.waitForExistence(timeout: 5))
-        XCTAssertTrue(documentActions.waitForExistence(timeout: 5))
-        XCTAssertLessThan(documentIdentity.frame.maxX, mode.frame.minX)
-        // AppKit may report a grouped toolbar item's accessibility frame one
-        // physical pixel inside its hosted control. Compare with a two-point
-        // tolerance; this is not visual spacing owned by Scholium.
-        XCTAssertGreaterThanOrEqual(mode.frame.minX, documentActions.frame.minX - 2)
+        XCTAssertLessThan(forward.frame.maxX, documentIdentity.frame.minX)
+        XCTAssertLessThan(documentIdentity.frame.maxX, search.frame.minX)
         XCTAssertEqual(mode.frame.midY, documentIdentity.frame.midY, accuracy: 8)
         XCTAssertEqual(search.frame.midY, documentIdentity.frame.midY, accuracy: 8)
         XCTAssertEqual(history.frame.midY, documentIdentity.frame.midY, accuracy: 8)
@@ -224,6 +241,7 @@ extension ScholiumUITests {
         XCTAssertEqual(inspectorHide.label, "Hide Research Inspector")
         XCTAssertTrue(inspectorHide.isHittable)
         XCTAssertEqual(inspectorHide.frame.midY, close.frame.midY, accuracy: 12)
+        XCTAssertEqual(inspectorHide.frame.midX, stableInspectorMidX, accuracy: 2)
         XCTAssertEqual(
             app.descendants(matching: .any).matching(
                 identifier: "scholium.toggleInspector"
@@ -235,6 +253,7 @@ extension ScholiumUITests {
         let inspectorReveal = loadedToolbar.buttons["Show Research Inspector"].firstMatch
         XCTAssertTrue(inspectorReveal.waitForExistence(timeout: 5))
         XCTAssertEqual(inspectorReveal.frame.midY, close.frame.midY, accuracy: 12)
+        XCTAssertEqual(inspectorReveal.frame.midX, stableInspectorMidX, accuracy: 2)
         inspectorReveal.click()
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
         XCTAssertLessThan(
@@ -312,6 +331,10 @@ extension ScholiumUITests {
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
+        let documentTitle = app.descendants(matching: .any)[
+            "scholium.documentNoteName"
+        ]
+        let initialDocumentTitle = try XCTUnwrap(documentTitle.value as? String)
         let untabbedHeaderTop = documentIdentity.frame.minY - window.frame.minY
         let secondRow = app.descendants(matching: .any)[
             "scholium.noteRow.QA Autosave B.md"
@@ -325,6 +348,19 @@ extension ScholiumUITests {
         openInNewTab.click()
         let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
         XCTAssertTrue(documentTabs.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            documentTitle.value as? String == "QA Autosave B"
+        })
+        XCTAssertTrue(back.isEnabled)
+        back.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            documentTitle.value as? String == initialDocumentTitle
+        })
+        XCTAssertTrue(forward.isEnabled)
+        forward.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            documentTitle.value as? String == "QA Autosave B"
+        })
 
         // Document tabs retain independent documents while borrowing the one
         // window-owned Library and Apparatus presentation.

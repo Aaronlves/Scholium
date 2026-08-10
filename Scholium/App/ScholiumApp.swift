@@ -1336,6 +1336,15 @@ private struct ScholiumCommands: Commands {
                 )
         }
         CommandGroup(replacing: .sidebar) {
+            Button("Back") {
+                appState?.navigateDocumentHistory(.back)
+            }
+            .disabled(appState?.documentNavigationHistoryController.canGoBack != true)
+            Button("Forward") {
+                appState?.navigateDocumentHistory(.forward)
+            }
+            .disabled(appState?.documentNavigationHistoryController.canGoForward != true)
+            Divider()
             Button(
                 ScholiumL10n.dynamicString(
                     appState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar"
@@ -1714,6 +1723,7 @@ final class WindowModel: ObservableObject {
         self?.handleWindowIntent(intent)
     }
     let documentTabController = DocumentTabController()
+    let documentNavigationHistoryController = DocumentNavigationHistoryController()
     lazy var researchController = ResearchController(
         shellState: shellState
     ) { [weak self] intent in
@@ -1733,6 +1743,7 @@ final class WindowModel: ObservableObject {
         workspaceController: windowWorkspaceController,
         discoveryController: discoveryController,
         documentController: documentController,
+        documentNavigationHistoryController: documentNavigationHistoryController,
         workspaceProjectionController: workspaceProjectionController,
         researchActionController: researchController.actions
     )
@@ -3587,6 +3598,21 @@ final class WindowModel: ObservableObject {
             )
             self.documentTabController.selectTab(withID: id)
             self.reconcileDocumentSessionLeases()
+        }
+    }
+
+    func navigateDocumentHistory(_ direction: DocumentNavigationDirection) {
+        enqueueDocumentTransition { [weak self] in
+            guard let self,
+                  let target = self.documentNavigationHistoryController.target(
+                      for: direction
+                  ) else { return }
+            try await self.activateDocument(
+                target,
+                tabActivation: .place(.replaceSelected),
+                recordsNavigationHistory: false
+            )
+            self.documentNavigationHistoryController.commit(direction, to: target)
         }
     }
 
@@ -6076,7 +6102,8 @@ final class WindowModel: ObservableObject {
 
     private func activateDocument(
         _ document: WindowSelectedDocument,
-        tabActivation: DocumentTabActivation
+        tabActivation: DocumentTabActivation,
+        recordsNavigationHistory: Bool = true
     ) async throws {
         guard let vaultID = document.vaultID,
               let vault = workspaceAssignment?.vaults.values.first(where: {
@@ -6096,19 +6123,22 @@ final class WindowModel: ObservableObject {
         }
         try activateDocumentInSelectedWorkspace(
             document,
-            tabActivation: tabActivation
+            tabActivation: tabActivation,
+            recordsNavigationHistory: recordsNavigationHistory
         )
     }
 
     private func activateDocumentInSelectedWorkspace(
         _ document: WindowSelectedDocument,
-        tabActivation: DocumentTabActivation
+        tabActivation: DocumentTabActivation,
+        recordsNavigationHistory: Bool = true
     ) throws {
         switch document {
         case .workspace(let descriptor):
             try activateWorkspaceReferenceInSelectedWorkspace(
                 descriptor.reference,
-                tabActivation: tabActivation
+                tabActivation: tabActivation,
+                recordsNavigationHistory: recordsNavigationHistory
             )
         case .unavailable(let vaultID, let relativePath):
             guard notes.contains(where: { $0.relativePath == relativePath }) else {
@@ -6119,13 +6149,17 @@ final class WindowModel: ObservableObject {
                 vaultID: vaultID,
                 relativePath: relativePath
             )
-            synchronizeDocumentTabs(after: tabActivation)
+            synchronizeDocumentTabs(
+                after: tabActivation,
+                recordsNavigationHistory: recordsNavigationHistory
+            )
         }
     }
 
     private func activateWorkspaceReference(
         _ reference: VaultNoteReference,
-        tabActivation: DocumentTabActivation
+        tabActivation: DocumentTabActivation,
+        recordsNavigationHistory: Bool = true
     ) async throws {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == reference.vaultID
@@ -6159,13 +6193,15 @@ final class WindowModel: ObservableObject {
         }
         try activateWorkspaceReferenceInSelectedWorkspace(
             reference,
-            tabActivation: tabActivation
+            tabActivation: tabActivation,
+            recordsNavigationHistory: recordsNavigationHistory
         )
     }
 
     private func activateWorkspaceReferenceInSelectedWorkspace(
         _ reference: VaultNoteReference,
-        tabActivation: DocumentTabActivation
+        tabActivation: DocumentTabActivation,
+        recordsNavigationHistory: Bool = true
     ) throws {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == reference.vaultID
@@ -6193,10 +6229,16 @@ final class WindowModel: ObservableObject {
                 relativePath: snapshot.id.relativePath
             )
         }
-        synchronizeDocumentTabs(after: tabActivation)
+        synchronizeDocumentTabs(
+            after: tabActivation,
+            recordsNavigationHistory: recordsNavigationHistory
+        )
     }
 
-    private func synchronizeDocumentTabs(after activation: DocumentTabActivation) {
+    private func synchronizeDocumentTabs(
+        after activation: DocumentTabActivation,
+        recordsNavigationHistory: Bool = true
+    ) {
         guard let document = documentController.selectedDocument else { return }
         let presentation = documentTabPresentation(for: document)
         switch activation {
@@ -6217,6 +6259,9 @@ final class WindowModel: ObservableObject {
                 title: presentation.title,
                 toolTip: presentation.toolTip
             )
+        }
+        if recordsNavigationHistory {
+            documentNavigationHistoryController.record(document)
         }
         reconcileDocumentSessionLeases()
     }
@@ -6820,6 +6865,7 @@ final class WindowModel: ObservableObject {
         presentationRouter.dismissAll()
         documentController.removeAll(retainingSessions: true)
         documentTabController.removeAll()
+        documentNavigationHistoryController.removeAll()
         searchController.resetExecution()
         discoveryController.reset()
         researchController.reset()

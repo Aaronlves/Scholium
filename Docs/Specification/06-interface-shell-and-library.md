@@ -100,14 +100,16 @@ Opaque regions extend beneath it, and controls use the live safe area rather
 than a measured toolbar height.
 
 Sidebar and Inspector each keep one visibility control at a stable position in
-that native toolbar. The Sidebar control sits immediately before the first
-tracking separator at the logical trailing side of Sidebar; it mirrors in
-right-to-left presentation and remains visible when Sidebar collapses. The
-Inspector control remains before the Inspector tracking separator. Native
-collapsed state changes each item's accessible Show/Hide label, value, and
-explicit per-window action; collapse and expansion never transfer a control,
-change toolbar item topology, or add a pane-local duplicate. Visibility is
-expressed by the actual pane rather than a persistent selection underline or
+that native toolbar. Sidebar and the window-local Back/Forward pair occupy the
+fixed leading zone before the first tracking separator and remain beside the
+traffic lights as the Sidebar resizes or collapses. Back/Forward traverse the
+nonpersistent sequence of successfully visited Documents and never become a
+source, editor, Undo, tab, or per-Note mode history. The Inspector control
+occupies the fixed trailing edge after the Inspector tracking separator. Native
+collapsed state changes each visibility item's accessible Show/Hide label,
+value, and explicit per-window action; collapse and expansion never transfer a
+control, change toolbar item topology, or add a pane-local duplicate. Visibility
+is expressed by the actual pane rather than a persistent selection underline or
 custom active enclosure. Tracking separators remain structural bounds. Add no
 split-item accessory row, custom title strip, Inspector replacement, ellipsis,
 fixed height, automatic glass-like item, or Liquid Glass.
@@ -161,15 +163,15 @@ one centered `doc.text` symbol, **No Document Selected**, and the secondary
 sentence **Select a note in the Library to read or edit.** It has no card,
 button, motion, focus target, source state, or duplicate creation route. The
 symbol is decorative; the two visible strings form one VoiceOver-readable
-group. No Collapse Note, custom `<<`,
-Back/Forward, Recents, or Quick Open exists.
+group. No Collapse Note, custom `<<`, Recents, or Quick Open exists.
 
 Menus follow researcher tasks:
 
 - **File:** Triptych/window create/open; direct **New Note** at the focused
   vault root; Import; Duplicate; Rename; Move; Reveal; Checkpoint create/restore.
 - **Edit:** editing and **Edit Properties…**.
-- **View:** Search, document mode/text size, Sidebar, Research Inspector.
+- **View:** Back/Forward, Search, document mode/text size, Sidebar, Research
+  Inspector.
 - **Window:** standard window navigation plus **Attention**. The command is
   enabled only when the focused window has a visible Triptych or Inspector
   Attention anchor, and opens that anchor's transient popover.

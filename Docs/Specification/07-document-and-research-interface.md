@@ -150,10 +150,11 @@ researcher uses **Disable All Snippets** and re-enables selected managed copies.
 Import, duplicate, rename, reorder, edit, reload, remove, and reveal act only on
 those managed copies.
 
-Toolbar order is Sidebar before Library separator; Heading Outline and
-compact identity; Document Mode icon and Search; **This Note Records**;
-Inspector before Apparatus separator. Icon and pointer help report Review,
-Edit, or Source. Activating it switches Review/Edit and returns Source to Review.
+Toolbar: Sidebar and Back/Forward; Library separator; Heading Outline
+and identity; flexible space; Search, Document Mode, and **This Note Records**
+at **8pt** inline spacing; Apparatus separator; trailing Inspector. Mode icon/help
+report Review, Edit, or Source. Activation switches Review/Edit and returns
+Source to Review.
 Source remains selectable only under **View > Document Mode**; `Command-R`
 performs the same switch. Controls remain borderless.
 No second identity row, Document Properties, or More; complete

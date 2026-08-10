@@ -60,6 +60,10 @@
   selected state, Up/Down traversal, localized Note totals, and inert hidden
   workspaces. Switching preserves focus on the selected destination until the
   resulting Document route requires another focus target.
+- Back and Forward expose stable names and current availability in both the
+  toolbar and View menu. A successful visit updates them without moving focus;
+  revisiting a document uses the ordinary source-safe transition and preserves
+  the current content when its destination is unavailable.
 - Library exposes Triptych identity, Attention, Location, filters, disclosure,
   Add, hierarchy, selected row, and lifecycle actions without requiring hover.
   Note and Folder move, root move, Put Back, Expand/Collapse All, and contextual
