@@ -6,15 +6,15 @@
 
 **Environment:** 2026-08-10, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete repository gate passed on the current Agent Result Review
+The latest complete repository gate passed on the current Note-level Review
 integration. It
 validated the closed documentation manifests and shipped resources; TypeScript
 checking and 185 Web editor tests; reproducible editor, mathematics, and Mermaid
 bundles; 453 Core tests plus 3 Search performance tests; 124 Contracts tests;
 193 Application tests, 9 bridge tests, and 1 serialized architecture
-measurement; 519 App tests; 7 executable Research Action CLI lifecycles; the
+measurement; 520 App tests; 7 executable Research Action CLI lifecycles; the
 sandboxed local bridge probe; symbol/import/residue guards; and Debug and
-Release builds. The Release build completed in 168.03 seconds.
+Release builds. The Release build completed in 177.88 seconds.
 
 This proves deterministic repository conformance for that checkout and toolchain.
 It is not a packaged release, complete UI-suite result, human accessibility
@@ -121,8 +121,27 @@ Attention/Review/About order, the Document task boundary, exact-window routing,
 notification isolation, Action lifecycle, and Records frame stability. The
 first pass exposed one retired `Review Result` Action-sheet assertion; the
 final batch passed after deleting that requirement. Documentation authority,
-interface localization, diff checks, and the Debug product build passed. UI
-Automation and the single current-tree final gate remain later-stage evidence.
+interface localization, diff checks, and the Debug product build passed.
+
+Three complementary ordinary-product UI Automation journeys then passed
+together in 230.634 seconds. They cover one multi-Note Record visible from its
+origin and changed Note; stable Records frame through list, detail, Compare,
+and return; read-only View/Compare not completing Review; one Note clearing two
+older activities while another remains pending; a later Agent change reopening
+Review; progressive Evaluation-first Response editing with optional Method
+Feedback; atomic durable save; stale external Response preserving the local
+draft; and one deduplicated no-change Result arrival without Note Review.
+
+The single final ordinary-product QA uses a disposable Triptych initialized
+before fixture injection. Its portable store contains exactly 100 unique
+schema-8 Records, all associated with QA Topic: 60 have confirmed Topic
+changes, 40 have no source change, 20 also change QA Work, 25 contain an
+Evaluation, and 12 also contain Method Feedback. The live **This Note** Records
+AX tree reported `100 results`; opening a saved-Response Record exposed its
+Evaluation, Method Feedback, and Improve Current Method route. After the real
+workspace watcher rebuilt the research snapshot, QA Topic Overview reported
+`Needs Review · 3 Agent activities`. This is disposable Debug QA evidence, not
+a packaged release or researcher visual acceptance.
 
 This remains bounded development evidence, not an installed App/CLI journey or
 human acceptance. Genuine VoiceOver, physical

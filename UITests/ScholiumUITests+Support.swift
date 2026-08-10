@@ -709,6 +709,21 @@ extension ScholiumUITests {
         let fingerprint: [String: Any]
     }
 
+    struct QANoteReviewRecordSeed {
+        struct Participant {
+            let relativePath: String
+            let role: String
+            let title: String
+        }
+
+        let recordID: UUID
+        let title: String
+        let primaryRelativePath: String
+        let participants: [Participant]
+        let changedRelativePaths: Set<String>
+        let finishedAt: String
+    }
+
     func seedResearchRecordFixture(
         hasUnavailableTopicRevision: Bool = false,
         hasEvidenceOverflow: Bool = false,
@@ -884,7 +899,7 @@ extension ScholiumUITests {
         }
 
         var portableRecord: [String: Any] = [
-            "schema_version": 6,
+            "schema_version": 8,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "record_title": createsSynthesisAttention
@@ -1009,6 +1024,292 @@ extension ScholiumUITests {
             overflowParticipantNoteIDs: hasEvidenceOverflow
                 ? [secondAnalysis.noteID, work.noteID]
                 : []
+        )
+    }
+
+    /// Seeds current portable Action Records through the real store boundary.
+    /// The pre-Agent revisions are deliberately unavailable synthetic exact
+    /// fingerprints: the UI journey verifies association, pending Review, and
+    /// read-only comparison ownership without manufacturing a recovery
+    /// checkpoint or granting Undo authority.
+    func seedNoteReviewRecords(
+        _ seeds: [QANoteReviewRecordSeed]
+    ) throws {
+        let triptychID = try triptychID(at: triptychDirectory)
+        let identities = try qaStoredNoteIdentities()
+        let recordsDirectory = triptychDirectory.appendingPathComponent(
+            ".scholium/research-records/v1/records",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: recordsDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o755)]
+        )
+
+        for seed in seeds {
+            let participants = try seed.participants.map { participant -> [String: Any] in
+                let identity = try XCTUnwrap(identities[participant.relativePath])
+                let ending = identity.fingerprint
+                let starting = seed.changedRelativePaths.contains(participant.relativePath)
+                    ? qaFingerprint(
+                        "Before Agent work \(seed.recordID.uuidString.lowercased()) \(participant.relativePath)"
+                    )
+                    : ending
+                return [
+                    "note_id": identity.noteID.uuidString,
+                    "note": [
+                        "vaultID": identity.vaultID.uuidString,
+                        "relativePath": identity.relativePath,
+                    ],
+                    "role": participant.role,
+                    "title": participant.title,
+                    "starting_revision": starting,
+                    "ending_revision": ending,
+                    "is_tombstone": false,
+                ]
+            }
+            let primary = try XCTUnwrap(identities[seed.primaryRelativePath])
+            let confirmedChanges = try seed.changedRelativePaths.sorted().map {
+                relativePath -> [String: Any] in
+                let identity = try XCTUnwrap(identities[relativePath])
+                return [
+                    "note_id": identity.noteID.uuidString,
+                    "actor": "agent",
+                    "starting_revision": qaFingerprint(
+                        "Before Agent work \(seed.recordID.uuidString.lowercased()) \(relativePath)"
+                    ),
+                    "ending_revision": identity.fingerprint,
+                ]
+            }
+            let statementID = qaStableUUID(
+                "\(seed.recordID.uuidString.lowercased()):agent-result"
+            )
+            let profileRevision = qaFingerprint("QA bounded Synthesize Profile")
+            let record: [String: Any] = [
+                "schema_version": 8,
+                "id": seed.recordID.uuidString,
+                "triptych_id": triptychID.uuidString,
+                "record_title": seed.title,
+                "kind": "action",
+                "action": [
+                    "schema_version": 1,
+                    "action_id": "synthesize",
+                ],
+                "method": [
+                    "registration_key": "10000000-0000-0000-0000-000000000003",
+                    "display_name": "Synthesize",
+                    "practice_names": [],
+                    "profile_revision": profileRevision,
+                ],
+                "primary_note_id": primary.noteID.uuidString,
+                "participating_notes": participants,
+                "statements": [[
+                    "id": statementID.uuidString,
+                    "author": "agent",
+                    "kind": "agent_feedback",
+                    "attribution": "Synthetic QA Agent",
+                    "text": "This disposable Record exists only to verify the current Note Review interface.",
+                    "created_at": seed.finishedAt,
+                ]],
+                "result_disposition": "completed",
+                "academic_results": [],
+                "actually_used_materials": [],
+                "fidelity_completion": "unverified",
+                "confirmed_changes": confirmedChanges,
+                "discrepancies": [],
+                "literature_recommendations": [],
+                "started_at": "2026-08-09T03:00:00Z",
+                "finished_at": seed.finishedAt,
+            ]
+            try writePortableResearchRecord(record, id: seed.recordID)
+        }
+    }
+
+    func seedNoteReviewCutoverFixture() throws {
+        let origin = QANoteReviewRecordSeed.Participant(
+            relativePath: "QA Autosave A.md",
+            role: "analysis",
+            title: "QA Autosave A"
+        )
+        let topic = QANoteReviewRecordSeed.Participant(
+            relativePath: "QA Topic.md",
+            role: "topic",
+            title: "QA Topic"
+        )
+        let work = QANoteReviewRecordSeed.Participant(
+            relativePath: "QA Work.md",
+            role: "work",
+            title: "QA Work"
+        )
+        try seedNoteReviewRecords([
+            QANoteReviewRecordSeed(
+                recordID: UUID(
+                    uuidString: "8A410000-0000-4000-8000-000000000001"
+                )!,
+                title: "Multi-Note Agent revision",
+                primaryRelativePath: origin.relativePath,
+                participants: [origin, topic, work],
+                changedRelativePaths: [topic.relativePath, work.relativePath],
+                finishedAt: "2026-08-09T03:01:00Z"
+            ),
+            QANoteReviewRecordSeed(
+                recordID: UUID(
+                    uuidString: "8A410000-0000-4000-8000-000000000002"
+                )!,
+                title: "Later Topic revision",
+                primaryRelativePath: topic.relativePath,
+                participants: [topic],
+                changedRelativePaths: [topic.relativePath],
+                finishedAt: "2026-08-09T03:02:00Z"
+            ),
+        ])
+    }
+
+    func externallyReplaceResearcherResponse(
+        recordID: UUID,
+        evaluationText: String
+    ) throws {
+        let recordURL = portableResearchRecordURL(recordID)
+        var record = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: recordURL)
+            ) as? [String: Any]
+        )
+        record["researcher_evaluation"] = [
+            "revision": UUID().uuidString,
+            "author": "researcher",
+            "observed_issues": [],
+            "no_issues_observed": true,
+            "valuable_discovery": false,
+            "note": evaluationText,
+            "updated_at": "2026-08-10T04:00:00Z",
+        ]
+        record["method_feedback_comment"] = nil
+        try writePortableResearchRecord(record, id: recordID)
+    }
+
+    func portableResearchRecordSource(_ id: UUID) throws -> String {
+        try source(at: portableResearchRecordURL(id))
+    }
+
+    /// Portable stores live under the hidden Triptych boundary and do not
+    /// themselves generate a vault-document inventory event. Pair a synthetic
+    /// external Record arrival with a harmless disposable Note edit so the
+    /// real workspace watcher rebuilds the complete snapshot exactly as it
+    /// would after an Agent commit followed by Result formation.
+    func triggerWorkspaceRefreshForPortableFixture(_ marker: String) throws {
+        let url = triptychDirectory.appendingPathComponent(
+            "01-analyses/QA Autosave B.md"
+        )
+        let current = try source(at: url)
+        try write(
+            current + "\n<!-- disposable portable fixture refresh: \(marker) -->\n",
+            to: url
+        )
+    }
+
+    func latestLocalResearchExecutionRunID() throws -> UUID {
+        let triptych = try triptychID(at: triptychDirectory)
+        let directory = homeDirectory
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(triptych.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v8", isDirectory: true)
+        let candidates = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ).filter { $0.pathExtension == "json" }
+        let latest = try XCTUnwrap(candidates.max { lhs, rhs in
+            let left = try? lhs.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ).contentModificationDate
+            let right = try? rhs.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ).contentModificationDate
+            return (left ?? .distantPast) < (right ?? .distantPast)
+        })
+        return try XCTUnwrap(UUID(uuidString: latest.deletingPathExtension().lastPathComponent))
+    }
+
+    private func qaStoredNoteIdentities() throws -> [String: QAStoredNoteIdentity] {
+        let manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: triptychDirectory.appendingPathComponent(
+                    ".scholium/manifest.json"
+                ))
+            ) as? [String: Any]
+        )
+        let currentVaultIDs = Set(
+            (manifest["vaultIDs"] as? [String] ?? []).compactMap(UUID.init(uuidString:))
+        )
+        let identityDocument = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: triptychDirectory.appendingPathComponent(
+                    ".scholium/identities.json"
+                ))
+            ) as? [String: Any]
+        )
+        let records = identityDocument["records"] as? [[String: Any]] ?? []
+        return Dictionary(uniqueKeysWithValues: records.compactMap { record in
+            guard let relativePath = record["relativePath"] as? String,
+                  let rawNoteID = record["id"] as? String,
+                  let noteID = UUID(uuidString: rawNoteID),
+                  let rawVaultID = record["vaultID"] as? String,
+                  let vaultID = UUID(uuidString: rawVaultID),
+                  currentVaultIDs.contains(vaultID),
+                  let fingerprint = record["fingerprint"] as? [String: Any] else {
+                return nil
+            }
+            return (
+                relativePath,
+                QAStoredNoteIdentity(
+                    noteID: noteID,
+                    vaultID: vaultID,
+                    relativePath: relativePath,
+                    fingerprint: fingerprint
+                )
+            )
+        })
+    }
+
+    private func qaStableUUID(_ source: String) -> UUID {
+        let digest = SHA256.hash(data: Data(source.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let value = [
+            String(digest.prefix(8)),
+            String(digest.dropFirst(8).prefix(4)),
+            String(digest.dropFirst(12).prefix(4)),
+            String(digest.dropFirst(16).prefix(4)),
+            String(digest.dropFirst(20).prefix(12)),
+        ].joined(separator: "-")
+        return UUID(uuidString: value)!
+    }
+
+    private func portableResearchRecordURL(_ id: UUID) -> URL {
+        triptychDirectory.appendingPathComponent(
+            ".scholium/research-records/v1/records/\(id.uuidString.lowercased()).json"
+        )
+    }
+
+    private func writePortableResearchRecord(
+        _ record: [String: Any],
+        id: UUID
+    ) throws {
+        let recordURL = portableResearchRecordURL(id)
+        try FileManager.default.createDirectory(
+            at: recordURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o755)]
+        )
+        try JSONSerialization.data(
+            withJSONObject: record,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        ).write(to: recordURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: recordURL.path
         )
     }
 
