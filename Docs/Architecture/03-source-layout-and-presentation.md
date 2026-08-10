@@ -11,8 +11,9 @@ native presentation, interface composition, and localization.
   the bounded native window-shell adapters described below.
 - `Scholium/UI/PreviewCatalog` contains the retained deterministic Debug-only
   research-workflow catalog for the modular Skill-run sheet, categorized
-  Research Guidance, bounded write-set permission, pairing, returned result,
-  Researcher Evaluation, and resizable Triptych-keyed Research Records window.
+  Research Guidance, bounded write-set permission, the production Agent Result
+  Review surface with synthetic records, and the resizable Triptych-keyed
+  Research Records window.
   It resolves or mutates no production
   state and is reachable only through one suppressed Debug window and an
   explicitly enabled QA command.
@@ -140,14 +141,30 @@ that receives the remaining width up to a 680pt measure and a default-expanded,
 toolbar-collapsible 260–304pt Evidence & Judgment rail, separated by one 1pt
 adaptive divider. Both planes use the same Document background. Reading owns the finalized
 result, attributed record, continuity relation, and Reading Lead links;
-Evidence directly owns participants, verified Context Used, observed effects,
-and the saved researcher judgment. One default-closed Technical Details group
+the fixed processing rail presents Researcher Response, Change Decision,
+Effects, Context Used, Participants, then Technical Details. Researcher
+Response opens one Evaluation-first, Method-Feedback-second editor whose single
+Save Response operation is atomic. Change Decision reads current source state,
+records Keep or current-state completion, and opens the shared comparison. One
+default-closed Technical Details group
 owns schema, identity, and exact revision hashes; confirmed permanent deletion
 remains in the Record header. Record
-detail exposes neither revision-comparison nor Method-feedback controls; Method
-Feedback remains with the parent Action presentation. A Context Used Note or
+detail is the sole finalized-result, Evaluation, and Method Feedback processing
+route; the parent Action presentation contains none of those subtrees. A Context Used Note or
 Record entry is interactive only when its current exact destination resolves;
 otherwise its exact locator and testimony remain selectable and noninteractive.
+
+The attached comparison shell and unified exact-diff presentation are shared
+with Document Conflict, while each workflow retains its own inputs and
+operations. Record comparison accepts only confirmed-change revision pairs,
+folds complete documents and long unchanged line ranges, and selects complete
+documents rather than hunks. A validated `.reviewResult` route grants direct
+Undo for the exact finalized result only while that Records window lives;
+the attached sheet keeps that granted fingerprint immutable and disables its
+Undo controls if any authoritative reread observes a different finalized result.
+Source validation and restoration remain Application/Core responsibilities.
+Document Conflict retains Return to Editing and Reload from Disk and never
+receives the Record grant.
 
 The window renders finished portable Discussion and nonconversational Action
 records, preserves attribution and evidence-class qualifications, exposes

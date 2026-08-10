@@ -11,6 +11,14 @@ package enum ResearchRecordsScope: String, CaseIterable, Hashable, Sendable {
     case triptych
 }
 
+/// Why a Records window was asked to present a destination. A review request
+/// may grant transient, window-local direct-undo presentation; ordinary
+/// browsing never does.
+package enum ResearchRecordsWindowPurpose: Hashable, Sendable {
+    case browse
+    case reviewResult
+}
+
 /// The complete transient destination owned by one Triptych-keyed Research
 /// Records window. Portable Records remain the only durable owner.
 package enum ResearchRecordsRoute: Equatable, Sendable {
@@ -35,23 +43,29 @@ package struct ResearchRecordsWindowRequest: Hashable, Sendable {
     package let triptychID: UUID
     package let noteID: UUID?
     package let initialView: ResearchRecordsViewKind
+    package let purpose: ResearchRecordsWindowPurpose
     package let recordID: UUID?
     package let expectedRecordFingerprint: DocumentFingerprint?
+    package let expectedFinalizedResultFingerprint: DocumentFingerprint?
     package let statementID: UUID?
 
     package init(
         triptychID: UUID,
         noteID: UUID? = nil,
         initialView: ResearchRecordsViewKind = .records,
+        purpose: ResearchRecordsWindowPurpose = .browse,
         recordID: UUID? = nil,
         expectedRecordFingerprint: DocumentFingerprint? = nil,
+        expectedFinalizedResultFingerprint: DocumentFingerprint? = nil,
         statementID: UUID? = nil
     ) {
         self.triptychID = triptychID
         self.noteID = noteID
         self.initialView = initialView
+        self.purpose = purpose
         self.recordID = recordID
         self.expectedRecordFingerprint = expectedRecordFingerprint
+        self.expectedFinalizedResultFingerprint = expectedFinalizedResultFingerprint
         self.statementID = statementID
     }
 }

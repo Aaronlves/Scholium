@@ -2322,8 +2322,8 @@ struct WindowControllerArchitectureTests {
         #expect(toolbarSource.contains("@ObservedObject var shellState: WindowShellState"))
     }
 
-    @Test("Return and Record windows share Result and Evaluation while Method Feedback stays Action-owned")
-    func sharedResearchEvaluationSurface() throws {
+    @Test("Research Records own one atomic response and source-change decision surface")
+    func researchRecordProcessingSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -2334,14 +2334,20 @@ struct WindowControllerArchitectureTests {
                 encoding: .utf8
             )
         }
-        let evaluation = try source(
-            "Scholium/Views/ResearchActions/ResearcherEvaluationView.swift"
-        )
         let actionPanel = try source(
             "Scholium/Views/ResearchActions/ResearchActionPanelView.swift"
         )
         let recordBrowser = try source(
             "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+        )
+        let processing = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
+        )
+        let comparison = try source(
+            "Scholium/UI/Components/ExactSourceComparisonView.swift"
+        )
+        let noteContent = try source(
+            "Scholium/Views/Note/NoteContentView.swift"
         )
         let permissions = try source(
             "Scholium/Views/ResearchActions/ResearchWriteSetExtensionView.swift"
@@ -2350,68 +2356,83 @@ struct WindowControllerArchitectureTests {
             "ScholiumApplication/ResearchWorkspaceOperations.swift"
         )
 
-        for sharedView in [
+        for removedActionSurface in [
             "ResearchFinalizedResultView(",
             "ResearcherEvaluationView(",
+            "ResearchMethodFeedbackView(",
         ] {
-            #expect(actionPanel.contains(sharedView))
-            #expect(recordBrowser.contains(sharedView))
+            #expect(!actionPanel.contains(removedActionSurface))
         }
-        #expect(actionPanel.contains("ResearchMethodFeedbackView("))
-        #expect(!recordBrowser.contains("ResearchMethodFeedbackView("))
-        #expect(recordBrowser.contains("ResearchRecordTechnicalDetails("))
-        for semanticBoundary in [
-            "RESEARCH RESULT", "RESEARCHER EVALUATION", "METHOD FEEDBACK",
-            "does not change the Agent's finalized result",
-            "does not by itself establish a philosophical truth",
-            "Source or Attribution", "Concept or Interpretation",
-            "Argument or Objection/Reply",
-            "Epistemic Identity or Researcher State",
-            "Evidential Scope or Restraint", "Research Help or Next Step",
-            "No Issues Observed", "Valuable Discovery",
+        #expect(recordBrowser.contains("ResearchFinalizedResultView(record: record)"))
+        #expect(recordBrowser.contains("ResearchRecordResearcherResponseSection("))
+        #expect(recordBrowser.contains("ResearchRecordChangeDecisionSection("))
+
+        let fixedOrder = [
+            "ResearchRecordResearcherResponseSection(",
+            "ResearchRecordChangeDecisionSection(",
+            "ResearchRecordEvidenceSection(",
+            "ResearchRecordContextUseSection(",
+            "ResearchRecordParticipantSection(",
+            "ResearchRecordTechnicalDetails(record: record)",
+        ].compactMap { recordBrowser.range(of: $0)?.lowerBound }
+        #expect(fixedOrder.count == 6)
+        #expect(zip(fixedOrder, fixedOrder.dropFirst()).allSatisfy {
+            $0.0 < $0.1
+        })
+
+        for atomicResponseBoundary in [
+            "Text(\"Researcher Response\")",
+            "Text(\"RESEARCHER EVALUATION\")",
+            "Text(\"METHOD FEEDBACK\")",
+            "Button(\"Save Response\"",
+            "ResearcherResponseDraft(",
+            "expectedEvaluation",
+            "expectedFeedback",
+            ".interactiveDismissDisabled(isDirty || operationInFlight)",
+            "Discard the Unsaved Response?",
+            "Clear Saved Response Content?",
+            "Reload Saved Response…",
+            "Improve Current Method…",
         ] {
-            #expect(evaluation.contains(semanticBoundary))
+            #expect(processing.contains(atomicResponseBoundary))
         }
-        #expect(evaluation.contains("let expectedRevision = baseline.revision"))
-        #expect(evaluation.contains("record.finalizedResultFingerprint()"))
-        #expect(evaluation.contains("Reload Saved Evaluation…"))
-        #expect(evaluation.contains("Discard This Draft and Reload?"))
-        #expect(evaluation.contains(
-            ".disabled(status == .saving || isReloading)"
+        #expect(!processing.contains("Save Evaluation"))
+        #expect(!processing.contains("Save Method Feedback"))
+
+        for changeDecisionBoundary in [
+            "Button(\"Finish Review\")",
+            "Button(\"Keep Agent Changes\")",
+            "Button(\"Finish Review with Current State…\")",
+            "Button(\"Compare Changes…\")",
+            "Button(\"Undo Selected Documents…\")",
+            "Return to Result",
+            "canDirectlyUndo",
+            "ResearchRecordDirectUndoGrantState",
+            "directUndoGrant.finalizedResultFingerprint",
+            "Reload Result",
+        ] {
+            #expect(processing.contains(changeDecisionBoundary))
+        }
+        #expect(processing.contains("String(localized: \"Expanded\")"))
+        #expect(processing.contains("String(localized: \"Collapsed\")"))
+        #expect(noteContent.contains(".accessibilityLabel(conflict.relativePath)"))
+        #expect(noteContent.contains(
+            "isDocumentExpanded ? \"Expanded\" : \"Collapsed\""
         ))
-        #expect(actionPanel.contains("reloadResearcherEvaluation()"))
-        #expect(recordBrowser.contains("reload: reload"))
-        for operationLifetimeBoundary in [
-            "operationStateDidChange(true)",
-            "operationStateDidChange(false)",
+        for sharedComparisonBoundary in [
+            "ExactSourceComparisonSheetLayout",
+            "ExactSourceComparisonView",
+            "\\(count) unchanged lines",
+            "contextLineCount = 3",
         ] {
-            #expect(evaluation.contains(operationLifetimeBoundary))
+            #expect(comparison.contains(sharedComparisonBoundary))
         }
-        #expect(actionPanel.contains("|| evaluationOperationInFlight"))
-        #expect(recordBrowser.contains(
-            "hasUnsavedChanges || evaluationOperationInFlight"
-        ))
-        #expect(recordBrowser.contains(".disabled(evaluationOperationInFlight)"))
         #expect(researchOperations.contains(
             "case .replacementCommitUncertain(let reason)"
         ))
         #expect(researchOperations.contains(
             "ScholiumApplicationError.operationCommitUncertain("
         ))
-        #expect(evaluation.contains("sourceEvaluationRevision:"))
-        #expect(evaluation.contains("Improve Current Method…"))
-        #expect(evaluation.contains(
-            "it does not copy or reinterpret the evaluation automatically"
-        ))
-        for identifier in [
-            "scholium.researchResult.finalized",
-            "scholium.researchEvaluation.saveState",
-            "scholium.researchEvaluation.note",
-            "scholium.researchEvaluation.save",
-            "scholium.methodFeedback.improve",
-        ] {
-            #expect(evaluation.contains(identifier))
-        }
 
         #expect(permissions.contains(".accessibilityAddTraits(.isModal)"))
         #expect(permissions.contains(".toggleStyle(.checkbox)"))
@@ -2424,7 +2445,6 @@ struct WindowControllerArchitectureTests {
         ))
         #expect(!permissions.contains("Allow Entire Triptych"))
     }
-
     @Test("Permission presentation keeps decisions separate from execution guarantees")
     func permissionPresentationUsesDecisionCopy() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

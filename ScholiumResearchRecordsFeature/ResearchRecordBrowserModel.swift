@@ -626,6 +626,7 @@ package final class ResearchRecordBrowserModel {
     private var currentRecords: [PortableResearchRecord] = []
     private var currentFingerprints: [UUID: DocumentFingerprint] = [:]
     private var activeRecordLocator: ResearchRecordsWindowRequest?
+    private var directUndoResultFingerprints: [UUID: DocumentFingerprint] = [:]
     @ObservationIgnored private var recordSearch:
         (
             @MainActor @Sendable (
@@ -931,6 +932,20 @@ package final class ResearchRecordBrowserModel {
         recordsByID[id]
     }
 
+    /// Direct undo is a transient presentation grant owned by this window
+    /// model. It survives navigation and researcher-owned Record mutations,
+    /// but not a changed finalized result or the window's destruction.
+    package func hasDirectUndoEligibility(
+        for record: PortableResearchRecord
+    ) -> Bool {
+        guard let directUndoResultFingerprint = directUndoResultFingerprints[record.id],
+              (try? record.finalizedResultFingerprint())
+                == directUndoResultFingerprint else {
+            return false
+        }
+        return true
+    }
+
     package func continuationParent(
         for record: PortableResearchRecord
     ) -> PortableResearchRecord? {
@@ -1020,6 +1035,7 @@ package final class ResearchRecordBrowserModel {
             })
         recordsByID = unique
         currentRecords = Array(unique.values)
+        reconcileDirectUndoEligibility()
         allEntries = currentRecords.map(Self.makeEntry).sorted(by: Self.ordersEntries)
         recommendationIndex = ResearchLiteratureRecommendationDerivedIndex(
             records: currentRecords
@@ -1032,16 +1048,39 @@ package final class ResearchRecordBrowserModel {
 
     private func applyRecordLocator(_ request: ResearchRecordsWindowRequest) {
         guard let recordID = request.recordID else { return }
-        guard let record = currentRecords.first(where: { $0.id == recordID }),
-            let expected = request.expectedRecordFingerprint,
-            currentFingerprints[recordID] == expected
-        else {
+        guard let record = currentRecords.first(where: { $0.id == recordID }) else {
             route = .collection
             focusedStatementID = nil
             presentError(
                 "The Research Record changed or was deleted. Search results must be refreshed."
             )
             return
+        }
+        switch request.purpose {
+        case .browse:
+            guard let expected = request.expectedRecordFingerprint,
+                  currentFingerprints[recordID] == expected else {
+                route = .collection
+                focusedStatementID = nil
+                presentError(
+                    "The Research Record changed or was deleted. Search results must be refreshed."
+                )
+                return
+            }
+        case .reviewResult:
+            guard record.kind == .action,
+                  let expected = request.expectedFinalizedResultFingerprint,
+                  (try? record.finalizedResultFingerprint()) == expected else {
+                route = .collection
+                focusedStatementID = nil
+                presentError(
+                    "The Agent result changed or is no longer available. Refresh the Action status before reviewing it."
+                )
+                return
+            }
+            if !record.researcherReviewIsComplete {
+                directUndoResultFingerprints[recordID] = expected
+            }
         }
         if let statementID = request.statementID,
             !record.statements.contains(where: { $0.id == statementID })
@@ -1058,6 +1097,14 @@ package final class ResearchRecordBrowserModel {
         selectedRecordID = recordID
         focusedStatementID = request.statementID
         refilterRecords()
+    }
+
+    private func reconcileDirectUndoEligibility() {
+        directUndoResultFingerprints = directUndoResultFingerprints.filter {
+            recordID, fingerprint in
+            guard let record = recordsByID[recordID] else { return false }
+            return (try? record.finalizedResultFingerprint()) == fingerprint
+        }
     }
 
     private func present(_ error: Error) {

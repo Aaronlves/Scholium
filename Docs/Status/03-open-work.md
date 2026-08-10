@@ -29,17 +29,13 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
-- Cut result processing over to Records: remove finalized Result, Evaluation,
-  and Method Feedback from the Action sheet; implement the fixed processing
-  rail, combined Response editor, Change Decision controls, shared folding
-  comparison sheet, per-document outcomes, and window-lifetime direct-undo
-  eligibility. Preserve dirty drafts across exact-Record invalidation and make
-  every in-flight operation block dismissal.
 - Implement the post-handoff transition and notification delivery: close after
   successful Copy Handoff with exact focus return, consume the activity
   projection in Action rows and compact status sheets, and add privacy-bounded
   foreground/system notifications with exact Record routing, authorization,
-  deduplication, and disposition cleanup. Result arrival must not open,
+  deduplication, and disposition cleanup. The Action row and notification click
+  must become the production `.reviewResult` request producers; ordinary
+  Records browsing must remain nonauthorizing. Result arrival must not open,
   retarget, focus, or activate a Records window by itself.
 
 ## Editor input and semantics

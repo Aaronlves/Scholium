@@ -132,19 +132,29 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let comparisonSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ExactSourceComparisonView.swift"
+            ),
+            encoding: .utf8
+        )
 
         #expect(noteSource.contains("DocumentIntegrityPresentation.resolve("))
         #expect(noteSource.contains("ScholiumDocumentStatusToast("))
         #expect(noteSource.contains("scholium.documentStatus.autosaveFailed"))
         #expect(noteSource.contains("scholium.documentStatus.conflict"))
         #expect(noteSource.contains("AccessibilityNotification.Announcement"))
-        #expect(noteSource.contains(".frame(minWidth: 760, idealWidth: 900"))
+        #expect(noteSource.contains("ExactSourceComparisonSheetLayout("))
+        #expect(noteSource.contains("ExactSourceComparisonView("))
         #expect(noteSource.contains("ScrollView(.vertical)"))
-        #expect(noteSource.contains(".frame(width: max(viewport.size.width, 1)"))
-        #expect(noteSource.contains("width: diffTextWidth(in: viewport.size.width)"))
-        #expect(noteSource.contains(".lineLimit(nil)"))
-        #expect(!noteSource.contains("ScrollView([.vertical, .horizontal])"))
-        #expect(!noteSource.contains(".fixedSize(horizontal: true, vertical: false)"))
+        #expect(comparisonSource.contains(
+            "ScholiumMetrics.ResearchSheet.Comparison.minimumWidth"
+        ))
+        #expect(comparisonSource.contains(".lineLimit(nil)"))
+        #expect(!comparisonSource.contains("ScrollView([.vertical, .horizontal])"))
+        #expect(!comparisonSource.contains(
+            ".fixedSize(horizontal: true, vertical: false)"
+        ))
         #expect(!noteSource.contains(".alert(conflict == nil ? \"Save Failed\""))
         #expect(
             !noteSource.contains("Native save/conflict recovery owns focus while it is visible."))
@@ -421,8 +431,10 @@ struct FrontendArchitectureTests {
         )
         #expect(critique.contains("metadata.isAgentAttributed ? .agentAuthorship : .attention"))
 
-        let conflict = try #require(viewSources["Scholium/Views/Note/NoteContentView.swift"])
-        #expect(conflict.contains("case .startingOnly, .endingOnly: .attention"))
+        let comparison = try #require(
+            applicationSources["Scholium/UI/Components/ExactSourceComparisonView.swift"]
+        )
+        #expect(comparison.contains("case .startingOnly, .endingOnly: .attention"))
 
         let settings = try #require(viewSources["Scholium/Views/WorkspaceSettingsView.swift"])
         #expect(settings.contains("info.status == .available ? .confirmed : .attention"))
@@ -3233,9 +3245,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let evaluation = try String(
+        let response = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/ResearchActions/ResearcherEvaluationView.swift"
+                "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
             ),
             encoding: .utf8
         )
@@ -3249,8 +3261,8 @@ struct FrontendArchitectureTests {
             #expect(browser.contains(requiredSupportingPresentation))
         }
         #expect(
-            evaluation.contains(
-                "Text(statusMessage)\n                    .font(ScholiumTypography.interface(.compact))"
+            response.contains(
+                "Text(statusMessage)\n                            .font(ScholiumTypography.interface(.compact))"
             )
         )
         #expect(
@@ -3283,11 +3295,11 @@ struct FrontendArchitectureTests {
         )
         #expect(!readingLeadRow.contains("ScholiumTypography.scholarly"))
         let evidenceEntryStart = try #require(
-            browser.range(of: "private struct ResearchRecordEvidenceEntry: View {")
+            browser.range(of: "struct ResearchRecordEvidenceEntry: View {")
         )
         let evidenceEntryEnd = try #require(
             browser.range(
-                of: "private struct ResearchRecordEvidenceSectionHeader: View {",
+                of: "struct ResearchRecordEvidenceSectionHeader: View {",
                 range: evidenceEntryStart.upperBound..<browser.endIndex
             )
         )
@@ -3796,6 +3808,12 @@ struct FrontendArchitectureTests {
         let records = try source(
             "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
         )
+        let processing = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
+        )
+        let comparison = try source(
+            "Scholium/UI/Components/ExactSourceComparisonView.swift"
+        )
 
         for token in [
             "ScholiumMetrics.ResearchSheet.Action.minimumWidth",
@@ -3806,19 +3824,27 @@ struct FrontendArchitectureTests {
         }
         for token in [
             "ScholiumMetrics.ResearchSheet.ReadingLeadNote.minimumWidth",
-            "ScholiumMetrics.ResearchSheet.RecordEvaluation.minimumWidth",
             "scholium.researchRecommendation.noteSheet",
-            "scholium.researchRecord.evaluationSheet",
         ] {
             #expect(records.contains(token))
         }
+        for token in [
+            "ScholiumMetrics.ResearchSheet.ResearcherResponse.minimumWidth",
+            "scholium.researchResponse.sheet",
+            "scholium.researchRecord.comparison",
+        ] {
+            #expect(processing.contains(token))
+        }
+        #expect(comparison.contains(
+            "ScholiumMetrics.ResearchSheet.Comparison.minimumWidth"
+        ))
         #expect(
-            records.components(
+            (records + processing).components(
                 separatedBy: ".font(ScholiumTypography.interface(.primaryTitle))"
             ).count >= 3
         )
         #expect(!action.contains(".frame(minWidth: 520, idealWidth: 660"))
-        #expect(!records.contains(".frame(minWidth: 480, idealWidth: 560"))
+        #expect(!processing.contains(".frame(minWidth: 620, idealWidth: 700"))
         #expect(!records.contains("minWidth: 440,"))
     }
 

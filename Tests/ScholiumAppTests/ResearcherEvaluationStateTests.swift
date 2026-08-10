@@ -3,56 +3,42 @@ import Testing
 
 @testable import ScholiumApp
 
-@Suite("Researcher Evaluation state")
+@Suite("Research result processing state")
 @MainActor
 struct ResearcherEvaluationStateTests {
     @Test("Out-of-date drafts stay blocked while the researcher edits")
     func outOfDateDraftStaysBlocked() {
-        let status = ResearchFormSaveStatus.outOfDate
+        let status = ResearcherResponseEditorStatus.outOfDate
 
         #expect(
-            status.afterEvaluationDraftChange(
-                isDirty: true,
-                hasSavedEvaluation: true
-            ) == .outOfDate
+            status.afterDraftChange(isDirty: true) == .outOfDate
         )
-        #expect(!status.permitsEvaluationMutation)
+        #expect(!status.permitsMutation)
     }
 
     @Test("Saving locks mutation until the submitted revision resolves")
     func savingLocksMutation() {
-        let status = ResearchFormSaveStatus.saving
+        let status = ResearcherResponseEditorStatus.saving
 
         #expect(
-            status.afterEvaluationDraftChange(
-                isDirty: true,
-                hasSavedEvaluation: true
-            ) == .saving
+            status.afterDraftChange(isDirty: true) == .saving
         )
-        #expect(!status.permitsEvaluationMutation)
+        #expect(!status.permitsMutation)
     }
 
     @Test("Ordinary edits recover the correct local and saved states")
     func ordinaryDraftTransitions() {
         #expect(
-            ResearchFormSaveStatus.saveFailed.afterEvaluationDraftChange(
-                isDirty: true,
-                hasSavedEvaluation: true
-            ) == .unsavedDraft
+            ResearcherResponseEditorStatus.saveFailed.afterDraftChange(
+                isDirty: true
+            ) == .unsaved
         )
         #expect(
-            ResearchFormSaveStatus.unsavedDraft.afterEvaluationDraftChange(
-                isDirty: false,
-                hasSavedEvaluation: true
-            ) == .saved
-        )
-        #expect(
-            ResearchFormSaveStatus.unsavedDraft.afterEvaluationDraftChange(
-                isDirty: false,
-                hasSavedEvaluation: false
+            ResearcherResponseEditorStatus.unsaved.afterDraftChange(
+                isDirty: false
             ) == .clean
         )
-        #expect(ResearchFormSaveStatus.unsavedDraft.permitsEvaluationMutation)
+        #expect(ResearcherResponseEditorStatus.unsaved.permitsMutation)
 
         let committed = ScholiumApplicationError.operationCommittedButRefreshFailed(
             operation: "Evaluation save",
@@ -67,22 +53,79 @@ struct ResearcherEvaluationStateTests {
         #expect(committed.mustNotRetryMutation)
         #expect(uncertain.mustNotRetryMutation)
         #expect(
-            ResearchFormSaveStatus.afterEvaluationMutationFailure(committed)
+            ResearcherResponseEditorStatus.afterMutationFailure(committed)
                 == .outOfDate
         )
         #expect(
-            ResearchFormSaveStatus.afterEvaluationMutationFailure(uncertain)
+            ResearcherResponseEditorStatus.afterMutationFailure(uncertain)
                 == .outOfDate
         )
         #expect(
-            ResearchFormSaveStatus.afterEvaluationMutationFailure(
+            ResearcherResponseEditorStatus.afterMutationFailure(
                 PortableResearcherResponseMutationError.recordUnavailable
             ) == .outOfDate
         )
         #expect(
-            ResearchFormSaveStatus.afterEvaluationMutationFailure(
+            ResearcherResponseEditorStatus.afterMutationFailure(
                 EvaluationTestFailure.provenNotCommitted
             ) == .saveFailed
+        )
+    }
+
+    @Test("Direct Undo never adopts a different finalized-result fingerprint")
+    func directUndoGrantCannotUpgrade() {
+        let granted = DocumentFingerprint(content: "granted finalized result")
+        var state = ResearchRecordDirectUndoGrantState(
+            finalizedResultFingerprint: granted,
+            isValid: true
+        )
+
+        let initialMatch = state.reconcile(
+            observedFinalizedResultFingerprint: granted
+        )
+        #expect(initialMatch)
+        let replacementMatch = state.reconcile(
+            observedFinalizedResultFingerprint: DocumentFingerprint(
+                content: "replacement finalized result"
+            )
+        )
+        #expect(!replacementMatch)
+        #expect(!state.isValid)
+        #expect(state.finalizedResultFingerprint == granted)
+        let cannotRegainValidity = state.reconcile(
+            observedFinalizedResultFingerprint: granted
+        )
+        #expect(!cannotRegainValidity)
+    }
+
+    @Test("Change decisions require reload only when the mutation outcome is stale")
+    func changeDecisionFailureRecovery() {
+        let committed = ScholiumApplicationError.operationCommittedButRefreshFailed(
+            operation: "Change decision",
+            reason: "Injected refresh failure"
+        )
+        let uncertain = ScholiumApplicationError.operationCommitUncertain(
+            operation: "Change decision",
+            reason: "Injected commit uncertainty"
+        )
+
+        #expect(
+            ResearchRecordChangeDecisionFailureRecovery.after(committed)
+                == .reloadRequired
+        )
+        #expect(
+            ResearchRecordChangeDecisionFailureRecovery.after(uncertain)
+                == .reloadRequired
+        )
+        #expect(
+            ResearchRecordChangeDecisionFailureRecovery.after(
+                PortableResearcherReviewMutationError.staleReviewRevision
+            ) == .reloadRequired
+        )
+        #expect(
+            ResearchRecordChangeDecisionFailureRecovery.after(
+                EvaluationTestFailure.provenNotCommitted
+            ) == .retry
         )
     }
 

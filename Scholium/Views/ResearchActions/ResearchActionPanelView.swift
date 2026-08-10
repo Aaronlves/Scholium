@@ -9,7 +9,7 @@ struct ResearchActionPanelContext {
 }
 
 /// One native sheet for every Action. It keeps the Action, target, possible
-/// document effect, academic inputs, Agent status, result, and recovery routes
+/// document effect, academic inputs, Agent status, and recovery routes
 /// visible without turning implementation identities into researcher tasks.
 struct ResearchActionPanelView: View {
     @ObservedObject private var controller: ResearchActionController
@@ -19,9 +19,6 @@ struct ResearchActionPanelView: View {
     @State private var focalNoteQuery = ""
     @State private var pendingHandoff: PendingHandoff?
     @State private var handoffErrorMessage: String?
-    @State private var evaluationHasUnsavedChanges = false
-    @State private var evaluationOperationInFlight = false
-    @State private var confirmsDiscardEvaluation = false
     @State private var confirmsEndAction = false
 
     init(
@@ -44,62 +41,10 @@ struct ResearchActionPanelView: View {
                     platformInputs
                     academicInputs
                     status
-                    if let result = controller.resultRecord {
+                    if !controller.continuationRecords.isEmpty {
                         ScholiumStructuralRule()
-                        ResearchFinalizedResultView(record: result)
-                        if !controller.continuationRecords.isEmpty {
-                            ScholiumStructuralRule()
-                            ResearchActionContinuationRecordsView(
-                                records: controller.continuationRecords
-                            )
-                        }
-                        ScholiumStructuralRule()
-                        ResearcherEvaluationView(
-                            record: result,
-                            save: {
-                                draft, expectedRevision, resultFingerprint in
-                                try await controller.saveResearcherEvaluation(
-                                    draft: draft,
-                                    expectedEvaluationRevision: expectedRevision,
-                                    expectedResultFingerprint: resultFingerprint
-                                )
-                            },
-                            clear: { expectedRevision, resultFingerprint in
-                                try await controller.clearResearcherEvaluation(
-                                    expectedEvaluationRevision: expectedRevision,
-                                    expectedResultFingerprint: resultFingerprint
-                                )
-                            },
-                            reload: {
-                                try await controller.reloadResearcherEvaluation()
-                            },
-                            draftStateDidChange: {
-                                evaluationHasUnsavedChanges = $0
-                            },
-                            operationStateDidChange: {
-                                evaluationOperationInFlight = $0
-                            }
-                        )
-                        ScholiumStructuralRule()
-                        ResearchMethodFeedbackView(
-                            record: result,
-                            save: {
-                                draft, expectedRevision, resultFingerprint in
-                                try await controller.saveMethodFeedbackComment(
-                                    draft: draft,
-                                    expectedCommentRevision: expectedRevision,
-                                    expectedResultFingerprint: resultFingerprint
-                                )
-                            },
-                            clear: { expectedRevision, resultFingerprint in
-                                try await controller.clearMethodFeedbackComment(
-                                    expectedCommentRevision: expectedRevision,
-                                    expectedResultFingerprint: resultFingerprint
-                                )
-                            },
-                            startImprovement: {
-                                try await controller.startMethodImprovement()
-                            }
+                        ResearchActionContinuationRecordsView(
+                            records: controller.continuationRecords
                         )
                     }
                 }
@@ -137,8 +82,6 @@ struct ResearchActionPanelView: View {
         .interactiveDismissDisabled(
             controller.phase == .preparing
                 || controller.phase == .cancelling
-                || evaluationHasUnsavedChanges
-                || evaluationOperationInFlight
         )
         .onAppear { focusFirstAcademicTextField() }
         .onChange(of: controller.phase) { _, phase in
@@ -155,18 +98,6 @@ struct ResearchActionPanelView: View {
             case .idle, .loading, .preparing, .cancelling:
                 break
             }
-        }
-        .alert(
-            "Discard the Unsaved Evaluation Draft?",
-            isPresented: $confirmsDiscardEvaluation
-        ) {
-            Button("Keep Editing", role: .cancel) {}
-            Button("Discard Draft and Close", role: .destructive) {
-                evaluationHasUnsavedChanges = false
-                context.dismiss()
-            }
-        } message: {
-            Text("The saved evaluation and finalized Research Result will remain unchanged.")
         }
         .confirmationDialog(
             "End this Action?",
@@ -572,17 +503,12 @@ struct ResearchActionPanelView: View {
     private var footer: some View {
         HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
             Button(controller.preparation == nil ? "Cancel" : "Done") {
-                if evaluationHasUnsavedChanges {
-                    confirmsDiscardEvaluation = true
-                } else {
-                    context.dismiss()
-                }
+                context.dismiss()
             }
             .keyboardShortcut(.cancelAction)
             .disabled(
                 controller.phase == .preparing
                     || controller.phase == .cancelling
-                    || evaluationOperationInFlight
             )
             .accessibilityIdentifier("scholium.researchAction.dismiss")
             if controller.canCancelPreparedRun {

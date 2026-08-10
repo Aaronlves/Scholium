@@ -386,6 +386,58 @@ public enum ResearchRecordChangeUndoStatus: Hashable, Sendable {
     case commitUncertain
 }
 
+/// Current authoritative source fact for one Agent-confirmed change. This is
+/// a disposable Application projection, never a second durable source owner.
+public enum ResearchRecordChangeCurrentStatus: Hashable, Sendable {
+    case agentEndingRevision
+    case startingRevision
+    case superseded
+    case unavailable
+}
+
+public struct ResearchRecordChangeCurrentState: Hashable, Identifiable, Sendable {
+    public let noteID: UUID
+    public let currentRelativePath: String?
+    public let status: ResearchRecordChangeCurrentStatus
+    public let observedRevision: DocumentFingerprint?
+
+    public var id: UUID { noteID }
+
+    public init(
+        noteID: UUID,
+        currentRelativePath: String?,
+        status: ResearchRecordChangeCurrentStatus,
+        observedRevision: DocumentFingerprint?
+    ) {
+        self.noteID = noteID
+        self.currentRelativePath = currentRelativePath
+        self.status = status
+        self.observedRevision = observedRevision
+    }
+}
+
+public struct ResearchRecordChangeReviewState: Sendable {
+    public let recordID: UUID
+    public let reviewRevision: UUID?
+    public let finalizedResultFingerprint: DocumentFingerprint
+    public let documents: [ResearchRecordChangeCurrentState]
+    public let isComplete: Bool
+
+    public init(
+        recordID: UUID,
+        reviewRevision: UUID?,
+        finalizedResultFingerprint: DocumentFingerprint,
+        documents: [ResearchRecordChangeCurrentState],
+        isComplete: Bool
+    ) {
+        self.recordID = recordID
+        self.reviewRevision = reviewRevision
+        self.finalizedResultFingerprint = finalizedResultFingerprint
+        self.documents = documents
+        self.isComplete = isComplete
+    }
+}
+
 public struct ResearchRecordChangeUndoDocumentResult: Hashable, Identifiable, Sendable {
     public let noteID: UUID
     public let status: ResearchRecordChangeUndoStatus

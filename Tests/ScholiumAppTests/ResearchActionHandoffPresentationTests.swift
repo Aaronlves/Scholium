@@ -49,7 +49,7 @@ struct ResearchActionHandoffPresentationTests {
             repositoryRoot: repositoryRoot
         )
         let methodFeedback = try source(
-            "Scholium/Views/ResearchActions/ResearcherEvaluationView.swift",
+            "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift",
             repositoryRoot: repositoryRoot
         )
         let discussion = try source(
@@ -84,7 +84,7 @@ struct ResearchActionHandoffPresentationTests {
         #expect(!methodFeedback.contains("scholium.methodFeedback.pairingCode"))
         #expect(!methodFeedback.contains("Text(\"Pairing Code\")"))
         #expect(methodFeedback.contains("Pairing Code: \\(handoff.pairingCode.rawValue)"))
-        #expect(methodFeedback.contains("Copy Improvement Handoff"))
+        #expect(methodFeedback.contains("Button(\"Copy Handoff\")"))
     }
 
     private func source(_ relativePath: String, repositoryRoot: URL) throws -> String {

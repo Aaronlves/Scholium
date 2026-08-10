@@ -618,6 +618,13 @@ public actor ResearchOperations:
         )
     }
 
+    public func researchRecordChangeReviewState(
+        recordID: UUID
+    ) async throws -> ResearchRecordChangeReviewState {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchRecordChangeReviewState(recordID: recordID)
+    }
+
     public func keepResearchRecordChanges(
         recordID: UUID,
         expectedReviewRevision: UUID?,

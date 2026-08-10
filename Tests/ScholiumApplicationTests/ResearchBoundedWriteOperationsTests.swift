@@ -444,6 +444,16 @@ struct ResearchBoundedWriteOperationsTests {
             Issue.record("Rename before direct undo failed: \(error)")
             throw error
         }
+        let currentState = try await handle.research
+            .researchRecordChangeReviewState(recordID: record.id)
+        #expect(currentState.recordID == record.id)
+        #expect(currentState.reviewRevision == nil)
+        #expect(currentState.finalizedResultFingerprint
+            == (try record.finalizedResultFingerprint()))
+        #expect(currentState.documents.map(\.status) == [.agentEndingRevision])
+        #expect(currentState.documents.first?.currentRelativePath
+            == "Renamed Analysis.md")
+        #expect(currentState.documents.first?.observedRevision == change.endingRevision)
         let kept = try await handle.research.keepResearchRecordChanges(
             recordID: record.id,
             expectedReviewRevision: nil,
@@ -479,6 +489,11 @@ struct ResearchBoundedWriteOperationsTests {
             == .restoredStartingRevision)
         #expect(try await handle.documents.load(moved.destination).sourceBytes
             == Data(externalSource.utf8))
+        let restoredState = try await handle.research
+            .researchRecordChangeReviewState(recordID: record.id)
+        #expect(restoredState.documents.map(\.status) == [.startingRevision])
+        #expect(restoredState.documents.first?.observedRevision == change.startingRevision)
+        #expect(restoredState.isComplete)
         let reconciled = try await handle.research.undoResearchRecordChanges(
             recordID: record.id,
             selectedNoteIDs: [change.noteID],
@@ -494,6 +509,14 @@ struct ResearchBoundedWriteOperationsTests {
                 expectedResultFingerprint: try record.finalizedResultFingerprint()
             )
         }
+        _ = try await handle.documents.moveToTrash(
+            moved.destination,
+            expectedRevision: change.startingRevision
+        )
+        let unavailableState = try await handle.research
+            .researchRecordChangeReviewState(recordID: record.id)
+        #expect(unavailableState.documents.map(\.status) == [.unavailable])
+        #expect(unavailableState.documents.first?.observedRevision == nil)
         await runtime.shutdown()
     }
 

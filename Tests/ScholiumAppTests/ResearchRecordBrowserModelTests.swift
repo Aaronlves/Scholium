@@ -37,6 +37,92 @@ private final class ResearchRecordProviderState {
 @Suite("Research Record browser")
 @MainActor
 struct ResearchRecordBrowserModelTests {
+    @Test("Review-result routing grants direct undo only to the exact live window")
+    func reviewResultRoutingOwnsTransientDirectUndoEligibility() throws {
+        let record = try makeChangedAction(
+            id: deterministicUUID(31),
+            noteID: deterministicUUID(32),
+            title: "Changed Analysis"
+        )
+        let resultFingerprint = try record.finalizedResultFingerprint()
+        let secondRecord = try makeChangedAction(
+            id: deterministicUUID(33),
+            noteID: deterministicUUID(34),
+            title: "Second Changed Analysis"
+        )
+        let secondResultFingerprint = try secondRecord.finalizedResultFingerprint()
+        let recordFingerprint = DocumentFingerprint(content: "portable record bytes")
+
+        let reviewModel = ResearchRecordBrowserModel()
+        reviewModel.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record, secondRecord],
+            fingerprints: [record.id: recordFingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                purpose: .reviewResult,
+                recordID: record.id,
+                expectedFinalizedResultFingerprint: resultFingerprint
+            )
+        )
+        #expect(reviewModel.selectedRecord?.id == record.id)
+        #expect(reviewModel.hasDirectUndoEligibility(for: record))
+
+        reviewModel.apply(ResearchRecordsWindowRequest(
+            triptychID: secondRecord.triptychID,
+            purpose: .reviewResult,
+            recordID: secondRecord.id,
+            expectedFinalizedResultFingerprint: secondResultFingerprint
+        ))
+        #expect(reviewModel.selectedRecord?.id == secondRecord.id)
+        #expect(reviewModel.hasDirectUndoEligibility(for: record))
+        #expect(reviewModel.hasDirectUndoEligibility(for: secondRecord))
+
+        let kept = try replacingReviewDisposition(
+            in: record,
+            with: try PortableResearcherReviewDisposition(reviewedChanges: [
+                try PortableResearcherReviewedChange(
+                    noteID: record.confirmedChanges[0].noteID,
+                    outcome: .keptAgentRevision,
+                    observedRevision: record.confirmedChanges[0].endingRevision
+                )
+            ])
+        )
+        reviewModel.acceptUpdatedRecord(kept)
+        #expect(reviewModel.hasDirectUndoEligibility(for: kept))
+
+        let browseModel = ResearchRecordBrowserModel()
+        browseModel.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: recordFingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                recordID: record.id,
+                expectedRecordFingerprint: recordFingerprint
+            )
+        )
+        #expect(!browseModel.hasDirectUndoEligibility(for: record))
+
+        let staleModel = ResearchRecordBrowserModel()
+        staleModel.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: recordFingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                purpose: .reviewResult,
+                recordID: record.id,
+                expectedFinalizedResultFingerprint: DocumentFingerprint(
+                    content: "a different finalized result"
+                )
+            )
+        )
+        #expect(staleModel.selectedRecord == nil)
+        #expect(!staleModel.hasDirectUndoEligibility(for: record))
+        #expect(staleModel.isShowingError)
+    }
+
     @Test("A Search Record locator selects only the exact Record revision and statement")
     func exactSearchRecordLocator() async throws {
         let record = try makeDiscussion(
@@ -1325,6 +1411,96 @@ struct ResearchRecordBrowserModelTests {
             literatureRecommendations: recommendations,
             startedAt: finishedAt,
             finishedAt: finishedAt
+        )
+    }
+
+    private func makeChangedAction(
+        id: UUID,
+        noteID: UUID,
+        title: String
+    ) throws -> PortableResearchRecord {
+        let starting = DocumentFingerprint(content: "starting \(title)")
+        let ending = DocumentFingerprint(content: "ending \(title)")
+        let note = try PortableResearchNoteRevision(
+            noteID: noteID,
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!,
+                relativePath: "Works/Argument.md"
+            ),
+            role: .analysis,
+            title: title,
+            startingRevision: starting,
+            endingRevision: ending
+        )
+        let method = try JSONDecoder().decode(
+            PortableResearchMethodReference.self,
+            from: Data(
+                """
+                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","practice_names":[],"profile_revision":{"sha256":"\(starting.sha256)","byteCount":\(starting.byteCount)}}
+                """.utf8
+            )
+        )
+        return try PortableResearchRecord(
+            id: id,
+            triptychID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
+            title: ResearchRecordTitle(title),
+            kind: .action,
+            action: ResearchActionRecordIdentity(actionID: .synthesize),
+            method: method,
+            participatingNotes: [note],
+            statements: [
+                try PortableResearchStatement(
+                    id: id,
+                    author: .agent,
+                    kind: .agentFeedback,
+                    attribution: "Agent",
+                    text: "The source was changed.",
+                    createdAt: Date(timeIntervalSince1970: 100)
+                )
+            ],
+            fidelityCompletion: .notRequired,
+            confirmedChanges: [
+                try PortableResearchConfirmedChange(
+                    noteID: noteID,
+                    actor: .agent,
+                    startingRevision: starting,
+                    endingRevision: ending
+                )
+            ],
+            startedAt: Date(timeIntervalSince1970: 90),
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+    }
+
+    private func replacingReviewDisposition(
+        in record: PortableResearchRecord,
+        with disposition: PortableResearcherReviewDisposition
+    ) throws -> PortableResearchRecord {
+        try PortableResearchRecord(
+            id: record.id,
+            triptychID: record.triptychID,
+            title: record.title,
+            kind: record.kind,
+            action: record.action,
+            method: record.method,
+            sourceReference: record.sourceReference,
+            continuationLineage: record.continuationLineage,
+            primaryNoteID: record.primaryNoteID,
+            participatingNotes: record.participatingNotes,
+            statements: record.statements,
+            resultDisposition: record.resultDisposition,
+            academicResults: record.academicResults,
+            contextUseReport: record.contextUseReport,
+            actuallyUsedMaterials: record.actuallyUsedMaterials,
+            fidelityCompletion: record.fidelityCompletion,
+            confirmedChanges: record.confirmedChanges,
+            discrepancies: record.discrepancies,
+            literatureRecommendations: record.literatureRecommendations,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            researcherEvaluation: record.researcherEvaluation,
+            methodFeedbackComment: record.methodFeedbackComment,
+            researcherReviewDisposition: disposition
         )
     }
 

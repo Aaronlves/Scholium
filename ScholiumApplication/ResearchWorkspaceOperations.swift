@@ -762,6 +762,55 @@ extension WorkspaceHandle {
         )
     }
 
+    func researchRecordChangeReviewState(
+        recordID: UUID
+    ) async throws -> ResearchRecordChangeReviewState {
+        try requireActive()
+        let record: PortableResearchRecord
+        do {
+            record = try await services.portableResearchRecordStore.record(id: recordID)
+        } catch ResearchRecordStoreV1Error.recordNotFound(_),
+                ResearchRecordStoreV1Error.recordPermanentlyDeleted(_) {
+            throw PortableResearcherReviewMutationError.recordUnavailable
+        }
+        guard record.kind == .action else {
+            throw ResearchRecordChangeReviewError.invalidSelection
+        }
+        var documents: [ResearchRecordChangeCurrentState] = []
+        for change in record.confirmedChanges {
+            guard let current = try await currentReviewSource(noteID: change.noteID) else {
+                documents.append(ResearchRecordChangeCurrentState(
+                    noteID: change.noteID,
+                    currentRelativePath: nil,
+                    status: .unavailable,
+                    observedRevision: nil
+                ))
+                continue
+            }
+            let status: ResearchRecordChangeCurrentStatus
+            if current.document.fingerprint == change.endingRevision {
+                status = .agentEndingRevision
+            } else if current.document.fingerprint == change.startingRevision {
+                status = .startingRevision
+            } else {
+                status = .superseded
+            }
+            documents.append(ResearchRecordChangeCurrentState(
+                noteID: change.noteID,
+                currentRelativePath: current.note.relativePath,
+                status: status,
+                observedRevision: current.document.fingerprint
+            ))
+        }
+        return ResearchRecordChangeReviewState(
+            recordID: record.id,
+            reviewRevision: record.researcherReviewDisposition?.revision,
+            finalizedResultFingerprint: try record.finalizedResultFingerprint(),
+            documents: documents,
+            isComplete: record.researcherReviewIsComplete
+        )
+    }
+
     func finishResearchRecordReviewWithCurrentState(
         recordID: UUID,
         expectedReviewRevision: UUID?,
@@ -1755,9 +1804,14 @@ extension WorkspaceHandle {
               !note.relativePath.hasPrefix("Trash/") else {
             return nil
         }
-        let document = try await repository(vaultID: note.vaultID).load(
-            relativePath: note.relativePath
-        )
+        let document: NoteDocument
+        do {
+            document = try await repository(vaultID: note.vaultID).load(
+                relativePath: note.relativePath
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            return nil
+        }
         let identity = try await resolvedIdentity(
             for: note,
             expectedRevision: document.fingerprint

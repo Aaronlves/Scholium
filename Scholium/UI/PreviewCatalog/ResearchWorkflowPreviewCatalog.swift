@@ -1,5 +1,6 @@
 #if DEBUG
 import ScholiumContracts
+import ScholiumResearchRecordsFeature
 import SwiftUI
 
 /// Deterministic, development-only interface proofs for research workflows
@@ -29,6 +30,7 @@ struct ResearchWorkflowPreviewCatalog: View {
 
 enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
     case actionSheet
+    case resultReview
     case researchGuidance
     case writeSetExtension
 
@@ -37,6 +39,7 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .actionSheet: "Skill-run Sheet"
+        case .resultReview: "Agent Result Review"
         case .researchGuidance: "Research Guidance"
         case .writeSetExtension: "Bounded Write Set"
         }
@@ -45,6 +48,7 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .actionSheet: "list.bullet.rectangle"
+        case .resultReview: "checkmark.message"
         case .researchGuidance: "slider.horizontal.3"
         case .writeSetExtension: "doc.badge.ellipsis"
         }
@@ -68,11 +72,212 @@ private struct ResearchWorkflowProofDetail: View {
         switch proof {
         case .actionSheet:
             ResearchActionSheetProof()
+        case .resultReview:
+            ResearchResultReviewProof()
         case .researchGuidance:
             ResearchGuidanceSettingsProof()
         case .writeSetExtension:
             ResearchWriteSetExtensionProof()
         }
+    }
+}
+
+// MARK: - Agent result review
+
+private struct ResearchResultReviewProof: View {
+    private let fixture: ResearchResultReviewProofFixture
+    private let model: ResearchRecordBrowserModel
+
+    init() {
+        let fixture = try! ResearchResultReviewProofFixture()
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: fixture.record.triptychID,
+            records: [fixture.record],
+            request: ResearchRecordsWindowRequest(
+                triptychID: fixture.record.triptychID,
+                purpose: .reviewResult,
+                recordID: fixture.record.id,
+                expectedFinalizedResultFingerprint: fixture.resultFingerprint
+            )
+        )
+        self.fixture = fixture
+        self.model = model
+    }
+
+    var body: some View {
+        ResearchRecordBrowserView(
+            model: model,
+            loadIssues: [],
+            context: ResearchRecordBrowserContext(
+                setRecommendationDisposition: { _, _, _ in fixture.record },
+                setRecommendationNote: { _, _, _ in fixture.record },
+                saveResponse: { _, _, _, _, _ in fixture.record },
+                reloadRecord: { _ in fixture.record },
+                changeReviewState: { _ in fixture.reviewState },
+                keepChanges: { _, _, _ in fixture.record },
+                finishReview: { _, _, _ in fixture.record },
+                comparison: { _, noteID in
+                    guard let comparison = fixture.comparisons[noteID] else {
+                        throw ExactSourceComparisonError.exactRevisionUnavailable(
+                            fixture.resultFingerprint
+                        )
+                    }
+                    return comparison
+                },
+                undoChanges: { _, noteIDs, _, _ in
+                    ResearchRecordChangesUndoResult(
+                        record: fixture.record,
+                        documents: noteIDs.map {
+                            ResearchRecordChangeUndoDocumentResult(
+                                noteID: $0,
+                                status: .restored,
+                                observedRevision: fixture.startingRevisions[$0]
+                            )
+                        }
+                    )
+                },
+                startMethodImprovement: { _ in throw CancellationError() },
+                deletePermanently: { _ in },
+                openNote: { _, _, _ in }
+            )
+        )
+        .accessibilityIdentifier("scholium.proofs.resultReview")
+    }
+}
+
+private struct ResearchResultReviewProofFixture {
+    let record: PortableResearchRecord
+    let resultFingerprint: DocumentFingerprint
+    let reviewState: ResearchRecordChangeReviewState
+    let comparisons: [UUID: ExactSourceComparison]
+    let startingRevisions: [UUID: DocumentFingerprint]
+
+    init() throws {
+        let triptychID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
+        let recordID = UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!
+        let topicID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+        let workID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+
+        let topicStarting = Data((1...18).map { "Line \($0): inherited context" }.joined(separator: "\n").utf8)
+        let topicEnding = Data((1...18).map {
+            $0 == 9 ? "Line 9: Agent clarified the normative target" : "Line \($0): inherited context"
+        }.joined(separator: "\n").utf8)
+        let workStarting = Data("# Practical option-space\n\nExisting objection.\n\nExisting reply.\n".utf8)
+        let workEnding = Data("# Practical option-space\n\nExisting objection.\n\nRevised reply with a narrower evidential claim.\n".utf8)
+
+        let topicStartRevision = DocumentFingerprint(data: topicStarting)
+        let topicEndRevision = DocumentFingerprint(data: topicEnding)
+        let workStartRevision = DocumentFingerprint(data: workStarting)
+        let workEndRevision = DocumentFingerprint(data: workEnding)
+        let topic = try PortableResearchNoteRevision(
+            noteID: topicID,
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!,
+                relativePath: "Topics/情感适切性与实践理由.md"
+            ),
+            role: .topic,
+            title: "情感适切性与实践理由",
+            startingRevision: topicStartRevision,
+            endingRevision: topicEndRevision
+        )
+        let work = try PortableResearchNoteRevision(
+            noteID: workID,
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE")!,
+                relativePath: "Works/Practical Option-Space.md"
+            ),
+            role: .work,
+            title: "Practical Option-Space",
+            startingRevision: workStartRevision,
+            endingRevision: workEndRevision
+        )
+        let method = try JSONDecoder().decode(
+            PortableResearchMethodReference.self,
+            from: Data(
+                """
+                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Reconstruction","practice_names":["Source Fidelity"],"profile_revision":{"sha256":"\(topicStartRevision.sha256)","byteCount":\(topicStartRevision.byteCount)}}
+                """.utf8
+            )
+        )
+        let finishedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        record = try PortableResearchRecord(
+            id: recordID,
+            triptychID: triptychID,
+            title: ResearchRecordTitle("Clarify fittingness and practical authority"),
+            kind: .action,
+            action: ResearchActionRecordIdentity(actionID: .synthesize),
+            method: method,
+            primaryNoteID: topicID,
+            participatingNotes: [topic, work],
+            statements: [
+                try PortableResearchStatement(
+                    id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
+                    author: .agent,
+                    kind: .agentFeedback,
+                    attribution: "Agent",
+                    text: "The revision separates salience from authority and narrows the objection without treating the cited material as direct support.",
+                    createdAt: finishedAt
+                )
+            ],
+            resultDisposition: .completed,
+            fidelityCompletion: .notRequired,
+            confirmedChanges: [
+                try PortableResearchConfirmedChange(
+                    noteID: topicID,
+                    actor: .agent,
+                    startingRevision: topicStartRevision,
+                    endingRevision: topicEndRevision
+                ),
+                try PortableResearchConfirmedChange(
+                    noteID: workID,
+                    actor: .agent,
+                    startingRevision: workStartRevision,
+                    endingRevision: workEndRevision
+                )
+            ],
+            startedAt: finishedAt.addingTimeInterval(-420),
+            finishedAt: finishedAt
+        )
+        resultFingerprint = try record.finalizedResultFingerprint()
+        reviewState = ResearchRecordChangeReviewState(
+            recordID: recordID,
+            reviewRevision: nil,
+            finalizedResultFingerprint: resultFingerprint,
+            documents: [
+                ResearchRecordChangeCurrentState(
+                    noteID: topicID,
+                    currentRelativePath: topic.note.relativePath,
+                    status: .agentEndingRevision,
+                    observedRevision: topicEndRevision
+                ),
+                ResearchRecordChangeCurrentState(
+                    noteID: workID,
+                    currentRelativePath: work.note.relativePath,
+                    status: .agentEndingRevision,
+                    observedRevision: workEndRevision
+                )
+            ],
+            isComplete: false
+        )
+        comparisons = [
+            topicID: try ExactSourceComparisonBuilder.build(
+                startingData: topicStarting,
+                endingData: topicEnding,
+                startingRevision: topicStartRevision,
+                endingRevision: topicEndRevision
+            ),
+            workID: try ExactSourceComparisonBuilder.build(
+                startingData: workStarting,
+                endingData: workEnding,
+                startingRevision: workStartRevision,
+                endingRevision: workEndRevision
+            )
+        ]
+        startingRevisions = [
+            topicID: topicStartRevision,
+            workID: workStartRevision
+        ]
     }
 }
 

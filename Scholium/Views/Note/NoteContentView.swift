@@ -1748,92 +1748,94 @@ struct NoteContentView: View {
 // MARK: - Research Record
 
 private struct ConflictComparisonSheet: View {
-    private enum DiffLayout {
-        static let horizontalPadding: CGFloat = 16
-        static let markerWidth: CGFloat = 16
-        static let columnSpacing: CGFloat = 8
-    }
-
     let conflict: DocumentConflictSnapshot
     let onReturnToEditing: () -> Void
     let onReloadFromDisk: () -> Void
+    @State private var isDocumentExpanded = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.conflictHeaderDetailSpacing) {
-                    Text("Compare Changes")
-                        .font(ScholiumTypography.interface(.primaryTitle))
-                    Text(conflict.relativePath)
-                        .font(ScholiumTypography.exact(.small))
-                        .scholiumForeground(.secondaryText)
-                }
-                Spacer()
-            }
-            .padding(ScholiumMetrics.DocumentWorkflow.conflictHeaderInset)
-
-            Divider()
-
-            HStack(alignment: .top, spacing: ScholiumMetrics.DocumentWorkflow.conflictRevisionSpacing) {
-                revisionLabel(
-                    title: "Current Editor",
-                    fingerprint: conflict.editorRevision,
-                    detail: "Based on \(short(conflict.baseRevision))"
-                )
-                revisionLabel(
-                    title: "Disk Version",
-                    fingerprint: conflict.diskRevision,
-                    detail: "The version shown below"
-                )
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, ScholiumMetrics.DocumentWorkflow.conflictRevisionHorizontalInset)
-            .padding(.vertical, ScholiumGrid.Spacing.nestedContentInset)
-
-            Divider()
-
-            GeometryReader { viewport in
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(diffLines.enumerated()), id: \.offset) { index, line in
-                            HStack(
-                                alignment: .firstTextBaseline,
-                                spacing: DiffLayout.columnSpacing
+        ExactSourceComparisonSheetLayout(
+            title: "Compare Changes",
+            detail: "Compare the current editor with the exact version now on disk.",
+            identifier: "scholium.conflictComparison"
+        ) {
+            Button("Expand All") { isDocumentExpanded = true }
+            Button("Collapse All") { isDocumentExpanded = false }
+        } content: {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Button {
+                        isDocumentExpanded.toggle()
+                    } label: {
+                        HStack(alignment: .firstTextBaseline) {
+                            Image(systemName: isDocumentExpanded
+                                ? "chevron.down" : "chevron.right")
+                                .accessibilityHidden(true)
+                            VStack(
+                                alignment: .leading,
+                                spacing: ScholiumGrid.Spacing.labelAccessoryGap
                             ) {
-                                Text(marker(for: line.kind))
-                                    .font(ScholiumTypography.exact(.strong))
-                                    .scholiumForeground(colorRole(for: line.kind))
-                                    .frame(width: DiffLayout.markerWidth)
-                                    .accessibilityLabel(label(for: line.kind))
-                                Text(line.text.isEmpty ? " " : line.text)
-                                    .font(ScholiumTypography.exact(.body))
-                                    .frame(
-                                        width: diffTextWidth(in: viewport.size.width),
-                                        alignment: .leading
-                                    )
-                                    .lineLimit(nil)
-                                    .textSelection(.enabled)
+                                Text(conflict.relativePath)
+                                    .font(ScholiumTypography.interface(.rowTitle))
+                                Text("Editor and disk revisions differ")
+                                    .font(ScholiumTypography.interface(.small))
+                                    .scholiumForeground(.attention)
                             }
-                            .padding(.horizontal, DiffLayout.horizontalPadding)
-                            .padding(.vertical, ScholiumMetrics.DocumentWorkflow.conflictDiffRowVerticalInset)
-                            .frame(width: max(viewport.size.width, 1), alignment: .leading)
-                            .background(
-                                line.kind == .unchanged
-                                    ? Color.clear
-                                    : ScholiumColorRole.raisedSurfaceBackground.color
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(ScholiumGrid.Spacing.nestedContentInset)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(conflict.relativePath)
+                    .accessibilityValue(
+                        isDocumentExpanded ? "Expanded" : "Collapsed"
+                    )
+                    .accessibilityHint(
+                        isDocumentExpanded
+                            ? "Collapses this document" : "Expands this document"
+                    )
+
+                    if isDocumentExpanded {
+                        ScholiumStructuralRule()
+                        if let comparison = try? conflict.exactComparison() {
+                            ExactSourceComparisonView(
+                                comparison: comparison,
+                                startingLabel: "Current Editor",
+                                endingLabel: "Disk Version",
+                                startingOnlyLabel: "Current editor only",
+                                endingOnlyLabel: "Disk version only",
+                                identifierPrefix: "scholium.conflict"
                             )
-                            .accessibilityElement(children: .contain)
-                            .accessibilityIdentifier(
-                                "scholium.conflict.row.\(identifier(for: line.kind)).\(index)"
+                            .padding(ScholiumGrid.Spacing.nestedContentInset)
+                        } else {
+                            ScholiumContentStateView(
+                                "Comparison Unavailable",
+                                detail: Text("The exact source revisions could not be compared."),
+                                indicator: .symbol("exclamationmark.triangle", role: .attention)
+                            )
+                            .frame(
+                                minHeight: ScholiumMetrics.ResearchSheet.Comparison.documentStateMinimumHeight
                             )
                         }
                     }
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                 }
+                .background(ScholiumColorRole.documentBackground.color)
+                .clipShape(RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                ))
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                    .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
+                }
+                .padding(ScholiumGrid.Spacing.sectionSeparation)
             }
-
-            Divider()
-
+        } footer: {
             HStack {
                 Button("Return to Editing", action: onReturnToEditing)
                     .keyboardShortcut(.cancelAction)
@@ -1842,83 +1844,8 @@ private struct ConflictComparisonSheet: View {
             }
             .padding(ScholiumGrid.Spacing.sectionSeparation)
         }
-        .frame(minWidth: 760, idealWidth: 900, minHeight: 520, idealHeight: 680)
-        .scholiumSurface(.boundedPanel)
-        .accessibilityIdentifier("scholium.conflictComparison")
     }
 
-    @ViewBuilder
-    private func revisionLabel(
-        title: String,
-        fingerprint: DocumentFingerprint,
-        detail: String
-    ) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.conflictDetailSpacing) {
-            Text(title)
-                .font(ScholiumTypography.interface(.sectionTitle))
-            Text(short(fingerprint))
-                .font(ScholiumTypography.exact(.small))
-                .textSelection(.enabled)
-            Text(detail)
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(
-            title == "Current Editor"
-                ? "scholium.conflict.currentRevision"
-                : "scholium.conflict.diskRevision"
-        )
-    }
-
-    private func marker(for kind: ExactSourceComparisonLineKind) -> String {
-        switch kind {
-        case .unchanged: " "
-        case .startingOnly: "−"
-        case .endingOnly: "+"
-        }
-    }
-
-    private func label(for kind: ExactSourceComparisonLineKind) -> String {
-        switch kind {
-        case .unchanged: "Unchanged"
-        case .startingOnly: "Current editor only"
-        case .endingOnly: "Disk version only"
-        }
-    }
-
-    private func identifier(for kind: ExactSourceComparisonLineKind) -> String {
-        switch kind {
-        case .unchanged: "unchanged"
-        case .startingOnly: "editorOnly"
-        case .endingOnly: "diskOnly"
-        }
-    }
-
-    private func diffTextWidth(in viewportWidth: CGFloat) -> CGFloat {
-        max(
-            viewportWidth
-                - (DiffLayout.horizontalPadding * 2)
-                - DiffLayout.markerWidth
-                - DiffLayout.columnSpacing,
-            1
-        )
-    }
-
-    private func colorRole(for kind: ExactSourceComparisonLineKind) -> ScholiumColorRole {
-        switch kind {
-        case .unchanged: .secondaryText
-        case .startingOnly, .endingOnly: .attention
-        }
-    }
-
-    private func short(_ fingerprint: DocumentFingerprint) -> String {
-        "SHA-256 \(fingerprint.sha256.prefix(12))… (\(fingerprint.byteCount) bytes)"
-    }
-
-    private var diffLines: [ExactSourceComparisonLine] {
-        (try? conflict.exactComparison().lines) ?? []
-    }
 }
 
 private struct CritiqueFindingDispositionRow: View {

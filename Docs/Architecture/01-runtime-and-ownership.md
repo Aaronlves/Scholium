@@ -104,7 +104,13 @@ projection. It imports neither
 SwiftUI nor App delivery state.
 `ScholiumApp` adapts those values to the semantic Design System and Application
 capabilities; `ResearchRecordsWindowCoordinator` remains an App shell route
-owner under `Scholium/App/Window` and retains no Record data.
+owner under `Scholium/App/Window` and retains no Record data. A typed
+`.reviewResult` route carries one exact Record identifier and finalized-result
+fingerprint; the feature model validates both and owns the resulting
+window-lifetime direct-Undo grant. Multiple exact review requests may retain
+independent per-Record grants through navigation in that same window. They are
+neither persisted nor treated as source authority, and closing the window
+destroys all of them.
 
 ### Runtime bootstrap, refresh, and Search
 
@@ -297,15 +303,16 @@ flushes content and finalizes recoverable presentation; if another window
 cancels application termination, every still-open window retains its flush
 ownership for the next attempt. `ResearchActionController` owns the exact
 window's transient write-set subset sheet and the read-only projection of
-direct Continue Research children beneath the current parent Action. The shared
-`ResearcherEvaluationView` owns the field draft for the exact rendered Record;
-`ResearchActionPanelView` and `ResearchRecordEvaluationSheet` independently own
-their route's dirty-state and operation-lifetime aggregation plus discard
-confirmation. Explicit and implicit dismissal remain blocked until a save,
-clear, or authoritative reload resolves. Those transient values are keyed to
-one Run or Record and discarded or retained according to their explicit close
-contracts; none owns durable authorization, continuation, Record, or Evaluation
-state.
+direct Continue Research children beneath the current parent Action. It owns no
+finalized-result or researcher-response presentation. The Records-only
+`ResearcherResponseEditorSheet` owns one local Evaluation-plus-Method-Feedback
+draft for the exact rendered Record, its dirty state, operation lifetime,
+discard confirmation, and stale recovery. Explicit and implicit dismissal
+remain blocked until save or authoritative reload resolves. The comparison
+sheet separately owns only its current document-fold, equal-range-fold,
+selection, loading, and per-document operation presentation. These transient
+values are keyed to one Record and current sheet lifetime; none owns durable
+authorization, source bytes, Record, Response, or Review Disposition state.
 `WindowSearchController` owns Search/temporary Find execution and
 cancellation, provider-aware exact result-freshness validation, generation or
 Record-manifest reruns, and serialized Saved Search loading and persistence. It

@@ -325,7 +325,7 @@ private struct ScholiumResearchRecordsRoot: View {
                                 expectedResultFingerprint: resultFingerprint
                             )
                     },
-                    reloadEvaluation: { recordID in
+                    reloadRecord: { recordID in
                         let records = try await capabilities.research.records
                             .finishedResearchRecords(noteID: nil)
                         guard let record = records.first(where: {
@@ -335,6 +335,53 @@ private struct ScholiumResearchRecordsRoot: View {
                                 .recordUnavailable
                         }
                         return record
+                    },
+                    changeReviewState: { recordID in
+                        try await capabilities.research.records
+                            .researchRecordChangeReviewState(recordID: recordID)
+                    },
+                    keepChanges: {
+                        recordID, expectedReviewRevision, resultFingerprint in
+                        try await capabilities.research.records
+                            .keepResearchRecordChanges(
+                                recordID: recordID,
+                                expectedReviewRevision: expectedReviewRevision,
+                                expectedResultFingerprint: resultFingerprint
+                            )
+                    },
+                    finishReview: {
+                        recordID, expectedReviewRevision, resultFingerprint in
+                        try await capabilities.research.records
+                            .finishResearchRecordReviewWithCurrentState(
+                                recordID: recordID,
+                                expectedReviewRevision: expectedReviewRevision,
+                                expectedResultFingerprint: resultFingerprint
+                            )
+                    },
+                    comparison: { recordID, noteID in
+                        try await capabilities.research.records
+                            .researchRecordComparison(
+                                recordID: recordID,
+                                noteID: noteID
+                            )
+                    },
+                    undoChanges: {
+                        recordID, noteIDs, expectedReviewRevision,
+                        resultFingerprint in
+                        try await capabilities.research.records
+                            .undoResearchRecordChanges(
+                                recordID: recordID,
+                                selectedNoteIDs: noteIDs,
+                                expectedReviewRevision: expectedReviewRevision,
+                                expectedResultFingerprint: resultFingerprint
+                            )
+                    },
+                    startMethodImprovement: { recordID in
+                        try await capabilities.research.records
+                            .issueMethodImprovementHandoff(
+                                recordID: recordID,
+                                validity: 10 * 60
+                            )
                     },
                     deletePermanently: { id in
                         try await capabilities.research.records
@@ -4029,32 +4076,6 @@ final class WindowModel: ObservableObject {
             },
             cancel: { runID in
                 try await capabilities.research.actions.cancelAction(runID: runID)
-            },
-            saveResponse: {
-                recordID, draft, expectedEvaluationRevision,
-                expectedMethodFeedbackRevision, resultFingerprint in
-                try await capabilities.research.records.saveResearcherResponse(
-                    recordID: recordID,
-                    draft: draft,
-                    expectedEvaluationRevision: expectedEvaluationRevision,
-                    expectedMethodFeedbackRevision: expectedMethodFeedbackRevision,
-                    expectedResultFingerprint: resultFingerprint
-                )
-            },
-            reloadRecord: { recordID in
-                let records = try await capabilities.research.records
-                    .finishedResearchRecords(noteID: nil)
-                guard let record = records.first(where: { $0.id == recordID }) else {
-                    throw PortableResearcherResponseMutationError.recordUnavailable
-                }
-                return record
-            },
-            startMethodImprovement: { recordID in
-                try await capabilities.research.records
-                    .issueMethodImprovementHandoff(
-                        recordID: recordID,
-                        validity: 10 * 60
-                    )
             },
             openActiveDiscussion: { [weak self] discussionID in
                 guard let self else { return }

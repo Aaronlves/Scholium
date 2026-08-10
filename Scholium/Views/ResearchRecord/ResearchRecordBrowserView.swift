@@ -23,8 +23,33 @@ struct ResearchRecordBrowserContext {
             UUID?,
             DocumentFingerprint
         ) async throws -> PortableResearchRecord
-    let reloadEvaluation:
+    let reloadRecord:
         @MainActor (UUID) async throws -> PortableResearchRecord
+    let changeReviewState:
+        @MainActor (UUID) async throws -> ResearchRecordChangeReviewState
+    let keepChanges:
+        @MainActor (
+            UUID,
+            UUID?,
+            DocumentFingerprint
+        ) async throws -> PortableResearchRecord
+    let finishReview:
+        @MainActor (
+            UUID,
+            UUID?,
+            DocumentFingerprint
+        ) async throws -> PortableResearchRecord
+    let comparison:
+        @MainActor (UUID, UUID) async throws -> ExactSourceComparison
+    let undoChanges:
+        @MainActor (
+            UUID,
+            Set<UUID>,
+            UUID?,
+            DocumentFingerprint
+        ) async throws -> ResearchRecordChangesUndoResult
+    let startMethodImprovement:
+        @MainActor (UUID) async throws -> ResearchAgentHandoff
     let deletePermanently: @MainActor (UUID) async throws -> Void
     let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
 }
@@ -2168,10 +2193,7 @@ private struct ResearchRecordWorkspaceView: View {
                         confirmsPermanentDeletion: $confirmsPermanentDeletion
                     )
                     ScholiumStructuralRule()
-                    ResearchFinalizedResultView(
-                        record: record,
-                        presentation: .recordDetail
-                    )
+                    ResearchFinalizedResultView(record: record)
                     ScholiumStructuralRule()
                     ResearchRecordStatementSection(
                         statements: record.statements,
@@ -2217,20 +2239,41 @@ private struct ResearchRecordWorkspaceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text("Evidence & Judgment")
+                    Text("Process Result")
                         .font(ScholiumTypography.scholarly(.sectionTitle))
                         .accessibilityHeading(.h1)
-                    Text("What this Record used, changed, and leaves to the researcher.")
+                    Text("Respond to the result, decide its source changes, then inspect its evidence.")
                         .font(ScholiumTypography.interface(.compact))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                if record.kind == .action {
+                    ScholiumStructuralRule()
+                    ResearchRecordResearcherResponseSection(
+                        record: record,
+                        model: model,
+                        context: context
+                    )
+
+                    ScholiumStructuralRule()
+                    ResearchRecordChangeDecisionSection(
+                        record: record,
+                        model: model,
+                        context: context,
+                        canDirectlyUndo: model.hasDirectUndoEligibility(
+                            for: record
+                        )
+                    )
+                }
+
                 ScholiumStructuralRule()
-                ResearchRecordParticipantSection(
-                    participants: record.participatingNotes,
-                    primaryNoteID: record.primaryNoteID,
-                    context: context
+                ResearchRecordEvidenceSection(
+                    resultDisposition: record.resultDisposition,
+                    fidelityCompletion: record.fidelityCompletion,
+                    changes: record.confirmedChanges,
+                    discrepancies: record.discrepancies,
+                    participants: record.participatingNotes
                 )
 
                 ScholiumStructuralRule()
@@ -2243,48 +2286,11 @@ private struct ResearchRecordWorkspaceView: View {
                 )
 
                 ScholiumStructuralRule()
-                ResearchRecordEvidenceSection(
-                    resultDisposition: record.resultDisposition,
-                    fidelityCompletion: record.fidelityCompletion,
-                    changes: record.confirmedChanges,
-                    discrepancies: record.discrepancies,
-                    participants: record.participatingNotes
+                ResearchRecordParticipantSection(
+                    participants: record.participatingNotes,
+                    primaryNoteID: record.primaryNoteID,
+                    context: context
                 )
-
-                if record.kind == .action {
-                    ScholiumStructuralRule()
-                    ResearchRecordResearcherEvaluationSection(
-                        record: record,
-                        save: { draft, expectedRevision, resultFingerprint in
-                            try await context.saveResponse(
-                                record.id,
-                                try ResearcherResponseDraft(
-                                    evaluation: draft,
-                                    methodFeedbackText: record.methodFeedbackComment?.text
-                                ),
-                                expectedRevision,
-                                record.methodFeedbackComment?.revision,
-                                resultFingerprint
-                            )
-                        },
-                        clear: { expectedRevision, resultFingerprint in
-                            try await context.saveResponse(
-                                record.id,
-                                try ResearcherResponseDraft(
-                                    evaluation: nil,
-                                    methodFeedbackText: record.methodFeedbackComment?.text
-                                ),
-                                expectedRevision,
-                                record.methodFeedbackComment?.revision,
-                                resultFingerprint
-                            )
-                        },
-                        reload: {
-                            try await context.reloadEvaluation(record.id)
-                        },
-                        didUpdateRecord: model.acceptUpdatedRecord
-                    )
-                }
 
                 ScholiumStructuralRule()
                 ResearchRecordTechnicalDetails(record: record)
@@ -2395,7 +2401,7 @@ private struct ResearchRecordContinuitySection: View {
 /// symbol and one 12pt Medium row identity lead either compact explanation or
 /// provenance. Those roles stay separate so a complete explanation never
 /// inherits the quiet 10pt metadata treatment.
-private struct ResearchRecordEvidenceEntry: View {
+struct ResearchRecordEvidenceEntry: View {
     @FocusState private var isFocused: Bool
 
     let symbol: String
@@ -2572,7 +2578,7 @@ private struct ResearchRecordEvidenceEntry: View {
 /// Collection headings stay quiet when the complete set already fits in the
 /// rail. Overflow turns the heading itself into the one disclosure control so
 /// the evidence rows never acquire a second column of utility buttons.
-private struct ResearchRecordEvidenceSectionHeader: View {
+struct ResearchRecordEvidenceSectionHeader: View {
     @FocusState private var isFocused: Bool
 
     let title: LocalizedStringKey
@@ -3563,225 +3569,6 @@ private struct ResearchRecordEvidenceSection: View {
             String(localized: "Fidelity could not be completed for this recorded revision.")
         case .notApplicable:
             String(localized: "Source-fidelity verification does not apply to this Record.")
-        }
-    }
-}
-
-private struct ResearchRecordResearcherEvaluationSection: View {
-    let record: PortableResearchRecord
-    let save: ResearcherEvaluationView.Save
-    let clear: ResearcherEvaluationView.Clear
-    let reload: ResearcherEvaluationView.Reload
-    let didUpdateRecord: (PortableResearchRecord) -> Void
-    @State private var isPresentingEditor = false
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button {
-                isPresentingEditor = true
-            } label: {
-                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text("RESEARCHER EVALUATION")
-                        .scholiumApparatusHeadingStyle()
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .scholiumContentControlInk(
-                            resting: .mutedText,
-                            emphasized: .accent
-                        )
-                        .accessibilityHidden(true)
-                }
-                .padding(.horizontal, ScholiumGrid.Spacing.labelAccessoryGap)
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: ScholiumMetrics.ResearchRecords.evidenceSectionHeaderHeight,
-                    alignment: .leading
-                )
-                .contentShape(
-                    RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    ))
-            }
-            .buttonStyle(
-                ScholiumContentControlButtonStyle(
-                    isFocused: isFocused,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
-            )
-            .scholiumActivationFocus($isFocused)
-            .accessibilityLabel("Researcher Evaluation")
-            .accessibilityHeading(.h2)
-            .accessibilityValue(
-                record.researcherEvaluation == nil ? "Not yet evaluated" : "Evaluation saved"
-            )
-            .accessibilityHint("Review or edit the researcher evaluation")
-            .accessibilityIdentifier("scholium.researchRecord.evaluationEditor")
-            .sheet(isPresented: $isPresentingEditor, onDismiss: restoreFocus) {
-                ResearchRecordEvaluationSheet(
-                    record: record,
-                    save: save,
-                    clear: clear,
-                    reload: reload,
-                    didUpdateRecord: didUpdateRecord
-                )
-            }
-
-            if let evaluation = record.researcherEvaluation {
-                if evaluation.noIssuesObserved {
-                    ResearchRecordEvidenceEntry(
-                        symbol: "checkmark.circle",
-                        title: "No issues observed",
-                        body: "The researcher marked no issue in this Record.",
-                        identifier: "scholium.researchRecord.evaluation.noIssues"
-                    )
-                }
-                if !evaluation.observedIssues.isEmpty {
-                    ResearchRecordEvidenceEntry(
-                        symbol: "exclamationmark.bubble",
-                        title: "\(evaluation.observedIssues.count) observed issues",
-                        body: evaluation.observedIssues
-                            .map(\.interfaceTitle)
-                            .joined(separator: ", "),
-                        identifier: "scholium.researchRecord.evaluation.issues"
-                    )
-                }
-                if evaluation.valuableDiscovery {
-                    ResearchRecordEvidenceEntry(
-                        symbol: "sparkles",
-                        title: "Valuable discovery",
-                        body: "The researcher marked this result as worth retaining.",
-                        identifier: "scholium.researchRecord.evaluation.discovery"
-                    )
-                }
-                if let note = evaluation.note {
-                    ResearchRecordEvidenceEntry(
-                        symbol: "note.text",
-                        title: "Researcher note",
-                        metadata: ["Researcher-authored judgment"],
-                        tertiary: note,
-                        emphasizesTertiary: true,
-                        identifier: "scholium.researchRecord.evaluation.note"
-                    )
-                }
-            } else {
-                ResearchRecordEvidenceEntry(
-                    symbol: "person.crop.circle",
-                    title: "Not yet evaluated",
-                    body: "Add a researcher judgment without changing the Agent result.",
-                    identifier: "scholium.researchRecord.evaluation.empty"
-                )
-            }
-
-        }
-    }
-
-    private func restoreFocus() {
-        Task { @MainActor in
-            await Task.yield()
-            isFocused = true
-        }
-    }
-}
-
-private struct ResearchRecordEvaluationSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let record: PortableResearchRecord
-    let save: ResearcherEvaluationView.Save
-    let clear: ResearcherEvaluationView.Clear
-    let reload: ResearcherEvaluationView.Reload
-    let didUpdateRecord: (PortableResearchRecord) -> Void
-
-    @State private var hasUnsavedChanges = false
-    @State private var evaluationOperationInFlight = false
-    @State private var confirmsDiscard = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing
-            ) {
-                Text("Researcher Evaluation")
-                    .font(ScholiumTypography.interface(.primaryTitle))
-                    .accessibilityHeading(.h1)
-                Text(
-                    "Review or record your judgment without changing the Agent's finalized result."
-                )
-                .font(ScholiumTypography.interface(.compact))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(ScholiumMetrics.ResearchSheet.contentInset)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            ScholiumStructuralRule()
-
-            ScrollView {
-                ResearcherEvaluationView(
-                    record: record,
-                    save: save,
-                    clear: clear,
-                    reload: reload,
-                    didUpdateRecord: didUpdateRecord,
-                    draftStateDidChange: { hasUnsavedChanges = $0 },
-                    operationStateDidChange: {
-                        evaluationOperationInFlight = $0
-                    },
-                    showsIntroduction: false
-                )
-                .padding(ScholiumMetrics.ResearchSheet.contentInset)
-            }
-
-            ScholiumStructuralRule()
-
-            HStack {
-                Spacer(minLength: 0)
-                Button("Done", action: attemptDismiss)
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(evaluationOperationInFlight)
-                    .accessibilityIdentifier("scholium.researchRecord.evaluationDismiss")
-            }
-            .padding(ScholiumMetrics.ResearchSheet.contentInset)
-        }
-        .frame(
-            minWidth: ScholiumMetrics.ResearchSheet.RecordEvaluation.minimumWidth,
-            idealWidth: ScholiumMetrics.ResearchSheet.RecordEvaluation.idealWidth,
-            minHeight: ScholiumMetrics.ResearchSheet.RecordEvaluation.minimumHeight,
-            idealHeight: ScholiumMetrics.ResearchSheet.RecordEvaluation.idealHeight
-        )
-        .scholiumSurface(.document)
-        .interactiveDismissDisabled(
-            hasUnsavedChanges || evaluationOperationInFlight
-        )
-        .accessibilityAddTraits(.isModal)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.researchRecord.evaluationSheet")
-        .alert(
-            "Discard the Unsaved Evaluation Draft?",
-            isPresented: $confirmsDiscard
-        ) {
-            Button("Keep Editing", role: .cancel) {}
-            Button("Discard Draft and Close", role: .destructive) {
-                hasUnsavedChanges = false
-                dismiss()
-            }
-        } message: {
-            Text("The saved evaluation and finalized Research Result will remain unchanged.")
-        }
-    }
-
-    private func attemptDismiss() {
-        if hasUnsavedChanges {
-            confirmsDiscard = true
-        } else {
-            dismiss()
         }
     }
 }

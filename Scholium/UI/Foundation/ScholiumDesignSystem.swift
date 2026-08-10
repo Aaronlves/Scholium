@@ -1477,11 +1477,29 @@ enum ScholiumMetrics {
             static let idealHeight: CGFloat = 680
         }
 
-        enum RecordEvaluation {
-            static let minimumWidth: CGFloat = 480
-            static let idealWidth: CGFloat = 560
-            static let minimumHeight: CGFloat = 500
-            static let idealHeight: CGFloat = 620
+        enum ResearcherResponse {
+            static let minimumWidth: CGFloat = 620
+            static let idealWidth: CGFloat = 700
+            static let minimumHeight: CGFloat = 600
+            static let idealHeight: CGFloat = 720
+            static let editorMinimumHeight = ScholiumGrid.foundationUnit * 20
+            static let editorIdealHeight = ScholiumGrid.foundationUnit * 26
+        }
+
+        enum Comparison {
+            static let minimumWidth: CGFloat = 760
+            static let idealWidth: CGFloat = 900
+            static let minimumHeight: CGFloat = 560
+            static let idealHeight: CGFloat = 720
+            static let disclosureIndicatorWidth = ScholiumGrid.foundationUnit * 3.5
+            static let documentStateMinimumHeight = ScholiumGrid.foundationUnit * 40
+        }
+
+        enum MethodImprovementHandoff {
+            static let minimumWidth: CGFloat = 600
+            static let idealWidth: CGFloat = 680
+            static let minimumHeight: CGFloat = 440
+            static let idealHeight: CGFloat = 540
         }
 
         enum ReadingLeadNote {
@@ -1567,6 +1585,9 @@ enum ScholiumMetrics {
         static let conflictRevisionSpacing = ScholiumGrid.foundationUnit * 6
         static let conflictRevisionHorizontalInset = ScholiumGrid.foundationUnit * 4.5
         static let conflictDiffRowVerticalInset = ScholiumGrid.Spacing.opticalAlignmentAdjustment
+        static let exactDiffColumnSpacing = ScholiumGrid.Spacing.inlineControlGap
+        static let exactDiffLineNumberWidth: CGFloat = 38
+        static let exactDiffMarkerWidth: CGFloat = 16
         static let conflictDetailSpacing = ScholiumGrid.foundationUnit * 0.75
         static let conflictDispositionSpacing = ScholiumGrid.foundationUnit * 1.75
         static let conflictDispositionDetailSpacing = ScholiumGrid.foundationUnit * 0.5

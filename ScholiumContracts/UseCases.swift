@@ -170,6 +170,9 @@ public protocol ResearchRecordUseCases: Sendable {
         expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord
+    func researchRecordChangeReviewState(
+        recordID: UUID
+    ) async throws -> ResearchRecordChangeReviewState
     func keepResearchRecordChanges(
         recordID: UUID,
         expectedReviewRevision: UUID?,

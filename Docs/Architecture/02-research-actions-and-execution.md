@@ -40,9 +40,10 @@ repository, recovery, and local connection authorities required by those
 transactions.
 
 Per-window `ResearchActionController` owns only selected Action/Profile,
-researcher draft values, presentation identity, progress/cancellation/errors,
-unsaved evaluation draft, and stale-response tokens. It owns no source,
-method, Session, Run, result, Record, provider, or permission authority.
+researcher Action-input drafts, presentation identity, progress/cancellation,
+errors, and the current Run projection. It owns no source, method, Session,
+result, Record, researcher Response, Review Disposition, provider, or permission
+authority.
 
 ## Availability and preparation
 
@@ -332,11 +333,18 @@ and tool traces. Needs Attention follows the current bounded-entry/recovery
 state, not an immutable historical conflict record. Local Execution and Record remain the durable owners; the
 projection cannot authorize a write or survive independently.
 
-The existing Action and Record views are temporarily adapted to the atomic
-Response capability but still present their prior separate result/evaluation
-surfaces. The Records result-processing layout and removal of the Action-sheet
-result subtree remain interface cutover work rather than a second persistence
-owner.
+The Action sheet stops at preparation, handoff, active-Run status,
+continuation, cancellation, and recovery. It contains no finalized Result,
+Evaluation, or Method Feedback subtree. The Records detail is the sole current
+result-processing surface: its fixed rail begins with the combined Researcher
+Response editor, then Change Decision, and its shared exact-comparison sheet
+supports whole-document direct Undo only when the feature model holds the
+validated window-lifetime grant. The Document conflict route supplies different
+inputs and operations to the same pure folding-diff presentation without
+sharing source or conflict state ownership.
+The route contract and grant owner are implemented, but the production
+`.reviewResult` producer remains with the Stage 3 Action-activity and
+notification cutover; ordinary Records browsing cannot manufacture this grant.
 Confirmed reload rereads the exact Record ID through the existing Record use
 case and accepts no differently identified response; it adds no presentation
 cache or Evaluation owner.
@@ -345,10 +353,10 @@ mutation-outcome taxonomy rather than exposing a Core error to the interface.
 An already-committed refresh failure or commit-uncertain replacement is
 nonretryable until that exact-ID reload reconciles the Record; only a
 proven-not-committed failure appears as **Save Failed**.
-Likewise, a workspace refresh that removes
-a Record removes the current presentation subtree; the store refuses any later
-write to that missing identity, but no window-level owner presently preserves
-the displaced local draft.
+Likewise, a workspace refresh that removes a Record makes an authoritative
+reload fail closed and refuses any later write to that missing identity. An
+already-open Response editor retains its local draft and exposes reconciliation
+rather than substituting a different Record.
 
 `PortableResearchDiscussion` remains the single active exchange owner.
 Comments retain stable Note/fingerprint and inclusive line range without a
@@ -367,7 +375,8 @@ Document / Research menu / Search Record result
              +-- Application Record Search
                   +-- exact total, provider-owned sort, 100-row slices
              +-- Portable Record response/review/undo use cases
-             +-- collection / Record / Reading Lead route
+             +-- browse / exact review-result / Reading Lead route
+             +-- window-lifetime direct-Undo eligibility
              +-- rebuildable paged Reading Leads and continuation relations
         -> ResearchRecordBrowserView (App-owned native presentation)
 ```

@@ -23,16 +23,6 @@ struct ResearchActionClient {
     ) async throws -> ResearchActionPreparation
     let handoff: @MainActor (UUID) async throws -> ResearchAgentHandoff
     let cancel: @MainActor (UUID) async throws -> Void
-    let saveResponse: @MainActor (
-        UUID,
-        ResearcherResponseDraft,
-        UUID?,
-        UUID?,
-        DocumentFingerprint
-    ) async throws -> PortableResearchRecord
-    let reloadRecord: @MainActor (UUID) async throws -> PortableResearchRecord
-    let startMethodImprovement: @MainActor (UUID) async throws
-        -> ResearchAgentHandoff
     let openActiveDiscussion: @MainActor (UUID) -> Void
 
     init(
@@ -45,23 +35,6 @@ struct ResearchActionClient {
             throw ResearchActionExecutionContractError.staleResolution
         },
         cancel: @escaping @MainActor (UUID) async throws -> Void,
-        saveResponse: @escaping @MainActor (
-            UUID,
-            ResearcherResponseDraft,
-            UUID?,
-            UUID?,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord = { _, _, _, _, _ in
-            throw PortableResearcherResponseMutationError.recordUnavailable
-        },
-        reloadRecord: @escaping @MainActor (UUID) async throws
-            -> PortableResearchRecord = { _ in
-                throw PortableResearcherResponseMutationError.recordUnavailable
-            },
-        startMethodImprovement: @escaping @MainActor (UUID) async throws
-            -> ResearchAgentHandoff = { _ in
-                throw ResearchMethodImprovementError.runUnavailable
-            },
         openActiveDiscussion: @escaping @MainActor (UUID) -> Void
     ) {
         self.availableActions = availableActions
@@ -71,9 +44,6 @@ struct ResearchActionClient {
         self.prepare = prepare
         self.handoff = handoff
         self.cancel = cancel
-        self.saveResponse = saveResponse
-        self.reloadRecord = reloadRecord
-        self.startMethodImprovement = startMethodImprovement
         self.openActiveDiscussion = openActiveDiscussion
     }
 }
@@ -197,116 +167,6 @@ final class ResearchActionController: ObservableObject {
             if $0.finishedAt != $1.finishedAt { return $0.finishedAt < $1.finishedAt }
             return $0.id.uuidString < $1.id.uuidString
         }
-    }
-
-    func saveResearcherEvaluation(
-        draft: ResearcherEvaluationDraft,
-        expectedEvaluationRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        guard let client, let record = resultRecord else {
-            throw PortableResearcherResponseMutationError.recordUnavailable
-        }
-        let response = try ResearcherResponseDraft(
-            evaluation: draft,
-            methodFeedbackText: record.methodFeedbackComment?.text
-        )
-        let updated = try await client.saveResponse(
-            record.id,
-            response,
-            expectedEvaluationRevision,
-            record.methodFeedbackComment?.revision,
-            expectedResultFingerprint
-        )
-        resultRecord = updated
-        return updated
-    }
-
-    func clearResearcherEvaluation(
-        expectedEvaluationRevision: UUID,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        guard let client, let record = resultRecord else {
-            throw PortableResearcherResponseMutationError.recordUnavailable
-        }
-        let response = try ResearcherResponseDraft(
-            evaluation: nil,
-            methodFeedbackText: record.methodFeedbackComment?.text
-        )
-        let updated = try await client.saveResponse(
-            record.id,
-            response,
-            expectedEvaluationRevision,
-            record.methodFeedbackComment?.revision,
-            expectedResultFingerprint
-        )
-        resultRecord = updated
-        return updated
-    }
-
-    func reloadResearcherEvaluation() async throws -> PortableResearchRecord {
-        guard let client, let record = resultRecord else {
-            throw PortableResearcherResponseMutationError.recordUnavailable
-        }
-        let updated = try await client.reloadRecord(record.id)
-        guard updated.id == record.id else {
-            throw PortableResearcherResponseMutationError.recordUnavailable
-        }
-        resultRecord = updated
-        return updated
-    }
-
-    func saveMethodFeedbackComment(
-        draft: ResearchMethodFeedbackDraft,
-        expectedCommentRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        guard let client, let record = resultRecord else {
-            throw PortableResearcherResponseMutationError.recordUnavailable
-        }
-        let response = try ResearcherResponseDraft(
-            evaluation: try record.researcherEvaluation.map(ResearcherEvaluationDraft.init),
-            methodFeedbackText: draft.text
-        )
-        let updated = try await client.saveResponse(
-            record.id,
-            response,
-            record.researcherEvaluation?.revision,
-            expectedCommentRevision,
-            expectedResultFingerprint
-        )
-        resultRecord = updated
-        return updated
-    }
-
-    func clearMethodFeedbackComment(
-        expectedCommentRevision: UUID,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        guard let client, let record = resultRecord else {
-            throw PortableResearcherResponseMutationError.recordUnavailable
-        }
-        let response = try ResearcherResponseDraft(
-            evaluation: try record.researcherEvaluation.map(ResearcherEvaluationDraft.init),
-            methodFeedbackText: nil
-        )
-        let updated = try await client.saveResponse(
-            record.id,
-            response,
-            record.researcherEvaluation?.revision,
-            expectedCommentRevision,
-            expectedResultFingerprint
-        )
-        resultRecord = updated
-        return updated
-    }
-
-    func startMethodImprovement() async throws -> ResearchAgentHandoff {
-        guard let client, let record = resultRecord,
-              record.methodFeedbackComment != nil else {
-            throw ResearchMethodImprovementError.runUnavailable
-        }
-        return try await client.startMethodImprovement(record.id)
     }
 
     func unbind() {

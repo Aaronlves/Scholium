@@ -122,12 +122,30 @@ conflict evidence does not mask Result Ready or create a false repair action.
 Documentation authority, interface localization, diff checks, and a product
 build passed.
 
-This is bounded engineering evidence, not the Stage 2/3 result-processing UI,
-notification delivery, installed-app journey, or human acceptance. The current
-Action sheet still shows the old result/evaluation subtree and Records lacks
-the combined Response, Change Decision, folding Compare Changes, and transient
-direct-undo eligibility. VoiceOver, physical keyboard, 200% mixed-script,
-appearance adaptations, and researcher visual acceptance were not exercised.
+The Stage 2 interface cutover then passed 198 focused tests across nine
+Application and App suites in isolated owning batches. Those tests cover live
+change-state projection, exact review-result routing, window-lifetime direct
+Undo through Keep, combined Response lifecycle classification, unified
+unchanged-range folding, the existing Conflict presentation reuse, Action-sheet
+result removal, and interface/controller ownership. Documentation authority,
+interface localization, diff checks, and the Xcode 27 Debug product build also
+passed.
+
+Computer Use on one disposable Debug QA bundle exercised the production Record
+detail through a Debug-only injected `.reviewResult` request with a synthetic
+mixed-script two-document Result. It confirmed the
+fixed processing order, simultaneous first-view visibility of Evaluation and
+Method Feedback, dirty-draft close confirmation, single-column changed-line
+markers, whole-document and unchanged-range folding, document selection, and
+focus return to the exact Edit Response and Compare Changes launchers. The QA
+bundle, fixture copy, and isolated home were moved to Trash afterward.
+
+This remains bounded development evidence, not Stage 3 notification delivery,
+its production Action/notification `.reviewResult` producer, an installed
+App/CLI journey, or human acceptance. Genuine VoiceOver, physical
+Full Keyboard Access, 200% mixed-script, Dark appearance, Increase Contrast,
+Reduce Transparency, Reduce Motion, and researcher visual acceptance remain
+open.
 
 ## Search case pack
 

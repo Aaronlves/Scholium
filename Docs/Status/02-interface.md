@@ -47,18 +47,21 @@
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
   Settle.
 - Action sheets expose academic inputs, target and mutation consequence,
-  handoff, active Run state, result, evaluation, cancellation, and recovery
-  without exposing credentials, registration keys, protocol internals, or
-  implementation hashes. This remains the pre-cutover result presentation;
-  Records is not yet the sole result-processing route.
-- Action, Reading Lead note, and Researcher Evaluation sheets share the same
+  handoff, active Run state, continuation, cancellation, and recovery without
+  exposing credentials, registration keys, protocol internals, or
+  implementation hashes. Finalized Result, Evaluation, and Method Feedback now
+  appear only in the exact Research Record.
+- Action, Reading Lead note, and combined Researcher Response sheets share the same
   fixed-header, scrolling-body, fixed-action layout while retaining separate
   workflow state and dimensions.
-- The Action and Record routes still expose separate Evaluation presentation,
-  but their adapters now save through the atomic Researcher Response
-  capability and preserve the other partition. The combined Response sheet,
-  fixed result-processing rail, Change Decision, and Compare Changes UI are not
-  yet reachable.
+- Record detail uses the fixed Researcher Response, Change Decision, Effects,
+  Context Used, Participants, Technical Details order. One combined editor
+  atomically saves Evaluation and Method Feedback; Change Decision exposes
+  Finish, Keep, current-state completion, and the shared folding exact
+  comparison. The validated review-result route and Records-window-lifetime
+  direct-Undo grant are implemented, but the production Action/notification
+  producer remains Stage 3; ordinary Records browsing does not receive the
+  grant.
 
 ## Search, Attention, and Research Records
 
@@ -77,8 +80,9 @@
   rail. Reading Lead detail uses one reading flow with independent handled
   state, complete citation, bibliographic and discovery facts, reason,
   uncertainty, researcher note, source, parent, and technical identity.
-- Record deletion, Evaluation editing, evidence popovers, unresolved provenance,
-  and recommendation handling retain named keyboard and accessibility routes.
+- Record deletion, Response editing, Change Decision, folding comparison,
+  evidence popovers, unresolved provenance, and recommendation handling retain
+  named keyboard and accessibility routes.
 
 ## Appearance, adaptation, and localization
 
