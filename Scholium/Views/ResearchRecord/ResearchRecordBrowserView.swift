@@ -2040,6 +2040,7 @@ private struct ResearchRecordDetailToolbar: ToolbarContent {
     var body: some ToolbarContent {
         if #available(macOS 26.0, *) {
             backItem.sharedBackgroundVisibility(.hidden)
+            ToolbarSpacer(.flexible)
             evidenceItem.sharedBackgroundVisibility(.hidden)
         } else {
             backItem
