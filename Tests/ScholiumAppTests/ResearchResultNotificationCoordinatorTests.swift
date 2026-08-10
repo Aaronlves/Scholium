@@ -6,7 +6,7 @@ import Testing
 @Suite("Research result notifications")
 @MainActor
 struct ResearchResultNotificationCoordinatorTests {
-    @Test("Foreground completion stays in the source window until explicit review")
+    @Test("Foreground completion stays in the source window until explicit Record open")
     func foregroundDeliveryIsSourceWindowBound() async throws {
         let system = TestResearchResultSystemNotifications(state: .authorized)
         let defaults = isolatedDefaults()
@@ -18,14 +18,7 @@ struct ResearchResultNotificationCoordinatorTests {
         let triptychID = UUID()
         let sourceWindowID = UUID()
         let otherWindowID = UUID()
-        let waiting = activity(state: .waitingForAgent)
-        let ready = activity(
-            runID: waiting.runID,
-            targetNoteID: waiting.targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "result")
-        )
+        let ready = arrival(fingerprint: DocumentFingerprint(content: "result"))
         var sourceNotices: [ResearchResultReviewDestination] = []
         var otherNotices: [ResearchResultReviewDestination] = []
         var opened: [ResearchResultReviewDestination] = []
@@ -49,14 +42,14 @@ struct ResearchResultNotificationCoordinatorTests {
             dismissPermission: {},
             openReview: { opened.append($0) }
         )
-        coordinator.receive(activities: [waiting], triptychID: triptychID)
+        coordinator.receive(arrivals: [], triptychID: triptychID)
         coordinator.recordSuccessfulHandoff(
-            runID: waiting.runID,
+            runID: ready.runID,
             triptychID: triptychID,
             sourceWindowID: sourceWindowID
         )
-        coordinator.receive(activities: [ready], triptychID: triptychID)
-        coordinator.receive(activities: [ready], triptychID: triptychID)
+        coordinator.receive(arrivals: [ready], triptychID: triptychID)
+        coordinator.receive(arrivals: [ready], triptychID: triptychID)
 
         #expect(sourceNotices.count == 1)
         #expect(otherNotices.isEmpty)
@@ -67,7 +60,7 @@ struct ResearchResultNotificationCoordinatorTests {
         coordinator.review(destination, from: sourceWindowID)
         #expect(opened == [destination])
 
-        coordinator.receive(activities: [], triptychID: triptychID)
+        coordinator.receive(arrivals: [], triptychID: triptychID)
         #expect(dismissed == [destination])
         #expect(system.removed.count == 1)
     }
@@ -82,14 +75,7 @@ struct ResearchResultNotificationCoordinatorTests {
         )
         let triptychID = UUID()
         let windowID = UUID()
-        let waiting = activity(state: .waitingForAgent)
-        let ready = activity(
-            runID: waiting.runID,
-            targetNoteID: waiting.targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "exact result")
-        )
+        let ready = arrival(fingerprint: DocumentFingerprint(content: "exact result"))
         var opened: [ResearchResultReviewDestination] = []
         _ = coordinator.registerWindow(
             windowID: windowID,
@@ -100,35 +86,35 @@ struct ResearchResultNotificationCoordinatorTests {
             dismissPermission: {},
             openReview: { opened.append($0) }
         )
-        coordinator.receive(activities: [waiting], triptychID: triptychID)
+        coordinator.receive(arrivals: [], triptychID: triptychID)
         coordinator.recordSuccessfulHandoff(
-            runID: waiting.runID,
+            runID: ready.runID,
             triptychID: triptychID,
             sourceWindowID: windowID
         )
-        coordinator.receive(activities: [ready], triptychID: triptychID)
-        coordinator.receive(activities: [ready], triptychID: triptychID)
+        coordinator.receive(arrivals: [ready], triptychID: triptychID)
+        coordinator.receive(arrivals: [ready], triptychID: triptychID)
         await settleTasks()
 
         let request = try #require(system.delivered.first)
         #expect(system.delivered.count == 1)
         #expect(request.body == "An Agent result is ready to review.")
-        #expect(!request.body.contains(ready.targetNoteID.uuidString))
+        #expect(!request.body.contains(ready.originNoteID.uuidString))
         #expect(opened.isEmpty)
 
         system.activate(request.destination)
         await settleTasks()
         #expect(opened == [request.destination])
 
-        coordinator.receive(activities: [], triptychID: triptychID)
+        coordinator.receive(arrivals: [], triptychID: triptychID)
         system.activate(request.destination)
         await settleTasks()
         #expect(opened == [request.destination])
         #expect(system.removed == [request.identifier])
     }
 
-    @Test("Review completion wins over a suspended system delivery")
-    func completionCancelsSuspendedDelivery() async throws {
+    @Test("Arrival removal wins over a suspended system delivery")
+    func arrivalRemovalCancelsSuspendedDelivery() async throws {
         let system = TestResearchResultSystemNotifications(state: .authorized)
         system.suspendsDelivery = true
         let coordinator = ResearchResultNotificationCoordinator(
@@ -137,19 +123,12 @@ struct ResearchResultNotificationCoordinatorTests {
             applicationIsActive: { false }
         )
         let triptychID = UUID()
-        let waiting = activity(state: .waitingForAgent)
-        let ready = activity(
-            runID: waiting.runID,
-            targetNoteID: waiting.targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "result")
-        )
-        coordinator.receive(activities: [waiting], triptychID: triptychID)
-        coordinator.receive(activities: [ready], triptychID: triptychID)
+        let ready = arrival(fingerprint: DocumentFingerprint(content: "result"))
+        coordinator.receive(arrivals: [], triptychID: triptychID)
+        coordinator.receive(arrivals: [ready], triptychID: triptychID)
         await waitUntil { system.deliveryContinuation != nil }
 
-        coordinator.receive(activities: [], triptychID: triptychID)
+        coordinator.receive(arrivals: [], triptychID: triptychID)
         system.resumeDelivery()
         await settleTasks()
 
@@ -169,14 +148,7 @@ struct ResearchResultNotificationCoordinatorTests {
         let triptychID = UUID()
         let sourceWindowID = UUID()
         let fallbackWindowID = UUID()
-        let waiting = activity(state: .waitingForAgent)
-        let ready = activity(
-            runID: waiting.runID,
-            targetNoteID: waiting.targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "ready")
-        )
+        let ready = arrival(fingerprint: DocumentFingerprint(content: "ready"))
         var fallbackNotices = 0
         let sourceToken = coordinator.registerWindow(
             windowID: sourceWindowID,
@@ -196,9 +168,9 @@ struct ResearchResultNotificationCoordinatorTests {
             dismissPermission: {},
             openReview: { _ in }
         )
-        coordinator.receive(activities: [waiting], triptychID: triptychID)
+        coordinator.receive(arrivals: [], triptychID: triptychID)
         coordinator.recordSuccessfulHandoff(
-            runID: waiting.runID,
+            runID: ready.runID,
             triptychID: triptychID,
             sourceWindowID: sourceWindowID
         )
@@ -206,7 +178,7 @@ struct ResearchResultNotificationCoordinatorTests {
             windowID: sourceWindowID,
             token: sourceToken
         )
-        coordinator.receive(activities: [ready], triptychID: triptychID)
+        coordinator.receive(arrivals: [ready], triptychID: triptychID)
 
         #expect(fallbackNotices == 0)
         #expect(system.delivered.isEmpty)
@@ -221,20 +193,13 @@ struct ResearchResultNotificationCoordinatorTests {
             applicationIsActive: { false }
         )
         let triptychID = UUID()
-        let waiting = activity(state: .waitingForAgent)
-        let ready = activity(
-            runID: waiting.runID,
-            targetNoteID: waiting.targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "exact result")
-        )
+        let ready = arrival(fingerprint: DocumentFingerprint(content: "exact result"))
         var opened: [ResearchResultReviewDestination] = []
         coordinator.registerReviewRouter(triptychID: triptychID) {
             opened.append($0)
         }
-        coordinator.receive(activities: [waiting], triptychID: triptychID)
-        coordinator.receive(activities: [ready], triptychID: triptychID)
+        coordinator.receive(arrivals: [], triptychID: triptychID)
+        coordinator.receive(arrivals: [ready], triptychID: triptychID)
         await settleTasks()
 
         let request = try #require(system.delivered.first)
@@ -369,21 +334,19 @@ struct ResearchResultNotificationCoordinatorTests {
         #expect(dismissCount == 1)
     }
 
-    private func activity(
+    private func arrival(
         runID: UUID = UUID(),
-        targetNoteID: UUID = UUID(),
-        state: WorkspaceResearchActivityState,
-        recordID: UUID? = nil,
-        fingerprint: DocumentFingerprint? = nil
-    ) -> WorkspaceResearchActivity {
-        WorkspaceResearchActivity(
+        originNoteID: UUID = UUID(),
+        recordID: UUID = UUID(),
+        fingerprint: DocumentFingerprint
+    ) -> WorkspaceResearchResultArrival {
+        WorkspaceResearchResultArrival(
             runID: runID,
-            actionID: .analyze,
-            targetNoteID: targetNoteID,
-            state: state,
             recordID: recordID,
+            actionID: .analyze,
+            originNoteID: originNoteID,
             recordFingerprint: fingerprint,
-            updatedAt: Date(timeIntervalSinceReferenceDate: 10)
+            finishedAt: Date(timeIntervalSinceReferenceDate: 10)
         )
     }
 

@@ -12,18 +12,13 @@ struct ResearchResultReviewDestination: Hashable, Sendable {
     let recordID: UUID
     let finalizedResultFingerprint: DocumentFingerprint
 
-    init?(triptychID: UUID, activity: WorkspaceResearchActivity) {
-        guard activity.state == .resultReady,
-              let recordID = activity.recordID,
-              let finalizedResultFingerprint = activity.recordFingerprint else {
-            return nil
-        }
+    init(triptychID: UUID, arrival: WorkspaceResearchResultArrival) {
         self.triptychID = triptychID
-        runID = activity.runID
-        actionID = activity.actionID
-        targetNoteID = activity.targetNoteID
-        self.recordID = recordID
-        self.finalizedResultFingerprint = finalizedResultFingerprint
+        runID = arrival.runID
+        actionID = arrival.actionID
+        targetNoteID = arrival.originNoteID
+        recordID = arrival.recordID
+        finalizedResultFingerprint = arrival.recordFingerprint
     }
 }
 
@@ -276,7 +271,7 @@ final class ResearchResultNotificationCoordinator {
                     guard let self else { return }
                     for (triptychID, activation) in activations {
                         receive(
-                            activities: activation.snapshot.research.activities,
+                            arrivals: activation.snapshot.research.resultArrivals,
                             triptychID: triptychID
                         )
                     }
@@ -290,7 +285,7 @@ final class ResearchResultNotificationCoordinator {
                     guard let self else { return }
                     for (triptychID, event) in events {
                         receive(
-                            activities: event.snapshot.research.activities,
+                            arrivals: event.snapshot.research.resultArrivals,
                             triptychID: triptychID
                         )
                     }
@@ -440,15 +435,15 @@ final class ResearchResultNotificationCoordinator {
     }
 
     func receive(
-        activities: [WorkspaceResearchActivity],
+        arrivals: [WorkspaceResearchResultArrival],
         triptychID: UUID
     ) {
-        let current = Dictionary(uniqueKeysWithValues: activities.compactMap {
-            activity -> (ResultKey, ResearchResultReviewDestination)? in
-            guard let destination = ResearchResultReviewDestination(
+        let current = Dictionary(uniqueKeysWithValues: arrivals.map {
+            arrival -> (ResultKey, ResearchResultReviewDestination) in
+            let destination = ResearchResultReviewDestination(
                 triptychID: triptychID,
-                activity: activity
-            ) else { return nil }
+                arrival: arrival
+            )
             return (
                 ResultKey(
                     recordID: destination.recordID,

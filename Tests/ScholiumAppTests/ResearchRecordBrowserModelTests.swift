@@ -78,18 +78,8 @@ struct ResearchRecordBrowserModelTests {
         #expect(reviewModel.hasDirectUndoEligibility(for: record))
         #expect(reviewModel.hasDirectUndoEligibility(for: secondRecord))
 
-        let kept = try replacingReviewDisposition(
-            in: record,
-            with: try PortableResearcherReviewDisposition(reviewedChanges: [
-                try PortableResearcherReviewedChange(
-                    noteID: record.confirmedChanges[0].noteID,
-                    outcome: .keptAgentRevision,
-                    observedRevision: record.confirmedChanges[0].endingRevision
-                )
-            ])
-        )
-        reviewModel.acceptUpdatedRecord(kept)
-        #expect(reviewModel.hasDirectUndoEligibility(for: kept))
+        reviewModel.acceptUpdatedRecord(record)
+        #expect(reviewModel.hasDirectUndoEligibility(for: record))
 
         let browseModel = ResearchRecordBrowserModel()
         browseModel.prepareForOpen(
@@ -1469,38 +1459,6 @@ struct ResearchRecordBrowserModelTests {
             ],
             startedAt: Date(timeIntervalSince1970: 90),
             finishedAt: Date(timeIntervalSince1970: 100)
-        )
-    }
-
-    private func replacingReviewDisposition(
-        in record: PortableResearchRecord,
-        with disposition: PortableResearcherReviewDisposition
-    ) throws -> PortableResearchRecord {
-        try PortableResearchRecord(
-            id: record.id,
-            triptychID: record.triptychID,
-            title: record.title,
-            kind: record.kind,
-            action: record.action,
-            method: record.method,
-            sourceReference: record.sourceReference,
-            continuationLineage: record.continuationLineage,
-            primaryNoteID: record.primaryNoteID,
-            participatingNotes: record.participatingNotes,
-            statements: record.statements,
-            resultDisposition: record.resultDisposition,
-            academicResults: record.academicResults,
-            contextUseReport: record.contextUseReport,
-            actuallyUsedMaterials: record.actuallyUsedMaterials,
-            fidelityCompletion: record.fidelityCompletion,
-            confirmedChanges: record.confirmedChanges,
-            discrepancies: record.discrepancies,
-            literatureRecommendations: record.literatureRecommendations,
-            startedAt: record.startedAt,
-            finishedAt: record.finishedAt,
-            researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment,
-            researcherReviewDisposition: disposition
         )
     }
 

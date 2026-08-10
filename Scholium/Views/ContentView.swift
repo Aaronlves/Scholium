@@ -320,7 +320,8 @@ struct ContentView: View {
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
                 freshness: researchProjectionFreshness,
                 propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
-                zoteroItemKey: currentAnalysisZoteroItemKey
+                zoteroItemKey: currentAnalysisZoteroItemKey,
+                noteReviewState: currentNoteReviewState
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
             openProperties: {
@@ -339,6 +340,11 @@ struct ContentView: View {
                     )
                 )
             },
+            openNoteReview: {
+                guard let noteID = currentNoteStableID,
+                      currentNoteReviewState?.status == .needsReview else { return }
+                appState.noteReviewTaskNoteID = noteID
+            },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
             },
@@ -346,6 +352,17 @@ struct ContentView: View {
                 await appState.zoteroBridge.openInZotero(zoteroKey: itemKey)
             }
         )
+    }
+
+    private var currentNoteStableID: UUID? {
+        appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
+    }
+
+    private var currentNoteReviewState: WorkspaceNoteReviewState? {
+        guard let noteID = currentNoteStableID else { return nil }
+        return researchController.records?.noteReviewStates.first {
+            $0.noteID == noteID
+        }
     }
 
     private var currentAnalysisZoteroItemKey: String? {
@@ -432,7 +449,14 @@ struct ContentView: View {
             identityAmbiguity: appState.currentDocumentIdentityAmbiguity,
             pendingIdentityRebinding: appState.currentDocumentPendingIdentityRebinding,
             identityMigrationFailureMessage: appState.currentDocumentIdentityMigrationFailure?.message,
-            isResolvingIdentity: appState.isResolvingIdentity
+            isResolvingIdentity: appState.isResolvingIdentity,
+            noteReviewState: currentNoteReviewState,
+            isNoteReviewTaskPresented: appState.noteReviewTaskNoteID
+                == currentNoteStableID,
+            researchRecordSourceManifestHash: researchController.records?
+                .finishedResearchRecordSourceManifestHash ?? "",
+            researchRecordProjectionIsComplete: researchController.records?
+                .finishedResearchRecordProjectionIsComplete ?? false
         )
     }
 
@@ -543,6 +567,23 @@ struct ContentView: View {
             },
             setResearchInspectorVisible: {
                 windowCoordinator.actions.setResearchInspectorVisible($0)
+            },
+            viewAgentChanges: {
+                windowCoordinator.actions.showNoteResearchRecords()
+            },
+            dismissNoteReviewTask: {
+                appState.noteReviewTaskNoteID = nil
+            },
+            reloadNoteReviewState: {
+                try await appState.researchController.refreshResearchProjection()
+            },
+            markCurrentNoteReviewed: { noteID, revision, manifest in
+                _ = try await appState.researchController.markCurrentNoteReviewed(
+                    noteID: noteID,
+                    expectedRevision: revision,
+                    expectedRecordSourceManifestHash: manifest
+                )
+                appState.noteReviewTaskNoteID = nil
             },
             notify: { message, kind in
                 switch kind {
@@ -737,13 +778,6 @@ struct ContentView: View {
                                 runID: runID
                             )
                         },
-                        reviewResult: { activity in
-                            appState.presentationRouter.dismissSheet()
-                            Task { @MainActor in
-                                await Task.yield()
-                                windowCoordinator.reviewResearchResult(activity)
-                            }
-                        },
                         retryRefresh: {
                             Task { await appState.retryDerivedRefresh() }
                         },
@@ -911,6 +945,11 @@ struct ContentView: View {
             }
             detailContent
         }
+        .onChange(of: currentNoteStableID) { previous, current in
+            guard previous != current,
+                  appState.noteReviewTaskNoteID != current else { return }
+            appState.noteReviewTaskNoteID = nil
+        }
     }
 
     @ViewBuilder
@@ -963,14 +1002,9 @@ struct ContentView: View {
                     pendingResearchActionFocusID = $0
                 },
                 openResearchAction: { item in
-                    if let activity = item.activity,
-                       activity.primary.state == .resultReady,
-                       let result = activity.newestResult {
-                        windowCoordinator.reviewResearchResult(result)
-                    } else if let activity = item.activity {
+                    if let activity = item.activity {
                         appState.openResearchActionStatus(
-                            activity.primary,
-                            relatedResult: activity.newestResult
+                            activity.primary
                         )
                     } else {
                         appState.openResearchAction(item.id)
@@ -1276,7 +1310,7 @@ private struct ResearchResultNotificationView: View {
 
     private var title: LocalizedStringResource {
         switch kind {
-        case .result: "Agent Result Ready"
+        case .result: "Agent Result Arrived"
         case .enableNotifications: "Get Notified When Results Are Ready"
         case .openNotificationSettings: "Notifications Are Off"
         }

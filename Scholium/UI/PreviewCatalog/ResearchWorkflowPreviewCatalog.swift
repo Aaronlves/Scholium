@@ -114,9 +114,7 @@ private struct ResearchResultReviewProof: View {
                 setRecommendationNote: { _, _, _ in fixture.record },
                 saveResponse: { _, _, _, _, _ in fixture.record },
                 reloadRecord: { _ in fixture.record },
-                changeReviewState: { _ in fixture.reviewState },
-                keepChanges: { _, _, _ in fixture.record },
-                finishReview: { _, _, _ in fixture.record },
+                changeState: { _ in fixture.changeState },
                 comparison: { _, noteID in
                     guard let comparison = fixture.comparisons[noteID] else {
                         throw ExactSourceComparisonError.exactRevisionUnavailable(
@@ -125,7 +123,7 @@ private struct ResearchResultReviewProof: View {
                     }
                     return comparison
                 },
-                undoChanges: { _, noteIDs, _, _ in
+                undoChanges: { _, noteIDs, _ in
                     ResearchRecordChangesUndoResult(
                         record: fixture.record,
                         documents: noteIDs.map {
@@ -149,7 +147,7 @@ private struct ResearchResultReviewProof: View {
 private struct ResearchResultReviewProofFixture {
     let record: PortableResearchRecord
     let resultFingerprint: DocumentFingerprint
-    let reviewState: ResearchRecordChangeReviewState
+    let changeState: ResearchRecordChangeState
     let comparisons: [UUID: ExactSourceComparison]
     let startingRevisions: [UUID: DocumentFingerprint]
 
@@ -240,9 +238,8 @@ private struct ResearchResultReviewProofFixture {
             finishedAt: finishedAt
         )
         resultFingerprint = try record.finalizedResultFingerprint()
-        reviewState = ResearchRecordChangeReviewState(
+        changeState = ResearchRecordChangeState(
             recordID: recordID,
-            reviewRevision: nil,
             finalizedResultFingerprint: resultFingerprint,
             documents: [
                 ResearchRecordChangeCurrentState(
@@ -257,8 +254,7 @@ private struct ResearchResultReviewProofFixture {
                     status: .agentEndingRevision,
                     observedRevision: workEndRevision
                 )
-            ],
-            isComplete: false
+            ]
         )
         comparisons = [
             topicID: try ExactSourceComparisonBuilder.build(

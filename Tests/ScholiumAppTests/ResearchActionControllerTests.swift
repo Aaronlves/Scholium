@@ -846,14 +846,6 @@ struct ResearchActionControllerTests {
             state: .waitingForAgent,
             updatedAt: 10
         )
-        let ready = researchActivity(
-            actionID: action.id,
-            targetNoteID: target.noteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "result"),
-            updatedAt: 20
-        )
         var actionRunRequests: [UUID] = []
         var handoffRequests: [UUID] = []
         var cancelledRunIDs: [UUID] = []
@@ -880,7 +872,6 @@ struct ResearchActionControllerTests {
             target: target,
             availability: action,
             activity: waiting,
-            relatedResult: nil,
             presentationID: UUID()
         ))
         await waitUntil { controller.phase == .prepared }
@@ -891,8 +882,7 @@ struct ResearchActionControllerTests {
         #expect(controller.selectedFocalNoteIDs.isEmpty)
         #expect(actionRunRequests == [runID])
 
-        controller.receive(activities: [waiting, ready])
-        #expect(controller.statusRelatedResult == ready)
+        controller.receive(activities: [waiting])
         controller.regenerateHandoff()
         await waitUntil { controller.agentHandoff != nil }
         #expect(handoffRequests == [runID])
@@ -936,7 +926,6 @@ struct ResearchActionControllerTests {
             target: target,
             availability: action,
             activity: waiting,
-            relatedResult: nil,
             presentationID: UUID()
         ))
         await waitUntil { controller.phase == .prepared }

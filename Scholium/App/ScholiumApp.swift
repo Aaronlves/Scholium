@@ -339,27 +339,9 @@ private struct ScholiumResearchRecordsRoot: View {
                         }
                         return record
                     },
-                    changeReviewState: { recordID in
+                    changeState: { recordID in
                         try await capabilities.research.records
-                            .researchRecordChangeReviewState(recordID: recordID)
-                    },
-                    keepChanges: {
-                        recordID, expectedReviewRevision, resultFingerprint in
-                        try await capabilities.research.records
-                            .keepResearchRecordChanges(
-                                recordID: recordID,
-                                expectedReviewRevision: expectedReviewRevision,
-                                expectedResultFingerprint: resultFingerprint
-                            )
-                    },
-                    finishReview: {
-                        recordID, expectedReviewRevision, resultFingerprint in
-                        try await capabilities.research.records
-                            .finishResearchRecordReviewWithCurrentState(
-                                recordID: recordID,
-                                expectedReviewRevision: expectedReviewRevision,
-                                expectedResultFingerprint: resultFingerprint
-                            )
+                            .researchRecordChangeState(recordID: recordID)
                     },
                     comparison: { recordID, noteID in
                         try await capabilities.research.records
@@ -369,13 +351,11 @@ private struct ScholiumResearchRecordsRoot: View {
                             )
                     },
                     undoChanges: {
-                        recordID, noteIDs, expectedReviewRevision,
-                        resultFingerprint in
+                        recordID, noteIDs, resultFingerprint in
                         try await capabilities.research.records
                             .undoResearchRecordChanges(
                                 recordID: recordID,
                                 selectedNoteIDs: noteIDs,
-                                expectedReviewRevision: expectedReviewRevision,
                                 expectedResultFingerprint: resultFingerprint
                             )
                     },
@@ -1630,6 +1610,9 @@ final class WindowModel: ObservableObject {
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
+    /// Per-window, document-owned Review task context. Durable review truth
+    /// remains in the portable Note Review store.
+    @Published var noteReviewTaskNoteID: UUID? = nil
     @Published var registeredVaults: [RegisteredVault] = []
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
@@ -3330,8 +3313,7 @@ final class WindowModel: ObservableObject {
     }
 
     func openResearchActionStatus(
-        _ activity: WorkspaceResearchActivity,
-        relatedResult: WorkspaceResearchActivity?
+        _ activity: WorkspaceResearchActivity
     ) {
         guard let target = currentResearchActionTarget,
               target.noteID == activity.targetNoteID,
@@ -3345,7 +3327,6 @@ final class WindowModel: ObservableObject {
             target: target,
             availability: availability,
             activity: activity,
-            relatedResult: relatedResult,
             presentationID: presentationID
         ) else { return }
         researchController.requestPresentAction(

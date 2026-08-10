@@ -196,8 +196,6 @@ struct ResearchActionItemPresentation: Identifiable {
 
 struct ResearchActionActivityPresentation: Equatable {
     let primary: WorkspaceResearchActivity
-    let newestResult: WorkspaceResearchActivity?
-    let resultReadyCount: Int
 
     static func make(
         activities: [WorkspaceResearchActivity]
@@ -212,28 +210,11 @@ struct ResearchActionActivityPresentation: Equatable {
             }
             return $0.runID.uuidString < $1.runID.uuidString
         }
-        let results = activities.filter { $0.state == .resultReady }.sorted {
-            if $0.updatedAt != $1.updatedAt {
-                return $0.updatedAt > $1.updatedAt
-            }
-            return $0.runID.uuidString < $1.runID.uuidString
-        }
         guard let primary = ordered.first else { return nil }
-        return ResearchActionActivityPresentation(
-            primary: primary,
-            newestResult: results.first,
-            resultReadyCount: results.count
-        )
+        return ResearchActionActivityPresentation(primary: primary)
     }
 
     var stateTitle: String {
-        if resultReadyCount > 1, primary.state == .resultReady {
-            return String(
-                localized: "\(resultReadyCount) Results Ready",
-                table: "Localizable",
-                bundle: .module
-            )
-        }
         switch primary.state {
         case .waitingForAgent:
             return String(
@@ -253,12 +234,6 @@ struct ResearchActionActivityPresentation: Equatable {
                 table: "Localizable",
                 bundle: .module
             )
-        case .resultReady:
-            return String(
-                localized: "Result Ready",
-                table: "Localizable",
-                bundle: .module
-            )
         }
     }
 
@@ -270,19 +245,7 @@ struct ResearchActionActivityPresentation: Equatable {
                 table: "Localizable",
                 bundle: .module
             )
-        guard resultReadyCount > 0 else { return repair }
-        if resultReadyCount == 1 {
-            return String(
-                localized: "\(repair) One result is also ready to review.",
-                table: "Localizable",
-                bundle: .module
-            )
-        }
-        return String(
-            localized: "\(repair) \(resultReadyCount) results are also ready to review.",
-            table: "Localizable",
-            bundle: .module
-        )
+        return repair
     }
 
     var showsProgress: Bool { primary.state == .running }
@@ -293,9 +256,8 @@ struct ResearchActionActivityPresentation: Equatable {
     private static func priority(_ state: WorkspaceResearchActivityState) -> Int {
         switch state {
         case .needsAttention: 0
-        case .resultReady: 1
-        case .running: 2
-        case .waitingForAgent: 3
+        case .running: 1
+        case .waitingForAgent: 2
         }
     }
 }

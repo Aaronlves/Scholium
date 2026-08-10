@@ -5,23 +5,9 @@ import Testing
 
 @Suite("Research Action activity presentation")
 struct ResearchActionActivityPresentationTests {
-    @Test("Action state priority preserves recovery while retaining the newest ready result")
-    func statePriorityAndOutstandingResults() throws {
+    @Test("Action state priority preserves actionable recovery")
+    func statePriority() throws {
         let targetNoteID = UUID()
-        let olderReady = activity(
-            targetNoteID: targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "older"),
-            updatedAt: 10
-        )
-        let newestReady = activity(
-            targetNoteID: targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "newer"),
-            updatedAt: 20
-        )
         let running = activity(
             targetNoteID: targetNoteID,
             state: .running,
@@ -36,46 +22,15 @@ struct ResearchActionActivityPresentationTests {
 
         let presentation = try #require(
             ResearchActionActivityPresentation.make(
-                activities: [olderReady, newestReady, running, attention]
+                activities: [running, attention]
             )
         )
 
         #expect(presentation.primary == attention)
-        #expect(presentation.newestResult == newestReady)
-        #expect(presentation.resultReadyCount == 2)
         #expect(presentation.stateTitle == "Needs Attention")
         #expect(presentation.detail?.contains("source conflict") == true)
-        #expect(presentation.detail?.contains("2 results") == true)
         #expect(!presentation.showsProgress)
         #expect(!presentation.showsDirectEnd)
-    }
-
-    @Test("Multiple ready results choose the newest and expose their count")
-    func newestResultAndCount() throws {
-        let targetNoteID = UUID()
-        let older = activity(
-            targetNoteID: targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "older"),
-            updatedAt: 10
-        )
-        let newer = activity(
-            targetNoteID: targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "newer"),
-            updatedAt: 20
-        )
-
-        let presentation = try #require(
-            ResearchActionActivityPresentation.make(activities: [older, newer])
-        )
-
-        #expect(presentation.primary == newer)
-        #expect(presentation.newestResult == newer)
-        #expect(presentation.resultReadyCount == 2)
-        #expect(presentation.stateTitle == "2 Results Ready")
     }
 
     @Test("Running and waiting states preserve direct End access")
@@ -104,8 +59,8 @@ struct ResearchActionActivityPresentationTests {
         #expect(running.showsProgress)
     }
 
-    @Test("A durable result remains reachable while Action availability is unavailable")
-    func resultSurvivesAvailabilityFailure() throws {
+    @Test("An active status remains reachable while Action availability is unavailable")
+    func activeStatusSurvivesAvailabilityFailure() throws {
         let targetNoteID = UUID()
         let target = ResearchActionNoteSnapshot(
             noteID: targetNoteID,
@@ -118,11 +73,9 @@ struct ResearchActionActivityPresentationTests {
             fingerprint: DocumentFingerprint(content: "target"),
             title: "Result"
         )
-        let ready = activity(
+        let running = activity(
             targetNoteID: targetNoteID,
-            state: .resultReady,
-            recordID: UUID(),
-            fingerprint: DocumentFingerprint(content: "result"),
+            state: .running,
             updatedAt: 20
         )
 
@@ -130,14 +83,14 @@ struct ResearchActionActivityPresentationTests {
             target: target,
             availability: [],
             availabilityError: "Profile unavailable",
-            activities: [ready]
+            activities: [running]
         )
         let row = try #require(presentation.items.first)
 
         #expect(row.id == .analyze)
         #expect(row.title == "Analyze")
         #expect(row.canPresent)
-        #expect(row.activity?.primary == ready)
+        #expect(row.activity?.primary == running)
     }
 
     private func activity(

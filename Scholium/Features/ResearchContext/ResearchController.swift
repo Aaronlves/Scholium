@@ -125,6 +125,9 @@ final class ResearchController: ObservableObject {
             checkpointListing: current.checkpointListing,
             recoveryRecords: current.recoveryRecords,
             activities: current.activities,
+            noteReviews: current.noteReviews,
+            noteReviewStates: current.noteReviewStates,
+            resultArrivals: current.resultArrivals,
             healthIssues: current.healthIssues
         )
         errorMessage = nil
@@ -178,6 +181,21 @@ final class ResearchController: ObservableObject {
             recordID: recordID,
             noteID: noteID
         )
+    }
+
+    func markCurrentNoteReviewed(
+        noteID: UUID,
+        expectedRevision: DocumentFingerprint,
+        expectedRecordSourceManifestHash: String
+    ) async throws -> PortableResearchNoteReview {
+        let operations = try requireRecords()
+        let review = try await operations.markCurrentNoteReviewed(
+            noteID: noteID,
+            expectedRevision: expectedRevision,
+            expectedRecordSourceManifestHash: expectedRecordSourceManifestHash
+        )
+        try await refreshResearchProjection()
+        return review
     }
 
     private func refreshRecordProjection(after operation: String) async throws {

@@ -25,27 +25,14 @@ struct ResearchRecordBrowserContext {
         ) async throws -> PortableResearchRecord
     let reloadRecord:
         @MainActor (UUID) async throws -> PortableResearchRecord
-    let changeReviewState:
-        @MainActor (UUID) async throws -> ResearchRecordChangeReviewState
-    let keepChanges:
-        @MainActor (
-            UUID,
-            UUID?,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord
-    let finishReview:
-        @MainActor (
-            UUID,
-            UUID?,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord
+    let changeState:
+        @MainActor (UUID) async throws -> ResearchRecordChangeState
     let comparison:
         @MainActor (UUID, UUID) async throws -> ExactSourceComparison
     let undoChanges:
         @MainActor (
             UUID,
             Set<UUID>,
-            UUID?,
             DocumentFingerprint
         ) async throws -> ResearchRecordChangesUndoResult
     let startMethodImprovement:
@@ -2101,9 +2088,9 @@ private struct ResearchRecordDetailToolbar: ToolbarContent {
     private var evidenceItem: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             ScholiumNativeToolbarButton(
-                title: String(localized: isEvidencePresented
-                    ? "Hide Evidence & Judgment"
-                    : "Show Evidence & Judgment"),
+                title: isEvidencePresented
+                    ? String(localized: "Hide Evidence")
+                    : String(localized: "Show Evidence"),
                 systemImage: "sidebar.trailing",
                 identifier: "scholium.researchRecord.toggleEvidence",
                 accessibilityValue: isEvidencePresented ? "Shown" : "Hidden"
@@ -2194,6 +2181,14 @@ private struct ResearchRecordWorkspaceView: View {
                     )
                     ScholiumStructuralRule()
                     ResearchFinalizedResultView(record: record)
+                    if record.kind == .action {
+                        ScholiumStructuralRule()
+                        ResearchRecordResearcherResponseSection(
+                            record: record,
+                            model: model,
+                            context: context
+                        )
+                    }
                     ScholiumStructuralRule()
                     ResearchRecordStatementSection(
                         statements: record.statements,
@@ -2239,10 +2234,10 @@ private struct ResearchRecordWorkspaceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text("Process Result")
+                    Text("Record Evidence")
                         .font(ScholiumTypography.scholarly(.sectionTitle))
                         .accessibilityHeading(.h1)
-                    Text("Respond to the result, decide its source changes, then inspect its evidence.")
+                    Text("Inspect confirmed source changes, context, participants, and technical provenance.")
                         .font(ScholiumTypography.interface(.compact))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -2250,14 +2245,7 @@ private struct ResearchRecordWorkspaceView: View {
 
                 if record.kind == .action {
                     ScholiumStructuralRule()
-                    ResearchRecordResearcherResponseSection(
-                        record: record,
-                        model: model,
-                        context: context
-                    )
-
-                    ScholiumStructuralRule()
-                    ResearchRecordChangeDecisionSection(
+                    ResearchRecordChangesSection(
                         record: record,
                         model: model,
                         context: context,
@@ -2302,7 +2290,7 @@ private struct ResearchRecordWorkspaceView: View {
         }
         .background(Color.clear)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Evidence and Judgment")
+        .accessibilityLabel("Record Evidence")
         .accessibilityIdentifier("scholium.researchRecord.evidence")
     }
 

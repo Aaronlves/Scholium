@@ -6,7 +6,6 @@ struct ResearchActionPanelContext {
     let chooseLocalSource: () -> URL?
     let copyInstructions: (String) throws -> Void
     let didCopyHandoff: (UUID) -> Void
-    let reviewResult: (WorkspaceResearchActivity) -> Void
     let retryRefresh: () -> Void
     let openRecovery: () -> Void
     let dismiss: () -> Void
@@ -282,12 +281,6 @@ struct ResearchActionPanelView: View {
                         .scholiumForeground(.attention)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let relatedResult = controller.statusRelatedResult,
-                   relatedResult.runID != activity.runID {
-                    Text("Another result from this Action is ready to review.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                }
             }
         }
         if let errorMessage = controller.errorMessage {
@@ -311,15 +304,7 @@ struct ResearchActionPanelView: View {
             }
             Spacer()
             statusRecoveryAction
-            if let result = controller.statusRelatedResult {
-                Button("Review Result") {
-                    context.reviewResult(result)
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(controller.isBusy)
-                .accessibilityIdentifier("scholium.researchAction.reviewResult")
-            } else if canEndStatusAction {
+            if canEndStatusAction {
                 Button {
                     copyNewHandoff()
                 } label: {
@@ -385,12 +370,6 @@ struct ResearchActionPanelView: View {
                 table: "Localizable",
                 bundle: .module
             )
-        case .resultReady:
-            String(
-                localized: "The completed Research Record is ready to review.",
-                table: "Localizable",
-                bundle: .module
-            )
         }
     }
 
@@ -399,13 +378,11 @@ struct ResearchActionPanelView: View {
         case .waitingForAgent: "clock"
         case .running: "arrow.triangle.2.circlepath"
         case .needsAttention: "exclamationmark.triangle"
-        case .resultReady: "doc.text.magnifyingglass"
         }
     }
 
     private var canEndStatusAction: Bool {
         controller.canCancelPreparedRun
-            && controller.statusActivity?.state != .resultReady
     }
 
     @ViewBuilder

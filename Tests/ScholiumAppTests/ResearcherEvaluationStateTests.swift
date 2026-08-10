@@ -98,37 +98,6 @@ struct ResearcherEvaluationStateTests {
         #expect(!cannotRegainValidity)
     }
 
-    @Test("Change decisions require reload only when the mutation outcome is stale")
-    func changeDecisionFailureRecovery() {
-        let committed = ScholiumApplicationError.operationCommittedButRefreshFailed(
-            operation: "Change decision",
-            reason: "Injected refresh failure"
-        )
-        let uncertain = ScholiumApplicationError.operationCommitUncertain(
-            operation: "Change decision",
-            reason: "Injected commit uncertainty"
-        )
-
-        #expect(
-            ResearchRecordChangeDecisionFailureRecovery.after(committed)
-                == .reloadRequired
-        )
-        #expect(
-            ResearchRecordChangeDecisionFailureRecovery.after(uncertain)
-                == .reloadRequired
-        )
-        #expect(
-            ResearchRecordChangeDecisionFailureRecovery.after(
-                PortableResearcherReviewMutationError.staleReviewRevision
-            ) == .reloadRequired
-        )
-        #expect(
-            ResearchRecordChangeDecisionFailureRecovery.after(
-                EvaluationTestFailure.provenNotCommitted
-            ) == .retry
-        )
-    }
-
     private enum EvaluationTestFailure: Error {
         case provenNotCommitted
     }

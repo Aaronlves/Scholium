@@ -16,39 +16,38 @@ struct ResearchRecordResearcherResponseSection: View {
     @FocusState private var isImprovementButtonFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
             ResearchRecordEvidenceSectionHeader(
                 title: "RESEARCHER RESPONSE",
                 identifier: "scholium.researchRecord.responseHeader"
             )
-
-            ResearchRecordEvidenceEntry(
-                symbol: record.researcherEvaluation == nil
-                    ? "person.crop.circle" : "checkmark.circle",
-                title: record.researcherEvaluation == nil
-                    ? "Evaluation not recorded" : "Evaluation saved",
-                body: evaluationSummary,
-                identifier: "scholium.researchRecord.response.evaluation"
-            )
-            ResearchRecordEvidenceEntry(
-                symbol: record.methodFeedbackComment == nil
-                    ? "text.bubble" : "checkmark.circle",
-                title: record.methodFeedbackComment == nil
-                    ? "No Method feedback" : "Method Feedback saved",
-                body: methodFeedbackSummary,
-                identifier: "scholium.researchRecord.response.methodFeedback"
-            )
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    responseControls
+            if hasSavedResponse {
+                savedResponseContent
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        responseControls
+                    }
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.inlineControlGap
+                    ) {
+                        responseControls
+                    }
                 }
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.inlineControlGap
-                ) {
-                    responseControls
-                }
+            } else {
+                Text("Add an Evaluation and, when useful, optional Method Feedback. The Agent's finalized result remains unchanged.")
+                    .font(ScholiumTypography.interface(.compact))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Add Response…") { isPresentingEditor = true }
+                    .buttonStyle(.bordered)
+                    .scholiumActivationFocus(
+                        $isEditorButtonFocused,
+                        presentation: .native
+                    )
+                    .accessibilityIdentifier(
+                        "scholium.researchRecord.response.add"
+                    )
             }
 
             if let improvementError {
@@ -90,6 +89,46 @@ struct ResearchRecordResearcherResponseSection: View {
         }
     }
 
+    private var hasSavedResponse: Bool {
+        record.researcherEvaluation != nil || record.methodFeedbackComment != nil
+    }
+
+    private var savedResponseContent: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
+            if let evaluation = record.researcherEvaluation {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text("Evaluation")
+                        .font(ScholiumTypography.interface(.sectionTitle))
+                        .accessibilityHeading(.h3)
+                    Text(evaluationSummary)
+                        .font(ScholiumTypography.interface(.compact))
+                        .scholiumForeground(.secondaryText)
+                    if let note = evaluation.note {
+                        Text(note)
+                            .font(ScholiumTypography.scholarly(.body))
+                            .textSelection(.enabled)
+                    }
+                }
+                .accessibilityIdentifier(
+                    "scholium.researchRecord.response.evaluation"
+                )
+            }
+            if let feedback = record.methodFeedbackComment {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text("Method Feedback")
+                        .font(ScholiumTypography.interface(.sectionTitle))
+                        .accessibilityHeading(.h3)
+                    Text(feedback.text)
+                        .font(ScholiumTypography.scholarly(.body))
+                        .textSelection(.enabled)
+                }
+                .accessibilityIdentifier(
+                    "scholium.researchRecord.response.methodFeedback"
+                )
+            }
+        }
+    }
+
     private var evaluationSummary: String {
         guard let evaluation = record.researcherEvaluation else {
             return String(localized: "Add your judgment of the result without changing the Agent's finalized work.")
@@ -106,15 +145,10 @@ struct ResearchRecordResearcherResponseSection: View {
         return parts.joined(separator: " · ")
     }
 
-    private var methodFeedbackSummary: String {
-        record.methodFeedbackComment?.text
-            ?? String(localized: "Add a bounded comment only when the Method itself needs attention.")
-    }
-
     @ViewBuilder
     private var responseControls: some View {
         Button("Edit Response…") { isPresentingEditor = true }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .scholiumActivationFocus(
                 $isEditorButtonFocused,
                 presentation: .native
@@ -304,6 +338,7 @@ private struct ResearcherResponseEditorSheet: View {
     @State private var confirmsClearingOnSave = false
     @State private var authorizedEvaluationClear = false
     @State private var authorizedFeedbackClear = false
+    @State private var isMethodFeedbackExpanded: Bool
 
     init(
         record: PortableResearchRecord,
@@ -322,6 +357,9 @@ private struct ResearcherResponseEditorSheet: View {
         _feedbackRevision = State(initialValue: record.methodFeedbackComment?.revision)
         _resultFingerprint = State(initialValue: try? record.finalizedResultFingerprint())
         _status = State(initialValue: .clean)
+        _isMethodFeedbackExpanded = State(
+            initialValue: record.methodFeedbackComment != nil
+        )
     }
 
     var body: some View {
@@ -490,36 +528,56 @@ private struct ResearcherResponseEditorSheet: View {
         .disabled(operationInFlight)
     }
 
+    @ViewBuilder
     private var methodFeedbackEditor: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("METHOD FEEDBACK")
-                    .scholiumApparatusHeadingStyle()
-                    .accessibilityHeading(.h2)
-                Spacer()
-                if feedbackRevision != nil {
-                    Button("Clear Method Feedback…") { confirmsClearFeedback = true }
-                        .disabled(operationInFlight)
+        if isMethodFeedbackExpanded {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("METHOD FEEDBACK")
+                        .scholiumApparatusHeadingStyle()
+                        .accessibilityHeading(.h2)
+                    Spacer()
+                    if feedbackRevision != nil {
+                        Button("Clear Method Feedback…") { confirmsClearFeedback = true }
+                            .disabled(operationInFlight)
+                    }
                 }
+                Text("Optional. Describe a problem with the Method itself; execution or source-result judgments belong in the Evaluation above.")
+                    .font(ScholiumTypography.interface(.compact))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextEditor(text: $content.methodFeedback)
+                    .font(ScholiumTypography.scholarly(.body))
+                    .frame(
+                        minHeight: ScholiumMetrics.ResearchSheet.ResearcherResponse.editorMinimumHeight,
+                        idealHeight: ScholiumMetrics.ResearchSheet.ResearcherResponse.editorIdealHeight
+                    )
+                    .scrollContentBackground(.hidden)
+                    .padding(ScholiumMetrics.ResearchSheet.textEditorInset)
+                    .background(ScholiumColorRole.documentBackground.color)
+                    .overlay { editorBorder }
+                    .accessibilityLabel("Method Feedback")
+                    .accessibilityIdentifier("scholium.researchResponse.methodFeedback")
             }
-            Text("Optional. Describe a problem with the Method itself; execution or source-result judgments belong in the Evaluation above.")
-                .font(ScholiumTypography.interface(.compact))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            TextEditor(text: $content.methodFeedback)
-                .font(ScholiumTypography.scholarly(.body))
-                .frame(
-                    minHeight: ScholiumMetrics.ResearchSheet.ResearcherResponse.editorMinimumHeight,
-                    idealHeight: ScholiumMetrics.ResearchSheet.ResearcherResponse.editorIdealHeight
+            .disabled(operationInFlight)
+        } else {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Button("＋ Add Method Feedback…") {
+                    isMethodFeedbackExpanded = true
+                }
+                .disabled(operationInFlight)
+                .accessibilityHint(
+                    "Reveals the optional Method Feedback editor"
                 )
-                .scrollContentBackground(.hidden)
-                .padding(ScholiumMetrics.ResearchSheet.textEditorInset)
-                .background(ScholiumColorRole.documentBackground.color)
-                .overlay { editorBorder }
-                .accessibilityLabel("Method Feedback")
-                .accessibilityIdentifier("scholium.researchResponse.methodFeedback")
+                .accessibilityIdentifier(
+                    "scholium.researchResponse.addMethodFeedback"
+                )
+                Text("Optional. Use this only when the Method itself needs attention.")
+                    .font(ScholiumTypography.interface(.compact))
+                    .scholiumForeground(.secondaryText)
+            }
+            .accessibilityElement(children: .contain)
         }
-        .disabled(operationInFlight)
     }
 
     private var editorBorder: some View {
@@ -802,68 +860,48 @@ private struct ResearcherResponseEditorSheet: View {
     }
 }
 
-enum ResearchRecordChangeDecisionFailureRecovery: Equatable {
-    case retry
-    case reloadRequired
-
-    static func after(_ error: Error) -> Self {
-        if error is PortableResearcherReviewMutationError {
-            return .reloadRequired
-        }
-        if let applicationError = error as? ScholiumApplicationError,
-           applicationError.mutationRequiresReconciliation {
-            return .reloadRequired
-        }
-        return .retry
-    }
-}
-
-struct ResearchRecordChangeDecisionSection: View {
+struct ResearchRecordChangesSection: View {
     let record: PortableResearchRecord
     let model: ResearchRecordBrowserModel
     let context: ResearchRecordBrowserContext
     let canDirectlyUndo: Bool
 
-    @State private var reviewState: ResearchRecordChangeReviewState?
+    @State private var changeState: ResearchRecordChangeState?
     @State private var isLoading = false
-    @State private var isMutating = false
     @State private var isReloading = false
     @State private var isReloadRequired = false
     @State private var errorMessage: String?
-    @State private var confirmsFinishCurrentState = false
     @State private var isPresentingComparison = false
     @FocusState private var isComparisonButtonFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             ResearchRecordEvidenceSectionHeader(
-                title: "CHANGE DECISION",
-                identifier: "scholium.researchRecord.changeDecisionHeader"
+                title: "CHANGES",
+                identifier: "scholium.researchRecord.changesHeader"
             )
 
             ResearchRecordEvidenceEntry(
-                symbol: decisionSymbol,
-                title: decisionTitle,
-                body: decisionDetail,
-                identifier: "scholium.researchRecord.changeDecision.status"
+                symbol: record.confirmedChanges.isEmpty
+                    ? "checkmark.seal" : "doc.text.magnifyingglass",
+                title: record.confirmedChanges.isEmpty
+                    ? "No confirmed source changes"
+                    : "\(record.confirmedChanges.count) confirmed source changes",
+                body: record.confirmedChanges.isEmpty
+                    ? "This result did not change a Note."
+                    : "View the exact Agent changes. Reading or comparing them does not mark any Note reviewed.",
+                identifier: "scholium.researchRecord.changes.status"
             )
 
-            ViewThatFits(in: .horizontal) {
+            if !record.confirmedChanges.isEmpty {
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    changeDecisionControls
-                }
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.inlineControlGap
-                ) {
-                    if !record.confirmedChanges.isEmpty {
-                        compareChangesButton
-                    }
-                    if !record.researcherReviewIsComplete {
-                        decisionButton
-                    }
-                    if isLoading || isMutating || isReloading {
-                        ProgressView().controlSize(.small)
+                    compareChangesButton
+                    if isLoading || isReloading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel(
+                                isLoading ? "Checking source changes" : "Reloading changes"
+                            )
                     }
                 }
             }
@@ -878,98 +916,41 @@ struct ResearchRecordChangeDecisionSection: View {
                         .scholiumForeground(.destructive)
                         .textSelection(.enabled)
                         .accessibilityIdentifier(
-                            "scholium.researchRecord.changeDecision.error"
+                            "scholium.researchRecord.changes.error"
                         )
                     if isReloadRequired {
-                        Button("Reload Result", action: reloadResult)
-                            .disabled(isReloading || isMutating)
+                        Button("Reload Changes", action: reloadChanges)
+                            .disabled(isReloading)
                             .accessibilityIdentifier(
-                                "scholium.researchRecord.changeDecision.reload"
+                                "scholium.researchRecord.changes.reload"
                             )
                     }
                 }
             }
         }
-        .task(id: reviewTaskID) { await loadReviewState() }
+        .task(id: record.id) { await loadChangeState() }
         .sheet(
             isPresented: $isPresentingComparison,
             onDismiss: restoreComparisonFocus
         ) {
-            if let reviewState {
+            if let changeState {
                 ResearchRecordComparisonSheet(
                     record: record,
-                    initialReviewState: reviewState,
+                    initialChangeState: changeState,
                     canDirectlyUndo: canDirectlyUndo,
                     loadComparison: context.comparison,
-                    loadReviewState: context.changeReviewState,
+                    loadChangeState: context.changeState,
                     undo: context.undoChanges,
                     didUpdateRecord: model.acceptUpdatedRecord
                 )
             }
         }
-        .confirmationDialog(
-            "Finish Review with the Current Source State?",
-            isPresented: $confirmsFinishCurrentState,
-            titleVisibility: .visible
-        ) {
-            Button("Cancel", role: .cancel) {}
-            Button("Finish Review") { finishReview() }
-        } message: {
-            Text("Later edits, restored revisions, and unavailable documents will be recorded as source facts. No source file will be changed.")
-        }
-    }
-
-    @ViewBuilder
-    private var decisionButton: some View {
-        if record.confirmedChanges.isEmpty {
-            Button("Finish Review") { finishReview() }
-                .buttonStyle(.bordered)
-                .disabled(isLoading || isMutating || isReloading || isReloadRequired)
-                .accessibilityIdentifier(
-                    "scholium.researchRecord.changeDecision.finish"
-                )
-        } else if everyDocumentIsAgentEndingRevision {
-            Button("Keep Agent Changes") { keepChanges() }
-                .buttonStyle(.bordered)
-                .disabled(isLoading || isMutating || isReloading || isReloadRequired)
-                .accessibilityIdentifier(
-                    "scholium.researchRecord.changeDecision.keep"
-                )
-        } else {
-            Button("Finish Review with Current State…") {
-                confirmsFinishCurrentState = true
-            }
-            .buttonStyle(.bordered)
-            .disabled(
-                isLoading || isMutating || isReloading || isReloadRequired
-                    || reviewState == nil
-            )
-            .accessibilityIdentifier(
-                "scholium.researchRecord.changeDecision.finishCurrent"
-            )
-        }
-    }
-
-    @ViewBuilder
-    private var changeDecisionControls: some View {
-        if !record.confirmedChanges.isEmpty { compareChangesButton }
-        Spacer(minLength: 0)
-        if isLoading || isMutating || isReloading {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel(
-                    isLoading
-                        ? "Checking source changes"
-                        : isReloading ? "Reloading Result" : "Saving change decision"
-                )
-        }
-        if !record.researcherReviewIsComplete { decisionButton }
     }
 
     private var compareChangesButton: some View {
         Button("Compare Changes…") { isPresentingComparison = true }
             .disabled(
-                reviewState == nil || isMutating || isReloading
+                changeState == nil || isReloading
                     || isReloadRequired
             )
             .scholiumActivationFocus(
@@ -977,7 +958,7 @@ struct ResearchRecordChangeDecisionSection: View {
                 presentation: .native
             )
             .accessibilityIdentifier(
-                "scholium.researchRecord.changeDecision.compare"
+                "scholium.researchRecord.changes.compare"
             )
     }
 
@@ -988,125 +969,34 @@ struct ResearchRecordChangeDecisionSection: View {
         }
     }
 
-    private var reviewTaskID: String {
-        "\(record.id.uuidString):" +
-            "\(record.researcherReviewDisposition?.revision.uuidString ?? "nil")"
-    }
-
-    private var everyDocumentIsAgentEndingRevision: Bool {
-        guard let reviewState, !reviewState.documents.isEmpty else { return false }
-        return reviewState.documents.allSatisfy {
-            $0.status == .agentEndingRevision
-        }
-    }
-
-    private var decisionSymbol: String {
-        if record.researcherReviewIsComplete { return "checkmark.circle" }
-        if isLoading { return "arrow.triangle.2.circlepath" }
-        if record.confirmedChanges.isEmpty { return "checkmark.seal" }
-        return "arrow.uturn.backward.circle"
-    }
-
-    private var decisionTitle: String {
-        if record.researcherReviewIsComplete {
-            return String(localized: "Review complete")
-        }
-        if record.confirmedChanges.isEmpty {
-            return String(localized: "No source changes to decide")
-        }
-        return String(localized: "\(record.confirmedChanges.count) changes need a decision")
-    }
-
-    private var decisionDetail: String {
-        if record.researcherReviewIsComplete {
-            return String(localized: "Every confirmed source change has a recorded factual outcome.")
-        }
-        if record.confirmedChanges.isEmpty {
-            return String(localized: "Finish Review to mark this no-change result as handled.")
-        }
-        if canDirectlyUndo {
-            return String(localized: "Keep the Agent revisions, compare them, or restore complete selected documents while this Records window remains open.")
-        }
-        return String(localized: "Compare the confirmed revisions, then record how the current sources should be treated.")
-    }
-
-    private func loadReviewState() async {
+    private func loadChangeState() async {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            reviewState = try await context.changeReviewState(record.id)
+            changeState = try await context.changeState(record.id)
         } catch is CancellationError {
             return
         } catch {
-            reviewState = nil
+            changeState = nil
             errorMessage = error.localizedDescription
         }
     }
 
-    private func keepChanges() {
-        mutate { fingerprint in
-            try await context.keepChanges(
-                record.id,
-                record.researcherReviewDisposition?.revision,
-                fingerprint
-            )
-        }
-    }
-
-    private func finishReview() {
-        mutate { fingerprint in
-            try await context.finishReview(
-                record.id,
-                record.researcherReviewDisposition?.revision,
-                fingerprint
-            )
-        }
-    }
-
-    private func mutate(
-        _ operation: @escaping @MainActor (
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord
-    ) {
-        guard !isMutating, !isReloading, !isReloadRequired else { return }
-        let fingerprint: DocumentFingerprint
-        do { fingerprint = try record.finalizedResultFingerprint() }
-        catch {
-            errorMessage = error.localizedDescription
-            return
-        }
-        isMutating = true
-        errorMessage = nil
-        Task { @MainActor in
-            defer { isMutating = false }
-            do {
-                let updated = try await operation(fingerprint)
-                model.acceptUpdatedRecord(updated)
-                reviewState = try await context.changeReviewState(updated.id)
-            } catch {
-                errorMessage = error.localizedDescription
-                isReloadRequired =
-                    ResearchRecordChangeDecisionFailureRecovery.after(error)
-                        == .reloadRequired
-            }
-        }
-    }
-
-    private func reloadResult() {
-        guard isReloadRequired, !isReloading, !isMutating else { return }
+    private func reloadChanges() {
+        guard isReloadRequired, !isReloading else { return }
         isReloading = true
         Task { @MainActor in
             defer { isReloading = false }
             do {
                 let updated = try await context.reloadRecord(record.id)
                 guard updated.id == record.id else {
-                    throw PortableResearcherReviewMutationError.recordUnavailable
+                    throw ResearchRecordChangeRecoveryError.recordUnavailable
                 }
-                let state = try await context.changeReviewState(updated.id)
+                let state = try await context.changeState(updated.id)
                 model.acceptUpdatedRecord(updated)
-                reviewState = state
+                changeState = state
                 isReloadRequired = false
                 errorMessage = nil
             } catch {
@@ -1159,28 +1049,26 @@ struct ResearchRecordDirectUndoGrantState: Equatable {
 private struct ResearchRecordComparisonSheet: View {
     typealias LoadComparison = @MainActor (UUID, UUID) async throws
         -> ExactSourceComparison
-    typealias LoadReviewState = @MainActor (UUID) async throws
-        -> ResearchRecordChangeReviewState
+    typealias LoadChangeState = @MainActor (UUID) async throws
+        -> ResearchRecordChangeState
     typealias Undo = @MainActor (
         UUID,
         Set<UUID>,
-        UUID?,
         DocumentFingerprint
     ) async throws -> ResearchRecordChangesUndoResult
 
     @Environment(\.dismiss) private var dismiss
 
     let record: PortableResearchRecord
-    let initialReviewState: ResearchRecordChangeReviewState
+    let initialChangeState: ResearchRecordChangeState
     let loadComparison: LoadComparison
-    let loadReviewState: LoadReviewState
+    let loadChangeState: LoadChangeState
     let undo: Undo
     let didUpdateRecord: (PortableResearchRecord) -> Void
 
     @State private var documents: [ResearchRecordComparisonDocument]
     @State private var expandedDocumentIDs: Set<UUID>
     @State private var selectedDocumentIDs: Set<UUID> = []
-    @State private var workingReviewRevision: UUID?
     @State private var directUndoGrant: ResearchRecordDirectUndoGrantState
     @State private var isUndoing = false
     @State private var confirmsUndo = false
@@ -1188,21 +1076,21 @@ private struct ResearchRecordComparisonSheet: View {
 
     init(
         record: PortableResearchRecord,
-        initialReviewState: ResearchRecordChangeReviewState,
+        initialChangeState: ResearchRecordChangeState,
         canDirectlyUndo: Bool,
         loadComparison: @escaping LoadComparison,
-        loadReviewState: @escaping LoadReviewState,
+        loadChangeState: @escaping LoadChangeState,
         undo: @escaping Undo,
         didUpdateRecord: @escaping (PortableResearchRecord) -> Void
     ) {
         self.record = record
-        self.initialReviewState = initialReviewState
+        self.initialChangeState = initialChangeState
         self.loadComparison = loadComparison
-        self.loadReviewState = loadReviewState
+        self.loadChangeState = loadChangeState
         self.undo = undo
         self.didUpdateRecord = didUpdateRecord
         let statesByID = Dictionary(uniqueKeysWithValues:
-            initialReviewState.documents.map { ($0.noteID, $0) }
+            initialChangeState.documents.map { ($0.noteID, $0) }
         )
         let mapped: [ResearchRecordComparisonDocument] = record.confirmedChanges
             .compactMap { change -> ResearchRecordComparisonDocument? in
@@ -1220,11 +1108,10 @@ private struct ResearchRecordComparisonSheet: View {
         _expandedDocumentIDs = State(
             initialValue: mapped.first.map { [$0.id] } ?? []
         )
-        _workingReviewRevision = State(initialValue: initialReviewState.reviewRevision)
         _directUndoGrant = State(
             initialValue: ResearchRecordDirectUndoGrantState(
                 finalizedResultFingerprint:
-                    initialReviewState.finalizedResultFingerprint,
+                    initialChangeState.finalizedResultFingerprint,
                 isValid: canDirectlyUndo
             )
         )
@@ -1400,7 +1287,7 @@ private struct ResearchRecordComparisonSheet: View {
 
     private var comparisonFooter: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button("Return to Result", action: dismiss.callAsFunction)
+            Button("Return to Record", action: dismiss.callAsFunction)
                 .keyboardShortcut(.cancelAction)
                 .disabled(isUndoing)
             Spacer(minLength: 0)
@@ -1469,12 +1356,9 @@ private struct ResearchRecordComparisonSheet: View {
                 let result = try await undo(
                     record.id,
                     selected,
-                    workingReviewRevision,
                     directUndoGrant.finalizedResultFingerprint
                 )
                 didUpdateRecord(result.record)
-                workingReviewRevision = result.record
-                    .researcherReviewDisposition?.revision
                 guard directUndoGrant.reconcile(
                     observedFinalizedResultFingerprint:
                         try result.record.finalizedResultFingerprint()
@@ -1500,14 +1384,13 @@ private struct ResearchRecordComparisonSheet: View {
                 }
                 selectedDocumentIDs.removeAll()
                 operationMessage = String(localized: "Some selected documents were not restored. Review each document's current state before trying another action.")
-                let state = try await loadReviewState(record.id)
+                let state = try await loadChangeState(record.id)
                 if !directUndoGrant.reconcile(
                     observedFinalizedResultFingerprint:
                         state.finalizedResultFingerprint
                 ) {
                     selectedDocumentIDs.removeAll()
                 }
-                workingReviewRevision = state.reviewRevision
                 for current in state.documents {
                     guard let index = documents.firstIndex(where: {
                         $0.id == current.noteID
@@ -1518,14 +1401,13 @@ private struct ResearchRecordComparisonSheet: View {
                 operationMessage = error.localizedDescription
                 selectedDocumentIDs.removeAll()
                 do {
-                    let state = try await loadReviewState(record.id)
+                    let state = try await loadChangeState(record.id)
                     if !directUndoGrant.reconcile(
                         observedFinalizedResultFingerprint:
                             state.finalizedResultFingerprint
                     ) {
                         selectedDocumentIDs.removeAll()
                     }
-                    workingReviewRevision = state.reviewRevision
                     for current in state.documents {
                         guard let index = documents.firstIndex(where: {
                             $0.id == current.noteID

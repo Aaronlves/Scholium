@@ -104,7 +104,6 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var pendingCancellationBarrierCount = 0
     @Published private(set) var endingActivityRunIDs: Set<UUID> = []
     @Published private(set) var statusActivity: WorkspaceResearchActivity?
-    @Published private(set) var statusRelatedResult: WorkspaceResearchActivity?
 
     @Published var textValues: [String: String] = [:]
     @Published var choiceValues: [String: Set<String>] = [:]
@@ -185,19 +184,6 @@ final class ResearchActionController: ObservableObject {
             return
         }
         statusActivity = activity
-        statusRelatedResult = activities
-            .filter {
-                $0.targetNoteID == activity.targetNoteID
-                    && $0.actionID == activity.actionID
-                    && $0.state == .resultReady
-            }
-            .sorted {
-                if $0.updatedAt != $1.updatedAt {
-                    return $0.updatedAt > $1.updatedAt
-                }
-                return $0.runID.uuidString < $1.runID.uuidString
-            }
-            .first
     }
 
     func unbind() {
@@ -246,7 +232,6 @@ final class ResearchActionController: ObservableObject {
         target: ResearchActionNoteSnapshot,
         availability: ResearchActionAvailability?,
         activity: WorkspaceResearchActivity,
-        relatedResult: WorkspaceResearchActivity?,
         presentationID: UUID
     ) -> Bool {
         guard phase != .cancelling, !hasCancellationBarrier else { return false }
@@ -257,7 +242,6 @@ final class ResearchActionController: ObservableObject {
         self.presentationID = presentationID
         presentationAvailability = availability
         statusActivity = activity
-        statusRelatedResult = relatedResult
         phase = .loading
         let token = generation
         loadingTask = Task { @MainActor [self] in
@@ -829,7 +813,6 @@ final class ResearchActionController: ObservableObject {
         resultRecord = nil
         continuationRecords = []
         statusActivity = nil
-        statusRelatedResult = nil
         errorMessage = nil
         isBindingSource = false
         textValues = [:]

@@ -559,15 +559,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         appState.shellState.dismissResearchResultNotice(matching: destination)
     }
 
-    func reviewResearchResult(_ activity: WorkspaceResearchActivity) {
-        guard let triptychID = researchRecordsTriptychID,
-              let destination = ResearchResultReviewDestination(
-                  triptychID: triptychID,
-                  activity: activity
-              ) else { return }
-        reviewResearchResult(destination)
-    }
-
     func requestResearchNotificationAuthorization() {
         researchResultNotificationCoordinator?.requestNotificationAuthorization(
             windowID: windowID

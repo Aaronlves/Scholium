@@ -1078,9 +1078,7 @@ package final class ResearchRecordBrowserModel {
                 )
                 return
             }
-            if !record.researcherReviewIsComplete {
-                directUndoResultFingerprints[recordID] = expected
-            }
+            directUndoResultFingerprints[recordID] = expected
         }
         if let statementID = request.statementID,
             !record.statements.contains(where: { $0.id == statementID })

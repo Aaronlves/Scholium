@@ -140,14 +140,15 @@ View.
 
 One Record detail uses two independent vertical scroll owners: a reading plane
 that receives the remaining width up to a 680pt measure and a default-expanded,
-toolbar-collapsible 260–304pt Evidence & Judgment rail, separated by one 1pt
-adaptive divider. Both planes use the same Document background. Reading owns the finalized
-result, attributed record, continuity relation, and Reading Lead links;
-the fixed processing rail presents Researcher Response, Change Decision,
-Effects, Context Used, Participants, then Technical Details. Researcher
-Response opens one Evaluation-first, Method-Feedback-second editor whose single
-Save Response operation is atomic. Change Decision reads current source state,
-records Keep or current-state completion, and opens the shared comparison. One
+toolbar-collapsible 260–304pt Evidence rail, separated by one 1pt adaptive
+divider. Both plane backgrounds extend behind the transparent toolbar while
+their scroll content remains inside the AppKit safe area. Reading owns the
+finalized result, attributed record, continuity relation, Reading Lead links,
+and the progressive Researcher Response. The fixed Evidence rail presents
+Changes, Effects, Context Used, Participants, then Technical Details. The
+Response opens one Evaluation-first, optionally expanded Method-Feedback-second
+editor whose single Save Response operation is atomic. Changes reads exact
+current source state and opens the shared comparison without writing Review. One
 default-closed Technical Details group
 owns schema, identity, and exact revision hashes; confirmed permanent deletion
 remains in the Record header. Record

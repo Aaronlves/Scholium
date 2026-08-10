@@ -2322,7 +2322,7 @@ struct WindowControllerArchitectureTests {
         #expect(toolbarSource.contains("@ObservedObject var shellState: WindowShellState"))
     }
 
-    @Test("Research Records own one atomic response and source-change decision surface")
+    @Test("Records, Overview, and Document keep Response, Changes, and Note Review distinct")
     func researchRecordProcessingSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2349,6 +2349,9 @@ struct WindowControllerArchitectureTests {
         let noteContent = try source(
             "Scholium/Views/Note/NoteContentView.swift"
         )
+        let inspector = try source(
+            "Scholium/Views/Sidebar/ResearchInspectorContentView.swift"
+        )
         let permissions = try source(
             "Scholium/Views/ResearchActions/ResearchWriteSetExtensionView.swift"
         )
@@ -2365,11 +2368,12 @@ struct WindowControllerArchitectureTests {
         }
         #expect(recordBrowser.contains("ResearchFinalizedResultView(record: record)"))
         #expect(recordBrowser.contains("ResearchRecordResearcherResponseSection("))
-        #expect(recordBrowser.contains("ResearchRecordChangeDecisionSection("))
+        #expect(recordBrowser.contains("ResearchRecordChangesSection("))
+        #expect(!recordBrowser.contains("ResearchRecordChangeDecisionSection("))
 
         let fixedOrder = [
             "ResearchRecordResearcherResponseSection(",
-            "ResearchRecordChangeDecisionSection(",
+            "ResearchRecordChangesSection(",
             "ResearchRecordEvidenceSection(",
             "ResearchRecordContextUseSection(",
             "ResearchRecordParticipantSection(",
@@ -2379,6 +2383,20 @@ struct WindowControllerArchitectureTests {
         #expect(zip(fixedOrder, fixedOrder.dropFirst()).allSatisfy {
             $0.0 < $0.1
         })
+
+        let overviewOrder = [
+            "                attentionSection",
+            "                reviewSection",
+            "                aboutSection",
+        ].compactMap { inspector.range(of: $0)?.lowerBound }
+        #expect(overviewOrder.count == 3)
+        #expect(zip(overviewOrder, overviewOrder.dropFirst()).allSatisfy {
+            $0.0 < $0.1
+        })
+        #expect(inspector.contains("Needs Review · \\(count) Agent activities"))
+        #expect(inspector.contains("Button(\"Review Current Note…\""))
+        #expect(inspector.contains("No Agent changes to review"))
+        #expect(inspector.contains("No Agent changes awaiting Review"))
 
         for atomicResponseBoundary in [
             "Text(\"Researcher Response\")",
@@ -2393,25 +2411,32 @@ struct WindowControllerArchitectureTests {
             "Clear Saved Response Content?",
             "Reload Saved Response…",
             "Improve Current Method…",
+            "Button(\"＋ Add Method Feedback…\")",
+            "isMethodFeedbackExpanded",
         ] {
             #expect(processing.contains(atomicResponseBoundary))
         }
         #expect(!processing.contains("Save Evaluation"))
         #expect(!processing.contains("Save Method Feedback"))
 
-        for changeDecisionBoundary in [
-            "Button(\"Finish Review\")",
-            "Button(\"Keep Agent Changes\")",
-            "Button(\"Finish Review with Current State…\")",
+        for changeRecoveryBoundary in [
             "Button(\"Compare Changes…\")",
             "Button(\"Undo Selected Documents…\")",
-            "Return to Result",
+            "Return to Record",
             "canDirectlyUndo",
             "ResearchRecordDirectUndoGrantState",
             "directUndoGrant.finalizedResultFingerprint",
-            "Reload Result",
+            "Reload Changes",
         ] {
-            #expect(processing.contains(changeDecisionBoundary))
+            #expect(processing.contains(changeRecoveryBoundary))
+        }
+        for removedRecordReviewBoundary in [
+            "Finish Review",
+            "Keep Agent Changes",
+            "Finish Review with Current State",
+            "ResearchRecordChangeDecisionSection",
+        ] {
+            #expect(!processing.contains(removedRecordReviewBoundary))
         }
         #expect(processing.contains("String(localized: \"Expanded\")"))
         #expect(processing.contains("String(localized: \"Collapsed\")"))
@@ -2419,6 +2444,17 @@ struct WindowControllerArchitectureTests {
         #expect(noteContent.contains(
             "isDocumentExpanded ? \"Expanded\" : \"Collapsed\""
         ))
+        for noteReviewBoundary in [
+            "scholium.noteReview.task",
+            "Button(\"View Changes…\")",
+            "Button(\"Mark Current Note Reviewed\")",
+            "noteReviewBlockingReason",
+            "documentSession.hasUnsavedChanges",
+            "conflict != nil",
+            "researchRecordSourceManifestHash",
+        ] {
+            #expect(noteContent.contains(noteReviewBoundary))
+        }
         for sharedComparisonBoundary in [
             "ExactSourceComparisonSheetLayout",
             "ExactSourceComparisonView",

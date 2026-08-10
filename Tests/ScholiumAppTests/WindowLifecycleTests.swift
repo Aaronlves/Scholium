@@ -408,19 +408,18 @@ struct WindowLifecycleTests {
             lifecycleRegistry: ScholiumWindowLifecycleRegistry(),
             researchResultNotificationCoordinator: notificationCoordinator
         )
-        let activity = WorkspaceResearchActivity(
+        let arrival = WorkspaceResearchResultArrival(
             runID: UUID(),
-            actionID: .analyze,
-            targetNoteID: UUID(),
-            state: .resultReady,
             recordID: UUID(),
+            actionID: .analyze,
+            originNoteID: UUID(),
             recordFingerprint: DocumentFingerprint(content: "result"),
-            updatedAt: Date(timeIntervalSinceReferenceDate: 10)
+            finishedAt: Date(timeIntervalSinceReferenceDate: 10)
         )
-        let destination = try #require(ResearchResultReviewDestination(
+        let destination = ResearchResultReviewDestination(
             triptychID: firstTriptychID,
-            activity: activity
-        ))
+            arrival: arrival
+        )
 
         coordinator.updateResearchRecordsRouting(triptychID: firstTriptychID)
         model.shellState.presentResearchResultNotice(destination)

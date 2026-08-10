@@ -43,7 +43,7 @@
   interaction. Source exposes the complete exact text. Conflict comparison and
   recovery remain Document-owned.
 - Inspector presents Overview, Connect, and Actions as one mutually exclusive
-  index. Overview shows current Attention and About; Connect switches Incoming
+  index. Overview shows Needs Attention, Review, then About; Connect switches Incoming
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
   Settle.
 - Action sheets expose academic inputs, target and mutation consequence,
@@ -54,24 +54,23 @@
 - Action, Reading Lead note, and combined Researcher Response sheets share the same
   fixed-header, scrolling-body, fixed-action layout while retaining separate
   workflow state and dimensions.
-- Record detail uses the fixed Researcher Response, Change Decision, Effects,
-  Context Used, Participants, Technical Details order. One combined editor
-  atomically saves Evaluation and Method Feedback; Change Decision exposes
-  Finish, Keep, current-state completion, and the shared folding exact
-  comparison. Action rows and notification clicks now produce the validated
-  exact review-result route and its Records-window-lifetime direct-Undo grant;
-  ordinary Records browsing does not receive the grant.
+- Record reading detail shows progressive Researcher Response; its Evidence
+  rail shows Changes, Effects, Context Used, Participants, and Technical
+  Details. One combined editor atomically saves Evaluation and optional Method
+  Feedback. The shared folding exact comparison remains read-only until an
+  explicitly granted whole-document recovery. Notification clicks produce the
+  validated exact result route and its Records-window-lifetime direct-Undo
+  grant; ordinary Records browsing does not receive the grant.
 - Copy Handoff success closes the preparation sheet and returns focus through
   the existing Action-row focus owner. Actions project Waiting, Running, Needs
-  Attention, Result Ready, repair text, and multiple-result count from durable
-  execution/Record truth. Waiting and Running open a compact status sheet;
-  Result Ready enters the newest unfinished exact Record.
+  Attention, and repair text from durable execution truth. Waiting and Running
+  open a compact status sheet; a finalized Record ends the Action row.
 - Foreground completion presents a dismissible Review Result banner only in
   the source window. Authorized background completion uses a private system
   notification; click routing retains its exact Triptych, Record, and finalized
   fingerprint even when no main window remains. Arrival alone never opens,
-  retargets, focuses, or activates Records, and completed review withdraws the
-  delivery.
+  retargets, focuses, or activates Records. Delivery is one-shot and independent
+  of Note Review.
 
 ## Search, Attention, and Research Records
 
@@ -86,11 +85,11 @@
   window-local Scope, search, filters, sorting, exact total, and incremental
   loading. Selecting a row replaces the collection with one retained detail
   route; Back restores the collection state.
-- Record detail uses a dominant reading plane and optional Evidence & Judgment
+- Record detail uses a dominant reading plane and optional Evidence
   rail. Reading Lead detail uses one reading flow with independent handled
   state, complete citation, bibliographic and discovery facts, reason,
   uncertainty, researcher note, source, parent, and technical identity.
-- Record deletion, Response editing, Change Decision, folding comparison,
+- Record deletion, Response editing, folding comparison,
   evidence popovers, unresolved provenance, and recommendation handling retain
   named keyboard and accessibility routes.
 

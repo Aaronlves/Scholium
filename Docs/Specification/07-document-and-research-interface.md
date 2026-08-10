@@ -233,7 +233,7 @@ Selecting a row enters one route-owned detail and removes the collection from
 the active accessibility tree. The native toolbar owns Back and the restrained
 route title; Back returns to the retained collection state.
 A Record detail contains one dominant reading plane and one narrower
-**Evidence & Judgment** rail at an approximately **64/36** working proportion;
+**Evidence** rail at an approximately **64/36** working proportion;
 additional width accrues to reading first. The panes use the Document and
 Apparatus semantic backgrounds respectively. One 1pt adaptive divider and one
 purpose-named reading-evidence structural shadow distinguish the quieter rail
@@ -241,7 +241,7 @@ from the dominant reading plane; both continue to the top of the native
 full-height split. Increase Contrast removes the shadow and relies on the
 strengthened divider and semantic surface difference. Evidence is expanded by default. A
 native trailing-toolbar control hides or shows the whole rail; hiding it gives
-the available width to reading and does not alter Record, route, or judgment
+the available width to reading and does not alter Record, route, or Response
 state. Reading Leads use a corresponding single-occurrence detail route. Focus
 changes in other windows never retarget Scope, View, route, filters, or the
 current detail.
@@ -292,12 +292,13 @@ result prose, or create a second Record-query owner. A continuation child
 Record remains searchable but appears beneath its parent Action/Record rather
 than as another peer row in the ordinary Records collection.
 
-The Record's processing rail has one fixed, noncustomizable order:
-**Researcher Response**, **Change Decision**, **Effects**, **Context Used**,
-**Participants**, then **Technical Details**. Researcher Response shows both
-states and opens one Evaluation-then-Method Feedback editor with **Cancel** and
-**Save Response**. Change Decision persists until every change has an outcome
-or a no-change result receives **Finish Review**.
+The reading plane owns **Researcher Response**: empty offers **Add Response...**;
+saved content offers **Edit Response...**. Evaluation comes first; absent Method
+Feedback stays behind **+ Add Method Feedback...**. Saved feedback reveals
+**Improve Current Method...**. **Save Response** atomically writes both.
+
+The fixed Evidence rail presents **Changes**, **Effects**, **Context Used**,
+**Participants**, and **Technical Details**. It owns no Review or Response.
 Every section title shares one height, inset, baseline, and Apparatus heading
 style. Each fact uses one aligned monochrome symbol, title, and short provenance
 text. A fact title uses the 12pt Medium interface Row Title role, never the
@@ -325,8 +326,8 @@ verified Context Use report is absent. Effects state confirmed source changes,
 Record completion, applicable Fidelity, and discrepancies without badges,
 scores, or color-only meaning.
 
-The current researcher judgment remains directly readable. Its right-chevron
-section title is the one Review/Edit control and opens the combined native
+The current researcher judgment remains directly readable in the reading
+plane. Its Add/Edit control opens the combined native
 Response sheet; an unsaved draft blocks implicit dismissal and requires
 explicit discard confirmation, while a save or reload blocks all dismissal.
 One
@@ -336,27 +337,24 @@ It uses the same adaptive Inspector About label/value grid rather than a local
 field layout; a narrow region stacks the complete group as one unit.
 The single confirmed permanent-delete route is a named `trash` icon in the
 single-Record header, never on collection rows or inside
-Technical Details. Change Decision offers **Finish Review** when there were no
-source changes; **Keep Agent Changes** when every unresolved document still
-matches the Agent ending revision; **Finish Review with Current State...** for
-later edits or missing documents; and **Compare Changes...** for confirmed
-changes. Method improvement begins only from the saved Method Feedback in this
-Record and remains a separate authenticated Run.
+Technical Details. Changes offers read-only **View Changes...** or **Compare
+Changes...** for confirmed Agent changes and only the recovery operations whose
+exact prerequisites remain valid. Method improvement begins only from the
+saved Method Feedback in this Record and remains a separate authenticated Run.
 
 Compare Changes is one shared attached single-column diff, never a left/right
 pair. Each document shows path, state, and revisions and can fold; the sole or
 first document opens initially, with **Expand All** and **Collapse All**. Three
 context lines surround changes; longer equal ranges become **N unchanged
 lines**. Record mode selects whole documents only and offers **Return to
-Result** / **Undo Selected Documents...**; Conflict mode offers **Return to
+Record** / **Undo Selected Documents...**; Conflict mode offers **Return to
 Editing** / **Reload from Disk**. Full success returns; partial results remain
 visible per document.
 
 A `.reviewResult` request grants that exact Record direct Undo only in the
-current Records window, including after Keep. Closing erases this nonpersistent
-eligibility; later recovery uses global checkpoints, while reopening an
-incomplete Result grants a new review window. Review Disposition remains
-portable.
+current Records window. Closing erases this nonpersistent eligibility; later
+recovery uses global checkpoints. The grant authorizes only exact recovery and
+never Note Review.
 There is exactly one native trailing Inspector per window, with **Overview,
 Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
@@ -388,7 +386,10 @@ Overview presents only compact current-note projections, in this order:
    one full-row native button that opens the Workspace Attention popover filtered
    to that exact Note. It has no nested **Show All** row. At zero it retains the
    heading and `0` but no reassurance sentence or decorative verdict.
-2. **About:** only non-empty role-specific fields in Appendix A. Scope and each
+2. **Review:** distinct from Attention. It states **No Agent changes to review**,
+   **Needs Review · N Agent activities** with **Review Current Note...**, or
+   **No Agent changes awaiting Review** with **Last reviewed [date]**.
+3. **About:** only non-empty role-specific fields in Appendix A. Scope and each
    Limitation use reading blocks. The complete About heading row is the direct
    **Edit Properties** button; the values and reading blocks remain static and
    selectable rather than becoming button content. There is no bottom Edit
@@ -397,6 +398,11 @@ Overview presents only compact current-note projections, in this order:
    action inside About; it exposes neither the key nor fetched metadata and is
    absent for every other target. There is no Research Status, Key Properties,
    Provenance, Derived State, or separate Zotero section.
+
+**Review Current Note...** opens a temporary Document task bar separating
+read-only **View Changes** from **Mark Current Note Reviewed**. Commit requires
+clean, available, conflict-free exact Note and Record revisions; every mismatch
+fails closed. No toolbar, Record/change action, or notification substitutes.
 
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and
@@ -532,17 +538,15 @@ conflict, write result unknown, and recovery each use complete text and an
 executable next route without displaying the real Session secret or internal
 fingerprints as tasks for the researcher.
 
-The originating Action row consumes only the privacy-bounded activity
-projection and states **Waiting for Agent**, **Running**, **Needs Attention**,
-or **Result Ready**. Needs Attention includes the first executable repair.
-Multiple pending Results show a count and enter the newest unfinished Record.
-Result arrival never opens or retargets Records, activates the app, or steals
-focus; only the row or a notification action submits the exact Record request.
+The Action row states **Waiting for Agent**, **Running**, or **Needs Attention**
+from the privacy-bounded projection. A Record ends the row. Arrival never opens,
+retargets, activates, focuses, or reviews; only notification action opens it.
 
 Foreground completion sends one actionable in-app notification to the origin
 window. Authorized background delivery says only **An Agent result is ready to
 review.** Record ID plus finalized-result fingerprint deduplicates it. Clicking
-opens the exact Triptych/Record; review completion withdraws delivery. No
+opens the exact Triptych/Record. Delivery is one-shot and independent of Note
+Review. No
 notification contains research content, credentials, checkpoints, or traces;
 denial is not repeatedly requested and never weakens the Action row.
 
